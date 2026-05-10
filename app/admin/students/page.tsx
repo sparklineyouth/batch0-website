@@ -76,6 +76,7 @@ export default async function AdminStudentsPage({
               <th className="px-5 py-3">Application</th>
               <th className="px-5 py-3">Cohort</th>
               <th className="px-5 py-3">Joined</th>
+              <th className="px-5 py-3"></th>
             </tr>
           </thead>
           <tbody>
@@ -106,6 +107,14 @@ export default async function AdminStudentsPage({
                   </td>
                   <td className="px-5 py-3 text-white/50">
                     {new Date(p.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    <Link
+                      href={`/admin/students/${p.id}`}
+                      className="text-xs text-spark hover:underline"
+                    >
+                      Manage →
+                    </Link>
                   </td>
                 </tr>
               );
