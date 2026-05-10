@@ -5,6 +5,7 @@ import { getProfile } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { RoleSelect } from "../role-select";
 import { ManagePanel } from "./manage-panel";
+import { discordAvatarUrl } from "@/lib/discord";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Manage user · Admin" };
@@ -90,6 +91,14 @@ export default async function AdminStudentDetail({
             Joined {new Date(profile.created_at).toLocaleDateString()} ·
             Referral code{" "}
             <span className="text-white/70">{profile.referral_code ?? "—"}</span>
+            {profile.discord_user_id && (
+              <>
+                {" "}· Discord{" "}
+                <span className="text-white/70">
+                  @{profile.discord_username ?? profile.discord_user_id}
+                </span>
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">

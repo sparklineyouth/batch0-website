@@ -17,6 +17,7 @@ import {
   BookOpen,
   ScrollText,
   Handshake,
+  MessagesSquare,
   Star,
   Megaphone,
 } from "lucide-react";
@@ -35,6 +36,7 @@ export const STUDENT_NAV: NavItem[] = [
   { href: "/dashboard/course", label: "Course", icon: PlayCircle },
   { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardList },
   { href: "/dashboard/events", label: "Events", icon: CalendarDays },
+  { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
   { href: "/dashboard/ai", label: "AI co-founder", icon: Sparkles },
   { href: "/dashboard/files", label: "Files", icon: FolderOpen },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
@@ -51,6 +53,7 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/events", label: "Events", icon: CalendarDays },
   { href: "/admin/mentors", label: "Mentors", icon: Handshake },
   { href: "/admin/announcements", label: "Announcements", icon: Megaphone },
+  { href: "/admin/discord", label: "Discord", icon: MessagesSquare },
   { href: "/admin/charges", label: "Fees & fines", icon: CreditCard },
   { href: "/admin/payments", label: "Payments", icon: CreditCard },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText },

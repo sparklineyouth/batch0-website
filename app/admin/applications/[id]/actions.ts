@@ -6,6 +6,7 @@ import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
+import { syncMemberRoles, postChannelMessage, announcementEmbed, getDiscordSettings } from "@/lib/discord";
 
 export async function decideApplication(
   applicationId: string,
@@ -19,7 +20,7 @@ export async function decideApplication(
   const { data: app, error: fetchErr } = await admin
     .from("applications")
     .select(
-      "id, full_name, user_id, cohort:cohorts(name, price_cents), profile:profiles!applications_user_id_fkey(email, full_name)",
+      "id, full_name, user_id, cohort:cohorts(name, price_cents), profile:profiles!applications_user_id_fkey(email, full_name, discord_user_id, role)",
     )
     .eq("id", applicationId)
     .maybeSingle();
@@ -92,6 +93,34 @@ export async function decideApplication(
     console.error("[applications] decide notify failed", err);
   }
 
+  // Discord side-effects (best-effort, only fire on accept). If the
+  // applicant has linked their Discord account, sync them to the
+  // student role; admins on a separate channel get a heads-up.
+  try {
+    const a = app as any;
+    const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
+    const cohort = Array.isArray(a.cohort) ? a.cohort[0] : a.cohort;
+    if (decision === "accepted") {
+      if (profile?.discord_user_id) {
+        await syncMemberRoles(profile.discord_user_id, profile.role ?? "student");
+      }
+      const settings = await getDiscordSettings();
+      if (settings.adminFeedChannelId) {
+        await postChannelMessage(settings.adminFeedChannelId, {
+          embeds: [
+            announcementEmbed({
+              title: `Accepted: ${a.full_name ?? profile?.full_name ?? profile?.email ?? "applicant"}`,
+              body: `Cohort: ${cohort?.name ?? "—"}`,
+              link: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/admin/applications/${applicationId}`,
+            }),
+          ],
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[applications] discord sync failed", err);
+  }
+
   revalidatePath(`/admin/applications/${applicationId}`);
   revalidatePath("/admin/applications");
   revalidatePath("/admin");
@@ -133,7 +162,7 @@ export async function waiveApplicationFee(
   const { data: app, error: fetchErr } = await admin
     .from("applications")
     .select(
-      "id, status, user_id, cohort_id, fee_waived, full_name, cohort:cohorts(name), profile:profiles!applications_user_id_fkey(email, full_name)",
+      "id, status, user_id, cohort_id, fee_waived, full_name, cohort:cohorts(name), profile:profiles!applications_user_id_fkey(email, full_name, discord_user_id, role)",
     )
     .eq("id", applicationId)
     .single();
@@ -199,6 +228,18 @@ export async function waiveApplicationFee(
     }
   } catch (err) {
     console.error("[applications] waive notify failed", err);
+  }
+
+  // If the user has linked Discord, sync their roles now that they're
+  // fully enrolled.
+  try {
+    const a = app as any;
+    const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
+    if (profile?.discord_user_id) {
+      await syncMemberRoles(profile.discord_user_id, profile.role ?? "student");
+    }
+  } catch (err) {
+    console.error("[applications] waive discord sync failed", err);
   }
 
   revalidatePath(`/admin/applications/${applicationId}`);

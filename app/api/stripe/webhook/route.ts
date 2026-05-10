@@ -6,7 +6,7 @@ import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
-import { postDiscordWebhook } from "@/lib/discord";
+import { postDiscordWebhook, syncMemberRoles, postChannelMessage, announcementEmbed, getDiscordSettings } from "@/lib/discord";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -142,9 +142,15 @@ export async function POST(req: Request) {
         try {
           const { data: profile } = await admin
             .from("profiles")
-            .select("email, full_name")
+            .select("email, full_name, discord_user_id, role")
             .eq("id", userId)
             .maybeSingle();
+          if (profile?.discord_user_id) {
+            await syncMemberRoles(
+              profile.discord_user_id,
+              (profile.role as any) ?? "student",
+            ).catch(() => {});
+          }
           let cohortName = "SparkLine";
           if (cohortId) {
             const { data: c } = await admin

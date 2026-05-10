@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { postChannelMessage, eventEmbed, getDiscordSettings } from "@/lib/discord";
 
 export type EventInput = {
   id?: string;
@@ -89,6 +90,41 @@ export async function saveEvent(input: EventInput, notify: boolean) {
       }
     } catch (err) {
       console.error("[events] notify failed", err);
+    }
+  }
+
+  // Cross-post to Discord's events channel for every save (works for
+  // both new and updated events). Best-effort.
+  if (notify) {
+    try {
+      const settings = await getDiscordSettings();
+      if (settings.eventsChannelId) {
+        let cohortName: string | null = null;
+        if (input.cohort_id) {
+          const { data: c } = await admin
+            .from("cohorts")
+            .select("name")
+            .eq("id", input.cohort_id)
+            .maybeSingle();
+          cohortName = c?.name ?? null;
+        }
+        await postChannelMessage(settings.eventsChannelId, {
+          embeds: [
+            eventEmbed({
+              title: payload.title,
+              description: payload.description,
+              startsAt: payload.starts_at,
+              endsAt: payload.ends_at,
+              location: payload.location,
+              zoomUrl: payload.zoom_url,
+              type: payload.type,
+              cohortName,
+            }),
+          ],
+        });
+      }
+    } catch (err) {
+      console.error("[events] discord post failed", err);
     }
   }
 

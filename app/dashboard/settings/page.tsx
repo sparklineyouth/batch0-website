@@ -2,21 +2,46 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SettingsForm } from "./settings-form";
 import { ThemeToggle } from "./theme-toggle";
+import { DiscordCard } from "./discord-card";
 import { Card } from "@/components/ui/card";
 import type { Theme } from "@/lib/types";
 
 export const metadata = { title: "Settings · SparkLine" };
 
-export default async function SettingsPage() {
+const ERROR_COPY: Record<string, string> = {
+  not_configured: "Discord isn't configured on this site yet.",
+  bad_state: "Link expired or was tampered with — please retry.",
+  not_signed_in: "Your session changed mid-flow — please retry.",
+  oauth_failed: "Discord rejected the login. Please retry.",
+  save_failed: "We couldn't save the link. Try again.",
+  already_linked_to_another_account:
+    "That Discord account is already linked to a different SparkLine user.",
+};
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: { discord?: string; discord_error?: string };
+}) {
   const user = await requireUser();
   const supabase = createClient();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile }, { data: settingRows }] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).single(),
+    supabase
+      .from("site_settings")
+      .select("key, value")
+      .in("key", ["discord_url"]),
+  ]);
 
   const theme: Theme = profile?.theme === "light" ? "light" : "dark";
+  const discordInvite =
+    (settingRows ?? []).find((s: any) => s.key === "discord_url")?.value || null;
+
+  const linkedJustNow = searchParams.discord === "linked";
+  const unlinkedJustNow = searchParams.discord === "unlinked";
+  const error = searchParams.discord_error
+    ? ERROR_COPY[searchParams.discord_error] ?? searchParams.discord_error
+    : null;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -24,6 +49,19 @@ export default async function SettingsPage() {
       <p className="mt-1 text-sm text-white/55">
         Update your profile, preferences, and account.
       </p>
+
+      {(linkedJustNow || unlinkedJustNow) && (
+        <div className="mt-5 rounded-lg border border-spark/30 bg-spark/5 p-3 text-sm text-spark">
+          {linkedJustNow
+            ? "Discord linked. Welcome to the community."
+            : "Discord unlinked."}
+        </div>
+      )}
+      {error && (
+        <div className="mt-5 rounded-lg border border-red-400/30 bg-red-400/5 p-3 text-sm text-red-200">
+          {error}
+        </div>
+      )}
 
       <Card className="mt-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/55">
@@ -35,6 +73,18 @@ export default async function SettingsPage() {
         </p>
         <ThemeToggle initial={theme} />
       </Card>
+
+      <div className="mt-6">
+        <DiscordCard
+          profile={{
+            discord_user_id: profile?.discord_user_id ?? null,
+            discord_username: profile?.discord_username ?? null,
+            discord_avatar: profile?.discord_avatar ?? null,
+            discord_linked_at: profile?.discord_linked_at ?? null,
+          }}
+          discordInvite={discordInvite}
+        />
+      </div>
 
       <Card className="mt-6">
         <SettingsForm

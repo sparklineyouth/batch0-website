@@ -4,7 +4,12 @@ import { assertAdmin } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { sendEmail } from "@/lib/email/send";
 import { notifyMany } from "@/lib/notifications";
-import { postDiscordWebhook } from "@/lib/discord";
+import {
+  postDiscordWebhook,
+  postChannelMessage,
+  announcementEmbed,
+  getDiscordSettings,
+} from "@/lib/discord";
 import { env } from "@/lib/env";
 
 export type AnnouncementInput = {
@@ -71,9 +76,23 @@ export async function broadcastAnnouncement(
 
   let discordPosted = false;
   if (input.postDiscord) {
-    discordPosted = await postDiscordWebhook({
-      content: `📣 **${input.title}**\n${input.body}\n\n— Posted from ${env.siteUrl}`,
+    // Prefer the configured announcements channel via bot (richer
+    // embed + better permissions story). Fall back to the legacy
+    // webhook URL if no channel is configured.
+    const settings = await getDiscordSettings();
+    const embed = announcementEmbed({
+      title: input.title.trim(),
+      body: input.body.trim(),
+      link: `${env.siteUrl}/dashboard`,
     });
+    if (settings.announcementsChannelId) {
+      discordPosted = await postChannelMessage(
+        settings.announcementsChannelId,
+        { embeds: [embed] },
+      );
+    } else {
+      discordPosted = await postDiscordWebhook({ embeds: [embed] });
+    }
   }
 
   await logAudit({

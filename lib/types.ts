@@ -24,6 +24,10 @@ export type Profile = {
   referral_code: string | null;
   ai_context: Record<string, any> | null;
   theme: Theme;
+  discord_user_id: string | null;
+  discord_username: string | null;
+  discord_avatar: string | null;
+  discord_linked_at: string | null;
   created_at: string;
   updated_at: string;
 };

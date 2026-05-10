@@ -7,12 +7,13 @@ import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
+import { kickFromGuild, removeRoleFromMember, getDiscordSettings } from "@/lib/discord";
 
 async function fetchTargetProfile(userId: string) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("profiles")
-    .select("id, email, full_name, role")
+    .select("id, email, full_name, role, discord_user_id")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -52,6 +53,20 @@ export async function removeFromProgram(userId: string, reason: string) {
 
   // Drop all enrollments.
   await admin.from("enrollments").delete().eq("user_id", userId);
+
+  // Strip SparkLine-managed Discord roles. We keep them on the server
+  // (use Delete account to fully remove) but they lose access to
+  // role-gated channels.
+  if (target.discord_user_id) {
+    try {
+      const settings = await getDiscordSettings();
+      for (const rid of Object.values(settings.roleIdByRole)) {
+        if (rid) await removeRoleFromMember(target.discord_user_id, rid);
+      }
+    } catch (err) {
+      console.error("[remove] discord role strip failed", err);
+    }
+  }
 
   await logAudit({
     action: "user.removed_from_program",
@@ -199,6 +214,13 @@ export async function deleteUserAccount(userId: string, reason: string) {
   }
 
   const admin = createAdminClient();
+
+  // Kick from Discord first (best-effort) — once we delete the auth
+  // user, we lose their discord_user_id.
+  if (target.discord_user_id) {
+    await kickFromGuild(target.discord_user_id).catch(() => {});
+  }
+
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw new Error(error.message);
 

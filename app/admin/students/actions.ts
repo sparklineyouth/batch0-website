@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/audit";
+import { syncMemberRoles } from "@/lib/discord";
 import type { Role } from "@/lib/types";
 
 const VALID_ROLES: Role[] = [
@@ -34,7 +35,7 @@ export async function changeUserRole(userId: string, role: Role) {
   const admin = createAdminClient();
   const { data: prev } = await admin
     .from("profiles")
-    .select("role, email")
+    .select("role, email, discord_user_id")
     .eq("id", userId)
     .single();
   const { error } = await admin
@@ -48,5 +49,10 @@ export async function changeUserRole(userId: string, role: Role) {
     targetId: userId,
     payload: { from: prev?.role ?? null, to: role, email: prev?.email },
   });
+  // Best-effort: keep their Discord role in sync with the new SparkLine role.
+  if (prev?.discord_user_id) {
+    await syncMemberRoles(prev.discord_user_id, role).catch(() => {});
+  }
   revalidatePath("/admin/students");
+  revalidatePath(`/admin/students/${userId}`);
 }
