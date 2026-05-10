@@ -21,7 +21,7 @@ export default async function AdminStudentsPage({
   let q = admin
     .from("profiles")
     .select(
-      "id, email, full_name, role, created_at, applications(status), enrollments(cohort_id, cohort:cohorts(name))",
+      "id, email, full_name, role, created_at, applications!applications_user_id_fkey(status), enrollments!enrollments_user_id_fkey(cohort_id, cohort:cohorts(name))",
     )
     .order("created_at", { ascending: false });
   if (filter !== "all") q = q.eq("role", filter);

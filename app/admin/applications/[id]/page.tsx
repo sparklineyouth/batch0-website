@@ -14,7 +14,7 @@ export default async function AdminApplicationDetail({
   const admin = createAdminClient();
   const { data: app } = await admin
     .from("applications")
-    .select("*, cohort:cohorts(*), profile:profiles(email, full_name)")
+    .select("*, cohort:cohorts(*), profile:profiles!applications_user_id_fkey(email, full_name)")
     .eq("id", params.id)
     .maybeSingle();
 

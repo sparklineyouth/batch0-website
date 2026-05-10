@@ -19,7 +19,7 @@ export async function decideApplication(
   const { data: app, error: fetchErr } = await admin
     .from("applications")
     .select(
-      "id, full_name, user_id, cohort:cohorts(name, price_cents), profile:profiles(email, full_name)",
+      "id, full_name, user_id, cohort:cohorts(name, price_cents), profile:profiles!applications_user_id_fkey(email, full_name)",
     )
     .eq("id", applicationId)
     .maybeSingle();
@@ -133,7 +133,7 @@ export async function waiveApplicationFee(
   const { data: app, error: fetchErr } = await admin
     .from("applications")
     .select(
-      "id, status, user_id, cohort_id, fee_waived, full_name, cohort:cohorts(name), profile:profiles(email, full_name)",
+      "id, status, user_id, cohort_id, fee_waived, full_name, cohort:cohorts(name), profile:profiles!applications_user_id_fkey(email, full_name)",
     )
     .eq("id", applicationId)
     .single();

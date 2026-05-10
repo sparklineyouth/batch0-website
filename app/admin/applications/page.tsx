@@ -15,7 +15,7 @@ export default async function AdminApplicationsPage({
   let q = admin
     .from("applications")
     .select(
-      "id, full_name, age, status, created_at, submitted_at, why_join, profile:profiles(email)",
+      "id, full_name, age, status, created_at, submitted_at, why_join, profile:profiles!applications_user_id_fkey(email)",
     )
     .order("created_at", { ascending: false });
   if (status && status !== "all") q = q.eq("status", status);
