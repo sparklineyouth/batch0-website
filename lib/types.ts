@@ -1,4 +1,4 @@
-export type Role = "student" | "teacher" | "admin";
+export type Role = "student" | "professor" | "admin";
 
 export type ApplicationStatus =
   | "draft"
@@ -27,6 +27,8 @@ export type Cohort = {
   capacity: number;
   status: "upcoming" | "active" | "completed" | "cancelled";
   price_cents: number;
+  stripe_product_id: string | null;
+  stripe_price_id: string | null;
   created_at: string;
 };
 
@@ -47,6 +49,9 @@ export type Application = {
   experience: string | null;
   hours_per_week: number | null;
   referral_source: string | null;
+  linkedin_url: string | null;
+  resume_url: string | null;
+  portfolio_url: string | null;
   submitted_at: string | null;
   reviewed_at: string | null;
   reviewed_by: string | null;

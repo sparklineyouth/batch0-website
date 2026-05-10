@@ -1,16 +1,89 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
 import { saveDraftAction, submitApplicationAction } from "./actions";
 import type { Application } from "@/lib/types";
+import { Check, Loader2, AlertCircle } from "lucide-react";
 
 const STEPS = [
   { id: 1, title: "About you" },
   { id: 2, title: "Background" },
   { id: 3, title: "Your idea" },
   { id: 4, title: "Review & submit" },
-];
+] as const;
+
+type FormState = {
+  full_name: string;
+  age: string;
+  grade: string;
+  school: string;
+  city: string;
+  country: string;
+  parent_email: string;
+  why_join: string;
+  startup_idea: string;
+  experience: string;
+  hours_per_week: string;
+  referral_source: string;
+  linkedin_url: string;
+  resume_url: string;
+  portfolio_url: string;
+};
+
+const URL_RE = /^https?:\/\/.+/;
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+
+// Per-step required-field validation (mirrors the server SubmitSchema).
+function validateStep(
+  step: number,
+  form: FormState,
+): Record<string, string> {
+  const errs: Record<string, string> = {};
+  if (step === 1) {
+    if (!form.full_name.trim()) errs.full_name = "Required";
+    const ageNum = parseInt(form.age, 10);
+    if (!form.age) errs.age = "Required";
+    else if (Number.isNaN(ageNum) || ageNum < 10 || ageNum > 25) {
+      errs.age = "Enter a valid age (10–25)";
+    }
+    if (form.parent_email && !EMAIL_RE.test(form.parent_email)) {
+      errs.parent_email = "Must be a valid email";
+    }
+  }
+  if (step === 2) {
+    if (form.linkedin_url && !URL_RE.test(form.linkedin_url)) {
+      errs.linkedin_url = "Must start with http(s)://";
+    }
+    if (form.resume_url && !URL_RE.test(form.resume_url)) {
+      errs.resume_url = "Must start with http(s)://";
+    }
+    if (form.portfolio_url && !URL_RE.test(form.portfolio_url)) {
+      errs.portfolio_url = "Must start with http(s)://";
+    }
+  }
+  if (step === 3) {
+    if (form.why_join.trim().length < 40) {
+      errs.why_join =
+        form.why_join.trim().length === 0
+          ? "Required"
+          : "Tell us at least a couple sentences";
+    }
+  }
+  return errs;
+}
+
+function buildFormData(form: FormState) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(form)) fd.append(k, v);
+  return fd;
+}
+
+type SaveStatus =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved"; at: Date }
+  | { kind: "error"; message: string };
 
 export function ApplicationForm({
   defaults,
@@ -20,13 +93,12 @@ export function ApplicationForm({
   email: string;
 }) {
   const [step, setStep] = useState(1);
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | undefined>();
+  const [submitPending, startSubmit] = useTransition();
+  const [submitError, setSubmitError] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [save, setSave] = useState<SaveStatus>({ kind: "idle" });
 
-  // Local form state — keeps fields populated across step nav
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
     full_name: defaults?.full_name ?? "",
     age: defaults?.age?.toString() ?? "",
     grade: defaults?.grade ?? "",
@@ -39,68 +111,152 @@ export function ApplicationForm({
     experience: defaults?.experience ?? "",
     hours_per_week: defaults?.hours_per_week?.toString() ?? "",
     referral_source: defaults?.referral_source ?? "",
+    linkedin_url: defaults?.linkedin_url ?? "",
+    resume_url: defaults?.resume_url ?? "",
+    portfolio_url: defaults?.portfolio_url ?? "",
   });
 
-  function set<K extends keyof typeof form>(k: K, v: string) {
+  // Keep an always-current ref to form state for the autosave timer
+  const formRef = useRef(form);
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  function set<K extends keyof FormState>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
     setFieldErrors((e) => ({ ...e, [k]: "" }));
   }
 
-  function buildFormData() {
-    const fd = new FormData();
-    for (const [k, v] of Object.entries(form)) fd.append(k, v);
-    return fd;
-  }
-
-  function handleSaveDraft() {
-    setError(undefined);
-    startTransition(async () => {
-      const result = await saveDraftAction(null, buildFormData());
-      if (!result.ok) {
-        setError(result.error);
-        setFieldErrors(result.fieldErrors ?? {});
-        return;
+  // Autosave: debounce 1.5s after the last keystroke.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = true;
+    const timer = setTimeout(async () => {
+      if (!dirtyRef.current) return;
+      dirtyRef.current = false;
+      setSave({ kind: "saving" });
+      const result = await saveDraftAction(null, buildFormData(formRef.current));
+      if (result.ok) {
+        setSave({ kind: "saved", at: new Date() });
+      } else {
+        setSave({
+          kind: "error",
+          message: result.error ?? "Couldn't save draft",
+        });
       }
-      setSavedAt(new Date());
-    });
+    }, 1500);
+    return () => clearTimeout(timer);
+    // Keying the effect on form serialized ensures any change schedules a save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    form.full_name,
+    form.age,
+    form.grade,
+    form.school,
+    form.city,
+    form.country,
+    form.parent_email,
+    form.why_join,
+    form.startup_idea,
+    form.experience,
+    form.hours_per_week,
+    form.referral_source,
+    form.linkedin_url,
+    form.resume_url,
+    form.portfolio_url,
+  ]);
+
+  // Save on unload / tab hidden so a closed tab keeps the latest draft.
+  useEffect(() => {
+    const flush = () => {
+      if (!dirtyRef.current) return;
+      dirtyRef.current = false;
+      // Fire-and-forget; we don't await on unload.
+      saveDraftAction(null, buildFormData(formRef.current));
+    };
+    const onVis = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
+  function goNext() {
+    const errs = validateStep(step, form);
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors((prev) => ({ ...prev, ...errs }));
+      return;
+    }
+    setStep(step + 1);
   }
 
   function handleSubmit() {
-    setError(undefined);
-    startTransition(async () => {
-      const result = await submitApplicationAction(null, buildFormData());
+    // Run validation across every step before submit.
+    const errs: Record<string, string> = {};
+    for (let s = 1; s <= STEPS.length; s++) {
+      Object.assign(errs, validateStep(s, form));
+    }
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      // Jump to the first step with an error.
+      for (const s of [1, 2, 3] as const) {
+        if (Object.keys(validateStep(s, form)).length > 0) {
+          setStep(s);
+          break;
+        }
+      }
+      setSubmitError("Please fix the highlighted fields.");
+      return;
+    }
+    setSubmitError(undefined);
+    startSubmit(async () => {
+      const result = await submitApplicationAction(null, buildFormData(form));
       if (!result.ok) {
-        setError(result.error);
+        setSubmitError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
       }
     });
   }
+
+  const stepHasErrors = (s: number) =>
+    Object.keys(validateStep(s, form)).length > 0;
 
   return (
     <div className="rounded-2xl border border-white/10 bg-zinc-900/40 p-6 md:p-8">
       {/* Stepper */}
       <ol className="mb-8 flex flex-wrap items-center gap-2 text-xs">
-        {STEPS.map((s, i) => (
-          <li key={s.id} className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setStep(s.id)}
-              className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
-                step === s.id
-                  ? "border-spark bg-spark text-black"
-                  : step > s.id
-                  ? "border-spark/40 bg-spark/10 text-spark"
-                  : "border-white/15 text-white/40"
-              }`}
-            >
-              {s.id}
-            </button>
-            <span className={step === s.id ? "text-white" : "text-white/40"}>
-              {s.title}
-            </span>
-            {i < STEPS.length - 1 && <span className="mx-1 text-white/20">›</span>}
-          </li>
-        ))}
+        {STEPS.map((s, i) => {
+          const reached = step >= s.id;
+          const hasErr = stepHasErrors(s.id) && step > s.id;
+          return (
+            <li key={s.id} className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setStep(s.id)}
+                aria-label={`Step ${s.id}: ${s.title}`}
+                className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
+                  step === s.id
+                    ? "border-spark bg-spark text-black"
+                    : reached
+                      ? hasErr
+                        ? "border-red-400/60 bg-red-400/10 text-red-300"
+                        : "border-spark/40 bg-spark/10 text-spark"
+                      : "border-white/15 text-white/40"
+                }`}
+              >
+                {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
+              </button>
+              <span className={step === s.id ? "text-white" : "text-white/40"}>
+                {s.title}
+              </span>
+              {i < STEPS.length - 1 && (
+                <span className="mx-1 text-white/20">›</span>
+              )}
+            </li>
+          );
+        })}
       </ol>
 
       {step === 1 && (
@@ -189,25 +345,72 @@ export function ApplicationForm({
               placeholder="Past projects, clubs, jobs, hackathons, side hustles — anything."
             />
           </div>
-          <div>
-            <Label htmlFor="hours_per_week">
-              Hours per week you can commit
-            </Label>
-            <Input
-              id="hours_per_week"
-              type="number"
-              value={form.hours_per_week}
-              onChange={(e) => set("hours_per_week", e.target.value)}
-              placeholder="10"
-            />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="hours_per_week">
+                Hours per week you can commit
+              </Label>
+              <Input
+                id="hours_per_week"
+                type="number"
+                value={form.hours_per_week}
+                onChange={(e) => set("hours_per_week", e.target.value)}
+                placeholder="10"
+              />
+            </div>
+            <div>
+              <Label htmlFor="referral_source">
+                How did you hear about us?
+              </Label>
+              <Input
+                id="referral_source"
+                value={form.referral_source}
+                onChange={(e) => set("referral_source", e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <Label htmlFor="referral_source">How did you hear about us?</Label>
-            <Input
-              id="referral_source"
-              value={form.referral_source}
-              onChange={(e) => set("referral_source", e.target.value)}
-            />
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-spark">
+              Links (optional)
+            </p>
+            <p className="mt-1 text-xs text-white/50">
+              Anything that helps us see what you've built.
+            </p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <Label htmlFor="linkedin_url">LinkedIn</Label>
+                <Input
+                  id="linkedin_url"
+                  type="url"
+                  placeholder="https://linkedin.com/in/…"
+                  value={form.linkedin_url}
+                  onChange={(e) => set("linkedin_url", e.target.value)}
+                />
+                <FieldError>{fieldErrors.linkedin_url}</FieldError>
+              </div>
+              <div>
+                <Label htmlFor="resume_url">Resume URL</Label>
+                <Input
+                  id="resume_url"
+                  type="url"
+                  placeholder="https://… (Google Drive, Dropbox, your site)"
+                  value={form.resume_url}
+                  onChange={(e) => set("resume_url", e.target.value)}
+                />
+                <FieldError>{fieldErrors.resume_url}</FieldError>
+              </div>
+              <div>
+                <Label htmlFor="portfolio_url">Portfolio / project link</Label>
+                <Input
+                  id="portfolio_url"
+                  type="url"
+                  placeholder="https://…"
+                  value={form.portfolio_url}
+                  onChange={(e) => set("portfolio_url", e.target.value)}
+                />
+                <FieldError>{fieldErrors.portfolio_url}</FieldError>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -223,7 +426,12 @@ export function ApplicationForm({
               onChange={(e) => set("why_join", e.target.value)}
               placeholder="What do you want to get out of these 4 weeks?"
             />
-            <FieldError>{fieldErrors.why_join}</FieldError>
+            <div className="mt-1 flex items-center justify-between text-xs">
+              <FieldError>{fieldErrors.why_join}</FieldError>
+              <span className="text-white/40">
+                {form.why_join.trim().length} chars
+              </span>
+            </div>
           </div>
           <div>
             <Label htmlFor="startup_idea">
@@ -250,61 +458,102 @@ export function ApplicationForm({
             <ReviewRow label="Age" value={form.age} />
             <ReviewRow label="Grade" value={form.grade} />
             <ReviewRow label="School" value={form.school} />
-            <ReviewRow label="Location" value={[form.city, form.country].filter(Boolean).join(", ")} />
+            <ReviewRow
+              label="Location"
+              value={[form.city, form.country].filter(Boolean).join(", ")}
+            />
             <ReviewRow label="Parent email" value={form.parent_email} />
             <ReviewRow label="Hours/week" value={form.hours_per_week} />
             <ReviewRow label="Heard about us" value={form.referral_source} />
+            <ReviewRow label="LinkedIn" value={form.linkedin_url} />
+            <ReviewRow label="Resume" value={form.resume_url} />
+            <ReviewRow label="Portfolio" value={form.portfolio_url} />
             <ReviewRow label="Why SparkLine" value={form.why_join} multiline />
             <ReviewRow label="Startup idea" value={form.startup_idea} multiline />
             <ReviewRow label="Experience" value={form.experience} multiline />
           </div>
           <div className="rounded-xl border border-spark/30 bg-spark/5 p-4 text-sm text-white/70">
-            Submitting moves your application to <span className="text-white">review</span>. You won't be charged anything yet — payment ($97) only happens after we accept you.
+            Submitting moves your application to{" "}
+            <span className="text-white">review</span>. You won't be charged
+            anything yet — payment ($97) only happens after we accept you.
           </div>
         </div>
       )}
 
-      {error && (
+      {submitError && (
         <div className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
-          {error}
+          {submitError}
         </div>
       )}
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-white/40">
-          {savedAt && `Draft saved at ${savedAt.toLocaleTimeString()}`}
-        </div>
+        <SaveStatusIndicator status={save} />
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            type="button"
-            onClick={handleSaveDraft}
-            disabled={pending}
-          >
-            Save draft
-          </Button>
           {step > 1 && (
             <Button
               variant="secondary"
               type="button"
               onClick={() => setStep(step - 1)}
-              disabled={pending}
+              disabled={submitPending}
             >
               Back
             </Button>
           )}
           {step < STEPS.length ? (
-            <Button type="button" onClick={() => setStep(step + 1)} disabled={pending}>
+            <Button
+              type="button"
+              onClick={goNext}
+              disabled={submitPending || stepHasErrors(step)}
+              title={
+                stepHasErrors(step)
+                  ? "Complete required fields to continue"
+                  : undefined
+              }
+            >
               Next
             </Button>
           ) : (
-            <Button type="button" onClick={handleSubmit} disabled={pending}>
-              {pending ? "Submitting…" : "Submit application"}
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitPending}
+            >
+              {submitPending ? "Submitting…" : "Submit application"}
             </Button>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function SaveStatusIndicator({ status }: { status: SaveStatus }) {
+  if (status.kind === "saving") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-white/50">
+        <Loader2 className="h-3 w-3 animate-spin" /> Saving draft…
+      </span>
+    );
+  }
+  if (status.kind === "saved") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-300/80">
+        <Check className="h-3 w-3" /> Draft saved at{" "}
+        {status.at.toLocaleTimeString()}
+      </span>
+    );
+  }
+  if (status.kind === "error") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-red-300">
+        <AlertCircle className="h-3 w-3" /> {status.message}
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-white/30">
+      Drafts autosave as you type.
+    </span>
   );
 }
 
@@ -318,9 +567,15 @@ function ReviewRow({
   multiline?: boolean;
 }) {
   return (
-    <div className={`flex ${multiline ? "flex-col gap-1" : "items-baseline gap-3"} border-b border-white/5 py-2 last:border-0`}>
-      <div className="text-xs uppercase tracking-wider text-white/40">{label}</div>
-      <div className={`text-white/80 ${multiline ? "whitespace-pre-wrap" : "truncate"}`}>
+    <div
+      className={`flex ${multiline ? "flex-col gap-1" : "items-baseline gap-3"} border-b border-white/5 py-2 last:border-0`}
+    >
+      <div className="text-xs uppercase tracking-wider text-white/40">
+        {label}
+      </div>
+      <div
+        className={`text-white/80 ${multiline ? "whitespace-pre-wrap" : "truncate"}`}
+      >
         {value || <span className="text-white/30">—</span>}
       </div>
     </div>

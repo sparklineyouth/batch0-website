@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
 import { Pencil, Trash2, Plus } from "lucide-react";
 
@@ -24,6 +25,7 @@ const empty: CohortInput = {
 export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState<CohortInput | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
 
@@ -40,18 +42,22 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
     });
   }
 
-  function remove(id: string) {
-    if (!confirm("Delete this cohort? Enrollments will fail-cascade.")) return;
+  function confirmDelete() {
+    if (!confirmDeleteId) return;
     setError(undefined);
     start(async () => {
       try {
-        await deleteCohort(id);
+        await deleteCohort(confirmDeleteId);
+        setConfirmDeleteId(null);
         router.refresh();
       } catch (e: any) {
         setError(e.message);
       }
     });
   }
+
+  const cohortToDelete =
+    initialCohorts.find((c) => c.id === confirmDeleteId) ?? null;
 
   if (editing) {
     return (
@@ -108,7 +114,7 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
                   <Pencil className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => remove(c.id!)}
+                  onClick={() => setConfirmDeleteId(c.id!)}
                   className="p-1.5 text-white/50 hover:text-red-400"
                   aria-label="Delete"
                 >
@@ -127,6 +133,29 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
         </tbody>
       </table>
       {error && <p className="mt-4 text-xs text-red-400">{error}</p>}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete cohort?"
+        description={
+          cohortToDelete ? (
+            <>
+              <p>
+                <span className="text-white">{cohortToDelete.name}</span> and any
+                enrollments referencing it will be removed.
+              </p>
+              <p className="mt-2 text-amber-300/80">
+                This cannot be undone.
+              </p>
+            </>
+          ) : null
+        }
+        confirmLabel="Delete cohort"
+        destructive
+        pending={pending}
+        onConfirm={confirmDelete}
+        onCancel={() => !pending && setConfirmDeleteId(null)}
+      />
     </div>
   );
 }

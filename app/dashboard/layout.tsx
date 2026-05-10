@@ -15,11 +15,9 @@ export default async function DashboardLayout({
   // defensive — it should never hit.
   if (!profile) redirect("/login");
 
-  const isAdmin = profile.role === "admin" || profile.role === "teacher";
-
   return (
     <div className="flex min-h-screen bg-black text-white">
-      <StudentSidebar isAdmin={isAdmin} />
+      <StudentSidebar role={profile.role} />
       <main className="flex-1 px-6 py-8 md:px-10 md:py-10">{children}</main>
     </div>
   );

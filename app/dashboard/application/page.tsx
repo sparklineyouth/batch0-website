@@ -109,6 +109,9 @@ export default async function ApplicationPage({
           <Row label="Parent email" value={app.parent_email} />
           <Row label="Hours/week" value={app.hours_per_week?.toString()} />
           <Row label="Heard about us" value={app.referral_source} />
+          <Row label="LinkedIn" value={app.linkedin_url} />
+          <Row label="Resume" value={app.resume_url} />
+          <Row label="Portfolio" value={app.portfolio_url} />
           <Row label="Why SparkLine" value={app.why_join} multiline />
           <Row label="Startup idea" value={app.startup_idea} multiline />
           <Row label="Experience" value={app.experience} multiline />

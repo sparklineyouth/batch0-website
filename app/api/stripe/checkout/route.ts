@@ -37,6 +37,7 @@ export async function POST(req: Request) {
 
   const priceCents = app.cohort?.price_cents ?? 9700;
   const cohortName = app.cohort?.name ?? "SparkLine cohort";
+  const stripePriceId: string | null = app.cohort?.stripe_price_id ?? null;
 
   // Get / create Stripe customer
   const { data: profile } = await admin
@@ -65,17 +66,20 @@ export async function POST(req: Request) {
     mode: "payment",
     customer: customerId,
     line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: "usd",
-          unit_amount: priceCents,
-          product_data: {
-            name: `SparkLine — ${cohortName}`,
-            description: "One-time enrollment fee for the SparkLine accelerator.",
+      stripePriceId
+        ? { quantity: 1, price: stripePriceId }
+        : {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: priceCents,
+              product_data: {
+                name: `SparkLine — ${cohortName}`,
+                description:
+                  "One-time enrollment fee for the SparkLine accelerator.",
+              },
+            },
           },
-        },
-      },
     ],
     metadata: {
       application_id: app.id,

@@ -12,7 +12,7 @@ async function ensureAdmin() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (!profile || (profile.role !== "admin" && profile.role !== "teacher")) {
+  if (!profile || profile.role !== "admin") {
     throw new Error("Forbidden");
   }
   return user.id;

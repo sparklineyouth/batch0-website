@@ -71,6 +71,15 @@ export async function getProfile(): Promise<Profile | null> {
 export async function requireAdmin() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
-  if (profile.role !== "admin" && profile.role !== "teacher") redirect("/dashboard");
+  if (profile.role !== "admin") redirect("/dashboard");
+  return profile;
+}
+
+export async function requireStaff() {
+  const profile = await getProfile();
+  if (!profile) redirect("/login");
+  if (profile.role !== "admin" && profile.role !== "professor") {
+    redirect("/dashboard");
+  }
   return profile;
 }

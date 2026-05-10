@@ -4,44 +4,119 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 
-const ApplicationSchema = z.object({
-  full_name: z.string().min(1, "Required").max(120),
+// Optional URL: empty string allowed, otherwise must be a valid URL
+const optionalUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine(
+    (v) => v === "" || /^https?:\/\/.+/.test(v),
+    "Must be a full URL starting with http:// or https://",
+  )
+  .optional()
+  .or(z.literal(""));
+
+const optionalString = (max = 200) =>
+  z.string().trim().max(max).optional().or(z.literal(""));
+
+// Submit-time schema — strict.
+const SubmitSchema = z.object({
+  full_name: z.string().trim().min(1, "Required").max(120),
   age: z.coerce.number().int().min(10).max(25),
-  grade: z.string().max(40).optional().or(z.literal("")),
-  school: z.string().max(160).optional().or(z.literal("")),
-  city: z.string().max(120).optional().or(z.literal("")),
-  country: z.string().max(120).optional().or(z.literal("")),
-  parent_email: z.string().email("Must be a valid email").optional().or(z.literal("")),
-  why_join: z.string().min(40, "Tell us at least a couple sentences").max(2000),
-  startup_idea: z.string().max(2000).optional().or(z.literal("")),
-  experience: z.string().max(2000).optional().or(z.literal("")),
-  hours_per_week: z.coerce.number().int().min(0).max(168).optional(),
-  referral_source: z.string().max(200).optional().or(z.literal("")),
+  grade: optionalString(40),
+  school: optionalString(160),
+  city: optionalString(120),
+  country: optionalString(120),
+  parent_email: z
+    .string()
+    .trim()
+    .email("Must be a valid email")
+    .optional()
+    .or(z.literal("")),
+  why_join: z
+    .string()
+    .trim()
+    .min(40, "Tell us at least a couple sentences")
+    .max(2000),
+  startup_idea: optionalString(2000),
+  experience: optionalString(2000),
+  hours_per_week: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(168)
+    .optional()
+    .or(z.literal("")),
+  referral_source: optionalString(200),
+  linkedin_url: optionalUrl,
+  resume_url: optionalUrl,
+  portfolio_url: optionalUrl,
+});
+
+// Draft-time schema — much looser. Drafts can be incomplete; we only
+// reject pathological values (too long, malformed URLs).
+const DraftSchema = z.object({
+  full_name: optionalString(120),
+  age: z
+    .union([z.coerce.number().int().min(0).max(120), z.literal("")])
+    .optional(),
+  grade: optionalString(40),
+  school: optionalString(160),
+  city: optionalString(120),
+  country: optionalString(120),
+  parent_email: z
+    .string()
+    .trim()
+    .max(160)
+    .refine(
+      (v) => v === "" || /^\S+@\S+\.\S+$/.test(v),
+      "Must be a valid email",
+    )
+    .optional()
+    .or(z.literal("")),
+  why_join: optionalString(2000),
+  startup_idea: optionalString(2000),
+  experience: optionalString(2000),
+  hours_per_week: z
+    .union([z.coerce.number().int().min(0).max(168), z.literal("")])
+    .optional(),
+  referral_source: optionalString(200),
+  linkedin_url: optionalUrl,
+  resume_url: optionalUrl,
+  portfolio_url: optionalUrl,
 });
 
 type ActionResult = {
   ok: boolean;
   error?: string;
   fieldErrors?: Record<string, string>;
+  applicationId?: string;
+  savedAt?: string;
 };
 
-async function upsertApplication(formData: FormData, submit: boolean): Promise<ActionResult> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in" };
-
-  const raw = Object.fromEntries(formData.entries());
-  const parsed = ApplicationSchema.safeParse(raw);
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      const key = issue.path[0]?.toString() ?? "_";
-      if (!fieldErrors[key]) fieldErrors[key] = issue.message;
-    }
-    return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
+async function getActiveCohortId(
+  supabase: ReturnType<typeof createClient>,
+): Promise<string | null> {
+  // 1) Honor admin-pinned active_cohort_id site setting.
+  const { data: setting } = await supabase
+    .from("site_settings")
+    .select("value")
+    .eq("key", "active_cohort_id")
+    .maybeSingle();
+  const pinned =
+    typeof setting?.value === "string" && setting.value.length > 0
+      ? (setting.value as string)
+      : null;
+  if (pinned) {
+    const { data } = await supabase
+      .from("cohorts")
+      .select("id")
+      .eq("id", pinned)
+      .in("status", ["upcoming", "active"])
+      .maybeSingle();
+    if (data?.id) return data.id;
   }
-
-  // Find active/upcoming cohort to attach to
+  // 2) Fall back to next upcoming/active cohort by start date.
   const { data: cohort } = await supabase
     .from("cohorts")
     .select("id")
@@ -49,24 +124,80 @@ async function upsertApplication(formData: FormData, submit: boolean): Promise<A
     .order("starts_on", { ascending: true })
     .limit(1)
     .maybeSingle();
+  return cohort?.id ?? null;
+}
+
+async function upsertApplication(
+  formData: FormData,
+  submit: boolean,
+): Promise<ActionResult> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const raw = Object.fromEntries(formData.entries());
+  const schema = submit ? SubmitSchema : DraftSchema;
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0]?.toString() ?? "_";
+      if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+    }
+    return {
+      ok: false,
+      error: submit
+        ? "Please fix the highlighted fields."
+        : "Some fields couldn't be saved.",
+      fieldErrors,
+    };
+  }
+
+  if (submit) {
+    // Block submit if applications are closed.
+    const { data: openSetting } = await supabase
+      .from("site_settings")
+      .select("value")
+      .eq("key", "applications_open")
+      .maybeSingle();
+    if (openSetting?.value === false) {
+      return {
+        ok: false,
+        error: "Applications are currently closed.",
+      };
+    }
+  }
+
+  const cohortId = await getActiveCohortId(supabase);
+  const data = parsed.data as Record<string, any>;
 
   const payload = {
     user_id: user.id,
-    cohort_id: cohort?.id ?? null,
+    cohort_id: cohortId,
     status: submit ? "submitted" : "draft",
     submitted_at: submit ? new Date().toISOString() : null,
-    ...parsed.data,
-    parent_email: parsed.data.parent_email || null,
-    grade: parsed.data.grade || null,
-    school: parsed.data.school || null,
-    city: parsed.data.city || null,
-    country: parsed.data.country || null,
-    startup_idea: parsed.data.startup_idea || null,
-    experience: parsed.data.experience || null,
-    referral_source: parsed.data.referral_source || null,
+    full_name: data.full_name || null,
+    age:
+      data.age === "" || data.age === undefined ? null : Number(data.age),
+    grade: data.grade || null,
+    school: data.school || null,
+    city: data.city || null,
+    country: data.country || null,
+    parent_email: data.parent_email || null,
+    why_join: data.why_join || null,
+    startup_idea: data.startup_idea || null,
+    experience: data.experience || null,
+    hours_per_week:
+      data.hours_per_week === "" || data.hours_per_week === undefined
+        ? null
+        : Number(data.hours_per_week),
+    referral_source: data.referral_source || null,
+    linkedin_url: data.linkedin_url || null,
+    resume_url: data.resume_url || null,
+    portfolio_url: data.portfolio_url || null,
   };
 
-  // Upsert by (user_id, cohort_id) — but if cohort is null we just upsert by user
+  // Find the most recent application for this user.
   const { data: existing } = await supabase
     .from("applications")
     .select("id, status")
@@ -75,31 +206,56 @@ async function upsertApplication(formData: FormData, submit: boolean): Promise<A
     .limit(1)
     .maybeSingle();
 
+  let applicationId: string;
+
   if (existing) {
-    // Once submitted, the app is locked from self-edits.
-    if (["submitted", "accepted", "rejected", "paid", "enrolled"].includes(existing.status)) {
-      return { ok: false, error: "Your application is already in review or decided." };
+    if (
+      ["submitted", "accepted", "rejected", "paid", "enrolled"].includes(
+        existing.status,
+      )
+    ) {
+      return {
+        ok: false,
+        error: "Your application is already in review or decided.",
+      };
     }
     const { error } = await supabase
       .from("applications")
       .update(payload)
       .eq("id", existing.id);
     if (error) return { ok: false, error: error.message };
+    applicationId = existing.id;
   } else {
-    const { error } = await supabase.from("applications").insert(payload);
+    const { data: created, error } = await supabase
+      .from("applications")
+      .insert(payload)
+      .select("id")
+      .single();
     if (error) return { ok: false, error: error.message };
+    applicationId = created!.id;
   }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/application");
-  return { ok: true };
+  revalidatePath("/apply");
+  return {
+    ok: true,
+    applicationId,
+    savedAt: new Date().toISOString(),
+  };
 }
 
-export async function saveDraftAction(_: ActionResult | null, formData: FormData) {
+export async function saveDraftAction(
+  _: ActionResult | null,
+  formData: FormData,
+) {
   return upsertApplication(formData, false);
 }
 
-export async function submitApplicationAction(_: ActionResult | null, formData: FormData) {
+export async function submitApplicationAction(
+  _: ActionResult | null,
+  formData: FormData,
+) {
   const result = await upsertApplication(formData, true);
   if (result.ok) redirect("/dashboard/application?submitted=1");
   return result;

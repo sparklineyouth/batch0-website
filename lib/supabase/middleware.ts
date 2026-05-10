@@ -43,6 +43,7 @@ export async function updateSession(request: NextRequest) {
   const protectedPath =
     path.startsWith("/dashboard") ||
     path.startsWith("/admin") ||
+    path.startsWith("/professor") ||
     path.startsWith("/apply");
   const authPath = path === "/login" || path === "/signup";
 
@@ -67,13 +68,21 @@ export async function updateSession(request: NextRequest) {
     return redirectTo("/dashboard");
   }
 
-  if (path.startsWith("/admin") && user) {
+  if ((path.startsWith("/admin") || path.startsWith("/professor")) && user) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
-    if (!profile || (profile.role !== "admin" && profile.role !== "teacher")) {
+    const role = profile?.role;
+    if (path.startsWith("/admin") && role !== "admin") {
+      return redirectTo("/dashboard");
+    }
+    if (
+      path.startsWith("/professor") &&
+      role !== "admin" &&
+      role !== "professor"
+    ) {
       return redirectTo("/dashboard");
     }
   }

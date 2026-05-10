@@ -54,6 +54,17 @@ export default async function AdminApplicationDetail({
 
       <Card className="mt-6">
         <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
+          Links
+        </h3>
+        <div className="space-y-2 text-sm">
+          <LinkRow label="LinkedIn" value={app.linkedin_url} />
+          <LinkRow label="Resume" value={app.resume_url} />
+          <LinkRow label="Portfolio" value={app.portfolio_url} />
+        </div>
+      </Card>
+
+      <Card className="mt-6">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
           Why SparkLine
         </h3>
         <p className="whitespace-pre-wrap text-sm text-white/80">
@@ -94,6 +105,34 @@ function Row({ label, value }: { label: string; value?: string | null }) {
     <div className="flex items-baseline justify-between border-b border-white/5 py-2 last:border-0">
       <div className="text-xs uppercase tracking-wider text-white/40">{label}</div>
       <div className="text-white/80">{value || <span className="text-white/30">—</span>}</div>
+    </div>
+  );
+}
+
+function LinkRow({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | null;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-white/5 py-2 last:border-0">
+      <div className="text-xs uppercase tracking-wider text-white/40">
+        {label}
+      </div>
+      {value ? (
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="truncate text-spark hover:underline"
+        >
+          {value}
+        </a>
+      ) : (
+        <span className="text-white/30">—</span>
+      )}
     </div>
   );
 }

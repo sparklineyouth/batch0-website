@@ -9,10 +9,12 @@ import {
   CreditCard,
   Settings,
   ShieldCheck,
+  GraduationCap,
   LogOut,
 } from "lucide-react";
+import type { Role } from "@/lib/types";
 
-export function StudentSidebar({ isAdmin }: { isAdmin: boolean }) {
+export function StudentSidebar({ role }: { role: Role }) {
   const pathname = usePathname();
   const items = [
     { href: "/dashboard", label: "Home", icon: Home },
@@ -50,14 +52,23 @@ export function StudentSidebar({ isAdmin }: { isAdmin: boolean }) {
             </Link>
           );
         })}
-        {isAdmin && (
-          <div className="mt-6 border-t border-white/10 pt-4">
+        {(role === "admin" || role === "professor") && (
+          <div className="mt-6 space-y-1 border-t border-white/10 pt-4">
+            {role === "admin" && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-spark/80 hover:bg-spark/10 hover:text-spark"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Admin panel
+              </Link>
+            )}
             <Link
-              href="/admin"
+              href="/professor"
               className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-spark/80 hover:bg-spark/10 hover:text-spark"
             >
-              <ShieldCheck className="h-4 w-4" />
-              Admin panel
+              <GraduationCap className="h-4 w-4" />
+              Professor panel
             </Link>
           </div>
         )}

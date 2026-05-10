@@ -4,26 +4,20 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Inbox,
   Users,
-  Calendar,
   BookOpen,
-  CreditCard,
-  Settings,
+  ShieldCheck,
   ArrowLeft,
   LogOut,
 } from "lucide-react";
+import type { Role } from "@/lib/types";
 
-export function AdminSidebar() {
+export function ProfessorSidebar({ role }: { role: Role }) {
   const pathname = usePathname();
   const items = [
-    { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
-    { href: "/admin/applications", label: "Applications", icon: Inbox },
-    { href: "/admin/students", label: "People", icon: Users },
-    { href: "/admin/cohorts", label: "Cohorts", icon: Calendar },
-    { href: "/admin/course", label: "Course", icon: BookOpen },
-    { href: "/admin/payments", label: "Payments", icon: CreditCard },
-    { href: "/admin/settings", label: "Settings", icon: Settings },
+    { href: "/professor", label: "Overview", icon: LayoutDashboard, exact: true },
+    { href: "/professor/students", label: "Students", icon: Users },
+    { href: "/professor/course", label: "Course", icon: BookOpen },
   ];
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/10 bg-zinc-950/40 px-4 py-6">
@@ -34,7 +28,7 @@ export function AdminSidebar() {
         </span>
       </Link>
       <p className="mb-6 px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-spark">
-        Admin
+        Professor
       </p>
       <nav className="flex-1 space-y-1">
         {items.map((it) => {
@@ -57,7 +51,16 @@ export function AdminSidebar() {
             </Link>
           );
         })}
-        <div className="mt-6 border-t border-white/10 pt-4">
+        <div className="mt-6 space-y-1 border-t border-white/10 pt-4">
+          {role === "admin" && (
+            <Link
+              href="/admin"
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-spark/80 hover:bg-spark/10 hover:text-spark"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Admin panel
+            </Link>
+          )}
           <Link
             href="/dashboard"
             className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-white/50 hover:bg-white/5 hover:text-white"

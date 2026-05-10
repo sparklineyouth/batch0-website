@@ -5,12 +5,10 @@ type Props = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: "sm" | "md" | "lg";
 };
 
-export function Button({
-  className = "",
-  variant = "primary",
-  size = "md",
-  ...props
-}: Props) {
+export const Button = React.forwardRef<HTMLButtonElement, Props>(function Button(
+  { className = "", variant = "primary", size = "md", ...props },
+  ref,
+) {
   const base =
     "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark/60";
   const variants = {
@@ -28,8 +26,9 @@ export function Button({
   } as const;
   return (
     <button
+      ref={ref}
       className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
     />
   );
-}
+});

@@ -8,7 +8,7 @@ async function ensureAdmin() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || (profile.role !== "admin" && profile.role !== "teacher")) throw new Error("Forbidden");
+  if (!profile || profile.role !== "admin") throw new Error("Forbidden");
 }
 
 export type ModuleInput = {

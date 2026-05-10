@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, Select } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import {
   Plus,
   Pencil,
@@ -44,6 +45,11 @@ export function CourseManager({
   const [editingModule, setEditingModule] = useState<ModuleInput | null>(null);
   const [editingLesson, setEditingLesson] = useState<LessonInput | null>(null);
   const [openModuleId, setOpenModuleId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<
+    | { kind: "module"; id: string; title: string }
+    | { kind: "lesson"; id: string; title: string }
+    | null
+  >(null);
 
   function refresh() {
     router.refresh();
@@ -75,23 +81,15 @@ export function CourseManager({
     });
   }
 
-  function onDeleteModule(id: string) {
-    if (!confirm("Delete module and all its lessons?")) return;
+  function executeDelete() {
+    if (!confirmDelete) return;
+    setError(undefined);
+    const target = confirmDelete;
     start(async () => {
       try {
-        await deleteModule(id);
-        refresh();
-      } catch (e: any) {
-        setError(e.message);
-      }
-    });
-  }
-
-  function onDeleteLesson(id: string) {
-    if (!confirm("Delete lesson?")) return;
-    start(async () => {
-      try {
-        await deleteLesson(id);
+        if (target.kind === "module") await deleteModule(target.id);
+        else await deleteLesson(target.id);
+        setConfirmDelete(null);
         refresh();
       } catch (e: any) {
         setError(e.message);
@@ -190,7 +188,13 @@ export function CourseManager({
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => onDeleteModule(m.id)}
+                    onClick={() =>
+                      setConfirmDelete({
+                        kind: "module",
+                        id: m.id,
+                        title: m.title,
+                      })
+                    }
                     className="p-1.5 text-white/50 hover:text-red-400"
                     aria-label="Delete module"
                   >
@@ -246,7 +250,13 @@ export function CourseManager({
                               <Pencil className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => onDeleteLesson(l.id)}
+                              onClick={() =>
+                                setConfirmDelete({
+                                  kind: "lesson",
+                                  id: l.id,
+                                  title: l.title,
+                                })
+                              }
                               className="p-1.5 text-white/50 hover:text-red-400"
                               aria-label="Delete lesson"
                             >
@@ -264,6 +274,35 @@ export function CourseManager({
         })}
       </div>
       {error && <p className="mt-4 text-xs text-red-400">{error}</p>}
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title={
+          confirmDelete?.kind === "module"
+            ? "Delete module?"
+            : "Delete lesson?"
+        }
+        description={
+          confirmDelete && (
+            <>
+              <p>
+                <span className="text-white">{confirmDelete.title}</span>
+                {confirmDelete.kind === "module"
+                  ? " and all of its lessons will be removed."
+                  : " will be removed from the course."}
+              </p>
+              <p className="mt-2 text-amber-300/80">This cannot be undone.</p>
+            </>
+          )
+        }
+        confirmLabel={
+          confirmDelete?.kind === "module" ? "Delete module" : "Delete lesson"
+        }
+        destructive
+        pending={pending}
+        onConfirm={executeDelete}
+        onCancel={() => !pending && setConfirmDelete(null)}
+      />
     </div>
   );
 }
