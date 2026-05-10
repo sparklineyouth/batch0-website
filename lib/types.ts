@@ -86,6 +86,47 @@ export type Lesson = {
   created_at: string;
 };
 
+export type Assignment = {
+  id: string;
+  cohort_id: string;
+  lesson_id: string | null;
+  title: string;
+  description: string | null;
+  due_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SubmissionStatus = "draft" | "submitted" | "graded";
+
+export type AssignmentSubmission = {
+  id: string;
+  assignment_id: string;
+  user_id: string;
+  content: string | null;
+  links: { title: string; url: string }[];
+  files: { name: string; path: string }[];
+  status: SubmissionStatus;
+  submitted_at: string | null;
+  grade: string | null;
+  feedback: string | null;
+  graded_by: string | null;
+  graded_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudentFile = {
+  id: string;
+  user_id: string;
+  name: string;
+  path: string;
+  size_bytes: number | null;
+  mime_type: string | null;
+  created_at: string;
+};
+
 export type Payment = {
   id: string;
   user_id: string;

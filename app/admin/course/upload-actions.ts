@@ -1,22 +1,9 @@
 "use server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertStaff, assertSelf } from "@/lib/server-guards";
 
-async function ensureAdmin() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (!profile || profile.role !== "admin") {
-    throw new Error("Forbidden");
-  }
-}
-
-const ALLOWED_BUCKETS = new Set(["course-videos", "course-materials"]);
+const STAFF_BUCKETS = new Set(["course-videos", "course-materials"]);
+const SELF_BUCKETS = new Set(["submissions", "student-files"]);
 
 function safeSegment(s: string) {
   return s
@@ -27,24 +14,41 @@ function safeSegment(s: string) {
 }
 
 /**
- * Returns a signed upload URL the browser can PUT a file to.
- * `path` is generated server-side from `folder` + filename to avoid collisions.
+ * Returns a signed upload URL the browser can PUT a file to. `path` is
+ * generated server-side from `folder` + filename to avoid collisions.
+ *
+ * Staff buckets (course-videos, course-materials) require admin OR
+ * professor. Self buckets (submissions, student-files) require an
+ * authenticated user, and the path is forced into a folder named after
+ * the user's id (matching the storage RLS policy).
  */
 export async function getUploadToken(
   bucket: string,
   folder: string,
   filename: string,
 ) {
-  await ensureAdmin();
-  if (!ALLOWED_BUCKETS.has(bucket)) throw new Error("Invalid bucket");
+  let pathPrefix: string;
 
-  const safeFolder = safeSegment(folder || "misc");
+  if (STAFF_BUCKETS.has(bucket)) {
+    await assertStaff();
+    pathPrefix = safeSegment(folder || "misc");
+  } else if (SELF_BUCKETS.has(bucket)) {
+    const { userId } = await assertSelf();
+    // Force the user folder so storage RLS matches.
+    pathPrefix = `${userId}/${safeSegment(folder || "misc")}`.replace(
+      /\/+$/,
+      "",
+    );
+  } else {
+    throw new Error("Invalid bucket");
+  }
+
   const dot = filename.lastIndexOf(".");
   const base = dot > 0 ? filename.slice(0, dot) : filename;
   const ext = dot > 0 ? filename.slice(dot + 1) : "";
   const stamp = Date.now();
   const finalName = `${safeSegment(base)}-${stamp}${ext ? "." + safeSegment(ext) : ""}`;
-  const path = `${safeFolder}/${finalName}`;
+  const path = `${pathPrefix}/${finalName}`;
 
   const admin = createAdminClient();
   const { data, error } = await admin.storage

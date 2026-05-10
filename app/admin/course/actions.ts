@@ -1,14 +1,11 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertStaff } from "@/lib/server-guards";
 
 async function ensureAdmin() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || profile.role !== "admin") throw new Error("Forbidden");
+  // Course content writes are open to admins AND professors.
+  await assertStaff();
 }
 
 export type ModuleInput = {
@@ -44,6 +41,7 @@ export async function saveModule(input: ModuleInput) {
     if (error) throw new Error(error.message);
   }
   revalidatePath("/admin/course");
+  revalidatePath("/professor/course");
 }
 
 export async function deleteModule(id: string) {
@@ -52,6 +50,7 @@ export async function deleteModule(id: string) {
   const { error } = await admin.from("modules").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/admin/course");
+  revalidatePath("/professor/course");
 }
 
 export async function saveLesson(input: LessonInput) {
@@ -75,6 +74,7 @@ export async function saveLesson(input: LessonInput) {
     if (error) throw new Error(error.message);
   }
   revalidatePath("/admin/course");
+  revalidatePath("/professor/course");
 }
 
 export async function deleteLesson(id: string) {
@@ -83,4 +83,5 @@ export async function deleteLesson(id: string) {
   const { error } = await admin.from("lessons").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/admin/course");
+  revalidatePath("/professor/course");
 }
