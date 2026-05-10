@@ -2,7 +2,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { ADMIN_NAV } from "@/lib/nav-config";
 
 export function AdminSidebar() {
@@ -39,15 +39,6 @@ export function AdminSidebar() {
             </Link>
           );
         })}
-        <div className="mt-6 border-t border-white/10 pt-4">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-white/50 hover:bg-white/5 hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Student view
-          </Link>
-        </div>
       </nav>
       <form action="/auth/signout" method="post" className="mt-4">
         <button

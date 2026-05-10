@@ -2,7 +2,11 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
-import { saveDraftAction, submitApplicationAction } from "./actions";
+import {
+  saveDraftAction,
+  submitApplicationAction,
+  attachReferralCodeAction,
+} from "./actions";
 import type { Application } from "@/lib/types";
 import { Check, Loader2, AlertCircle } from "lucide-react";
 
@@ -117,6 +121,8 @@ export function ApplicationForm({
   });
 
   // Pick up a referral code stashed at signup (or from ?ref= here).
+  // We use a dedicated server action so we don't blow away every other
+  // field on the existing draft by sending only the referral_code key.
   useEffect(() => {
     const fromUrl = new URL(window.location.href).searchParams.get("ref");
     let code = "";
@@ -124,12 +130,7 @@ export function ApplicationForm({
       code = fromUrl ?? window.localStorage.getItem("sparkline_ref") ?? "";
     } catch {}
     if (code) {
-      // Only stash it on the form once; the server action persists it.
-      const fd = new FormData();
-      fd.append("referral_code", code.slice(0, 32));
-      // Fire-and-forget: a draft save attaches the ref; subsequent saves
-      // include it via the form state below.
-      saveDraftAction(null, fd).catch(() => {});
+      attachReferralCodeAction(code).catch(() => {});
       try {
         window.localStorage.removeItem("sparkline_ref");
       } catch {}

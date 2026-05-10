@@ -2,9 +2,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { CourseManager } from "@/app/admin/course/course-manager";
 
-export const metadata = { title: "Course · Professor" };
+export const metadata = { title: "Course · Mentor" };
 
-export default async function ProfessorCoursePage() {
+export default async function MentorCoursePage() {
   const admin = createAdminClient();
   const [{ data: cohorts }, { data: modules }, { data: lessons }] =
     await Promise.all([

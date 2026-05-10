@@ -1,6 +1,5 @@
 export type Role =
   | "student"
-  | "professor"
   | "admin"
   | "mentor"
   | "investor";

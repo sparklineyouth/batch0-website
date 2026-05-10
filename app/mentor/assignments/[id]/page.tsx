@@ -5,9 +5,9 @@ import { Card, StatusBadge } from "@/components/ui/card";
 import { AssignmentForm } from "../assignment-form";
 import { GradingPanel } from "./grading-panel";
 
-export const metadata = { title: "Assignment · Professor" };
+export const metadata = { title: "Assignment · Mentor" };
 
-export default async function ProfessorAssignmentDetail({
+export default async function MentorAssignmentDetail({
   params,
 }: {
   params: { id: string };
@@ -80,7 +80,7 @@ export default async function ProfessorAssignmentDetail({
   return (
     <div className="mx-auto max-w-5xl">
       <Link
-        href="/professor/assignments"
+        href="/mentor/assignments"
         className="text-sm text-white/50 hover:text-white"
       >
         ← All assignments

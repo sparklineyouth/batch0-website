@@ -11,7 +11,6 @@ const ACCEPTED_STATUSES: ApplicationStatus[] = ["accepted", "paid", "enrolled"];
 export async function canUseAi(role: Role): Promise<boolean> {
   if (
     role === "admin" ||
-    role === "professor" ||
     role === "mentor" ||
     role === "investor"
   ) {

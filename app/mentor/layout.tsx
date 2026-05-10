@@ -1,5 +1,5 @@
 import { requireMentor } from "@/lib/auth";
-import { RoleSidebar } from "@/components/role-sidebar";
+import { MentorSidebar } from "@/components/mentor/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
 
 export default async function MentorLayout({
@@ -10,7 +10,7 @@ export default async function MentorLayout({
   const profile = await requireMentor();
   return (
     <div className="flex min-h-screen bg-black text-white md:flex-row flex-col">
-      <RoleSidebar kind="mentor" role={profile.role} />
+      <MentorSidebar role={profile.role} />
       <div className="flex flex-1 flex-col">
         <MobileNav kind="mentor" role={profile.role} />
         <main className="flex-1 px-5 py-6 md:px-10 md:py-10">{children}</main>

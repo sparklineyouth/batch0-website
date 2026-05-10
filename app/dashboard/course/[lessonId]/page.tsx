@@ -90,7 +90,7 @@ export default async function LessonPage({
   }
 
   const isStaff =
-    profile?.role === "admin" || profile?.role === "professor";
+    profile?.role === "admin" || profile?.role === "mentor";
 
   return (
     <div className="mx-auto max-w-4xl">

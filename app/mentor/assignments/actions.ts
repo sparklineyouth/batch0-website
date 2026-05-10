@@ -36,7 +36,7 @@ export async function saveAssignment(input: AssignmentInput) {
     const { error } = await admin.from("assignments").insert(payload);
     if (error) throw new Error(error.message);
   }
-  revalidatePath("/professor/assignments");
+  revalidatePath("/mentor/assignments");
   revalidatePath("/dashboard/assignments");
 }
 
@@ -45,7 +45,7 @@ export async function deleteAssignment(id: string) {
   const admin = createAdminClient();
   const { error } = await admin.from("assignments").delete().eq("id", id);
   if (error) throw new Error(error.message);
-  revalidatePath("/professor/assignments");
+  revalidatePath("/mentor/assignments");
   revalidatePath("/dashboard/assignments");
 }
 
@@ -78,7 +78,7 @@ export async function gradeSubmission(input: GradeInput) {
     .eq("id", input.submissionId);
   if (error) throw new Error(error.message);
 
-  revalidatePath(`/professor/assignments/${existing.assignment_id}`);
+  revalidatePath(`/mentor/assignments/${existing.assignment_id}`);
   revalidatePath("/dashboard/assignments");
 }
 
@@ -102,6 +102,6 @@ export async function reopenSubmission(submissionId: string) {
     })
     .eq("id", submissionId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/professor/assignments/${existing.assignment_id}`);
+  revalidatePath(`/mentor/assignments/${existing.assignment_id}`);
   revalidatePath("/dashboard/assignments");
 }

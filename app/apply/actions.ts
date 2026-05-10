@@ -314,3 +314,51 @@ export async function submitApplicationAction(
   if (result.ok) redirect("/dashboard/application?submitted=1");
   return result;
 }
+
+/**
+ * Attach a referral code to the user's draft application without
+ * touching any other fields. Used by the apply form on mount when a
+ * `?ref=` query param or stashed localStorage code is present —
+ * sending only `referral_code` through the regular draft save would
+ * blow away every other field on the row.
+ */
+export async function attachReferralCodeAction(code: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  const trimmed = code.trim().toLowerCase().slice(0, 32);
+  if (!trimmed) return { ok: false };
+
+  const { data: existing } = await supabase
+    .from("applications")
+    .select("id, status, referral_code")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    if (existing.referral_code) return { ok: true };
+    if (existing.status !== "draft") return { ok: false };
+    const { error } = await supabase
+      .from("applications")
+      .update({ referral_code: trimmed })
+      .eq("id", existing.id);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  }
+
+  // No application yet: create a fresh draft with just the code so we
+  // remember it. Cohort attachment happens on the next real save.
+  const cohortId = await getActiveCohortId(supabase);
+  const { error } = await supabase.from("applications").insert({
+    user_id: user.id,
+    cohort_id: cohortId,
+    status: "draft",
+    referral_code: trimmed,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}

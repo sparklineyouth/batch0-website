@@ -9,7 +9,7 @@ import type { Role } from "@/lib/types";
  * (cohorts, payments, settings, role changes, application decisions).
  *
  * Use `assertStaff()` for write operations on academic data (modules,
- * lessons, assignments, grading) — admin AND professor are allowed.
+ * lessons, assignments, grading) — admin AND mentor are allowed.
  */
 
 async function getActor(): Promise<{ userId: string; role: Role }> {
@@ -37,7 +37,7 @@ export async function assertStaff(): Promise<{
   role: Role;
 }> {
   const actor = await getActor();
-  if (actor.role !== "admin" && actor.role !== "professor") {
+  if (actor.role !== "admin" && actor.role !== "mentor") {
     throw new Error("Forbidden");
   }
   return actor;

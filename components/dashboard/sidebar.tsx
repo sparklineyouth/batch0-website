@@ -19,11 +19,9 @@ export function StudentSidebar({
     (it) => it.href !== "/dashboard/ai" || aiAccess,
   );
   const showAdmin = role === "admin";
-  const showProfessor = role === "admin" || role === "professor";
   const showMentor = role === "admin" || role === "mentor";
   const showInvestor = role === "admin" || role === "investor";
-  const showStaff =
-    showAdmin || showProfessor || showMentor || showInvestor;
+  const showStaff = showAdmin || showMentor || showInvestor;
 
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/10 bg-zinc-950/40 px-4 py-6">
@@ -63,7 +61,6 @@ export function StudentSidebar({
               Staff
             </p>
             {showAdmin && <StaffLink {...STAFF_LINKS.admin} />}
-            {showProfessor && <StaffLink {...STAFF_LINKS.professor} />}
             {showMentor && <StaffLink {...STAFF_LINKS.mentor} />}
             {showInvestor && <StaffLink {...STAFF_LINKS.investor} />}
           </div>

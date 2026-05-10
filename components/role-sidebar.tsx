@@ -2,27 +2,25 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, LogOut, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 import type { Role } from "@/lib/types";
-import { MENTOR_NAV, INVESTOR_NAV } from "@/lib/nav-config";
+import { INVESTOR_NAV } from "@/lib/nav-config";
 
-export type RoleSidebarKind = "mentor" | "investor";
+export type RoleSidebarKind = "investor";
 
 const NAV_BY_KIND = {
-  mentor: MENTOR_NAV,
   investor: INVESTOR_NAV,
 } as const;
 
 const LABEL_BY_KIND: Record<RoleSidebarKind, string> = {
-  mentor: "Mentor",
   investor: "Investor",
 };
 
 /**
- * Generic role sidebar used by /mentor and /investor. Resolves nav
- * items from `kind` so the parent server layout only passes
- * primitives — keeps lucide function refs out of the
- * server/client serialization boundary.
+ * Generic role sidebar used by /investor. Resolves nav items from
+ * `kind` so the parent server layout only passes primitives — keeps
+ * lucide function refs out of the server/client serialization
+ * boundary.
  */
 export function RoleSidebar({
   kind,
@@ -66,8 +64,8 @@ export function RoleSidebar({
             </Link>
           );
         })}
-        <div className="mt-6 space-y-1 border-t border-white/10 pt-4">
-          {role === "admin" && (
+        {role === "admin" && (
+          <div className="mt-6 space-y-1 border-t border-white/10 pt-4">
             <Link
               href="/admin"
               className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-spark/80 hover:bg-spark/10 hover:text-spark"
@@ -75,15 +73,8 @@ export function RoleSidebar({
               <ShieldCheck className="h-4 w-4" />
               Admin panel
             </Link>
-          )}
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-white/50 hover:bg-white/5 hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Student view
-          </Link>
-        </div>
+          </div>
+        )}
       </nav>
       <form action="/auth/signout" method="post" className="mt-4">
         <button

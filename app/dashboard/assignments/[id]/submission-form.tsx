@@ -157,7 +157,7 @@ export function SubmissionForm({
         )}
         <p className="rounded-lg border border-spark/30 bg-spark/5 p-3 text-xs text-white/60">
           This submission has been graded and is locked. If you need to
-          resubmit, ask your professor to re-open it.
+          resubmit, ask your mentor to re-open it.
         </p>
       </div>
     );

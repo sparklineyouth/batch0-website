@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertStaff } from "@/lib/server-guards";
 
 async function ensureAdmin() {
-  // Course content writes are open to admins AND professors.
+  // Course content writes are open to admins AND mentors.
   await assertStaff();
 }
 
@@ -41,7 +41,7 @@ export async function saveModule(input: ModuleInput) {
     if (error) throw new Error(error.message);
   }
   revalidatePath("/admin/course");
-  revalidatePath("/professor/course");
+  revalidatePath("/mentor/course");
 }
 
 export async function deleteModule(id: string) {
@@ -50,7 +50,7 @@ export async function deleteModule(id: string) {
   const { error } = await admin.from("modules").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/admin/course");
-  revalidatePath("/professor/course");
+  revalidatePath("/mentor/course");
 }
 
 export async function saveLesson(input: LessonInput) {
@@ -74,7 +74,7 @@ export async function saveLesson(input: LessonInput) {
     if (error) throw new Error(error.message);
   }
   revalidatePath("/admin/course");
-  revalidatePath("/professor/course");
+  revalidatePath("/mentor/course");
 }
 
 export async function deleteLesson(id: string) {
@@ -83,5 +83,5 @@ export async function deleteLesson(id: string) {
   const { error } = await admin.from("lessons").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/admin/course");
-  revalidatePath("/professor/course");
+  revalidatePath("/mentor/course");
 }

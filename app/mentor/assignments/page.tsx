@@ -3,13 +3,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { Plus } from "lucide-react";
 
-export const metadata = { title: "Assignments · Professor" };
+export const metadata = { title: "Assignments · Mentor" };
 
 function fmtDate(s: string | null) {
   return s ? new Date(s).toLocaleString() : "—";
 }
 
-export default async function ProfessorAssignmentsPage({
+export default async function MentorAssignmentsPage({
   searchParams,
 }: {
   searchParams: { cohort?: string };
@@ -55,7 +55,7 @@ export default async function ProfessorAssignmentsPage({
           </p>
         </div>
         <Link
-          href="/professor/assignments/new"
+          href="/mentor/assignments/new"
           className="inline-flex h-10 items-center gap-2 rounded-lg bg-spark px-4 text-sm font-semibold text-black hover:bg-spark-200"
         >
           <Plus className="h-4 w-4" /> New assignment
@@ -67,14 +67,14 @@ export default async function ProfessorAssignmentsPage({
           Cohort
         </span>
         <Filter
-          href="/professor/assignments"
+          href="/mentor/assignments"
           label="All"
           active={cohortFilter === "all"}
         />
         {(cohorts ?? []).map((c: any) => (
           <Filter
             key={c.id}
-            href={`/professor/assignments?cohort=${c.id}`}
+            href={`/mentor/assignments?cohort=${c.id}`}
             label={c.name}
             active={cohortFilter === c.id}
           />
@@ -108,7 +108,7 @@ export default async function ProfessorAssignmentsPage({
                   >
                     <td className="px-5 py-3">
                       <Link
-                        href={`/professor/assignments/${a.id}`}
+                        href={`/mentor/assignments/${a.id}`}
                         className="text-white hover:text-spark"
                       >
                         {a.title}

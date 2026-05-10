@@ -44,7 +44,7 @@ export async function deleteLessonComment(commentId: string) {
     .eq("id", userId)
     .single();
 
-  const isStaff = profile?.role === "admin" || profile?.role === "professor";
+  const isStaff = profile?.role === "admin" || profile?.role === "mentor";
   if (existing.user_id !== userId && !isStaff) {
     throw new Error("Forbidden");
   }

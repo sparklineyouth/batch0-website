@@ -6,7 +6,7 @@ import type { Role } from "@/lib/types";
 
 export const metadata = { title: "People · Admin" };
 
-const FILTERS = ["all", "student", "professor", "admin"] as const;
+const FILTERS = ["all", "student", "mentor", "investor", "admin"] as const;
 type RoleFilter = (typeof FILTERS)[number];
 
 export default async function AdminStudentsPage({

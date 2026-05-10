@@ -76,5 +76,5 @@ export async function saveSubmission(input: SubmissionInput) {
 
   revalidatePath("/dashboard/assignments");
   revalidatePath(`/dashboard/assignments/${input.assignmentId}`);
-  revalidatePath(`/professor/assignments/${input.assignmentId}`);
+  revalidatePath(`/mentor/assignments/${input.assignmentId}`);
 }

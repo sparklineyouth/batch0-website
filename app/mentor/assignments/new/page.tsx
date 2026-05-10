@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { AssignmentForm } from "../assignment-form";
 
-export const metadata = { title: "New assignment · Professor" };
+export const metadata = { title: "New assignment · Mentor" };
 
 export default async function NewAssignmentPage() {
   const admin = createAdminClient();
@@ -17,7 +17,7 @@ export default async function NewAssignmentPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <Link
-        href="/professor/assignments"
+        href="/mentor/assignments"
         className="text-sm text-white/50 hover:text-white"
       >
         ← All assignments

@@ -78,15 +78,6 @@ export async function requireAdmin() {
   return profile;
 }
 
-export async function requireStaff() {
-  const profile = await getProfile();
-  if (!profile) redirect("/login");
-  if (profile.role !== "admin" && profile.role !== "professor") {
-    redirect("/dashboard");
-  }
-  return profile;
-}
-
 export async function requireMentor() {
   const profile = await getProfile();
   if (!profile) redirect("/login");

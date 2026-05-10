@@ -43,7 +43,6 @@ export async function updateSession(request: NextRequest) {
   const protectedPath =
     path.startsWith("/dashboard") ||
     path.startsWith("/admin") ||
-    path.startsWith("/professor") ||
     path.startsWith("/mentor") ||
     path.startsWith("/investor") ||
     path.startsWith("/apply");
@@ -62,6 +61,12 @@ export async function updateSession(request: NextRequest) {
     return redirect;
   }
 
+  // Bounce legacy /professor URLs to the new /mentor area.
+  if (path === "/professor" || path.startsWith("/professor/")) {
+    const rest = path.slice("/professor".length);
+    return redirectTo(`/mentor${rest}`, request.nextUrl.search);
+  }
+
   if (protectedPath && !user) {
     return redirectTo("/login", `?next=${encodeURIComponent(path)}`);
   }
@@ -77,7 +82,6 @@ export async function updateSession(request: NextRequest) {
     user &&
     (path.startsWith("/dashboard") ||
       path.startsWith("/apply") ||
-      path.startsWith("/professor") ||
       path.startsWith("/mentor") ||
       path.startsWith("/investor")) &&
     !path.startsWith("/dashboard/billing") &&
@@ -106,7 +110,6 @@ export async function updateSession(request: NextRequest) {
 
   if (
     (path.startsWith("/admin") ||
-      path.startsWith("/professor") ||
       path.startsWith("/mentor") ||
       path.startsWith("/investor")) &&
     user
@@ -118,13 +121,6 @@ export async function updateSession(request: NextRequest) {
       .maybeSingle();
     const role = profile?.role;
     if (path.startsWith("/admin") && role !== "admin") {
-      return redirectTo("/dashboard");
-    }
-    if (
-      path.startsWith("/professor") &&
-      role !== "admin" &&
-      role !== "professor"
-    ) {
       return redirectTo("/dashboard");
     }
     if (

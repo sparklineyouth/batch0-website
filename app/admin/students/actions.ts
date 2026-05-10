@@ -7,7 +7,6 @@ import type { Role } from "@/lib/types";
 
 const VALID_ROLES: Role[] = [
   "student",
-  "professor",
   "admin",
   "mentor",
   "investor",

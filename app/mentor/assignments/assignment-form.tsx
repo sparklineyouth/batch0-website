@@ -62,7 +62,7 @@ export function AssignmentForm({
           ...a,
           due_at: fromLocalInput(dueLocal),
         });
-        router.push("/professor/assignments");
+        router.push("/mentor/assignments");
         router.refresh();
       } catch (err: any) {
         setError(err.message);
@@ -76,7 +76,7 @@ export function AssignmentForm({
     start(async () => {
       try {
         await deleteAssignment(a.id!);
-        router.push("/professor/assignments");
+        router.push("/mentor/assignments");
         router.refresh();
       } catch (err: any) {
         setError(err.message);

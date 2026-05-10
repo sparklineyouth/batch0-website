@@ -21,7 +21,7 @@ function safeSegment(s: string) {
  * generated server-side from `folder` + filename to avoid collisions.
  *
  * Staff buckets (course-videos, course-materials) require admin OR
- * professor. Self buckets (submissions, student-files) require an
+ * mentor. Self buckets (submissions, student-files) require an
  * authenticated user, and the path is forced into a folder named after
  * the user's id (matching the storage RLS policy).
  */

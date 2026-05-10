@@ -26,7 +26,7 @@ export default async function AdminTeamDetail({
       admin
         .from("profiles")
         .select("id, email, full_name")
-        .in("role", ["student", "professor", "admin"])
+        .in("role", ["student", "mentor", "admin"])
         .order("created_at", { ascending: false }),
     ]);
 

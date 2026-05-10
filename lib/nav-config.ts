@@ -9,7 +9,6 @@ import {
   CreditCard,
   Settings,
   ShieldCheck,
-  GraduationCap,
   LayoutDashboard,
   Inbox,
   Users,
@@ -18,7 +17,6 @@ import {
   BookOpen,
   ScrollText,
   Handshake,
-  MessagesSquare,
   Star,
   Megaphone,
 } from "lucide-react";
@@ -59,17 +57,11 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
-export const PROFESSOR_NAV: NavItem[] = [
-  { href: "/professor", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/professor/students", label: "Students", icon: Users },
-  { href: "/professor/course", label: "Course", icon: BookOpen },
-  { href: "/professor/assignments", label: "Assignments", icon: ClipboardList },
-];
-
 export const MENTOR_NAV: NavItem[] = [
   { href: "/mentor", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/mentor/students", label: "My students", icon: Users },
-  { href: "/mentor/notes", label: "Notes", icon: MessagesSquare },
+  { href: "/mentor/students", label: "Students", icon: Users },
+  { href: "/mentor/course", label: "Course", icon: BookOpen },
+  { href: "/mentor/assignments", label: "Assignments", icon: ClipboardList },
 ];
 
 export const INVESTOR_NAV: NavItem[] = [
@@ -80,7 +72,6 @@ export const INVESTOR_NAV: NavItem[] = [
 
 export const STAFF_LINKS = {
   admin: { href: "/admin", label: "Admin panel", icon: ShieldCheck },
-  professor: { href: "/professor", label: "Professor panel", icon: GraduationCap },
   mentor: { href: "/mentor", label: "Mentor panel", icon: Handshake },
   investor: { href: "/investor", label: "Investor panel", icon: Briefcase },
 };
