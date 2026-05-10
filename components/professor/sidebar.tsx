@@ -2,25 +2,12 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Users,
-  BookOpen,
-  ClipboardList,
-  ShieldCheck,
-  ArrowLeft,
-  LogOut,
-} from "lucide-react";
+import { ArrowLeft, LogOut, ShieldCheck } from "lucide-react";
 import type { Role } from "@/lib/types";
+import { PROFESSOR_NAV } from "@/lib/nav-config";
 
 export function ProfessorSidebar({ role }: { role: Role }) {
   const pathname = usePathname();
-  const items = [
-    { href: "/professor", label: "Overview", icon: LayoutDashboard, exact: true },
-    { href: "/professor/students", label: "Students", icon: Users },
-    { href: "/professor/course", label: "Course", icon: BookOpen },
-    { href: "/professor/assignments", label: "Assignments", icon: ClipboardList },
-  ];
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/10 bg-zinc-950/40 px-4 py-6">
       <Link href="/" className="mb-2 flex items-center gap-2 px-2">
@@ -33,7 +20,7 @@ export function ProfessorSidebar({ role }: { role: Role }) {
         Professor
       </p>
       <nav className="flex-1 space-y-1">
-        {items.map((it) => {
+        {PROFESSOR_NAV.map((it) => {
           const active = it.exact
             ? pathname === it.href
             : pathname?.startsWith(it.href);

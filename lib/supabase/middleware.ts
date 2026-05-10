@@ -44,6 +44,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/dashboard") ||
     path.startsWith("/admin") ||
     path.startsWith("/professor") ||
+    path.startsWith("/mentor") ||
+    path.startsWith("/investor") ||
     path.startsWith("/apply");
   const authPath = path === "/login" || path === "/signup";
 
@@ -68,7 +70,13 @@ export async function updateSession(request: NextRequest) {
     return redirectTo("/dashboard");
   }
 
-  if ((path.startsWith("/admin") || path.startsWith("/professor")) && user) {
+  if (
+    (path.startsWith("/admin") ||
+      path.startsWith("/professor") ||
+      path.startsWith("/mentor") ||
+      path.startsWith("/investor")) &&
+    user
+  ) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
@@ -82,6 +90,20 @@ export async function updateSession(request: NextRequest) {
       path.startsWith("/professor") &&
       role !== "admin" &&
       role !== "professor"
+    ) {
+      return redirectTo("/dashboard");
+    }
+    if (
+      path.startsWith("/mentor") &&
+      role !== "admin" &&
+      role !== "mentor"
+    ) {
+      return redirectTo("/dashboard");
+    }
+    if (
+      path.startsWith("/investor") &&
+      role !== "admin" &&
+      role !== "investor"
     ) {
       return redirectTo("/dashboard");
     }

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { PortalButton } from "./portal-button";
 
 export const metadata = { title: "Billing · SparkLine" };
 
@@ -15,18 +16,33 @@ export default async function BillingPage() {
   const user = await requireUser();
   const supabase = createClient();
 
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+  const [{ data: payments }, { data: profile }] = await Promise.all([
+    supabase
+      .from("payments")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
+
+  const hasStripeCustomer = Boolean(profile?.stripe_customer_id);
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-3xl font-bold tracking-tight">Billing</h1>
-      <p className="mt-1 text-sm text-white/50">
-        Your payment history. SparkLine charges a single $97 enrollment fee — no subscriptions.
-      </p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Billing</h1>
+          <p className="mt-1 text-sm text-white/50">
+            Your payment history. SparkLine charges a single $97 enrollment
+            fee — no subscriptions.
+          </p>
+        </div>
+        {hasStripeCustomer && <PortalButton />}
+      </div>
 
       <Card className="mt-8">
         {(payments?.length ?? 0) === 0 ? (

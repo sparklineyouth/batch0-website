@@ -1,11 +1,25 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
 
+const REF_KEY = "sparkline_ref";
+
 export function SignupForm() {
   const [fullName, setFullName] = useState("");
+
+  // Capture ?ref= from URL on mount and stash for later (sticks across
+  // the email-confirmation hop).
+  useEffect(() => {
+    const ref = new URL(window.location.href).searchParams.get("ref");
+    if (ref) {
+      try {
+        window.localStorage.setItem(REF_KEY, ref.slice(0, 32));
+      } catch {}
+    }
+  }, []);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | undefined>();

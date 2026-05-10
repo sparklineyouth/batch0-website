@@ -2,12 +2,27 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
+import { checkRateLimit, clientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  // 5 checkout attempts per user per 5 minutes.
+  const rl = await checkRateLimit({
+    kind: "checkout",
+    identifier: user.id,
+    limit: 5,
+    windowSeconds: 300,
+  });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Too many checkout attempts. Try again in a few minutes." },
+      { status: 429 },
+    );
   }
 
   const body = await req.json().catch(() => ({}));

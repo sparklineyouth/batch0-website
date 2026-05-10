@@ -63,6 +63,8 @@ export async function getProfile(): Promise<Profile | null> {
     full_name: (user.user_metadata?.full_name as string | undefined) ?? null,
     role: "student",
     stripe_customer_id: null,
+    referral_code: null,
+    ai_context: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -79,6 +81,24 @@ export async function requireStaff() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
   if (profile.role !== "admin" && profile.role !== "professor") {
+    redirect("/dashboard");
+  }
+  return profile;
+}
+
+export async function requireMentor() {
+  const profile = await getProfile();
+  if (!profile) redirect("/login");
+  if (profile.role !== "admin" && profile.role !== "mentor") {
+    redirect("/dashboard");
+  }
+  return profile;
+}
+
+export async function requireInvestor() {
+  const profile = await getProfile();
+  if (!profile) redirect("/login");
+  if (profile.role !== "admin" && profile.role !== "investor") {
     redirect("/dashboard");
   }
   return profile;

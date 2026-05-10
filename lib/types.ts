@@ -1,4 +1,9 @@
-export type Role = "student" | "professor" | "admin";
+export type Role =
+  | "student"
+  | "professor"
+  | "admin"
+  | "mentor"
+  | "investor";
 
 export type ApplicationStatus =
   | "draft"
@@ -15,8 +20,151 @@ export type Profile = {
   full_name: string | null;
   role: Role;
   stripe_customer_id: string | null;
+  referral_code: string | null;
+  ai_context: Record<string, any> | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Cohort_Slug = { slug: string };
+
+export type Notification = {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type AuditLog = {
+  id: string;
+  actor_id: string | null;
+  actor_email: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  payload: Record<string, any> | null;
+  created_at: string;
+};
+
+export type EventRow = {
+  id: string;
+  cohort_id: string | null;
+  type: "demo_day" | "office_hours" | "workshop" | "other";
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  location: string | null;
+  zoom_url: string | null;
+  recording_url: string | null;
+  visibility: "enrolled" | "staff" | "public";
+  created_at: string;
+  updated_at: string;
+};
+
+export type MentorAssignment = {
+  id: string;
+  mentor_id: string;
+  student_id: string;
+  cohort_id: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type Team = {
+  id: string;
+  cohort_id: string;
+  slug: string;
+  name: string;
+  tagline: string | null;
+  description: string | null;
+  logo_url: string | null;
+  pitch_video_url: string | null;
+  pitch_deck_url: string | null;
+  website_url: string | null;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TeamMember = {
+  id: string;
+  team_id: string;
+  user_id: string;
+  role: string;
+  created_at: string;
+};
+
+export type InvestorInterestLevel =
+  | "watching"
+  | "interested"
+  | "committed"
+  | "passed";
+
+export type InvestorInterest = {
+  id: string;
+  investor_id: string;
+  team_id: string;
+  level: InvestorInterestLevel;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LessonComment = {
+  id: string;
+  lesson_id: string;
+  user_id: string;
+  parent_id: string | null;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Quiz = {
+  id: string;
+  lesson_id: string;
+  title: string | null;
+  created_at: string;
+};
+
+export type QuizQuestion = {
+  id: string;
+  quiz_id: string;
+  question: string;
+  options: { id: string; text: string }[];
+  correct_option_id: string;
+  position: number;
+};
+
+export type QuizAttempt = {
+  id: string;
+  quiz_id: string;
+  user_id: string;
+  answers: Record<string, string>;
+  score: number;
+  total: number;
+  created_at: string;
+};
+
+export type AiConversation = {
+  id: string;
+  user_id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AiMessage = {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  created_at: string;
 };
 
 export type Cohort = {

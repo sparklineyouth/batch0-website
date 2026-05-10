@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireUser } from "@/lib/auth";
+import { requireUser, getProfile } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LessonPlayer } from "./lesson-player";
+import { Comments } from "./comments";
+import { Quiz } from "./quiz";
 import { ArrowLeft, FileText } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +17,9 @@ export default async function LessonPage({
   params: { lessonId: string };
 }) {
   const user = await requireUser();
+  const profile = await getProfile();
   const supabase = createClient();
 
-  // RLS will enforce that only enrolled users can read the lesson
   const { data: lesson } = await supabase
     .from("lessons")
     .select("*, module:modules(*, cohort:cohorts(*))")
@@ -26,23 +28,21 @@ export default async function LessonPage({
 
   if (!lesson) notFound();
 
-  // Generate signed URL for video if stored in Supabase Storage
   let videoUrl: string | null = lesson.video_url || null;
   if (lesson.video_path) {
-    const admin = createAdminClient();
-    const { data } = await admin.storage
+    const adminCli = createAdminClient();
+    const { data } = await adminCli.storage
       .from("course-videos")
-      .createSignedUrl(lesson.video_path, 60 * 60 * 4); // 4 hours
+      .createSignedUrl(lesson.video_path, 60 * 60 * 4);
     if (data?.signedUrl) videoUrl = data.signedUrl;
   }
 
-  // Signed URLs for materials
   const materials: { title: string; url: string }[] = [];
   if (Array.isArray(lesson.materials) && lesson.materials.length > 0) {
-    const admin = createAdminClient();
+    const adminCli = createAdminClient();
     for (const m of lesson.materials as any[]) {
       if (!m?.path) continue;
-      const { data } = await admin.storage
+      const { data } = await adminCli.storage
         .from("course-materials")
         .createSignedUrl(m.path, 60 * 60 * 4);
       if (data?.signedUrl) {
@@ -51,7 +51,6 @@ export default async function LessonPage({
     }
   }
 
-  // Existing progress
   const { data: progress } = await supabase
     .from("lesson_progress")
     .select("watched_seconds, completed_at")
@@ -59,11 +58,45 @@ export default async function LessonPage({
     .eq("lesson_id", lesson.id)
     .maybeSingle();
 
+  // Comments + author profile in a single embedded select.
+  const { data: commentRows } = await supabase
+    .from("lesson_comments")
+    .select(
+      "id, user_id, parent_id, body, created_at, author:profiles(full_name, email, role)",
+    )
+    .eq("lesson_id", lesson.id)
+    .order("created_at", { ascending: true });
+  const comments = (commentRows ?? []).map((c: any) => ({
+    ...c,
+    author: Array.isArray(c.author) ? c.author[0] : c.author,
+  }));
+
+  // Quiz (optional).
+  const { data: quiz } = await supabase
+    .from("quizzes")
+    .select("*, quiz_questions(*)")
+    .eq("lesson_id", lesson.id)
+    .maybeSingle();
+  let bestScore: { score: number; total: number } | null = null;
+  if (quiz?.id) {
+    const { data: attempts } = await supabase
+      .from("quiz_attempts")
+      .select("score, total")
+      .eq("quiz_id", quiz.id)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (attempts && attempts.length > 0) bestScore = attempts[0] as any;
+  }
+
+  const isStaff =
+    profile?.role === "admin" || profile?.role === "professor";
+
   return (
     <div className="mx-auto max-w-4xl">
       <Link
         href="/dashboard/course"
-        className="inline-flex items-center gap-1.5 text-sm text-white/50 hover:text-white"
+        className="inline-flex items-center gap-1.5 text-sm text-white/55 hover:text-white"
       >
         <ArrowLeft className="h-4 w-4" /> Back to course
       </Link>
@@ -75,7 +108,7 @@ export default async function LessonPage({
           {lesson.title}
         </h1>
         {lesson.description && (
-          <p className="mt-2 text-white/60">{lesson.description}</p>
+          <p className="mt-2 text-white/65">{lesson.description}</p>
         )}
       </div>
 
@@ -89,7 +122,7 @@ export default async function LessonPage({
 
       {materials.length > 0 && (
         <Card className="mt-6">
-          <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
+          <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/55">
             Materials
           </h3>
           <ul className="space-y-2">
@@ -109,6 +142,29 @@ export default async function LessonPage({
           </ul>
         </Card>
       )}
+
+      {quiz?.id && (quiz.quiz_questions?.length ?? 0) > 0 && (
+        <div className="mt-8">
+          <Quiz
+            quizId={quiz.id}
+            lessonId={lesson.id}
+            title={quiz.title}
+            questions={(quiz.quiz_questions ?? []).sort(
+              (a: any, b: any) => a.position - b.position,
+            )}
+            bestScore={bestScore}
+          />
+        </div>
+      )}
+
+      <Card className="mt-8">
+        <Comments
+          lessonId={lesson.id}
+          initial={comments as any}
+          currentUserId={user.id}
+          isStaff={isStaff}
+        />
+      </Card>
     </div>
   );
 }

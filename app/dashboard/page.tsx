@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ReferralCard } from "./referral-card";
+import { env } from "@/lib/env";
 
 export default async function DashboardHome() {
   const user = await requireUser();
@@ -115,6 +118,16 @@ export default async function DashboardHome() {
         </Card>
       </div>
 
+      {profile?.referral_code && (
+        <div className="mt-10">
+          <ReferralCard
+            code={profile.referral_code}
+            siteUrl={env.siteUrl}
+            referralCount={await countReferrals(profile.referral_code)}
+          />
+        </div>
+      )}
+
       <div className="mt-10">
         <h2 className="text-lg font-semibold">Quick links</h2>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -131,4 +144,17 @@ export default async function DashboardHome() {
       </div>
     </div>
   );
+}
+
+async function countReferrals(code: string): Promise<number> {
+  try {
+    const admin = createAdminClient();
+    const { count } = await admin
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .eq("referral_code", code);
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
 }

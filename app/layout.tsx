@@ -42,7 +42,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-black text-white antialiased">{children}</body>
+      <body className="bg-black text-white antialiased">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-lg focus:bg-spark focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-black"
+        >
+          Skip to content
+        </a>
+        <div id="main-content">{children}</div>
+      </body>
     </html>
   );
 }

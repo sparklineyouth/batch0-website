@@ -3,6 +3,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { sendEmail } from "@/lib/email/send";
+import { Templates } from "@/lib/email/templates";
+import { notify } from "@/lib/notifications";
 
 // Optional URL: empty string allowed, otherwise must be a valid URL
 const optionalUrl = z
@@ -48,6 +52,7 @@ const SubmitSchema = z.object({
     .optional()
     .or(z.literal("")),
   referral_source: optionalString(200),
+  referral_code: optionalString(32),
   linkedin_url: optionalUrl,
   resume_url: optionalUrl,
   portfolio_url: optionalUrl,
@@ -81,6 +86,7 @@ const DraftSchema = z.object({
     .union([z.coerce.number().int().min(0).max(168), z.literal("")])
     .optional(),
   referral_source: optionalString(200),
+  referral_code: optionalString(32),
   linkedin_url: optionalUrl,
   resume_url: optionalUrl,
   portfolio_url: optionalUrl,
@@ -192,10 +198,16 @@ async function upsertApplication(
         ? null
         : Number(data.hours_per_week),
     referral_source: data.referral_source || null,
+    referral_code:
+      typeof data.referral_code === "string" && data.referral_code
+        ? data.referral_code.toLowerCase().slice(0, 32)
+        : undefined,
     linkedin_url: data.linkedin_url || null,
     resume_url: data.resume_url || null,
     portfolio_url: data.portfolio_url || null,
   };
+  // Don't blow away an existing referral_code with undefined on later saves.
+  if (payload.referral_code === undefined) delete (payload as any).referral_code;
 
   // Find the most recent application for this user.
   const { data: existing } = await supabase
@@ -238,6 +250,48 @@ async function upsertApplication(
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/application");
   revalidatePath("/apply");
+
+  // Send "we got it" email + notify admins on first submission.
+  if (submit) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", user.id)
+        .maybeSingle();
+      const t = Templates.applicationReceived({
+        name: profile?.full_name ?? null,
+      });
+      if (user.email) {
+        await sendEmail({ to: user.email, subject: t.subject, html: t.html });
+      }
+      await notify({
+        userId: user.id,
+        type: "application_submitted",
+        title: "Application submitted",
+        body: "We'll review and email you with a decision.",
+        link: "/dashboard/application",
+      });
+      // Notify all admins so they see it in their bell + email.
+      const admin = createAdminClient();
+      const { data: admins } = await admin
+        .from("profiles")
+        .select("id, email, full_name")
+        .eq("role", "admin");
+      for (const a of admins ?? []) {
+        await notify({
+          userId: a.id,
+          type: "admin_new_application",
+          title: "New application received",
+          body: `${profile?.full_name ?? profile?.email ?? "Someone"} just applied.`,
+          link: `/admin/applications/${applicationId}`,
+        });
+      }
+    } catch (err) {
+      console.error("[apply] post-submit notifications failed", err);
+    }
+  }
+
   return {
     ok: true,
     applicationId,

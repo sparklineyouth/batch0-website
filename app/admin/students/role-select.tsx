@@ -4,11 +4,19 @@ import { useRouter } from "next/navigation";
 import { changeUserRole } from "./actions";
 import type { Role } from "@/lib/types";
 
-const OPTIONS: Role[] = ["student", "professor", "admin"];
+const OPTIONS: Role[] = [
+  "student",
+  "professor",
+  "mentor",
+  "investor",
+  "admin",
+];
 
 const COLORS: Record<Role, string> = {
   student: "border-white/15 text-white/70",
   professor: "border-blue-400/40 text-blue-300",
+  mentor: "border-emerald-400/40 text-emerald-300",
+  investor: "border-purple-400/40 text-purple-300",
   admin: "border-spark/50 text-spark",
 };
 

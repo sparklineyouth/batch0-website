@@ -5,6 +5,9 @@ import { assertStaff, assertSelf } from "@/lib/server-guards";
 const STAFF_BUCKETS = new Set(["course-videos", "course-materials"]);
 const SELF_BUCKETS = new Set(["submissions", "student-files"]);
 
+// 1 GB cap per student in their personal drive.
+const STUDENT_FILES_CAP_BYTES = 1024 * 1024 * 1024;
+
 function safeSegment(s: string) {
   return s
     .toLowerCase()
@@ -34,6 +37,25 @@ export async function getUploadToken(
     pathPrefix = safeSegment(folder || "misc");
   } else if (SELF_BUCKETS.has(bucket)) {
     const { userId } = await assertSelf();
+
+    // Per-user 1GB cap on the personal drive bucket.
+    if (bucket === "student-files") {
+      const admin = createAdminClient();
+      const { data: rows } = await admin
+        .from("student_files")
+        .select("size_bytes")
+        .eq("user_id", userId);
+      const used = (rows ?? []).reduce(
+        (s: number, r: any) => s + (r.size_bytes ?? 0),
+        0,
+      );
+      if (used >= STUDENT_FILES_CAP_BYTES) {
+        throw new Error(
+          "Drive is full (1 GB cap). Delete some files to upload more.",
+        );
+      }
+    }
+
     // Force the user folder so storage RLS matches.
     pathPrefix = `${userId}/${safeSegment(folder || "misc")}`.replace(
       /\/+$/,

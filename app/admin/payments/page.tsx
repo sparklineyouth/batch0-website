@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { RefundButton } from "./refund-button";
 
 export const metadata = { title: "Payments · Admin" };
 
@@ -199,6 +200,7 @@ export default async function AdminPaymentsPage({
                 <th className="px-5 py-3">Amount</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3">Stripe ID</th>
+                <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -229,6 +231,14 @@ export default async function AdminPaymentsPage({
                   </td>
                   <td className="px-5 py-3 font-mono text-[11px] text-white/50">
                     {p.stripe_payment_intent_id ?? p.stripe_session_id ?? "—"}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    {p.status === "succeeded" && (
+                      <RefundButton
+                        paymentId={p.id}
+                        amountLabel={fmtMoney(p.amount_cents, p.currency)}
+                      />
+                    )}
                   </td>
                 </tr>
               ))}

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
+import { logAudit } from "@/lib/audit";
 
 async function ensureAdmin() {
   const supabase = createClient();
@@ -158,6 +159,13 @@ export async function saveCohort(input: CohortInput) {
     console.error("[cohorts] Stripe sync failed:", err);
   }
 
+  await logAudit({
+    action: input.id ? "cohort.updated" : "cohort.created",
+    targetType: "cohort",
+    targetId: cohortId!,
+    payload: { name: input.name, price_cents: input.price_cents, status: input.status },
+  });
+
   revalidatePath("/admin/cohorts");
 }
 
@@ -185,5 +193,10 @@ export async function deleteCohort(id: string) {
 
   const { error } = await admin.from("cohorts").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  await logAudit({
+    action: "cohort.deleted",
+    targetType: "cohort",
+    targetId: id,
+  });
   revalidatePath("/admin/cohorts");
 }

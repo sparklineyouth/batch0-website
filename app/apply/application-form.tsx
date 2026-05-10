@@ -116,6 +116,27 @@ export function ApplicationForm({
     portfolio_url: defaults?.portfolio_url ?? "",
   });
 
+  // Pick up a referral code stashed at signup (or from ?ref= here).
+  useEffect(() => {
+    const fromUrl = new URL(window.location.href).searchParams.get("ref");
+    let code = "";
+    try {
+      code = fromUrl ?? window.localStorage.getItem("sparkline_ref") ?? "";
+    } catch {}
+    if (code) {
+      // Only stash it on the form once; the server action persists it.
+      const fd = new FormData();
+      fd.append("referral_code", code.slice(0, 32));
+      // Fire-and-forget: a draft save attaches the ref; subsequent saves
+      // include it via the form state below.
+      saveDraftAction(null, fd).catch(() => {});
+      try {
+        window.localStorage.removeItem("sparkline_ref");
+      } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Keep an always-current ref to form state for the autosave timer
   const formRef = useRef(form);
   useEffect(() => {

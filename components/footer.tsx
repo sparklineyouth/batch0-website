@@ -84,7 +84,11 @@ export default function Footer() {
 
       <div className="mx-auto max-w-6xl mt-14 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-white/40">
         <span>© {new Date().getFullYear()} SparkLine. All rights reserved.</span>
-        <span>Built by high schoolers, for high schoolers.</span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <a href="/terms" className="hover:text-spark">Terms</a>
+          <a href="/privacy" className="hover:text-spark">Privacy</a>
+          <a href="/refund-policy" className="hover:text-spark">Refunds</a>
+        </div>
       </div>
     </footer>
   );

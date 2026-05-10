@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logAudit } from "@/lib/audit";
 
 async function ensureAdmin() {
   const supabase = createClient();
@@ -54,6 +55,10 @@ export async function saveSiteSettings(input: SiteSettingsInput) {
     .from("site_settings")
     .upsert(rows, { onConflict: "key" });
   if (error) throw new Error(error.message);
+  await logAudit({
+    action: "settings.updated",
+    payload: input,
+  });
   revalidatePath("/admin/settings");
   revalidatePath("/");
 }

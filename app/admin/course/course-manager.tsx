@@ -14,7 +14,9 @@ import {
   X,
   CheckCircle2,
   Loader2,
+  ListChecks,
 } from "lucide-react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   saveModule,
@@ -242,6 +244,14 @@ export function CourseManager({
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
+                            <Link
+                              href={`/admin/course/quiz/${l.id}`}
+                              className="p-1.5 text-white/50 hover:text-spark"
+                              aria-label="Edit quiz"
+                              title="Edit quiz"
+                            >
+                              <ListChecks className="h-4 w-4" />
+                            </Link>
                             <button
                               onClick={() => setEditingLesson(l)}
                               className="p-1.5 text-white/50 hover:text-white"

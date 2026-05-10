@@ -2,29 +2,11 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Inbox,
-  Users,
-  Calendar,
-  BookOpen,
-  CreditCard,
-  Settings,
-  ArrowLeft,
-  LogOut,
-} from "lucide-react";
+import { ArrowLeft, LogOut } from "lucide-react";
+import { ADMIN_NAV } from "@/lib/nav-config";
 
 export function AdminSidebar() {
   const pathname = usePathname();
-  const items = [
-    { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
-    { href: "/admin/applications", label: "Applications", icon: Inbox },
-    { href: "/admin/students", label: "People", icon: Users },
-    { href: "/admin/cohorts", label: "Cohorts", icon: Calendar },
-    { href: "/admin/course", label: "Course", icon: BookOpen },
-    { href: "/admin/payments", label: "Payments", icon: CreditCard },
-    { href: "/admin/settings", label: "Settings", icon: Settings },
-  ];
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/10 bg-zinc-950/40 px-4 py-6">
       <Link href="/" className="mb-2 flex items-center gap-2 px-2">
@@ -37,7 +19,7 @@ export function AdminSidebar() {
         Admin
       </p>
       <nav className="flex-1 space-y-1">
-        {items.map((it) => {
+        {ADMIN_NAV.map((it) => {
           const active = it.exact
             ? pathname === it.href
             : pathname?.startsWith(it.href);
