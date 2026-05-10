@@ -13,8 +13,7 @@ export default function ScrollPreview() {
               From idea to <span className="shine">funded startup</span>
             </h2>
             <p className="mt-4 text-base md:text-xl text-white/60 max-w-2xl mx-auto">
-              4 weeks, fully online. Real curriculum, real mentors, real angel
-              investors on demo day.
+              4 weeks, fully online. Real curriculum, real mentors, real investors on demo day.
             </p>
           </>
         }

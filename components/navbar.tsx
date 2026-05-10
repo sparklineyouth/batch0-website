@@ -35,13 +35,21 @@ export default function Navbar() {
             </li>
           ))}
         </ul>
-        <a
-          href="#apply"
-          className="group relative inline-flex items-center gap-1.5 rounded-full bg-spark px-4 py-2 text-sm font-semibold text-black hover:bg-spark-200 transition-colors"
-        >
-          Apply
-          <span aria-hidden className="transition-transform group-hover:translate-x-0.5">→</span>
-        </a>
+        <div className="flex items-center gap-3">
+          <a
+            href="/login"
+            className="hidden sm:inline-block text-sm text-white/60 hover:text-white transition-colors"
+          >
+            Log in
+          </a>
+          <a
+            href="/signup"
+            className="group relative inline-flex items-center gap-1.5 rounded-full bg-spark px-4 py-2 text-sm font-semibold text-black hover:bg-spark-200 transition-colors"
+          >
+            Apply
+            <span aria-hidden className="transition-transform group-hover:translate-x-0.5">→</span>
+          </a>
+        </div>
       </nav>
     </motion.header>
   );

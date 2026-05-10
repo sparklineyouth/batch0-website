@@ -1,8 +1,8 @@
 "use client";
 import React from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import FilloutEmbed from "./fillout-embed";
 
 export default function CTA() {
   return (
@@ -26,8 +26,8 @@ export default function CTA() {
             before you graduate.
           </h2>
           <p className="mt-5 max-w-xl mx-auto text-lg text-white/60">
-            Cohort 1 launches Summer 2026. 20 seats. $97. Real investors on
-            Demo Day. Apply in under 2 minutes.
+            Cohort 1 launches Summer 2026. 24 seats. $97. Real investors on
+            Demo Day. Apply in under 5 minutes.
           </p>
         </motion.div>
 
@@ -42,47 +42,63 @@ export default function CTA() {
             aria-hidden
             className="absolute -top-20 left-1/2 -translate-x-1/2 h-72 w-[36rem] rounded-full bg-spark/25 blur-[140px] pointer-events-none"
           />
-          <div
-            aria-hidden
-            className="absolute -inset-px rounded-3xl bg-gradient-to-b from-spark/40 via-spark/10 to-transparent pointer-events-none"
-            style={{
-              padding: "1px",
-              WebkitMask:
-                "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-              WebkitMaskComposite: "xor",
-              maskComposite: "exclude",
-            }}
-          />
-          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black shadow-[0_30px_80px_-20px_rgba(250,204,21,0.25)]">
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-white/10 bg-black/40">
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-300/80" />
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-              </div>
-              <div className="flex items-center gap-2 text-xs text-white/50">
-                <Image src="/logo.svg" alt="" width={14} height={14} />
-                sparklineyouth.org/apply
-              </div>
-              <div className="text-[10px] uppercase tracking-widest text-spark">
-                Live
-              </div>
+
+          <div className="relative mx-auto max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black p-10 md:p-14 shadow-[0_30px_80px_-20px_rgba(250,204,21,0.25)]">
+            <div className="grid gap-8 md:grid-cols-3">
+              <Stat label="Application fee" value="$0" sub="Free to apply" />
+              <Stat label="If accepted" value="$97" sub="One-time, full cohort" />
+              <Stat label="Cohort size" value="24" sub="Summer 2026" />
             </div>
-            <div className="bg-white">
-              <FilloutEmbed formId="i1adofwJdnus" />
+            <div className="mt-10 flex flex-col items-center gap-3">
+              <Link
+                href="/signup"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-spark px-7 text-sm font-semibold text-black shadow-[0_0_24px_-6px_rgba(250,204,21,0.7)] transition hover:bg-spark-200"
+              >
+                Start your application
+                <span aria-hidden>→</span>
+              </Link>
+              <p className="text-xs text-white/40">
+                Already applied?{" "}
+                <Link href="/login" className="text-white/60 hover:text-spark">
+                  Log in
+                </Link>
+              </p>
             </div>
           </div>
+
           <p className="mt-6 text-center text-xs text-white/40">
             Limited seats · Applications reviewed on a rolling basis · Questions?{" "}
             <a
-              href="mailto:hello@sparklineyouth.org"
+              href="mailto:sparkline.youth@gmail.com"
               className="text-spark hover:underline"
             >
-              hello@sparklineyouth.org
+              sparkline.youth@gmail.com
             </a>
           </p>
         </motion.div>
       </div>
     </section>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+}) {
+  return (
+    <div className="text-center">
+      <div className="text-xs font-medium uppercase tracking-[0.2em] text-white/40">
+        {label}
+      </div>
+      <div className="mt-2 text-4xl font-bold tracking-tight text-spark">
+        {value}
+      </div>
+      <div className="mt-1 text-xs text-white/50">{sub}</div>
+    </div>
   );
 }

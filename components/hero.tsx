@@ -53,8 +53,8 @@ export default function Hero() {
           className="mx-auto mt-6 max-w-2xl text-lg md:text-xl text-white/60"
         >
           SparkLine is the 4-week, fully virtual accelerator for high schoolers.
-          Take your idea from raw concept to investor-ready pitch — and walk away
-          with a real shot at funding before you graduate.
+          Take your idea from raw concept to investor-ready pitch 
+          And walk away with a real shot at funding before you graduate.
         </motion.p>
 
         <motion.div
@@ -84,11 +84,11 @@ export default function Hero() {
           transition={{ delay: 0.85, duration: 0.7 }}
           className="mt-16 flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-xs uppercase tracking-[0.18em] text-white/40"
         >
-          <span>Ages 13–18</span>
+          <span>Ages 12–18</span>
           <span className="h-1 w-1 rounded-full bg-white/20" />
           <span>4 Weeks · Fully Virtual</span>
           <span className="h-1 w-1 rounded-full bg-white/20" />
-          <span>Real Angel Investors</span>
+          <span>Real Investors</span>
           <span className="h-1 w-1 rounded-full bg-white/20" />
           <span>Open Year-Round</span>
         </motion.div>

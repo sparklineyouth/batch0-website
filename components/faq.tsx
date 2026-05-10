@@ -26,7 +26,7 @@ const faqs = [
   },
   {
     q: "How big are the cohorts?",
-    a: "Small enough that mentors and peers know you. Cohort 1 (Summer 2026) is capped at 20 students. Cohort 2 expands to 40.",
+    a: "Small enough that mentors and peers know you. Cohort 1 (Summer 2026) is capped at 24 students. Cohort 2 expands to 40.",
   },
   {
     q: "What do I walk away with?",

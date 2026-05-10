@@ -11,13 +11,13 @@ const problems = [
   },
   {
     icon: MapPin,
-    title: "Locked to a city, summer, or zip code",
-    body: "If you don't live in the right place — or your summer's already booked — you're out. Most accelerators run a couple weeks a year.",
+    title: "Locked to a city or season.",
+    body: "If you don't live in the right place, or your summer's already booked, you're out. Most accelerators run a couple weeks a year, and thats not how a real startup works.",
   },
   {
     icon: Award,
     title: "Judges and certificates. Not investors.",
-    body: "Most programs end with a panel handing out plaques. That's not the real world. We end with angel investors writing real checks.",
+    body: "Most programs end with a panel handing out plaques. That's not the real world. We end with real investors writing real checks.",
   },
 ];
 
@@ -41,7 +41,8 @@ export default function Problem() {
           <p className="mt-5 text-lg text-white/60">
             The teens who want to build companies don't need another business
             plan competition. They need access. Right now, that's reserved for
-            wealthy families in major cities.
+            only those who can afford to pay for expensive programs, or who live 
+            in the right areas.
           </p>
         </motion.div>
 

@@ -57,10 +57,10 @@ export default function Footer() {
           <ul className="mt-4 space-y-2.5 text-sm text-white/70">
             <li>
               <a
-                href="mailto:hello@sparklineyouth.org"
+                href="mailto:sparkline.youth@gmail.com"
                 className="hover:text-spark"
               >
-                hello@sparklineyouth.org
+                sparkline.youth@gmail.com
               </a>
             </li>
             <li>
