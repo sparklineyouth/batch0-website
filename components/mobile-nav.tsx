@@ -45,10 +45,13 @@ const LABEL_BY_KIND: Record<MobileNavKind, string | undefined> = {
 export function MobileNav({
   kind,
   role,
+  aiAccess,
 }: {
   kind: MobileNavKind;
   /** Authenticated role, used to surface staff cross-links. */
   role?: Role;
+  /** Whether the AI co-founder link should appear (student kind only). */
+  aiAccess?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -66,7 +69,11 @@ export function MobileNav({
     };
   }, [open]);
 
-  const items = NAV_BY_KIND[kind];
+  const rawItems = NAV_BY_KIND[kind];
+  const items =
+    kind === "student" && aiAccess === false
+      ? rawItems.filter((it) => it.href !== "/dashboard/ai")
+      : rawItems;
   const label = LABEL_BY_KIND[kind];
 
   // Staff cross-links shown only when the user has access. `kind`

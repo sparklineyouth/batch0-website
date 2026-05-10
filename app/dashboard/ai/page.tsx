@@ -1,11 +1,13 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser, getProfile } from "@/lib/auth";
+import { canUseAi } from "@/lib/access";
 import { Card } from "@/components/ui/card";
 import { AiChat } from "./ai-chat";
 import { ConversationList } from "./conversation-list";
 import { ContextEditor } from "./context-editor";
 import { env } from "@/lib/env";
+import { Lock, Sparkles } from "lucide-react";
 
 export const metadata = { title: "AI co-founder · SparkLine" };
 
@@ -15,9 +17,31 @@ export default async function AiPage({
   searchParams: { c?: string };
 }) {
   const user = await requireUser();
-  const supabase = createClient();
+  const profile = await getProfile();
 
-  const [{ data: convos }, { data: profile }] = await Promise.all([
+  // Gate access. Staff always gets in; students need an accepted+ application.
+  const allowed = profile ? await canUseAi(profile.role) : false;
+  if (!allowed) {
+    return <LockedView />;
+  }
+
+  if (!env.anthropicApiKey) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <h1 className="text-3xl font-bold tracking-tight">AI co-founder</h1>
+        <Card className="mt-6 border-amber-300/30 bg-amber-300/5">
+          <p className="text-sm text-amber-200">
+            The AI co-founder isn't enabled on this deployment yet. Set{" "}
+            <code className="rounded bg-black/40 px-1.5 py-0.5">ANTHROPIC_API_KEY</code>{" "}
+            in your production env vars and redeploy.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  const supabase = createClient();
+  const [{ data: convos }, { data: profileRow }] = await Promise.all([
     supabase
       .from("ai_conversations")
       .select("id, title, updated_at")
@@ -42,21 +66,6 @@ export default async function AiPage({
     messages = data ?? [];
   }
 
-  if (!env.anthropicApiKey) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <h1 className="text-3xl font-bold tracking-tight">AI co-founder</h1>
-        <Card className="mt-6 border-amber-300/30 bg-amber-300/5">
-          <p className="text-sm text-amber-200">
-            The AI co-founder isn't enabled on this deployment yet.
-            Set <code className="rounded bg-black/40 px-1.5 py-0.5">ANTHROPIC_API_KEY</code> in your
-            production env vars and redeploy.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[260px_1fr]">
       <aside className="space-y-6">
@@ -73,12 +82,12 @@ export default async function AiPage({
               Startup context
             </summary>
             <div className="px-5 pb-5">
-              <p className="mb-3 text-xs text-white/50">
+              <p className="mb-3 text-xs text-white/55">
                 The AI uses these as background in every chat. Update as your
                 idea evolves.
               </p>
               <ContextEditor
-                initial={(profile?.ai_context as Record<string, string>) ?? {}}
+                initial={(profileRow?.ai_context as Record<string, string>) ?? {}}
               />
             </div>
           </details>
@@ -101,6 +110,46 @@ export default async function AiPage({
           </Card>
         )}
       </section>
+    </div>
+  );
+}
+
+function LockedView() {
+  return (
+    <div className="mx-auto max-w-2xl">
+      <h1 className="text-3xl font-bold tracking-tight">AI co-founder</h1>
+      <Card className="mt-6">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-spark/10 text-spark">
+            <Lock className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-white">
+              Locked until you're accepted
+            </h2>
+            <p className="mt-1 text-sm text-white/65">
+              The AI co-founder is part of the SparkLine program. It unlocks
+              the moment your application is accepted — submit your
+              application and we'll review it on a rolling basis.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-sm">
+              <Link
+                href="/apply"
+                className="inline-flex items-center gap-1.5 rounded-full bg-spark px-3 py-1.5 font-semibold text-black hover:bg-spark-200"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Apply now
+              </Link>
+              <Link
+                href="/dashboard/application"
+                className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-white/80 hover:bg-white/10"
+              >
+                View application status
+              </Link>
+            </div>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

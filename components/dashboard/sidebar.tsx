@@ -7,8 +7,17 @@ import type { Role } from "@/lib/types";
 import { STUDENT_NAV, STAFF_LINKS } from "@/lib/nav-config";
 import { NotificationBell } from "@/components/notification-bell";
 
-export function StudentSidebar({ role }: { role: Role }) {
+export function StudentSidebar({
+  role,
+  aiAccess,
+}: {
+  role: Role;
+  aiAccess: boolean;
+}) {
   const pathname = usePathname();
+  const items = STUDENT_NAV.filter(
+    (it) => it.href !== "/dashboard/ai" || aiAccess,
+  );
   const showAdmin = role === "admin";
   const showProfessor = role === "admin" || role === "professor";
   const showMentor = role === "admin" || role === "mentor";
@@ -28,7 +37,7 @@ export function StudentSidebar({ role }: { role: Role }) {
         <NotificationBell />
       </div>
       <nav className="flex-1 space-y-1">
-        {STUDENT_NAV.map((it) => {
+        {items.map((it) => {
           const active = it.exact
             ? pathname === it.href
             : pathname?.startsWith(it.href);

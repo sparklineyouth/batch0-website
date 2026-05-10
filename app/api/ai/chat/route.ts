@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildSystemPrompt } from "@/lib/ai/system-prompt";
 import { env } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { canUseAi } from "@/lib/access";
+import type { Role } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +33,24 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: "Not signed in" }), {
       status: 401,
     });
+  }
+
+  // Gate: only accepted+ students (and staff) can use the AI co-founder.
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const role = (profileRow?.role as Role | undefined) ?? "student";
+  const allowed = await canUseAi(role);
+  if (!allowed) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "The AI co-founder is locked until your application is accepted.",
+      }),
+      { status: 403 },
+    );
   }
 
   // Modest per-user limit so a runaway loop can't burn cost.
