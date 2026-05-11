@@ -36,7 +36,7 @@ const weeks = [
 
 export default function Curriculum() {
   return (
-    <section id="curriculum" className="relative py-24 md:py-32 px-6">
+    <section id="curriculum" className="relative py-16 md:py-32 px-6">
       <div className="absolute inset-0 grid-bg opacity-40 pointer-events-none" />
       <div className="relative mx-auto max-w-6xl">
         <motion.div

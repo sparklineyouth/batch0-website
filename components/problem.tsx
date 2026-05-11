@@ -23,14 +23,14 @@ const problems = [
 
 export default function Problem() {
   return (
-    <section className="relative py-24 md:py-32 px-6">
+    <section className="relative py-16 md:py-32 px-6">
       <div className="mx-auto max-w-6xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.6 }}
-          className="max-w-3xl"
+          className="mx-auto max-w-3xl text-center"
         >
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-spark">
             The problem

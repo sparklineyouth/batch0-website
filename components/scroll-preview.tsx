@@ -94,66 +94,82 @@ export default function ScrollPreview() {
             </aside>
 
             {/* Main content — mirrors /dashboard/page.tsx layout */}
-            <main className="col-span-12 md:col-span-9 h-full overflow-hidden px-5 py-5 md:px-10 md:py-8">
+            <main className="col-span-12 md:col-span-9 h-full overflow-hidden px-4 py-4 md:px-10 md:py-8">
+              {/* Mobile-only brand bar (the sidebar carries this on desktop). */}
+              <div className="mb-4 flex items-center justify-between md:hidden">
+                <div className="flex items-center gap-1.5">
+                  <Image src="/logo.svg" alt="" width={16} height={16} />
+                  <span className="text-xs font-semibold tracking-tight text-white">
+                    Spark<span className="text-spark">Line</span>
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md border border-white/10 text-white/70">
+                    <Bell className="h-3 w-3" />
+                  </span>
+                  <span className="absolute -right-1 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-spark px-1 text-[8px] font-bold text-black">
+                    2
+                  </span>
+                </div>
+              </div>
+
               <div>
-                <h3 className="text-xl md:text-3xl font-bold tracking-tight text-white">
+                <h3 className="text-lg sm:text-xl md:text-3xl font-bold tracking-tight text-white">
                   Welcome, Riya.
                 </h3>
-                <p className="mt-1 text-xs md:text-sm text-white/50">
+                <p className="mt-1 text-[11px] sm:text-xs md:text-sm text-white/50">
                   Here's where your SparkLine journey lives.
                 </p>
               </div>
 
-              <div className="mt-6 md:mt-8 grid gap-4 md:grid-cols-2">
+              <div className="mt-4 md:mt-8 grid gap-3 md:gap-4 grid-cols-2">
                 {/* Application card */}
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="text-[10px] md:text-xs font-medium uppercase tracking-wider text-white/45">
-                        Application
-                      </h4>
-                      <p className="mt-2 text-xl md:text-2xl font-semibold text-white">
-                        Accepted
-                      </p>
-                    </div>
-                    <span className="rounded-full border border-spark/40 bg-spark/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-spark">
+                <div className="rounded-xl md:rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:p-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <h4 className="text-[9px] md:text-xs font-medium uppercase tracking-wider text-white/45">
+                      Application
+                    </h4>
+                    <span className="rounded-full border border-spark/40 bg-spark/10 px-1.5 py-0.5 text-[8px] md:text-[10px] font-semibold uppercase tracking-wider text-spark">
                       Accepted
                     </span>
                   </div>
-                  <div className="mt-5">
-                    <button className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-spark px-3.5 text-xs font-semibold text-black">
-                      Pay $97 to enroll
-                      <ArrowRight className="h-3.5 w-3.5" />
+                  <p className="mt-1.5 md:mt-2 text-base md:text-2xl font-semibold text-white">
+                    You're in
+                  </p>
+                  <div className="mt-3 md:mt-5">
+                    <button className="inline-flex h-7 md:h-9 items-center gap-1 md:gap-1.5 rounded-md md:rounded-lg bg-spark px-2 md:px-3.5 text-[10px] md:text-xs font-semibold text-black">
+                      Pay $97
+                      <ArrowRight className="h-3 w-3 md:h-3.5 md:w-3.5" />
                     </button>
                   </div>
                 </div>
 
                 {/* Course access card */}
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-                  <h4 className="text-[10px] md:text-xs font-medium uppercase tracking-wider text-white/45">
+                <div className="rounded-xl md:rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:p-5">
+                  <h4 className="text-[9px] md:text-xs font-medium uppercase tracking-wider text-white/45">
                     Course access
                   </h4>
-                  <p className="mt-2 text-xl md:text-2xl font-semibold text-white">
+                  <p className="mt-1.5 md:mt-2 text-base md:text-2xl font-semibold text-white">
                     Summer 2026
                   </p>
-                  <p className="mt-1 text-xs text-white/45">
-                    2026-06-15 → 2026-07-13
+                  <p className="mt-0.5 md:mt-1 text-[10px] md:text-xs text-white/45">
+                    Jun 15 → Jul 13
                   </p>
-                  <div className="mt-5">
-                    <button className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3.5 text-xs font-semibold text-white">
+                  <div className="mt-3 md:mt-5">
+                    <button className="inline-flex h-7 md:h-9 items-center gap-1 md:gap-1.5 rounded-md md:rounded-lg border border-white/15 bg-white/5 px-2 md:px-3.5 text-[10px] md:text-xs font-semibold text-white">
                       Open course
-                      <ArrowRight className="h-3.5 w-3.5" />
+                      <ArrowRight className="h-3 w-3 md:h-3.5 md:w-3.5" />
                     </button>
                   </div>
                 </div>
               </div>
 
               {/* Quick links row */}
-              <div className="mt-6 md:mt-8">
-                <h4 className="text-sm font-semibold text-white">
+              <div className="mt-4 md:mt-8">
+                <h4 className="text-xs md:text-sm font-semibold text-white">
                   Quick links
                 </h4>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-2 md:mt-3 flex flex-wrap gap-1.5 md:gap-2">
                   {[
                     "View application",
                     "Billing",
@@ -162,7 +178,7 @@ export default function ScrollPreview() {
                   ].map((label) => (
                     <span
                       key={label}
-                      className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-white/75"
+                      className="rounded-md md:rounded-lg border border-white/15 bg-white/5 px-2 md:px-2.5 py-0.5 md:py-1 text-[9px] md:text-[11px] text-white/75"
                     >
                       {label}
                     </span>
@@ -170,18 +186,18 @@ export default function ScrollPreview() {
                 </div>
               </div>
 
-              {/* Recent activity rail */}
-              <div className="mt-6 hidden md:block rounded-xl border border-spark/20 bg-spark/[0.04] p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-widest text-spark">
+              {/* This-week callout — visible on both, just denser on mobile. */}
+              <div className="mt-4 md:mt-6 rounded-lg md:rounded-xl border border-spark/20 bg-spark/[0.04] p-2.5 md:p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[8px] md:text-[10px] uppercase tracking-widest text-spark">
                       This week
                     </div>
-                    <div className="mt-0.5 text-sm text-white">
-                      Week 1 · Customer discovery interviews due Sunday
+                    <div className="mt-0.5 truncate text-[11px] md:text-sm text-white">
+                      Week 1 · Customer discovery due Sunday
                     </div>
                   </div>
-                  <span className="rounded-full bg-spark px-3 py-1.5 text-xs font-semibold text-black">
+                  <span className="hidden md:inline rounded-full bg-spark px-3 py-1.5 text-xs font-semibold text-black">
                     Open
                   </span>
                 </div>

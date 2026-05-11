@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 
 export default function CTA() {
   return (
-    <section id="apply" className="relative py-24 md:py-32 px-6">
+    <section id="apply" className="relative py-20 md:py-32 px-6">
       <div className="mx-auto max-w-5xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -15,17 +15,18 @@ export default function CTA() {
           transition={{ duration: 0.6 }}
           className="text-center"
         >
-          <div className="mx-auto w-16 h-16 animate-spark-pulse">
+          <div className="mx-auto h-14 w-14 md:h-16 md:w-16 animate-spark-pulse">
             <Image src="/logo.svg" alt="SparkLine" width={64} height={64} />
           </div>
-          <p className="mt-6 text-sm font-medium uppercase tracking-[0.2em] text-spark">
+          <p className="mt-5 md:mt-6 text-xs sm:text-sm font-medium uppercase tracking-[0.2em] text-spark">
             Reserve your seat
           </p>
-          <h2 className="mt-3 text-4xl md:text-6xl font-bold tracking-tighter text-white">
-            Your startup, <span className="shine">funded</span>,<br />
+          <h2 className="mt-3 text-3xl sm:text-4xl md:text-6xl font-bold tracking-tighter text-white">
+            Your startup, <span className="shine">funded</span>,
+            <br className="hidden sm:block" />{" "}
             before you graduate.
           </h2>
-          <p className="mt-5 max-w-xl mx-auto text-lg text-white/60">
+          <p className="mx-auto mt-4 md:mt-5 max-w-xl text-base sm:text-lg text-white/60">
             Cohort 1 launches Summer 2026. 24 seats. $97. Real investors on
             Demo Day. Apply in under 5 minutes.
           </p>
@@ -43,8 +44,8 @@ export default function CTA() {
             className="absolute -top-20 left-1/2 -translate-x-1/2 h-72 w-[36rem] rounded-full bg-spark/25 blur-[140px] pointer-events-none"
           />
 
-          <div className="relative mx-auto max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black p-10 md:p-14 shadow-[0_30px_80px_-20px_rgba(250,204,21,0.25)]">
-            <div className="grid gap-8 md:grid-cols-3">
+          <div className="relative mx-auto max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black p-7 sm:p-10 md:p-14 shadow-[0_30px_80px_-20px_rgba(250,204,21,0.25)]">
+            <div className="grid gap-6 sm:gap-8 grid-cols-3">
               <Stat label="Application fee" value="$0" sub="Free to apply" />
               <Stat label="If accepted" value="$97" sub="One-time, full cohort" />
               <Stat label="Cohort size" value="24" sub="Summer 2026" />
@@ -92,13 +93,15 @@ function Stat({
 }) {
   return (
     <div className="text-center">
-      <div className="text-xs font-medium uppercase tracking-[0.2em] text-white/40">
+      <div className="text-[10px] sm:text-xs font-medium uppercase tracking-[0.18em] sm:tracking-[0.2em] text-white/40">
         {label}
       </div>
-      <div className="mt-2 text-4xl font-bold tracking-tight text-spark">
+      <div className="mt-1.5 sm:mt-2 text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-spark">
         {value}
       </div>
-      <div className="mt-1 text-xs text-white/50">{sub}</div>
+      <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-white/50">
+        {sub}
+      </div>
     </div>
   );
 }

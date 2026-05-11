@@ -71,7 +71,7 @@ function Cell({ value }: { value: any }) {
 
 export default function Comparison() {
   return (
-    <section id="compare" className="relative py-24 md:py-32 px-6">
+    <section id="compare" className="relative py-16 md:py-32 px-6">
       <div className="mx-auto max-w-6xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

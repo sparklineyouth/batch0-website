@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 
 export default function Hero() {
   return (
-    <section className="relative overflow-hidden pt-32 pb-20 md:pt-40 md:pb-28">
+    <section className="relative overflow-hidden pt-24 pb-16 md:pt-40 md:pb-28">
       <div className="absolute inset-0 grid-bg pointer-events-none" />
       <div className="absolute inset-x-0 -top-24 h-[40rem] bg-spark-radial pointer-events-none" />
       <div
@@ -18,7 +18,7 @@ export default function Hero() {
           initial={{ scale: 0.6, opacity: 0, rotate: -10 }}
           animate={{ scale: 1, opacity: 1, rotate: 0 }}
           transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-          className="mx-auto mb-8 w-24 h-24 md:w-28 md:h-28 animate-spark-pulse"
+          className="mx-auto mb-7 h-20 w-20 md:h-28 md:w-28 animate-spark-pulse"
         >
           <Image src="/logo.svg" alt="SparkLine" width={120} height={120} priority />
         </motion.div>
@@ -40,9 +40,10 @@ export default function Hero() {
           initial={{ y: 28, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.25, duration: 0.8 }}
-          className="mt-6 text-5xl md:text-7xl font-bold tracking-tighter text-white glow-text"
+          className="mt-6 text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-white glow-text"
         >
-          Build a real startup.<br />
+          Build a real startup.
+          <br />
           Pitch <span className="shine">real investors.</span>
         </motion.h1>
 
@@ -50,7 +51,7 @@ export default function Hero() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4, duration: 0.7 }}
-          className="mx-auto mt-6 max-w-2xl text-lg md:text-xl text-white/60"
+          className="mx-auto mt-5 max-w-2xl text-base sm:text-lg md:text-xl text-white/60"
         >
           SparkLine is the 4-week, fully virtual accelerator for high
           schoolers. Take your idea from raw concept to investor-ready
@@ -62,7 +63,7 @@ export default function Hero() {
           initial={{ y: 16, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.55, duration: 0.7 }}
-          className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3"
+          className="mt-8 md:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3"
         >
           <a
             href="#apply"
@@ -83,7 +84,7 @@ export default function Hero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.85, duration: 0.7 }}
-          className="mt-16 flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-xs uppercase tracking-[0.18em] text-white/40"
+          className="mt-12 md:mt-16 flex flex-wrap items-center justify-center gap-x-6 sm:gap-x-10 gap-y-3 text-[10px] sm:text-xs uppercase tracking-[0.18em] text-white/40"
         >
           <span>Ages 13–18</span>
           <span className="h-1 w-1 rounded-full bg-white/20" />
