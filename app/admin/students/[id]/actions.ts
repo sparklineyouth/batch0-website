@@ -16,7 +16,21 @@ async function fetchTargetProfile(userId: string) {
     .select("id, email, full_name, role, discord_user_id")
     .eq("id", userId)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) {
+    // 42703 = column does not exist — fall back to the core columns
+    // so this works whether or not migration 0008 was applied.
+    if ((error as any).code === "42703") {
+      const fallback = await admin
+        .from("profiles")
+        .select("id, email, full_name, role")
+        .eq("id", userId)
+        .maybeSingle();
+      if (fallback.error) throw new Error(fallback.error.message);
+      if (!fallback.data) throw new Error("User not found");
+      return { ...(fallback.data as any), discord_user_id: null };
+    }
+    throw new Error(error.message);
+  }
   if (!data) throw new Error("User not found");
   return data;
 }

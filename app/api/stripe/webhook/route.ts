@@ -140,15 +140,30 @@ export async function POST(req: Request) {
 
         // Receipt email + notification.
         try {
+          // Use the safe column list so this still works if migration
+          // 0008 (discord_*) hasn't been applied yet.
           const { data: profile } = await admin
             .from("profiles")
-            .select("email, full_name, discord_user_id, role")
+            .select("email, full_name, role")
             .eq("id", userId)
             .maybeSingle();
-          if (profile?.discord_user_id) {
+          // Discord linkage is optional — if 0008 isn't applied this
+          // query throws "column does not exist" and we just skip.
+          let discordUserId: string | null = null;
+          try {
+            const { data: d, error: dErr } = await admin
+              .from("profiles")
+              .select("discord_user_id")
+              .eq("id", userId)
+              .maybeSingle();
+            if (!dErr && d) discordUserId = (d as any).discord_user_id ?? null;
+          } catch {
+            // ignore — column doesn't exist
+          }
+          if (discordUserId) {
             await syncMemberRoles(
-              profile.discord_user_id,
-              (profile.role as any) ?? "student",
+              discordUserId,
+              (profile?.role as any) ?? "student",
             ).catch(() => {});
           }
           let cohortName = "SparkLine";
