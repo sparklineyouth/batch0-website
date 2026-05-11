@@ -43,10 +43,18 @@ export default async function AdminDiscordPage() {
     initial[field] = typeof r.value === "string" ? r.value : "";
   }
 
-  const { data: linkedCount } = await admin
-    .from("profiles")
-    .select("id", { count: "exact", head: true })
-    .not("discord_user_id", "is", null);
+  // Linked-account count is a Discord-table query — 0008 may not be
+  // applied yet, so swallow that case and fall back to 0.
+  let linkedCount = 0;
+  try {
+    const { count } = await admin
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .not("discord_user_id", "is", null);
+    linkedCount = count ?? 0;
+  } catch {
+    // ignore — column doesn't exist yet
+  }
 
   const hasBot = Boolean(env.discordBotToken);
   const hasOauth = Boolean(env.discordClientId && env.discordClientSecret);
@@ -100,7 +108,7 @@ export default async function AdminDiscordPage() {
           />
         </ul>
         <p className="mt-5 text-xs text-white/45">
-          Linked accounts: <span className="text-white/80">{(linkedCount as any) ?? 0}</span>
+          Linked accounts: <span className="text-white/80">{linkedCount}</span>
         </p>
       </Card>
 

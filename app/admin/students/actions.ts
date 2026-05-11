@@ -33,9 +33,10 @@ export async function changeUserRole(userId: string, role: Role) {
     throw new Error("You can't downgrade your own admin role.");
   }
   const admin = createAdminClient();
+  // Read the core columns first — those are guaranteed to exist.
   const { data: prev } = await admin
     .from("profiles")
-    .select("role, email, discord_user_id")
+    .select("role, email")
     .eq("id", userId)
     .single();
   const { error } = await admin
@@ -49,9 +50,22 @@ export async function changeUserRole(userId: string, role: Role) {
     targetId: userId,
     payload: { from: prev?.role ?? null, to: role, email: prev?.email },
   });
-  // Best-effort: keep their Discord role in sync with the new SparkLine role.
-  if (prev?.discord_user_id) {
-    await syncMemberRoles(prev.discord_user_id, role).catch(() => {});
+
+  // Best-effort Discord sync. discord_user_id is added by migration 0008 —
+  // tolerate the column being absent so admin role changes still succeed.
+  try {
+    const { data: link, error: linkErr } = await admin
+      .from("profiles")
+      .select("discord_user_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!linkErr && (link as any)?.discord_user_id) {
+      await syncMemberRoles((link as any).discord_user_id, role).catch(
+        () => {},
+      );
+    }
+  } catch {
+    // ignore — column doesn't exist
   }
   revalidatePath("/admin/students");
   revalidatePath(`/admin/students/${userId}`);

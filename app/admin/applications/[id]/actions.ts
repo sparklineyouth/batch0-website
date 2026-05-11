@@ -16,11 +16,14 @@ export async function decideApplication(
   const { userId: reviewerId } = await assertAdmin();
   const admin = createAdminClient();
 
-  // Fetch first so we can email + notify with full context.
+  // Fetch first so we can email + notify with full context. Note: we
+  // deliberately don't pull discord_* columns here — they're added by
+  // migration 0008 and may not exist yet. The Discord side-effect block
+  // fetches them separately and tolerates a missing column.
   const { data: app, error: fetchErr } = await admin
     .from("applications")
     .select(
-      "id, full_name, user_id, cohort:cohorts(name, price_cents), profile:profiles!applications_user_id_fkey(email, full_name, discord_user_id, role)",
+      "id, full_name, user_id, cohort:cohorts(name, price_cents), profile:profiles!applications_user_id_fkey(email, full_name)",
     )
     .eq("id", applicationId)
     .maybeSingle();
@@ -93,16 +96,20 @@ export async function decideApplication(
     console.error("[applications] decide notify failed", err);
   }
 
-  // Discord side-effects (best-effort, only fire on accept). If the
-  // applicant has linked their Discord account, sync them to the
-  // student role; admins on a separate channel get a heads-up.
-  try {
-    const a = app as any;
-    const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
-    const cohort = Array.isArray(a.cohort) ? a.cohort[0] : a.cohort;
-    if (decision === "accepted") {
-      if (profile?.discord_user_id) {
-        await syncMemberRoles(profile.discord_user_id, profile.role ?? "student");
+  // Discord side-effects (best-effort, only fire on accept). Wrapped
+  // so a missing migration 0008 (no discord_user_id column) just
+  // silently skips Discord — the accept itself stays atomic.
+  if (decision === "accepted") {
+    try {
+      const a = app as any;
+      const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
+      const cohort = Array.isArray(a.cohort) ? a.cohort[0] : a.cohort;
+      const discord = await loadDiscordHandle(admin, a.user_id);
+      if (discord?.discord_user_id) {
+        await syncMemberRoles(
+          discord.discord_user_id,
+          (discord.role as any) ?? "student",
+        );
       }
       const settings = await getDiscordSettings();
       if (settings.adminFeedChannelId) {
@@ -116,9 +123,9 @@ export async function decideApplication(
           ],
         });
       }
+    } catch (err) {
+      console.error("[applications] discord sync failed", err);
     }
-  } catch (err) {
-    console.error("[applications] discord sync failed", err);
   }
 
   revalidatePath(`/admin/applications/${applicationId}`);
@@ -162,7 +169,7 @@ export async function waiveApplicationFee(
   const { data: app, error: fetchErr } = await admin
     .from("applications")
     .select(
-      "id, status, user_id, cohort_id, fee_waived, full_name, cohort:cohorts(name), profile:profiles!applications_user_id_fkey(email, full_name, discord_user_id, role)",
+      "id, status, user_id, cohort_id, fee_waived, full_name, cohort:cohorts(name), profile:profiles!applications_user_id_fkey(email, full_name)",
     )
     .eq("id", applicationId)
     .single();
@@ -231,12 +238,14 @@ export async function waiveApplicationFee(
   }
 
   // If the user has linked Discord, sync their roles now that they're
-  // fully enrolled.
+  // fully enrolled. Tolerant of a missing 0008 migration.
   try {
-    const a = app as any;
-    const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
-    if (profile?.discord_user_id) {
-      await syncMemberRoles(profile.discord_user_id, profile.role ?? "student");
+    const discord = await loadDiscordHandle(admin, app.user_id);
+    if (discord?.discord_user_id) {
+      await syncMemberRoles(
+        discord.discord_user_id,
+        (discord.role as any) ?? "student",
+      );
     }
   } catch (err) {
     console.error("[applications] waive discord sync failed", err);
@@ -250,4 +259,26 @@ export async function waiveApplicationFee(
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Pull the user's Discord handle + role for downstream sync. Returns
+ * null if the Discord columns don't exist yet (migration 0008 not
+ * applied), so the caller can no-op cleanly.
+ */
+async function loadDiscordHandle(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+): Promise<{ discord_user_id: string | null; role: string | null } | null> {
+  const { data, error } = await admin
+    .from("profiles")
+    .select("discord_user_id, role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    // "column does not exist" -> 0008 not applied. Quietly skip.
+    if ((error as any).code === "42703") return null;
+    throw error;
+  }
+  return (data as any) ?? null;
 }
