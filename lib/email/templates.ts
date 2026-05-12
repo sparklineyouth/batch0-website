@@ -114,50 +114,6 @@ export const Templates = {
     }),
   }),
 
-  assignmentPosted: (args: { title: string; cohortName: string; dueAt: string | null; assignmentId: string }) => ({
-    subject: `New assignment: ${args.title}`,
-    html: layout({
-      preheader: args.dueAt ? `Due ${new Date(args.dueAt).toLocaleString()}` : "New homework posted",
-      body: `
-        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
-        <p>A new assignment has been posted in ${escape(args.cohortName)}.</p>
-        ${args.dueAt ? `<p>Due <strong>${new Date(args.dueAt).toLocaleString()}</strong>.</p>` : ""}
-      `,
-      cta: {
-        url: `${env.siteUrl}/dashboard/assignments/${args.assignmentId}`,
-        label: "Open assignment",
-      },
-    }),
-  }),
-
-  assignmentGraded: (args: { title: string; grade: string | null; assignmentId: string }) => ({
-    subject: `Graded: ${args.title}`,
-    html: layout({
-      preheader: args.grade ? `Grade: ${args.grade}` : "Your submission was graded",
-      body: `
-        <p>Your submission for <strong>${escape(args.title)}</strong> has been graded${args.grade ? ` — <strong>${escape(args.grade)}</strong>` : ""}. View the feedback below.</p>
-      `,
-      cta: {
-        url: `${env.siteUrl}/dashboard/assignments/${args.assignmentId}`,
-        label: "View feedback",
-      },
-    }),
-  }),
-
-  assignmentDueSoon: (args: { title: string; dueAt: string; assignmentId: string }) => ({
-    subject: `Reminder: ${args.title} due soon`,
-    html: layout({
-      preheader: `Due ${new Date(args.dueAt).toLocaleString()}`,
-      body: `
-        <p><strong>${escape(args.title)}</strong> is due <strong>${new Date(args.dueAt).toLocaleString()}</strong>. Don't forget to submit.</p>
-      `,
-      cta: {
-        url: `${env.siteUrl}/dashboard/assignments/${args.assignmentId}`,
-        label: "Open assignment",
-      },
-    }),
-  }),
-
   weeklyDigest: (args: {
     apps: number;
     accepted: number;

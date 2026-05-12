@@ -8,6 +8,7 @@ import {
   syncMemberRoles,
   getDiscordSettings,
   isDiscordEnabled,
+  revokeOauthToken,
 } from "@/lib/discord";
 import { env } from "@/lib/env";
 import { logAudit } from "@/lib/audit";
@@ -116,6 +117,14 @@ export async function GET(req: Request) {
     targetId: user.id,
     payload: { discord_user_id: discordUser.id, role },
   });
+
+  // We're done with the OAuth tokens — revoke them so a stolen callback
+  // URL can't grant a lingering access window. We use the bot token for
+  // every subsequent guild/role operation anyway.
+  await revokeOauthToken(tokens.access_token);
+  if ((tokens as any).refresh_token) {
+    await revokeOauthToken((tokens as any).refresh_token);
+  }
 
   return back("linked", "ok");
 }

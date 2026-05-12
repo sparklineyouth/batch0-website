@@ -198,5 +198,10 @@ export async function deleteCohort(id: string) {
     targetType: "cohort",
     targetId: id,
   });
+  // Cohort lookups feed several admin lists and student-facing pages —
+  // invalidate them so a deleted cohort doesn't linger in dropdowns.
   revalidatePath("/admin/cohorts");
+  revalidatePath("/admin/applications");
+  revalidatePath("/admin/students");
+  revalidatePath("/admin/teams");
 }

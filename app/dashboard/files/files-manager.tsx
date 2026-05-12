@@ -73,6 +73,15 @@ export function FilesManager({
     const list = Array.from(e.target.files ?? []);
     if (list.length === 0) return;
     setUploadErr(undefined);
+    // 100MB ceiling — matches the storage bucket policy and is enough
+    // headroom for decks, demo videos, prototype builds.
+    const MAX_BYTES = 100 * 1024 * 1024;
+    const tooBig = list.find((f) => f.size > MAX_BYTES);
+    if (tooBig) {
+      setUploadErr(`"${tooBig.name}" is over 100MB. Compress it or upload in pieces.`);
+      e.target.value = "";
+      return;
+    }
     try {
       for (const file of list) {
         setUploading(file.name);

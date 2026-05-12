@@ -1,6 +1,5 @@
 "use client";
 import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Plus } from "lucide-react";
 
 const faqs = [
@@ -40,54 +39,57 @@ export default function FAQ() {
   return (
     <section id="faq" className="relative py-16 md:py-32 px-6">
       <div className="mx-auto max-w-3xl">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.6 }}
-          className="text-center"
-        >
+        <div className="text-center">
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-spark">
             FAQ
           </p>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold tracking-tight text-white">
             Questions, answered.
           </h2>
-        </motion.div>
+        </div>
 
         <div className="mt-12 divide-y divide-white/10 rounded-2xl border border-white/10 bg-white/[0.02]">
-          {faqs.map((f, i) => (
-            <div key={f.q}>
-              <button
-                onClick={() => setOpen(open === i ? null : i)}
-                className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left hover:bg-white/[0.02] transition-colors"
-              >
-                <span className="text-base md:text-lg font-medium text-white">
-                  {f.q}
-                </span>
-                <Plus
-                  className={`h-5 w-5 shrink-0 text-spark transition-transform duration-300 ${
-                    open === i ? "rotate-45" : ""
+          {faqs.map((f, i) => {
+            const isOpen = open === i;
+            return (
+              <div key={f.q}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(isOpen ? null : i)}
+                  aria-expanded={isOpen}
+                  aria-controls={`faq-panel-${i}`}
+                  id={`faq-trigger-${i}`}
+                  className="press flex w-full items-center justify-between gap-4 px-6 py-5 text-left hover:bg-white/[0.02]"
+                >
+                  <span className="text-base md:text-lg font-medium text-white">
+                    {f.q}
+                  </span>
+                  <Plus
+                    className={`h-5 w-5 shrink-0 text-spark transition-transform duration-200 ${
+                      isOpen ? "rotate-45" : ""
+                    }`}
+                  />
+                </button>
+                <div
+                  id={`faq-panel-${i}`}
+                  role="region"
+                  aria-labelledby={`faq-trigger-${i}`}
+                  hidden={!isOpen}
+                  className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                    isOpen
+                      ? "grid-rows-[1fr] opacity-100"
+                      : "grid-rows-[0fr] opacity-0"
                   }`}
-                />
-              </button>
-              <AnimatePresence initial={false}>
-                {open === i && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                    className="overflow-hidden"
-                  >
+                >
+                  <div className="min-h-0">
                     <p className="px-6 pb-5 text-white/60 leading-relaxed">
                       {f.a}
                     </p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

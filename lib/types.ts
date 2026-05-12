@@ -137,6 +137,8 @@ export type MentorAssignment = {
   created_at: string;
 };
 
+export type TeamLogoStatus = "pending" | "approved" | "rejected";
+
 export type Team = {
   id: string;
   cohort_id: string;
@@ -145,12 +147,127 @@ export type Team = {
   tagline: string | null;
   description: string | null;
   logo_url: string | null;
+  logo_status: TeamLogoStatus;
+  logo_rejected_reason: string | null;
   pitch_video_url: string | null;
   pitch_deck_url: string | null;
   website_url: string | null;
   is_public: boolean;
+  creator_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type TeamInviteStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "cancelled";
+
+export type TeamInvite = {
+  id: string;
+  team_id: string;
+  invitee_id: string;
+  invited_by: string;
+  status: TeamInviteStatus;
+  message: string | null;
+  created_at: string;
+  responded_at: string | null;
+};
+
+export type TeamDriveFile = {
+  id: string;
+  team_id: string;
+  uploader_id: string | null;
+  name: string;
+  path: string;
+  size_bytes: number | null;
+  mime_type: string | null;
+  created_at: string;
+};
+
+export type TeamMessageKind = "member" | "mentor" | "investor" | "admin";
+
+export type TeamMessage = {
+  id: string;
+  team_id: string;
+  author_id: string;
+  body: string;
+  kind: TeamMessageKind;
+  created_at: string;
+};
+
+export type PitchSubmission = {
+  team_id: string;
+  cohort_id: string | null;
+  deck_path: string | null;
+  video_path: string | null;
+  video_url: string | null;
+  notes: string | null;
+  submitted_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PitchScore = {
+  id: string;
+  team_id: string;
+  scorer_id: string;
+  problem: number | null;
+  traction: number | null;
+  team_score: number | null;
+  ask: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type IntroRequestStatus =
+  | "requested"
+  | "intro_made"
+  | "meeting_held"
+  | "committed"
+  | "wired"
+  | "passed";
+
+export type IntroRequest = {
+  id: string;
+  investor_id: string;
+  team_id: string;
+  status: IntroRequestStatus;
+  message: string | null;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MentorSlot = {
+  id: string;
+  mentor_id: string;
+  starts_at: string;
+  ends_at: string;
+  zoom_url: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type MentorBookingStatus = "booked" | "cancelled" | "completed";
+
+export type MentorBooking = {
+  id: string;
+  slot_id: string;
+  student_id: string;
+  topic: string | null;
+  status: MentorBookingStatus;
+  created_at: string;
+};
+
+export type Certificate = {
+  id: string;
+  user_id: string;
+  cohort_id: string;
+  code: string;
+  issued_at: string;
 };
 
 export type TeamMember = {
@@ -185,32 +302,6 @@ export type LessonComment = {
   body: string;
   created_at: string;
   updated_at: string;
-};
-
-export type Quiz = {
-  id: string;
-  lesson_id: string;
-  title: string | null;
-  created_at: string;
-};
-
-export type QuizQuestion = {
-  id: string;
-  quiz_id: string;
-  question: string;
-  options: { id: string; text: string }[];
-  correct_option_id: string;
-  position: number;
-};
-
-export type QuizAttempt = {
-  id: string;
-  quiz_id: string;
-  user_id: string;
-  answers: Record<string, string>;
-  score: number;
-  total: number;
-  created_at: string;
 };
 
 export type AiConversation = {
@@ -269,6 +360,9 @@ export type Application = {
   paid_at: string | null;
   stripe_session_id: string | null;
   stripe_payment_intent_id: string | null;
+  ai_score: number | null;
+  ai_summary: string | null;
+  ai_reviewed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -294,37 +388,6 @@ export type Lesson = {
   materials: { title: string; path: string }[];
   position: number;
   created_at: string;
-};
-
-export type Assignment = {
-  id: string;
-  cohort_id: string;
-  lesson_id: string | null;
-  title: string;
-  description: string | null;
-  due_at: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type SubmissionStatus = "draft" | "submitted" | "graded";
-
-export type AssignmentSubmission = {
-  id: string;
-  assignment_id: string;
-  user_id: string;
-  content: string | null;
-  links: { title: string; url: string }[];
-  files: { name: string; path: string }[];
-  status: SubmissionStatus;
-  submitted_at: string | null;
-  grade: string | null;
-  feedback: string | null;
-  graded_by: string | null;
-  graded_at: string | null;
-  created_at: string;
-  updated_at: string;
 };
 
 export type StudentFile = {

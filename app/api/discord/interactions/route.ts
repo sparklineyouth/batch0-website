@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyInteractionSignature, postChannelMessage, announcementEmbed, getDiscordSettings, isDiscordEnabled } from "@/lib/discord";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -30,10 +31,18 @@ function publicReply(content: string, embeds?: Record<string, any>[]) {
 
 export async function POST(req: Request) {
   const raw = await req.text();
+  const ts = req.headers.get("x-signature-timestamp");
+  // Discord's signature alone is replayable forever — also require the
+  // signed timestamp to be within 5 minutes of now so a captured payload
+  // can't be replayed long after the fact.
+  const tsNum = ts ? parseInt(ts, 10) : NaN;
+  if (!Number.isFinite(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > 300) {
+    return new NextResponse("Stale request", { status: 401 });
+  }
   const ok = await verifyInteractionSignature(
     raw,
     req.headers.get("x-signature-ed25519"),
-    req.headers.get("x-signature-timestamp"),
+    ts,
   );
   if (!ok) {
     return new NextResponse("Bad signature", { status: 401 });
@@ -63,6 +72,24 @@ export async function POST(req: Request) {
   const name: string = body.data?.name ?? "";
   const discordUserId: string =
     body.member?.user?.id ?? body.user?.id ?? "";
+
+  // Throttle commands per Discord user. /announce is the heaviest
+  // (fan-out to all enrolled + announcements channel + email) so it
+  // gets a tighter budget than read-only commands.
+  if (discordUserId) {
+    const limit = name === "announce" ? 5 : 20;
+    const rl = await checkRateLimit({
+      kind: `discord-cmd-${name || "unknown"}`,
+      identifier: discordUserId,
+      limit,
+      windowSeconds: 60,
+    });
+    if (!rl.ok) {
+      return ephemeral(
+        "You're sending commands too fast. Try again in a minute.",
+      );
+    }
+  }
 
   const admin = createAdminClient();
 

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertSelf } from "@/lib/server-guards";
 import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/audit";
 import type { InvestorInterestLevel } from "@/lib/types";
 
 const VALID: InvestorInterestLevel[] = [
@@ -35,14 +36,15 @@ export async function setInterest(
   const admin = createAdminClient();
 
   if (level === null) {
-    await admin
+    const { error } = await admin
       .from("investor_interests")
       .delete()
       .eq("investor_id", userId)
       .eq("team_id", teamId);
+    if (error) throw new Error(error.message);
   } else {
     if (!VALID.includes(level)) throw new Error("Invalid level");
-    await admin.from("investor_interests").upsert(
+    const { error } = await admin.from("investor_interests").upsert(
       {
         investor_id: userId,
         team_id: teamId,
@@ -51,7 +53,14 @@ export async function setInterest(
       },
       { onConflict: "investor_id,team_id" },
     );
+    if (error) throw new Error(error.message);
   }
+  await logAudit({
+    action: level === null ? "investor.interest_removed" : "investor.interest_set",
+    targetType: "investor_interest",
+    targetId: `${userId}:${teamId}`,
+    payload: { team_id: teamId, level, notes: notes?.trim() || null },
+  });
   revalidatePath("/investor/teams");
   revalidatePath("/investor/interests");
   revalidatePath("/investor");

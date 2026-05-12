@@ -5,7 +5,26 @@ import { requireUser } from "@/lib/auth";
 import { ApplicationForm } from "./application-form";
 import { Card } from "@/components/ui/card";
 
-export const metadata = { title: "Apply · SparkLine" };
+export const metadata = {
+  title: "Apply · SparkLine",
+  description:
+    "Apply to SparkLine — the 4-week, fully virtual startup accelerator for U.S. high schoolers. Rolling admissions; $97 once accepted.",
+  openGraph: {
+    title: "Apply to SparkLine",
+    description:
+      "Take your idea from raw concept to investor-ready pitch in 4 weeks. Rolling admissions. $97 once accepted.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Apply to SparkLine",
+    description:
+      "The 4-week, fully virtual startup accelerator for U.S. high schoolers. Rolling admissions. $97.",
+  },
+  // Application is gated and the form mutates server state — keep search
+  // engines out even though middleware also redirects unauthed crawlers.
+  robots: { index: false, follow: false },
+};
 
 export default async function ApplyPage() {
   const user = await requireUser();

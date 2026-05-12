@@ -1,7 +1,24 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Profile } from "@/lib/types";
+import type { Profile, Role } from "@/lib/types";
+
+// Each role has exactly one "home" — the area they own and where role-
+// mismatches send them. Kept in sync with the gating in
+// lib/supabase/middleware.ts; if you add a new role, add it here and there.
+export function roleHome(role: Role): string {
+  switch (role) {
+    case "admin":
+      return "/admin";
+    case "mentor":
+      return "/mentor";
+    case "investor":
+      return "/investor";
+    case "student":
+    default:
+      return "/dashboard";
+  }
+}
 
 export async function getUser() {
   const supabase = createClient();
@@ -75,10 +92,19 @@ export async function getProfile(): Promise<Profile | null> {
   };
 }
 
+export async function requireStudent() {
+  const profile = await getProfile();
+  if (!profile) redirect("/login");
+  // /dashboard is the student area only — non-students get sent to their
+  // own home rather than bouncing back here in a redirect loop.
+  if (profile.role !== "student") redirect(roleHome(profile.role));
+  return profile;
+}
+
 export async function requireAdmin() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
-  if (profile.role !== "admin") redirect("/dashboard");
+  if (profile.role !== "admin") redirect(roleHome(profile.role));
   return profile;
 }
 
@@ -86,7 +112,7 @@ export async function requireMentor() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
   if (profile.role !== "admin" && profile.role !== "mentor") {
-    redirect("/dashboard");
+    redirect(roleHome(profile.role));
   }
   return profile;
 }
@@ -95,7 +121,7 @@ export async function requireInvestor() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
   if (profile.role !== "admin" && profile.role !== "investor") {
-    redirect("/dashboard");
+    redirect(roleHome(profile.role));
   }
   return profile;
 }

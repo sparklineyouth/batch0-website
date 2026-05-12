@@ -34,20 +34,34 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient();
 
-  // Idempotency: dedupe by event.id. If we've already processed it,
-  // ack and skip. If insert fails for any other reason, fall through
-  // and process anyway (Stripe will retry; better to double-process
-  // a refund-status flip than to silently drop a real event).
+  // Idempotency with retry-safety: we "claim" the event by inserting a
+  // row with completed_at=null, then "complete" it after all side
+  // effects succeed. If we crash in the middle, the row sticks at the
+  // claimed state and Stripe's next delivery picks it back up.
   try {
     const { error: dedupeErr } = await admin
       .from("processed_stripe_events")
-      .insert({ event_id: event.id, event_type: event.type });
+      .insert({
+        event_id: event.id,
+        event_type: event.type,
+        completed_at: null,
+      });
     if (dedupeErr) {
-      // 23505 unique_violation = already processed
       if ((dedupeErr as any).code === "23505") {
-        return NextResponse.json({ received: true, deduped: true });
+        // Already exists — was it actually completed?
+        const { data: existing } = await admin
+          .from("processed_stripe_events")
+          .select("completed_at")
+          .eq("event_id", event.id)
+          .maybeSingle();
+        if (existing?.completed_at) {
+          return NextResponse.json({ received: true, deduped: true });
+        }
+        // Claimed but not completed (previous attempt crashed). Fall
+        // through and re-run side effects; ops are idempotent below.
+      } else {
+        console.error("[stripe webhook] dedupe insert error", dedupeErr);
       }
-      console.error("[stripe webhook] dedupe insert error", dedupeErr);
     }
   } catch (err) {
     console.error("[stripe webhook] dedupe error", err);
@@ -220,10 +234,37 @@ export async function POST(req: Request) {
             ? charge.payment_intent
             : charge.payment_intent?.id;
         if (piId) {
+          // Find the payment row so we can also reverse the application
+          // + enrollment side-effects when the refund comes from Stripe
+          // directly (rather than via our admin refund flow).
+          const { data: payment } = await admin
+            .from("payments")
+            .select("id, user_id, application_id")
+            .eq("stripe_payment_intent_id", piId)
+            .maybeSingle();
           await admin
             .from("payments")
             .update({ status: "refunded" })
             .eq("stripe_payment_intent_id", piId);
+          if (payment?.application_id) {
+            await admin
+              .from("applications")
+              .update({ status: "accepted", paid_at: null })
+              .eq("id", payment.application_id);
+            await admin
+              .from("enrollments")
+              .delete()
+              .eq("application_id", payment.application_id);
+            if (payment.user_id) {
+              await notify({
+                userId: payment.user_id,
+                type: "payment_refunded",
+                title: "Payment refunded",
+                body: "Your enrollment payment was refunded. Reach out if this was unexpected.",
+                link: "/dashboard/billing",
+              });
+            }
+          }
         }
         await logAudit({
           action: "payment.refunded",
@@ -238,7 +279,23 @@ export async function POST(req: Request) {
         break;
     }
   } catch (err: any) {
+    // Leave processed_stripe_events.completed_at as null so Stripe's
+    // next retry picks the event back up. Returning 500 also tells
+    // Stripe to retry.
     return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+
+  // All side effects succeeded — mark the event fully processed.
+  try {
+    await admin
+      .from("processed_stripe_events")
+      .update({ completed_at: new Date().toISOString() })
+      .eq("event_id", event.id);
+  } catch (err) {
+    console.error("[stripe webhook] complete update failed", err);
+    // Don't 500 — side effects already happened; worst case Stripe
+    // delivers the event again and we replay (idempotently) before
+    // re-marking complete.
   }
 
   return NextResponse.json({ received: true });

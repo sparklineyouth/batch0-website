@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { notify } from "@/lib/notifications";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 // Optional URL: empty string allowed, otherwise must be a valid URL
 const optionalUrl = z
@@ -303,6 +304,27 @@ export async function saveDraftAction(
   _: ActionResult | null,
   formData: FormData,
 ) {
+  // Throttle draft saves — without this, a runaway autosave loop or a
+  // bot hammering the form burns DB writes + audit log + revalidation.
+  // 30/min per user covers normal typing comfortably.
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    const rl = await checkRateLimit({
+      kind: "apply-draft",
+      identifier: user.id,
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!rl.ok) {
+      return {
+        ok: false,
+        errors: { _form: "Too many edits in a row — wait a moment." },
+      } as ActionResult;
+    }
+  }
   return upsertApplication(formData, false);
 }
 

@@ -1,5 +1,8 @@
 import * as React from "react";
 
+// `text-base md:text-sm` gives mobile users 16px (which iOS Safari needs
+// to NOT auto-zoom when focusing a field) and keeps the denser 14px on
+// medium-and-up where touch isn't the primary input mode.
 export const Input = React.forwardRef<
   HTMLInputElement,
   React.InputHTMLAttributes<HTMLInputElement>
@@ -7,7 +10,7 @@ export const Input = React.forwardRef<
   return (
     <input
       ref={ref}
-      className={`h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-white placeholder:text-white/30 focus:border-spark/60 focus:outline-none focus:ring-2 focus:ring-spark/30 ${className}`}
+      className={`h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-base text-white placeholder:text-white/30 focus:border-spark/60 focus:outline-none focus:ring-2 focus:ring-spark/30 md:text-sm ${className}`}
       {...props}
     />
   );
@@ -20,7 +23,7 @@ export const Textarea = React.forwardRef<
   return (
     <textarea
       ref={ref}
-      className={`min-h-24 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-spark/60 focus:outline-none focus:ring-2 focus:ring-spark/30 ${className}`}
+      className={`min-h-24 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-base text-white placeholder:text-white/30 focus:border-spark/60 focus:outline-none focus:ring-2 focus:ring-spark/30 md:text-sm ${className}`}
       {...props}
     />
   );
@@ -33,7 +36,7 @@ export const Select = React.forwardRef<
   return (
     <select
       ref={ref}
-      className={`h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-white focus:border-spark/60 focus:outline-none focus:ring-2 focus:ring-spark/30 ${className}`}
+      className={`h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-base text-white focus:border-spark/60 focus:outline-none focus:ring-2 focus:ring-spark/30 md:text-sm ${className}`}
       {...props}
     >
       {children}

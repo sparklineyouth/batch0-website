@@ -1,7 +1,6 @@
-"use client";
 import React from "react";
-import { motion } from "framer-motion";
 import { DollarSign, MapPin, Award } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
 
 const problems = [
   {
@@ -25,13 +24,7 @@ export default function Problem() {
   return (
     <section className="relative py-16 md:py-32 px-6">
       <div className="mx-auto max-w-6xl">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.6 }}
-          className="mx-auto max-w-3xl text-center"
-        >
+        <Reveal className="mx-auto max-w-3xl text-center">
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-spark">
             The problem
           </p>
@@ -44,17 +37,14 @@ export default function Problem() {
             that's reserved for people who can afford the tuition or who
             happen to live in the right zip code.
           </p>
-        </motion.div>
+        </Reveal>
 
         <div className="mt-14 grid gap-5 md:grid-cols-3">
           {problems.map((p, i) => (
-            <motion.div
+            <Reveal
               key={p.title}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-80px" }}
-              transition={{ duration: 0.6, delay: i * 0.1 }}
-              className="group relative rounded-2xl border border-white/10 bg-white/[0.03] p-7 hover:border-spark/30 hover:bg-spark/[0.04] transition-colors"
+              delay={i * 100}
+              className="group relative rounded-2xl border border-white/10 bg-white/[0.03] p-7 hover:border-spark/30 hover:bg-spark/[0.04] transition-colors duration-150"
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-spark/10 text-spark border border-spark/20">
                 <p.icon className="h-5 w-5" />
@@ -65,7 +55,7 @@ export default function Problem() {
               <p className="mt-2 text-sm text-white/55 leading-relaxed">
                 {p.body}
               </p>
-            </motion.div>
+            </Reveal>
           ))}
         </div>
       </div>

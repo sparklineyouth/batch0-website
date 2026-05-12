@@ -1,7 +1,6 @@
-"use client";
 import React from "react";
-import { motion } from "framer-motion";
 import { Lightbulb, Hammer, Rocket, Trophy } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
 
 const weeks = [
   {
@@ -39,13 +38,7 @@ export default function Curriculum() {
     <section id="curriculum" className="relative py-16 md:py-32 px-6">
       <div className="absolute inset-0 grid-bg opacity-40 pointer-events-none" />
       <div className="relative mx-auto max-w-6xl">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.6 }}
-          className="text-center max-w-3xl mx-auto"
-        >
+        <Reveal className="text-center max-w-3xl mx-auto">
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-spark">
             The 4-week sprint
           </p>
@@ -57,7 +50,7 @@ export default function Curriculum() {
             with a complete, fundable startup package — not a participation
             certificate.
           </p>
-        </motion.div>
+        </Reveal>
 
         <div className="mt-16 relative">
           <div
@@ -66,18 +59,15 @@ export default function Curriculum() {
           />
           <div className="grid gap-6 md:gap-12">
             {weeks.map((w, i) => (
-              <motion.div
+              <Reveal
                 key={w.week}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-80px" }}
-                transition={{ duration: 0.6, delay: i * 0.08 }}
+                delay={i * 80}
                 className={`relative md:grid md:grid-cols-2 md:gap-12 items-center ${
                   i % 2 === 1 ? "md:[&>*:first-child]:order-2" : ""
                 }`}
               >
                 <div
-                  className={`relative rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-white/[0.01] p-7 md:p-8 hover:border-spark/30 transition-colors ${
+                  className={`relative rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-white/[0.01] p-7 md:p-8 hover:border-spark/30 transition-colors duration-150 ${
                     i % 2 === 1 ? "md:text-right" : ""
                   }`}
                 >
@@ -117,7 +107,7 @@ export default function Curriculum() {
                     <div className="absolute inset-0 rounded-full bg-spark/20 blur-xl -z-10" />
                   </div>
                 </div>
-              </motion.div>
+              </Reveal>
             ))}
           </div>
         </div>

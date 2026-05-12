@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertSelf } from "@/lib/server-guards";
+import { assertMentorCanAccessStudent } from "@/lib/mentor-scope";
 
 const BUCKET = "student-files";
 
@@ -20,7 +21,26 @@ export async function registerStudentFile(file: RegisteredFile) {
   if (!file.path.startsWith(`${userId}/`)) {
     throw new Error("Path doesn't belong to you.");
   }
+  // Defense-in-depth — the client also gates on this but a tampered
+  // client can lie about size_bytes. 100MB matches the bucket policy.
+  if (file.size_bytes != null && file.size_bytes > 100 * 1024 * 1024) {
+    throw new Error("File exceeds the 100MB limit.");
+  }
   const admin = createAdminClient();
+
+  // Verify the object actually exists in storage. Without this a
+  // tampered client could register paths it never uploaded — those
+  // entries would 404 on download but still litter the index.
+  const segments = file.path.split("/");
+  const filename = segments.pop() ?? "";
+  const folder = segments.join("/");
+  const { data: listed } = await admin.storage
+    .from(BUCKET)
+    .list(folder, { limit: 1, search: filename });
+  if (!listed?.some((o: any) => o.name === filename)) {
+    throw new Error("Upload didn't complete — try again.");
+  }
+
   const { error } = await admin.from("student_files").insert({
     user_id: userId,
     name: file.name.slice(0, 200),
@@ -79,10 +99,30 @@ export async function getDownloadUrl(id: string): Promise<string> {
     .eq("id", id)
     .single();
   if (error) throw new Error(error.message);
-  if (file.user_id !== userId) throw new Error("Forbidden");
+
+  // Self-access fast path. Otherwise the caller must be staff with a
+  // legitimate cohort tie to the file owner — admins always, mentors
+  // only for their own cohort. (Investors don't get personal-drive
+  // access at all.)
+  if (file.user_id !== userId) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    const role = profile?.role ?? "student";
+    if (role !== "admin" && role !== "mentor") {
+      throw new Error("Forbidden");
+    }
+    await assertMentorCanAccessStudent({
+      callerId: userId,
+      callerRole: role,
+      studentId: file.user_id,
+    });
+  }
   const { data, error: signErr } = await admin.storage
     .from(BUCKET)
-    .createSignedUrl(file.path, 60 * 60); // 1 hour
+    .createSignedUrl(file.path, 60 * 10); // 10 minutes
   if (signErr || !data?.signedUrl) {
     throw new Error(signErr?.message ?? "Could not generate URL");
   }

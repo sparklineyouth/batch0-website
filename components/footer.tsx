@@ -1,6 +1,6 @@
-"use client";
 import React from "react";
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Footer() {
   return (
@@ -28,24 +28,36 @@ export default function Footer() {
           </div>
           <ul className="mt-4 space-y-2.5 text-sm text-white/70">
             <li>
-              <a href="#how-it-works" className="hover:text-spark">
+              <a
+                href="#how-it-works"
+                className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+              >
                 How it works
               </a>
             </li>
             <li>
-              <a href="#curriculum" className="hover:text-spark">
+              <a
+                href="#curriculum"
+                className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+              >
                 Curriculum
               </a>
             </li>
             <li>
-              <a href="#compare" className="hover:text-spark">
+              <a
+                href="#compare"
+                className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+              >
                 Why SparkLine
               </a>
             </li>
             <li>
-              <a href="#apply" className="hover:text-spark">
+              <Link
+                href="/apply"
+                className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+              >
                 Apply
-              </a>
+              </Link>
             </li>
           </ul>
         </div>
@@ -58,25 +70,26 @@ export default function Footer() {
             <li>
               <a
                 href="mailto:sparkline.youth@gmail.com"
-                className="hover:text-spark"
+                className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
               >
                 sparkline.youth@gmail.com
               </a>
             </li>
             <li>
-              <a href="#" className="hover:text-spark">
-                Instagram
-              </a>
+              <Link
+                href="/login"
+                className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+              >
+                Log in
+              </Link>
             </li>
             <li>
-              <a href="#" className="hover:text-spark">
-                TikTok
-              </a>
-            </li>
-            <li>
-              <a href="#" className="hover:text-spark">
-                Discord
-              </a>
+              <Link
+                href="/apply"
+                className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+              >
+                Apply
+              </Link>
             </li>
           </ul>
         </div>
@@ -85,9 +98,24 @@ export default function Footer() {
       <div className="mx-auto max-w-6xl mt-14 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-white/40">
         <span>© {new Date().getFullYear()} SparkLine. All rights reserved.</span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <a href="/terms" className="hover:text-spark">Terms</a>
-          <a href="/privacy" className="hover:text-spark">Privacy</a>
-          <a href="/refund-policy" className="hover:text-spark">Refunds</a>
+          <a
+            href="/terms"
+            className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+          >
+            Terms
+          </a>
+          <a
+            href="/privacy"
+            className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+          >
+            Privacy
+          </a>
+          <a
+            href="/refund-policy"
+            className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+          >
+            Refunds
+          </a>
         </div>
       </div>
     </footer>

@@ -1,7 +1,6 @@
-"use client";
 import React from "react";
-import { motion } from "framer-motion";
 import { Check, X } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
 
 const rows = [
   {
@@ -73,13 +72,7 @@ export default function Comparison() {
   return (
     <section id="compare" className="relative py-16 md:py-32 px-6">
       <div className="mx-auto max-w-6xl">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.6 }}
-          className="text-center max-w-3xl mx-auto"
-        >
+        <Reveal className="text-center max-w-3xl mx-auto">
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-spark">
             Why SparkLine
           </p>
@@ -90,13 +83,10 @@ export default function Comparison() {
             No other program offers all four: affordable, year-round
             cohorts, fully virtual, and real angel investors on demo day.
           </p>
-        </motion.div>
+        </Reveal>
 
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.7 }}
+        <Reveal
+          delay={100}
           className="relative mt-14 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent"
         >
           <div className="overflow-x-auto">
@@ -159,7 +149,7 @@ export default function Comparison() {
               </tbody>
             </table>
           </div>
-        </motion.div>
+        </Reveal>
       </div>
     </section>
   );

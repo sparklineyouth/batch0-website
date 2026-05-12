@@ -6,7 +6,6 @@ import { requireUser, getProfile } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LessonPlayer } from "./lesson-player";
 import { Comments } from "./comments";
-import { Quiz } from "./quiz";
 import { ArrowLeft, FileText } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -28,12 +27,18 @@ export default async function LessonPage({
 
   if (!lesson) notFound();
 
+  // Signed URLs for lesson assets are short-lived (10 min) and minted
+  // server-side per request. Long-TTL URLs that leak into HTML source /
+  // browser history / share sheets are a low-grade access leak; this
+  // keeps the window tight while still being long enough to start a
+  // video. The page is `force-dynamic` so every viewer gets a fresh URL.
+  const SIGNED_URL_TTL = 60 * 10;
   let videoUrl: string | null = lesson.video_url || null;
   if (lesson.video_path) {
     const adminCli = createAdminClient();
     const { data } = await adminCli.storage
       .from("course-videos")
-      .createSignedUrl(lesson.video_path, 60 * 60 * 4);
+      .createSignedUrl(lesson.video_path, SIGNED_URL_TTL);
     if (data?.signedUrl) videoUrl = data.signedUrl;
   }
 
@@ -44,7 +49,7 @@ export default async function LessonPage({
       if (!m?.path) continue;
       const { data } = await adminCli.storage
         .from("course-materials")
-        .createSignedUrl(m.path, 60 * 60 * 4);
+        .createSignedUrl(m.path, SIGNED_URL_TTL);
       if (data?.signedUrl) {
         materials.push({ title: m.title || m.path, url: data.signedUrl });
       }
@@ -70,24 +75,6 @@ export default async function LessonPage({
     ...c,
     author: Array.isArray(c.author) ? c.author[0] : c.author,
   }));
-
-  // Quiz (optional).
-  const { data: quiz } = await supabase
-    .from("quizzes")
-    .select("*, quiz_questions(*)")
-    .eq("lesson_id", lesson.id)
-    .maybeSingle();
-  let bestScore: { score: number; total: number } | null = null;
-  if (quiz?.id) {
-    const { data: attempts } = await supabase
-      .from("quiz_attempts")
-      .select("score, total")
-      .eq("quiz_id", quiz.id)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (attempts && attempts.length > 0) bestScore = attempts[0] as any;
-  }
 
   const isStaff =
     profile?.role === "admin" || profile?.role === "mentor";
@@ -143,19 +130,6 @@ export default async function LessonPage({
         </Card>
       )}
 
-      {quiz?.id && (quiz.quiz_questions?.length ?? 0) > 0 && (
-        <div className="mt-8">
-          <Quiz
-            quizId={quiz.id}
-            lessonId={lesson.id}
-            title={quiz.title}
-            questions={(quiz.quiz_questions ?? []).sort(
-              (a: any, b: any) => a.position - b.position,
-            )}
-            bestScore={bestScore}
-          />
-        </div>
-      )}
 
       <Card className="mt-8">
         <Comments

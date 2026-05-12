@@ -18,6 +18,7 @@ export default async function DashboardHome() {
     { data: app },
     { data: enrollment },
     { data: pendingFees },
+    { data: certificate },
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single(),
     supabase
@@ -39,6 +40,13 @@ export default async function DashboardHome() {
       .eq("kind", "fee")
       .eq("status", "pending")
       .order("created_at", { ascending: true }),
+    supabase
+      .from("certificates")
+      .select("code")
+      .eq("user_id", user.id)
+      .order("issued_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const greeting = profile?.full_name?.split(" ")[0] || "there";
@@ -164,6 +172,24 @@ export default async function DashboardHome() {
             referralCount={await countReferrals(profile.referral_code)}
           />
         </div>
+      )}
+
+      {certificate && (
+        <Card className="mt-10 border-spark/30 bg-spark/5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-spark">
+                Certificate of completion
+              </h3>
+              <p className="mt-1 text-sm text-white/70">
+                You graduated. Share it on LinkedIn or anywhere.
+              </p>
+            </div>
+            <Link href={`/verify/${certificate.code}`}>
+              <Button size="sm">View certificate →</Button>
+            </Link>
+          </div>
+        </Card>
       )}
 
       <div className="mt-10">

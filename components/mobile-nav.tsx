@@ -12,6 +12,7 @@ import {
   STAFF_LINKS,
 } from "@/lib/nav-config";
 import type { Role } from "@/lib/types";
+import { NotificationBell } from "@/components/notification-bell";
 
 export type MobileNavKind = "student" | "admin" | "mentor" | "investor";
 
@@ -34,11 +35,23 @@ const LABEL_BY_KIND: Record<MobileNavKind, string | undefined> = {
  * from `kind` so server layouts only need to pass primitives — keeps
  * lucide-icon functions out of the server/client serialization boundary.
  */
+// Same enrolled-only list as the desktop sidebar — keep these two in sync.
+const ENROLLED_ONLY = new Set<string>([
+  "/dashboard/course",
+  "/dashboard/team",
+  "/dashboard/checkin",
+  "/dashboard/office-hours",
+  "/dashboard/events",
+  "/dashboard/resources",
+  "/dashboard/files",
+]);
+
 export function MobileNav({
   kind,
   role,
   aiAccess,
   discordEnabled,
+  enrolled = true,
 }: {
   kind: MobileNavKind;
   /** Authenticated role, used to surface staff cross-links. */
@@ -47,6 +60,8 @@ export function MobileNav({
   aiAccess?: boolean;
   /** Whether the Community link should appear (student kind only). */
   discordEnabled?: boolean;
+  /** Whether the enrolled-only nav items are shown (student kind only). */
+  enrolled?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -72,6 +87,7 @@ export function MobileNav({
           if (it.href === "/dashboard/community" && discordEnabled === false) {
             return false;
           }
+          if (!enrolled && ENROLLED_ONLY.has(it.href)) return false;
           return true;
         })
       : rawItems;
@@ -102,14 +118,17 @@ export function MobileNav({
             </span>
           )}
         </Link>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Open menu"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/70 hover:bg-white/5 hover:text-white"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell align="right" />
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="Open menu"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/70 hover:bg-white/5 hover:text-white"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       {open && (

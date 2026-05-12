@@ -7,6 +7,23 @@ type CookiesToSet = {
   options: CookieOptions;
 }[];
 
+// Mirrored from lib/auth.ts:roleHome — kept inline so middleware doesn't
+// pull in lib/auth.ts (which transitively imports next/headers + the
+// admin/service-role client and isn't Edge-safe).
+type RoleLike = "student" | "admin" | "mentor" | "investor" | string | null | undefined;
+function roleHome(role: RoleLike): string {
+  switch (role) {
+    case "admin":
+      return "/admin";
+    case "mentor":
+      return "/mentor";
+    case "investor":
+      return "/investor";
+    default:
+      return "/dashboard";
+  }
+}
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -45,6 +62,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/admin") ||
     path.startsWith("/mentor") ||
     path.startsWith("/investor") ||
+    path.startsWith("/notifications") ||
     path.startsWith("/apply");
   const authPath = path === "/login" || path === "/signup";
 
@@ -72,7 +90,14 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (authPath && user) {
-    return redirectTo("/dashboard");
+    // Send signed-in users to their role home rather than always /dashboard,
+    // since /dashboard is now student-only and would otherwise bounce again.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    return redirectTo(roleHome(profile?.role));
   }
 
   // Hard-block: any non-admin signed-in user with a pending fine can
@@ -109,7 +134,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (
-    (path.startsWith("/admin") ||
+    (path.startsWith("/dashboard") ||
+      path.startsWith("/admin") ||
       path.startsWith("/mentor") ||
       path.startsWith("/investor")) &&
     user
@@ -120,22 +146,36 @@ export async function updateSession(request: NextRequest) {
       .eq("id", user.id)
       .maybeSingle();
     const role = profile?.role;
+    // /dashboard is the student area. Mentors and investors get bounced
+    // to their own panel — they have no business in the student view.
+    // Admins are allowed through as an opt-in (the admin sidebar has a
+    // "Student view" link), but their default home stays /admin.
+    // Billing + pay-fine are shared per-user views every role can reach.
+    if (
+      path.startsWith("/dashboard") &&
+      !path.startsWith("/dashboard/pay-fine") &&
+      !path.startsWith("/dashboard/billing") &&
+      role !== "student" &&
+      role !== "admin"
+    ) {
+      return redirectTo(roleHome(role));
+    }
     if (path.startsWith("/admin") && role !== "admin") {
-      return redirectTo("/dashboard");
+      return redirectTo(roleHome(role));
     }
     if (
       path.startsWith("/mentor") &&
       role !== "admin" &&
       role !== "mentor"
     ) {
-      return redirectTo("/dashboard");
+      return redirectTo(roleHome(role));
     }
     if (
       path.startsWith("/investor") &&
       role !== "admin" &&
       role !== "investor"
     ) {
-      return redirectTo("/dashboard");
+      return redirectTo(roleHome(role));
     }
   }
 

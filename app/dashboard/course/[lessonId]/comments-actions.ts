@@ -14,6 +14,23 @@ export async function postLessonComment(args: {
   if (!body) throw new Error("Empty comment");
   if (body.length > 4000) throw new Error("Comment too long");
 
+  // Application-layer validation: if a parent comment is supplied, make
+  // sure it actually belongs to the lesson the user is replying on.
+  // RLS would catch a cross-cohort reply because of the enrolled check,
+  // but it'd allow a reply that targets a different lesson in the same
+  // cohort. The thread UI assumes parent + child are on one lesson.
+  if (args.parentId) {
+    const admin = createAdminClient();
+    const { data: parent } = await admin
+      .from("lesson_comments")
+      .select("lesson_id")
+      .eq("id", args.parentId)
+      .maybeSingle();
+    if (!parent || parent.lesson_id !== args.lessonId) {
+      throw new Error("Invalid reply target.");
+    }
+  }
+
   const supabase = createClient();
   // RLS will block if not enrolled; insert via the user-scoped client
   // so the policy is enforced.

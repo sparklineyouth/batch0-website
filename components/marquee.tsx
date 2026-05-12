@@ -1,4 +1,3 @@
-"use client";
 import React from "react";
 
 const items = [
@@ -20,10 +19,10 @@ export default function Marquee() {
       aria-hidden
       className="relative overflow-hidden border-y border-white/5 py-6 bg-black"
     >
-      <div className="flex animate-marquee gap-12 whitespace-nowrap">
+      <div className="flex animate-marquee gap-12 whitespace-nowrap will-change-transform">
         {[...items, ...items].map((s, i) => (
           <span
-            key={i}
+            key={`${s}-${i}`}
             className="text-sm md:text-base font-medium uppercase tracking-[0.18em] text-white/30"
           >
             {s} <span className="text-spark/60 ml-12">✦</span>
