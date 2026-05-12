@@ -2,19 +2,23 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Eye } from "lucide-react";
 import { ADMIN_NAV } from "@/lib/nav-config";
+import { NotificationBell } from "@/components/notification-bell";
 
 export function AdminSidebar() {
   const pathname = usePathname();
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/10 bg-zinc-950/40 px-4 py-6">
-      <Link href="/" className="mb-2 flex items-center gap-2 px-2">
-        <Image src="/logo.svg" alt="" width={24} height={24} />
-        <span className="font-semibold tracking-tight text-white">
-          Spark<span className="text-spark">Line</span>
-        </span>
-      </Link>
+      <div className="mb-2 flex items-center justify-between px-2">
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/logo.svg" alt="" width={24} height={24} />
+          <span className="font-semibold tracking-tight text-white">
+            Spark<span className="text-spark">Line</span>
+          </span>
+        </Link>
+        <NotificationBell align="right" />
+      </div>
       <p className="mb-6 px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-spark">
         Admin
       </p>
@@ -39,6 +43,15 @@ export function AdminSidebar() {
             </Link>
           );
         })}
+        <div className="mt-6 space-y-1 border-t border-white/10 pt-4">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-white/50 hover:bg-white/5 hover:text-white"
+          >
+            <Eye className="h-4 w-4" />
+            Student view
+          </Link>
+        </div>
       </nav>
       <form action="/auth/signout" method="post" className="mt-4">
         <button

@@ -8,13 +8,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  // Fail closed when CRON_SECRET isn't configured — admins might miss
+  // their digest, but no one can spam expensive aggregation queries.
+  if (!env.cronSecret) {
+    return new Response("CRON_SECRET not configured", { status: 500 });
+  }
+  // Header-only. The query-string variant was removed because it leaks
+  // into server logs / CDN logs / browser history.
   const auth = req.headers.get("authorization");
-  const url = new URL(req.url);
-  const queryKey = url.searchParams.get("key");
-  if (env.cronSecret) {
-    const ok =
-      auth === `Bearer ${env.cronSecret}` || queryKey === env.cronSecret;
-    if (!ok) return new Response("Unauthorized", { status: 401 });
+  if (auth !== `Bearer ${env.cronSecret}`) {
+    return new Response("Unauthorized", { status: 401 });
   }
 
   const admin = createAdminClient();

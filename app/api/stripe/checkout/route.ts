@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
-import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { env } from "@/lib/env";
 
 export async function POST(req: Request) {
   const supabase = createClient();
@@ -75,7 +76,10 @@ export async function POST(req: Request) {
       .eq("id", user.id);
   }
 
-  const origin = req.headers.get("origin") || new URL(req.url).origin;
+  // Always use the canonical site URL — never a request-controlled
+  // header. The Origin header is attacker-controllable and would let a
+  // forged checkout redirect land on a lookalike domain.
+  const origin = env.siteUrl;
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",

@@ -168,6 +168,33 @@ export async function exchangeOauthCode(
   return (await res.json()) as DiscordTokenSet;
 }
 
+/**
+ * Revokes a Discord OAuth token so a stolen callback URL can't grant a
+ * lingering access window. We only ever needed the token long enough to
+ * read /users/@me + drop the user in the guild; once linking is done we
+ * have no reason to keep it valid.
+ *
+ * Best-effort — Discord returns 200 on success; we swallow errors so a
+ * temporary outage doesn't reverse a successful link.
+ */
+export async function revokeOauthToken(token: string): Promise<void> {
+  if (!env.discordClientId || !env.discordClientSecret || !token) return;
+  try {
+    const body = new URLSearchParams({
+      client_id: env.discordClientId,
+      client_secret: env.discordClientSecret,
+      token,
+    });
+    await fetch(`${API}/oauth2/token/revoke`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+  } catch (err) {
+    console.error("[discord] token revoke failed", err);
+  }
+}
+
 export async function fetchDiscordUser(accessToken: string): Promise<DiscordUser> {
   const res = await fetch(`${API}/users/@me`, {
     headers: { Authorization: `Bearer ${accessToken}` },

@@ -31,7 +31,9 @@ const config: Config = {
       },
       animation: {
         "spark-pulse": "sparkPulse 2.4s ease-in-out infinite",
-        "fade-up": "fadeUp 0.7s ease-out both",
+        "fade-up": "fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both",
+        "fade-in": "fadeIn 0.5s ease-out both",
+        "slide-down": "slideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
         "marquee": "marquee 40s linear infinite",
       },
       keyframes: {
@@ -41,6 +43,14 @@ const config: Config = {
         },
         fadeUp: {
           "0%": { opacity: "0", transform: "translateY(24px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        fadeIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        slideDown: {
+          "0%": { opacity: "0", transform: "translateY(-24px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
         marquee: {

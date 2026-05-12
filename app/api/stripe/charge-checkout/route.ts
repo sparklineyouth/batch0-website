@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { env } from "@/lib/env";
 
 /**
  * Creates a Stripe Checkout Session to pay an arbitrary user_charge
@@ -71,7 +72,8 @@ export async function POST(req: Request) {
       .eq("id", user.id);
   }
 
-  const origin = req.headers.get("origin") || new URL(req.url).origin;
+  // Canonical site URL, not the attacker-controllable Origin header.
+  const origin = env.siteUrl;
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer: customerId,

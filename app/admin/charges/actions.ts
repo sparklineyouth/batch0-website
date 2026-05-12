@@ -7,6 +7,7 @@ import { sendEmail } from "@/lib/email/send";
 import { notify } from "@/lib/notifications";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
+import { assertRecentMfa } from "@/lib/mfa";
 import type { ChargeKind } from "@/lib/types";
 
 export type ChargeInput = {
@@ -98,6 +99,7 @@ export async function issueCharge(input: ChargeInput) {
 
 export async function waiveCharge(chargeId: string, reason: string) {
   const { userId } = await assertAdmin();
+  await assertRecentMfa("charge.waive");
   const admin = createAdminClient();
   const { data: existing, error: fetchErr } = await admin
     .from("user_charges")
@@ -140,6 +142,7 @@ export async function waiveCharge(chargeId: string, reason: string) {
 
 export async function cancelCharge(chargeId: string) {
   await assertAdmin();
+  await assertRecentMfa("charge.cancel");
   const admin = createAdminClient();
   const { data: existing } = await admin
     .from("user_charges")

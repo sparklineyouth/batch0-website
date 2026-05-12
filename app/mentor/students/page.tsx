@@ -83,7 +83,12 @@ export default async function MentorStudentsPage({
                   className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
                 >
                   <td className="px-5 py-3 text-white">
-                    {e.profile?.full_name || "—"}
+                    <Link
+                      href={`/mentor/students/${e.profile?.id}`}
+                      className="hover:text-spark"
+                    >
+                      {e.profile?.full_name || "—"}
+                    </Link>
                   </td>
                   <td className="px-5 py-3 text-white/70">
                     {e.profile?.email}

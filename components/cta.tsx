@@ -1,20 +1,13 @@
-"use client";
 import React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { Reveal } from "@/components/ui/reveal";
 
 export default function CTA() {
   return (
     <section id="apply" className="relative py-20 md:py-32 px-6">
       <div className="mx-auto max-w-5xl">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.6 }}
-          className="text-center"
-        >
+        <Reveal className="text-center">
           <div className="mx-auto h-14 w-14 md:h-16 md:w-16 animate-spark-pulse">
             <Image src="/logo.svg" alt="SparkLine" width={64} height={64} />
           </div>
@@ -30,15 +23,9 @@ export default function CTA() {
             Cohort 1 launches Summer 2026. 24 seats. $97. Real investors on
             Demo Day. Apply in under 5 minutes.
           </p>
-        </motion.div>
+        </Reveal>
 
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.7 }}
-          className="relative mt-12"
-        >
+        <Reveal delay={100} className="relative mt-12">
           <div
             aria-hidden
             className="absolute -top-20 left-1/2 -translate-x-1/2 h-72 w-[36rem] rounded-full bg-spark/25 blur-[140px] pointer-events-none"
@@ -53,14 +40,14 @@ export default function CTA() {
             <div className="mt-10 flex flex-col items-center gap-3">
               <Link
                 href="/signup"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-spark px-7 text-sm font-semibold text-black shadow-[0_0_24px_-6px_rgba(250,204,21,0.7)] transition hover:bg-spark-200"
+                className="press inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-spark px-7 text-sm font-semibold text-black shadow-[0_0_24px_-6px_rgba(250,204,21,0.7)] hover:bg-spark-200"
               >
                 Start your application
                 <span aria-hidden>→</span>
               </Link>
               <p className="text-xs text-white/40">
                 Already applied?{" "}
-                <Link href="/login" className="text-white/60 hover:text-spark">
+                <Link href="/login" className="press text-white/60 hover:text-spark">
                   Log in
                 </Link>
               </p>
@@ -76,7 +63,7 @@ export default function CTA() {
               sparkline.youth@gmail.com
             </a>
           </p>
-        </motion.div>
+        </Reveal>
       </div>
     </section>
   );

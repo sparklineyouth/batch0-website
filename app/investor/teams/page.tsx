@@ -79,9 +79,12 @@ export default async function InvestorTeamsPage({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
-                    <h3 className="text-base font-semibold text-white">
+                    <Link
+                      href={`/investor/teams/${t.id}`}
+                      className="text-base font-semibold text-white hover:text-spark"
+                    >
                       {t.name}
-                    </h3>
+                    </Link>
                     <span className="text-xs text-white/40">
                       {cohort?.name ?? ""}
                     </span>

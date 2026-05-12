@@ -8,8 +8,9 @@ import type { Role } from "@/lib/types";
  * Use `assertAdmin()` for write operations on financial/admin data
  * (cohorts, payments, settings, role changes, application decisions).
  *
- * Use `assertStaff()` for write operations on academic data (modules,
- * lessons, assignments, grading) — admin AND mentor are allowed.
+ * Use `assertStaff()` for write operations on program content (modules,
+ * lessons, mentor feedback on student/team work) — admin AND mentor are
+ * allowed.
  */
 
 async function getActor(): Promise<{ userId: string; role: Role }> {

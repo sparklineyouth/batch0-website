@@ -51,7 +51,9 @@ export async function GET(req: Request) {
   );
   res.cookies.set("sparkline_discord_nonce", nonce, {
     httpOnly: true,
-    secure: true,
+    // secure: true would drop the cookie on http://localhost in dev,
+    // breaking the OAuth round-trip — gate on NODE_ENV.
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 600,

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { LogOut, ShieldCheck } from "lucide-react";
 import type { Role } from "@/lib/types";
 import { INVESTOR_NAV } from "@/lib/nav-config";
+import { NotificationBell } from "@/components/notification-bell";
 
 export type RoleSidebarKind = "investor";
 
@@ -34,12 +35,15 @@ export function RoleSidebar({
   const label = LABEL_BY_KIND[kind];
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/10 bg-zinc-950/40 px-4 py-6">
-      <Link href="/" className="mb-2 flex items-center gap-2 px-2">
-        <Image src="/logo.svg" alt="" width={24} height={24} />
-        <span className="font-semibold tracking-tight text-white">
-          Spark<span className="text-spark">Line</span>
-        </span>
-      </Link>
+      <div className="mb-2 flex items-center justify-between px-2">
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/logo.svg" alt="" width={24} height={24} />
+          <span className="font-semibold tracking-tight text-white">
+            Spark<span className="text-spark">Line</span>
+          </span>
+        </Link>
+        <NotificationBell align="right" />
+      </div>
       <p className="mb-6 px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-spark">
         {label}
       </p>

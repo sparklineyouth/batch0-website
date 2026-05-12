@@ -1,7 +1,5 @@
-"use client";
 import React from "react";
 import Image from "next/image";
-import { motion } from "framer-motion";
 
 export default function Hero() {
   return (
@@ -14,77 +12,62 @@ export default function Hero() {
       />
 
       <div className="relative mx-auto max-w-6xl px-6 text-center">
-        <motion.div
-          initial={{ scale: 0.6, opacity: 0, rotate: -10 }}
-          animate={{ scale: 1, opacity: 1, rotate: 0 }}
-          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-          className="mx-auto mb-7 h-20 w-20 md:h-28 md:w-28 animate-spark-pulse"
-        >
+        <div className="mx-auto mb-7 h-20 w-20 md:h-28 md:w-28 animate-spark-pulse animate-fade-up">
           <Image src="/logo.svg" alt="SparkLine" width={120} height={120} priority />
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.15, duration: 0.7 }}
-          className="inline-flex items-center gap-2 rounded-full border border-spark/30 bg-spark/10 px-3.5 py-1 text-xs font-medium text-spark"
+        <div
+          className="inline-flex items-center gap-2 rounded-full border border-spark/30 bg-spark/10 px-3.5 py-1 text-xs font-medium text-spark animate-fade-up"
+          style={{ animationDelay: "100ms" }}
         >
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-spark opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-spark" />
           </span>
           Cohort 1 · Summer 2026 · Now accepting applications
-        </motion.div>
+        </div>
 
-        <motion.h1
-          initial={{ y: 28, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.25, duration: 0.8 }}
-          className="mt-6 text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-white glow-text"
+        <h1
+          className="mt-6 text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-white glow-text animate-fade-up"
+          style={{ animationDelay: "180ms" }}
         >
           Build a real startup.
           <br />
           Pitch <span className="shine">real investors.</span>
-        </motion.h1>
+        </h1>
 
-        <motion.p
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.4, duration: 0.7 }}
-          className="mx-auto mt-5 max-w-2xl text-base sm:text-lg md:text-xl text-white/60"
+        <p
+          className="mx-auto mt-5 max-w-2xl text-base sm:text-lg md:text-xl text-white/60 animate-fade-up"
+          style={{ animationDelay: "260ms" }}
         >
           SparkLine is the 4-week, fully virtual accelerator for high
           schoolers. Take your idea from raw concept to investor-ready
           pitch — and walk away with a real shot at funding before you
           graduate.
-        </motion.p>
+        </p>
 
-        <motion.div
-          initial={{ y: 16, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.55, duration: 0.7 }}
-          className="mt-8 md:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3"
+        <div
+          className="mt-8 md:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-up"
+          style={{ animationDelay: "340ms" }}
         >
           <a
-            href="#apply"
-            className="group relative w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-spark px-6 py-3 text-base font-semibold text-black shadow-[0_0_60px_-10px_rgba(250,204,21,0.6)] hover:shadow-[0_0_80px_-5px_rgba(250,204,21,0.8)] transition-all"
+            href="/apply"
+            className="press group relative w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-spark px-6 py-3 text-base font-semibold text-black shadow-[0_0_60px_-10px_rgba(250,204,21,0.6)] hover:bg-spark-200 hover:shadow-[0_0_80px_-5px_rgba(250,204,21,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           >
             Apply for $97 · Summer 2026
-            <span className="transition-transform group-hover:translate-x-0.5">→</span>
+            <span className="transition-transform duration-100 group-hover:translate-x-0.5">→</span>
           </a>
           <a
             href="#how-it-works"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 px-6 py-3 text-base font-medium text-white hover:bg-white/10 transition-colors"
+            className="press w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 px-6 py-3 text-base font-medium text-white hover:border-white/30 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           >
             See how it works
           </a>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.85, duration: 0.7 }}
-          className="mt-12 md:mt-16 flex flex-wrap items-center justify-center gap-x-6 sm:gap-x-10 gap-y-3 text-[10px] sm:text-xs uppercase tracking-[0.18em] text-white/40"
+        <div
+          className="mt-12 md:mt-16 flex flex-wrap items-center justify-center gap-x-6 sm:gap-x-10 gap-y-3 text-[10px] sm:text-xs uppercase tracking-[0.18em] text-white/40 animate-fade-in"
+          style={{ animationDelay: "500ms" }}
         >
           <span>Ages 13–18</span>
           <span className="h-1 w-1 rounded-full bg-white/20" />
@@ -93,7 +76,7 @@ export default function Hero() {
           <span>Real Investors</span>
           <span className="h-1 w-1 rounded-full bg-white/20" />
           <span>Open Year-Round</span>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

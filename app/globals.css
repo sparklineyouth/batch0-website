@@ -5,6 +5,10 @@
 :root {
   --background: #000000;
   --foreground: #fafafa;
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+  --safe-left: env(safe-area-inset-left);
+  --safe-right: env(safe-area-inset-right);
 }
 
 * {
@@ -18,6 +22,69 @@ body {
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   scroll-behavior: smooth;
+  /* No horizontal scroll on small screens. Any layout that genuinely
+   * needs it should scope its own inner overflow-x container. */
+  overflow-x: hidden;
+  /* Stop iOS Safari from auto-zooming when a sub-16px input is focused. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Generous tap targets on touch devices without enforcing 44px globally
+ * (the design relies on dense 32–36px controls in admin tables). */
+@media (pointer: coarse) {
+  button, [role="button"], a.press, label.cursor-pointer {
+    min-height: 36px;
+  }
+}
+
+/* iOS notch padding helpers usable on sticky bars + mobile nav. */
+.pt-safe { padding-top: var(--safe-top); }
+.pb-safe { padding-bottom: var(--safe-bottom); }
+.pl-safe { padding-left: var(--safe-left); }
+.pr-safe { padding-right: var(--safe-right); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Tactile press feedback for any clickable element marked .press.
+ * Uses transform-only animation so it composites on the GPU and stays
+ * snappy even on lower-end devices. */
+.press {
+  transition: transform 80ms ease-out, background-color 120ms ease-out,
+    color 120ms ease-out, box-shadow 120ms ease-out, opacity 120ms ease-out;
+  will-change: transform;
+}
+.press:active {
+  transform: scale(0.97);
+}
+.press:disabled,
+.press[aria-disabled="true"] {
+  transform: none;
+}
+
+/* Scroll-reveal without JS — initial state hides; the .revealed class
+ * (added by a tiny inline IntersectionObserver in <ScrollReveal>) fades
+ * the element in. Falls back to visible if JS never runs. */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal.revealed,
+.reveal.no-js {
+  opacity: 1;
+  transform: none;
 }
 
 ::selection {
@@ -147,9 +214,47 @@ body {
 
 /* Spark variants — keep the brand yellow but dial down the heavy glows for light mode */
 .theme-light .shadow-\[0_0_24px_-6px_rgba\(250\,204\,21\,0\.7\)\] {
-  box-shadow: 0 8px 20px -10px rgba(250, 204, 21, 0.5);
+  box-shadow: 0 6px 16px -8px rgba(250, 204, 21, 0.45);
 }
 .theme-light .text-spark { color: #b88e00; }
 .theme-light .text-spark\/80 { color: rgba(184, 142, 0, 0.85); }
+.theme-light .text-spark\/30 { color: rgba(184, 142, 0, 0.35); }
+.theme-light .bg-spark\/5 { background-color: rgba(184, 142, 0, 0.08); }
+.theme-light .bg-spark\/10 { background-color: rgba(184, 142, 0, 0.12); }
+.theme-light .bg-spark\/15 { background-color: rgba(184, 142, 0, 0.16); }
+.theme-light .border-spark\/30 { border-color: rgba(184, 142, 0, 0.4); }
+
+/* Status colors readable on white backgrounds. */
+.theme-light .text-emerald-200,
+.theme-light .text-emerald-300 { color: #047857; }
+.theme-light .text-red-200,
+.theme-light .text-red-300,
+.theme-light .text-red-400 { color: #b91c1c; }
+.theme-light .text-amber-200,
+.theme-light .text-amber-300 { color: #92400e; }
+.theme-light .text-blue-300 { color: #1d4ed8; }
+
+/* Cards (rounded-2xl + border-white/10) lose all separation in light
+ * mode against the white body. Give them a soft white surface, a
+ * hairline border, and a 1px shadow so they read as elevated objects. */
+.theme-light .rounded-2xl.border.border-white\/10 {
+  background-color: #ffffff;
+  border-color: rgba(24, 24, 27, 0.08);
+  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.04);
+}
+
+/* The mobile-nav sticky header + dropdown sheets use heavy black/blur
+ * surfaces; in light mode soften them to a near-white. */
+.theme-light .bg-black\/40.backdrop-blur,
+.theme-light .bg-black\/80.backdrop-blur {
+  background-color: rgba(255, 255, 255, 0.85);
+}
+
+/* Heavy dropdown shadow becomes airy in light mode. */
+.theme-light .shadow-\[0_30px_60px_-15px_rgba\(0\,0\,0\,0\.6\)\],
+.theme-light .shadow-\[0_30px_60px_-15px_rgba\(0\,0\,0\,0\.7\)\],
+.theme-light .shadow-\[0_30px_80px_-20px_rgba\(0\,0\,0\,0\.6\)\] {
+  box-shadow: 0 20px 40px -20px rgba(24, 24, 27, 0.18);
+}
 
 /* The brand-yellow primary button keeps a dark text for contrast — already correct */

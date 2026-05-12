@@ -13,7 +13,13 @@ function toIcsDate(iso: string) {
 }
 
 function escapeIcs(s: string) {
-  return s.replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/;/g, "\\;").replace(/\n/g, "\\n");
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;")
+    .replace(/\r\n/g, "\\n")
+    .replace(/\r/g, "\\n")
+    .replace(/\n/g, "\\n");
 }
 
 export async function GET(
@@ -53,7 +59,10 @@ export async function GET(
     "END:VCALENDAR",
   ].filter(Boolean);
 
-  return new Response(lines.join("\r\n"), {
+  // RFC 5545 requires a trailing CRLF after END:VCALENDAR. Several
+  // stricter parsers (notably Outlook Web) drop the event silently
+  // without it.
+  return new Response(lines.join("\r\n") + "\r\n", {
     headers: {
       "Content-Type": "text/calendar; charset=utf-8",
       "Content-Disposition": `attachment; filename="${ev.id}.ics"`,

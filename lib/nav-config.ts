@@ -2,7 +2,6 @@ import {
   Home,
   FileText,
   PlayCircle,
-  ClipboardList,
   CalendarDays,
   Sparkles,
   FolderOpen,
@@ -22,6 +21,8 @@ import {
   Megaphone,
   CheckCircle,
   FolderArchive,
+  Rocket,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -36,8 +37,9 @@ export const STUDENT_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: Home, exact: true },
   { href: "/dashboard/application", label: "Application", icon: FileText },
   { href: "/dashboard/course", label: "Course", icon: PlayCircle },
-  { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardList },
+  { href: "/dashboard/team", label: "Team", icon: Rocket },
   { href: "/dashboard/checkin", label: "Check-in", icon: CheckCircle },
+  { href: "/dashboard/office-hours", label: "Office hours", icon: CalendarIcon },
   { href: "/dashboard/events", label: "Events", icon: CalendarDays },
   { href: "/dashboard/resources", label: "Resources", icon: FolderArchive },
   { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
@@ -53,6 +55,9 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/students", label: "People", icon: Users },
   { href: "/admin/cohorts", label: "Cohorts", icon: Calendar },
   { href: "/admin/teams", label: "Teams", icon: Briefcase },
+  { href: "/admin/demo-day", label: "Demo Day", icon: Rocket },
+  { href: "/admin/intros", label: "Intros", icon: Handshake },
+  { href: "/admin/moderation", label: "Moderation", icon: ShieldCheck },
   { href: "/admin/course", label: "Course", icon: BookOpen },
   { href: "/admin/events", label: "Events", icon: CalendarDays },
   { href: "/admin/mentors", label: "Mentors", icon: Handshake },
@@ -62,21 +67,25 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/charges", label: "Fees & fines", icon: CreditCard },
   { href: "/admin/payments", label: "Payments", icon: CreditCard },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText },
+  { href: "/admin/mfa", label: "Two-factor", icon: ShieldCheck },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 export const MENTOR_NAV: NavItem[] = [
   { href: "/mentor", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/mentor/students", label: "Students", icon: Users },
+  { href: "/mentor/teams", label: "Teams", icon: Briefcase },
   { href: "/mentor/checkins", label: "Check-ins", icon: CheckCircle },
+  { href: "/mentor/office-hours", label: "Office hours", icon: CalendarIcon },
   { href: "/mentor/course", label: "Course", icon: BookOpen },
-  { href: "/mentor/assignments", label: "Assignments", icon: ClipboardList },
 ];
 
 export const INVESTOR_NAV: NavItem[] = [
   { href: "/investor", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/investor/teams", label: "Teams", icon: Briefcase },
+  { href: "/investor/demo-day", label: "Demo Day", icon: Rocket },
   { href: "/investor/interests", label: "My interests", icon: Star },
+  { href: "/investor/intros", label: "Intros", icon: Handshake },
 ];
 
 export const STAFF_LINKS = {

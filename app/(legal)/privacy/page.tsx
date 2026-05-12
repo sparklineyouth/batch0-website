@@ -28,8 +28,8 @@ export default function PrivacyPage() {
           handles all payment data.
         </li>
         <li>
-          <strong>Course usage:</strong> lesson progress, quiz attempts,
-          assignments, comments, and files you upload to your drive.
+          <strong>Program usage:</strong> lesson progress, weekly check-ins,
+          team threads, comments, and files you upload to your drive.
         </li>
         <li>
           <strong>Operational logs:</strong> standard server logs (IP, user

@@ -6,6 +6,12 @@ import { Card } from "@/components/ui/card";
 import { AiChat } from "./ai-chat";
 import { ConversationList } from "./conversation-list";
 import { ContextEditor } from "./context-editor";
+import { UsageMeter } from "./usage-meter";
+import { getCurrentUsage } from "@/lib/ai/usage";
+import {
+  MONTHLY_FREE_INPUT_TOKENS,
+  MONTHLY_FREE_OUTPUT_TOKENS,
+} from "@/lib/ai/pricing";
 import { env } from "@/lib/env";
 import { Lock, Sparkles } from "lucide-react";
 
@@ -41,7 +47,7 @@ export default async function AiPage({
   }
 
   const supabase = createClient();
-  const [{ data: convos }, { data: profileRow }] = await Promise.all([
+  const [{ data: convos }, { data: profileRow }, usage] = await Promise.all([
     supabase
       .from("ai_conversations")
       .select("id, title, updated_at")
@@ -51,6 +57,7 @@ export default async function AiPage({
       .select("ai_context")
       .eq("id", user.id)
       .maybeSingle(),
+    getCurrentUsage(user.id),
   ]);
 
   const list = convos ?? [];
@@ -72,6 +79,13 @@ export default async function AiPage({
         <ConversationList
           conversations={list as any}
           selectedId={selectedId ?? null}
+        />
+        <UsageMeter
+          inputTokens={usage.input_tokens}
+          outputTokens={usage.output_tokens}
+          billedCents={usage.billed_cents}
+          freeInput={MONTHLY_FREE_INPUT_TOKENS}
+          freeOutput={MONTHLY_FREE_OUTPUT_TOKENS}
         />
         <Card className="!p-0">
           <details className="group">
