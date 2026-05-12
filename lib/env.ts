@@ -18,9 +18,6 @@ export const env = {
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
 
   // Optional integrations — code that uses them must no-op when unset.
-  resendApiKey: process.env.RESEND_API_KEY,
-  resendFrom: process.env.RESEND_FROM ?? "SparkLine <noreply@sparklineyouth.org>",
-
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
 
   sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
