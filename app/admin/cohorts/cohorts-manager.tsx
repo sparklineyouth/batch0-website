@@ -35,7 +35,24 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
     setError(undefined);
     start(async () => {
       try {
-        await saveCohort(input);
+        // Strip extras the DB row carries (enrollments aggregate,
+        // stripe_*_id, created_at) so the server action only sees the
+        // editable fields.
+        const clean: CohortInput = {
+          id: input.id,
+          name: input.name,
+          cohort_number: input.cohort_number ?? null,
+          starts_on: input.starts_on ?? null,
+          ends_on: input.ends_on ?? null,
+          capacity: input.capacity,
+          status: input.status,
+          price_cents: input.price_cents,
+        };
+        const res = await saveCohort(clean);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
         setEditing(null);
         router.refresh();
       } catch (e: any) {
@@ -49,7 +66,11 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
     setError(undefined);
     start(async () => {
       try {
-        await deleteCohort(confirmDeleteId);
+        const res = await deleteCohort(confirmDeleteId);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
         setConfirmDeleteId(null);
         router.refresh();
       } catch (e: any) {

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Select, Textarea, FieldError } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
 import { updateIntroStatus } from "./actions";
 
 const STATUSES = [
@@ -62,7 +63,7 @@ export function IntroRow({ row }: { row: any }) {
             <span className="text-white/40">→</span> {team?.name}
           </h3>
           <p className="text-xs text-white/40">
-            Requested {new Date(row.created_at).toLocaleString()}
+            Requested <LocalTime value={row.created_at} />
           </p>
           {row.message && (
             <p className="mt-3 whitespace-pre-wrap rounded-lg border border-white/10 bg-zinc-950/40 p-3 text-sm text-white/80">

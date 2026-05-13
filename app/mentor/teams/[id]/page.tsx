@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireMentor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { TeamThread } from "@/components/team-thread";
 import { ArrowLeft } from "lucide-react";
 
@@ -115,8 +116,7 @@ export default async function MentorTeamDetailPage({
         <Card className="mt-6">
           <h2 className="text-base font-semibold">Demo Day submission</h2>
           <div className="mt-2 text-xs text-emerald-300">
-            Submitted on{" "}
-            {new Date((pitch as any).submitted_at).toLocaleString()}
+            Submitted on <LocalTime value={(pitch as any).submitted_at} />
           </div>
           {(pitch as any).video_url && (
             <a
@@ -140,7 +140,7 @@ export default async function MentorTeamDetailPage({
             <li key={f.id} className="flex justify-between py-2 text-sm">
               <span className="truncate text-white">{f.name}</span>
               <span className="text-xs text-white/40">
-                {new Date(f.created_at).toLocaleDateString()}
+                <LocalTime value={f.created_at} mode="date" />
               </span>
             </li>
           ))}

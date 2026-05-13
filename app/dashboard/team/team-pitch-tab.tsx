@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
+import { LocalTime } from "@/components/ui/local-time";
 import { createClient } from "@/lib/supabase/client";
 import { Upload, CheckCircle2 } from "lucide-react";
 import {
@@ -110,8 +111,7 @@ export function TeamPitchTab({
         {submitted && (
           <div className="mt-4 flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">
             <CheckCircle2 className="h-4 w-4" />
-            Submitted on{" "}
-            {new Date(pitch!.submitted_at!).toLocaleString()}. Investors and
+            Submitted on <LocalTime value={pitch!.submitted_at} />. Investors and
             judges can now see it.
           </div>
         )}

@@ -234,9 +234,10 @@ export async function POST(req: Request) {
             ? charge.payment_intent
             : charge.payment_intent?.id;
         if (piId) {
-          // Find the payment row so we can also reverse the application
-          // + enrollment side-effects when the refund comes from Stripe
-          // directly (rather than via our admin refund flow).
+          // The same payment intent can back either an enrollment
+          // (payments table) or a fee/fine (user_charges table). Cover
+          // both so a refund issued from the Stripe dashboard mirrors
+          // here either way.
           const { data: payment } = await admin
             .from("payments")
             .select("id, user_id, application_id")
@@ -264,6 +265,33 @@ export async function POST(req: Request) {
                 link: "/dashboard/billing",
               });
             }
+          }
+
+          // Also reflect on any matching user_charges row.
+          const { data: charge } = await admin
+            .from("user_charges")
+            .select("id, user_id, kind, description, amount_cents, status")
+            .eq("stripe_payment_intent_id", piId)
+            .maybeSingle();
+          if (charge && charge.status !== "refunded") {
+            await admin
+              .from("user_charges")
+              .update({
+                status: "refunded",
+                refunded_at: new Date().toISOString(),
+                stripe_refund_id:
+                  typeof charge === "object" && (event.data.object as any).refunds?.data?.[0]?.id
+                    ? (event.data.object as any).refunds.data[0].id
+                    : null,
+              })
+              .eq("id", charge.id);
+            await notify({
+              userId: charge.user_id,
+              type: "charge_refunded",
+              title: `${charge.kind === "fine" ? "Fine" : "Fee"} refunded: ${charge.description}`,
+              body: `$${(charge.amount_cents / 100).toFixed(2)} returned to your card.`,
+              link: "/dashboard/billing",
+            });
           }
         }
         await logAudit({

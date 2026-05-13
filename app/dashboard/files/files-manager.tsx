@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, FieldError } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
+import { LocalTime } from "@/components/ui/local-time";
 import {
   registerStudentFile,
   deleteStudentFile,
@@ -231,7 +232,7 @@ export function FilesManager({
                 )}
                 <div className="text-xs text-white/40">
                   {fmtBytes(f.size_bytes)} ·{" "}
-                  {new Date(f.created_at).toLocaleDateString()}
+                  <LocalTime value={f.created_at} mode="date" />
                 </div>
               </div>
               <div className="flex items-center gap-1">

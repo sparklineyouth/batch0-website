@@ -4,6 +4,7 @@ import { requireUser, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
+import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = { title: "Investor intros · SparkLine" };
 
@@ -191,7 +192,7 @@ function IntroRow({ intro }: { intro: any }) {
           </p>
         )}
         <p className="mt-2 text-[11px] text-white/45">
-          Last update {new Date(intro.updated_at).toLocaleDateString()}
+          Last update <LocalTime value={intro.updated_at} mode="date" />
         </p>
       </div>
       <span

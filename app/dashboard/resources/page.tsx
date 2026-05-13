@@ -3,6 +3,7 @@ import { requireUser, getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { FileText, ExternalLink, Download } from "lucide-react";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
@@ -114,7 +115,7 @@ export default async function DashboardResourcesPage() {
                               )}
                               <span>
                                 Added{" "}
-                                {new Date(r.created_at).toLocaleDateString()}
+                                <LocalTime value={r.created_at} mode="date" />
                               </span>
                             </div>
                           </div>

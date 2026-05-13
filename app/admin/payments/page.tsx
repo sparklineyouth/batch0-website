@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { RefundButton } from "./refund-button";
 
 export const metadata = { title: "Payments · Admin" };
@@ -216,7 +217,7 @@ export default async function AdminPaymentsPage({
                   className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
                 >
                   <td className="px-5 py-3 text-white/70">
-                    {new Date(p.created_at).toLocaleString()}
+                    <LocalTime value={p.created_at} />
                   </td>
                   <td className="px-5 py-3">
                     <div className="text-white">

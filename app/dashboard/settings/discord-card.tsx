@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
 import { discordAvatarUrl } from "@/lib/discord";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -66,10 +67,7 @@ export function DiscordCard({
                 @{profile.discord_username ?? "discord-user"}
               </p>
               <p className="truncate text-xs text-white/45">
-                Linked{" "}
-                {profile.discord_linked_at
-                  ? new Date(profile.discord_linked_at).toLocaleDateString()
-                  : ""}
+                Linked <LocalTime value={profile.discord_linked_at} mode="date" fallback="" />
               </p>
             </div>
           </div>

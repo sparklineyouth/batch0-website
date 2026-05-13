@@ -33,7 +33,12 @@ export type Profile = {
 };
 
 export type ChargeKind = "fee" | "fine";
-export type ChargeStatus = "pending" | "paid" | "waived" | "cancelled";
+export type ChargeStatus =
+  | "pending"
+  | "paid"
+  | "waived"
+  | "cancelled"
+  | "refunded";
 
 export type UserCharge = {
   id: string;
@@ -51,6 +56,10 @@ export type UserCharge = {
   waived_at: string | null;
   waived_by: string | null;
   waiver_reason: string | null;
+  refunded_at: string | null;
+  refunded_by: string | null;
+  refund_reason: string | null;
+  stripe_refund_id: string | null;
 };
 
 export type Cohort_Slug = { slug: string };

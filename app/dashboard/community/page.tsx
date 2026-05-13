@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
 import { discordAvatarUrl, isDiscordEnabled } from "@/lib/discord";
 
 export const metadata = { title: "Community · SparkLine" };
@@ -133,7 +134,7 @@ export default async function CommunityPage() {
                   <p className="mt-0.5 text-sm text-white/65">{n.body}</p>
                 )}
                 <p className="mt-1 text-xs text-white/40">
-                  {new Date(n.created_at).toLocaleString()}
+                  <LocalTime value={n.created_at} />
                 </p>
               </li>
             ))}

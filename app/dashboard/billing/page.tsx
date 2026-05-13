@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { PortalButton } from "./portal-button";
 import { ChargePayButton } from "@/components/charge-pay-button";
 
@@ -79,7 +80,7 @@ export default async function BillingPage() {
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-white/45">
-                    Issued {new Date(c.created_at).toLocaleString()}
+                    Issued <LocalTime value={c.created_at} />
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -114,7 +115,7 @@ export default async function BillingPage() {
               {(payments ?? []).map((p) => (
                 <tr key={p.id} className="border-b border-white/5">
                   <td className="py-3 text-white/80">
-                    {new Date(p.created_at).toLocaleString()}
+                    <LocalTime value={p.created_at} />
                   </td>
                   <td className="py-3 text-white/70">Cohort enrollment</td>
                   <td className="py-3 text-white/80">
@@ -128,7 +129,7 @@ export default async function BillingPage() {
               {history.map((c: any) => (
                 <tr key={c.id} className="border-b border-white/5 last:border-0">
                   <td className="py-3 text-white/80">
-                    {new Date(c.created_at).toLocaleString()}
+                    <LocalTime value={c.created_at} />
                   </td>
                   <td className="py-3 text-white/70">
                     {c.kind === "fine" ? "Fine" : "Fee"}: {c.description}

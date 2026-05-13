@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { ReviewActions } from "./review-actions";
 import { AiScreenButton } from "./ai-screen-button";
 import { getSiteConfig } from "@/lib/site-config";
@@ -63,9 +64,7 @@ export default async function AdminApplicationDetail({
                 )}
                 <p className="mt-2 text-[11px] text-white/30">
                   Scored{" "}
-                  {(app as any).ai_reviewed_at
-                    ? new Date((app as any).ai_reviewed_at).toLocaleString()
-                    : ""}{" "}
+                  <LocalTime value={(app as any).ai_reviewed_at} fallback="" />{" "}
                   · advisory only
                 </p>
               </div>
@@ -94,7 +93,7 @@ export default async function AdminApplicationDetail({
           <Row label="Cohort" value={(app as any).cohort?.name} />
           <Row
             label="Submitted"
-            value={app.submitted_at ? new Date(app.submitted_at).toLocaleString() : "—"}
+            value={app.submitted_at ? <LocalTime value={app.submitted_at} /> : "—"}
           />
         </div>
       </Card>
@@ -153,7 +152,13 @@ export default async function AdminApplicationDetail({
   );
 }
 
-function Row({ label, value }: { label: string; value?: string | null }) {
+function Row({
+  label,
+  value,
+}: {
+  label: string;
+  value?: React.ReactNode;
+}) {
   return (
     <div className="flex items-baseline justify-between border-b border-white/5 py-2 last:border-0">
       <div className="text-xs uppercase tracking-wider text-white/40">{label}</div>

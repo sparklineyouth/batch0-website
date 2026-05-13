@@ -1,6 +1,7 @@
 import { requireUser, getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { CheckinForm } from "./checkin-form";
 import { isoWeekStart, formatWeekRange } from "@/lib/week";
 import { getStudentAccess } from "@/lib/access";
@@ -103,7 +104,7 @@ export default async function CheckinPage() {
                     {formatWeekRange(h.week_start)}
                   </h3>
                   <span className="text-xs text-white/40">
-                    Saved {new Date(h.updated_at).toLocaleDateString()}
+                    Saved <LocalTime value={h.updated_at} mode="date" />
                   </span>
                 </div>
                 <ReadOnlyField label="Accomplished" value={h.accomplished} />
@@ -166,7 +167,7 @@ function FeedbackList({
             >
               <div className="flex items-baseline justify-between text-xs text-white/45">
                 <span>{author?.full_name ?? author?.email ?? "Mentor"}</span>
-                <span>{new Date(f.created_at).toLocaleString()}</span>
+                <span><LocalTime value={f.created_at} /></span>
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-white/85 break-words [overflow-wrap:anywhere]">
                 {f.body}

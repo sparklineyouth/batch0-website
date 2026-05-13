@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { Plus, FileText, ExternalLink } from "lucide-react";
 
 export const metadata = { title: "Resources · Admin" };
@@ -98,7 +99,7 @@ export default async function AdminResourcesPage() {
                       {fmtBytes(r.size_bytes)}
                     </td>
                     <td className="px-5 py-3 text-white/45">
-                      {new Date(r.created_at).toLocaleDateString()}
+                      <LocalTime value={r.created_at} mode="date" />
                     </td>
                     <td className="px-5 py-3 text-right">
                       <Link

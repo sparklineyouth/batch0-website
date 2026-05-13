@@ -43,7 +43,11 @@ export function SettingsForm({
           contact_email: values.contact_email.trim(),
           discord_url: values.discord_url.trim(),
         };
-        await saveSiteSettings(payload);
+        const res = await saveSiteSettings(payload);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
         setValues(payload);
         setSaved(true);
       } catch (e: any) {

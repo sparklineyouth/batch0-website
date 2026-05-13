@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { TeamThread } from "@/components/team-thread";
 import { ScoreCard } from "./score-card";
 import { IntroRequestButton } from "./intro-request-button";
@@ -129,8 +130,7 @@ export default async function InvestorTeamDetailPage({
           <h2 className="text-base font-semibold">Pitch</h2>
           {(pitch as any).submitted_at ? (
             <div className="mt-1 text-xs text-emerald-300">
-              Submitted on{" "}
-              {new Date((pitch as any).submitted_at).toLocaleString()}
+              Submitted on <LocalTime value={(pitch as any).submitted_at} />
             </div>
           ) : (
             <div className="mt-1 text-xs text-white/40">In progress</div>

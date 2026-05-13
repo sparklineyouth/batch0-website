@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
@@ -86,7 +87,7 @@ export default async function VerifyCertificatePage({
             Issued
           </p>
           <p className="mt-1 text-sm text-white/80">
-            {new Date(cert.issued_at).toLocaleDateString()}
+            <LocalTime value={cert.issued_at} mode="date" />
           </p>
           <p className="mt-1 text-[11px] font-mono text-white/40">
             Code: {cert.code}

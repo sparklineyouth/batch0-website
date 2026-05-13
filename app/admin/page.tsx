@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import {
   ArrowRight,
   Inbox,
@@ -19,15 +20,6 @@ function fmtMoney(cents: number) {
   }).format(cents / 100);
 }
 
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 export default async function AdminOverview() {
   const admin = createAdminClient();
 
@@ -37,6 +29,7 @@ export default async function AdminOverview() {
     { count: acceptedApps },
     { count: enrolledCount },
     { data: paymentsData },
+    { data: chargesData },
     { data: recentApps },
   ] = await Promise.all([
     admin.from("applications").select("id", { count: "exact", head: true }),
@@ -53,6 +46,11 @@ export default async function AdminOverview() {
       .from("payments")
       .select("amount_cents,status")
       .eq("status", "succeeded"),
+    // Paid fees/fines count toward revenue too; refunded rows don't.
+    admin
+      .from("user_charges")
+      .select("amount_cents,status")
+      .eq("status", "paid"),
     admin
       .from("applications")
       .select("id, full_name, status, submitted_at, created_at")
@@ -60,10 +58,15 @@ export default async function AdminOverview() {
       .limit(8),
   ]);
 
-  const revenueCents = (paymentsData ?? []).reduce(
+  const enrollmentRevenueCents = (paymentsData ?? []).reduce(
     (sum, p) => sum + (p.amount_cents ?? 0),
     0,
   );
+  const chargesRevenueCents = (chargesData ?? []).reduce(
+    (sum, c) => sum + (c.amount_cents ?? 0),
+    0,
+  );
+  const revenueCents = enrollmentRevenueCents + chargesRevenueCents;
 
   const inboxItems = [
     {
@@ -144,6 +147,11 @@ export default async function AdminOverview() {
           icon={CheckCircle}
           label="Revenue"
           value={fmtMoney(revenueCents)}
+          hint={
+            chargesRevenueCents > 0
+              ? `Enrollments ${fmtMoney(enrollmentRevenueCents)} + fees/fines ${fmtMoney(chargesRevenueCents)}`
+              : undefined
+          }
         />
       </section>
 
@@ -177,7 +185,10 @@ export default async function AdminOverview() {
                       {a.full_name || "Unnamed applicant"}
                     </p>
                     <p className="mt-0.5 text-xs text-white/55">
-                      {fmtTime(a.submitted_at || a.created_at)}
+                      <LocalTime
+                        value={a.submitted_at || a.created_at}
+                        mode="datetime-short"
+                      />
                     </p>
                   </div>
                   <StatusBadge status={a.status} />
@@ -196,10 +207,12 @@ function Metric({
   icon: Icon,
   label,
   value,
+  hint,
 }: {
   icon: any;
   label: string;
   value: string;
+  hint?: string;
 }) {
   return (
     <div>
@@ -210,6 +223,9 @@ function Metric({
       <div className="mt-2 text-3xl md:text-4xl font-semibold tracking-tight text-white">
         {value}
       </div>
+      {hint && (
+        <div className="mt-1 text-[11px] text-white/45">{hint}</div>
+      )}
     </div>
   );
 }

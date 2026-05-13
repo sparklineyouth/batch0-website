@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, FieldError, Label } from "@/components/ui/input";
+import { LocalTime } from "@/components/ui/local-time";
 import { Search, X, UserMinus } from "lucide-react";
 import {
   searchStudentsForInvite,
@@ -360,7 +361,7 @@ export function TeamMembersTab({
                       {p?.full_name ?? p?.email}
                     </div>
                     <div className="text-xs text-white/40">
-                      Sent {new Date(inv.created_at).toLocaleDateString()}
+                      Sent <LocalTime value={inv.created_at} mode="date" />
                     </div>
                   </div>
                   <button

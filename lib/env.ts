@@ -24,6 +24,16 @@ export const env = {
 
   cronSecret: process.env.CRON_SECRET,
 
+  // Email (Resend). Optional — the app falls back to a console-log stub
+  // when these aren't set, so local dev keeps working without a key.
+  resendApiKey: process.env.RESEND_API_KEY,
+  // The verified `From:` address Resend sends as. Must be on a domain
+  // you've verified in the Resend dashboard (e.g. "SparkLine
+  // <hello@sparklineyouth.org>"). Falls back to onboarding@resend.dev
+  // for first-run testing only.
+  resendFrom:
+    process.env.RESEND_FROM ?? "SparkLine <onboarding@resend.dev>",
+
   discordBotToken: process.env.DISCORD_BOT_TOKEN,
   discordGuildId: process.env.DISCORD_GUILD_ID,
   discordRoleStudent: process.env.DISCORD_ROLE_STUDENT,

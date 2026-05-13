@@ -105,13 +105,16 @@ export async function bookSlot(input: { slotId: string; topic?: string }) {
       .eq("id", userId)
       .maybeSingle();
     const who = profile?.full_name ?? profile?.email ?? "A student";
+    // Notification body bakes at creation time and we don't know the
+    // recipient's timezone. Keep it short and let them click through —
+    // /mentor/office-hours renders the slot in their local zone.
     await notify({
       userId: slot.mentor_id,
       type: "office_hours_booked",
       title: `${who} booked office hours`,
-      body: `${new Date(slot.starts_at).toLocaleString()}${
-        input.topic ? ` · "${input.topic.slice(0, 80)}"` : ""
-      }`,
+      body: input.topic
+        ? `Topic: "${input.topic.slice(0, 80)}"`
+        : "Open office hours to see the time.",
       link: "/mentor/office-hours",
     });
   } catch {}

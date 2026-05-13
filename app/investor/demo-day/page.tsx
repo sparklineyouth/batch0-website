@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = { title: "Demo Day · Investor" };
 
@@ -69,7 +70,7 @@ export default async function InvestorDemoDayPage() {
                     )}
                     <p className="mt-1 text-xs text-white/40">
                       {cohort?.name ?? ""} · Submitted{" "}
-                      {new Date(s.submitted_at).toLocaleDateString()}
+                      <LocalTime value={s.submitted_at} mode="date" />
                     </p>
                   </div>
                   <span

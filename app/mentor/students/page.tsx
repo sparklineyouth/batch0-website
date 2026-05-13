@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = { title: "Students · Mentor" };
 
@@ -97,7 +98,7 @@ export default async function MentorStudentsPage({
                     {e.cohort?.name ?? "—"}
                   </td>
                   <td className="px-5 py-3 text-white/50">
-                    {new Date(e.enrolled_at).toLocaleDateString()}
+                    <LocalTime value={e.enrolled_at} mode="date" />
                   </td>
                   <td className="px-5 py-3 text-white/80">
                     {completedByUser.get(e.profile?.id) ?? 0}

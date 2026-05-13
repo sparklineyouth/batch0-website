@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { ChargeManager } from "./charge-manager";
 
 export const metadata = { title: "Fees & fines · Admin" };
 
-const STATUSES = ["all", "pending", "paid", "waived", "cancelled"] as const;
+const STATUSES = [
+  "all",
+  "pending",
+  "paid",
+  "waived",
+  "cancelled",
+  "refunded",
+] as const;
 
 function fmt(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -112,7 +120,7 @@ export default async function AdminChargesPage({
                     className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
                   >
                     <td className="px-5 py-3 text-white/60">
-                      {new Date(c.created_at).toLocaleString()}
+                      <LocalTime value={c.created_at} />
                     </td>
                     <td className="px-5 py-3">
                       <div className="text-white">
@@ -141,8 +149,8 @@ export default async function AdminChargesPage({
                       <StatusBadge status={c.status} />
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {c.status === "pending" && (
-                        <ChargeRowActions chargeId={c.id} />
+                      {(c.status === "pending" || c.status === "paid") && (
+                        <ChargeRowActions chargeId={c.id} status={c.status} />
                       )}
                     </td>
                   </tr>

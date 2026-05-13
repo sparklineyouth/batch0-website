@@ -12,6 +12,7 @@ import {
 import { getActionError } from "@/lib/action-error";
 import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
+import { LocalTime } from "@/components/ui/local-time";
 import { saveEvent, deleteEvent, type EventInput } from "./actions";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 
@@ -147,7 +148,7 @@ export function EventsManager({
                 {cohort?.name ?? (e.cohort_id ? "—" : "Any")}
               </td>
               <td className="py-3 text-white/70">
-                {new Date(e.starts_at).toLocaleString()}
+                <LocalTime value={e.starts_at} />
               </td>
               <td className="py-3 text-white/60">{e.visibility}</td>
               <td className="py-3 text-right">

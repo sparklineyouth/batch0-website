@@ -140,6 +140,69 @@ export async function waiveCharge(chargeId: string, reason: string) {
   revalidatePath("/dashboard/billing");
 }
 
+export async function refundCharge(chargeId: string, reason?: string) {
+  const { userId } = await assertAdmin();
+  await assertRecentMfa("charge.refund");
+  const admin = createAdminClient();
+  const { data: existing, error: fetchErr } = await admin
+    .from("user_charges")
+    .select(
+      "user_id, status, kind, description, amount_cents, stripe_payment_intent_id",
+    )
+    .eq("id", chargeId)
+    .single();
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (existing.status !== "paid") {
+    throw new Error(`Only paid charges can be refunded (status: ${existing.status}).`);
+  }
+  if (!existing.stripe_payment_intent_id) {
+    throw new Error("No Stripe payment intent recorded for this charge.");
+  }
+
+  const refund = await stripe.refunds.create({
+    payment_intent: existing.stripe_payment_intent_id,
+    reason: "requested_by_customer",
+    metadata: reason ? { admin_reason: reason } : undefined,
+  });
+
+  // Mark optimistically; the charge.refunded webhook will also update.
+  const { error: updateErr } = await admin
+    .from("user_charges")
+    .update({
+      status: "refunded",
+      refunded_at: new Date().toISOString(),
+      refunded_by: userId,
+      refund_reason: reason?.trim() || null,
+      stripe_refund_id: refund.id,
+    })
+    .eq("id", chargeId);
+  if (updateErr) throw new Error(updateErr.message);
+
+  await logAudit({
+    action: `charge.${existing.kind}_refunded`,
+    targetType: "user_charge",
+    targetId: chargeId,
+    payload: {
+      amount_cents: existing.amount_cents,
+      stripe_refund_id: refund.id,
+      reason: reason ?? null,
+    },
+  });
+  await notify({
+    userId: existing.user_id,
+    type: "charge_refunded",
+    title: `${existing.kind === "fine" ? "Fine" : "Fee"} refunded: ${existing.description}`,
+    body: `$${(existing.amount_cents / 100).toFixed(2)} returned to your card.`,
+    link: "/dashboard/billing",
+  });
+
+  revalidatePath("/admin/charges");
+  revalidatePath(`/admin/charges?user=${existing.user_id}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/billing");
+  return { ok: true as const, refundId: refund.id };
+}
+
 export async function cancelCharge(chargeId: string) {
   await assertAdmin();
   await assertRecentMfa("charge.cancel");

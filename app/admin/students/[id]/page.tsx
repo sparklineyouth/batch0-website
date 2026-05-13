@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getProfile } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { RoleSelect } from "../role-select";
 import { ManagePanel } from "./manage-panel";
 import { discordAvatarUrl } from "@/lib/discord";
@@ -91,7 +92,7 @@ export default async function AdminStudentDetail({
           </h1>
           <p className="mt-1 text-sm text-white/55">{profile.email}</p>
           <p className="mt-1 text-xs text-white/40">
-            Joined {new Date(profile.created_at).toLocaleDateString()}
+            Joined <LocalTime value={profile.created_at} mode="date" />
             {referralsEnabled && (
               <>
                 {" · "}Referral code{" "}
@@ -175,9 +176,7 @@ export default async function AdminStudentDetail({
                   className="border-b border-white/5 last:border-0"
                 >
                   <td className="px-5 py-3 text-white/70">
-                    {a.submitted_at
-                      ? new Date(a.submitted_at).toLocaleString()
-                      : "—"}
+                    <LocalTime value={a.submitted_at} />
                   </td>
                   <td className="px-5 py-3 text-white/70">
                     {a.cohort?.name ?? "—"}
@@ -226,7 +225,7 @@ export default async function AdminStudentDetail({
                   className="border-b border-white/5 last:border-0"
                 >
                   <td className="px-5 py-3 text-white/70">
-                    {new Date(p.created_at).toLocaleString()}
+                    <LocalTime value={p.created_at} />
                   </td>
                   <td className="px-5 py-3 text-white/80">
                     {fmtMoney(p.amount_cents, p.currency)}
@@ -276,7 +275,7 @@ export default async function AdminStudentDetail({
                   className="border-b border-white/5 last:border-0"
                 >
                   <td className="px-5 py-3 text-white/70">
-                    {new Date(c.created_at).toLocaleDateString()}
+                    <LocalTime value={c.created_at} mode="date" />
                   </td>
                   <td className="px-5 py-3 text-white/70 capitalize">
                     {c.kind}

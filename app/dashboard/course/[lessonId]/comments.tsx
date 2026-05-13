@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
+import { LocalTime } from "@/components/ui/local-time";
 import { postLessonComment, deleteLessonComment } from "./comments-actions";
 import { MessageSquare, Trash2, CornerDownRight } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
@@ -113,7 +114,7 @@ function CommentItem({
           </span>
         )}
         <span className="text-xs text-white/40">
-          {new Date(comment.created_at).toLocaleString()}
+          <LocalTime value={comment.created_at} />
         </span>
       </div>
       <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-white/80">

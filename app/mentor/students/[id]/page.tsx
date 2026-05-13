@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireMentor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { ArrowLeft, BookOpen, CheckCircle, MessageSquare, Rocket, FolderOpen } from "lucide-react";
 import { FileFeedbackPanel } from "./file-feedback-panel";
 
@@ -194,7 +195,7 @@ export default async function StudentProgressPage({
               <li key={c.id}>
                 {c.title ?? "Untitled conversation"}{" "}
                 <span className="text-xs text-white/40">
-                  · {new Date(c.created_at).toLocaleDateString()}
+                  · <LocalTime value={c.created_at} mode="date" />
                 </span>
               </li>
             ))}

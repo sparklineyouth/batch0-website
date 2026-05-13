@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = { title: "Audit log · Admin" };
 
@@ -94,7 +95,7 @@ export default async function AuditLogPage({
                   className="border-b border-white/5 last:border-0"
                 >
                   <td className="px-5 py-3 text-white/60">
-                    {new Date(r.created_at).toLocaleString()}
+                    <LocalTime value={r.created_at} />
                   </td>
                   <td className="px-5 py-3 text-white/70">
                     {r.actor_email ?? "—"}

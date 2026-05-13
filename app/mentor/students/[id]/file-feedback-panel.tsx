@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea, FieldError } from "@/components/ui/input";
+import { LocalTime } from "@/components/ui/local-time";
 import { Download, FileText, MessageSquare } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getDownloadUrl } from "@/app/dashboard/files/actions";
@@ -150,7 +151,7 @@ export function FileFeedbackPanel({
                     <div className="truncate">{f.name}</div>
                     <div className="text-[11px] text-white/40">
                       {fmtBytes(f.size_bytes)} ·{" "}
-                      {new Date(f.created_at).toLocaleDateString()}
+                      <LocalTime value={f.created_at} mode="date" />
                     </div>
                   </div>
                 </button>

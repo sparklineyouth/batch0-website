@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea, FieldError } from "@/components/ui/input";
+import { LocalTime } from "@/components/ui/local-time";
 import { Video, CheckCircle2 } from "lucide-react";
 import { bookSlot, cancelBooking } from "@/app/mentor/office-hours/actions";
 import { getActionError } from "@/lib/action-error";
@@ -58,7 +59,7 @@ export function SlotsList({ slots }: { slots: any[] }) {
                   {mentor?.full_name ?? mentor?.email}
                 </h3>
                 <p className="text-xs text-white/55">
-                  {new Date(s.starts_at).toLocaleString()} · {duration} min
+                  <LocalTime value={s.starts_at} /> · {duration} min
                 </p>
                 {s.notes && (
                   <p className="mt-2 text-sm text-white/65">{s.notes}</p>

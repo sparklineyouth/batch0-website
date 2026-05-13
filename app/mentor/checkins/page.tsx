@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { CheckinFeedbackForm } from "./feedback-form";
 import { isoWeekStart, formatWeekRange } from "@/lib/week";
 
@@ -119,7 +120,7 @@ export default async function MentorCheckinsPage({
                     </h3>
                     <p className="text-xs text-white/45">
                       {cohort?.name ?? "Unassigned cohort"} · Saved{" "}
-                      {new Date(c.updated_at).toLocaleString()}
+                      <LocalTime value={c.updated_at} />
                     </p>
                   </div>
                 </div>
@@ -147,7 +148,7 @@ export default async function MentorCheckinsPage({
                                 {author?.full_name ?? author?.email ?? "Mentor"}
                               </span>
                               <span>
-                                {new Date(f.created_at).toLocaleString()}
+                                <LocalTime value={f.created_at} />
                               </span>
                             </div>
                             <p className="mt-1 whitespace-pre-wrap text-sm text-white/85 break-words [overflow-wrap:anywhere]">

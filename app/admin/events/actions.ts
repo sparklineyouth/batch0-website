@@ -71,7 +71,11 @@ export async function saveEvent(input: EventInput, notify: boolean) {
           userId: e.user_id,
           type: "event_posted",
           title: input.title,
-          body: `Starts ${new Date(input.starts_at).toLocaleString()}`,
+          // Notification body is a fixed string baked at creation
+          // time, and we don't know the recipient's timezone. Keep the
+          // copy generic and let them click through to /dashboard/events,
+          // where times render in the viewer's local zone.
+          body: "New event posted. Open events to see when it starts.",
           link: "/dashboard/events",
         })),
       );

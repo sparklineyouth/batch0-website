@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError, Textarea } from "@/components/ui/input";
+import { LocalTime } from "@/components/ui/local-time";
 import { createSlot, deleteSlot, cancelBooking } from "./actions";
 import { Trash2, Video, X } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
@@ -132,7 +133,7 @@ export function SlotsManager({ slots }: { slots: any[] }) {
               >
                 <div className="min-w-0">
                   <div className="text-sm font-medium">
-                    {new Date(s.starts_at).toLocaleString()} ·{" "}
+                    <LocalTime value={s.starts_at} /> ·{" "}
                     <span className="text-white/40">
                       {Math.round(
                         (new Date(s.ends_at).getTime() -

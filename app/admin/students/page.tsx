@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { RoleSelect } from "./role-select";
 import type { Role } from "@/lib/types";
 
@@ -116,7 +117,7 @@ export default async function AdminStudentsPage({
                     )}
                   </td>
                   <td className="px-5 py-3 text-white/50">
-                    {new Date(p.created_at).toLocaleDateString()}
+                    <LocalTime value={p.created_at} mode="date" />
                   </td>
                   <td className="px-5 py-3 text-right">
                     <Link

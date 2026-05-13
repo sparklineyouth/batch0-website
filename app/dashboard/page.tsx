@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth";
 import { StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { Button } from "@/components/ui/button";
 import { ReferralCard } from "./referral-card";
 import { ChargePayButton } from "@/components/charge-pay-button";
@@ -141,7 +142,7 @@ export default async function DashboardHome() {
                     {name} wired your team{team?.name ? ` (${team.name})` : ""}
                   </p>
                   <p className="mt-0.5 text-xs text-emerald-200/75">
-                    Funds received {new Date(i.updated_at).toLocaleDateString()}.
+                    Funds received <LocalTime value={i.updated_at} mode="date" />.
                     Open intros for next steps.
                   </p>
                 </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = { title: "Applications · Admin" };
 
@@ -91,9 +92,7 @@ export default async function AdminApplicationsPage({
                   <StatusBadge status={a.status} />
                 </div>
                 <div className="text-white/50">
-                  {a.submitted_at
-                    ? new Date(a.submitted_at).toLocaleDateString()
-                    : "—"}
+                  <LocalTime value={a.submitted_at} mode="date" />
                 </div>
               </Link>
             ))}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = { title: "Intros · Investor" };
 
@@ -75,7 +76,7 @@ export default async function InvestorIntrosPage() {
                     </p>
                   )}
                   <p className="mt-2 text-xs text-white/40">
-                    Requested {new Date(r.created_at).toLocaleDateString()}
+                    Requested <LocalTime value={r.created_at} mode="date" />
                   </p>
                   {r.message && (
                     <p className="mt-2 whitespace-pre-wrap text-sm text-white/75">

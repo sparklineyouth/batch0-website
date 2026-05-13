@@ -3,6 +3,7 @@ import { useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { FieldError } from "@/components/ui/input";
+import { LocalTime } from "@/components/ui/local-time";
 import { createClient } from "@/lib/supabase/client";
 import {
   Upload,
@@ -170,7 +171,7 @@ export function TeamDriveTab({
                   <div className="truncate text-sm text-white">{f.name}</div>
                   <div className="text-xs text-white/40">
                     {fmtBytes(f.size_bytes)} ·{" "}
-                    {new Date(f.created_at).toLocaleDateString()}
+                    <LocalTime value={f.created_at} mode="date" />
                   </div>
                 </div>
                 <button

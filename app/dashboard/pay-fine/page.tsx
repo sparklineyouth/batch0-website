@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { AlertTriangle } from "lucide-react";
 
@@ -67,7 +68,7 @@ export default async function PayFinePage() {
                     {f.description}
                   </h3>
                   <p className="mt-1 text-xs text-white/45">
-                    Issued {new Date(f.created_at).toLocaleString()}
+                    Issued <LocalTime value={f.created_at} />
                   </p>
                 </div>
                 <div className="text-right">
