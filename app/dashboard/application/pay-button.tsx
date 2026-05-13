@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { getActionError } from "@/lib/action-error";
 
 export function PayButton({ applicationId }: { applicationId: string }) {
   const [loading, setLoading] = useState(false);
@@ -19,7 +20,7 @@ export function PayButton({ applicationId }: { applicationId: string }) {
       if (!res.ok || !data.url) throw new Error(data.error || "Could not start checkout");
       window.location.href = data.url;
     } catch (e: any) {
-      setError(e.message);
+      setError(getActionError(e));
       setLoading(false);
     }
   }

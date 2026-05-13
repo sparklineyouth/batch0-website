@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, FieldError } from "@/components/ui/input";
 import { createTeam } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 export function CreateTeamForm() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export function CreateTeamForm() {
         await createTeam({ name });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

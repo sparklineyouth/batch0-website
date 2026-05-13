@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, Select } from "@/components/ui/input";
 import { saveSiteSettings, type SiteSettingsInput } from "./actions";
 import { Toggle } from "@/components/ui/toggle";
+import { getActionError } from "@/lib/action-error";
 
 type Cohort = { id: string; name: string; status: string };
 
@@ -46,7 +47,7 @@ export function SettingsForm({
         setValues(payload);
         setSaved(true);
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

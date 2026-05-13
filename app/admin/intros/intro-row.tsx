@@ -37,14 +37,18 @@ export function IntroRow({ row }: { row: any }) {
     setErr(undefined);
     start(async () => {
       try {
-        await updateIntroStatus({
+        const result = await updateIntroStatus({
           introId: row.id,
           status: status as any,
           adminNotes: notes,
         });
+        if (!result.ok) {
+          setErr(result.error);
+          return;
+        }
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(e?.message || "Couldn't update intro. Try again.");
       }
     });
   }

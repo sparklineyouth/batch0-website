@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea, FieldError } from "@/components/ui/input";
 import { Video, CheckCircle2 } from "lucide-react";
 import { bookSlot, cancelBooking } from "@/app/mentor/office-hours/actions";
+import { getActionError } from "@/lib/action-error";
 
 export function SlotsList({ slots }: { slots: any[] }) {
   const router = useRouter();
@@ -23,7 +24,7 @@ export function SlotsList({ slots }: { slots: any[] }) {
         setTopic("");
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }
@@ -34,7 +35,7 @@ export function SlotsList({ slots }: { slots: any[] }) {
         await cancelBooking({ bookingId });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

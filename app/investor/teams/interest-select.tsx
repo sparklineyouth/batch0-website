@@ -41,11 +41,16 @@ export function InterestSelect({
     setError(undefined);
     start(async () => {
       try {
-        await setInterest(teamId, next === "" ? null : next);
+        const result = await setInterest(teamId, next === "" ? null : next);
+        if (!result.ok) {
+          setLevel(previous);
+          setError(result.error);
+          return;
+        }
         router.refresh();
       } catch (err: any) {
         setLevel(previous);
-        setError(err.message);
+        setError(err?.message || "Couldn't update interest. Try again.");
       }
     });
   }

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Undo2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { refundPayment } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 export function RefundButton({
   paymentId,
@@ -25,7 +26,7 @@ export function RefundButton({
         setOpen(false);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

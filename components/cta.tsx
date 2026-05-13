@@ -32,7 +32,7 @@ export default function CTA({ config }: { config: SiteConfig }) {
         >
           <div className="flex flex-col justify-between gap-6">
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/60">
                 Application
               </p>
               <p className="mt-2 text-5xl md:text-6xl font-bold tracking-[-0.03em] text-white">
@@ -43,12 +43,12 @@ export default function CTA({ config }: { config: SiteConfig }) {
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/60">
                 Tuition if accepted
               </p>
               <p className="mt-2 text-3xl font-semibold tracking-tight text-white">
                 {derived.priceLabel}{" "}
-                <span className="text-base font-normal text-white/55">
+                <span className="text-base font-normal text-white/65">
                   one-time
                 </span>
               </p>
@@ -70,7 +70,7 @@ export default function CTA({ config }: { config: SiteConfig }) {
                 Start your application
                 <span aria-hidden>→</span>
               </Link>
-              <p className="mt-3 text-center text-xs text-white/55">
+              <p className="mt-3 text-center text-xs text-white/65">
                 Rolling admissions · Reviewed weekly · Already applied?{" "}
                 <Link
                   href="/login"
@@ -83,7 +83,7 @@ export default function CTA({ config }: { config: SiteConfig }) {
           </div>
         </Reveal>
 
-        <p className="mt-8 text-center text-xs text-white/55">
+        <p className="mt-8 text-center text-xs text-white/65">
           Questions?{" "}
           <a
             href={`mailto:${settings.contactEmail}`}

@@ -5,6 +5,7 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { Textarea, Label } from "@/components/ui/input";
 import { waiveCharge, cancelCharge } from "./actions";
 import { Check, X } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 export function ChargeRowActions({ chargeId }: { chargeId: string }) {
   const router = useRouter();
@@ -25,7 +26,7 @@ export function ChargeRowActions({ chargeId }: { chargeId: string }) {
         setReason("");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

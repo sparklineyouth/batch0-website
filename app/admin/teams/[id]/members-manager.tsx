@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Label } from "@/components/ui/input";
 import { addTeamMember, removeTeamMember } from "../actions";
 import { Plus, Trash2 } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 type Member = {
   id: string;
@@ -46,7 +47,7 @@ export function MembersManager({
         setUserId("");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -58,7 +59,7 @@ export function MembersManager({
         await removeTeamMember(id);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

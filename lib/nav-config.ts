@@ -94,6 +94,20 @@ export const STUDENT_NAV: NavItem[] = STUDENT_NAV_GROUPS.flatMap(
   (g) => g.items,
 );
 
+// Routes that only resolve once a student is enrolled in a cohort. Used by
+// both the desktop sidebar and the mobile drawer to hide dead-end links
+// before enrollment — keep this list as the single source of truth.
+export const ENROLLED_ONLY_HREFS = new Set<string>([
+  "/dashboard/course",
+  "/dashboard/team",
+  "/dashboard/checkin",
+  "/dashboard/office-hours",
+  "/dashboard/events",
+  "/dashboard/resources",
+  "/dashboard/files",
+  "/dashboard/intros",
+]);
+
 // ---------------------------------------------------------------------------
 // Admin
 // ---------------------------------------------------------------------------

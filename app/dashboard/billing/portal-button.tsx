@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { getActionError } from "@/lib/action-error";
 
 export function PortalButton() {
   const [loading, setLoading] = useState(false);
@@ -15,7 +16,7 @@ export function PortalButton() {
       if (!res.ok || !data.url) throw new Error(data.error ?? "Failed");
       window.location.href = data.url;
     } catch (e: any) {
-      setError(e.message);
+      setError(getActionError(e));
       setLoading(false);
     }
   }

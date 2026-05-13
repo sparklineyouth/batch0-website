@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { Sparkles, Send, Loader2 } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -74,7 +75,7 @@ export function AiChat({
       }
       router.refresh();
     } catch (e: any) {
-      setError(e.message);
+      setError(getActionError(e));
     } finally {
       setStreaming(false);
     }

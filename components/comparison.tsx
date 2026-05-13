@@ -89,12 +89,12 @@ export default function Comparison({ config }: { config: SiteConfig }) {
         >
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-white/10 bg-white/[0.02] text-[11px] uppercase tracking-[0.2em] text-white/45">
-                <th className="px-6 py-4 font-medium">Program</th>
-                <th className="px-6 py-4 font-medium">Cost</th>
-                <th className="px-6 py-4 font-medium">Real investors</th>
-                <th className="px-6 py-4 font-medium">Virtual</th>
-                <th className="px-6 py-4 font-medium">Year-round</th>
+              <tr className="border-b border-white/10 bg-white/[0.02] text-[11px] uppercase tracking-[0.18em] text-white/60">
+                <th scope="col" className="px-6 py-4 font-medium">Program</th>
+                <th scope="col" className="px-6 py-4 font-medium">Cost</th>
+                <th scope="col" className="px-6 py-4 font-medium">Real investors</th>
+                <th scope="col" className="px-6 py-4 font-medium">Virtual</th>
+                <th scope="col" className="px-6 py-4 font-medium">Year-round</th>
               </tr>
             </thead>
             <tbody>
@@ -171,15 +171,15 @@ export default function Comparison({ config }: { config: SiteConfig }) {
                 </span>
               </div>
               <dl className="mt-4 grid grid-cols-3 gap-x-3 gap-y-2 text-[12px]">
-                <dt className="text-white/45">Investors</dt>
+                <dt className="text-white/60">Investors</dt>
                 <dd className="col-span-2">
                   <ValueCell value={r.investors} />
                 </dd>
-                <dt className="text-white/45">Virtual</dt>
+                <dt className="text-white/60">Virtual</dt>
                 <dd className="col-span-2">
                   <ValueCell value={r.virtual} />
                 </dd>
-                <dt className="text-white/45">Year-round</dt>
+                <dt className="text-white/60">Year-round</dt>
                 <dd className="col-span-2">
                   <ValueCell value={r.yearRound} />
                 </dd>

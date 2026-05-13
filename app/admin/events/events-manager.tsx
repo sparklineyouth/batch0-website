@@ -9,6 +9,7 @@ import {
   Select,
   FieldError,
 } from "@/components/ui/input";
+import { getActionError } from "@/lib/action-error";
 import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveEvent, deleteEvent, type EventInput } from "./actions";
@@ -62,7 +63,7 @@ export function EventsManager({
         setEditing(null);
         router.refresh();
       } catch (err: any) {
-        setError(err.message);
+        setError(getActionError(err));
       }
     });
   }
@@ -77,7 +78,7 @@ export function EventsManager({
         setConfirmDeleteId(null);
         router.refresh();
       } catch (err: any) {
-        setError(err.message);
+        setError(getActionError(err));
       }
     });
   }

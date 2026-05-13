@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea, FieldError } from "@/components/ui/input";
 import { postCheckinFeedback } from "@/app/dashboard/checkin/actions";
+import { getActionError } from "@/lib/action-error";
 
 export function CheckinFeedbackForm({ checkinId }: { checkinId: string }) {
   const router = useRouter();
@@ -19,7 +20,7 @@ export function CheckinFeedbackForm({ checkinId }: { checkinId: string }) {
         setBody("");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

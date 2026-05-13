@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import { saveAiContext } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 const FIELDS: { key: string; label: string; multiline?: boolean }[] = [
   { key: "startup_name", label: "Startup name" },
@@ -38,7 +39,7 @@ export function ContextEditor({
         setSaved(true);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

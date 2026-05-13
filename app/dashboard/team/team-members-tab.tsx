@@ -11,6 +11,7 @@ import {
   cancelInvite,
   removeTeamMember,
 } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 type Member = {
   id: string;
@@ -64,7 +65,7 @@ export function TeamMembersTab({
       });
       setResults(r);
     } catch (e: any) {
-      setErr(e.message);
+      setErr(getActionError(e));
     } finally {
       setSearching(false);
     }
@@ -86,7 +87,7 @@ export function TeamMembersTab({
         setResults([]);
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }
@@ -100,7 +101,7 @@ export function TeamMembersTab({
         });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }
@@ -111,7 +112,7 @@ export function TeamMembersTab({
         await cancelInvite({ inviteId });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

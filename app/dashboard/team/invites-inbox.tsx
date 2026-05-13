@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/input";
 import { respondToInvite } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 type Invite = {
   id: string;
@@ -28,7 +29,7 @@ export function InvitesInbox({ invites }: { invites: Invite[] }) {
         await respondToInvite({ inviteId: id, accept });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       } finally {
         setActive(null);
       }

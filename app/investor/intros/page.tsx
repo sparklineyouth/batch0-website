@@ -52,16 +52,23 @@ export default async function InvestorIntrosPage() {
         )}
         {(rows ?? []).map((r: any) => {
           const t = Array.isArray(r.team) ? r.team[0] : r.team;
+          const teamHref = t?.id ? `/investor/teams/${t.id}` : null;
           return (
             <Card key={r.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/investor/teams/${t.id}`}
-                    className="text-base font-semibold text-white hover:text-spark"
-                  >
-                    {t?.name}
-                  </Link>
+                  {teamHref ? (
+                    <Link
+                      href={teamHref}
+                      className="text-base font-semibold text-white hover:text-spark"
+                    >
+                      {t?.name ?? "Untitled team"}
+                    </Link>
+                  ) : (
+                    <span className="text-base font-semibold text-white/60">
+                      {t?.name ?? "Team removed"}
+                    </span>
+                  )}
                   {t?.tagline && (
                     <p className="mt-0.5 text-sm text-white/55">
                       {t.tagline}

@@ -9,6 +9,7 @@ import {
   Select,
   FieldError,
 } from "@/components/ui/input";
+import { getActionError } from "@/lib/action-error";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveResource, deleteResource, type ResourceInput } from "./actions";
 import { getUploadToken } from "@/app/admin/course/upload-actions";
@@ -63,7 +64,7 @@ export function ResourceForm({
         mime_type: file.type || null,
       }));
     } catch (e: any) {
-      setError(e.message);
+      setError(getActionError(e));
     } finally {
       setUploading(false);
     }
@@ -77,7 +78,7 @@ export function ResourceForm({
         router.push("/admin/resources");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -91,7 +92,7 @@ export function ResourceForm({
         router.push("/admin/resources");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
         setConfirmDelete(false);
       }
     });

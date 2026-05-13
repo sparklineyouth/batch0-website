@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea, Label, FieldError } from "@/components/ui/input";
 import { submitCheckin } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 export function CheckinForm({
   initial,
@@ -33,7 +34,7 @@ export function CheckinForm({
         setOkMsg("Check-in saved. Your mentor will be notified.");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

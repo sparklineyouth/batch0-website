@@ -65,7 +65,7 @@ export default function Hero({
           </a>
         </div>
         {!isAuthed && (
-          <p className="mt-3 text-xs text-white/55">
+          <p className="mt-3 text-xs text-white/65">
             Free to apply. Pay {derived.priceLabel} only if accepted.
           </p>
         )}
@@ -101,13 +101,13 @@ function ProofStat({
 }) {
   return (
     <div>
-      <dt className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+      <dt className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/60">
         {label}
       </dt>
       <dd className="mt-1.5 text-2xl md:text-3xl font-semibold tracking-tight text-white">
         {value}
       </dd>
-      <dd className="mt-0.5 text-xs text-white/55">{sub}</dd>
+      <dd className="mt-0.5 text-xs text-white/65">{sub}</dd>
     </div>
   );
 }

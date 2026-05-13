@@ -9,6 +9,7 @@ import {
   Select,
   FieldError,
 } from "@/components/ui/input";
+import { getActionError } from "@/lib/action-error";
 import { issueCharge } from "./actions";
 
 type Profile = { id: string; email: string; full_name: string | null };
@@ -44,7 +45,7 @@ export function ChargeManager({ profiles }: { profiles: Profile[] }) {
         setDescription("");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

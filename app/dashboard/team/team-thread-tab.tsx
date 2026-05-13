@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea, FieldError } from "@/components/ui/input";
 import { postTeamMessage } from "./actions";
 import { formatRelativeTime } from "@/lib/format-time";
+import { getActionError } from "@/lib/action-error";
 
 type Message = {
   id: string;
@@ -44,7 +45,7 @@ export function TeamThreadTab({
         setBody("");
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

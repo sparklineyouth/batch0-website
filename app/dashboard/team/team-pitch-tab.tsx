@@ -9,6 +9,7 @@ import { Upload, CheckCircle2 } from "lucide-react";
 import {
   getTeamDriveUploadToken,
 } from "./actions";
+import { getActionError } from "@/lib/action-error";
 import {
   upsertPitchSubmission,
   submitPitch,
@@ -75,7 +76,7 @@ export function TeamPitchTab({
         });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }
@@ -87,7 +88,7 @@ export function TeamPitchTab({
         await submitPitch({ teamId });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

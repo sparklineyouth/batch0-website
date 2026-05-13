@@ -6,6 +6,7 @@ import { Input, Textarea, Label, Select, FieldError } from "@/components/ui/inpu
 import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveTeam, deleteTeam, type TeamInput } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 type Cohort = { id: string; name: string };
 
@@ -30,7 +31,7 @@ export function TeamForm({
         router.push(`/admin/teams/${id}`);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -43,7 +44,7 @@ export function TeamForm({
         router.push("/admin/teams");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

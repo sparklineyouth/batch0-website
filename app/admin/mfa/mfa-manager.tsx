@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, ShieldOff, ShieldCheck } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 type Factor = {
   id: string;
@@ -38,7 +39,7 @@ export function MfaManager() {
       ];
       setFactors(all);
     } catch (e: any) {
-      setErr(e.message);
+      setErr(getActionError(e));
     } finally {
       setLoading(false);
     }
@@ -64,7 +65,7 @@ export function MfaManager() {
         secret: (data as any).totp?.secret ?? "",
       });
     } catch (e: any) {
-      setErr(e.message);
+      setErr(getActionError(e));
     } finally {
       setBusy(false);
     }
@@ -93,7 +94,7 @@ export function MfaManager() {
       setVerified(true);
       await refresh();
     } catch (e: any) {
-      setErr(e.message);
+      setErr(getActionError(e));
     } finally {
       setBusy(false);
     }
@@ -118,7 +119,7 @@ export function MfaManager() {
       setVerified(true);
       setCode("");
     } catch (e: any) {
-      setErr(e.message);
+      setErr(getActionError(e));
     } finally {
       setBusy(false);
     }
@@ -134,7 +135,7 @@ export function MfaManager() {
       if (error) throw error;
       await refresh();
     } catch (e: any) {
-      setErr(e.message);
+      setErr(getActionError(e));
     } finally {
       setBusy(false);
     }

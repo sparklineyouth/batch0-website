@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/input";
 import { Sparkles } from "lucide-react";
 import { aiScreenApplication } from "./screen-actions";
+import { getActionError } from "@/lib/action-error";
 
 export function AiScreenButton({
   applicationId,
@@ -24,7 +25,7 @@ export function AiScreenButton({
         await aiScreenApplication({ applicationId });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

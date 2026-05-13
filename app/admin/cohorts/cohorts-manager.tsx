@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
 import { Pencil, Trash2, Plus } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 type Cohort = CohortInput & {
   id: string;
@@ -38,7 +39,7 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
         setEditing(null);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -52,7 +53,7 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
         setConfirmDeleteId(null);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

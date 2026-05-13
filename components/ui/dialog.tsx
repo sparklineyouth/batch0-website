@@ -26,13 +26,25 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  // Keep the latest onCancel/pending visible to event handlers without
+  // putting them in the deps array — otherwise every parent re-render
+  // (e.g. on each keystroke in a description input) re-runs the effect
+  // and steals focus back to the confirm button.
+  const onCancelRef = useRef(onCancel);
+  const pendingRef = useRef(pending);
+  onCancelRef.current = onCancel;
+  pendingRef.current = pending;
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !pending) onCancel();
+      if (e.key === "Escape" && !pendingRef.current) onCancelRef.current();
     };
     document.addEventListener("keydown", onKey);
+    // Move focus to the confirm button when the dialog opens, but only
+    // once per open transition. Re-running on every parent render would
+    // yank focus away from inputs inside the dialog (e.g. textareas in
+    // `description`) on each keystroke.
     confirmRef.current?.focus();
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -40,7 +52,7 @@ export function ConfirmDialog({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onCancel, pending]);
+  }, [open]);
 
   if (!open || typeof window === "undefined") return null;
 

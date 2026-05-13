@@ -51,7 +51,13 @@ function validateStep(
     else if (Number.isNaN(ageNum) || ageNum < 10 || ageNum > 25) {
       errs.age = "Enter a valid age (10–25)";
     }
-    if (form.parent_email && !EMAIL_RE.test(form.parent_email)) {
+    // Parent/guardian email is required for under-18 applicants —
+    // mirrors the SubmitSchema rule and satisfies the parental-consent
+    // claim made in the Terms of Service.
+    const isMinor = !Number.isNaN(ageNum) && ageNum < 18;
+    if (isMinor && !form.parent_email.trim()) {
+      errs.parent_email = "Required if you're under 18";
+    } else if (form.parent_email && !EMAIL_RE.test(form.parent_email)) {
       errs.parent_email = "Must be a valid email";
     }
   }
@@ -256,21 +262,32 @@ export function ApplicationForm({
   const stepHasErrors = (s: number) =>
     Object.keys(validateStep(s, form)).length > 0;
 
+  // Derive parent-email requirement from the current age value. Used
+  // both to enforce HTML-level required + aria-required and to swap the
+  // placeholder copy so the user knows why the field has lit up.
+  const ageNum = parseInt(form.age, 10);
+  const parentEmailRequired = !Number.isNaN(ageNum) && ageNum < 18;
+
   return (
     <div className="rounded-2xl border border-white/10 bg-zinc-900/40 p-6 md:p-8">
       {/* Stepper */}
-      <ol className="mb-8 flex flex-wrap items-center gap-2 text-xs">
+      <ol
+        className="mb-8 flex flex-wrap items-center gap-2 text-xs"
+        aria-label={`Application progress: step ${step} of ${STEPS.length}`}
+      >
         {STEPS.map((s, i) => {
           const reached = step >= s.id;
           const hasErr = stepHasErrors(s.id) && step > s.id;
+          const isCurrent = step === s.id;
           return (
             <li key={s.id} className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setStep(s.id)}
-                aria-label={`Step ${s.id}: ${s.title}`}
+                aria-label={`Step ${s.id}: ${s.title}${hasErr ? " (has errors)" : ""}`}
+                aria-current={isCurrent ? "step" : undefined}
                 className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
-                  step === s.id
+                  isCurrent
                     ? "border-spark bg-spark text-black"
                     : reached
                       ? hasErr
@@ -281,11 +298,11 @@ export function ApplicationForm({
               >
                 {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
               </button>
-              <span className={step === s.id ? "text-white" : "text-white/40"}>
+              <span className={isCurrent ? "text-white" : "text-white/45"}>
                 {s.title}
               </span>
               {i < STEPS.length - 1 && (
-                <span className="mx-1 text-white/20">›</span>
+                <span aria-hidden className="mx-1 text-white/25">›</span>
               )}
             </li>
           );
@@ -295,27 +312,41 @@ export function ApplicationForm({
       {step === 1 && (
         <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
-            <Label>Account email</Label>
-            <Input value={email} disabled />
+            <Label htmlFor="account_email">Account email</Label>
+            <Input id="account_email" value={email} disabled autoComplete="email" />
           </div>
           <div className="md:col-span-2">
-            <Label htmlFor="full_name">Full name *</Label>
+            <Label htmlFor="full_name" required>
+              Full name <span aria-hidden className="text-spark">*</span>
+            </Label>
             <Input
               id="full_name"
+              autoComplete="name"
+              required
+              aria-required="true"
+              error={fieldErrors.full_name}
               value={form.full_name}
               onChange={(e) => set("full_name", e.target.value)}
             />
-            <FieldError>{fieldErrors.full_name}</FieldError>
+            <FieldError id="full_name-error">{fieldErrors.full_name}</FieldError>
           </div>
           <div>
-            <Label htmlFor="age">Age *</Label>
+            <Label htmlFor="age" required>
+              Age <span aria-hidden className="text-spark">*</span>
+            </Label>
             <Input
               id="age"
               type="number"
+              inputMode="numeric"
+              min={10}
+              max={25}
+              required
+              aria-required="true"
+              error={fieldErrors.age}
               value={form.age}
               onChange={(e) => set("age", e.target.value)}
             />
-            <FieldError>{fieldErrors.age}</FieldError>
+            <FieldError id="age-error">{fieldErrors.age}</FieldError>
           </div>
           <div>
             <Label htmlFor="grade">Grade</Label>
@@ -330,6 +361,7 @@ export function ApplicationForm({
             <Label htmlFor="school">School</Label>
             <Input
               id="school"
+              autoComplete="organization"
               value={form.school}
               onChange={(e) => set("school", e.target.value)}
             />
@@ -338,6 +370,7 @@ export function ApplicationForm({
             <Label htmlFor="city">City</Label>
             <Input
               id="city"
+              autoComplete="address-level2"
               value={form.city}
               onChange={(e) => set("city", e.target.value)}
             />
@@ -346,20 +379,43 @@ export function ApplicationForm({
             <Label htmlFor="country">Country</Label>
             <Input
               id="country"
+              autoComplete="country-name"
               value={form.country}
               onChange={(e) => set("country", e.target.value)}
             />
           </div>
           <div className="md:col-span-2">
-            <Label htmlFor="parent_email">Parent / guardian email</Label>
+            <Label htmlFor="parent_email">
+              Parent / guardian email{" "}
+              {parentEmailRequired && (
+                <>
+                  <span aria-hidden className="text-spark">*</span>
+                  <span className="sr-only"> required</span>
+                </>
+              )}
+            </Label>
             <Input
               id="parent_email"
               type="email"
+              autoComplete="email"
+              required={parentEmailRequired}
+              aria-required={parentEmailRequired || undefined}
+              error={fieldErrors.parent_email}
               value={form.parent_email}
               onChange={(e) => set("parent_email", e.target.value)}
-              placeholder="Required if you're under 18"
+              placeholder={
+                parentEmailRequired
+                  ? "Required — you're under 18"
+                  : "Optional — only needed if you're under 18"
+              }
             />
-            <FieldError>{fieldErrors.parent_email}</FieldError>
+            <FieldError id="parent_email-error">
+              {fieldErrors.parent_email}
+            </FieldError>
+            <p className="mt-1 text-xs text-white/55">
+              For applicants under 18, we email your parent/guardian a
+              short note about the program once you submit.
+            </p>
           </div>
         </div>
       )}
@@ -386,6 +442,9 @@ export function ApplicationForm({
               <Input
                 id="hours_per_week"
                 type="number"
+                inputMode="numeric"
+                min={0}
+                max={168}
                 value={form.hours_per_week}
                 onChange={(e) => set("hours_per_week", e.target.value)}
                 placeholder="10"
@@ -406,7 +465,7 @@ export function ApplicationForm({
             <p className="text-xs font-semibold uppercase tracking-wider text-spark">
               Links (optional)
             </p>
-            <p className="mt-1 text-xs text-white/50">
+            <p className="mt-1 text-xs text-white/55">
               Anything that helps us see what you've built.
             </p>
             <div className="mt-4 space-y-3">
@@ -415,33 +474,48 @@ export function ApplicationForm({
                 <Input
                   id="linkedin_url"
                   type="url"
+                  inputMode="url"
+                  autoComplete="url"
                   placeholder="https://linkedin.com/in/…"
+                  error={fieldErrors.linkedin_url}
                   value={form.linkedin_url}
                   onChange={(e) => set("linkedin_url", e.target.value)}
                 />
-                <FieldError>{fieldErrors.linkedin_url}</FieldError>
+                <FieldError id="linkedin_url-error">
+                  {fieldErrors.linkedin_url}
+                </FieldError>
               </div>
               <div>
                 <Label htmlFor="resume_url">Resume URL</Label>
                 <Input
                   id="resume_url"
                   type="url"
+                  inputMode="url"
+                  autoComplete="url"
                   placeholder="https://… (Google Drive, Dropbox, your site)"
+                  error={fieldErrors.resume_url}
                   value={form.resume_url}
                   onChange={(e) => set("resume_url", e.target.value)}
                 />
-                <FieldError>{fieldErrors.resume_url}</FieldError>
+                <FieldError id="resume_url-error">
+                  {fieldErrors.resume_url}
+                </FieldError>
               </div>
               <div>
                 <Label htmlFor="portfolio_url">Portfolio / project link</Label>
                 <Input
                   id="portfolio_url"
                   type="url"
+                  inputMode="url"
+                  autoComplete="url"
                   placeholder="https://…"
+                  error={fieldErrors.portfolio_url}
                   value={form.portfolio_url}
                   onChange={(e) => set("portfolio_url", e.target.value)}
                 />
-                <FieldError>{fieldErrors.portfolio_url}</FieldError>
+                <FieldError id="portfolio_url-error">
+                  {fieldErrors.portfolio_url}
+                </FieldError>
               </div>
             </div>
           </div>
@@ -451,18 +525,24 @@ export function ApplicationForm({
       {step === 3 && (
         <div className="space-y-4">
           <div>
-            <Label htmlFor="why_join">Why SparkLine? *</Label>
+            <Label htmlFor="why_join" required>
+              Why SparkLine? <span aria-hidden className="text-spark">*</span>
+            </Label>
             <Textarea
               id="why_join"
               rows={6}
+              required
+              aria-required="true"
+              error={fieldErrors.why_join}
+              aria-describedby="why_join-counter"
               value={form.why_join}
               onChange={(e) => set("why_join", e.target.value)}
               placeholder="What do you want to get out of these 4 weeks?"
             />
             <div className="mt-1 flex items-center justify-between text-xs">
-              <FieldError>{fieldErrors.why_join}</FieldError>
-              <span className="text-white/40">
-                {form.why_join.trim().length} chars
+              <FieldError id="why_join-error">{fieldErrors.why_join}</FieldError>
+              <span id="why_join-counter" className="text-white/50">
+                {form.why_join.trim().length} / 40+ chars
               </span>
             </div>
           </div>
@@ -515,7 +595,10 @@ export function ApplicationForm({
       )}
 
       {submitError && (
-        <div className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
+        <div
+          role="alert"
+          className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200"
+        >
           {submitError}
         </div>
       )}
@@ -562,31 +645,30 @@ export function ApplicationForm({
 }
 
 function SaveStatusIndicator({ status }: { status: SaveStatus }) {
-  if (status.kind === "saving") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-white/50">
-        <Loader2 className="h-3 w-3 animate-spin" /> Saving draft…
+  // Wrap in a polite live region so AT users hear "Saving draft…" /
+  // "Draft saved" without us hijacking their focus.
+  const body =
+    status.kind === "saving" ? (
+      <span className="inline-flex items-center gap-1.5 text-xs text-white/65">
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Saving draft…
       </span>
-    );
-  }
-  if (status.kind === "saved") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-300/80">
-        <Check className="h-3 w-3" /> Draft saved at{" "}
+    ) : status.kind === "saved" ? (
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-300">
+        <Check className="h-3 w-3" aria-hidden /> Draft saved at{" "}
         {status.at.toLocaleTimeString()}
       </span>
-    );
-  }
-  if (status.kind === "error") {
-    return (
+    ) : status.kind === "error" ? (
       <span className="inline-flex items-center gap-1.5 text-xs text-red-300">
-        <AlertCircle className="h-3 w-3" /> {status.message}
+        <AlertCircle className="h-3 w-3" aria-hidden /> {status.message}
+      </span>
+    ) : (
+      <span className="text-xs text-white/45">
+        Drafts autosave as you type.
       </span>
     );
-  }
   return (
-    <span className="text-xs text-white/30">
-      Drafts autosave as you type.
+    <span role="status" aria-live="polite" aria-atomic="true">
+      {body}
     </span>
   );
 }
@@ -604,13 +686,13 @@ function ReviewRow({
     <div
       className={`flex ${multiline ? "flex-col gap-1" : "items-baseline gap-3"} border-b border-white/5 py-2 last:border-0`}
     >
-      <div className="text-xs uppercase tracking-wider text-white/40">
+      <div className="text-xs uppercase tracking-wider text-white/55">
         {label}
       </div>
       <div
-        className={`text-white/80 ${multiline ? "whitespace-pre-wrap break-words [overflow-wrap:anywhere]" : "truncate"}`}
+        className={`text-white/85 ${multiline ? "whitespace-pre-wrap break-words [overflow-wrap:anywhere]" : "truncate"}`}
       >
-        {value || <span className="text-white/30">—</span>}
+        {value || <span className="text-white/40">—</span>}
       </div>
     </div>
   );

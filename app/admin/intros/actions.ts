@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
+import { runAction, type ActionResult } from "@/lib/action-result";
 
 const ALLOWED = [
   "requested",
@@ -18,11 +19,12 @@ export async function updateIntroStatus(input: {
   introId: string;
   status: (typeof ALLOWED)[number];
   adminNotes?: string | null;
-}) {
-  await assertAdmin();
-  if (!ALLOWED.includes(input.status)) {
-    throw new Error("Invalid status");
-  }
+}): Promise<ActionResult> {
+  return runAction({ name: "updateIntroStatus" }, async () => {
+    await assertAdmin();
+    if (!ALLOWED.includes(input.status)) {
+      throw new Error("Invalid status");
+    }
   const admin = createAdminClient();
   const patch: Record<string, any> = { status: input.status };
   if (input.adminNotes !== undefined) {
@@ -128,8 +130,9 @@ export async function updateIntroStatus(input: {
     }
   }
 
-  revalidatePath("/admin/intros");
-  revalidatePath("/investor/intros");
-  revalidatePath("/dashboard/intros");
-  revalidatePath("/dashboard");
+    revalidatePath("/admin/intros");
+    revalidatePath("/investor/intros");
+    revalidatePath("/dashboard/intros");
+    revalidatePath("/dashboard");
+  });
 }

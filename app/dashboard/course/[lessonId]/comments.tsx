@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { postLessonComment, deleteLessonComment } from "./comments-actions";
 import { MessageSquare, Trash2, CornerDownRight } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 type CommentRow = {
   id: string;
@@ -202,7 +203,7 @@ function Composer({
         onDone?.();
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

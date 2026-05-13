@@ -9,6 +9,7 @@ import {
   reopenApplication,
   waiveApplicationFee,
 } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 export function ReviewActions({
   applicationId,
@@ -37,7 +38,7 @@ export function ReviewActions({
         await decideApplication(applicationId, decision, notes);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -49,7 +50,7 @@ export function ReviewActions({
         await reopenApplication(applicationId);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -62,7 +63,7 @@ export function ReviewActions({
         setConfirmWaive(false);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

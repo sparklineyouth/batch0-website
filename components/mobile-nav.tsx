@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -10,6 +10,7 @@ import {
   MENTOR_NAV_GROUPS,
   INVESTOR_NAV_GROUPS,
   STAFF_LINKS,
+  ENROLLED_ONLY_HREFS,
   type NavGroup,
 } from "@/lib/nav-config";
 import type { Role } from "@/lib/types";
@@ -30,18 +31,6 @@ const LABEL_BY_KIND: Record<MobileNavKind, string | undefined> = {
   mentor: "Mentor",
   investor: "Investor",
 };
-
-// Same enrolled-only list as the desktop sidebar — keep these two in sync.
-const ENROLLED_ONLY = new Set<string>([
-  "/dashboard/course",
-  "/dashboard/team",
-  "/dashboard/checkin",
-  "/dashboard/office-hours",
-  "/dashboard/events",
-  "/dashboard/resources",
-  "/dashboard/files",
-  "/dashboard/intros",
-]);
 
 /**
  * Mobile-only header + slide-in drawer with the same categorized
@@ -64,6 +53,12 @@ export function MobileNav({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // Refs for focus management: focus the close button when the drawer
+  // opens, restore focus to the opener when it closes. Without these,
+  // keyboard users get dropped into the page after closing.
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setOpen(false);
@@ -74,8 +69,42 @@ export function MobileNav({
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // Move focus into the drawer and trap Tab inside it. Escape closes.
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    // Defer until the drawer paints so refs resolve.
+    const focusTimer = window.setTimeout(() => closeRef.current?.focus(), 0);
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const root = drawerRef.current;
+      if (!root) return;
+      const focusables = root.querySelectorAll<HTMLElement>(
+        'a, button, input, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+      window.clearTimeout(focusTimer);
+      // Restore focus to whatever opened the drawer (usually the menu button).
+      previouslyFocused?.focus?.();
     };
   }, [open]);
 
@@ -96,7 +125,7 @@ export function MobileNav({
               ) {
                 return false;
               }
-              if (!enrolled && ENROLLED_ONLY.has(it.href)) return false;
+              if (!enrolled && ENROLLED_ONLY_HREFS.has(it.href)) return false;
             }
             return true;
           })
@@ -139,9 +168,12 @@ export function MobileNav({
         <div className="flex items-center gap-2">
           <NotificationBell align="right" />
           <button
+            ref={openerRef}
             type="button"
             onClick={() => setOpen(true)}
             aria-label="Open menu"
+            aria-expanded={open}
+            aria-controls="mobile-nav-drawer"
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/70 hover:bg-white/5 hover:text-white"
           >
             <Menu className="h-5 w-5" />
@@ -154,10 +186,18 @@ export function MobileNav({
           <button
             type="button"
             aria-label="Close menu"
+            tabIndex={-1}
             onClick={() => setOpen(false)}
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
           />
-          <aside className="absolute right-0 top-0 flex h-full w-72 flex-col border-l border-white/10 bg-zinc-950 p-4">
+          <aside
+            ref={drawerRef}
+            id="mobile-nav-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Site navigation"
+            className="absolute right-0 top-0 flex h-full w-72 flex-col border-l border-white/10 bg-zinc-950 p-4"
+          >
             <div className="mb-4 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-2">
                 <Image src="/logo.svg" alt="" width={22} height={22} />
@@ -166,6 +206,7 @@ export function MobileNav({
                 </span>
               </Link>
               <button
+                ref={closeRef}
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close menu"
@@ -224,6 +265,7 @@ export function MobileNav({
                             <Link
                               key={it.href}
                               href={it.href}
+                              aria-current={active ? "page" : undefined}
                               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
                                 active
                                   ? "bg-spark/10 text-spark"

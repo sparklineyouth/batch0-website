@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
 import { saveDiscordConfig, pingChannel, type DiscordConfigInput } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 export function DiscordConfigForm({
   initial,
@@ -29,7 +30,7 @@ export function DiscordConfigForm({
         setOkMsg("Discord config saved.");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -42,7 +43,7 @@ export function DiscordConfigForm({
         await pingChannel(which);
         setOkMsg(`Sent a test message to #${which}.`);
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

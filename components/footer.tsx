@@ -24,13 +24,13 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
             schoolers. Built around real customer discovery, real mentors,
             and a Demo Day that ends with real angel investors.
           </p>
-          <p className="mt-5 text-xs text-white/45">
+          <p className="mt-5 text-xs text-white/55">
             sparklineyouth.org · Built in Plainsboro, NJ
           </p>
         </div>
 
         <div>
-          <div className="text-xs uppercase tracking-widest text-white/40">
+          <div className="text-xs uppercase tracking-widest text-white/55">
             Program
           </div>
           <ul className="mt-4 space-y-2.5 text-sm text-white/70">
@@ -70,7 +70,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
         </div>
 
         <div>
-          <div className="text-xs uppercase tracking-widest text-white/40">
+          <div className="text-xs uppercase tracking-widest text-white/55">
             Connect
           </div>
           <ul className="mt-4 space-y-2.5 text-sm text-white/70">
@@ -102,7 +102,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl mt-14 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-white/40">
+      <div className="mx-auto max-w-6xl mt-14 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-white/55">
         <span>© {new Date().getFullYear()} SparkLine. All rights reserved.</span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <a

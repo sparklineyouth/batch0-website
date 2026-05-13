@@ -14,6 +14,7 @@ import {
   FileType2,
   Loader2,
 } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 import {
   getTeamDriveUploadToken,
   registerTeamDriveFile,
@@ -108,7 +109,7 @@ export function TeamDriveTab({
       const url = await getTeamDriveDownloadUrl({ fileId: id });
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (e: any) {
-      setErr(e.message);
+      setErr(getActionError(e));
     }
   }
 
@@ -118,7 +119,7 @@ export function TeamDriveTab({
         await deleteTeamDriveFile({ fileId: id });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

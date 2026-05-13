@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { changeUserRole } from "./actions";
 import type { Role } from "@/lib/types";
+import { getActionError } from "@/lib/action-error";
 
 const OPTIONS: Role[] = [
   "student",
@@ -42,7 +43,7 @@ export function RoleSelect({
         router.refresh();
       } catch (err: any) {
         setCurrent(previous);
-        setError(err.message);
+        setError(getActionError(err));
       }
     });
   }

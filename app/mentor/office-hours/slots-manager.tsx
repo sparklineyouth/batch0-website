@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError, Textarea } from "@/components/ui/input";
 import { createSlot, deleteSlot, cancelBooking } from "./actions";
 import { Trash2, Video, X } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 export function SlotsManager({ slots }: { slots: any[] }) {
   const router = useRouter();
@@ -32,7 +33,7 @@ export function SlotsManager({ slots }: { slots: any[] }) {
         setNotes("");
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }
@@ -43,7 +44,7 @@ export function SlotsManager({ slots }: { slots: any[] }) {
         await deleteSlot({ slotId: id });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }
@@ -54,7 +55,7 @@ export function SlotsManager({ slots }: { slots: any[] }) {
         await cancelBooking({ bookingId: id });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

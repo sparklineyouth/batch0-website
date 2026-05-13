@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 import { createClient } from "@/lib/supabase/client";
 import {
   saveModule,
@@ -63,7 +64,7 @@ export function CourseManager({
         setEditingModule(null);
         refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -76,7 +77,7 @@ export function CourseManager({
         setEditingLesson(null);
         refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -92,7 +93,7 @@ export function CourseManager({
         setConfirmDelete(null);
         refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

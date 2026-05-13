@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setDiscordEnabled } from "./actions";
 import { Power } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 export function EnableToggle({ initial }: { initial: boolean }) {
   const router = useRouter();
@@ -20,7 +21,7 @@ export function EnableToggle({ initial }: { initial: boolean }) {
         router.refresh();
       } catch (e: any) {
         setEnabled(previous);
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

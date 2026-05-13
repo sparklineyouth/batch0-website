@@ -11,6 +11,7 @@ import {
   deleteUserAccount,
   refundLatestPayment,
 } from "./actions";
+import { getActionError } from "@/lib/action-error";
 import {
   KeyRound,
   ArrowRightLeft,
@@ -81,7 +82,7 @@ export function ManagePanel({
         close();
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

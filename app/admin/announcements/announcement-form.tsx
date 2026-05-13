@@ -8,6 +8,7 @@ import {
   Select,
   FieldError,
 } from "@/components/ui/input";
+import { getActionError } from "@/lib/action-error";
 import { Toggle } from "@/components/ui/toggle";
 import { broadcastAnnouncement } from "./actions";
 
@@ -42,7 +43,7 @@ export function AnnouncementForm({ cohorts }: { cohorts: Cohort[] }) {
         setTitle("");
         setBody("");
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

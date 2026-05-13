@@ -14,6 +14,7 @@ import {
   clearTeamLogo,
   leaveTeam,
 } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 type Team = {
   id: string;
@@ -51,7 +52,7 @@ export function TeamProfileTab({ team }: { team: Team }) {
         });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }
@@ -107,7 +108,7 @@ export function TeamProfileTab({ team }: { team: Team }) {
         await leaveTeam();
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       } finally {
         setConfirmLeave(false);
       }

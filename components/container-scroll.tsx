@@ -14,6 +14,10 @@ export const ContainerScroll = ({
   // matchMedia is cheaper than resize-listener polling and uses a single
   // browser-managed change event when the breakpoint flips.
   const [isMobile, setIsMobile] = useState(false);
+  // Honor prefers-reduced-motion: vestibular-sensitive users get the
+  // mocked dashboard at its final pose with no scroll-driven transform.
+  // WCAG 2.3.3 / SC 2.3.3.
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
@@ -23,13 +27,25 @@ export const ContainerScroll = ({
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  const rotate = useTransform(scrollYProgress, [0, 1], [20, 0]);
-  const scale = useTransform(
-    scrollYProgress,
-    [0, 1],
-    isMobile ? [0.7, 0.9] : [1.05, 1],
-  );
-  const translate = useTransform(scrollYProgress, [0, 1], [0, -100]);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduceMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReduceMotion(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const rotateRange: [number, number] = reduceMotion ? [0, 0] : [20, 0];
+  const translateRange: [number, number] = reduceMotion ? [0, 0] : [0, -100];
+  const scaleRange: [number, number] = reduceMotion
+    ? [1, 1]
+    : isMobile
+      ? [0.7, 0.9]
+      : [1.05, 1];
+
+  const rotate = useTransform(scrollYProgress, [0, 1], rotateRange);
+  const scale = useTransform(scrollYProgress, [0, 1], scaleRange);
+  const translate = useTransform(scrollYProgress, [0, 1], translateRange);
 
   return (
     <div
@@ -78,7 +94,7 @@ export const Card = ({
           "0 0 #0000004d, 0 9px 20px #0000004a, 0 37px 37px #00000042, 0 84px 50px #00000026, 0 149px 60px #0000000a, 0 233px 65px #00000003",
         willChange: "transform",
       }}
-      className="max-w-5xl -mt-12 mx-auto h-[30rem] md:h-[40rem] w-full border-4 border-[#6C6C6C] p-2 md:p-6 bg-[#222222] rounded-[30px] shadow-2xl"
+      className="max-w-5xl -mt-12 mx-auto h-[30rem] md:h-[40rem] w-full border-4 border-white/15 p-2 md:p-6 bg-[#222222] rounded-[30px] shadow-2xl"
     >
       <div className="h-full w-full overflow-hidden rounded-2xl bg-zinc-900 md:rounded-2xl md:p-4">
         {children}

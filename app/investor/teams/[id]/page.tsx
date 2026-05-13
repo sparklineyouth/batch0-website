@@ -96,6 +96,7 @@ export default async function InvestorTeamDetailPage({
         <IntroRequestButton
           teamId={params.id}
           existing={(myIntro as any) ?? null}
+          viewerRole={profile.role === "admin" ? "admin" : "investor"}
         />
       </header>
 

@@ -49,11 +49,15 @@ export function ScoreCard({
     setErr(undefined);
     start(async () => {
       try {
-        await upsertPitchScore({ teamId, ...scores });
+        const result = await upsertPitchScore({ teamId, ...scores });
+        if (!result.ok) {
+          setErr(result.error);
+          return;
+        }
         setSaved(true);
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(e?.message || "Couldn't save. Try again.");
       }
     });
   }

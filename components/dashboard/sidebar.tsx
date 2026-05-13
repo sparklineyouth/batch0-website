@@ -3,23 +3,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { LogOut } from "lucide-react";
 import type { Role } from "@/lib/types";
-import { STUDENT_NAV_GROUPS, STAFF_LINKS } from "@/lib/nav-config";
+import {
+  STUDENT_NAV_GROUPS,
+  STAFF_LINKS,
+  ENROLLED_ONLY_HREFS,
+} from "@/lib/nav-config";
 import { NotificationBell } from "@/components/notification-bell";
 import { SidebarNav } from "@/components/sidebar-nav";
-
-// Links that only make sense once a student is enrolled in a cohort.
-// Pre-enrollment they either 404 or throw a "you need to be enrolled"
-// error — hide them to keep the sidebar clean.
-const ENROLLED_ONLY = new Set<string>([
-  "/dashboard/course",
-  "/dashboard/team",
-  "/dashboard/checkin",
-  "/dashboard/office-hours",
-  "/dashboard/events",
-  "/dashboard/resources",
-  "/dashboard/files",
-  "/dashboard/intros",
-]);
 
 export function StudentSidebar({
   role,
@@ -51,7 +41,7 @@ export function StudentSidebar({
         filterItem={(it) => {
           if (it.href === "/dashboard/ai") return aiAccess;
           if (it.href === "/dashboard/community") return discordEnabled;
-          if (!enrolled && ENROLLED_ONLY.has(it.href)) return false;
+          if (!enrolled && ENROLLED_ONLY_HREFS.has(it.href)) return false;
           return true;
         }}
       />

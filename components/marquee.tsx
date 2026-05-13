@@ -25,10 +25,10 @@ export default function Marquee() {
         {[...items, ...items].map((s, i) => (
           <span
             key={`${s}-${i}`}
-            className="text-sm font-medium uppercase tracking-[0.22em] text-white/45"
+            className="text-sm font-medium uppercase tracking-[0.22em] text-white/60"
           >
             {s}
-            <span aria-hidden className="ml-10 text-white/15">
+            <span aria-hidden className="ml-10 text-white/25">
               /
             </span>
           </span>

@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getDownloadUrl } from "@/app/dashboard/files/actions";
 import { postFileFeedback } from "./actions";
 import { formatRelativeTime } from "@/lib/format-time";
+import { getActionError } from "@/lib/action-error";
 
 type File = {
   id: string;
@@ -85,7 +86,7 @@ export function FileFeedbackPanel({
       const url = await getDownloadUrl(id);
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (e: any) {
-      setErr(e.message);
+      setErr(getActionError(e));
     }
   }
 
@@ -112,7 +113,7 @@ export function FileFeedbackPanel({
         }));
         setFeedback(items as any);
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

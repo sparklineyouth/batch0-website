@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Sun, Moon } from "lucide-react";
 import { setTheme } from "./theme-actions";
 import type { Theme } from "@/lib/types";
+import { getActionError } from "@/lib/action-error";
 
 export function ThemeToggle({ initial }: { initial: Theme }) {
   const router = useRouter();
@@ -40,7 +41,7 @@ export function ThemeToggle({ initial }: { initial: Theme }) {
             previous === "light" ? "theme-light" : "dark",
           );
         }
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }

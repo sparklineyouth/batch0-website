@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, FieldError } from "@/components/ui/input";
 import { approveTeamLogo, rejectTeamLogo } from "./actions";
+import { getActionError } from "@/lib/action-error";
 
 export function ModerationRow({ team }: { team: any }) {
   const router = useRouter();
@@ -20,7 +21,7 @@ export function ModerationRow({ team }: { team: any }) {
         await approveTeamLogo({ teamId: team.id });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }
@@ -32,7 +33,7 @@ export function ModerationRow({ team }: { team: any }) {
         await rejectTeamLogo({ teamId: team.id, reason });
         router.refresh();
       } catch (e: any) {
-        setErr(e.message);
+        setErr(getActionError(e));
       }
     });
   }

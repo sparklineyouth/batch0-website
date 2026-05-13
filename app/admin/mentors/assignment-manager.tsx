@@ -6,6 +6,7 @@ import { Select, Label } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { assignMentor, unassignMentor } from "./actions";
 import { Plus, Trash2 } from "lucide-react";
+import { getActionError } from "@/lib/action-error";
 
 type Profile = { id: string; email: string; full_name: string | null };
 type Cohort = { id: string; name: string };
@@ -61,7 +62,7 @@ export function AssignmentManager({
         setCohortId("");
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
@@ -76,7 +77,7 @@ export function AssignmentManager({
         setConfirmDeleteId(null);
         router.refresh();
       } catch (e: any) {
-        setError(e.message);
+        setError(getActionError(e));
       }
     });
   }
