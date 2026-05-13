@@ -72,15 +72,15 @@ body {
 }
 
 /* Snappy interactive elements. Tailwind's default `transition` utility
- * is 150ms; on buttons/links that reads as a noticeable lag. Override
- * to a much shorter duration so hover/active states feel immediate
- * without flickering. Components that need longer (FAQ accordion,
- * theme-toggle slide) opt back in with `duration-{n}`. */
+ * is 150ms; on buttons/links that reads as a noticeable lag — even the
+ * previous 60ms compromise still felt "smooth-but-slow." Pin to 0 so
+ * hover/active state changes flip instantly. Components that genuinely
+ * want easing (FAQ accordion, theme-toggle slide, scroll-reveal) opt
+ * back in with `duration-{n}` directly on the element. */
 button,
 a,
-[role="button"],
-.transition {
-  transition-duration: 60ms;
+[role="button"] {
+  transition-duration: 0ms;
 }
 
 /* Scroll-reveal without JS — initial state hides; the .revealed class
