@@ -12,8 +12,11 @@ export const Button = React.forwardRef<HTMLButtonElement, Props>(function Button
   // Instant feedback: no easing on hover/active so the click "snaps".
   // Only the press scale animates, and via transform alone so it stays
   // composited on the GPU.
+  // `whitespace-nowrap` keeps short labels like "Re-score" or "Waive & enroll"
+  // on a single line when the button sits inside a narrow flex column —
+  // without it the hyphen / ampersand becomes a soft wrap point.
   const base =
-    "inline-flex select-none items-center justify-center gap-2 rounded-md font-medium active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark/60";
+    "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium leading-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark/60";
   const variants = {
     primary: "bg-spark text-black hover:bg-spark-200",
     secondary:

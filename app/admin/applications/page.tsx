@@ -63,46 +63,41 @@ export default async function AdminApplicationsPage({
         {(apps?.length ?? 0) === 0 ? (
           <p className="p-6 text-sm text-white/50">No applications.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
-                <th className="px-5 py-3">Applicant</th>
-                <th className="px-5 py-3">Email</th>
-                <th className="px-5 py-3">Age</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Submitted</th>
-              </tr>
-            </thead>
-            <tbody>
-              {apps!.map((a: any) => (
-                <tr
-                  key={a.id}
-                  className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
-                >
-                  <td className="px-5 py-3">
-                    <Link
-                      href={`/admin/applications/${a.id}`}
-                      className="text-white hover:text-spark"
-                    >
-                      {a.full_name || "—"}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3 text-white/60">
-                    {a.profile?.email ?? "—"}
-                  </td>
-                  <td className="px-5 py-3 text-white/60">{a.age ?? "—"}</td>
-                  <td className="px-5 py-3">
-                    <StatusBadge status={a.status} />
-                  </td>
-                  <td className="px-5 py-3 text-white/50">
-                    {a.submitted_at
-                      ? new Date(a.submitted_at).toLocaleDateString()
-                      : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          // CSS grid instead of <table> so each row can be a single <Link>
+          // — that way clicking anywhere in the row navigates, not just
+          // the applicant name.
+          <div className="text-sm">
+            <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-white/10 px-5 py-3 text-xs uppercase tracking-wider text-white/40">
+              <div>Applicant</div>
+              <div>Email</div>
+              <div>Age</div>
+              <div>Status</div>
+              <div>Submitted</div>
+            </div>
+            {apps!.map((a: any) => (
+              <Link
+                key={a.id}
+                href={`/admin/applications/${a.id}`}
+                className="group grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-white/5 px-5 py-3 last:border-0 hover:bg-white/[0.02]"
+              >
+                <div className="truncate text-white group-hover:text-spark">
+                  {a.full_name || "—"}
+                </div>
+                <div className="truncate text-white/60">
+                  {a.profile?.email ?? "—"}
+                </div>
+                <div className="text-white/60">{a.age ?? "—"}</div>
+                <div>
+                  <StatusBadge status={a.status} />
+                </div>
+                <div className="text-white/50">
+                  {a.submitted_at
+                    ? new Date(a.submitted_at).toLocaleDateString()
+                    : "—"}
+                </div>
+              </Link>
+            ))}
+          </div>
         )}
       </Card>
     </div>

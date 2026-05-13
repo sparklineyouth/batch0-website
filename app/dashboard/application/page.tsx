@@ -64,6 +64,7 @@ export default async function ApplicationPage({
           <p className="mt-1 text-sm text-white/70">
             Welcome to {app.cohort?.name ?? "SparkLine"}. Pay your one-time ${(priceCents / 100).toFixed(0)} to lock in your seat. Course access unlocks immediately after.
           </p>
+          {app.review_notes && <ReviewerNote text={app.review_notes} />}
           <div className="mt-5">
             <PayButton applicationId={app.id} />
           </div>
@@ -76,11 +77,7 @@ export default async function ApplicationPage({
           <p className="mt-1 text-sm text-white/60">
             Thanks for applying. We can't offer you a seat in this cohort.
           </p>
-          {app.review_notes && (
-            <p className="mt-3 text-sm text-white/70">
-              <span className="text-white/40">Notes:</span> {app.review_notes}
-            </p>
-          )}
+          {app.review_notes && <ReviewerNote text={app.review_notes} />}
         </Card>
       )}
 
@@ -90,9 +87,19 @@ export default async function ApplicationPage({
           <p className="mt-1 text-sm text-white/70">
             Payment received. You're all set.
           </p>
+          {app.review_notes && <ReviewerNote text={app.review_notes} />}
           <Link href="/dashboard/course" className="mt-4 inline-block">
             <Button>Open course</Button>
           </Link>
+        </Card>
+      )}
+
+      {app.status === "submitted" && app.review_notes && (
+        <Card className="mt-6">
+          <h3 className="text-sm font-medium uppercase tracking-wider text-white/50">
+            Note from the team
+          </h3>
+          <ReviewerNote text={app.review_notes} />
         </Card>
       )}
 
@@ -122,6 +129,19 @@ export default async function ApplicationPage({
           </Link>
         )}
       </Card>
+    </div>
+  );
+}
+
+function ReviewerNote({ text }: { text: string }) {
+  return (
+    <div className="mt-4 rounded-lg border border-white/10 bg-black/30 p-3">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-white/40">
+        Note from reviewer
+      </div>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-white/80">
+        {text}
+      </p>
     </div>
   );
 }

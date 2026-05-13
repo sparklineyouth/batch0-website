@@ -286,21 +286,31 @@ export function ApplicationForm({
                 onClick={() => setStep(s.id)}
                 aria-label={`Step ${s.id}: ${s.title}${hasErr ? " (has errors)" : ""}`}
                 aria-current={isCurrent ? "step" : undefined}
-                className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
-                  isCurrent
-                    ? "border-spark bg-spark text-black"
-                    : reached
-                      ? hasErr
-                        ? "border-red-400/60 bg-red-400/10 text-red-300"
-                        : "border-spark/40 bg-spark/10 text-spark"
-                      : "border-white/15 text-white/40"
-                }`}
+                className="group inline-flex items-center gap-2 rounded-full py-0.5 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark/60"
               >
-                {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
+                <span
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
+                    isCurrent
+                      ? "border-spark bg-spark text-black"
+                      : reached
+                        ? hasErr
+                          ? "border-red-400/60 bg-red-400/10 text-red-300"
+                          : "border-spark/40 bg-spark/10 text-spark"
+                        : "border-white/15 text-white/40 group-hover:border-white/30 group-hover:text-white/60"
+                  }`}
+                >
+                  {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
+                </span>
+                <span
+                  className={
+                    isCurrent
+                      ? "text-white"
+                      : "text-white/45 group-hover:text-white/70"
+                  }
+                >
+                  {s.title}
+                </span>
               </button>
-              <span className={isCurrent ? "text-white" : "text-white/45"}>
-                {s.title}
-              </span>
               {i < STEPS.length - 1 && (
                 <span aria-hidden className="mx-1 text-white/25">›</span>
               )}

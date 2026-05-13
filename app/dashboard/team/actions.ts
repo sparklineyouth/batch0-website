@@ -471,6 +471,54 @@ export async function inviteStudent(input: {
   revalidatePath("/dashboard/team");
 }
 
+/**
+ * Direct-by-email variant of {@link inviteStudent}. Resolves an email to a
+ * student profile and sends them a pending invite — no search step needed.
+ * The recipient still has to accept on their dashboard before they're on
+ * the team, so this is just a convenience wrapper, not a way to add
+ * someone silently.
+ */
+export async function inviteStudentByEmail(input: {
+  teamId: string;
+  email: string;
+  message?: string;
+}) {
+  const { userId } = await assertSelf();
+  await assertTeamMember(userId, input.teamId);
+
+  const email = input.email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("That doesn't look like a valid email.");
+  }
+
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id, role, email")
+    .ilike("email", email)
+    .maybeSingle();
+
+  if (!profile) {
+    throw new Error(
+      "No SparkLine account found for that email. Ask them to sign up first, then send the invite.",
+    );
+  }
+  if (profile.id === userId) {
+    throw new Error("You can't invite yourself.");
+  }
+  if (profile.role !== "student") {
+    throw new Error("You can only invite students.");
+  }
+
+  // Delegate to the shared invite logic so capacity caps, dedupe, and
+  // notifications stay consistent with the search-based flow.
+  return inviteStudent({
+    teamId: input.teamId,
+    inviteeId: profile.id,
+    message: input.message,
+  });
+}
+
 export async function respondToInvite(input: {
   inviteId: string;
   accept: boolean;

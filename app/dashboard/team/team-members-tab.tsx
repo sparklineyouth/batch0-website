@@ -8,6 +8,7 @@ import { Search, X, UserMinus } from "lucide-react";
 import {
   searchStudentsForInvite,
   inviteStudent,
+  inviteStudentByEmail,
   cancelInvite,
   removeTeamMember,
 } from "./actions";
@@ -43,6 +44,7 @@ export function TeamMembersTab({
   const [err, setErr] = useState<string | undefined>();
 
   // Search state.
+  const [mode, setMode] = useState<"search" | "email">("search");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<
     { id: string; full_name: string | null; email: string }[]
@@ -54,6 +56,8 @@ export function TeamMembersTab({
     email: string;
   } | null>(null);
   const [message, setMessage] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
 
   async function doSearch() {
     setErr(undefined);
@@ -85,6 +89,24 @@ export function TeamMembersTab({
         setMessage("");
         setQuery("");
         setResults([]);
+        router.refresh();
+      } catch (e: any) {
+        setErr(getActionError(e));
+      }
+    });
+  }
+
+  function sendEmailInvite() {
+    setErr(undefined);
+    start(async () => {
+      try {
+        await inviteStudentByEmail({
+          teamId: team.id,
+          email: emailInput,
+          message: emailMessage,
+        });
+        setEmailInput("");
+        setEmailMessage("");
         router.refresh();
       } catch (e: any) {
         setErr(getActionError(e));
@@ -153,11 +175,75 @@ export function TeamMembersTab({
       <Card>
         <h3 className="text-base font-semibold">Invite a teammate</h3>
         <p className="mt-1 text-xs text-white/50">
-          Search by name or email. They'll get a notification and decide
-          whether to accept.
+          They'll get a notification and decide whether to accept — they're
+          not on the team until they accept.
         </p>
 
-        {!picked && (
+        <div className="mt-3 inline-flex rounded-md border border-white/10 p-0.5">
+          <button
+            type="button"
+            onClick={() => setMode("search")}
+            className={`rounded-[5px] px-3 py-1 text-xs font-medium transition ${
+              mode === "search"
+                ? "bg-white/10 text-white"
+                : "text-white/55 hover:text-white"
+            }`}
+          >
+            Search
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("email")}
+            className={`rounded-[5px] px-3 py-1 text-xs font-medium transition ${
+              mode === "email"
+                ? "bg-white/10 text-white"
+                : "text-white/55 hover:text-white"
+            }`}
+          >
+            By email
+          </button>
+        </div>
+
+        {mode === "email" && (
+          <div className="mt-4 space-y-3">
+            <div>
+              <Label htmlFor="invite-email">Their SparkLine email</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                placeholder="teammate@school.edu"
+                autoComplete="off"
+              />
+              <p className="mt-1 text-[11px] text-white/40">
+                They need a SparkLine account first. If they haven't signed
+                up yet, send them the apply link.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="invite-email-msg">
+                Personal message (optional)
+              </Label>
+              <Textarea
+                id="invite-email-msg"
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                placeholder="What you're building, why you want them on the team…"
+                maxLength={400}
+                rows={3}
+              />
+            </div>
+            <Button
+              onClick={sendEmailInvite}
+              disabled={pending || emailInput.trim().length === 0}
+            >
+              {pending ? "Sending…" : "Send invite"}
+            </Button>
+          </div>
+        )}
+
+        {mode === "search" && !picked && (
           <>
             <div className="mt-4 flex gap-2">
               <div className="relative flex-1">
@@ -218,7 +304,7 @@ export function TeamMembersTab({
           </>
         )}
 
-        {picked && (
+        {mode === "search" && picked && (
           <div className="mt-4 space-y-3">
             <div className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-900/50 px-3 py-2">
               <div className="min-w-0">

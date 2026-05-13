@@ -11,6 +11,37 @@ import {
 } from "./actions";
 import { getActionError } from "@/lib/action-error";
 
+// Starter notes the reviewer can drop in and personalize. Each one is
+// short on purpose — leaves space for one or two lines of specifics
+// before the student reads it.
+const NOTE_TEMPLATES: { label: string; body: string }[] = [
+  {
+    label: "Accept · strong",
+    body:
+      "Excited to have you in the cohort. Your application stood out — looking forward to seeing what you build. We'll send onboarding details once payment is in.",
+  },
+  {
+    label: "Accept · stretch",
+    body:
+      "We're admitting you. The bar in this cohort is high, so come ready to ship. One thing to focus on early: ",
+  },
+  {
+    label: "Reject · close",
+    body:
+      "Thanks for applying. This was a close call and we'd love to see you apply again next cohort. To strengthen the next application, focus on: ",
+  },
+  {
+    label: "Reject · standard",
+    body:
+      "Thanks for applying. We can't offer you a seat in this cohort — we had more strong applicants than seats. If you keep building, we'd love to see another application from you.",
+  },
+  {
+    label: "Need more info",
+    body:
+      "Before we make a decision we need a little more from you: ",
+  },
+];
+
 export function ReviewActions({
   applicationId,
   status,
@@ -30,6 +61,13 @@ export function ReviewActions({
   const [error, setError] = useState<string | undefined>();
   const [confirmWaive, setConfirmWaive] = useState(false);
   const [waiveReason, setWaiveReason] = useState("");
+
+  function applyTemplate(body: string) {
+    // If the textarea is empty, drop the template in. Otherwise append on
+    // a new paragraph so the reviewer doesn't lose what they already
+    // wrote — they can still personalize the appended text.
+    setNotes((prev) => (prev.trim() ? `${prev.trim()}\n\n${body}` : body));
+  }
 
   function decide(decision: "accepted" | "rejected") {
     setError(undefined);
@@ -83,11 +121,27 @@ export function ReviewActions({
         <Label htmlFor="notes">Notes (optional, visible to applicant)</Label>
         <Textarea
           id="notes"
-          rows={3}
+          rows={4}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           disabled={pending}
         />
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] uppercase tracking-wider text-white/40">
+            Templates
+          </span>
+          {NOTE_TEMPLATES.map((t) => (
+            <button
+              key={t.label}
+              type="button"
+              onClick={() => applyTemplate(t.body)}
+              disabled={pending}
+              className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/75 hover:border-white/25 hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
       <div className="flex flex-wrap gap-2">
