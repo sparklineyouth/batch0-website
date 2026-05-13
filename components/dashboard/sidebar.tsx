@@ -18,6 +18,7 @@ const ENROLLED_ONLY = new Set<string>([
   "/dashboard/events",
   "/dashboard/resources",
   "/dashboard/files",
+  "/dashboard/intros",
 ]);
 
 export function StudentSidebar({

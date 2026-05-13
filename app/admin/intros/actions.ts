@@ -48,24 +48,88 @@ export async function updateIntroStatus(input: {
     payload: { from: existing.status, to: input.status },
   });
 
-  // Tell the investor we acted on their request.
+  // Notify everyone touched by this transition: the investor (so they
+  // know we acted on their request) and every team member (so the
+  // students see momentum on their dashboard). Statuses worth shouting
+  // about for the team are 'intro_made' (a real intro just happened),
+  // 'committed', and 'wired' (money landed). The rest still notify but
+  // with quieter copy.
   if (existing.status !== input.status) {
     try {
-      const { data: team } = await admin
-        .from("teams")
-        .select("name")
-        .eq("id", existing.team_id)
-        .maybeSingle();
+      const [{ data: team }, { data: members }] = await Promise.all([
+        admin
+          .from("teams")
+          .select("name")
+          .eq("id", existing.team_id)
+          .maybeSingle(),
+        admin
+          .from("team_members")
+          .select("user_id")
+          .eq("team_id", existing.team_id),
+      ]);
+      const teamName = team?.name ?? "team";
+      const prettyStatus = input.status.replace(/_/g, " ");
+
+      // Investor notification.
       await notify({
         userId: existing.investor_id,
         type: "intro_status_update",
-        title: `Intro update: ${team?.name ?? "team"}`,
-        body: `Status is now "${input.status.replace(/_/g, " ")}".`,
+        title: `Intro update: ${teamName}`,
+        body: `Status is now "${prettyStatus}".`,
         link: "/investor/intros",
       });
-    } catch {}
+
+      // Team member notifications — only on milestone transitions so
+      // we don't spam them on every internal admin status nudge.
+      const teamMilestones = new Set([
+        "intro_made",
+        "committed",
+        "wired",
+        "passed",
+      ]);
+      if (teamMilestones.has(input.status)) {
+        const { data: investor } = await admin
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", existing.investor_id)
+          .maybeSingle();
+        const investorName =
+          investor?.full_name ?? investor?.email ?? "An investor";
+
+        const titleByStatus: Record<string, string> = {
+          intro_made: `${investorName} was introduced to your team`,
+          committed: `${investorName} committed to invest`,
+          wired: `Investment wired by ${investorName} 🎉`,
+          passed: `${investorName} passed for now`,
+        };
+        const bodyByStatus: Record<string, string> = {
+          intro_made:
+            "Reach out to schedule a meeting if you haven't already.",
+          committed:
+            "Great news — the investor is in. Coordinate paperwork next.",
+          wired:
+            "Funds have been sent. Confirm receipt and follow up with a thank-you.",
+          passed:
+            "Worth a short follow-up to keep the relationship warm.",
+        };
+
+        for (const m of members ?? []) {
+          await notify({
+            userId: m.user_id,
+            type: "intro_status_update",
+            title: titleByStatus[input.status],
+            body: bodyByStatus[input.status],
+            link: "/dashboard/intros",
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[intros] notify failed", err);
+    }
   }
 
   revalidatePath("/admin/intros");
   revalidatePath("/investor/intros");
+  revalidatePath("/dashboard/intros");
+  revalidatePath("/dashboard");
 }

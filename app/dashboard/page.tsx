@@ -14,6 +14,7 @@ import {
   FileText,
   CalendarDays,
   GraduationCap,
+  Handshake,
 } from "lucide-react";
 import { getSiteConfig } from "@/lib/site-config";
 
@@ -59,6 +60,33 @@ export default async function DashboardHome() {
       .maybeSingle(),
   ]);
 
+  // Active intros for the user's teams. We surface "wired" deals at
+  // the top of the dashboard so the team sees them the moment they
+  // happen. Best-effort: missing migration 0019 or no team → empty.
+  const adminClient = createAdminClient();
+  const { data: memberships } = await adminClient
+    .from("team_members")
+    .select("team_id")
+    .eq("user_id", user.id);
+  const teamIds = (memberships ?? [])
+    .map((m: any) => m.team_id as string)
+    .filter(Boolean);
+  let wiredIntros: any[] = [];
+  let liveIntroCount = 0;
+  if (teamIds.length > 0) {
+    const { data: rows } = await adminClient
+      .from("intro_requests")
+      .select(
+        "id, status, updated_at, investor:profiles!intro_requests_investor_id_fkey(full_name, email), team:teams(name)",
+      )
+      .in("team_id", teamIds)
+      .order("updated_at", { ascending: false });
+    wiredIntros = (rows ?? []).filter((r: any) => r.status === "wired");
+    liveIntroCount = (rows ?? []).filter(
+      (r: any) => r.status !== "wired" && r.status !== "passed",
+    ).length;
+  }
+
   const greeting = profile?.full_name?.split(" ")[0] || "there";
 
   // Status copy + primary action are derived together so the hero feels
@@ -89,6 +117,40 @@ export default async function DashboardHome() {
           </div>
         )}
       </div>
+
+      {/* Wired intros — the loudest possible signal. If money landed,
+       *  the team should see it the moment they open the dashboard. */}
+      {wiredIntros.length > 0 && (
+        <section className="mt-8 space-y-3">
+          {wiredIntros.map((i: any) => {
+            const investor = Array.isArray(i.investor)
+              ? i.investor[0]
+              : i.investor;
+            const team = Array.isArray(i.team) ? i.team[0] : i.team;
+            const name =
+              investor?.full_name ?? investor?.email ?? "An investor";
+            return (
+              <Link
+                key={i.id}
+                href="/dashboard/intros"
+                className="press group flex items-center gap-3 rounded-xl border border-emerald-400/30 bg-emerald-400/[0.05] px-5 py-4 hover:border-emerald-400/60 hover:bg-emerald-400/[0.08]"
+              >
+                <Handshake className="h-5 w-5 shrink-0 text-emerald-300" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-emerald-100">
+                    {name} wired your team{team?.name ? ` (${team.name})` : ""}
+                  </p>
+                  <p className="mt-0.5 text-xs text-emerald-200/75">
+                    Funds received {new Date(i.updated_at).toLocaleDateString()}.
+                    Open intros for next steps.
+                  </p>
+                </div>
+                <ArrowRight className="h-4 w-4 shrink-0 text-emerald-300/70 group-hover:text-emerald-200" />
+              </Link>
+            );
+          })}
+        </section>
+      )}
 
       {/* Fees due — surfaced above the fold when present. */}
       {(pendingFees?.length ?? 0) > 0 && (
@@ -158,6 +220,23 @@ export default async function DashboardHome() {
               href={enrollment ? "/dashboard/events" : undefined}
               muted={!enrollment}
             />
+            {enrollment && teamIds.length > 0 && (
+              <Row
+                icon={Handshake}
+                label="Investor intros"
+                value={
+                  liveIntroCount > 0
+                    ? `${liveIntroCount} in flight`
+                    : "Nothing yet"
+                }
+                sub={
+                  liveIntroCount > 0
+                    ? "Investors actively interested in your team"
+                    : "Investors browse after Demo Day"
+                }
+                href="/dashboard/intros"
+              />
+            )}
           </div>
         </div>
 

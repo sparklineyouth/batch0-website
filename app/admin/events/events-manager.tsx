@@ -122,6 +122,7 @@ export function EventsManager({
           <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
             <th className="pb-3">Title</th>
             <th className="pb-3">Type</th>
+            <th className="pb-3">Cohort</th>
             <th className="pb-3">Starts</th>
             <th className="pb-3">Visibility</th>
             <th className="pb-3"></th>
@@ -130,15 +131,20 @@ export function EventsManager({
         <tbody>
           {events.length === 0 && (
             <tr>
-              <td colSpan={5} className="py-6 text-center text-sm text-white/50">
+              <td colSpan={6} className="py-6 text-center text-sm text-white/50">
                 No events yet.
               </td>
             </tr>
           )}
-          {events.map((e) => (
+          {events.map((e) => {
+            const cohort = cohorts.find((c) => c.id === e.cohort_id);
+            return (
             <tr key={e.id} className="border-b border-white/5 last:border-0">
               <td className="py-3 text-white">{e.title}</td>
               <td className="py-3 text-white/60">{e.type}</td>
+              <td className="py-3 text-white/70">
+                {cohort?.name ?? (e.cohort_id ? "—" : "Any")}
+              </td>
               <td className="py-3 text-white/70">
                 {new Date(e.starts_at).toLocaleString()}
               </td>
@@ -160,7 +166,8 @@ export function EventsManager({
                 </button>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
       {error && <p className="mt-4 text-xs text-red-400">{error}</p>}

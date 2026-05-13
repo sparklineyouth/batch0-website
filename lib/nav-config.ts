@@ -76,6 +76,7 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
       { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
       { href: "/dashboard/ai", label: "AI co-founder", icon: Sparkles },
       { href: "/dashboard/files", label: "Files", icon: FolderOpen },
+      { href: "/dashboard/intros", label: "Investor intros", icon: Handshake },
     ],
   },
   {
@@ -179,6 +180,12 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
         icon: CalendarIcon,
       },
       { href: "/mentor/course", label: "Course", icon: BookOpen },
+    ],
+  },
+  {
+    label: "Library",
+    items: [
+      { href: "/mentor/resources", label: "Resources", icon: FolderArchive },
     ],
   },
 ];
