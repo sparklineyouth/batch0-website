@@ -1,21 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-mono",
-  display: "swap",
-});
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -109,10 +93,7 @@ export default function RootLayout({
   // to authenticated layouts (admin / dashboard / mentor / investor) so
   // the public site never flips palette on a stale cookie.
   return (
-    <html
-      lang="en"
-      className={`${instrumentSerif.variable} ${jetbrainsMono.variable}`}
-    >
+    <html lang="en">
       <body className="bg-black text-white antialiased">
         <a
           href="#main-content"

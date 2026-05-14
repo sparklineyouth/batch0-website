@@ -28,14 +28,6 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Inter", "sans-serif"],
-        display: ["var(--font-display)", "ui-serif", "Georgia", "serif"],
-        mono: [
-          "var(--font-mono)",
-          "ui-monospace",
-          "SFMono-Regular",
-          "Menlo",
-          "monospace",
-        ],
       },
       animation: {
         "spark-pulse": "sparkPulse 2.4s ease-in-out infinite",

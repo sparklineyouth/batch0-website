@@ -13,7 +13,7 @@ export default async function MentorLayout({
     getThemeFromCookie() === "light" ? "theme-light" : "";
   return (
     <div
-      className={`app-shell ${themeClass} flex min-h-screen bg-black text-white md:flex-row flex-col`}
+      className={`${themeClass} flex min-h-screen bg-black text-white md:flex-row flex-col`}
     >
       <MentorSidebar role={profile.role} />
       <div className="flex flex-1 flex-col">
