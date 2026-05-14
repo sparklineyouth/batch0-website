@@ -127,12 +127,11 @@ function derive(
   if (cohort && c.capacity > 0) {
     if (spotsLeft === 0) {
       spotsLabel = "Cohort full";
-    } else if (enrolledCount === 0) {
-      // Pre-launch: don't shame the cohort with "0 of 24 enrolled".
-      // Show capacity instead so the framing reads positively.
-      spotsLabel = `${c.capacity} spots open`;
-    } else {
-      spotsLabel = `${spotsLeft} of ${c.capacity} spots left`;
+    } else if (spotsLeft < 10) {
+      // Only surface the count when it creates real urgency — single
+      // digits left. Above that, an early-cohort "20 of 24 spots left"
+      // reads like there's no demand, which isn't the message we want.
+      spotsLabel = `${spotsLeft} spots left`;
     }
   }
 
