@@ -1,7 +1,16 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
-import { Users, Settings, FolderOpen, MessageSquare, Rocket } from "lucide-react";
+import {
+  Users,
+  Settings,
+  FolderOpen,
+  MessageSquare,
+  Rocket,
+  FileSignature,
+  Sparkles,
+} from "lucide-react";
 import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
 import { TeamDriveTab } from "./team-drive-tab";
@@ -101,6 +110,19 @@ export function TeamHome({
           Upload a different one.
         </div>
       )}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link href="/dashboard/team/offers">
+          <button className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-medium text-white/75 transition hover:border-white/30 hover:text-white">
+            <FileSignature className="h-3.5 w-3.5" /> SAFE offers
+          </button>
+        </Link>
+        <Link href="/dashboard/team/pitch-coach">
+          <button className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-medium text-white/75 transition hover:border-white/30 hover:text-white">
+            <Sparkles className="h-3.5 w-3.5" /> Pitch coach
+          </button>
+        </Link>
+      </div>
 
       <nav className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-zinc-950/40 p-1">
         {tabs.map((t) => {

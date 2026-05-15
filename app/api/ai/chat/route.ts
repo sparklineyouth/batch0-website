@@ -132,7 +132,7 @@ export async function POST(req: Request) {
     { data: history },
     { data: application },
     { data: membership },
-    { data: latestCheckin },
+    { data: recentCheckins },
   ] = await Promise.all([
     admin
       .from("profiles")
@@ -163,30 +163,44 @@ export async function POST(req: Request) {
       .select("week_start, accomplished, next_up, blockers")
       .eq("user_id", user.id)
       .order("week_start", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .limit(4),
   ]);
+  const latestCheckin = (recentCheckins ?? [])[0] ?? null;
+  const checkinHistory = (recentCheckins ?? []).slice(1);
 
   // Resolve the team context: a conversation may be pinned to a team via
   // team_id, otherwise we fall back to the user's current membership.
   const teamId = convo.team_id ?? membership?.team_id ?? null;
 
   let teamRetrieval: any = null;
+  let teamMessages: { author: string | null; body: string; created_at: string }[] =
+    [];
   if (teamId) {
-    const { data: team } = await admin
-      .from("teams")
-      .select("name, tagline, description")
-      .eq("id", teamId)
-      .maybeSingle();
-    const { count } = await admin
-      .from("team_members")
-      .select("id", { count: "exact", head: true })
-      .eq("team_id", teamId);
-    const { data: pitch } = await admin
-      .from("pitch_submissions")
-      .select("submitted_at")
-      .eq("team_id", teamId)
-      .maybeSingle();
+    const [{ data: team }, { count }, { data: pitch }, { data: tMsgs }] =
+      await Promise.all([
+        admin
+          .from("teams")
+          .select("name, tagline, description")
+          .eq("id", teamId)
+          .maybeSingle(),
+        admin
+          .from("team_members")
+          .select("id", { count: "exact", head: true })
+          .eq("team_id", teamId),
+        admin
+          .from("pitch_submissions")
+          .select("submitted_at")
+          .eq("team_id", teamId)
+          .maybeSingle(),
+        admin
+          .from("team_messages")
+          .select(
+            "body, created_at, kind, author:profiles(full_name)",
+          )
+          .eq("team_id", teamId)
+          .order("created_at", { ascending: false })
+          .limit(8),
+      ]);
     if (team) {
       teamRetrieval = {
         name: team.name,
@@ -195,6 +209,16 @@ export async function POST(req: Request) {
         member_count: count ?? 1,
         submitted_pitch_at: pitch?.submitted_at ?? null,
       };
+      teamMessages = (tMsgs ?? [])
+        .filter((m: any) => m.kind !== "system")
+        .map((m: any) => {
+          const author = Array.isArray(m.author) ? m.author[0] : m.author;
+          return {
+            author: author?.full_name ?? null,
+            body: m.body,
+            created_at: m.created_at,
+          };
+        });
       // Pin the conversation to the team so subsequent messages
       // continue routing the same way.
       if (!convo.team_id) {
@@ -227,8 +251,50 @@ export async function POST(req: Request) {
             blockers: latestCheckin.blockers,
           }
         : null,
+      checkin_history: checkinHistory.map((c: any) => ({
+        week_start: c.week_start,
+        accomplished: c.accomplished,
+        next_up: c.next_up,
+        blockers: c.blockers,
+      })),
+      team_messages: teamMessages,
     },
   });
+
+  // Cohort-scoped curriculum corpus, cached separately from the
+  // per-student system prompt so it stays warm across every student in
+  // the cohort.
+  let curriculumCorpus: string | null = null;
+  try {
+    let cohortId: string | null = null;
+    const { data: enrollment } = await admin
+      .from("enrollments")
+      .select("cohort_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    cohortId = (enrollment as any)?.cohort_id ?? null;
+    if (cohortId) {
+      const { data: mods } = await admin
+        .from("modules")
+        .select("week, title, summary, lessons:lessons(title, summary)")
+        .eq("cohort_id", cohortId)
+        .order("week", { ascending: true });
+      if (mods && mods.length > 0) {
+        const lines: string[] = ["# SparkLine curriculum"];
+        for (const m of mods as any[]) {
+          lines.push(`\n## Week ${m.week}: ${m.title}`);
+          if (m.summary) lines.push(m.summary);
+          const lessons = Array.isArray(m.lessons) ? m.lessons : [];
+          for (const l of lessons) {
+            lines.push(`- ${l.title}${l.summary ? ` — ${l.summary}` : ""}`);
+          }
+        }
+        curriculumCorpus = lines.join("\n");
+      }
+    }
+  } catch (err) {
+    console.error("[ai-chat] curriculum corpus build failed", err);
+  }
 
   const orderedHistory = (history ?? []).slice().reverse();
   const messages: Anthropic.MessageParam[] = orderedHistory
@@ -251,16 +317,34 @@ export async function POST(req: Request) {
           }
         | null = null;
       try {
+        // Two system blocks so the curriculum corpus (large, stable for
+        // a whole cohort) caches independently from the per-student
+        // system prompt (smaller, changes per request). Both marked
+        // ephemeral; the cache keys diverge because the texts diverge.
+        const systemBlocks = curriculumCorpus
+          ? [
+              {
+                type: "text" as const,
+                text: curriculumCorpus,
+                cache_control: { type: "ephemeral" as const },
+              },
+              {
+                type: "text" as const,
+                text: systemText,
+                cache_control: { type: "ephemeral" as const },
+              },
+            ]
+          : [
+              {
+                type: "text" as const,
+                text: systemText,
+                cache_control: { type: "ephemeral" as const },
+              },
+            ];
         const response = await client.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 2048,
-          system: [
-            {
-              type: "text",
-              text: systemText,
-              cache_control: { type: "ephemeral" },
-            },
-          ],
+          system: systemBlocks,
           messages,
           stream: true,
         });

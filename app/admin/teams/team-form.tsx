@@ -8,6 +8,15 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveTeam, deleteTeam, type TeamInput } from "./actions";
 import { getActionError } from "@/lib/action-error";
 
+function slugifyClient(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
 type Cohort = { id: string; name: string };
 
 export function TeamForm({
@@ -128,10 +137,33 @@ export function TeamForm({
       </div>
       <Toggle
         label="Public showcase"
-        description="When on, this team gets a public profile at /cohort/[cohort]/teams/[team]."
+        description={`When on, ${t.id ? `${typeof window !== "undefined" ? window.location.origin : ""}/teams/${slugifyClient(t.name)}` : "the team's slug"} is publicly indexable.`}
         checked={t.is_public}
         onChange={(v) => setT({ ...t, is_public: v })}
       />
+
+      <div>
+        <Label>Public blurb (overrides description on the public page)</Label>
+        <Textarea
+          rows={3}
+          value={t.public_blurb ?? ""}
+          onChange={(e) =>
+            setT({ ...t, public_blurb: e.target.value || null })
+          }
+          placeholder="The 60-second version of what you're building."
+        />
+      </div>
+      <div>
+        <Label>Demo video URL (YouTube / Loom)</Label>
+        <Input
+          type="url"
+          value={t.demo_video_url ?? ""}
+          onChange={(e) =>
+            setT({ ...t, demo_video_url: e.target.value || null })
+          }
+          placeholder="Embedded on the public team page."
+        />
+      </div>
 
       {/* Cap-table snapshot. Optional — leave everything blank to hide
           the section from investor views. Inputs are in WHOLE DOLLARS,

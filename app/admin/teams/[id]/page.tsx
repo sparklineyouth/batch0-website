@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/card";
 import { TeamForm } from "../team-form";
 import { MembersManager } from "./members-manager";
 import { TearSheetCard } from "./tear-sheet-button";
+import { CapTable } from "./cap-table";
+import { RecapButton } from "@/app/admin/demo-day/recap-button";
 
 export const metadata = { title: "Edit team · Admin" };
 
@@ -14,22 +16,30 @@ export default async function AdminTeamDetail({
   params: { id: string };
 }) {
   const admin = createAdminClient();
-  const [{ data: team }, { data: cohorts }, { data: members }, { data: students }] =
-    await Promise.all([
-      admin.from("teams").select("*").eq("id", params.id).maybeSingle(),
-      admin.from("cohorts").select("id, name").order("starts_on"),
-      admin
-        .from("team_members")
-        .select(
-          "id, role, user_id, user:profiles(email, full_name)",
-        )
-        .eq("team_id", params.id),
-      admin
-        .from("profiles")
-        .select("id, email, full_name")
-        .in("role", ["student", "mentor", "admin"])
-        .order("created_at", { ascending: false }),
-    ]);
+  const [
+    { data: team },
+    { data: cohorts },
+    { data: members },
+    { data: students },
+    { data: capRows },
+  ] = await Promise.all([
+    admin.from("teams").select("*").eq("id", params.id).maybeSingle(),
+    admin.from("cohorts").select("id, name").order("starts_on"),
+    admin
+      .from("team_members")
+      .select("id, role, user_id, user:profiles(email, full_name)")
+      .eq("team_id", params.id),
+    admin
+      .from("profiles")
+      .select("id, email, full_name")
+      .in("role", ["student", "mentor", "admin"])
+      .order("created_at", { ascending: false }),
+    admin
+      .from("cap_table_holders")
+      .select("*")
+      .eq("team_id", params.id)
+      .order("created_at", { ascending: true }),
+  ]);
 
   if (!team) notFound();
 
@@ -57,6 +67,8 @@ export default async function AdminTeamDetail({
             pitch_deck_url: team.pitch_deck_url,
             website_url: team.website_url,
             is_public: team.is_public,
+            public_blurb: (team as any).public_blurb ?? null,
+            demo_video_url: (team as any).demo_video_url ?? null,
             raised_cents: team.raised_cents ?? null,
             post_money_cents: team.post_money_cents ?? null,
             lead_investor: team.lead_investor ?? null,
@@ -79,11 +91,46 @@ export default async function AdminTeamDetail({
       </Card>
 
       <Card className="mt-6">
+        <CapTable
+          teamId={team.id}
+          rows={(capRows ?? []) as any}
+          members={
+            (members ?? []).map((m: any) => ({
+              id: m.user_id,
+              full_name: m.user?.full_name ?? null,
+              email: m.user?.email ?? null,
+            })) ?? []
+          }
+        />
+      </Card>
+
+      <Card className="mt-6">
         <TearSheetCard
           teamId={team.id}
           existing={team.tear_sheet ?? null}
           generatedAt={team.tear_sheet_generated_at ?? null}
         />
+      </Card>
+
+      <Card className="mt-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          Demo Day recap
+        </h2>
+        <p className="mt-1 text-xs text-white/50">
+          AI-written narrative pulled from judge scores + comments + audience
+          reactions. Emails every member when sent.
+        </p>
+        {(team as any).demo_day_recap && (
+          <p className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/75">
+            {(team as any).demo_day_recap}
+          </p>
+        )}
+        <div className="mt-3">
+          <RecapButton
+            teamId={team.id}
+            existing={(team as any).demo_day_recap ?? null}
+          />
+        </div>
       </Card>
     </div>
   );

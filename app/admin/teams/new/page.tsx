@@ -29,6 +29,8 @@ export default async function NewTeamPage() {
             pitch_deck_url: "",
             website_url: "",
             is_public: false,
+            public_blurb: null,
+            demo_video_url: null,
             raised_cents: null,
             post_money_cents: null,
             lead_investor: null,

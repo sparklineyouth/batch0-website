@@ -26,6 +26,8 @@ export type TeamInput = {
   pitch_deck_url: string | null;
   website_url: string | null;
   is_public: boolean;
+  public_blurb: string | null;
+  demo_video_url: string | null;
   // Cap-table snapshot (optional). When every field is null the
   // investor view hides the cap-table block entirely so we don't
   // advertise "raised: —".
@@ -54,6 +56,8 @@ export async function saveTeam(input: TeamInput) {
     pitch_deck_url: input.pitch_deck_url?.trim() || null,
     website_url: input.website_url?.trim() || null,
     is_public: input.is_public,
+    public_blurb: input.public_blurb?.trim() || null,
+    demo_video_url: input.demo_video_url?.trim() || null,
     raised_cents: input.raised_cents,
     post_money_cents: input.post_money_cents,
     lead_investor: input.lead_investor?.trim() || null,

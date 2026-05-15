@@ -6,7 +6,10 @@ import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { TeamThread } from "@/components/team-thread";
 import { ScoreCard } from "./score-card";
+import { RubricScoreCard } from "./rubric-score-card";
 import { IntroRequestButton } from "./intro-request-button";
+import { ReactionStrip } from "@/components/demo-day/reaction-strip";
+import { SafeOfferForm } from "./safe-offer-form";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata = { title: "Team · Investor" };
@@ -22,7 +25,7 @@ export default async function InvestorTeamDetailPage({
   const { data: team } = await admin
     .from("teams")
     .select(
-      "id, name, tagline, description, logo_url, logo_status, website_url, raised_cents, post_money_cents, lead_investor, round_kind, round_closed_on, tear_sheet, tear_sheet_generated_at, cohort:cohorts(name)",
+      "id, name, tagline, description, logo_url, logo_status, website_url, raised_cents, post_money_cents, lead_investor, round_kind, round_closed_on, tear_sheet, tear_sheet_generated_at, cohort_id, cohort:cohorts(name)",
     )
     .eq("id", params.id)
     .maybeSingle();
@@ -34,6 +37,9 @@ export default async function InvestorTeamDetailPage({
     { data: pitch },
     { data: myScore },
     { data: myIntro },
+    { data: rubric },
+    { data: myRubricScores },
+    { data: rxnRows },
   ] = await Promise.all([
     admin
       .from("team_members")
@@ -62,7 +68,30 @@ export default async function InvestorTeamDetailPage({
       .eq("team_id", params.id)
       .eq("investor_id", profile.id)
       .maybeSingle(),
+    admin
+      .from("demo_day_rubric_criteria")
+      .select("id, label, description, weight, max_score, cohort_id")
+      .order("position", { ascending: true }),
+    admin
+      .from("demo_day_scores")
+      .select("criterion_id, score, comment")
+      .eq("team_id", params.id)
+      .eq("judge_id", profile.id),
+    admin
+      .from("demo_day_reactions")
+      .select("emoji")
+      .eq("team_id", params.id),
   ]);
+
+  // Cohort-scoped rubric: criteria with cohort_id null apply to all.
+  const teamCohortId = (team as any).cohort_id ?? null;
+  const applicableRubric = (rubric ?? []).filter(
+    (c: any) => !c.cohort_id || c.cohort_id === teamCohortId,
+  );
+  const reactionCounts: Record<string, number> = {};
+  for (const r of (rxnRows ?? []) as any[]) {
+    reactionCounts[r.emoji] = (reactionCounts[r.emoji] ?? 0) + 1;
+  }
 
   const cohort = Array.isArray(team.cohort) ? team.cohort[0] : team.cohort;
 
@@ -191,8 +220,30 @@ export default async function InvestorTeamDetailPage({
         </Card>
       )}
 
+      <Card className="mt-6">
+        <h2 className="text-base font-semibold">Audience reactions</h2>
+        <p className="mt-1 text-xs text-white/50">
+          Live during Demo Day. Aggregated counts visible to admins.
+        </p>
+        <div className="mt-3">
+          <ReactionStrip teamId={params.id} initialCounts={reactionCounts} />
+        </div>
+      </Card>
+
       <div className="mt-6">
-        <ScoreCard teamId={params.id} existing={(myScore as any) ?? null} />
+        {applicableRubric.length > 0 ? (
+          <RubricScoreCard
+            teamId={params.id}
+            criteria={applicableRubric as any}
+            existing={(myRubricScores ?? []) as any}
+          />
+        ) : (
+          <ScoreCard teamId={params.id} existing={(myScore as any) ?? null} />
+        )}
+      </div>
+
+      <div className="mt-6">
+        <SafeOfferForm teamId={params.id} />
       </div>
 
       <div className="mt-6">

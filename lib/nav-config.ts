@@ -160,6 +160,8 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
     label: "Operations",
     items: [
       { href: "/admin/pulse", label: "Pulse", icon: Activity },
+      { href: "/admin/interventions", label: "At-risk", icon: ShieldCheck },
+      { href: "/admin/mentors/match", label: "Mentor match", icon: Sparkles },
       { href: "/admin/ai-usage", label: "AI usage", icon: Sparkles },
       { href: "/admin/email", label: "Email metrics", icon: Mail },
       { href: "/admin/referrals", label: "Referrals", icon: Star },

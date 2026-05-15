@@ -295,4 +295,135 @@ export const Templates = {
       }),
     };
   },
+
+  /**
+   * Demo Day team recap — sent to founders after admin generates the
+   * per-team recap. Includes weighted leaderboard rank, average judge
+   * score, and the AI-written narrative.
+   */
+  demoDayRecap: (args: {
+    teamName: string;
+    rank: number | null;
+    totalTeams: number;
+    weightedPct: number | null;
+    reactionCount: number;
+    summary: string;
+    teamSlug?: string | null;
+  }) => ({
+    subject: `Demo Day recap — ${args.teamName}`,
+    html: layout({
+      preheader:
+        args.rank != null
+          ? `Ranked #${args.rank} of ${args.totalTeams}`
+          : "Your Demo Day recap is here",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#facc15">Demo Day recap</h1>
+        <p>Here's how ${escape(args.teamName)} landed.</p>
+        <div style="margin:18px 0;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:12px">
+          ${
+            args.rank != null
+              ? `<p style="margin:0;color:#fff;font-size:16px"><strong>#${args.rank}</strong> of ${args.totalTeams} teams</p>`
+              : ""
+          }
+          ${
+            args.weightedPct != null
+              ? `<p style="margin:6px 0 0 0;color:#bbb">Weighted score: <strong style="color:#fff">${args.weightedPct.toFixed(1)}%</strong></p>`
+              : ""
+          }
+          <p style="margin:6px 0 0 0;color:#bbb">Audience reactions: <strong style="color:#fff">${args.reactionCount}</strong></p>
+        </div>
+        <p style="white-space:pre-wrap">${escape(args.summary)}</p>
+      `,
+      cta: args.teamSlug
+        ? {
+            url: `${env.siteUrl}/teams/${args.teamSlug}`,
+            label: "Open team page",
+          }
+        : { url: `${env.siteUrl}/dashboard`, label: "Open dashboard" },
+    }),
+  }),
+
+  /**
+   * Founder weekly recap for parents + mentors. Summarizes the team's
+   * activity that week — check-ins, milestones, blockers — in plain
+   * language so parents can follow along without needing an account.
+   */
+  founderWeeklyRecap: (args: {
+    teamName: string;
+    weekRange: string;
+    summary: string;
+    headlines: string[];
+    blockers: string[];
+  }) => {
+    const headlineItems = args.headlines
+      .map(
+        (h) =>
+          `<li style="margin:0 0 6px 0;color:#ddd">${escape(h)}</li>`,
+      )
+      .join("");
+    const blockerItems = args.blockers
+      .map(
+        (b) =>
+          `<li style="margin:0 0 6px 0;color:#ddd">${escape(b)}</li>`,
+      )
+      .join("");
+    return {
+      subject: `Weekly recap — ${args.teamName}`,
+      html: layout({
+        preheader: `What ${args.teamName} did this week`,
+        body: `
+          <h1 style="margin:0 0 6px 0;font-size:20px;color:#fff">${escape(args.teamName)} — weekly recap</h1>
+          <p style="color:#888;margin:0 0 18px 0">${escape(args.weekRange)}</p>
+          <p style="white-space:pre-wrap">${escape(args.summary)}</p>
+          ${
+            args.headlines.length > 0
+              ? `<h2 style="font-size:13px;color:#facc15;margin:20px 0 6px 0;text-transform:uppercase;letter-spacing:0.08em">Wins</h2>
+                 <ul style="padding-left:18px;margin:0">${headlineItems}</ul>`
+              : ""
+          }
+          ${
+            args.blockers.length > 0
+              ? `<h2 style="font-size:13px;color:#facc15;margin:20px 0 6px 0;text-transform:uppercase;letter-spacing:0.08em">Blockers</h2>
+                 <ul style="padding-left:18px;margin:0">${blockerItems}</ul>`
+              : ""
+          }
+        `,
+      }),
+    };
+  },
+
+  /**
+   * SAFE-offer notification. Sent to all team members when an investor
+   * sends an offer through the platform. Body intentionally short — the
+   * legal terms live in the offer document, not the email.
+   */
+  safeOfferSent: (args: {
+    teamName: string;
+    investorName: string | null;
+    amountCents: number;
+    valuationCapCents: number | null;
+    offerId: string;
+  }) => ({
+    subject: `${args.investorName ?? "Someone"} sent ${args.teamName} a SAFE`,
+    html: layout({
+      preheader: `Offer: $${(args.amountCents / 100).toLocaleString()}`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#facc15">SAFE offer received</h1>
+        <p><strong>${escape(args.investorName ?? "An investor")}</strong> sent a SAFE to <strong>${escape(args.teamName)}</strong>:</p>
+        <ul style="padding-left:18px;margin:14px 0">
+          <li>Amount: <strong style="color:#fff">$${(args.amountCents / 100).toLocaleString()}</strong></li>
+          ${
+            args.valuationCapCents != null
+              ? `<li>Valuation cap: <strong style="color:#fff">$${(args.valuationCapCents / 100).toLocaleString()}</strong></li>`
+              : ""
+          }
+        </ul>
+        <p>Open the offer to review and sign. Show it to a parent / guardian / advisor first — this is a real legal document even if you don't accept right away.</p>
+      `,
+      cta: {
+        url: `${env.siteUrl}/dashboard/team/offers/${args.offerId}`,
+        label: "Review the offer",
+      },
+    }),
+  }),
 };

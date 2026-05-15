@@ -9,6 +9,7 @@ import {
 } from "./actions";
 import type { Application } from "@/lib/types";
 import { Check, Loader2, AlertCircle } from "lucide-react";
+import { IdeaValidator } from "./idea-validate";
 
 const STEPS = [
   { id: 1, title: "About you" },
@@ -640,6 +641,7 @@ export function ApplicationForm({
               onChange={(e) => set("startup_idea", e.target.value)}
               placeholder="It's totally fine if you don't. Tell us anything you've been thinking about."
             />
+            <IdeaValidator idea={form.startup_idea} />
           </div>
           <div>
             <Label required>

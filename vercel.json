@@ -13,6 +13,14 @@
       "schedule": "0 15 * * 1"
     },
     {
+      "path": "/api/cron/at-risk-intervene",
+      "schedule": "15 15 * * 1"
+    },
+    {
+      "path": "/api/cron/founder-weekly-recap",
+      "schedule": "0 16 * * 1"
+    },
+    {
       "path": "/api/cron/card-expiring",
       "schedule": "0 15 * * *"
     }

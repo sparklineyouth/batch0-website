@@ -267,9 +267,16 @@ export default async function AuditLogPage({
                     </Link>
                   </td>
                   <td className="px-5 py-3 font-mono text-[11px] text-white/40">
-                    {r.target_type
-                      ? `${r.target_type}:${r.target_id?.slice(0, 8) ?? ""}`
-                      : "—"}
+                    {r.target_type && r.target_id ? (
+                      <Link
+                        href={`/admin/audit/target?type=${encodeURIComponent(r.target_type)}&id=${encodeURIComponent(r.target_id)}`}
+                        className="hover:text-spark hover:underline"
+                      >
+                        {r.target_type}:{r.target_id.slice(0, 8)}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="px-5 py-3 font-mono text-[10px] text-white/50">
                     {r.payload

@@ -23,7 +23,7 @@ export async function decideApplication(
   const { data: app, error: fetchErr } = await admin
     .from("applications")
     .select(
-      "id, full_name, user_id, cohort:cohorts(name, price_cents), profile:profiles!applications_user_id_fkey(email, full_name)",
+      "id, full_name, user_id, status, review_notes, cohort:cohorts(name, price_cents), profile:profiles!applications_user_id_fkey(email, full_name)",
     )
     .eq("id", applicationId)
     .maybeSingle();
@@ -44,7 +44,14 @@ export async function decideApplication(
     action: `application.${decision}`,
     targetType: "application",
     targetId: applicationId,
-    payload: { notes: notes || null },
+    payload: {
+      before: {
+        status: (app as any).status,
+        review_notes: (app as any).review_notes,
+      },
+      after: { status: decision, review_notes: notes || null },
+      notes: notes || null,
+    },
   });
 
   // Email + in-app notify the applicant.
