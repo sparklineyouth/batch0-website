@@ -54,7 +54,7 @@ export default function Hero({
         <h1 className="mt-5 sm:mt-6 text-[40px] sm:text-6xl md:text-[80px] font-bold tracking-[-0.04em] leading-[1] text-white">
           Build a real startup.
           <br />
-          Pitch <span className="shine">real investors</span>.
+          Pitch for <span className="shine">real funding</span>.
         </h1>
 
         <p className="mt-5 sm:mt-7 max-w-2xl text-[15px] sm:text-lg md:text-xl text-white/80 leading-[1.55] sm:leading-relaxed">
@@ -103,7 +103,7 @@ export default function Hero({
             accent
           />
           <ProofStat label="Format" value="4 wks" sub="Fully virtual" />
-          <ProofStat label="Demo Day" value="Live" sub="Angel investors" />
+          <ProofStat label="Demo Day" value="Live" sub="Cash grants" />
         </dl>
       </div>
     </section>

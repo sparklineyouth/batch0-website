@@ -13,9 +13,9 @@ const problems = [
       "Most accelerators run a couple of weeks per year, in one zip code. If your summer is booked, you're out — and a real company isn't built in two weeks anyway.",
   },
   {
-    title: "Judges, not investors",
+    title: "Cash, not certificates",
     body:
-      "Programs that end with a panel and a plaque don't change much. We end with real angel investors writing real checks.",
+      "Programs that end with a panel and a plaque don't change much. We end with a sponsor-funded grant pool — real cash, awarded to real teens, zero equity taken.",
   },
 ];
 

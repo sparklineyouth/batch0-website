@@ -23,8 +23,8 @@ export default function FAQ({ config }: { config: SiteConfig }) {
       a: "Yes. Pre-recorded video modules plus live weekly group sessions on Zoom and an active Discord community. You can join from anywhere in the U.S.",
     },
     {
-      q: "Will I actually pitch real investors?",
-      a: "Yes. On Week 4 we host a live Demo Day where you pitch your startup to real angel investors over Zoom. Investors who like your pitch can choose to fund you.",
+      q: "Will I actually win real money?",
+      a: "Yes. Demo Day ends live on Zoom in front of our sponsor grant panel. Top cohort startups win cash prizes from a pool funded by our sponsor partners — paid out directly to you, with zero equity taken. We also invite outside angel investors as observers; some may follow up with cohort standouts for separate investment conversations, but the cohort grant pool is the guaranteed prize.",
     },
     {
       q: "What if I don't have an idea yet?",

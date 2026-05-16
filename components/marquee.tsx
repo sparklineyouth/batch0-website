@@ -11,7 +11,8 @@ const items = [
   "Brand Positioning",
   "Pitch Deck",
   "Demo Day",
-  "Angel Investors",
+  "Sponsor Grants",
+  "Zero Equity",
   "Real Funding",
 ];
 

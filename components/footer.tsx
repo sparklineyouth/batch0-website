@@ -22,7 +22,8 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
           <p className="mt-4 max-w-sm text-sm text-white/70 leading-relaxed">
             A 4-week, fully virtual startup accelerator for U.S. high
             schoolers. Built around real customer discovery, real mentors,
-            and a Demo Day that ends with real angel investors.
+            and a Demo Day that ends with real cash grants from our sponsor
+            partners.
           </p>
           <p className="mt-5 text-xs text-white/55">
             sparklineyouth.org · Built in Plainsboro, NJ
@@ -57,6 +58,14 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
               >
                 Why SparkLine Youth
               </a>
+            </li>
+            <li>
+              <Link
+                href="/sponsors"
+                className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
+              >
+                Sponsors
+              </Link>
             </li>
             <li>
               <Link

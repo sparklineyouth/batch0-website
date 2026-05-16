@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://sparklineyouth.org"),
   title: "SparkLine Youth — The Startup Accelerator for High Schoolers",
   description:
-    "SparkLine Youth is a 4-week, fully virtual accelerator for high schoolers. Build a real startup, pitch real angel investors, get real funding. Just $97.",
+    "SparkLine Youth is a 4-week, fully virtual accelerator for high schoolers. Build a real startup, pitch for real grant funding, keep 100% of your equity. Just $97.",
   keywords: [
     "high school startup accelerator",
     "youth entrepreneurship",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "SparkLine Youth — The Startup Accelerator for High Schoolers",
     description:
-      "Build a real startup in 4 weeks. Pitch real angel investors. Get funded — before you graduate.",
+      "Build a real startup in 4 weeks. Pitch for real grant funding. Keep 100% of your equity — before you graduate.",
     url: "https://sparklineyouth.org",
     siteName: "SparkLine Youth",
     // Image is generated dynamically by app/opengraph-image.tsx and picked
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "SparkLine Youth — The Startup Accelerator for High Schoolers",
     description:
-      "Build a real startup in 4 weeks. Pitch real angel investors. Get funded — before you graduate.",
+      "Build a real startup in 4 weeks. Pitch for real grant funding. Keep 100% of your equity — before you graduate.",
   },
   icons: {
     icon: "/logo.svg",
@@ -57,7 +57,7 @@ const orgJsonLd = {
   url: "https://sparklineyouth.org",
   logo: "https://sparklineyouth.org/logo.svg",
   description:
-    "SparkLine Youth is a 4-week, fully virtual startup accelerator for U.S. high schoolers. Students build a real startup, pitch real angel investors, and get a shot at funding for $97.",
+    "SparkLine Youth is a 4-week, fully virtual startup accelerator for U.S. high schoolers. Students build a real startup and pitch for cash grants from our sponsor partners — keeping 100% of their equity — for $97.",
   sameAs: ["https://sparklineyouth.org"],
   address: {
     "@type": "PostalAddress",

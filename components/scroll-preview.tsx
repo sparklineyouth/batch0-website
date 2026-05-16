@@ -61,8 +61,8 @@ const MOBILE_FEATURES: {
   {
     icon: Trophy,
     eyebrow: "Demo Day",
-    title: "Pitch real investors",
-    body: "Week 4 ends live on Zoom in front of vetted angels — not a panel of judges. Real checks get written.",
+    title: "Pitch for real cash",
+    body: "Week 4 ends live on Zoom. Pitch our sponsor-funded grant panel for real cash prizes — no equity taken, ever.",
   },
 ];
 

@@ -80,7 +80,7 @@ export default async function OpengraphImage() {
           >
             Build a real startup.
             <br />
-            Pitch <span style={{ color: "#FACC15" }}>real investors.</span>
+            Pitch for <span style={{ color: "#FACC15" }}>real funding.</span>
           </div>
           <div
             style={{

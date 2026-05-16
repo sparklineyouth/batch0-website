@@ -27,8 +27,8 @@ const weeks = [
     week: "Week 4",
     title: "Pitch",
     body:
-      "Final pitch deck. Demo Day rehearsals with mentors. Pitch live on Zoom, to real angel investors who can fund you.",
-    deliverable: "Investor Pitch (Live)",
+      "Final pitch deck. Demo Day rehearsals with mentors. Pitch live on Zoom for the cohort grant pool — funded by our sponsor partners. Cash prizes, zero equity.",
+    deliverable: "Grant Pitch (Live)",
   },
 ];
 

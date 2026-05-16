@@ -25,7 +25,7 @@ export default function CTA({ config }: { config: SiteConfig }) {
           <p className="mt-4 sm:mt-5 max-w-xl text-[15px] sm:text-[17px] text-white/75 leading-[1.6]">
             {cohortLabel} launches {derived.cohortName}.{" "}
             {derived.capacityLabel} seats. {derived.priceLabel} if accepted.
-            Real angel investors on Demo Day.
+            Real cash grants on Demo Day.
           </p>
         </Reveal>
 
@@ -59,7 +59,7 @@ export default function CTA({ config }: { config: SiteConfig }) {
             <ul className="mt-6 space-y-2.5 text-[14px] sm:text-[15px] text-white/80">
               <Bullet>4 weeks, fully virtual</Bullet>
               <Bullet>Live mentor sessions + Discord community</Bullet>
-              <Bullet>Pitch real angel investors on Demo Day</Bullet>
+              <Bullet>Pitch our sponsor-funded grant panel on Demo Day</Bullet>
               <Bullet>Walk away with a fundable startup package</Bullet>
             </ul>
           </div>

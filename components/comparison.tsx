@@ -37,14 +37,14 @@ export default function Comparison({ config }: { config: SiteConfig }) {
     {
       program: "LaunchX",
       cost: "$3,000–$8,000",
-      investors: true,
+      investors: "Investors",
       virtual: "Partial",
       yearRound: false,
     },
     {
       program: "LeanGap",
       cost: "Varies",
-      investors: true,
+      investors: "Investors",
       virtual: "Partial",
       yearRound: false,
     },
@@ -58,7 +58,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
     {
       program: "SparkLine Youth",
       cost: config.derived.priceLabel,
-      investors: true,
+      investors: "Grants",
       virtual: true,
       yearRound: true,
       highlight: true,
@@ -73,13 +73,17 @@ export default function Comparison({ config }: { config: SiteConfig }) {
             Why SparkLine Youth
           </p>
           <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-            Affordable. Virtual. Real investors.
+            Affordable. Virtual. Real funding.
           </h2>
           <p className="mt-4 sm:mt-5 text-base sm:text-[17px] text-white/75 leading-relaxed">
-            Four axes worth comparing: cost, who you pitch, whether it
-            actually runs online, and whether you can join when it fits
+            Four axes worth comparing: cost, what kind of funding, whether
+            it actually runs online, and whether you can join when it fits
             your year.
           </p>
+          <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-spark/30 bg-spark/[0.06] px-3 py-1.5 text-[11px] sm:text-xs font-medium uppercase tracking-[0.18em] text-spark">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-spark" />
+            Zero equity. Ever.
+          </div>
         </Reveal>
 
         {/* Desktop table */}
@@ -92,7 +96,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
               <tr className="border-b border-white/10 bg-white/[0.02] text-[11px] uppercase tracking-[0.18em] text-white/60">
                 <th scope="col" className="px-6 py-4 font-medium">Program</th>
                 <th scope="col" className="px-6 py-4 font-medium">Cost</th>
-                <th scope="col" className="px-6 py-4 font-medium">Real investors</th>
+                <th scope="col" className="px-6 py-4 font-medium">Real Funding</th>
                 <th scope="col" className="px-6 py-4 font-medium">Virtual</th>
                 <th scope="col" className="px-6 py-4 font-medium">Year-round</th>
               </tr>
@@ -171,7 +175,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
                 </span>
               </div>
               <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
-                <dt className="text-white/60">Investors</dt>
+                <dt className="text-white/60">Real Funding</dt>
                 <dd>
                   <ValueCell value={r.investors} />
                 </dd>

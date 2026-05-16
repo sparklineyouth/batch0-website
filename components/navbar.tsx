@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/#curriculum", label: "Curriculum" },
   { href: "/showcase", label: "Showcase" },
   { href: "/alumni", label: "Alumni" },
+  { href: "/sponsors", label: "Sponsors" },
   { href: "/#faq", label: "FAQ" },
 ] as const;
 
