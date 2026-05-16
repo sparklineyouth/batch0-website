@@ -6,18 +6,18 @@ import { ApplicationForm } from "./application-form";
 import { Card } from "@/components/ui/card";
 
 export const metadata = {
-  title: "Apply · SparkLine",
+  title: "Apply · SparkLine Youth",
   description:
-    "Apply to SparkLine — the 4-week, fully virtual startup accelerator for U.S. high schoolers. Rolling admissions; $97 once accepted.",
+    "Apply to SparkLine Youth — the 4-week, fully virtual startup accelerator for U.S. high schoolers. Rolling admissions; $97 once accepted.",
   openGraph: {
-    title: "Apply to SparkLine",
+    title: "Apply to SparkLine Youth",
     description:
       "Take your idea from raw concept to investor-ready pitch in 4 weeks. Rolling admissions. $97 once accepted.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Apply to SparkLine",
+    title: "Apply to SparkLine Youth",
     description:
       "The 4-week, fully virtual startup accelerator for U.S. high schoolers. Rolling admissions. $97.",
   },
@@ -146,7 +146,7 @@ export default async function ApplyPage({
           {reapplying ? "Reapply" : "Apply"}
         </p>
         <h1 className="mt-3 text-[30px] sm:text-4xl font-bold tracking-tight text-white leading-[1.1]">
-          Apply to SparkLine
+          Apply to SparkLine Youth
         </h1>
         <p className="mt-3 max-w-2xl text-[15px] sm:text-base text-white/75 leading-[1.55]">
           {cohortName} is capped at {capacity} students. Applications are

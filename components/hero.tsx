@@ -58,7 +58,7 @@ export default function Hero({
         </h1>
 
         <p className="mt-5 sm:mt-7 max-w-2xl text-[15px] sm:text-lg md:text-xl text-white/80 leading-[1.55] sm:leading-relaxed">
-          SparkLine is the 4-week, fully virtual accelerator for U.S.
+          SparkLine Youth is the 4-week, fully virtual accelerator for U.S.
           high schoolers. Take an idea from raw concept to investor-ready
           pitch — and walk into Demo Day with a real shot at funding.
         </p>

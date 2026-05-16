@@ -51,7 +51,7 @@ export async function postDiscordWebhook(args: {
       body: JSON.stringify({
         content: args.content,
         embeds: args.embeds,
-        username: args.username ?? "SparkLine",
+        username: args.username ?? "SparkLine Youth",
         allowed_mentions: { parse: [] },
       }),
     });
@@ -328,8 +328,8 @@ export async function removeRoleFromMember(
 }
 
 /**
- * Make a member's Discord roles match the user's SparkLine role.
- * Adds the role mapped to their current SparkLine role, removes any
+ * Make a member's Discord roles match the user's SparkLine Youth role.
+ * Adds the role mapped to their current SparkLine Youth role, removes any
  * other SparkLine-managed roles they had. Safe to call repeatedly.
  */
 export async function syncMemberRoles(
@@ -420,8 +420,8 @@ export function announcementEmbed(args: {
     url: args.link ?? undefined,
     footer: {
       text: args.cohortName
-        ? `SparkLine · ${args.cohortName}`
-        : "SparkLine",
+        ? `SparkLine Youth · ${args.cohortName}`
+        : "SparkLine Youth",
     },
     timestamp: new Date().toISOString(),
   };
@@ -474,7 +474,7 @@ export function applicationEmbed(args: {
     description: lines.join("\n") || undefined,
     color: BRAND_COLOR,
     url: args.link,
-    footer: { text: "SparkLine · applications" },
+    footer: { text: "SparkLine Youth · applications" },
     timestamp: new Date().toISOString(),
   };
 }
@@ -494,7 +494,7 @@ export function refundEmbed(args: {
     title: `↩️ Refund — ${args.name ?? "user"}`,
     description: lines.join("\n"),
     color: BRAND_COLOR,
-    footer: { text: `SparkLine · ${args.kind}` },
+    footer: { text: `SparkLine Youth · ${args.kind}` },
     timestamp: new Date().toISOString(),
   };
 }
@@ -521,7 +521,7 @@ export function eventEmbed(args: {
     description: desc.join("\n"),
     color: BRAND_COLOR,
     footer: {
-      text: args.cohortName ? `SparkLine · ${args.cohortName}` : "SparkLine",
+      text: args.cohortName ? `SparkLine Youth · ${args.cohortName}` : "SparkLine Youth",
     },
     timestamp: new Date().toISOString(),
   };
@@ -607,7 +607,7 @@ export function discordAvatarUrl(
 export const SLASH_COMMANDS = [
   {
     name: "me",
-    description: "Show your SparkLine status (private).",
+    description: "Show your SparkLine Youth status (private).",
   },
   {
     name: "link",
@@ -619,19 +619,19 @@ export const SLASH_COMMANDS = [
   },
   {
     name: "events",
-    description: "Show the next few upcoming SparkLine events.",
+    description: "Show the next few upcoming SparkLine Youth events.",
   },
   {
     name: "sync",
-    description: "Re-sync your Discord roles with your SparkLine status.",
+    description: "Re-sync your Discord roles with your SparkLine Youth status.",
   },
   {
     name: "help",
-    description: "List every SparkLine slash command.",
+    description: "List every SparkLine Youth slash command.",
   },
   {
     name: "whois",
-    description: "Admins only — look up a Discord user's SparkLine profile.",
+    description: "Admins only — look up a Discord user's SparkLine Youth profile.",
     options: [
       {
         name: "user",

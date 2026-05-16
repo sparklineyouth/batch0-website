@@ -87,7 +87,7 @@ export async function POST(req: Request) {
             currency: "usd",
             unit_amount: charge.amount_cents,
             product_data: {
-              name: `SparkLine — ${charge.kind === "fine" ? "Fine" : "Fee"}`,
+              name: `SparkLine Youth — ${charge.kind === "fine" ? "Fine" : "Fee"}`,
               description: charge.description,
             },
           },

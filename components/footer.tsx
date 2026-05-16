@@ -14,9 +14,9 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
       <div className="mx-auto max-w-6xl grid gap-8 sm:gap-10 sm:grid-cols-2 md:grid-cols-4">
         <div className="md:col-span-2">
           <div className="flex items-center gap-2.5">
-            <Image src="/logo.svg" alt="SparkLine" width={28} height={28} />
+            <Image src="/logo.svg" alt="SparkLine Youth" width={28} height={28} />
             <span className="text-lg font-semibold tracking-tight text-white">
-              Spark<span className="text-spark">Line</span>
+              Spark<span className="text-spark">Line</span> Youth
             </span>
           </div>
           <p className="mt-4 max-w-sm text-sm text-white/70 leading-relaxed">
@@ -55,7 +55,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
                 href="#compare"
                 className="rounded hover:text-spark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spark"
               >
-                Why SparkLine
+                Why SparkLine Youth
               </a>
             </li>
             <li>
@@ -103,7 +103,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
       </div>
 
       <div className="mx-auto max-w-6xl mt-12 sm:mt-14 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-white/55">
-        <span>© {new Date().getFullYear()} SparkLine. All rights reserved.</span>
+        <span>© {new Date().getFullYear()} SparkLine Youth. All rights reserved.</span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <a
             href="/terms"

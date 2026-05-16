@@ -39,7 +39,7 @@ export function RoleSidebar({
         <Link href="/" className="flex items-center gap-2">
           <Image src="/logo.svg" alt="" width={24} height={24} />
           <span className="font-semibold tracking-tight text-white">
-            Spark<span className="text-spark">Line</span>
+            Spark<span className="text-spark">Line</span> Youth
           </span>
         </Link>
         <NotificationBell align="left" />

@@ -112,7 +112,7 @@ export async function generateAndSendRecap(teamId: string): Promise<{
         model: "claude-haiku-4-5-20251001",
         max_tokens: 600,
         system:
-          "You're writing a Demo Day recap for a high-school startup team at SparkLine. " +
+          "You're writing a Demo Day recap for a high-school startup team at SparkLine Youth. " +
           "Keep it warm but specific — 3-4 short paragraphs. Quote judge comments only " +
           "if they're actually useful feedback; never call out a judge by name. End with a " +
           "concrete suggestion for what to focus on next.",

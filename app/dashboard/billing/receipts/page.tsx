@@ -5,7 +5,7 @@ import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { ArrowLeft, Download, FileText, Receipt } from "lucide-react";
 
-export const metadata = { title: "Receipts · SparkLine" };
+export const metadata = { title: "Receipts · SparkLine Youth" };
 
 function fmtMoney(cents: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {

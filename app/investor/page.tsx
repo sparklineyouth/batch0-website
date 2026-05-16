@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 
-export const metadata = { title: "Investor · SparkLine" };
+export const metadata = { title: "Investor · SparkLine Youth" };
 
 export default async function InvestorOverview() {
   const profile = await requireInvestor();

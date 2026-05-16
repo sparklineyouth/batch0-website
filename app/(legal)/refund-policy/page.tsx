@@ -1,4 +1,4 @@
-export const metadata = { title: "Refund Policy · SparkLine" };
+export const metadata = { title: "Refund Policy · SparkLine Youth" };
 
 export default function RefundPolicyPage() {
   return (
@@ -9,7 +9,7 @@ export default function RefundPolicyPage() {
       </p>
 
       <p>
-        We want everyone to be happy with SparkLine. Here's how refunds work.
+        We want everyone to be happy with SparkLine Youth. Here's how refunds work.
       </p>
 
       <h2>Full refund within 7 days</h2>

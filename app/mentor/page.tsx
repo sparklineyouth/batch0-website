@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 
-export const metadata = { title: "Mentor · SparkLine" };
+export const metadata = { title: "Mentor · SparkLine Youth" };
 
 export default async function MentorOverview() {
   const admin = createAdminClient();

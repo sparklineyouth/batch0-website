@@ -1,4 +1,4 @@
-export const metadata = { title: "Privacy Policy · SparkLine" };
+export const metadata = { title: "Privacy Policy · SparkLine Youth" };
 
 export default function PrivacyPage() {
   return (
@@ -10,7 +10,7 @@ export default function PrivacyPage() {
 
       <p>
         We collect the minimum personal information needed to run the
-        SparkLine program, and we never sell your data.
+        SparkLine Youth program, and we never sell your data.
       </p>
 
       <h2>What we collect</h2>
@@ -78,11 +78,11 @@ export default function PrivacyPage() {
       <h2>Your ideas and IP</h2>
       <p>
         Anything you upload — pitch decks, business plans, customer
-        research, code, drafts — belongs to you. SparkLine will never
+        research, code, drafts — belongs to you. SparkLine Youth will never
         sell, license, or share the substance of your idea with third
         parties for their own use. We don't take equity in your company
         and we don't claim ownership of your IP. The only public
-        reference we may make is attribution (e.g. "built at SparkLine").
+        reference we may make is attribution (e.g. "built at SparkLine Youth").
         Full terms are in our <a href="/terms">Terms of Service</a>.
       </p>
 

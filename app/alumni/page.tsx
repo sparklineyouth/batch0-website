@@ -5,9 +5,9 @@ import Footer from "@/components/footer";
 import { ExternalLink, Calendar } from "lucide-react";
 
 export const metadata = {
-  title: "Alumni · SparkLine",
+  title: "Alumni · SparkLine Youth",
   description:
-    "Teams that graduated from past SparkLine cohorts and what they're building today.",
+    "Teams that graduated from past SparkLine Youth cohorts and what they're building today.",
 };
 
 export const dynamic = "force-dynamic";
@@ -65,14 +65,14 @@ export default async function AlumniPage() {
           What our founders built.
         </h1>
         <p className="mt-5 max-w-2xl text-lg text-white/65">
-          Every team below shipped something real during a SparkLine cohort.
+          Every team below shipped something real during a SparkLine Youth cohort.
           Many are still building.
         </p>
 
         {renderedCohorts.length === 0 ? (
           <div className="mt-16 rounded-2xl border border-white/10 bg-zinc-900/40 px-6 py-12 text-center">
             <p className="text-base text-white/65">
-              The first SparkLine cohort is still in flight. Once it wraps,
+              The first SparkLine Youth cohort is still in flight. Once it wraps,
               its alumni will land here.
             </p>
             <Link

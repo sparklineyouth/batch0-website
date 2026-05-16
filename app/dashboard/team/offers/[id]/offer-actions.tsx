@@ -54,7 +54,7 @@ export function OfferActions({ offerId }: { offerId: string }) {
         <Label>Counter-sign</Label>
         <p className="mt-0.5 text-xs text-white/50">
           By typing your full legal name and clicking <em>Counter-sign</em>,
-          you accept the offer on behalf of the team. SparkLine logs the
+          you accept the offer on behalf of the team. SparkLine Youth logs the
           timestamp + IP as evidence of execution.
         </p>
         <Input

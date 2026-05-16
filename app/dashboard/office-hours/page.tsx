@@ -7,7 +7,7 @@ import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { CheckCircle2, MessageSquare } from "lucide-react";
 
-export const metadata = { title: "Office hours · SparkLine" };
+export const metadata = { title: "Office hours · SparkLine Youth" };
 
 export default async function StudentOfficeHoursPage() {
   const user = await requireUser();

@@ -66,7 +66,7 @@ export function SafeOfferForm({ teamId }: { teamId: string }) {
       <h3 className="text-base font-semibold">Send a SAFE</h3>
       <p className="text-xs text-white/50">
         Drafts a SAFE memo, signs as you, and emails the team for counter-
-        signature. SparkLine logs every signature in an audit trail.
+        signature. SparkLine Youth logs every signature in an audit trail.
       </p>
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <div>
@@ -141,7 +141,7 @@ export function SafeOfferForm({ teamId }: { teamId: string }) {
               className="mt-0.5"
             />
             I'm sending this as a binding offer the team can counter-sign.
-            SparkLine logs my signature with timestamp + IP.
+            SparkLine Youth logs my signature with timestamp + IP.
           </label>
         </div>
       </div>

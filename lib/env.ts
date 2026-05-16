@@ -28,11 +28,11 @@ export const env = {
   // when these aren't set, so local dev keeps working without a key.
   resendApiKey: process.env.RESEND_API_KEY,
   // The verified `From:` address Resend sends as. Must be on a domain
-  // you've verified in the Resend dashboard (e.g. "SparkLine
+  // you've verified in the Resend dashboard (e.g. "SparkLine Youth
   // <hello@sparklineyouth.org>"). Falls back to onboarding@resend.dev
   // for first-run testing only.
   resendFrom:
-    process.env.RESEND_FROM ?? "SparkLine <onboarding@resend.dev>",
+    process.env.RESEND_FROM ?? "SparkLine Youth <onboarding@resend.dev>",
   // Svix signing secret from the Resend webhooks dashboard. Looks like
   // "whsec_xxx". When unset, /api/resend/webhook returns 400 — we
   // refuse to ingest unsigned events because the table is service-role

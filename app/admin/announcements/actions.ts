@@ -86,7 +86,7 @@ export async function broadcastAnnouncement(
     <tr><td align="center">
       <table role="presentation" cellpadding="0" cellspacing="0" width="560" style="max-width:560px;background:#111;border-radius:16px;border:1px solid rgba(255,255,255,0.08);padding:32px">
         <tr><td>
-          <div style="font-weight:700;font-size:18px;color:#fff">Spark<span style="color:#facc15">Line</span></div>
+          <div style="font-weight:700;font-size:18px;color:#fff">Spark<span style="color:#facc15">Line</span> Youth</div>
           <h1 style="margin:18px 0 12px 0;font-size:22px;color:#fff">${escape(input.title)}</h1>
           <div style="font-size:15px;line-height:1.55;color:#e7e7e7;white-space:pre-wrap">${escape(input.body)}</div>
         </td></tr>

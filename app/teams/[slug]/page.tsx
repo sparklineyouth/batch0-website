@@ -14,13 +14,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .select("name, tagline, public_blurb, is_public, demo_video_url, logo_url, logo_status")
     .ilike("slug", params.slug)
     .maybeSingle();
-  if (!team || !team.is_public) return { title: "Team · SparkLine" };
+  if (!team || !team.is_public) return { title: "Team · SparkLine Youth" };
   const desc =
     team.tagline ??
     team.public_blurb?.slice(0, 160) ??
-    "A SparkLine team building in public.";
+    "A SparkLine Youth team building in public.";
   return {
-    title: `${team.name} · SparkLine`,
+    title: `${team.name} · SparkLine Youth`,
     description: desc,
     openGraph: {
       title: team.name,
@@ -67,7 +67,7 @@ export default async function PublicTeamPage({ params }: Props) {
         href="/"
         className="text-sm text-white/55 transition hover:text-white"
       >
-        ← SparkLine
+        ← SparkLine Youth
       </Link>
 
       <header className="mt-6 flex items-start gap-5">
@@ -94,7 +94,7 @@ export default async function PublicTeamPage({ params }: Props) {
           )}
           <p className="mt-2 text-xs text-white/45">
             {cohort?.name ? `${cohort.name} · ` : ""}
-            Built at SparkLine
+            Built at SparkLine Youth
           </p>
         </div>
       </header>
@@ -183,7 +183,7 @@ export default async function PublicTeamPage({ params }: Props) {
             ? `${backers} investor${backers === 1 ? "" : "s"} already watching.`
             : "Be the first to back them."}{" "}
           Investors get a private profile, scorecards, and a direct line to
-          the team through SparkLine.
+          the team through SparkLine Youth.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link href={`/investor?team=${team.slug}`}>

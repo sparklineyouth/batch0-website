@@ -94,7 +94,7 @@ export async function GET(req: Request) {
   }
 
   // Best-effort: pull current role + drop them into the guild with the
-  // role for that SparkLine role. The bot needs MANAGE_ROLES + the
+  // role for that SparkLine Youth role. The bot needs MANAGE_ROLES + the
   // role for the user must be below the bot's role.
   const { data: profile } = await admin
     .from("profiles")
@@ -127,9 +127,9 @@ export async function GET(req: Request) {
   await sendDirectMessage(discordUser.id, {
     embeds: [
       {
-        title: "Welcome to SparkLine 👋",
+        title: "Welcome to SparkLine Youth 👋",
         description: [
-          `Your SparkLine account is linked. We auto-assigned your **${role}** role and added you to the right channels.`,
+          `Your SparkLine Youth account is linked. We auto-assigned your **${role}** role and added you to the right channels.`,
           "",
           `Run \`/me\` anytime to check your status, \`/events\` for what's coming up, or open your dashboard:`,
           `${env.siteUrl}/dashboard`,

@@ -10,9 +10,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       />
       <div className="relative mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 py-12">
         <Link href="/" className="mb-8 flex items-center gap-2.5">
-          <Image src="/logo.svg" alt="SparkLine" width={32} height={32} className="animate-spark-pulse" />
+          <Image src="/logo.svg" alt="SparkLine Youth" width={32} height={32} className="animate-spark-pulse" />
           <span className="text-lg font-semibold tracking-tight text-white">
-            Spark<span className="text-spark">Line</span>
+            Spark<span className="text-spark">Line</span> Youth
           </span>
         </Link>
         <div className="w-full rounded-2xl border border-white/10 bg-zinc-900/60 p-7 backdrop-blur">

@@ -56,7 +56,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
       yearRound: "Academic year",
     },
     {
-      program: "SparkLine",
+      program: "SparkLine Youth",
       cost: config.derived.priceLabel,
       investors: true,
       virtual: true,
@@ -70,7 +70,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
       <div className="mx-auto max-w-6xl">
         <Reveal className="max-w-2xl">
           <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
-            Why SparkLine
+            Why SparkLine Youth
           </p>
           <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
             Affordable. Virtual. Real investors.

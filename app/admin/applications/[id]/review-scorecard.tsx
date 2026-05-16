@@ -11,7 +11,7 @@ const DIMS: { key: keyof ScoreState; label: string; hint: string }[] = [
   { key: "founder", label: "Founder", hint: "Agency, follow-through, founder/market fit." },
   { key: "motivation", label: "Motivation", hint: "Why this, why now, why them." },
   { key: "feasibility", label: "Feasibility", hint: "Can they actually ship in 4 weeks?" },
-  { key: "fit", label: "Fit", hint: "Will SparkLine help them more than other paths?" },
+  { key: "fit", label: "Fit", hint: "Will SparkLine Youth help them more than other paths?" },
 ];
 
 const DECISIONS = [

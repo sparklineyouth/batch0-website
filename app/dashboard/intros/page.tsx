@@ -6,7 +6,7 @@ import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { LocalTime } from "@/components/ui/local-time";
 
-export const metadata = { title: "Investor intros · SparkLine" };
+export const metadata = { title: "Investor intros · SparkLine Youth" };
 
 const PRETTY_STATUS: Record<string, string> = {
   requested: "Requested",

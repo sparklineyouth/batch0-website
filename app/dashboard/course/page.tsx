@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, PlayCircle, Lock } from "lucide-react";
 
-export const metadata = { title: "Course · SparkLine" };
+export const metadata = { title: "Course · SparkLine Youth" };
 
 export default async function CoursePage() {
   const user = await requireUser();

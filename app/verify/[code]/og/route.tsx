@@ -58,7 +58,7 @@ export async function GET(
           }}
         />
         <div style={{ fontSize: 18, letterSpacing: 6, color: "#facc15", textTransform: "uppercase", fontWeight: 600 }}>
-          SparkLine
+          SparkLine Youth
         </div>
         <div style={{ marginTop: 28, fontSize: 28, color: "rgba(255,255,255,0.55)" }}>
           Certificate of completion

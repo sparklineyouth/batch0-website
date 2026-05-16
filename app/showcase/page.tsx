@@ -5,8 +5,8 @@ import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 
 export const metadata = {
-  title: "Showcase · SparkLine",
-  description: "Startups built by high-school founders at SparkLine.",
+  title: "Showcase · SparkLine Youth",
+  description: "Startups built by high-school founders at SparkLine Youth.",
 };
 
 export default async function ShowcaseIndex() {
@@ -68,7 +68,7 @@ export default async function ShowcaseIndex() {
           Showcase
         </p>
         <h1 className="mt-3 text-4xl font-bold tracking-tight md:text-6xl">
-          Startups from SparkLine
+          Startups from SparkLine Youth
         </h1>
         <p className="mt-5 max-w-2xl text-lg text-white/60">
           Real startups built by high schoolers. Pick a cohort to see what

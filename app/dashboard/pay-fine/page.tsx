@@ -7,7 +7,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { AlertTriangle } from "lucide-react";
 
-export const metadata = { title: "Outstanding fine · SparkLine" };
+export const metadata = { title: "Outstanding fine · SparkLine Youth" };
 
 export default async function PayFinePage() {
   const user = await requireUser();

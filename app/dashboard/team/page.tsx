@@ -8,7 +8,7 @@ import { InvitesInbox } from "./invites-inbox";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
-export const metadata = { title: "Team · SparkLine" };
+export const metadata = { title: "Team · SparkLine Youth" };
 
 export default async function TeamPage() {
   const user = await requireUser();

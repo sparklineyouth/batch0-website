@@ -11,7 +11,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
 
   const faqs = [
     {
-      q: "Who is SparkLine for?",
+      q: "Who is SparkLine Youth for?",
       a: "Any U.S. high schooler ages 13–18 with a business idea — or even a half-baked one — and the motivation to build it. No prior experience required.",
     },
     {
@@ -39,8 +39,8 @@ export default function FAQ({ config }: { config: SiteConfig }) {
       a: "A validated Lean Canvas, a complete business model, a go-to-market plan, and a polished, investor-ready pitch deck — plus the network and credibility to keep going.",
     },
     {
-      q: "Does SparkLine take equity or own my idea?",
-      a: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. SparkLine takes no equity, no IP, and no royalties. The only thing we ask is that you let us say \"this project was built at SparkLine\" when we talk about our alumni. That's it.",
+      q: "Does SparkLine Youth take equity or own my idea?",
+      a: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. SparkLine Youth takes no equity, no IP, and no royalties. The only thing we ask is that you let us say \"this project was built at SparkLine Youth\" when we talk about our alumni. That's it.",
     },
   ];
 

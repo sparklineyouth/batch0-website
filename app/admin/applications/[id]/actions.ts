@@ -62,7 +62,7 @@ export async function decideApplication(
     if (decision === "accepted") {
       const t = Templates.applicationAccepted({
         name: a.full_name ?? profile?.full_name ?? null,
-        cohortName: cohort?.name ?? "SparkLine",
+        cohortName: cohort?.name ?? "SparkLine Youth",
         priceCents: cohort?.price_cents ?? 9700,
       });
       if (profile?.email) {
@@ -76,7 +76,7 @@ export async function decideApplication(
         userId: a.user_id,
         type: "application_accepted",
         title: "You're in",
-        body: `Welcome to ${cohort?.name ?? "SparkLine"}. Pay to lock in your seat.`,
+        body: `Welcome to ${cohort?.name ?? "SparkLine Youth"}. Pay to lock in your seat.`,
         link: "/dashboard/application",
       });
     } else {
@@ -293,21 +293,21 @@ export async function waiveApplicationFee(
       userId: app.user_id,
       type: "application_fee_waived",
       title: "Your enrollment fee has been waived",
-      body: `Welcome to ${cohort?.name ?? "SparkLine"} — you're enrolled.`,
+      body: `Welcome to ${cohort?.name ?? "SparkLine Youth"} — you're enrolled.`,
       link: "/dashboard/course",
     });
     if (profile?.email) {
       const html = `<!doctype html><html><body style="background:#0a0a0a;color:#e7e7e7;font-family:Inter,Arial,sans-serif;margin:0;padding:32px">
         <div style="max-width:560px;margin:0 auto;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
-          <div style="font-weight:700">Spark<span style="color:#facc15">Line</span></div>
+          <div style="font-weight:700">Spark<span style="color:#facc15">Line</span> Youth</div>
           <h1 style="font-size:22px;color:#facc15;margin-top:18px">Fee waived — you're in</h1>
-          <p>Welcome to <strong>${escapeHtml(cohort?.name ?? "SparkLine")}</strong>${a.full_name ? `, ${escapeHtml(a.full_name)}` : ""}. We've waived the enrollment fee${reason?.trim() ? ` (${escapeHtml(reason.trim())})` : ""} and your course access is unlocked.</p>
+          <p>Welcome to <strong>${escapeHtml(cohort?.name ?? "SparkLine Youth")}</strong>${a.full_name ? `, ${escapeHtml(a.full_name)}` : ""}. We've waived the enrollment fee${reason?.trim() ? ` (${escapeHtml(reason.trim())})` : ""} and your course access is unlocked.</p>
           <p><a href="https://sparklineyouth.org/dashboard/course" style="display:inline-block;background:#facc15;color:#000;padding:10px 18px;border-radius:8px;font-weight:600;text-decoration:none">Open your course</a></p>
         </div>
       </body></html>`;
       await sendEmail({
         to: profile.email,
-        subject: "Your SparkLine enrollment fee was waived",
+        subject: "Your SparkLine Youth enrollment fee was waived",
         html,
       });
     }

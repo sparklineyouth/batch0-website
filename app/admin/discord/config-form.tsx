@@ -80,7 +80,7 @@ export function DiscordConfigForm({
 
       <Section
         title="Role IDs"
-        hint="A role ID for each SparkLine role. We auto-assign these on link, on role change, and on enrollment."
+        hint="A role ID for each SparkLine Youth role. We auto-assign these on link, on role change, and on enrollment."
       >
         <Row
           label="Student role ID"

@@ -104,15 +104,15 @@ export async function removeFromProgram(userId: string, reason: string) {
   if (target.email) {
     const html = `<!doctype html><html><body style="background:#0a0a0a;color:#e7e7e7;font-family:Inter,Arial,sans-serif;margin:0;padding:32px">
       <div style="max-width:560px;margin:0 auto;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
-        <div style="font-weight:700">Spark<span style="color:#facc15">Line</span></div>
+        <div style="font-weight:700">Spark<span style="color:#facc15">Line</span> Youth</div>
         <h1 style="font-size:20px;color:#fff;margin-top:16px">You've been removed from your cohort</h1>
-        <p style="color:#bbb">An admin has withdrawn your participation in SparkLine.${reason?.trim() ? ` Reason: <em>${escapeHtml(reason.trim())}</em>.` : ""}</p>
+        <p style="color:#bbb">An admin has withdrawn your participation in SparkLine Youth.${reason?.trim() ? ` Reason: <em>${escapeHtml(reason.trim())}</em>.` : ""}</p>
         <p style="color:#bbb">If you believe this is an error, reply to this email or write to <a style="color:#facc15" href="mailto:${env.contactEmail}">${env.contactEmail}</a>.</p>
       </div>
     </body></html>`;
     await sendEmail({
       to: target.email,
-      subject: "You've been removed from your SparkLine cohort",
+      subject: "You've been removed from your SparkLine Youth cohort",
       html,
     });
   }

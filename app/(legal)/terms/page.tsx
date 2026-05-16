@@ -1,4 +1,4 @@
-export const metadata = { title: "Terms of Service · SparkLine" };
+export const metadata = { title: "Terms of Service · SparkLine Youth" };
 
 export default function TermsPage() {
   return (
@@ -9,14 +9,14 @@ export default function TermsPage() {
       </p>
 
       <p>
-        These Terms of Service govern your use of SparkLine
-        (sparklineyouth.org), operated by SparkLine. By creating an account
+        These Terms of Service govern your use of SparkLine Youth
+        (sparklineyouth.org), operated by SparkLine Youth. By creating an account
         or using the platform, you agree to these terms.
       </p>
 
       <h2>Eligibility</h2>
       <p>
-        SparkLine is intended for U.S. high schoolers, generally ages 13–18.
+        SparkLine Youth is intended for U.S. high schoolers, generally ages 13–18.
         If you are under 18, you must have permission from a parent or legal
         guardian to use the platform.
       </p>
@@ -30,14 +30,14 @@ export default function TermsPage() {
 
       <h2>Payments</h2>
       <p>
-        SparkLine charges a one-time enrollment fee per cohort. All payments
+        SparkLine Youth charges a one-time enrollment fee per cohort. All payments
         are processed by Stripe. Prices are listed in USD. See our{" "}
         <a href="/refund-policy">refund policy</a> for refund terms.
       </p>
 
       <h2>Acceptable use</h2>
       <p>
-        Don't use SparkLine to harass other users, infringe intellectual
+        Don't use SparkLine Youth to harass other users, infringe intellectual
         property, distribute malware, or attempt to compromise the
         platform's security.
       </p>
@@ -45,14 +45,14 @@ export default function TermsPage() {
       <h2>Content you upload</h2>
       <p>
         You retain ownership of anything you upload (drafts, files, pitch
-        decks, submissions). You grant SparkLine a limited license to host
+        decks, submissions). You grant SparkLine Youth a limited license to host
         and display your content for the purpose of running the program.
       </p>
 
       <h2>Your ideas, your IP, your company</h2>
       <p>
         You own 100% of your idea, your intellectual property, and any
-        company you build during or after the program. SparkLine does
+        company you build during or after the program. SparkLine Youth does
         <strong> not</strong> take equity, royalties, revenue share, or
         any ownership interest in your business as a condition of
         participating. We don't claim your IP, we don't license your work
@@ -62,10 +62,10 @@ export default function TermsPage() {
       <p>
         The only thing we ask: permission to attribute. We may publicly
         mention that a project, founder, or company "was built at
-        SparkLine" or "started in a SparkLine cohort" — for example, in
+        SparkLine Youth" or "started in a SparkLine Youth cohort" — for example, in
         case studies, alumni lists, social posts, and our website. This
         is attribution only and creates no ownership, partnership, or
-        agency relationship between SparkLine and your business. If you'd
+        agency relationship between SparkLine Youth and your business. If you'd
         prefer not to be named publicly, email{" "}
         <a href="mailto:sparkline.youth@gmail.com">
           sparkline.youth@gmail.com
@@ -76,13 +76,13 @@ export default function TermsPage() {
       <h2>Termination</h2>
       <p>
         You can delete your account at any time from your settings page.
-        SparkLine may suspend or terminate accounts that violate these
+        SparkLine Youth may suspend or terminate accounts that violate these
         terms.
       </p>
 
       <h2>Disclaimer</h2>
       <p>
-        SparkLine is provided "as is" without warranties. We don't
+        SparkLine Youth is provided "as is" without warranties. We don't
         guarantee investment outcomes — Demo Day connects students with
         real investors, but funding is at the investors' discretion.
       </p>

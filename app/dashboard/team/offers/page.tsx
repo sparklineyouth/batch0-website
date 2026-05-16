@@ -46,7 +46,7 @@ export default async function TeamOffersPage() {
       </Link>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">SAFE offers</h1>
       <p className="mt-1 text-sm text-white/55">
-        Every investor offer routed through SparkLine. Review carefully — these
+        Every investor offer routed through SparkLine Youth. Review carefully — these
         are real legal commitments once counter-signed.
       </p>
 

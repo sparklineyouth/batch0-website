@@ -113,7 +113,7 @@ export async function registerCommands(): Promise<{ names: string[] }> {
 
 /**
  * Re-apply each linked user's Discord roles based on their current
- * SparkLine role. Useful after re-mapping role IDs, after a server
+ * SparkLine Youth role. Useful after re-mapping role IDs, after a server
  * restore, or once a year as cohort cleanup.
  *
  * Throttled: at most ~5 mutations/second to stay clear of Discord's

@@ -76,7 +76,7 @@ export async function POST(req: Request) {
 
   // After PING, refuse commands when the master toggle is off.
   if (!(await isDiscordEnabled())) {
-    return ephemeral("SparkLine's Discord integration is paused right now.");
+    return ephemeral("SparkLine Youth's Discord integration is paused right now.");
   }
 
   const name: string = body.data?.name ?? "";
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
   }
   if (name === "link") {
     return ephemeral(
-      `🔗 Link your Discord account to SparkLine: ${env.siteUrl}/dashboard/settings`,
+      `🔗 Link your Discord account to SparkLine Youth: ${env.siteUrl}/dashboard/settings`,
     );
   }
   if (name === "cohort") {
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
 
 function handleHelp() {
   const lines = SLASH_COMMANDS.map((c) => `• \`/${c.name}\` — ${c.description}`);
-  return ephemeral(["**SparkLine slash commands**", ...lines].join("\n"));
+  return ephemeral(["**SparkLine Youth slash commands**", ...lines].join("\n"));
 }
 
 async function handleSync(
@@ -268,7 +268,7 @@ async function handleWhois(
     .maybeSingle();
   if (!target) {
     const tag = resolvedUser?.global_name ?? resolvedUser?.username ?? "user";
-    return ephemeral(`<@${targetDiscordId}> (\`${tag}\`) hasn't linked a SparkLine account.`);
+    return ephemeral(`<@${targetDiscordId}> (\`${tag}\`) hasn't linked a SparkLine Youth account.`);
   }
   const lines = [
     `<@${targetDiscordId}> — **${target.full_name ?? target.email}**`,

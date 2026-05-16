@@ -167,7 +167,7 @@ export default async function AdminApplicationDetail({
 
       <Card className="mt-6">
         <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
-          Why SparkLine
+          Why SparkLine Youth
         </h3>
         <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-white/80">
           {app.why_join || "—"}

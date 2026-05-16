@@ -5,7 +5,7 @@ import { CalendarDays, MapPin, Video } from "lucide-react";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
-export const metadata = { title: "Events · SparkLine" };
+export const metadata = { title: "Events · SparkLine Youth" };
 
 export default async function StudentEventsPage() {
   await requireUser();

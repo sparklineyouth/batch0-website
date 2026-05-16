@@ -116,7 +116,7 @@ export default async function AdminDiscordPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Discord</h1>
       <p className="mt-1 text-sm text-white/55">
-        Wire SparkLine into your Discord server. Account linking, role sync,
+        Wire SparkLine Youth into your Discord server. Account linking, role sync,
         cross-posts, and slash commands run off of this configuration.
       </p>
 

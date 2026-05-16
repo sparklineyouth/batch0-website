@@ -18,7 +18,7 @@ export async function generateMetadata({
     .eq("is_public", true)
     .maybeSingle();
   return {
-    title: data ? `${data.name} · SparkLine` : "Team",
+    title: data ? `${data.name} · SparkLine Youth` : "Team",
     description: (data as any)?.tagline ?? undefined,
   };
 }

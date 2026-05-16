@@ -10,7 +10,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 
-export const metadata = { title: "Admin · SparkLine" };
+export const metadata = { title: "Admin · SparkLine Youth" };
 
 function fmtMoney(cents: number) {
   return new Intl.NumberFormat("en-US", {

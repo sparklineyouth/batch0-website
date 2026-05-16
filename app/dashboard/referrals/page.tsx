@@ -8,7 +8,7 @@ import { env } from "@/lib/env";
 import { CopyReferralLink } from "./copy-referral-link";
 import { Crown, Award, TrendingUp } from "lucide-react";
 
-export const metadata = { title: "Referrals · SparkLine" };
+export const metadata = { title: "Referrals · SparkLine Youth" };
 export const dynamic = "force-dynamic";
 
 // Show a small leaderboard with first-name-plus-initial only — full
@@ -65,7 +65,7 @@ export default async function StudentReferralsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Refer friends</h1>
       <p className="mt-1 text-sm text-white/55">
-        Send people you respect. SparkLine works best with founders who
+        Send people you respect. SparkLine Youth works best with founders who
         know each other already.
       </p>
 

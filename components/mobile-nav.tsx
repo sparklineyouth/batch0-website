@@ -180,7 +180,7 @@ export function MobileNav({
         <Link href="/" className="flex items-center gap-2">
           <Image src="/logo.svg" alt="" width={22} height={22} />
           <span className="font-semibold tracking-tight text-white">
-            Spark<span className="text-spark">Line</span>
+            Spark<span className="text-spark">Line</span> Youth
           </span>
           {label && (
             <span className="ml-2 rounded-full bg-spark/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-spark">
@@ -225,7 +225,7 @@ export function MobileNav({
               <Link href="/" className="flex items-center gap-2">
                 <Image src="/logo.svg" alt="" width={22} height={22} />
                 <span className="font-semibold tracking-tight text-white">
-                  Spark<span className="text-spark">Line</span>
+                  Spark<span className="text-spark">Line</span> Youth
                 </span>
               </Link>
               <button

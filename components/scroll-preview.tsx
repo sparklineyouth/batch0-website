@@ -159,7 +159,7 @@ export default function ScrollPreview({ config }: { config: SiteConfig }) {
                   <div className="flex items-center gap-2">
                     <Image src="/logo.svg" alt="" width={20} height={20} />
                     <span className="font-semibold tracking-tight text-white text-sm">
-                      Spark<span className="text-spark">Line</span>
+                      Spark<span className="text-spark">Line</span> Youth
                     </span>
                   </div>
                   <div className="relative">
@@ -198,7 +198,7 @@ export default function ScrollPreview({ config }: { config: SiteConfig }) {
                     Welcome, Riya.
                   </h3>
                   <p className="mt-1 text-sm text-white/50">
-                    Here's where your SparkLine journey lives.
+                    Here's where your SparkLine Youth journey lives.
                   </p>
                 </div>
 

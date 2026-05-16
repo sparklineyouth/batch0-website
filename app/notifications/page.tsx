@@ -6,7 +6,7 @@ import { MarkAllRead } from "./mark-all-read";
 import { NotificationItem } from "./notification-item";
 import { getThemeFromCookie } from "@/lib/theme";
 
-export const metadata = { title: "Notifications · SparkLine" };
+export const metadata = { title: "Notifications · SparkLine Youth" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();

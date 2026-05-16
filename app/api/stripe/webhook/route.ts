@@ -184,7 +184,7 @@ export async function POST(req: Request) {
               (profile?.role as any) ?? "student",
             ).catch(() => {});
           }
-          let cohortName = "SparkLine";
+          let cohortName = "SparkLine Youth";
           if (cohortId) {
             const { data: c } = await admin
               .from("cohorts")

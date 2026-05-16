@@ -29,7 +29,7 @@ ${preheader}
     <table role="presentation" cellpadding="0" cellspacing="0" width="560" style="max-width:560px;background:#111;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden">
       <tr><td style="padding:28px 32px 16px 32px">
         <div style="font-size:18px;font-weight:700;letter-spacing:-0.01em">
-          Spark<span style="color:#facc15">Line</span>
+          Spark<span style="color:#facc15">Line</span> Youth
         </div>
       </td></tr>
       <tr><td style="padding:0 32px 32px 32px;font-size:15px;line-height:1.55;color:#e7e7e7">
@@ -55,19 +55,19 @@ function escape(s: string) {
 
 export const Templates = {
   welcome: (args: { name?: string | null }) => ({
-    subject: "Welcome to SparkLine",
+    subject: "Welcome to SparkLine Youth",
     html: layout({
       preheader: "Your account is ready.",
       body: `
         <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">Welcome${args.name ? `, ${escape(args.name)}` : ""}.</h1>
-        <p>Your SparkLine account is ready. Apply when you're ready — applications are reviewed on a rolling basis.</p>
+        <p>Your SparkLine Youth account is ready. Apply when you're ready — applications are reviewed on a rolling basis.</p>
       `,
       cta: { url: `${env.siteUrl}/apply`, label: "Start your application" },
     }),
   }),
 
   applicationReceived: (args: { name?: string | null }) => ({
-    subject: "We got your SparkLine application",
+    subject: "We got your SparkLine Youth application",
     html: layout({
       preheader: "We'll review and get back to you soon.",
       body: `
@@ -79,7 +79,7 @@ export const Templates = {
   }),
 
   applicationAccepted: (args: { name?: string | null; cohortName: string; priceCents: number }) => ({
-    subject: "You're in — accepted to SparkLine",
+    subject: "You're in — accepted to SparkLine Youth",
     html: layout({
       preheader: "Pay $97 to lock in your seat.",
       body: `
@@ -91,12 +91,12 @@ export const Templates = {
   }),
 
   applicationRejected: (args: { name?: string | null; notes?: string | null }) => ({
-    subject: "Update on your SparkLine application",
+    subject: "Update on your SparkLine Youth application",
     html: layout({
       preheader: "Decision on your application.",
       body: `
         <p>Hi${args.name ? ` ${escape(args.name)}` : ""},</p>
-        <p>Thanks for applying to SparkLine. After reviewing your application, we're unable to offer you a seat in this cohort. We hope you'll apply again next time.</p>
+        <p>Thanks for applying to SparkLine Youth. After reviewing your application, we're unable to offer you a seat in this cohort. We hope you'll apply again next time.</p>
         ${args.notes ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,255,255,0.2);color:#bbb">${escape(args.notes)}</p>` : ""}
       `,
     }),
@@ -105,7 +105,7 @@ export const Templates = {
   paymentReceipt: (args: { name?: string | null; amountCents: number; cohortName: string }) => ({
     subject: "Payment received — you're enrolled",
     html: layout({
-      preheader: "You're enrolled in SparkLine.",
+      preheader: "You're enrolled in SparkLine Youth.",
       body: `
         <h1 style="margin:0 0 12px 0;font-size:22px;color:#facc15">Enrolled</h1>
         <p>We received your payment of <strong>$${(args.amountCents / 100).toFixed(2)}</strong> for ${escape(args.cohortName)}. Your course access is unlocked. Welcome aboard${args.name ? `, ${escape(args.name)}` : ""}.</p>
@@ -120,7 +120,7 @@ export const Templates = {
     paid: number;
     revenue: number;
   }) => ({
-    subject: "SparkLine weekly digest",
+    subject: "SparkLine Youth weekly digest",
     html: layout({
       preheader: `${args.apps} apps · ${args.paid} new enrollments · $${(args.revenue / 100).toFixed(0)} revenue`,
       body: `

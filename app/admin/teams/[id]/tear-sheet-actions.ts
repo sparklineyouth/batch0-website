@@ -105,7 +105,7 @@ ${memberLines || "(no members listed)"}`;
     system: [
       {
         type: "text",
-        text: `You write one-page investor tear sheets for high-school startup teams in the SparkLine accelerator. Be specific and honest — investors hate fluff.
+        text: `You write one-page investor tear sheets for high-school startup teams in the SparkLine Youth accelerator. Be specific and honest — investors hate fluff.
 
 Output format (plain text, NO markdown, NO headings other than the labels below):
 

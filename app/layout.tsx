@@ -14,29 +14,29 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://sparklineyouth.org"),
-  title: "SparkLine — The Startup Accelerator for High Schoolers",
+  title: "SparkLine Youth — The Startup Accelerator for High Schoolers",
   description:
-    "SparkLine is a 4-week, fully virtual accelerator for high schoolers. Build a real startup, pitch real angel investors, get real funding. Just $97.",
+    "SparkLine Youth is a 4-week, fully virtual accelerator for high schoolers. Build a real startup, pitch real angel investors, get real funding. Just $97.",
   keywords: [
     "high school startup accelerator",
     "youth entrepreneurship",
     "teen entrepreneur program",
     "virtual accelerator",
-    "SparkLine",
+    "SparkLine Youth",
   ],
   openGraph: {
-    title: "SparkLine — The Startup Accelerator for High Schoolers",
+    title: "SparkLine Youth — The Startup Accelerator for High Schoolers",
     description:
       "Build a real startup in 4 weeks. Pitch real angel investors. Get funded — before you graduate.",
     url: "https://sparklineyouth.org",
-    siteName: "SparkLine",
+    siteName: "SparkLine Youth",
     // Image is generated dynamically by app/opengraph-image.tsx and picked
     // up automatically — no explicit `images:` entry needed here.
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "SparkLine — The Startup Accelerator for High Schoolers",
+    title: "SparkLine Youth — The Startup Accelerator for High Schoolers",
     description:
       "Build a real startup in 4 weeks. Pitch real angel investors. Get funded — before you graduate.",
   },
@@ -52,12 +52,12 @@ export const metadata: Metadata = {
 const orgJsonLd = {
   "@context": "https://schema.org",
   "@type": "EducationalOrganization",
-  name: "SparkLine",
-  alternateName: "SparkLine Youth",
+  name: "SparkLine Youth",
+  alternateName: "SparkLine",
   url: "https://sparklineyouth.org",
   logo: "https://sparklineyouth.org/logo.svg",
   description:
-    "SparkLine is a 4-week, fully virtual startup accelerator for U.S. high schoolers. Students build a real startup, pitch real angel investors, and get a shot at funding for $97.",
+    "SparkLine Youth is a 4-week, fully virtual startup accelerator for U.S. high schoolers. Students build a real startup, pitch real angel investors, and get a shot at funding for $97.",
   sameAs: ["https://sparklineyouth.org"],
   address: {
     "@type": "PostalAddress",

@@ -80,7 +80,7 @@ export function IntroRequestButton({
         description={
           <div className="space-y-2">
             <p>
-              We'll route this to the SparkLine team. They'll loop you in with
+              We'll route this to the SparkLine Youth team. They'll loop you in with
               the founders when appropriate.
             </p>
             <Textarea

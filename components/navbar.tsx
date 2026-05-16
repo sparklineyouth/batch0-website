@@ -98,7 +98,7 @@ export default function Navbar({
                 <a href="/" className="flex items-center gap-2">
                   <Image src="/logo.svg" alt="" width={24} height={24} />
                   <span className="text-base font-semibold tracking-tight text-white">
-                    Spark<span className="text-spark">Line</span>
+                    Spark<span className="text-spark">Line</span> Youth
                   </span>
                 </a>
                 <button
@@ -166,9 +166,9 @@ export default function Navbar({
       <header className="fixed top-0 inset-x-0 z-50 border-b border-white/10 bg-black/95 backdrop-blur supports-[backdrop-filter]:bg-black/80 pt-safe">
         <nav className="mx-auto max-w-6xl flex items-center justify-between px-5 sm:px-6 py-3.5">
         <a href="/" className="press flex items-center gap-2.5">
-          <Image src="/logo.svg" alt="SparkLine" width={26} height={26} priority />
+          <Image src="/logo.svg" alt="SparkLine Youth" width={26} height={26} priority />
           <span className="text-white font-semibold tracking-tight text-[17px]">
-            Spark<span className="text-spark">Line</span>
+            Spark<span className="text-spark">Line</span> Youth
           </span>
         </a>
         <ul className="hidden md:flex items-center gap-8 text-[13px] font-medium text-white/75">

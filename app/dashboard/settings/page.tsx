@@ -7,7 +7,7 @@ import { DiscordCard } from "./discord-card";
 import { Card } from "@/components/ui/card";
 import type { Theme } from "@/lib/types";
 
-export const metadata = { title: "Settings · SparkLine" };
+export const metadata = { title: "Settings · SparkLine Youth" };
 
 const ERROR_COPY: Record<string, string> = {
   not_configured: "Discord isn't configured on this site yet.",
@@ -17,7 +17,7 @@ const ERROR_COPY: Record<string, string> = {
   oauth_failed: "Discord rejected the login. Please retry.",
   save_failed: "We couldn't save the link. Try again.",
   already_linked_to_another_account:
-    "That Discord account is already linked to a different SparkLine user.",
+    "That Discord account is already linked to a different SparkLine Youth user.",
 };
 
 export default async function SettingsPage({

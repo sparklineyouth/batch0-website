@@ -38,7 +38,7 @@ export async function issueCohortCertificates(input: {
     await notify({
       userId: r.user_id,
       type: "certificate_issued",
-      title: "Your SparkLine certificate is ready",
+      title: "Your SparkLine Youth certificate is ready",
       body: "Tap to view + share.",
       link: `/verify/${cert.code}`,
     });

@@ -49,7 +49,7 @@ export default function StickyMobileCta({
           className="press flex w-full items-center justify-between gap-3 rounded-lg bg-spark px-4 py-3.5 text-[15px] font-semibold text-black shadow-[0_8px_24px_-8px_rgba(250,204,21,0.6)] hover:bg-spark-200"
         >
           <span className="flex flex-col items-start leading-tight">
-            <span>Apply to SparkLine</span>
+            <span>Apply to SparkLine Youth</span>
             <span className="text-[11px] font-normal text-black/70">
               Free · {derived.priceLabel} if accepted
             </span>
