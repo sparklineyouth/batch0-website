@@ -103,7 +103,12 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (protectedPath && !user) {
-    return redirectTo("/login", `?next=${encodeURIComponent(path)}`);
+    // /apply is the marketing funnel entry — most unauth visitors here are
+    // brand-new and need an account first. Route them to /signup. All other
+    // protected routes (admin/dashboard/mentor/investor) are returning-user
+    // surfaces, so keep /login as the default.
+    const dest = path === "/apply" || path.startsWith("/apply/") ? "/signup" : "/login";
+    return redirectTo(dest, `?next=${encodeURIComponent(path)}`);
   }
 
   if (authPath && user) {

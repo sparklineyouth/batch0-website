@@ -134,13 +134,22 @@ export default function Navbar({
                   <span aria-hidden>→</span>
                 </a>
                 {!isAuthed && (
-                  <a
-                    href="/login"
-                    onClick={() => setOpen(false)}
-                    className="flex w-full items-center justify-center rounded-md border border-white/15 px-4 py-3 text-[15px] font-medium text-white/85 hover:border-white/30 hover:bg-white/5 hover:text-white"
-                  >
-                    Log in
-                  </a>
+                  <>
+                    <a
+                      href="/signup"
+                      onClick={() => setOpen(false)}
+                      className="flex w-full items-center justify-center rounded-md border border-white/15 px-4 py-3 text-[15px] font-medium text-white/85 hover:border-white/30 hover:bg-white/5 hover:text-white"
+                    >
+                      Create account
+                    </a>
+                    <a
+                      href="/login"
+                      onClick={() => setOpen(false)}
+                      className="block w-full text-center text-[13px] text-white/55 hover:text-white"
+                    >
+                      Already have an account? Log in
+                    </a>
+                  </>
                 )}
               </div>
               <div className="mt-auto pt-8 text-center text-xs text-white/55">
@@ -187,10 +196,10 @@ export default function Navbar({
         <div className="flex items-center gap-3">
           {!isAuthed && (
             <a
-              href="/login"
+              href="/signup"
               className="press hidden sm:inline-block text-[13px] font-medium text-white/70 hover:text-white"
             >
-              Log in
+              Create account
             </a>
           )}
           <a
