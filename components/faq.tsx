@@ -47,14 +47,14 @@ export default function FAQ({ config }: { config: SiteConfig }) {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="relative py-20 md:py-32 px-6">
+    <section id="faq" className="relative py-16 sm:py-20 md:py-32 px-5 sm:px-6">
       <div className="mx-auto max-w-4xl">
-        <div className="grid gap-10 md:grid-cols-12 md:gap-16">
+        <div className="grid gap-8 md:gap-16 md:grid-cols-12">
           <div className="md:col-span-4">
-            <p className="text-xs font-medium uppercase tracking-[0.22em] text-spark">
+            <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
               FAQ
             </p>
-            <h2 className="mt-3 text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
+            <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
               Questions, answered.
             </h2>
           </div>
@@ -71,9 +71,9 @@ export default function FAQ({ config }: { config: SiteConfig }) {
                       aria-expanded={isOpen}
                       aria-controls={`faq-panel-${i}`}
                       id={`faq-trigger-${i}`}
-                      className="press flex w-full items-center justify-between gap-6 py-6 text-left"
+                      className="press flex w-full items-center justify-between gap-4 sm:gap-6 py-5 sm:py-6 text-left"
                     >
-                      <span className="text-lg font-medium text-white">
+                      <span className="text-base sm:text-lg font-medium text-white">
                         {f.q}
                       </span>
                       <Plus
@@ -94,7 +94,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
                       }`}
                     >
                       <div className="min-h-0">
-                        <p className="max-w-2xl pb-6 pr-8 text-[15px] text-white/75 leading-relaxed">
+                        <p className="max-w-2xl pb-5 sm:pb-6 pr-4 sm:pr-8 text-[14px] sm:text-[15px] text-white/75 leading-relaxed">
                           {f.a}
                         </p>
                       </div>

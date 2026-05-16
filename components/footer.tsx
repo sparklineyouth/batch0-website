@@ -10,8 +10,8 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
   const resolved = config ?? (await getSiteConfig());
   const contactEmail = resolved.settings.contactEmail;
   return (
-    <footer className="relative border-t border-white/10 px-6 py-14">
-      <div className="mx-auto max-w-6xl grid gap-10 md:grid-cols-4">
+    <footer className="relative border-t border-white/10 px-5 sm:px-6 py-12 sm:py-14 pb-safe">
+      <div className="mx-auto max-w-6xl grid gap-8 sm:gap-10 sm:grid-cols-2 md:grid-cols-4">
         <div className="md:col-span-2">
           <div className="flex items-center gap-2.5">
             <Image src="/logo.svg" alt="SparkLine" width={28} height={28} />
@@ -102,7 +102,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl mt-14 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-white/55">
+      <div className="mx-auto max-w-6xl mt-12 sm:mt-14 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-white/55">
         <span>© {new Date().getFullYear()} SparkLine. All rights reserved.</span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <a

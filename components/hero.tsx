@@ -42,41 +42,41 @@ export default function Hero({
   // One signature treatment: a single restrained spark glow up top.
   // Removed the grid backdrop, blurred orb, and radial wash.
   return (
-    <section className="relative overflow-hidden pt-32 pb-20 md:pt-44 md:pb-28">
+    <section className="relative overflow-hidden pt-24 pb-16 sm:pt-32 sm:pb-20 md:pt-44 md:pb-28">
       <div
         aria-hidden
         className="absolute inset-x-0 -top-16 h-64 bg-gradient-to-b from-spark/[0.07] to-transparent pointer-events-none"
       />
 
-      <div className="relative mx-auto max-w-5xl px-6">
+      <div className="relative mx-auto max-w-5xl px-5 sm:px-6">
         <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-spark">
           <span className="h-1.5 w-1.5 rounded-full bg-spark" />
-          {headline} · {acceptingLabel}
+          <span className="truncate">{headline} · {acceptingLabel}</span>
         </div>
 
-        <h1 className="mt-6 text-[44px] sm:text-6xl md:text-[80px] font-bold tracking-[-0.04em] leading-[0.98] text-white">
+        <h1 className="mt-5 text-[40px] sm:text-6xl md:text-[80px] font-bold tracking-[-0.04em] leading-[1] text-white">
           Build a real startup.
           <br />
           Pitch real investors.
         </h1>
 
-        <p className="mt-7 max-w-2xl text-lg md:text-xl text-white/80 leading-relaxed">
+        <p className="mt-5 sm:mt-7 max-w-2xl text-base sm:text-lg md:text-xl text-white/80 leading-relaxed">
           SparkLine is the 4-week, fully virtual accelerator for U.S.
           high schoolers. Take an idea from raw concept to investor-ready
           pitch — and walk into Demo Day with a real shot at funding.
         </p>
 
-        <div className="mt-9 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="mt-7 sm:mt-9 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <a
             href={ctaHref}
-            className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3 text-[15px] font-semibold text-black hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3.5 sm:py-3 text-[15px] font-semibold text-black hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           >
             {ctaLabel}
             <span aria-hidden>→</span>
           </a>
           <a
             href="#how-it-works"
-            className="press inline-flex items-center justify-center gap-2 rounded-md border border-white/15 px-5 py-3 text-[15px] font-medium text-white/90 hover:border-white/30 hover:bg-white/[0.04]"
+            className="press inline-flex items-center justify-center gap-2 rounded-md border border-white/15 px-5 py-3.5 sm:py-3 text-[15px] font-medium text-white/90 hover:border-white/30 hover:bg-white/[0.04]"
           >
             See how it works
           </a>
@@ -91,7 +91,7 @@ export default function Hero({
         )}
 
         {/* Proof row — concrete facts in lieu of testimonials we don't have yet. */}
-        <dl className="mt-14 grid grid-cols-2 gap-x-8 gap-y-6 border-t border-white/10 pt-8 sm:grid-cols-4">
+        <dl className="mt-10 grid grid-cols-2 gap-x-6 gap-y-6 border-t border-white/10 pt-7 sm:mt-14 sm:gap-x-8 sm:pt-8 sm:grid-cols-4">
           <ProofStat
             label="Cohort size"
             value={derived.capacityLabel}
@@ -124,10 +124,10 @@ function ProofStat({
       <dt className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/60">
         {label}
       </dt>
-      <dd className="mt-1.5 text-2xl md:text-3xl font-semibold tracking-tight text-white">
+      <dd className="mt-1.5 text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-white">
         {value}
       </dd>
-      <dd className="mt-0.5 text-xs text-white/65">{sub}</dd>
+      <dd className="mt-0.5 text-[11px] sm:text-xs text-white/65">{sub}</dd>
     </div>
   );
 }

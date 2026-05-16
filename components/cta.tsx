@@ -8,18 +8,18 @@ export default function CTA({ config }: { config: SiteConfig }) {
   const cohortLabel = derived.cohortLabel || derived.cohortName;
 
   return (
-    <section id="apply" className="relative py-20 md:py-32 px-6">
+    <section id="apply" className="relative py-16 sm:py-20 md:py-32 px-5 sm:px-6">
       <div className="mx-auto max-w-5xl">
         <Reveal className="max-w-2xl">
-          <p className="text-xs font-medium uppercase tracking-[0.22em] text-spark">
+          <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
             Reserve your seat
           </p>
-          <h2 className="mt-3 text-4xl md:text-6xl font-bold tracking-[-0.03em] leading-[1.02] text-white">
+          <h2 className="mt-3 text-[32px] sm:text-4xl md:text-6xl font-bold tracking-[-0.03em] leading-[1.05] sm:leading-[1.02] text-white">
             Your startup, funded,
             <br />
             before you graduate.
           </h2>
-          <p className="mt-5 max-w-xl text-[17px] text-white/75 leading-relaxed">
+          <p className="mt-4 sm:mt-5 max-w-xl text-base sm:text-[17px] text-white/75 leading-relaxed">
             {cohortLabel} launches {derived.cohortName}.{" "}
             {derived.capacityLabel} seats. {derived.priceLabel} if accepted.
             Real angel investors on Demo Day.
@@ -28,17 +28,17 @@ export default function CTA({ config }: { config: SiteConfig }) {
 
         <Reveal
           delay={80}
-          className="mt-12 grid gap-6 rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:grid-cols-2 md:p-10"
+          className="mt-10 sm:mt-12 grid gap-6 rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8 md:grid-cols-2 md:p-10"
         >
           <div className="flex flex-col justify-between gap-6">
             <div>
               <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/60">
                 Application
               </p>
-              <p className="mt-2 text-5xl md:text-6xl font-bold tracking-[-0.03em] text-white">
+              <p className="mt-2 text-[44px] sm:text-5xl md:text-6xl font-bold tracking-[-0.03em] leading-none text-white">
                 $0
               </p>
-              <p className="mt-1 text-sm text-white/70">
+              <p className="mt-1.5 text-sm text-white/70">
                 Free to apply. About 5 minutes.
               </p>
             </div>
@@ -46,9 +46,9 @@ export default function CTA({ config }: { config: SiteConfig }) {
               <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/60">
                 Tuition if accepted
               </p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight text-white">
+              <p className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight text-white">
                 {derived.priceLabel}{" "}
-                <span className="text-base font-normal text-white/65">
+                <span className="text-sm sm:text-base font-normal text-white/65">
                   one-time
                 </span>
               </p>

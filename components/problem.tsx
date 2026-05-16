@@ -21,17 +21,17 @@ const problems = [
 
 export default function Problem() {
   return (
-    <section className="relative py-20 md:py-32 px-6">
+    <section className="relative py-16 sm:py-20 md:py-32 px-5 sm:px-6">
       <div className="mx-auto max-w-6xl">
-        <div className="grid gap-10 md:grid-cols-12 md:gap-16">
+        <div className="grid gap-8 md:gap-16 md:grid-cols-12">
           <Reveal className="md:col-span-5">
-            <p className="text-xs font-medium uppercase tracking-[0.22em] text-spark">
+            <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
               The problem
             </p>
-            <h2 className="mt-3 text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
+            <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
               Youth entrepreneurship is broken.
             </h2>
-            <p className="mt-5 text-lg text-white/75 leading-relaxed">
+            <p className="mt-4 sm:mt-5 text-base sm:text-lg text-white/75 leading-relaxed">
               Talented teens don't need another business-plan competition.
               They need access — and right now that's reserved for the
               families who can afford the tuition or happen to live in the
@@ -42,16 +42,16 @@ export default function Problem() {
           <div className="md:col-span-7">
             <ol className="divide-y divide-white/10 border-t border-white/10">
               {problems.map((p, i) => (
-                <Reveal key={p.title} delay={i * 80} as="li" className="py-7">
-                  <div className="flex items-baseline gap-5">
+                <Reveal key={p.title} delay={i * 80} as="li" className="py-6 sm:py-7">
+                  <div className="flex items-baseline gap-4 sm:gap-5">
                     <span className="text-sm font-medium tabular-nums text-white/30">
                       0{i + 1}
                     </span>
                     <div>
-                      <h3 className="text-xl font-semibold tracking-tight text-white">
+                      <h3 className="text-lg sm:text-xl font-semibold tracking-tight text-white">
                         {p.title}
                       </h3>
-                      <p className="mt-2 text-[15px] text-white/75 leading-relaxed">
+                      <p className="mt-2 text-[14px] sm:text-[15px] text-white/75 leading-relaxed">
                         {p.body}
                       </p>
                     </div>

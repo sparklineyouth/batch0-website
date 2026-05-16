@@ -42,13 +42,13 @@ export default function ScrollPreview({ config }: { config: SiteConfig }) {
       <ContainerScroll
         titleComponent={
           <>
-            <p className="text-xs font-medium uppercase tracking-[0.22em] text-spark">
+            <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
               The product
             </p>
-            <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-[-0.02em] text-white">
+            <h2 className="mt-3 text-[28px] sm:text-3xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
               From idea to <span className="shine">funded startup</span>
             </h2>
-            <p className="mt-4 max-w-2xl text-base md:text-lg text-white/75 mx-auto leading-relaxed">
+            <p className="mt-3 sm:mt-4 max-w-2xl text-sm sm:text-base md:text-lg text-white/75 mx-auto leading-relaxed">
               Live curriculum, weekly deliverables, real mentors, and a
               cohort dashboard that keeps everything in one place.
             </p>

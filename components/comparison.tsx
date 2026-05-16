@@ -66,16 +66,16 @@ export default function Comparison({ config }: { config: SiteConfig }) {
   ];
 
   return (
-    <section id="compare" className="relative py-20 md:py-32 px-6">
+    <section id="compare" className="relative py-16 sm:py-20 md:py-32 px-5 sm:px-6">
       <div className="mx-auto max-w-6xl">
         <Reveal className="max-w-2xl">
-          <p className="text-xs font-medium uppercase tracking-[0.22em] text-spark">
+          <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
             Why SparkLine
           </p>
-          <h2 className="mt-3 text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
+          <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
             Affordable. Virtual. Real investors.
           </h2>
-          <p className="mt-5 text-[17px] text-white/75 leading-relaxed">
+          <p className="mt-4 sm:mt-5 text-base sm:text-[17px] text-white/75 leading-relaxed">
             Four axes worth comparing: cost, who you pitch, whether it
             actually runs online, and whether you can join when it fits
             your year.
@@ -142,11 +142,11 @@ export default function Comparison({ config }: { config: SiteConfig }) {
 
         {/* Mobile stacked cards — keeps comparison readable without a
          * cramped scrolling table. */}
-        <div className="mt-10 grid gap-3 md:hidden">
+        <div className="mt-8 grid gap-3 md:hidden">
           {rows.map((r) => (
             <div
               key={r.program}
-              className={`rounded-xl border p-5 ${
+              className={`rounded-xl border p-4 sm:p-5 ${
                 r.highlight
                   ? "border-spark/40 bg-spark/[0.04]"
                   : "border-white/10 bg-white/[0.02]"
@@ -154,7 +154,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span
-                  className={`text-base font-semibold ${
+                  className={`text-[15px] font-semibold ${
                     r.highlight ? "text-spark" : "text-white"
                   }`}
                 >
@@ -163,24 +163,24 @@ export default function Comparison({ config }: { config: SiteConfig }) {
                 <span
                   className={
                     r.highlight
-                      ? "text-base font-semibold text-spark"
+                      ? "text-[15px] font-semibold text-spark"
                       : "text-sm text-white/75"
                   }
                 >
                   {r.cost}
                 </span>
               </div>
-              <dl className="mt-4 grid grid-cols-3 gap-x-3 gap-y-2 text-[12px]">
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
                 <dt className="text-white/60">Investors</dt>
-                <dd className="col-span-2">
+                <dd>
                   <ValueCell value={r.investors} />
                 </dd>
                 <dt className="text-white/60">Virtual</dt>
-                <dd className="col-span-2">
+                <dd>
                   <ValueCell value={r.virtual} />
                 </dd>
                 <dt className="text-white/60">Year-round</dt>
-                <dd className="col-span-2">
+                <dd>
                   <ValueCell value={r.yearRound} />
                 </dd>
               </dl>

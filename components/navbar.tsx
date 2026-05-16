@@ -65,8 +65,8 @@ export default function Navbar({
   }, [open]);
 
   return (
-    <header className="fixed top-0 inset-x-0 z-50 border-b border-white/10 bg-black/90 backdrop-blur">
-      <nav className="mx-auto max-w-6xl flex items-center justify-between px-6 py-3.5">
+    <header className="fixed top-0 inset-x-0 z-50 border-b border-white/10 bg-black/95 backdrop-blur supports-[backdrop-filter]:bg-black/80 pt-safe">
+      <nav className="mx-auto max-w-6xl flex items-center justify-between px-5 sm:px-6 py-3.5">
         <a href="/" className="press flex items-center gap-2.5">
           <Image src="/logo.svg" alt="SparkLine" width={26} height={26} priority />
           <span className="text-white font-semibold tracking-tight text-[17px]">
@@ -108,7 +108,7 @@ export default function Navbar({
             aria-label="Open menu"
             aria-expanded={open}
             aria-controls="public-mobile-nav"
-            className="md:hidden flex h-9 w-9 items-center justify-center rounded-md border border-white/10 text-white/75 hover:bg-white/5 hover:text-white"
+            className="md:hidden -mr-1 flex h-10 w-10 items-center justify-center rounded-md border border-white/10 text-white/75 hover:bg-white/5 hover:text-white"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -116,13 +116,13 @@ export default function Navbar({
       </nav>
 
       {open && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-[60] md:hidden">
           <button
             type="button"
             aria-label="Close menu"
             tabIndex={-1}
             onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/90 backdrop-blur-md"
           />
           <aside
             ref={drawerRef}
@@ -130,12 +130,12 @@ export default function Navbar({
             role="dialog"
             aria-modal="true"
             aria-label="Site navigation"
-            className="absolute right-0 top-0 flex h-full w-72 flex-col border-l border-white/10 bg-zinc-950 p-4"
+            className="absolute right-0 top-0 flex h-full w-full max-w-sm flex-col border-l border-white/10 bg-zinc-950 p-5 pt-safe pb-safe"
           >
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-6 flex items-center justify-between">
               <a href="/" className="flex items-center gap-2">
-                <Image src="/logo.svg" alt="" width={22} height={22} />
-                <span className="font-semibold tracking-tight text-white">
+                <Image src="/logo.svg" alt="" width={24} height={24} />
+                <span className="text-base font-semibold tracking-tight text-white">
                   Spark<span className="text-spark">Line</span>
                 </span>
               </a>
@@ -144,28 +144,28 @@ export default function Navbar({
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close menu"
-                className="flex h-9 w-9 items-center justify-center rounded-md text-white/70 hover:bg-white/5 hover:text-white"
+                className="-mr-2 flex h-11 w-11 items-center justify-center rounded-md text-white/70 hover:bg-white/5 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <nav className="flex flex-col gap-1">
+            <nav className="flex flex-col">
               {LINKS.map((l) => (
                 <a
                   key={l.href}
                   href={l.href}
                   onClick={() => setOpen(false)}
-                  className="rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white"
+                  className="rounded-lg px-3 py-3 text-base font-medium text-white/85 hover:bg-white/5 hover:text-white"
                 >
                   {l.label}
                 </a>
               ))}
             </nav>
-            <div className="mt-6 space-y-2 border-t border-white/10 pt-4">
+            <div className="mt-8 space-y-2.5 border-t border-white/10 pt-5">
               <a
                 href={isAuthed ? authedHome! : "/apply"}
                 onClick={() => setOpen(false)}
-                className="press flex w-full items-center justify-center gap-2 rounded-md bg-spark px-4 py-2.5 text-sm font-semibold text-black hover:bg-spark-200"
+                className="press flex w-full items-center justify-center gap-2 rounded-md bg-spark px-4 py-3 text-[15px] font-semibold text-black hover:bg-spark-200"
               >
                 {isAuthed ? "Go to dashboard" : "Apply"}
                 <span aria-hidden>→</span>
@@ -174,13 +174,13 @@ export default function Navbar({
                 <a
                   href="/login"
                   onClick={() => setOpen(false)}
-                  className="flex w-full items-center justify-center rounded-md border border-white/15 px-4 py-2.5 text-sm font-medium text-white/80 hover:border-white/30 hover:bg-white/5 hover:text-white"
+                  className="flex w-full items-center justify-center rounded-md border border-white/15 px-4 py-3 text-[15px] font-medium text-white/85 hover:border-white/30 hover:bg-white/5 hover:text-white"
                 >
                   Log in
                 </a>
               )}
             </div>
-            <div className="mt-auto pt-6 text-center text-xs text-white/55">
+            <div className="mt-auto pt-8 text-center text-xs text-white/55">
               <a href="/terms" onClick={() => setOpen(false)} className="hover:text-white">
                 Terms
               </a>
