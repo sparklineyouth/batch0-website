@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea, Label, FieldError } from "@/components/ui/input";
+import { Toggle } from "@/components/ui/toggle";
 import { submitCheckin } from "./actions";
 import { getActionError } from "@/lib/action-error";
 
@@ -13,6 +14,7 @@ export function CheckinForm({
     accomplished: string;
     next_up: string;
     blockers: string;
+    is_milestone: boolean;
   };
 }) {
   const router = useRouter();
@@ -21,7 +23,7 @@ export function CheckinForm({
   const [error, setError] = useState<string | undefined>();
   const [okMsg, setOkMsg] = useState<string | undefined>();
 
-  function set<K extends keyof typeof initial>(k: K, v: string) {
+  function set<K extends keyof typeof initial>(k: K, v: (typeof initial)[K]) {
     setValues((p) => ({ ...p, [k]: v }));
   }
 
@@ -31,7 +33,11 @@ export function CheckinForm({
     start(async () => {
       try {
         await submitCheckin(values);
-        setOkMsg("Check-in saved. Your mentor will be notified.");
+        setOkMsg(
+          values.is_milestone
+            ? "Check-in saved. Tagged as a milestone — we'll celebrate in #wins."
+            : "Check-in saved. Your mentor will be notified.",
+        );
         router.refresh();
       } catch (e: any) {
         setError(getActionError(e));
@@ -61,6 +67,12 @@ export function CheckinForm({
         value={values.blockers}
         onChange={(v) => set("blockers", v)}
         placeholder="Need a contact at a school for user interviews."
+      />
+      <Toggle
+        label="Mark as a milestone 🎉"
+        description="First paying customer, first hire, fundraise, demo shipped, etc. Tagged milestones get celebrated in the cohort's #wins channel."
+        checked={values.is_milestone}
+        onChange={(v) => set("is_milestone", v)}
       />
       {error && <FieldError>{error}</FieldError>}
       {okMsg && <p className="text-xs text-emerald-300">{okMsg}</p>}

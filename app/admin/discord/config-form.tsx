@@ -79,6 +79,42 @@ export function DiscordConfigForm({
       </Section>
 
       <Section
+        title="Feature pack channels"
+        hint="Optional. Each feature silently no-ops when its channel ID is blank."
+      >
+        <Row
+          label="Teams category ID"
+          hint="Auto-created team channels land here. Use a category, not a regular channel."
+          value={values.teamsCategoryId}
+          onChange={(v) => set("teamsCategoryId", v)}
+        />
+        <Row
+          label="#wins channel ID"
+          hint="Milestone check-ins cross-post here."
+          value={values.winsChannelId}
+          onChange={(v) => set("winsChannelId", v)}
+        />
+        <Row
+          label="#help channel ID"
+          hint="The 'Mentors on-call now' pin lives here."
+          value={values.helpChannelId}
+          onChange={(v) => set("helpChannelId", v)}
+        />
+        <Row
+          label="Office hours voice channel ID"
+          hint="Where mentors take queue calls. Must be a voice channel."
+          value={values.ohVoiceChannelId}
+          onChange={(v) => set("ohVoiceChannelId", v)}
+        />
+        <Row
+          label="#introductions channel ID"
+          hint="The onboarding DM points here for step 2."
+          value={values.introductionsChannelId}
+          onChange={(v) => set("introductionsChannelId", v)}
+        />
+      </Section>
+
+      <Section
         title="Role IDs"
         hint="A role ID for each SparkLine Youth role. We auto-assign these on link, on role change, and on enrollment."
       >

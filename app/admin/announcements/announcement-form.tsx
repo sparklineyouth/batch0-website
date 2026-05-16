@@ -10,16 +10,24 @@ import {
 } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
 import { Toggle } from "@/components/ui/toggle";
-import { broadcastAnnouncement } from "./actions";
+import { broadcastAnnouncement, type AnnouncementPing } from "./actions";
 
 type Cohort = { id: string; name: string };
+type PingableRole = { role: "student" | "mentor" | "admin" | "investor"; label: string };
 
-export function AnnouncementForm({ cohorts }: { cohorts: Cohort[] }) {
+export function AnnouncementForm({
+  cohorts,
+  pingableRoles,
+}: {
+  cohorts: Cohort[];
+  pingableRoles: PingableRole[];
+}) {
   const [cohortId, setCohortId] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [emailToo, setEmailToo] = useState(true);
   const [discordToo, setDiscordToo] = useState(true);
+  const [discordPing, setDiscordPing] = useState<AnnouncementPing>("none");
   const [pending, start] = useTransition();
   const [result, setResult] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
@@ -35,6 +43,7 @@ export function AnnouncementForm({ cohorts }: { cohorts: Cohort[] }) {
           body,
           sendEmail: emailToo,
           postDiscord: discordToo,
+          discordPing: discordToo ? discordPing : "none",
         });
         setResult(
           `Sent to ${out.recipients} student${out.recipients === 1 ? "" : "s"}` +
@@ -86,10 +95,35 @@ export function AnnouncementForm({ cohorts }: { cohorts: Cohort[] }) {
       />
       <Toggle
         label="Post to Discord"
-        description="Cross-post to your Discord announcements channel webhook."
+        description="Cross-post to your Discord announcements channel."
         checked={discordToo}
         onChange={setDiscordToo}
       />
+      {discordToo && (
+        <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3.5">
+          <Label>Discord ping</Label>
+          <Select
+            value={discordPing}
+            onChange={(e) =>
+              setDiscordPing(e.target.value as AnnouncementPing)
+            }
+          >
+            <option value="none">No ping (silent post)</option>
+            <option value="everyone">@everyone (push to everyone)</option>
+            <option value="here">@here (only currently online)</option>
+            {pingableRoles.map((r) => (
+              <option key={r.role} value={r.role}>
+                Ping {r.label} role
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1.5 text-xs text-white/50">
+            Use @everyone sparingly — it notifies everyone in the server,
+            including unrelated members. Role pings only configure if the
+            role ID is set under Admin → Discord.
+          </p>
+        </div>
+      )}
       {result && (
         <p className="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">
           {result}

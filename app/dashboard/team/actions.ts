@@ -6,6 +6,10 @@ import { assertSelf } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { reserveTeamSlug, slugify } from "@/lib/team";
+import {
+  syncTeamDiscordChannels,
+  archiveTeamDiscordChannels,
+} from "@/lib/team-discord";
 
 function safeSegment(s: string) {
   return s
@@ -112,6 +116,14 @@ export async function createTeam(input: { name: string }) {
     role: "founder",
   });
 
+  // Best-effort: spawn the team's Discord channels right away. Silent
+  // no-op when Discord isn't configured (teamsCategoryId unset).
+  try {
+    await syncTeamDiscordChannels(team!.id);
+  } catch (err) {
+    console.error("[team] discord provision failed", err);
+  }
+
   revalidatePath("/dashboard/team");
   return team!.id as string;
 }
@@ -141,7 +153,30 @@ export async function leaveTeam() {
     // DB rows under team_drive_files cascade-delete via FK; this clears
     // the actual storage objects + the logo.
     await purgeTeamStorage(admin, membership.team_id);
+    // Snapshot Discord channel IDs before we delete the team row, then
+    // archive in the background so we don't block the user's leave call.
+    const { data: discordIds } = await admin
+      .from("teams")
+      .select("discord_text_channel_id, discord_voice_channel_id")
+      .eq("id", membership.team_id)
+      .maybeSingle();
     await admin.from("teams").delete().eq("id", membership.team_id);
+    try {
+      await archiveTeamDiscordChannels({
+        textChannelId: (discordIds as any)?.discord_text_channel_id ?? null,
+        voiceChannelId: (discordIds as any)?.discord_voice_channel_id ?? null,
+      });
+    } catch (err) {
+      console.error("[team] discord archive failed", err);
+    }
+  } else {
+    // Someone left but the team lives on — refresh the channel
+    // overwrites so the leaver loses access immediately.
+    try {
+      await syncTeamDiscordChannels(membership.team_id);
+    } catch (err) {
+      console.error("[team] discord resync failed", err);
+    }
   }
 
   revalidatePath("/dashboard/team");
@@ -604,6 +639,11 @@ export async function respondToInvite(input: {
     await admin
       .from("team_members")
       .insert({ team_id: invite.team_id, user_id: userId, role: "member" });
+    try {
+      await syncTeamDiscordChannels(invite.team_id);
+    } catch (err) {
+      console.error("[team] discord resync after accept failed", err);
+    }
   }
 
   await admin
@@ -689,6 +729,11 @@ export async function removeTeamMember(input: {
     .eq("team_id", input.teamId)
     .eq("user_id", input.memberId);
   if (error) throw new Error(error.message);
+  try {
+    await syncTeamDiscordChannels(input.teamId);
+  } catch (err) {
+    console.error("[team] discord resync after remove failed", err);
+  }
   revalidatePath("/dashboard/team");
 }
 

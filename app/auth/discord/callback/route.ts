@@ -9,21 +9,22 @@ import {
   getDiscordSettings,
   isDiscordEnabled,
   revokeOauthToken,
-  sendDirectMessage,
   postChannelMessage,
   announcementEmbed,
 } from "@/lib/discord";
+import { sendOnboardingDM } from "@/lib/discord-helpers";
 import { env } from "@/lib/env";
 import { logAudit } from "@/lib/audit";
 import type { Role } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function back(reason: string, status: "ok" | "error" = "error") {
-  const search = status === "ok" ? `?discord=linked` : `?discord_error=${reason}`;
-  return NextResponse.redirect(
-    new URL(`/dashboard/settings${search}`, env.siteUrl),
-  );
+function backTo(origin: string) {
+  return (reason: string, status: "ok" | "error" = "error") => {
+    const search =
+      status === "ok" ? `?discord=linked` : `?discord_error=${reason}`;
+    return NextResponse.redirect(`${origin}/dashboard/settings${search}`);
+  };
 }
 
 export async function GET(req: Request) {
@@ -31,6 +32,7 @@ export async function GET(req: Request) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const errorParam = url.searchParams.get("error");
+  const back = backTo(url.origin);
 
   if (errorParam) return back(errorParam);
   if (!code || !state) return back("missing_code");
@@ -54,13 +56,15 @@ export async function GET(req: Request) {
   } = await supabase.auth.getUser();
   if (!user || user.id !== stateUserId) return back("not_signed_in");
 
+  // Must match the redirect_uri sent during /auth/discord/start. Both
+  // sides derive it from the request origin so apex vs. www users hit
+  // the same callback they started from.
+  const redirectUri = `${url.origin}/auth/discord/callback`;
+
   let tokens: Awaited<ReturnType<typeof exchangeOauthCode>>;
   let discordUser: Awaited<ReturnType<typeof fetchDiscordUser>>;
   try {
-    tokens = await exchangeOauthCode(
-      code,
-      new URL("/auth/discord/callback", env.siteUrl).toString(),
-    );
+    tokens = await exchangeOauthCode(code, redirectUri);
     discordUser = await fetchDiscordUser(tokens.access_token);
   } catch (err: any) {
     console.error("[discord] OAuth callback failed", err);
@@ -121,23 +125,10 @@ export async function GET(req: Request) {
     payload: { discord_user_id: discordUser.id, role },
   });
 
-  // Welcome the new linked member with a private DM. Best-effort —
-  // people disable DMs from server members all the time, and that's a
-  // soft fail.
-  await sendDirectMessage(discordUser.id, {
-    embeds: [
-      {
-        title: "Welcome to SparkLine Youth 👋",
-        description: [
-          `Your SparkLine Youth account is linked. We auto-assigned your **${role}** role and added you to the right channels.`,
-          "",
-          `Run \`/me\` anytime to check your status, \`/events\` for what's coming up, or open your dashboard:`,
-          `${env.siteUrl}/dashboard`,
-        ].join("\n"),
-        color: 0xfacc15,
-      },
-    ],
-  });
+  // Welcome the new linked member with the 3-step onboarding wizard.
+  // Best-effort — Discord refuses DMs if the user has them off; that's
+  // a soft fail (they can run /start later to re-trigger).
+  await sendOnboardingDM(admin, discordUser.id);
 
   // Mirror the link to the admin feed so staff can see who joined.
   if (settings.adminFeedChannelId) {

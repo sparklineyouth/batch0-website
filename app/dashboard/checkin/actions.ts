@@ -4,11 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notifications";
 import { isoWeekStart } from "@/lib/week";
+import { getDiscordSettings, postChannelMessage } from "@/lib/discord";
 
 export type CheckinInput = {
   accomplished: string;
   next_up: string;
   blockers: string;
+  is_milestone?: boolean;
 };
 
 export async function submitCheckin(input: CheckinInput) {
@@ -47,6 +49,7 @@ export async function submitCheckin(input: CheckinInput) {
   }
 
   const week_start = isoWeekStart();
+  const is_milestone = !!input.is_milestone;
   const payload = {
     user_id: user.id,
     cohort_id: enrollment.cohort_id ?? null,
@@ -54,12 +57,37 @@ export async function submitCheckin(input: CheckinInput) {
     accomplished: accomplished || null,
     next_up: next_up || null,
     blockers: blockers || null,
+    is_milestone,
   };
 
   const { error } = await supabase
     .from("student_checkins")
     .upsert(payload, { onConflict: "user_id,week_start" });
   if (error) throw new Error(error.message);
+
+  // Milestone? Cross-post to #wins. Best-effort.
+  if (is_milestone) {
+    try {
+      const settings = await getDiscordSettings();
+      if (settings.winsChannelId) {
+        const admin = createAdminClient();
+        const { data: profile } = await admin
+          .from("profiles")
+          .select("full_name, discord_user_id")
+          .eq("id", user.id)
+          .maybeSingle();
+        const who = profile?.discord_user_id
+          ? `<@${profile.discord_user_id}>`
+          : profile?.full_name ?? "A student";
+        await postChannelMessage(settings.winsChannelId, {
+          content: `🎉 **${who}** just hit a milestone:\n${(accomplished || next_up || "Big moment.").slice(0, 1500)}`,
+          allowedMentions: { parse: [] },
+        });
+      }
+    } catch (err) {
+      console.error("[checkin] milestone crosspost failed", err);
+    }
+  }
 
   // Best-effort: ping every mentor + admin so they know there's
   // something new to read.

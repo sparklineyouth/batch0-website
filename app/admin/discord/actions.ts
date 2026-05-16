@@ -9,6 +9,8 @@ import {
   registerSlashCommands as discordRegisterCommands,
   syncMemberRoles,
   refreshDiscordIdentity,
+  bootstrapGuildFromScratch,
+  type BootstrapResult,
 } from "@/lib/discord";
 import type { Role } from "@/lib/types";
 
@@ -44,6 +46,14 @@ export type DiscordConfigInput = {
   announcementsChannelId: string;
   eventsChannelId: string;
   adminFeedChannelId: string;
+  // 0033 feature-pack channels — all optional. When empty, the
+  // associated feature silently no-ops (e.g. milestone check-ins won't
+  // cross-post if winsChannelId is unset).
+  teamsCategoryId: string;
+  winsChannelId: string;
+  helpChannelId: string;
+  ohVoiceChannelId: string;
+  introductionsChannelId: string;
   roleStudentId: string;
   roleMentorId: string;
   roleAdminId: string;
@@ -54,6 +64,11 @@ const KEY_BY_FIELD: Record<keyof DiscordConfigInput, string> = {
   announcementsChannelId: "discord_channel_announcements_id",
   eventsChannelId: "discord_channel_events_id",
   adminFeedChannelId: "discord_channel_admin_feed_id",
+  teamsCategoryId: "discord_channel_teams_category_id",
+  winsChannelId: "discord_channel_wins_id",
+  helpChannelId: "discord_channel_help_id",
+  ohVoiceChannelId: "discord_channel_oh_voice_id",
+  introductionsChannelId: "discord_channel_introductions_id",
   roleStudentId: "discord_role_student_id",
   roleMentorId: "discord_role_mentor_id",
   roleAdminId: "discord_role_admin_id",
@@ -182,6 +197,57 @@ export async function refreshLinkedIdentities(): Promise<{
   });
   revalidatePath("/admin/discord");
   return { attempted: rows?.length ?? 0, succeeded };
+}
+
+/**
+ * Wipe every channel + every non-managed role in the guild, then create
+ * the canonical SparkLine Youth layout (4 roles, 5 categories, ~14
+ * channels) and persist the new channel/role IDs into site_settings so
+ * the rest of the integration just works.
+ *
+ * Requires the literal phrase "DELETE AND REBUILD" as confirmation
+ * because this is irreversible — all existing messages go with the
+ * channels.
+ */
+export async function bootstrapDiscordServer(
+  confirm: string,
+): Promise<BootstrapResult> {
+  await assertAdmin();
+  if (confirm !== "DELETE AND REBUILD") {
+    throw new Error('Type "DELETE AND REBUILD" exactly to confirm.');
+  }
+  const result = await bootstrapGuildFromScratch();
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const rows = [
+    { key: "discord_channel_announcements_id", value: result.ids.announcementsChannelId },
+    { key: "discord_channel_events_id", value: result.ids.eventsChannelId },
+    { key: "discord_channel_admin_feed_id", value: result.ids.adminFeedChannelId },
+    { key: "discord_channel_teams_category_id", value: result.ids.teamsCategoryId },
+    { key: "discord_channel_wins_id", value: result.ids.winsChannelId },
+    { key: "discord_channel_help_id", value: result.ids.helpChannelId },
+    { key: "discord_channel_oh_voice_id", value: result.ids.ohVoiceChannelId },
+    { key: "discord_channel_introductions_id", value: result.ids.introductionsChannelId },
+    { key: "discord_role_student_id", value: result.ids.roleStudentId },
+    { key: "discord_role_mentor_id", value: result.ids.roleMentorId },
+    { key: "discord_role_admin_id", value: result.ids.roleAdminId },
+    { key: "discord_role_investor_id", value: result.ids.roleInvestorId },
+  ].map((r) => ({ ...r, updated_at: now }));
+  const { error } = await admin
+    .from("site_settings")
+    .upsert(rows, { onConflict: "key" });
+  if (error) throw new Error(`Saving IDs failed: ${error.message}`);
+  await logAudit({
+    action: "discord.server_bootstrapped",
+    payload: {
+      channelsDeleted: result.channelsDeleted,
+      rolesDeleted: result.rolesDeleted,
+      channelsCreated: result.channelsCreated.length,
+      rolesCreated: result.rolesCreated.map((r) => r.name),
+    },
+  });
+  revalidatePath("/admin/discord");
+  return result;
 }
 
 /**

@@ -34,7 +34,14 @@ export async function GET(req: Request) {
   }
 
   const nonce = crypto.randomUUID();
-  const redirectUri = new URL("/auth/discord/callback", env.siteUrl).toString();
+  // Derive the redirect_uri from the current request's origin rather
+  // than env.siteUrl. Two reasons: (1) tolerant of a malformed
+  // NEXT_PUBLIC_SITE_URL (a missing scheme used to crash this route
+  // with ERR_INVALID_URL), and (2) it works whether the user visits via
+  // apex or www, as long as both are listed in Discord's Redirects
+  // allow-list. The callback route mirrors this — they must match
+  // byte-for-byte during the code exchange.
+  const redirectUri = `${new URL(req.url).origin}/auth/discord/callback`;
   const state = `${user.id}:${nonce}`;
 
   const params = new URLSearchParams({

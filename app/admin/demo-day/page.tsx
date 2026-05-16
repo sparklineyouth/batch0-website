@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DemoDayDiscordThreadsButton } from "./discord-threads-button";
 
 export const metadata = { title: "Demo Day · Admin" };
 
@@ -16,6 +17,7 @@ export default async function AdminDemoDayPage() {
     { data: criteria },
     { data: scores },
     { data: reactions },
+    { data: cohortsForDiscord },
   ] = await Promise.all([
     admin
       .from("teams")
@@ -29,6 +31,10 @@ export default async function AdminDemoDayPage() {
       .from("demo_day_scores")
       .select("team_id, criterion_id, score, judge_id"),
     admin.from("demo_day_reactions").select("team_id"),
+    admin
+      .from("cohorts")
+      .select("id, name")
+      .order("starts_on", { ascending: false }),
   ]);
 
   const subByTeam = new Map<string, any>(
@@ -156,6 +162,10 @@ export default async function AdminDemoDayPage() {
           before Demo Day so judges have something to score against.
         </p>
       )}
+
+      <DemoDayDiscordThreadsButton
+        cohorts={(cohortsForDiscord ?? []).map((c: any) => ({ id: c.id, name: c.name }))}
+      />
     </div>
   );
 }

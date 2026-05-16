@@ -4,6 +4,9 @@ import { LocalTime } from "@/components/ui/local-time";
 import { DiscordConfigForm } from "./config-form";
 import { EnableToggle } from "./enable-toggle";
 import { OpsPanel } from "./ops-panel";
+import { BootstrapPanel } from "./bootstrap-panel";
+import { AdminMyDiscordLinkCard } from "./my-link-card";
+import { requireUser } from "@/lib/auth";
 import {
   isDiscordEnabled,
   listRegisteredCommands,
@@ -16,10 +19,19 @@ import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Discord · Admin" };
 
+// Bootstrap fires ~40 sequential Discord API calls with ~350ms throttle.
+// Comfortably under 300s but well above the 60s default — bump it.
+export const maxDuration = 300;
+
 const KEYS_TO_FIELD = {
   discord_channel_announcements_id: "announcementsChannelId",
   discord_channel_events_id: "eventsChannelId",
   discord_channel_admin_feed_id: "adminFeedChannelId",
+  discord_channel_teams_category_id: "teamsCategoryId",
+  discord_channel_wins_id: "winsChannelId",
+  discord_channel_help_id: "helpChannelId",
+  discord_channel_oh_voice_id: "ohVoiceChannelId",
+  discord_channel_introductions_id: "introductionsChannelId",
   discord_role_student_id: "roleStudentId",
   discord_role_mentor_id: "roleMentorId",
   discord_role_admin_id: "roleAdminId",
@@ -28,20 +40,32 @@ const KEYS_TO_FIELD = {
 
 export default async function AdminDiscordPage() {
   const admin = createAdminClient();
-  const [{ data: rows }, enabled, registered, memberCount] = await Promise.all([
-    admin
-      .from("site_settings")
-      .select("key, value")
-      .in("key", Object.keys(KEYS_TO_FIELD)),
-    isDiscordEnabled(),
-    listRegisteredCommands(),
-    fetchGuildMemberCount(),
-  ]);
+  const user = await requireUser();
+  const [{ data: rows }, enabled, registered, memberCount, { data: meRow }] =
+    await Promise.all([
+      admin
+        .from("site_settings")
+        .select("key, value")
+        .in("key", Object.keys(KEYS_TO_FIELD)),
+      isDiscordEnabled(),
+      listRegisteredCommands(),
+      fetchGuildMemberCount(),
+      admin
+        .from("profiles")
+        .select("discord_user_id, discord_username, discord_linked_at")
+        .eq("id", user.id)
+        .maybeSingle(),
+    ]);
 
   const initial: DiscordConfigInput = {
     announcementsChannelId: "",
     eventsChannelId: "",
     adminFeedChannelId: "",
+    teamsCategoryId: "",
+    winsChannelId: "",
+    helpChannelId: "",
+    ohVoiceChannelId: "",
+    introductionsChannelId: "",
     roleStudentId: "",
     roleMentorId: "",
     roleAdminId: "",
@@ -122,6 +146,16 @@ export default async function AdminDiscordPage() {
 
       <div className="mt-6">
         <EnableToggle initial={enabled} />
+      </div>
+
+      <div className="mt-6">
+        <AdminMyDiscordLinkCard
+          profile={{
+            discord_user_id: (meRow as any)?.discord_user_id ?? null,
+            discord_username: (meRow as any)?.discord_username ?? null,
+            discord_linked_at: (meRow as any)?.discord_linked_at ?? null,
+          }}
+        />
       </div>
 
       <Card className="mt-6">
@@ -230,6 +264,20 @@ export default async function AdminDiscordPage() {
 
       <Card className="mt-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          Bootstrap server from scratch
+        </h2>
+        <p className="mt-1 text-xs text-white/50">
+          First-time setup: wipe every existing channel + role and rebuild the
+          canonical SparkLine Youth layout in one click. New IDs are saved to
+          the config above automatically.
+        </p>
+        <div className="mt-4">
+          <BootstrapPanel />
+        </div>
+      </Card>
+
+      <Card className="mt-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
           Slash commands
         </h2>
         <p className="mt-2 text-sm text-white/60">
@@ -240,15 +288,27 @@ export default async function AdminDiscordPage() {
         </pre>
         <p className="mt-3 text-sm text-white/60">Built-in commands:</p>
         <ul className="mt-2 grid gap-1.5 text-sm text-white/75 sm:grid-cols-2">
-          {SLASH_COMMANDS.map((c) => (
-            <li
-              key={c.name}
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2"
-            >
-              <code className="text-spark">/{c.name}</code>
-              <p className="mt-0.5 text-xs text-white/55">{c.description}</p>
-            </li>
-          ))}
+          {SLASH_COMMANDS.map((c) => {
+            // type 3 = MESSAGE context menu — appears under "right-click →
+            // Apps", not as a slash command, so render the difference.
+            const isContextMenu = (c as any).type === 3;
+            return (
+              <li
+                key={c.name}
+                className="rounded-lg border border-white/10 bg-black/30 px-3 py-2"
+              >
+                <code className="text-spark">
+                  {isContextMenu ? "≡ " : "/"}{c.name}
+                </code>
+                <p className="mt-0.5 text-xs text-white/55">
+                  {(c as any).description ??
+                    (isContextMenu
+                      ? "Right-click on a message → Apps."
+                      : "")}
+                </p>
+              </li>
+            );
+          })}
         </ul>
         <p className="mt-3 text-xs text-white/45">
           Editing the list lives in <code>SLASH_COMMANDS</code> in{" "}

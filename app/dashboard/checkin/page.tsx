@@ -26,7 +26,7 @@ export default async function CheckinPage() {
 
   const { data: current } = await supabase
     .from("student_checkins")
-    .select("id, week_start, accomplished, next_up, blockers, updated_at")
+    .select("id, week_start, accomplished, next_up, blockers, is_milestone, updated_at")
     .eq("user_id", user.id)
     .eq("week_start", weekStart)
     .maybeSingle();
@@ -81,6 +81,7 @@ export default async function CheckinPage() {
             accomplished: current?.accomplished ?? "",
             next_up: current?.next_up ?? "",
             blockers: current?.blockers ?? "",
+            is_milestone: (current as any)?.is_milestone ?? false,
           }}
         />
         {current && (feedbackByCheckin.get(current.id) ?? []).length > 0 && (

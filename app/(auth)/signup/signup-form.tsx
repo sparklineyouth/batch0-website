@@ -26,6 +26,10 @@ export function SignupForm() {
   const [error, setError] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [needsVerify, setNeedsVerify] = useState(false);
+  const [resendState, setResendState] = useState<
+    "idle" | "sending" | "sent" | "error"
+  >("idle");
+  const [resendMessage, setResendMessage] = useState<string | undefined>();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,6 +58,26 @@ export function SignupForm() {
     window.location.assign("/dashboard");
   }
 
+  async function resendVerification() {
+    setResendState("sending");
+    setResendMessage(undefined);
+    const supabase = createClient();
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: {
+        emailRedirectTo: `${location.origin}/auth/callback`,
+      },
+    });
+    if (error) {
+      setResendState("error");
+      setResendMessage(friendlyAuthError(error));
+      return;
+    }
+    setResendState("sent");
+    setResendMessage("New verification link sent.");
+  }
+
   if (needsVerify) {
     return (
       <div
@@ -68,8 +92,31 @@ export function SignupForm() {
           your account, then log in.
         </p>
         <p className="mt-3 text-xs text-white/60">
-          Didn't get it? Check spam, or wait a minute before requesting another.
+          Didn't get it? Check spam, or resend below.
         </p>
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={resendVerification}
+            disabled={resendState === "sending" || resendState === "sent"}
+            className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {resendState === "sending"
+              ? "Sending…"
+              : resendState === "sent"
+                ? "Sent"
+                : "Resend verification email"}
+          </button>
+          {resendMessage && (
+            <span
+              className={`text-xs ${
+                resendState === "error" ? "text-red-300" : "text-white/65"
+              }`}
+            >
+              {resendMessage}
+            </span>
+          )}
+        </div>
       </div>
     );
   }

@@ -6,7 +6,12 @@ import { logAudit } from "@/lib/audit";
 import { notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
-import { postChannelMessage, eventEmbed, getDiscordSettings } from "@/lib/discord";
+import {
+  postChannelMessage,
+  eventEmbed,
+  getDiscordSettings,
+  buttonRow,
+} from "@/lib/discord";
 
 export type EventInput = {
   id?: string;
@@ -112,6 +117,33 @@ export async function saveEvent(input: EventInput, notify: boolean) {
             .maybeSingle();
           cohortName = c?.name ?? null;
         }
+        // RSVP buttons — clicks fire `rsvp:<status>:<eventId>` into
+        // /api/discord/interactions, which writes the row + marks the
+        // user's onboarding step 3 done.
+        const rsvpButtons = id
+          ? [
+              buttonRow([
+                {
+                  customId: `rsvp:going:${id}`,
+                  label: "I'm in",
+                  style: 3,
+                  emoji: "✅",
+                },
+                {
+                  customId: `rsvp:maybe:${id}`,
+                  label: "Maybe",
+                  style: 2,
+                  emoji: "🤔",
+                },
+                {
+                  customId: `rsvp:declined:${id}`,
+                  label: "Can't make it",
+                  style: 2,
+                  emoji: "❌",
+                },
+              ]),
+            ]
+          : undefined;
         await postChannelMessage(settings.eventsChannelId, {
           embeds: [
             eventEmbed({
@@ -125,6 +157,7 @@ export async function saveEvent(input: EventInput, notify: boolean) {
               cohortName,
             }),
           ],
+          components: rsvpButtons,
         });
       }
     } catch (err) {

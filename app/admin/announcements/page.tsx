@@ -3,6 +3,8 @@ import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { AnnouncementForm } from "./announcement-form";
 import { DeleteAnnouncementButton } from "./delete-button";
+import { getDiscordSettings } from "@/lib/discord";
+import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Announcements · Admin" };
 export const dynamic = "force-dynamic";
@@ -10,16 +12,30 @@ export const revalidate = 0;
 
 export default async function AdminAnnouncementsPage() {
   const admin = createAdminClient();
-  const [{ data: cohorts }, { data: anns, error: annErr }] = await Promise.all([
-    admin.from("cohorts").select("id, name").order("starts_on"),
-    admin
-      .from("announcements")
-      .select(
-        "id, cohort_id, title, body, created_at, cohort:cohorts(name, cohort_number)",
-      )
-      .order("created_at", { ascending: false })
-      .limit(100),
-  ]);
+  const [{ data: cohorts }, { data: anns, error: annErr }, discord] =
+    await Promise.all([
+      admin.from("cohorts").select("id, name").order("starts_on"),
+      admin
+        .from("announcements")
+        .select(
+          "id, cohort_id, title, body, created_at, cohort:cohorts(name, cohort_number)",
+        )
+        .order("created_at", { ascending: false })
+        .limit(100),
+      getDiscordSettings(),
+    ]);
+
+  // Roles the admin can ping — only show options where the role ID is
+  // actually configured, otherwise the ping silently no-ops.
+  const ROLE_LABELS: { role: Role; label: string }[] = [
+    { role: "student", label: "Students" },
+    { role: "mentor", label: "Mentors" },
+    { role: "investor", label: "Investors" },
+    { role: "admin", label: "Admins" },
+  ];
+  const pingableRoles = ROLE_LABELS.filter(
+    (r) => !!discord.roleIdByRole[r.role],
+  );
 
   // Pre-0027 deployments will see an error referencing the missing
   // table. We still render the broadcast form (the broadcast action
@@ -36,7 +52,10 @@ export default async function AdminAnnouncementsPage() {
         Discord announcements channel.
       </p>
       <Card className="mt-6">
-        <AnnouncementForm cohorts={(cohorts ?? []) as any} />
+        <AnnouncementForm
+          cohorts={(cohorts ?? []) as any}
+          pingableRoles={pingableRoles}
+        />
       </Card>
 
       <h2 className="mt-10 text-sm font-semibold uppercase tracking-wider text-white/55">

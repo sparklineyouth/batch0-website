@@ -9,8 +9,24 @@ import {
   postChannelMessage,
   announcementEmbed,
   getDiscordSettings,
+  type AllowedMentions,
 } from "@/lib/discord";
 import { env } from "@/lib/env";
+import type { Role } from "@/lib/types";
+
+// What to ping when cross-posting to Discord.
+//   - "none"     → no mention (default; safe for routine updates)
+//   - "everyone" → @everyone
+//   - "here"     → @here (only currently-online members get pushed)
+//   - role names → ping the configured role for that audience
+export type AnnouncementPing =
+  | "none"
+  | "everyone"
+  | "here"
+  | "student"
+  | "mentor"
+  | "admin"
+  | "investor";
 
 export type AnnouncementInput = {
   cohortId: string | null; // null = all enrolled
@@ -18,6 +34,7 @@ export type AnnouncementInput = {
   body: string;
   sendEmail: boolean;
   postDiscord: boolean;
+  discordPing?: AnnouncementPing;
 };
 
 export async function broadcastAnnouncement(
@@ -112,18 +129,57 @@ export async function broadcastAnnouncement(
     // embed + better permissions story). Fall back to the legacy
     // webhook URL if no channel is configured.
     const settings = await getDiscordSettings();
+    // If the announcement is cohort-scoped, surface that in the embed
+    // footer so Discord readers see the same audience tag as the email.
+    let cohortName: string | null = null;
+    if (input.cohortId) {
+      const { data: c } = await admin
+        .from("cohorts")
+        .select("name")
+        .eq("id", input.cohortId)
+        .maybeSingle();
+      cohortName = (c?.name as string | null) ?? null;
+    }
     const embed = announcementEmbed({
       title: input.title.trim(),
       body: input.body.trim(),
+      cohortName,
       link: `${env.siteUrl}/dashboard`,
     });
+
+    // Resolve the optional ping into both a Discord-formatted prefix
+    // for `content` (so the mention actually renders) AND the
+    // `allowed_mentions` gate (so Discord lets the ping through).
+    // Defaults to no ping — that's the safe option for routine posts.
+    const ping = input.discordPing ?? "none";
+    const ROLE_KEYS: Role[] = ["student", "mentor", "admin", "investor"];
+    let content: string | undefined;
+    let allowedMentions: AllowedMentions = { parse: [] };
+    if (ping === "everyone") {
+      content = "@everyone";
+      allowedMentions = { parse: ["everyone"] };
+    } else if (ping === "here") {
+      content = "@here";
+      allowedMentions = { parse: ["everyone"] }; // @here uses the same gate
+    } else if (ROLE_KEYS.includes(ping as Role)) {
+      const roleId = settings.roleIdByRole[ping as Role];
+      if (roleId) {
+        content = `<@&${roleId}>`;
+        allowedMentions = { roles: [roleId] };
+      }
+    }
+
     if (settings.announcementsChannelId) {
       discordPosted = await postChannelMessage(
         settings.announcementsChannelId,
-        { embeds: [embed] },
+        { content, embeds: [embed], allowedMentions },
       );
     } else {
-      discordPosted = await postDiscordWebhook({ embeds: [embed] });
+      discordPosted = await postDiscordWebhook({
+        content,
+        embeds: [embed],
+        allowedMentions,
+      });
     }
   }
 
@@ -135,6 +191,7 @@ export async function broadcastAnnouncement(
       recipients: recipients.length,
       sendEmail: input.sendEmail,
       postDiscord: input.postDiscord,
+      discordPing: input.discordPing ?? "none",
       discordPosted,
     },
   });
