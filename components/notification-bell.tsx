@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck } from "lucide-react";
@@ -32,7 +33,24 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Portal target isn't available until mount; gate render on this so SSR
+  // doesn't try to call createPortal.
+  const [mounted, setMounted] = useState(false);
+  // Bell button + portaled dropdown live in different trees, so we need
+  // both refs for click-outside detection.
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  // Computed viewport-relative coordinates for the portaled dropdown.
+  // Recalculated on open + on scroll/resize while open.
+  const [pos, setPos] = useState<{
+    top: number;
+    left?: number;
+    right?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Fetch on mount + every 60s. Filters by user_id as defense-in-depth
   // even though RLS already enforces it.
@@ -131,9 +149,12 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
+      const target = e.target as Node;
+      // Dropdown is portaled to <body>, so it's NOT a descendant of the
+      // bell wrapper. Check both refs separately.
       if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
+        !buttonRef.current?.contains(target) &&
+        !dropdownRef.current?.contains(target)
       ) {
         setOpen(false);
       }
@@ -150,6 +171,35 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
       };
     }
   }, [open]);
+
+  // Anchor the portaled dropdown to the bell button using viewport
+  // coordinates. Using position: fixed means the dropdown escapes every
+  // ancestor's overflow / containing-block rules (the dashboard sidebars
+  // are `md:sticky overflow-hidden`, which used to clip the dropdown's
+  // right edge because the dropdown is 22rem wide but the sidebar is
+  // only 15rem).
+  useLayoutEffect(() => {
+    if (!open || !buttonRef.current) return;
+    function updatePos() {
+      const rect = buttonRef.current!.getBoundingClientRect();
+      const offsetY = rect.bottom + 8;
+      if (align === "right") {
+        setPos({
+          top: offsetY,
+          right: Math.max(12, window.innerWidth - rect.right),
+        });
+      } else {
+        setPos({ top: offsetY, left: Math.max(12, rect.left) });
+      }
+    }
+    updatePos();
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [open, align]);
 
   const unread = items.filter((i) => !i.read_at).length;
 
@@ -181,30 +231,17 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
     }
   }
 
-  return (
-    <div ref={containerRef} className="relative">
-      <button
-        type="button"
-        aria-label={
-          unread > 0 ? `Notifications (${unread} unread)` : "Notifications"
-        }
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/70 transition hover:bg-white/5 hover:text-white"
-      >
-        <Bell className="h-4 w-4" />
-        {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-spark px-1 text-[10px] font-bold leading-none text-black">
-            {unread > 9 ? "9+" : unread}
-          </span>
-        )}
-      </button>
-      {open && (
-        <div
-          className={`absolute z-50 mt-2 max-w-[calc(100vw-1.5rem)] w-[22rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-950 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.7)] ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
-        >
+  const dropdown = open && pos && (
+    <div
+      ref={dropdownRef}
+      style={{
+        position: "fixed",
+        top: pos.top,
+        left: pos.left,
+        right: pos.right,
+      }}
+      className="z-[60] max-w-[calc(100vw-1.5rem)] w-[22rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-950 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.7)]"
+    >
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
             <p className="text-xs font-semibold uppercase tracking-wider text-white/50">
               Notifications
@@ -293,7 +330,28 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
             </Link>
           </div>
         </div>
-      )}
-    </div>
+  );
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label={
+          unread > 0 ? `Notifications (${unread} unread)` : "Notifications"
+        }
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/70 transition hover:bg-white/5 hover:text-white"
+      >
+        <Bell className="h-4 w-4" />
+        {unread > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-spark px-1 text-[10px] font-bold leading-none text-black">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+      {mounted && dropdown && createPortal(dropdown, document.body)}
+    </>
   );
 }
