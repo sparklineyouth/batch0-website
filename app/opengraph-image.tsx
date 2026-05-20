@@ -8,7 +8,7 @@ import { getSiteConfig } from "@/lib/site-config";
 // admin settings invalidates this route via revalidatePath.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const alt = "SparkLine Youth — The 4-Week Builder Program for High Schoolers";
+export const alt = "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -78,9 +78,9 @@ export default async function OpengraphImage() {
               maxWidth: 1000,
             }}
           >
-            Build something real.
+            Learn to build a startup.
             <br />
-            Pitch for <span style={{ color: "#FACC15" }}>real funding.</span>
+            Get <span style={{ color: "#FACC15" }}>funded</span> for it.
           </div>
           <div
             style={{
@@ -89,7 +89,7 @@ export default async function OpengraphImage() {
               maxWidth: 900,
             }}
           >
-            The 4-week, fully virtual accelerator for U.S. high schoolers.
+            The 4-week, fully virtual entrepreneurship program for U.S. high schoolers.
           </div>
         </div>
 

@@ -7,7 +7,7 @@ import { SponsorContactForm } from "./sponsor-contact-form";
 export const metadata = {
   title: "Sponsor SparkLine Youth — Fund the next generation of founders",
   description:
-    "Get your brand in front of 100 vetted teen builders per cohort. Fund the grant pool. Build pipeline.",
+    "Get your brand in front of 100 vetted teen founders per cohort. Fund standout founders directly. Build pipeline.",
 };
 
 const WHY = [
@@ -15,19 +15,19 @@ const WHY = [
     icon: Users,
     title: "Pipeline",
     body:
-      "100 vetted teen builders per cohort, many headed to top engineering programs in 12–24 months. Get early reads on talent before recruiters do.",
+      "100 vetted teen founders per cohort, many headed to top engineering and business programs in 12–24 months. Get early reads on talent before recruiters do.",
   },
   {
     icon: Megaphone,
     title: "Brand",
     body:
-      "Logo on the cohort dashboard, workshop slot, presence at Demo Day. Be visible where teen builders actually spend their time.",
+      "Logo on the cohort dashboard, workshop slot, presence on Pitch Day alongside our investor network. Be visible where teen founders actually spend their time.",
   },
   {
     icon: HeartHandshake,
     title: "Impact",
     body:
-      "Direct cash grants to teen founders. Real outcomes, real reportable impact for ESG and community programs.",
+      "Direct, non-dilutive sponsorship to teen founders. Real outcomes, real reportable impact for ESG and community programs.",
   },
 ];
 
@@ -53,8 +53,9 @@ export default function SponsorsPage() {
             of <span className="shine">founders</span>.
           </h1>
           <p className="mt-5 sm:mt-7 max-w-2xl text-[15px] sm:text-lg md:text-xl text-white/80 leading-[1.55]">
-            Get your brand in front of 100 vetted teen builders per cohort.
-            Fund the grant pool. Build pipeline.
+            Get your brand in front of 100 vetted teen founders per
+            cohort. Fund standout founders directly, side-by-side with
+            our investor network.
           </p>
           <div className="mt-7 sm:mt-9 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
             <a
@@ -123,8 +124,8 @@ export default function SponsorsPage() {
               Pick the level that fits.
             </h2>
             <p className="mt-4 text-base sm:text-[17px] text-white/75 leading-relaxed">
-              Every tier contributes to the cohort grant pool. Custom packages
-              available — just ask.
+              Every tier contributes to direct founder sponsorships for
+              cohort standouts. Custom packages available — just ask.
             </p>
           </div>
 

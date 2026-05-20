@@ -3,17 +3,17 @@ import React from "react";
 // A subdued curriculum strip — restrained tracking, no decorative sparkles,
 // stronger contrast so the words read like a manifest, not chrome.
 const items = [
-  "Lean Canvas",
   "Customer Discovery",
+  "Lean Canvas",
+  "MVP & Product",
   "Business Model",
   "Pricing Strategy",
   "Go-to-Market",
   "Brand Positioning",
   "Pitch Deck",
-  "Demo Day",
-  "Sponsor Grants",
+  "SparkLine Sponsorship",
+  "Investor Intros",
   "Zero Equity",
-  "Real Funding",
 ];
 
 export default function Marquee() {

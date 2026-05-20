@@ -48,8 +48,8 @@ const MOBILE_FEATURES: {
   {
     icon: PlayCircle,
     eyebrow: "Curriculum",
-    title: "Weekly modules + live sessions",
-    body: "Pre-recorded lessons you can watch on your schedule, plus a weekly group session with mentors and peers.",
+    title: "Weekly skill blocks + live sessions",
+    body: "Pre-recorded startup modules you can watch on your schedule, plus a weekly group session with mentors and peers.",
   },
   {
     icon: Sparkles,
@@ -60,9 +60,9 @@ const MOBILE_FEATURES: {
   },
   {
     icon: Trophy,
-    eyebrow: "Demo Day",
-    title: "Pitch for real cash",
-    body: "Week 4 ends live on Zoom. Pitch our sponsor-funded grant panel for real cash prizes — no equity taken, ever.",
+    eyebrow: "Pitch Day",
+    title: "Sponsorship + investor intros",
+    body: "Week 4 ends live on Zoom in front of the SparkLine team and our investor network. Standouts earn sponsorship and warm intros — zero equity, ever.",
   },
 ];
 
@@ -80,11 +80,12 @@ export default function ScrollPreview({ config }: { config: SiteConfig }) {
             The product
           </p>
           <h2 className="mt-3 text-[28px] font-bold tracking-[-0.02em] text-white leading-[1.05]">
-            From idea to <span className="shine">funded project</span>
+            From idea to <span className="shine">funded startup</span>
           </h2>
           <p className="mt-3 text-[15px] text-white/75 leading-[1.55]">
-            Live curriculum, weekly deliverables, real mentors, and a cohort
-            dashboard that keeps everything in one place.
+            Live startup curriculum, weekly deliverables, real founder
+            mentors, and a cohort dashboard that keeps everything in
+            one place.
           </p>
         </div>
         <ul className="mt-10 mx-auto max-w-md space-y-3">
@@ -142,11 +143,12 @@ export default function ScrollPreview({ config }: { config: SiteConfig }) {
                 The product
               </p>
               <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-                From idea to <span className="shine">funded project</span>
+                From idea to <span className="shine">funded startup</span>
               </h2>
               <p className="mt-4 max-w-2xl text-base md:text-lg text-white/75 mx-auto leading-relaxed">
-                Live curriculum, weekly deliverables, real mentors, and a
-                cohort dashboard that keeps everything in one place.
+                Live startup curriculum, weekly deliverables, real
+                founder mentors, and a cohort dashboard that keeps
+                everything in one place.
               </p>
             </>
           }
@@ -198,7 +200,7 @@ export default function ScrollPreview({ config }: { config: SiteConfig }) {
                     Welcome, Riya.
                   </h3>
                   <p className="mt-1 text-sm text-white/50">
-                    Here's where your SparkLine Youth journey lives.
+                    Your startup, your skill blocks, your investor prep.
                   </p>
                 </div>
 

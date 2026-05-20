@@ -18,14 +18,15 @@ export default function CTA({ config }: { config: SiteConfig }) {
             Reserve your seat
           </p>
           <h2 className="mt-3 text-[34px] sm:text-4xl md:text-6xl font-bold tracking-[-0.03em] leading-[1.05] sm:leading-[1.02] text-white">
-            Your project, funded,
+            Your startup, funded,
             <br />
             before you graduate.
           </h2>
           <p className="mt-4 sm:mt-5 max-w-xl text-[15px] sm:text-[17px] text-white/75 leading-[1.6]">
             {cohortLabel} launches {derived.cohortName}.{" "}
             {derived.capacityLabel} seats. {derived.priceLabel} if accepted.
-            Real cash grants on Demo Day.
+            SparkLine sponsorship and investor intros for cohort
+            standouts.
           </p>
         </Reveal>
 
@@ -57,10 +58,10 @@ export default function CTA({ config }: { config: SiteConfig }) {
               </p>
             </div>
             <ul className="mt-6 space-y-2.5 text-[14px] sm:text-[15px] text-white/80">
-              <Bullet>4 weeks, fully virtual</Bullet>
+              <Bullet>4 weeks, fully virtual — startup skill blocks</Bullet>
               <Bullet>Live mentor sessions + Discord community</Bullet>
-              <Bullet>Pitch our sponsor-funded grant panel on Demo Day</Bullet>
-              <Bullet>Walk away with a fundable project package</Bullet>
+              <Bullet>Pitch the SparkLine sponsorship + investor panel</Bullet>
+              <Bullet>Warm intros to our investor network, zero equity</Bullet>
             </ul>
           </div>
 

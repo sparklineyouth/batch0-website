@@ -10,7 +10,7 @@ export default function Stats({ config }: { config: SiteConfig }) {
       k: "Seats per cohort",
       sub: "Capped on purpose",
     },
-    { v: "4 wks", k: "Idea → pitch", sub: "Structured deliverables" },
+    { v: "4 wks", k: "Idea → pitch", sub: "Live mentor feedback" },
     { v: "100%", k: "Virtual", sub: "Open to U.S. teens" },
   ];
 
@@ -29,7 +29,8 @@ export default function Stats({ config }: { config: SiteConfig }) {
           </div>
           <p className="mt-4 max-w-sm text-[15px] text-white/75 leading-[1.55]">
             Compare to LaunchX or LeanGap at $3,000–$8,000+. Free to apply,
-            charged only if accepted.
+            charged only if accepted. Sponsorship and investor intros
+            are merit-based, never paid.
           </p>
         </div>
 

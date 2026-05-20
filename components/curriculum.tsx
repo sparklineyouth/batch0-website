@@ -6,29 +6,29 @@ const weeks = [
     week: "Week 1",
     title: "Validate",
     body:
-      "Lean Canvas (startups) or project scoping doc (builds/research). Problem-solution fit. Real user or stakeholder interviews. End the week with a hypothesis you've actually tested.",
-    deliverable: "Validated Lean Canvas or Project Brief",
+      "Lean Canvas. Problem-solution fit. Real customer interviews — not friends and family. End the week with a hypothesis you've actually tested in the wild.",
+    deliverable: "Validated Lean Canvas",
   },
   {
     week: "Week 2",
     title: "Build",
     body:
-      "Business model + revenue (startups) or resource plan + technical milestones (projects). Turn your idea into something real and sustainable — not a school project.",
-    deliverable: "Business Model + Pricing",
+      "Ship a v1 — landing page, no-code MVP, or working prototype. Business model, pricing, and unit economics that hold up to a sharp question.",
+    deliverable: "MVP + Business Model",
   },
   {
     week: "Week 3",
     title: "Market",
     body:
-      "Go-to-market or audience-and-distribution plan, competitive/landscape analysis, brand positioning. Find your first hundred users, readers, customers, or backers — and the wedge that gets you there.",
+      "Go-to-market plan, competitive landscape, brand positioning. Find your first hundred users — and the distribution wedge that gets you there.",
     deliverable: "GTM Plan + Brand",
   },
   {
     week: "Week 4",
     title: "Pitch",
     body:
-      "Final pitch deck. Demo Day rehearsals with mentors. Pitch live on Zoom for the cohort grant pool — funded by our sponsor partners. Cash prizes, zero equity.",
-    deliverable: "Grant Pitch (Live)",
+      "Final pitch deck. Rehearsals with mentors. Pitch live on Zoom — cohort standouts earn SparkLine sponsorship and warm intros to investors in our network.",
+    deliverable: "Sponsor + Investor Pitch (Live)",
   },
 ];
 
@@ -45,9 +45,10 @@ export default function Curriculum() {
               Idea to investor-ready.
             </h2>
             <p className="mt-4 sm:mt-5 text-base sm:text-lg text-white/75 leading-relaxed">
-              Every week ends with a structured deliverable. You finish the
-              program with a complete, fundable project package — not a
-              participation certificate.
+              Each week is a startup skill block, with a deliverable
+              built on your own company. You finish with a fundable
+              startup package and a live pitch to our sponsorship +
+              investor panel — not a participation certificate.
             </p>
           </Reveal>
 

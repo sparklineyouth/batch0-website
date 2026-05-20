@@ -5,17 +5,17 @@ const problems = [
   {
     title: "Priced for the few",
     body:
-      "LaunchX, LeanGap, and most quality programs gate access behind $3,000–$8,000+ tuition. The teens who would benefit most can't afford to apply.",
+      "LaunchX, LeanGap, and most serious entrepreneurship programs gate access behind $3,000–$8,000+ tuition. The teens who would benefit most can't afford to apply.",
   },
   {
-    title: "Locked to a city or season",
+    title: "Skills, but no scaffolding",
     body:
-      "Most accelerators run a couple of weeks per year, in one zip code. If your summer is booked, you're out — and a real company isn't built in two weeks anyway.",
+      "YouTube and ChatGPT can teach you a Lean Canvas — they can't tell you which skill to build next, give you live mentor feedback, or hand you a deadline. Self-teaching stalls; real founders need a sequence.",
   },
   {
-    title: "Cash, not certificates",
+    title: "Certificates, not capital",
     body:
-      "Programs that end with a panel and a plaque don't change much. We end with a sponsor-funded grant pool — real cash, awarded to real teens, zero equity taken.",
+      "Programs that end with a plaque don't change much. We end with founder sponsorship from SparkLine for cohort standouts, plus warm intros into our investor network — no equity taken.",
   },
 ];
 
@@ -29,14 +29,14 @@ export default function Problem() {
               The problem
             </p>
             <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-              Youth project funding is broken.
+              Youth entrepreneurship is broken.
             </h2>
             <p className="mt-4 sm:mt-5 text-base sm:text-lg text-white/75 leading-relaxed">
-              Talented teens building real things — startups, hardware,
-              research, art — don't need another business-plan
-              competition. They need funding access. Right now that's
-              reserved for the families who can afford it or happen to
-              live in the right city.
+              Teens with real startup ideas don't need another
+              business-plan competition. They need a structured way to
+              build the skills, a coach who's done it, and a path to
+              capital that doesn't depend on which zip code they grew
+              up in.
             </p>
           </Reveal>
 

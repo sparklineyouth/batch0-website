@@ -1,10 +1,11 @@
 import React from "react";
 import {
-  Rocket,
-  Cpu,
-  Microscope,
-  Palette,
-  HeartHandshake,
+  Compass,
+  Wrench,
+  LineChart,
+  Megaphone,
+  Presentation,
+  Handshake,
   type LucideIcon,
 } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
@@ -17,29 +18,34 @@ type Build = {
 
 const BUILDS: Build[] = [
   {
-    icon: Rocket,
-    title: "Startup",
-    body: "Build a real company. Lean Canvas, business model, GTM, pitch deck.",
+    icon: Compass,
+    title: "Customer discovery",
+    body: "Find a real problem worth solving. Lean Canvas, problem-solution fit, structured user interviews.",
   },
   {
-    icon: Cpu,
-    title: "Hardware",
-    body: "Ship a working prototype. Project scoping, BOM planning, milestone-driven build, demo.",
+    icon: Wrench,
+    title: "MVP & product",
+    body: "Ship a v1 fast — landing page, no-code MVP, or working prototype — without overbuilding before validation.",
   },
   {
-    icon: Microscope,
-    title: "Research",
-    body: "Run a real study. Methodology design, data collection, analysis, presentation.",
+    icon: LineChart,
+    title: "Business model",
+    body: "Revenue, pricing, unit economics. Turn your idea into something investors can actually back.",
   },
   {
-    icon: Palette,
-    title: "Creative",
-    body: "Launch a creative project — game, film, music, app. Concept, build, distribution, audience.",
+    icon: Megaphone,
+    title: "Go-to-market",
+    body: "Brand, positioning, distribution. Land your first hundred users with a wedge you can actually execute.",
   },
   {
-    icon: HeartHandshake,
-    title: "Social Impact",
-    body: "Tackle a real problem. Stakeholder discovery, intervention design, pilot, scale plan.",
+    icon: Presentation,
+    title: "Pitch & storytelling",
+    body: "A deck that holds up to investor scrutiny, and the live delivery to back it up.",
+  },
+  {
+    icon: Handshake,
+    title: "Fundraising fundamentals",
+    body: "How sponsorship, angel, and pre-seed capital actually work — and how to ask for it without giving away the farm.",
   },
 ];
 
@@ -49,13 +55,14 @@ export default function Builds() {
       <div className="mx-auto max-w-6xl">
         <Reveal className="max-w-2xl">
           <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
-            What you can build
+            What you'll learn
           </p>
           <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-            Five ways to build with SparkLine.
+            The skills founders actually use.
           </h2>
           <p className="mt-4 sm:mt-5 text-base sm:text-[17px] text-white/75 leading-relaxed">
-            One curriculum. Five project types. All eligible.
+            Six core skill blocks. Taught in sequence, applied to your
+            own startup, with feedback from mentors who have shipped.
           </p>
         </Reveal>
 

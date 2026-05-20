@@ -12,7 +12,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
   const faqs = [
     {
       q: "Who is SparkLine Youth for?",
-      a: "Any U.S. high schooler ages 13–18 building something real — a startup, hardware project, research idea, creative build, or social-impact project. Even a half-baked idea works. No prior experience required.",
+      a: "Any U.S. high schooler ages 13–18 who wants to learn how to build a real startup — and is willing to put in 4 weeks of focused work. Bring an idea, a half-formed hunch, or nothing at all. No prior experience required, but the application is selective.",
     },
     {
       q: "How much does it cost?",
@@ -20,15 +20,15 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "Is it really fully virtual?",
-      a: "Yes. Pre-recorded video modules plus live weekly group sessions on Zoom and an active Discord community. You can join from anywhere in the U.S.",
+      a: "Yes. Pre-recorded skill modules plus live weekly group sessions on Zoom, 1:1 mentor checkpoints, and an active Discord community. You can join from anywhere in the U.S.",
     },
     {
-      q: "Will I actually win real money?",
-      a: "Yes. Demo Day ends live on Zoom in front of our sponsor grant panel. Top cohort startups win cash prizes from a pool funded by our sponsor partners — paid out directly to you, with zero equity taken. We also invite outside angel investors as observers; some may follow up with cohort standouts for separate investment conversations, but the cohort grant pool is the guaranteed prize.",
+      q: "How does the sponsorship and investor side actually work?",
+      a: "Pitch Day at the end of Week 4 happens live on Zoom in front of the SparkLine team and our investor network. Cohort standouts earn direct sponsorship from SparkLine to fund their next steps, and we make warm introductions to investors in our network — angels, scout funds, and pre-seed VCs interested in young founders. Sponsorship is a non-dilutive grant. Investor intros are connections; what happens next is between you and them.",
     },
     {
       q: "What if I don't have an idea yet?",
-      a: "Week 1 is built for that. We walk you through scoping and validation — whether you're hunting for a startup, a hardware project, a research question, a creative concept, or a social-impact angle — so you find a real opportunity, not just guess.",
+      a: "Week 1 is built for that. We walk you through customer discovery and structured idea validation — so you find a real problem worth solving, not just guess at one.",
     },
     {
       q: "How big are the cohorts?",
@@ -36,11 +36,11 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "What do I walk away with?",
-      a: "A validated Lean Canvas, a complete business model, a go-to-market plan, and a polished, investor-ready pitch deck — plus the network and credibility to keep going.",
+      a: "A validated Lean Canvas, a working v1 of your startup, a real business model, a go-to-market plan, and an investor-ready pitch deck — plus a shot at SparkLine sponsorship and warm intros into our investor network.",
     },
     {
       q: "Does SparkLine Youth take equity or own my idea?",
-      a: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. SparkLine Youth takes no equity, no IP, and no royalties. The only thing we ask is that you let us say \"this project was built at SparkLine Youth\" when we talk about our alumni. That's it.",
+      a: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. SparkLine Youth takes no equity, no IP, and no royalties on the program itself. Sponsorship is a non-dilutive grant. Any investment that comes from our investor intros is a separate conversation between you and the investor — we never take a cut.",
     },
   ];
 
