@@ -67,8 +67,8 @@ export default function TermsPage() {
         is attribution only and creates no ownership, partnership, or
         agency relationship between SparkLine Youth and your business. If you'd
         prefer not to be named publicly, email{" "}
-        <a href="mailto:sparkline.youth@gmail.com">
-          sparkline.youth@gmail.com
+        <a href="mailto:hello@impetusai.net">
+          hello@impetusai.net
         </a>{" "}
         and we'll honor that.
       </p>
@@ -90,8 +90,8 @@ export default function TermsPage() {
       <h2>Contact</h2>
       <p>
         Questions about these terms?{" "}
-        <a href="mailto:sparkline.youth@gmail.com">
-          sparkline.youth@gmail.com
+        <a href="mailto:hello@impetusai.net">
+          hello@impetusai.net
         </a>
       </p>
     </>

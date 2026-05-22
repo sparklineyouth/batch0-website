@@ -12,10 +12,10 @@ const problems = [
     body:
       "YouTube and ChatGPT can teach you a Lean Canvas — they can't tell you which skill to build next, give you live mentor feedback, or hand you a deadline. Self-teaching stalls; real founders need a sequence.",
   },
-  {
-    title: "Certificates, not capital",
+    {
+    title: "Certificates, not connections",
     body:
-      "Programs that end with a plaque don't change much. We end with founder sponsorship from SparkLine for cohort standouts, plus warm intros into our investor network — no equity taken.",
+      "Programs that end with a plaque don't change much. We end with mentor support, a live pitch in front of our investor network, and optional sponsorship for cohort standouts. No equity taken. Funding is never guaranteed.",
   },
 ];
 
@@ -34,9 +34,9 @@ export default function Problem() {
             <p className="mt-4 sm:mt-5 text-base sm:text-lg text-white/75 leading-relaxed">
               Teens with real startup ideas don't need another
               business-plan competition. They need a structured way to
-              build the skills, a coach who's done it, and a path to
-              capital that doesn't depend on which zip code they grew
-              up in.
+              build the skills, a coach who's done it, and a shot at
+              investor exposure that doesn't depend on which zip code
+              they grew up in.
             </p>
           </Reveal>
 

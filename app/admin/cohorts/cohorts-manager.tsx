@@ -22,7 +22,7 @@ const empty: CohortInput = {
   ends_on: "",
   capacity: 24,
   status: "upcoming",
-  price_cents: 9700,
+  price_cents: 13000,
   applications_close_at: null,
 };
 

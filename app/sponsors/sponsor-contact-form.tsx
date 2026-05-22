@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { TIERS } from "./tiers";
 
-const CONTACT_EMAIL = "sparklineyouth@gmail.com";
+const CONTACT_EMAIL = "hello@impetusai.net";
 
 export function SponsorContactForm() {
   const [name, setName] = useState("");

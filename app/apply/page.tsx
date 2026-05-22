@@ -1,25 +1,27 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { ApplicationForm } from "./application-form";
 import { Card } from "@/components/ui/card";
+import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 
 export const metadata = {
   title: "Apply · SparkLine Youth",
   description:
-    "Apply to SparkLine Youth — the 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Learn how to launch a real startup and pitch for SparkLine sponsorship + investor intros. Rolling admissions; $97 once accepted.",
+    "Apply to SparkLine Youth — the 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Curriculum, mentor support, and a live pitch in front of our investor network. Funding is never guaranteed. Rolling admissions.",
   openGraph: {
     title: "Apply to SparkLine Youth",
     description:
-      "Learn how to launch a real startup in 4 weeks, then pitch live for SparkLine sponsorship and warm intros to our investor network. Rolling admissions. $97 once accepted.",
+      "Learn how to launch a real startup in 4 weeks, then pitch live to our investor network. Optional sponsorship for standouts; funding never guaranteed. Rolling admissions.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Apply to SparkLine Youth",
     description:
-      "The 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Rolling admissions. $97.",
+      "The 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Live investor pitch; funding never guaranteed.",
   },
   // Application is gated and the form mutates server state — keep search
   // engines out even though middleware also redirects unauthed crawlers.
@@ -119,7 +121,9 @@ export default async function ApplyPage({
   const cohortName =
     selected?.name ?? settings.active_cohort_name ?? "the next cohort";
   const capacity = selected?.capacity ?? 24;
-  const priceDollars = ((selected?.price_cents ?? 9700) / 100).toFixed(0);
+  const country = getCountryFromHeaders(headers());
+  const regional = getRegionalPrice(selected?.price_cents ?? 13000, country);
+  const priceDollars = (regional.amountCents / 100).toFixed(0);
   const hasMultiple = cohorts.length > 1;
 
   return (

@@ -16,8 +16,8 @@ export default function RefundPolicyPage() {
       <p>
         If you're not satisfied for any reason, you can request a full
         refund within 7 days of payment. Email us at{" "}
-        <a href="mailto:sparkline.youth@gmail.com">
-          sparkline.youth@gmail.com
+        <a href="mailto:hello@impetusai.net">
+          hello@impetusai.net
         </a>{" "}
         from the email tied to your account.
       </p>
@@ -36,8 +36,8 @@ export default function RefundPolicyPage() {
 
       <h2>Questions</h2>
       <p>
-        <a href="mailto:sparkline.youth@gmail.com">
-          sparkline.youth@gmail.com
+        <a href="mailto:hello@impetusai.net">
+          hello@impetusai.net
         </a>
       </p>
     </>

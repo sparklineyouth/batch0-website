@@ -45,10 +45,10 @@ export default async function PayFinePage() {
           Your access is paused until the {fines.length > 1 ? "fines below are" : "fine below is"} paid or waived by an admin.
           Email{" "}
           <a
-            href="mailto:sparkline.youth@gmail.com"
+            href="mailto:hello@impetusai.net"
             className="text-spark hover:underline"
           >
-            sparkline.youth@gmail.com
+            hello@impetusai.net
           </a>{" "}
           if you think this is wrong.
         </p>

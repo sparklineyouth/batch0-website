@@ -120,7 +120,7 @@ type SaveStatus =
 export function ApplicationForm({
   defaults,
   email,
-  priceLabel = "$97",
+  priceLabel = "$130",
   cohortId = null,
 }: {
   defaults: Application | null;

@@ -47,7 +47,7 @@ export function ReviewActions({
   status,
   feeWaived,
   initialNotes,
-  priceLabel = "$97",
+  priceLabel = "$130",
 }: {
   applicationId: string;
   status: string;

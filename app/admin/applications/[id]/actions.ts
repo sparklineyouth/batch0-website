@@ -63,7 +63,7 @@ export async function decideApplication(
       const t = Templates.applicationAccepted({
         name: a.full_name ?? profile?.full_name ?? null,
         cohortName: cohort?.name ?? "SparkLine Youth",
-        priceCents: cohort?.price_cents ?? 9700,
+        priceCents: cohort?.price_cents ?? 13000,
       });
       if (profile?.email) {
         await sendEmail({

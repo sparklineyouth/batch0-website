@@ -54,14 +54,15 @@ export default function Hero({
         <h1 className="mt-5 sm:mt-6 text-[40px] sm:text-6xl md:text-[80px] font-bold tracking-[-0.04em] leading-[1] text-white">
           Learn to build a startup.
           <br />
-          Get <span className="shine">funded</span> for it.
+          Pitch it to <span className="shine">investors</span>.
         </h1>
 
         <p className="mt-5 sm:mt-7 max-w-2xl text-[15px] sm:text-lg md:text-xl text-white/80 leading-[1.55] sm:leading-relaxed">
           SparkLine Youth is a 4-week, fully virtual entrepreneurship
-          program for U.S. high schoolers. Apply, learn how to launch a
-          real startup, then earn the chance for SparkLine sponsorship
-          and warm intros to our investor network.
+          program for U.S. high schoolers. You get the curriculum,
+          mentor support, and a live pitch to our investor network.
+          Funding is never guaranteed — we open the room; what
+          investors decide is up to them.
         </p>
 
         <div className="mt-6 sm:mt-9 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">

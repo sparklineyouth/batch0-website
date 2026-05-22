@@ -10,7 +10,7 @@ import type { Theme } from "@/lib/types";
 export const metadata = { title: "Settings · Admin" };
 
 const DEFAULTS: SiteSettingsInput = {
-  contact_email: "sparkline.youth@gmail.com",
+  contact_email: "hello@impetusai.net",
   applications_open: true,
   applications_closed_message:
     "Applications are currently closed. Check back soon for the next cohort.",

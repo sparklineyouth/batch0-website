@@ -58,7 +58,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
     {
       program: "SparkLine Youth",
       cost: config.derived.priceLabel,
-      investors: "Sponsorship + intros",
+      investors: "Pitch + intros",
       virtual: true,
       yearRound: true,
       highlight: true,
@@ -73,12 +73,13 @@ export default function Comparison({ config }: { config: SiteConfig }) {
             Why SparkLine Youth
           </p>
           <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-            Affordable. Virtual. A real path to capital.
+            Affordable. Virtual. Real investor exposure.
           </h2>
           <p className="mt-4 sm:mt-5 text-base sm:text-[17px] text-white/75 leading-relaxed">
             Four axes worth comparing: cost, what happens after Pitch Day,
             whether it actually runs online, and whether you can join
-            when it fits your year.
+            when it fits your year. Funding is never guaranteed — but
+            the room is.
           </p>
           <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-spark/30 bg-spark/[0.06] px-3 py-1.5 text-[11px] sm:text-xs font-medium uppercase tracking-[0.18em] text-spark">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-spark" />
@@ -96,7 +97,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
               <tr className="border-b border-white/10 bg-white/[0.02] text-[11px] uppercase tracking-[0.18em] text-white/60">
                 <th scope="col" className="px-6 py-4 font-medium">Program</th>
                 <th scope="col" className="px-6 py-4 font-medium">Cost</th>
-                <th scope="col" className="px-6 py-4 font-medium">Path to Capital</th>
+                <th scope="col" className="px-6 py-4 font-medium">Investor exposure</th>
                 <th scope="col" className="px-6 py-4 font-medium">Virtual</th>
                 <th scope="col" className="px-6 py-4 font-medium">Year-round</th>
               </tr>
@@ -175,7 +176,7 @@ export default function Comparison({ config }: { config: SiteConfig }) {
                 </span>
               </div>
               <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
-                <dt className="text-white/60">Path to Capital</dt>
+                <dt className="text-white/60">Investor exposure</dt>
                 <dd>
                   <ValueCell value={r.investors} />
                 </dd>

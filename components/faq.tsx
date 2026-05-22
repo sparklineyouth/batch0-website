@@ -24,7 +24,11 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "How does the sponsorship and investor side actually work?",
-      a: "Pitch Day at the end of Week 4 happens live on Zoom in front of the SparkLine team and our investor network. Cohort standouts earn direct sponsorship from SparkLine to fund their next steps, and we make warm introductions to investors in our network — angels, scout funds, and pre-seed VCs interested in young founders. Sponsorship is a non-dilutive grant. Investor intros are connections; what happens next is between you and them.",
+      a: "Pitch Day at the end of Week 4 happens live on Zoom in front of the SparkLine team and our investor network. Cohort standouts may be offered direct sponsorship from SparkLine, and we make warm introductions to investors in our network — angels, scout funds, and pre-seed VCs interested in young founders. Sponsorship, if offered, is a non-dilutive grant. Investor intros are connections, not checks. We make no guarantee any of this leads to funding; what investors decide is up to them.",
+    },
+    {
+      q: "What am I actually paying for?",
+      a: "Tuition pays for the program: the 4-week curriculum, our team's mentor support, the Discord community, and a live pitch slot in front of our investor network. You are not paying for funding, an investment, or a sponsorship offer — those are merit-based, separate, and never guaranteed.",
     },
     {
       q: "What if I don't have an idea yet?",
@@ -36,11 +40,11 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "What do I walk away with?",
-      a: "A validated Lean Canvas, a working v1 of your startup, a real business model, a go-to-market plan, and an investor-ready pitch deck — plus a shot at SparkLine sponsorship and warm intros into our investor network.",
+      a: "A validated Lean Canvas, a working v1 of your startup, a real business model, a go-to-market plan, and an investor-ready pitch deck — plus a live pitch in front of our investor network, with warm intros and a shot at SparkLine sponsorship for cohort standouts. Funding is never guaranteed.",
     },
     {
       q: "Does SparkLine Youth take equity or own my idea?",
-      a: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. SparkLine Youth takes no equity, no IP, and no royalties on the program itself. Sponsorship is a non-dilutive grant. Any investment that comes from our investor intros is a separate conversation between you and the investor — we never take a cut.",
+      a: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. SparkLine Youth takes no equity, no IP, and no royalties on the program itself. Sponsorship, if offered, is a non-dilutive grant. Any investment that comes from our investor intros is a separate conversation between you and the investor — we never take a cut, and we never guarantee a check.",
     },
   ];
 

@@ -63,8 +63,8 @@ export default function PrivacyPage() {
         You can update your profile or delete your account from{" "}
         <a href="/dashboard/settings">settings</a>. You can email us to
         request a copy of your data or full deletion at{" "}
-        <a href="mailto:sparkline.youth@gmail.com">
-          sparkline.youth@gmail.com
+        <a href="mailto:hello@impetusai.net">
+          hello@impetusai.net
         </a>
         .
       </p>
@@ -89,8 +89,8 @@ export default function PrivacyPage() {
       <h2>Contact</h2>
       <p>
         Questions:{" "}
-        <a href="mailto:sparkline.youth@gmail.com">
-          sparkline.youth@gmail.com
+        <a href="mailto:hello@impetusai.net">
+          hello@impetusai.net
         </a>
       </p>
     </>

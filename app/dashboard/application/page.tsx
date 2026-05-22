@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { PayButton } from "./pay-button";
 
 export const metadata = { title: "Application · SparkLine Youth" };
@@ -35,7 +37,9 @@ export default async function ApplicationPage({
     );
   }
 
-  const priceCents = app.cohort?.price_cents ?? 9700;
+  const basePriceCents = app.cohort?.price_cents ?? 13000;
+  const country = getCountryFromHeaders(headers());
+  const priceCents = getRegionalPrice(basePriceCents, country).amountCents;
 
   return (
     <div className="mx-auto max-w-3xl">

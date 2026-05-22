@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://sparklineyouth.org"),
   title: "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers",
   description:
-    "Apply, learn how to launch a real startup in 4 weeks, then pitch for SparkLine sponsorship and warm intros to our investor network. Just $97. For U.S. high schoolers.",
+    "Apply, learn how to launch a real startup in 4 weeks, then pitch live to our investor network. Curriculum, mentor support, and optional sponsorship for standouts — funding never guaranteed. For U.S. high schoolers.",
   keywords: [
     "high school startup accelerator",
     "youth entrepreneurship",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers",
     description:
-      "Apply, learn how to launch a real startup in 4 weeks, then earn SparkLine sponsorship and warm intros to our investor network. Keep 100% of your equity.",
+      "Apply, learn how to launch a real startup in 4 weeks, then pitch live to our investor network. Optional sponsorship for standouts; funding never guaranteed. Keep 100% of your equity.",
     url: "https://sparklineyouth.org",
     siteName: "SparkLine Youth",
     // Image is generated dynamically by app/opengraph-image.tsx and picked
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers",
     description:
-      "Apply, learn how to launch a real startup in 4 weeks, then earn SparkLine sponsorship and warm intros to our investor network. Keep 100% of your equity.",
+      "Apply, learn how to launch a real startup in 4 weeks, then pitch live to our investor network. Optional sponsorship for standouts; funding never guaranteed. Keep 100% of your equity.",
   },
   icons: {
     icon: "/logo.svg",
@@ -57,12 +57,12 @@ const orgJsonLd = {
   url: "https://sparklineyouth.org",
   logo: "https://sparklineyouth.org/logo.svg",
   description:
-    "SparkLine Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Students apply, learn how to launch a real startup, and pitch live for SparkLine sponsorship plus warm introductions to investors in our network — keeping 100% of their equity, for $97.",
+    "SparkLine Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Students learn how to launch a real startup with mentor support, then pitch live in front of our investor network — keeping 100% of their equity. Optional sponsorship for standouts; funding is never guaranteed.",
   sameAs: ["https://sparklineyouth.org"],
   contactPoint: {
     "@type": "ContactPoint",
     contactType: "customer support",
-    email: "sparkline.youth@gmail.com",
+    email: "hello@impetusai.net",
   },
   audience: {
     "@type": "EducationalAudience",
@@ -71,10 +71,11 @@ const orgJsonLd = {
   },
   offers: {
     "@type": "Offer",
-    price: "97",
+    price: "130",
     priceCurrency: "USD",
     category: "Tuition",
-    description: "4-week virtual entrepreneurship program cohort tuition",
+    description:
+      "4-week virtual entrepreneurship program cohort tuition. Reduced regional pricing available in select countries.",
   },
 };
 

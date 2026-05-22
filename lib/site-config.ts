@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getRegionalPrice } from "@/lib/pricing";
 
 // Single source of truth for public, admin-editable site facts (active
 // cohort + branding). The admin can change anything here from
@@ -40,10 +41,18 @@ export type SiteConfig = {
     cohortHeadline: string;
     /** "Jun 15 → Jul 13" — date range, or "" if dates are missing. */
     dateRangeLabel: string;
-    /** "97" — integer-rounded dollar price (no $ prefix). */
+    /** "97" — integer-rounded dollar price (no $ prefix), regional. */
     priceDollars: string;
-    /** "$97" — convenience formatted price. */
+    /** "$97" — convenience formatted price for the visitor's region. */
     priceLabel: string;
+    /** Price in cents the visitor will actually be charged. */
+    priceCents: number;
+    /** Default (non-regional) price label, e.g. "$130". */
+    basePriceLabel: string;
+    /** True when the visitor's region has a price override applied. */
+    isRegionalPrice: boolean;
+    /** ISO-3166-1 alpha-2 country code we resolved for this visitor. */
+    country: string | null;
     /** Capacity as a string, e.g. "24". */
     capacityLabel: string;
     /**
@@ -70,7 +79,7 @@ export type SiteConfig = {
 };
 
 const FALLBACK_SETTINGS: SiteSettings = {
-  contactEmail: "sparkline.youth@gmail.com",
+  contactEmail: "hello@impetusai.net",
   discordUrl: "",
   applicationsOpen: true,
   applicationsClosedMessage:
@@ -87,7 +96,7 @@ const FALLBACK_COHORT: ActiveCohort = {
   startsOn: "2026-06-15",
   endsOn: "2026-07-13",
   capacity: 24,
-  priceCents: 9700,
+  priceCents: 13000,
   status: "upcoming",
   applicationsCloseAt: null,
 };
@@ -112,6 +121,7 @@ function derive(
   cohort: ActiveCohort | null,
   enrolledCount: number,
   applicationsOpen: boolean,
+  countryCode: string | null,
 ): SiteConfig["derived"] {
   const c = cohort ?? FALLBACK_COHORT;
   const cohortLabel =
@@ -120,7 +130,10 @@ function derive(
   const cohortHeadline = cohortLabel
     ? `${cohortLabel} · ${cohortName}`
     : cohortName;
-  const dollars = Math.round((c.priceCents ?? 0) / 100);
+  const baseCents = c.priceCents ?? 0;
+  const regional = getRegionalPrice(baseCents, countryCode);
+  const dollars = Math.round(regional.amountCents / 100);
+  const baseDollars = Math.round(baseCents / 100);
 
   const spotsLeft = Math.max(0, (c.capacity ?? 0) - enrolledCount);
   let spotsLabel = "";
@@ -166,6 +179,10 @@ function derive(
     dateRangeLabel: formatDateRange(c.startsOn, c.endsOn),
     priceDollars: String(dollars),
     priceLabel: `$${dollars}`,
+    priceCents: regional.amountCents,
+    basePriceLabel: `$${baseDollars}`,
+    isRegionalPrice: regional.isRegional,
+    country: regional.country,
     capacityLabel: String(c.capacity),
     enrolledCount,
     spotsLeft,
@@ -179,8 +196,15 @@ function derive(
  * cohort (admin-pinned, or the next upcoming/active one) in a single
  * round-trip. Always returns a config — never throws — so callers don't
  * need to guard the marketing site against a Supabase outage.
+ *
+ * Pass `countryCode` (ISO-3166-1 alpha-2) to apply regional tuition
+ * pricing — see `lib/pricing.ts`. When omitted, the cohort's default
+ * price is used.
  */
-export async function getSiteConfig(): Promise<SiteConfig> {
+export async function getSiteConfig(
+  opts: { countryCode?: string | null } = {},
+): Promise<SiteConfig> {
+  const countryCode = opts.countryCode ?? null;
   const admin = createAdminClient();
 
   const [settingsRes, pinnedIdRes] = await Promise.all([
@@ -289,6 +313,11 @@ export async function getSiteConfig(): Promise<SiteConfig> {
   return {
     cohort,
     settings,
-    derived: derive(cohort, enrolledCount, settings.applicationsOpen),
+    derived: derive(
+      cohort,
+      enrolledCount,
+      settings.applicationsOpen,
+      countryCode,
+    ),
   };
 }

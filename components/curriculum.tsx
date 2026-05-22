@@ -27,7 +27,7 @@ const weeks = [
     week: "Week 4",
     title: "Pitch",
     body:
-      "Final pitch deck. Rehearsals with mentors. Pitch live on Zoom — cohort standouts earn SparkLine sponsorship and warm intros to investors in our network.",
+      "Final pitch deck. Rehearsals with mentors. Pitch live on Zoom in front of our investor network — cohort standouts may be offered SparkLine sponsorship and warm intros. Funding is never guaranteed.",
     deliverable: "Sponsor + Investor Pitch (Live)",
   },
 ];
@@ -46,9 +46,10 @@ export default function Curriculum() {
             </h2>
             <p className="mt-4 sm:mt-5 text-base sm:text-lg text-white/75 leading-relaxed">
               Each week is a startup skill block, with a deliverable
-              built on your own company. You finish with a fundable
-              startup package and a live pitch to our sponsorship +
-              investor panel — not a participation certificate.
+              built on your own company. You finish with an
+              investor-ready startup package and a live pitch in front
+              of our investor network — not a participation certificate.
+              Funding is never guaranteed.
             </p>
           </Reveal>
 

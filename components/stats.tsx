@@ -29,8 +29,8 @@ export default function Stats({ config }: { config: SiteConfig }) {
           </div>
           <p className="mt-4 max-w-sm text-[15px] text-white/75 leading-[1.55]">
             Compare to LaunchX or LeanGap at $3,000–$8,000+. Free to apply,
-            charged only if accepted. Sponsorship and investor intros
-            are merit-based, never paid.
+            charged only if accepted. Sponsorship and investor intros are
+            merit-based — never paid, and never guaranteed.
           </p>
         </div>
 

@@ -61,8 +61,8 @@ const MOBILE_FEATURES: {
   {
     icon: Trophy,
     eyebrow: "Pitch Day",
-    title: "Sponsorship + investor intros",
-    body: "Week 4 ends live on Zoom in front of the SparkLine team and our investor network. Standouts earn sponsorship and warm intros — zero equity, ever.",
+    title: "Investor pitch + intros",
+    body: "Week 4 ends live on Zoom in front of the SparkLine team and our investor network. Standouts may be offered sponsorship and warm intros — zero equity, ever. Funding is never guaranteed.",
   },
 ];
 
@@ -80,7 +80,7 @@ export default function ScrollPreview({ config }: { config: SiteConfig }) {
             The product
           </p>
           <h2 className="mt-3 text-[28px] font-bold tracking-[-0.02em] text-white leading-[1.05]">
-            From idea to <span className="shine">funded startup</span>
+            From idea to <span className="shine">investor-ready</span>
           </h2>
           <p className="mt-3 text-[15px] text-white/75 leading-[1.55]">
             Live startup curriculum, weekly deliverables, real founder
@@ -143,7 +143,7 @@ export default function ScrollPreview({ config }: { config: SiteConfig }) {
                 The product
               </p>
               <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-                From idea to <span className="shine">funded startup</span>
+                From idea to <span className="shine">investor-ready</span>
               </h2>
               <p className="mt-4 max-w-2xl text-base md:text-lg text-white/75 mx-auto leading-relaxed">
                 Live startup curriculum, weekly deliverables, real

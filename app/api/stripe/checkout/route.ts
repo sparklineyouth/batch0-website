@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
+import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import {
   getOrCreateStripeCustomer,
   stripeErrorMessage,
@@ -55,9 +56,19 @@ export async function POST(req: Request) {
     );
   }
 
-  const priceCents = app.cohort?.price_cents ?? 9700;
+  const basePriceCents = app.cohort?.price_cents ?? 13000;
   const cohortName = app.cohort?.name ?? "SparkLine Youth cohort";
   const stripePriceId: string | null = app.cohort?.stripe_price_id ?? null;
+
+  // Regional pricing — keep the displayed marketing price in sync with
+  // what we actually charge by detecting country at checkout time. When
+  // a region has an override, we fall back to ad-hoc `price_data` even
+  // if the cohort has a `stripe_price_id` set, because a fixed Price
+  // object can't carry a different unit_amount.
+  const country = getCountryFromHeaders(req.headers);
+  const regional = getRegionalPrice(basePriceCents, country);
+  const priceCents = regional.amountCents;
+  const usePriceId = stripePriceId && !regional.isRegional;
 
   const { data: profile } = await admin
     .from("profiles")
@@ -86,8 +97,8 @@ export async function POST(req: Request) {
       mode: "payment",
       customer: customerId,
       line_items: [
-        stripePriceId
-          ? { quantity: 1, price: stripePriceId }
+        usePriceId
+          ? { quantity: 1, price: stripePriceId as string }
           : {
               quantity: 1,
               price_data: {
@@ -105,6 +116,8 @@ export async function POST(req: Request) {
         application_id: app.id,
         user_id: user.id,
         cohort_id: app.cohort_id ?? "",
+        country: country ?? "",
+        regional_pricing: regional.isRegional ? "1" : "0",
       },
       payment_intent_data: {
         metadata: {

@@ -64,7 +64,7 @@ export function SettingsForm({
             type="email"
             value={values.contact_email}
             onChange={(e) => set("contact_email", e.target.value)}
-            placeholder="sparkline.youth@gmail.com"
+            placeholder="hello@impetusai.net"
           />
           <Hint>Shown in the footer and CTA. Where applicants can reach you.</Hint>
         </Field>

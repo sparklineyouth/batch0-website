@@ -21,9 +21,9 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
           </div>
           <p className="mt-4 max-w-sm text-sm text-white/70 leading-relaxed">
             A 4-week, fully virtual entrepreneurship program for U.S.
-            high schoolers. Apply, learn the skills to launch a real
-            startup, then earn the chance for SparkLine sponsorship and
-            warm intros to our investor network — zero equity, ever.
+            high schoolers. Curriculum, mentor support, and a live pitch
+            in front of our investor network. Optional sponsorship for
+            standouts — zero equity, ever. Funding is never guaranteed.
           </p>
           <p className="mt-5 text-xs text-white/55">
             sparklineyouth.org
