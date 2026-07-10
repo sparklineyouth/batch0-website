@@ -195,9 +195,17 @@ export default async function AdminEmailMetricsPage() {
             Open and click rates from the last 30 days of Resend events.
           </p>
         </div>
-        <p className="text-[11px] text-white/40">
-          {rows.length.toLocaleString()} events ingested
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-[11px] text-white/40">
+            {rows.length.toLocaleString()} events ingested
+          </p>
+          <a
+            href="/admin/email/blast"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-spark px-3 py-1.5 text-xs font-semibold text-black hover:bg-spark-200"
+          >
+            Compose blast
+          </a>
+        </div>
       </div>
 
       <section className="mt-6 grid gap-3 md:grid-cols-5">

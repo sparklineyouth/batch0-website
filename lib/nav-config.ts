@@ -24,6 +24,7 @@ import {
   Rocket,
   Activity,
   Mail,
+  Send,
   Calendar as CalendarIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -164,6 +165,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       { href: "/admin/mentors/match", label: "Mentor match", icon: Sparkles },
       { href: "/admin/ai-usage", label: "AI usage", icon: Sparkles },
       { href: "/admin/email", label: "Email metrics", icon: Mail },
+      { href: "/admin/email/blast", label: "Email blast", icon: Send },
       { href: "/admin/referrals", label: "Referrals", icon: Star },
       { href: "/admin/moderation", label: "Moderation", icon: ShieldCheck },
       { href: "/admin/discord", label: "Discord", icon: MessagesSquare },

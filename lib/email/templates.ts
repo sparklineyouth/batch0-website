@@ -54,6 +54,32 @@ function escape(s: string) {
 }
 
 export const Templates = {
+  /**
+   * Admin-composed blast email (the /admin/email/blast composer). Body
+   * arrives as plain text — blank lines become paragraphs, single
+   * newlines become line breaks, and everything is escaped since admins
+   * write copy, not HTML. Personalization ({{name}}) happens before
+   * this is called, per recipient.
+   */
+  blast: (args: {
+    bodyText: string;
+    preheader?: string | null;
+    cta?: { url: string; label: string } | null;
+  }) => ({
+    html: layout({
+      preheader: args.preheader ?? undefined,
+      body: args.bodyText
+        .trim()
+        .split(/\n{2,}/)
+        .map(
+          (p) =>
+            `<p style="margin:0 0 14px 0">${escape(p).replace(/\n/g, "<br>")}</p>`,
+        )
+        .join(""),
+      cta: args.cta ?? undefined,
+    }),
+  }),
+
   welcome: (args: { name?: string | null }) => ({
     subject: "Welcome to SparkLine Youth",
     html: layout({
