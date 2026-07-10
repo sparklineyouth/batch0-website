@@ -1,93 +1,86 @@
 import React from "react";
-import { Reveal } from "@/components/ui/reveal";
 
-const weeks = [
+// The real syllabus — four one-week sprints. The full week-by-week detail
+// lives on /program; this is the home-page summary.
+export const WEEKS = [
   {
-    week: "Week 1",
+    week: "Wk 1",
     title: "Validate",
-    body:
-      "Lean Canvas. Problem-solution fit. Real customer interviews — not friends and family. End the week with a hypothesis you've actually tested in the wild.",
+    body: "Lean Canvas, problem-solution fit, and customer interviews with strangers. End the week with a hypothesis you've tested in the wild.",
     deliverable: "Validated Lean Canvas",
   },
   {
-    week: "Week 2",
+    week: "Wk 2",
     title: "Build",
-    body:
-      "Ship a v1 — landing page, no-code MVP, or working prototype. Business model, pricing, and unit economics that hold up to a sharp question.",
-    deliverable: "MVP + Business Model",
+    body: "Ship a v1: landing page, no-code MVP, or working prototype. Business model, pricing, and unit economics that hold up to a sharp question.",
+    deliverable: "MVP + business model",
   },
   {
-    week: "Week 3",
+    week: "Wk 3",
     title: "Market",
-    body:
-      "Go-to-market plan, competitive landscape, brand positioning. Find your first hundred users — and the distribution wedge that gets you there.",
-    deliverable: "GTM Plan + Brand",
+    body: "Go-to-market plan, competitive landscape, positioning. Find your first hundred users and the distribution wedge that gets you there.",
+    deliverable: "GTM plan + brand",
   },
   {
-    week: "Week 4",
+    week: "Wk 4",
     title: "Pitch",
-    body:
-      "Final pitch deck. Rehearsals with mentors. Pitch live on Zoom in front of our investor network — cohort standouts may be offered SparkLine sponsorship and warm intros. Funding is never guaranteed.",
-    deliverable: "Sponsor + Investor Pitch (Live)",
+    body: "Final deck, rehearsals, and a live pitch at demo day. Standouts may be offered SparkLine sponsorship. Never guaranteed.",
+    deliverable: "Live demo-day pitch",
   },
 ];
 
 export default function Curriculum() {
   return (
-    <section id="curriculum" className="relative py-16 sm:py-20 md:py-32 px-5 sm:px-6">
-      <div className="relative mx-auto max-w-6xl">
-        <div className="grid gap-8 md:gap-16 md:grid-cols-12">
-          <Reveal className="md:col-span-4">
-            <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
-              The 4-week sprint
-            </p>
-            <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-              Idea to investor-ready.
+    <section id="curriculum" className="border-t border-line px-5 py-20 sm:px-6 md:py-28">
+      <div className="mx-auto max-w-[1100px]">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
+              Four sprints, four artifacts
             </h2>
-            <p className="mt-4 sm:mt-5 text-base sm:text-lg text-white/75 leading-relaxed">
-              Each week is a startup skill block, with a deliverable
-              built on your own company. You finish with an
-              investor-ready startup package and a live pitch in front
-              of our investor network — not a participation certificate.
-              Funding is never guaranteed.
+            <p className="mt-4 max-w-[38rem] text-[15px] leading-[1.65] text-ink-soft">
+              Each sprint is one startup skill applied to your own company,
+              closed out by a deliverable you shipped yourself.
             </p>
-          </Reveal>
+          </div>
+          <a href="/program" className="link-ink text-[15px] font-medium">
+            Full week-by-week program
+          </a>
+        </div>
 
-          <ol className="md:col-span-8 relative">
-            <div
-              aria-hidden
-              className="absolute left-[7px] top-2 bottom-2 w-px bg-white/10"
-            />
-            {weeks.map((w, i) => (
-              <Reveal
-                key={w.week}
-                as="li"
-                delay={i * 60}
-                className="relative pb-8 sm:pb-10 pl-8 sm:pl-9 last:pb-0"
-              >
-                <span
-                  aria-hidden
-                  className="absolute left-0 top-1.5 h-[15px] w-[15px] rounded-full border border-spark/60 bg-black"
-                >
-                  <span className="absolute inset-1 rounded-full bg-spark" />
-                </span>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                  <p className="text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.18em] sm:tracking-[0.2em] text-white/45">
-                    {w.week}
-                  </p>
-                  <p className="text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.18em] sm:tracking-[0.2em] text-spark">
+        <div className="mt-10 overflow-x-auto">
+          <table className="w-full min-w-[560px] border-collapse text-left">
+            <thead>
+              <tr className="border-b border-ink/20">
+                <th scope="col" className="py-3 pr-4 font-mono text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                  Week
+                </th>
+                <th scope="col" className="py-3 pr-4 font-mono text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                  Sprint
+                </th>
+                <th scope="col" className="py-3 pr-4 font-mono text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                  You build
+                </th>
+                <th scope="col" className="py-3 font-mono text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                  You ship
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {WEEKS.map((w) => (
+                <tr key={w.week} className="border-b border-line last:border-b-0 align-top">
+                  <td className="py-4 pr-4 font-mono text-[13px] text-ink-faint">{w.week}</td>
+                  <td className="py-4 pr-4 text-[15px] font-semibold text-ink">{w.title}</td>
+                  <td className="max-w-[26rem] py-4 pr-4 text-[14px] leading-[1.55] text-ink-soft">
+                    {w.body}
+                  </td>
+                  <td className="py-4 font-mono text-[13px] font-medium text-ink">
                     {w.deliverable}
-                  </p>
-                </div>
-                <h3 className="mt-2 text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-white">
-                  {w.title}
-                </h3>
-                <p className="mt-2 max-w-2xl text-[14px] sm:text-[15px] text-white/75 leading-relaxed">
-                  {w.body}
-                </p>
-              </Reveal>
-            ))}
-          </ol>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </section>

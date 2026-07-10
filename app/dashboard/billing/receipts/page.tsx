@@ -247,8 +247,8 @@ export default async function ReceiptsPage({
         Receipts are hosted by Stripe. Older charges from before the receipt
         archive was rolled out may not have a downloadable link — request one
         from{" "}
-        <a href="mailto:hello@impetusai.net" className="text-spark hover:underline">
-          hello@impetusai.net
+        <a href="mailto:sparklineyouth@gmail.com" className="text-spark hover:underline">
+          sparklineyouth@gmail.com
         </a>{" "}
         if you need it for taxes.
       </p>

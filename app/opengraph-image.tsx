@@ -4,17 +4,25 @@ import { getSiteConfig } from "@/lib/site-config";
 // Route segment config for the OG image. Next.js picks these up to build
 // the actual /opengraph-image route + metadata. Runs on Node so we can
 // share the Supabase admin client with the rest of the server. Marked
-// dynamic so the active cohort is resolved at request time — saving the
-// admin settings invalidates this route via revalidatePath.
+// dynamic so the active cohort is resolved at request time.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const alt = "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers";
+export const alt =
+  "SparkLine Youth — startup accelerator for high schoolers. Cohort facts: dates, tuition, no equity taken.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
+// DESIGN.md on a card: white paper, ink type, one yellow. The ledger rows
+// carry the real cohort facts, same as the site's signature element.
 export default async function OpengraphImage() {
   const { derived } = await getSiteConfig();
-  const headline = `${derived.cohortHeadline} · ${derived.priceLabel}`;
+  const dates = derived.dateRangeLabel.replace("→", "–");
+  const rows: [string, string][] = [
+    ["COHORT", `${derived.cohortLabel || "Cohort"} · ${derived.cohortName}`],
+    ["DATES", dates || "TBA"],
+    ["TUITION", `${derived.priceLabel} · only if accepted`],
+    ["EQUITY TAKEN", "none"],
+  ];
   return new ImageResponse(
     (
       <div
@@ -24,86 +32,92 @@ export default async function OpengraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          padding: "72px",
-          backgroundColor: "#000000",
-          backgroundImage:
-            "radial-gradient(ellipse at top, rgba(250,204,21,0.22), rgba(0,0,0,1) 60%)",
-          color: "#ffffff",
+          padding: "64px 72px",
+          backgroundColor: "#ffffff",
+          color: "#141414",
           fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
-              background: "#FACC15",
-              boxShadow: "0 0 80px rgba(250,204,21,0.55)",
-            }}
-          />
-          <span
-            style={{
-              fontSize: 36,
-              fontWeight: 700,
-              letterSpacing: -1,
-            }}
-          >
-            Spark<span style={{ color: "#FACC15" }}>Line</span> Youth
-          </span>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ display: "flex", fontSize: 28, fontWeight: 700 }}>
+            SparkLine Youth
+          </div>
           <div
             style={{
               display: "flex",
-              alignSelf: "flex-start",
-              padding: "8px 16px",
-              borderRadius: 999,
-              border: "1px solid rgba(250,204,21,0.35)",
-              background: "rgba(250,204,21,0.1)",
-              color: "#FACC15",
-              fontSize: 22,
-              fontWeight: 500,
+              fontSize: 20,
+              color: "#767676",
             }}
           >
-            {headline}
+            sparklineyouth.org
           </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
           <div
             style={{
-              fontSize: 84,
-              lineHeight: 1.05,
+              display: "flex",
+              fontSize: 72,
               fontWeight: 800,
-              letterSpacing: -2.5,
-              maxWidth: 1000,
+              letterSpacing: "-0.025em",
+              lineHeight: 1.05,
             }}
           >
-            Learn to build a startup.
-            <br />
-            Pitch it to <span style={{ color: "#FACC15" }}>investors</span>.
+            Don&apos;t wait for college
           </div>
           <div
             style={{
-              fontSize: 28,
-              color: "rgba(255,255,255,0.6)",
-              maxWidth: 900,
+              display: "flex",
+              alignItems: "center",
+              fontSize: 72,
+              fontWeight: 800,
+              letterSpacing: "-0.025em",
+              lineHeight: 1.05,
             }}
           >
-            The 4-week, fully virtual entrepreneurship program for U.S. high schoolers.
+            to start
+            <span
+              style={{
+                backgroundColor: "#FACC15",
+                padding: "0 14px",
+                marginLeft: 18,
+                display: "flex",
+              }}
+            >
+              your company.
+            </span>
           </div>
         </div>
 
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            fontSize: 22,
-            color: "rgba(255,255,255,0.45)",
+            flexDirection: "column",
+            gap: 10,
+            borderTop: "2px solid #141414",
+            paddingTop: 28,
           }}
         >
-          <span>sparklineyouth.org</span>
-          <span>Ages 13–18 · Fully Virtual</span>
+          {rows.map(([k, v]) => (
+            <div
+              key={k}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 22,
+                fontFamily: "monospace",
+              }}
+            >
+              <span style={{ display: "flex", color: "#767676" }}>{k}</span>
+              <span style={{ display: "flex", fontWeight: 600 }}>{v}</span>
+            </div>
+          ))}
         </div>
       </div>
     ),

@@ -10,9 +10,9 @@ export default function LegalLayout({
   // (not installed). The `legal-prose` class in globals.css applies the
   // body/heading rhythm we need without pulling in a 30kb dependency.
   return (
-    <main className="relative min-h-screen overflow-hidden bg-black text-white">
+    <main className="min-h-screen bg-paper">
       <Navbar />
-      <article className="legal-prose relative mx-auto max-w-3xl px-6 pt-32 pb-20">
+      <article className="legal-prose mx-auto max-w-3xl px-6 pb-20 pt-16">
         {children}
       </article>
       <Footer />

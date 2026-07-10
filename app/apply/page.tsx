@@ -10,18 +10,18 @@ import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 export const metadata = {
   title: "Apply · SparkLine Youth",
   description:
-    "Apply to SparkLine Youth — the 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Curriculum, mentor support, and a live pitch in front of our investor network. Funding is never guaranteed. Rolling admissions.",
+    "Apply to SparkLine Youth — the live, online startup accelerator for U.S. high schoolers. Free to apply; tuition charged only if accepted. Rolling review.",
   openGraph: {
     title: "Apply to SparkLine Youth",
     description:
-      "Learn how to launch a real startup in 4 weeks, then pitch live to our investor network. Optional sponsorship for standouts; funding never guaranteed. Rolling admissions.",
+      "Four build sprints, a company of your own, and a live demo day. Free to apply; tuition charged only if accepted. Rolling review.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Apply to SparkLine Youth",
     description:
-      "The 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Live investor pitch; funding never guaranteed.",
+      "Four build sprints, a company of your own, and a live demo day. Free to apply; tuition charged only if accepted.",
   },
   // Application is gated and the form mutates server state — keep search
   // engines out even though middleware also redirects unauthed crawlers.
@@ -128,10 +128,6 @@ export default async function ApplyPage({
 
   return (
     <div className="min-h-screen bg-black">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[40rem] bg-spark-radial opacity-50"
-      />
       <div className="relative mx-auto max-w-3xl px-5 sm:px-6 py-10 sm:py-16">
         <div className="mb-6 sm:mb-8 flex items-center justify-between">
           <Link href="/dashboard" className="text-sm text-white/55 hover:text-white">

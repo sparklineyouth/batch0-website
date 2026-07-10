@@ -3,9 +3,12 @@
 import { useState } from "react";
 import { TIERS } from "./tiers";
 
-const CONTACT_EMAIL = "hello@impetusai.net";
-
-export function SponsorContactForm() {
+export function SponsorContactForm({
+  contactEmail,
+}: {
+  /** Admin-set contact from site_settings — same source as the footer. */
+  contactEmail: string;
+}) {
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
@@ -24,7 +27,7 @@ export function SponsorContactForm() {
       "Message:",
       message,
     ].join("\n");
-    const href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const href = `mailto:${contactEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = href;
   }
 
@@ -39,7 +42,7 @@ export function SponsorContactForm() {
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-spark/40 focus:outline-none focus:ring-1 focus:ring-spark/30"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
             placeholder="Your name"
           />
         }
@@ -53,7 +56,7 @@ export function SponsorContactForm() {
             required
             value={company}
             onChange={(e) => setCompany(e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-spark/40 focus:outline-none focus:ring-1 focus:ring-spark/30"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
             placeholder="Company or organization"
           />
         }
@@ -68,7 +71,7 @@ export function SponsorContactForm() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-spark/40 focus:outline-none focus:ring-1 focus:ring-spark/30"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
             placeholder="you@company.com"
           />
         }
@@ -80,7 +83,7 @@ export function SponsorContactForm() {
           <select
             value={tier}
             onChange={(e) => setTier(e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white focus:border-spark/40 focus:outline-none focus:ring-1 focus:ring-spark/30"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
           >
             {TIERS.map((t) => (
               <option key={t.name} value={`${t.name} (${t.price})`}>
@@ -99,21 +102,20 @@ export function SponsorContactForm() {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={5}
-            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-spark/40 focus:outline-none focus:ring-1 focus:ring-spark/30"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
             placeholder="Anything else we should know? Goals, timing, questions."
           />
         }
       />
       <div className="sm:col-span-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-white/55">
+        <p className="text-xs text-ink-faint">
           Opens your mail client. We reply within 2 business days.
         </p>
         <button
           type="submit"
-          className="press inline-flex items-center justify-center gap-2 rounded-lg bg-spark px-5 py-3 text-[14px] font-semibold text-black shadow-[0_8px_24px_-8px_rgba(250,204,21,0.5)] hover:bg-spark-200"
+          className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3 text-[14px] font-semibold text-ink shadow-cta hover:bg-spark-200"
         >
           Send inquiry
-          <span aria-hidden>→</span>
         </button>
       </div>
     </form>
@@ -133,9 +135,9 @@ function Field({
 }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.16em] text-white/55">
+      <span className="mb-1.5 block text-[13px] font-medium text-ink-soft">
         {label}
-        {required && <span aria-hidden className="ml-1 text-spark">*</span>}
+        {required && <span aria-hidden className="ml-0.5 text-spark-ink">*</span>}
       </span>
       {input}
     </label>

@@ -79,7 +79,7 @@ export type SiteConfig = {
 };
 
 const FALLBACK_SETTINGS: SiteSettings = {
-  contactEmail: "hello@impetusai.net",
+  contactEmail: "sparklineyouth@gmail.com",
   discordUrl: "",
   applicationsOpen: true,
   applicationsClosedMessage:
@@ -89,14 +89,16 @@ const FALLBACK_SETTINGS: SiteSettings = {
   referralsEnabled: true,
 };
 
+// Kept in sync with the real Cohort 1 row so a Supabase outage can't make
+// the marketing site display stale facts.
 const FALLBACK_COHORT: ActiveCohort = {
   id: "",
   name: "Summer 2026",
   cohortNumber: 1,
-  startsOn: "2026-06-15",
-  endsOn: "2026-07-13",
-  capacity: 24,
-  priceCents: 13000,
+  startsOn: "2026-07-30",
+  endsOn: "2026-09-13",
+  capacity: 100,
+  priceCents: 12999,
   status: "upcoming",
   applicationsCloseAt: null,
 };

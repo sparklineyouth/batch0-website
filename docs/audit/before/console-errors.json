@@ -1,0 +1,31 @@
+{
+  "/": [
+    "[390px warning] Please ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.",
+    "[768px warning] Please ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.",
+    "[1440px warning] Please ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly."
+  ],
+  "/sponsors": [],
+  "/login": [
+    "[390px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority",
+    "[768px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority",
+    "[1440px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority"
+  ],
+  "/signup": [
+    "[390px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority",
+    "[768px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority",
+    "[1440px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority"
+  ],
+  "/forgot-password": [
+    "[390px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority",
+    "[768px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority",
+    "[1440px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority"
+  ],
+  "/terms": [],
+  "/privacy": [],
+  "/refund-policy": [],
+  "/apply": [
+    "[390px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority",
+    "[768px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority",
+    "[1440px warning] Image with src \"/logo.svg\" was detected as the Largest Contentful Paint (LCP). Please add the \"priority\" property if this image is above the fold.\nRead more: https://nextjs.org/docs/api-reference/next/image#priority"
+  ]
+}

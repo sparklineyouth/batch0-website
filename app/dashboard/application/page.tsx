@@ -6,6 +6,7 @@ import { Card, StatusBadge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { PayButton } from "./pay-button";
+import { TrackSubmitted } from "./track-submitted";
 
 export const metadata = { title: "Application · SparkLine Youth" };
 
@@ -50,6 +51,7 @@ export default async function ApplicationPage({
 
       {searchParams.submitted && (
         <div className="mt-5 rounded-lg border border-spark/30 bg-spark/5 p-4 text-sm">
+          <TrackSubmitted />
           <p className="font-medium text-spark">Application submitted</p>
           <p className="mt-1 text-white/60">
             We'll review and get back to you by email. You can check status here anytime.

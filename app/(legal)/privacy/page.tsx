@@ -1,10 +1,14 @@
-export const metadata = { title: "Privacy Policy · SparkLine Youth" };
+export const metadata = {
+  title: "Privacy Policy · SparkLine Youth",
+  description: "How SparkLine Youth (Impetus AI LLC) collects, uses, and protects student and parent data.",
+  alternates: { canonical: "/privacy" },
+};
 
 export default function PrivacyPage() {
   return (
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
-      <p className="mt-2 text-sm text-white/60">
+      <p className="mt-2 text-sm text-ink-faint">
         Last updated: May 12, 2026
       </p>
 
@@ -63,8 +67,8 @@ export default function PrivacyPage() {
         You can update your profile or delete your account from{" "}
         <a href="/dashboard/settings">settings</a>. You can email us to
         request a copy of your data or full deletion at{" "}
-        <a href="mailto:hello@impetusai.net">
-          hello@impetusai.net
+        <a href="mailto:sparklineyouth@gmail.com">
+          sparklineyouth@gmail.com
         </a>
         .
       </p>
@@ -89,8 +93,8 @@ export default function PrivacyPage() {
       <h2>Contact</h2>
       <p>
         Questions:{" "}
-        <a href="mailto:hello@impetusai.net">
-          hello@impetusai.net
+        <a href="mailto:sparklineyouth@gmail.com">
+          sparklineyouth@gmail.com
         </a>
       </p>
     </>

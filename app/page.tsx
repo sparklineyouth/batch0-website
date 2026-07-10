@@ -1,14 +1,11 @@
-import dynamic from "next/dynamic";
 import { headers } from "next/headers";
 import Navbar from "@/components/navbar";
 import Hero from "@/components/hero";
-import Marquee from "@/components/marquee";
-import Problem from "@/components/problem";
-import Builds from "@/components/builds";
+import HowItWorks from "@/components/how-it-works";
+import Deliverables from "@/components/deliverables";
 import Curriculum from "@/components/curriculum";
-import Stats from "@/components/stats";
-import Sponsor from "@/components/sponsor";
-import Comparison from "@/components/comparison";
+import Founder from "@/components/founder";
+import Pricing from "@/components/pricing";
 import FAQ from "@/components/faq";
 import CTA from "@/components/cta";
 import Footer from "@/components/footer";
@@ -17,13 +14,9 @@ import { getSiteConfig } from "@/lib/site-config";
 import { getCountryFromHeaders } from "@/lib/pricing";
 import { getProfile, roleHome } from "@/lib/auth";
 
-// Scroll-preview is the only piece left that pulls framer-motion's
-// scroll-linked APIs + a wide lucide icon set. It's below the fold, so we
-// defer its JS until the user is past the hero. Reserve roughly the same
-// height it occupies to avoid layout shift while it streams in.
-const ScrollPreview = dynamic(() => import("@/components/scroll-preview"), {
-  loading: () => <div aria-hidden className="h-[60rem] md:h-[80rem]" />,
-});
+// Title/description inherit from the root layout; the canonical is set
+// here (not in the layout) so child routes don't inherit "/".
+export const metadata = { alternates: { canonical: "/" } };
 
 export default async function Home() {
   const countryCode = getCountryFromHeaders(headers());
@@ -33,17 +26,17 @@ export default async function Home() {
   ]);
   const authedHome = profile ? roleHome(profile.role) : null;
   return (
-    <main className="relative min-h-screen overflow-hidden bg-black">
-      <Navbar authedHome={authedHome} />
+    <main className="min-h-screen bg-paper">
+      <Navbar
+        authedHome={authedHome}
+        cohortLabel={config.derived.cohortLabel || "the next cohort"}
+      />
       <Hero config={config} authedHome={authedHome} />
-      <Marquee />
-      <Problem />
-      <Builds />
-      <ScrollPreview config={config} />
+      <HowItWorks config={config} />
+      <Deliverables />
       <Curriculum />
-      <Stats config={config} />
-      <Sponsor />
-      <Comparison config={config} />
+      <Founder contactEmail={config.settings.contactEmail} />
+      <Pricing config={config} />
       <FAQ config={config} />
       <CTA config={config} />
       <Footer config={config} />

@@ -1,10 +1,14 @@
-export const metadata = { title: "Refund Policy · SparkLine Youth" };
+export const metadata = {
+  title: "Refund Policy · SparkLine Youth",
+  description: "SparkLine Youth tuition refund terms — what is refundable, when, and how to request one.",
+  alternates: { canonical: "/refund-policy" },
+};
 
 export default function RefundPolicyPage() {
   return (
     <>
       <h1 className="text-4xl font-bold tracking-tight">Refund Policy</h1>
-      <p className="mt-2 text-sm text-white/60">
+      <p className="mt-2 text-sm text-ink-faint">
         Last updated: May 12, 2026
       </p>
 
@@ -16,8 +20,8 @@ export default function RefundPolicyPage() {
       <p>
         If you're not satisfied for any reason, you can request a full
         refund within 7 days of payment. Email us at{" "}
-        <a href="mailto:hello@impetusai.net">
-          hello@impetusai.net
+        <a href="mailto:sparklineyouth@gmail.com">
+          sparklineyouth@gmail.com
         </a>{" "}
         from the email tied to your account.
       </p>
@@ -36,8 +40,8 @@ export default function RefundPolicyPage() {
 
       <h2>Questions</h2>
       <p>
-        <a href="mailto:hello@impetusai.net">
-          hello@impetusai.net
+        <a href="mailto:sparklineyouth@gmail.com">
+          sparklineyouth@gmail.com
         </a>
       </p>
     </>

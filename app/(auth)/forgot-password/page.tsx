@@ -39,7 +39,7 @@ export default function ForgotPasswordPage() {
         <div
           role="status"
           aria-live="polite"
-          className="mt-6 rounded-lg border border-spark/30 bg-spark/5 p-4 text-sm text-white/85"
+          className="mt-6 rounded-md border border-spark/30 bg-spark/5 p-4 text-sm text-white/85"
         >
           <p className="font-medium text-spark">Check your email</p>
           <p className="mt-1 text-white/70">

@@ -1,180 +1,129 @@
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
-import { Users, Megaphone, HeartHandshake, Check } from "lucide-react";
 import { TIERS } from "./tiers";
 import { SponsorContactForm } from "./sponsor-contact-form";
+import { getSiteConfig } from "@/lib/site-config";
+import { getProfile, roleHome } from "@/lib/auth";
 
 export const metadata = {
-  title: "Sponsor SparkLine Youth — Fund the next generation of founders",
+  title: "Fund Grants for High-School Founders — SparkLine Youth",
   description:
-    "Get your brand in front of 100 vetted teen founders per cohort. Fund standout founders directly. Build pipeline.",
+    "Fund non-dilutive grants for high-school founders in SparkLine Youth's founding cohort. Three tiers, every dollar disclosed, run by Impetus AI LLC.",
+  alternates: { canonical: "/sponsors" },
 };
 
 const WHY = [
   {
-    icon: Users,
-    title: "Pipeline",
-    body:
-      "100 vetted teen founders per cohort, many headed to top engineering and business programs in 12–24 months. Get early reads on talent before recruiters do.",
+    title: "Grants, not swag",
+    body: "Sponsorship funds the non-dilutive grant pool awarded to standout students at demo day. You can name the grant you fund.",
   },
   {
-    icon: Megaphone,
-    title: "Brand",
-    body:
-      "Logo on the cohort dashboard, workshop slot, presence on Pitch Day alongside our investor network. Be visible where teen founders actually spend their time.",
+    title: "Early talent",
+    body: "Cohort 1 seats up to 100 U.S. high schoolers, each building a real company across four sprint weeks. Meet them before recruiters do, as builders with work you can inspect.",
   },
   {
-    icon: HeartHandshake,
-    title: "Impact",
-    body:
-      "Direct, non-dilutive sponsorship to teen founders. Real outcomes, real reportable impact for ESG and community programs.",
+    title: "A straight ledger",
+    body: "This is the founding cohort: no inflated alumni stats, no vanity metrics. You get exactly what each tier lists, and we report what your money funded.",
   },
 ];
 
-export default function SponsorsPage() {
+export default async function SponsorsPage() {
+  const [config, profile] = await Promise.all([getSiteConfig(), getProfile()]);
+  const authedHome = profile ? roleHome(profile.role) : null;
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-black text-white">
-      <Navbar />
+    <main className="min-h-screen bg-paper">
+      <Navbar
+        authedHome={authedHome}
+        cohortLabel={config.derived.cohortLabel || "the next cohort"}
+      />
 
       {/* Hero */}
-      <section className="relative overflow-hidden pt-28 pb-14 sm:pt-36 sm:pb-20 md:pt-44 md:pb-24">
-        <div
-          aria-hidden
-          className="absolute inset-x-0 -top-16 h-64 bg-gradient-to-b from-spark/[0.08] to-transparent pointer-events-none"
-        />
-        <div className="relative mx-auto max-w-5xl px-5 sm:px-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-spark/30 bg-spark/[0.06] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-spark">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-spark" />
-            Sponsorship
-          </div>
-          <h1 className="mt-5 sm:mt-6 text-[40px] sm:text-6xl md:text-[72px] font-bold tracking-[-0.04em] leading-[1] text-white">
-            Sponsor the next generation
-            <br />
-            of <span className="shine">founders</span>.
+      <section className="px-5 pb-14 pt-14 sm:px-6 sm:pt-20 md:pb-20 md:pt-24">
+        <div className="mx-auto max-w-[1100px]">
+          <h1 className="max-w-[20ch] font-display text-[clamp(2.25rem,5.5vw,3.5rem)] font-bold leading-[1.03] tracking-[-0.025em] text-ink">
+            Fund a high schooler&apos;s <span className="hl">first company</span>.
           </h1>
-          <p className="mt-5 sm:mt-7 max-w-2xl text-[15px] sm:text-lg md:text-xl text-white/80 leading-[1.55]">
-            Get your brand in front of 100 vetted teen founders per
-            cohort. Fund standout founders directly, side-by-side with
-            our investor network.
+          <p className="mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
+            SparkLine Youth is a live, online accelerator for U.S. high
+            schoolers, run by Impetus AI LLC. Sponsorship pays for
+            non-dilutive founder grants and keeps tuition at{" "}
+            {config.derived.priceLabel} instead of the $3,000+ programs
+            charge. Cohort 1 runs{" "}
+            {config.derived.dateRangeLabel.replace("→", "–")}.
           </p>
-          <div className="mt-7 sm:mt-9 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
+          <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
             <a
               href="#tiers"
-              className="press group inline-flex items-center justify-center gap-2 rounded-lg bg-spark px-5 py-4 sm:py-3 text-[15px] font-semibold text-black shadow-[0_8px_24px_-8px_rgba(250,204,21,0.5)] hover:bg-spark-200"
+              className="press inline-flex items-center justify-center rounded-md bg-spark px-5 py-3.5 text-[15px] font-semibold text-ink shadow-cta hover:bg-spark-200"
             >
-              See tiers
-              <span aria-hidden className="transition-transform group-hover:translate-x-0.5">→</span>
+              See sponsor tiers
             </a>
             <a
-              href="#contact"
-              className="press inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 px-5 py-4 sm:py-3 text-[15px] font-medium text-white/90 hover:border-white/30 hover:bg-white/[0.04]"
+              href={`mailto:${config.settings.contactEmail}`}
+              className="press inline-flex items-center justify-center rounded-md border border-line px-5 py-3.5 text-[15px] font-medium text-ink hover:border-ink/30"
             >
-              Get in touch
+              Email us directly
             </a>
           </div>
         </div>
       </section>
 
       {/* Why sponsor */}
-      <section className="relative py-16 sm:py-20 md:py-28 px-5 sm:px-6">
-        <div className="mx-auto max-w-6xl">
-          <div className="max-w-2xl">
-            <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
-              Why sponsor SparkLine?
-            </p>
-            <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-              Three things you get back.
-            </h2>
-          </div>
-          <ul className="mt-10 sm:mt-12 grid gap-4 sm:gap-5 sm:grid-cols-3">
-            {WHY.map((w) => {
-              const Icon = w.icon;
-              return (
-                <li
-                  key={w.title}
-                  className="rounded-2xl border border-white/10 bg-white/[0.02] p-6"
-                >
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-spark/15 text-spark">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <h3 className="mt-4 text-lg sm:text-xl font-semibold tracking-tight text-white">
-                    {w.title}
-                  </h3>
-                  <p className="mt-2 text-[14px] sm:text-[15px] text-white/75 leading-relaxed">
-                    {w.body}
-                  </p>
-                </li>
-              );
-            })}
+      <section className="border-t border-line px-5 py-16 sm:px-6 md:py-24">
+        <div className="mx-auto max-w-[1100px]">
+          <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
+            What sponsorship buys
+          </h2>
+          <ul className="mt-10 grid gap-x-10 gap-y-8 md:grid-cols-3">
+            {WHY.map((w) => (
+              <li key={w.title} className="border-t-2 border-spark pt-4">
+                <h3 className="text-[1.0625rem] font-semibold tracking-tight text-ink">
+                  {w.title}
+                </h3>
+                <p className="mt-1.5 text-[15px] leading-[1.6] text-ink-soft">
+                  {w.body}
+                </p>
+              </li>
+            ))}
           </ul>
         </div>
       </section>
 
       {/* Tiers */}
-      <section
-        id="tiers"
-        className="relative py-16 sm:py-20 md:py-28 px-5 sm:px-6 border-t border-white/10"
-      >
-        <div className="mx-auto max-w-6xl">
-          <div className="max-w-2xl">
-            <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
-              Sponsor tiers
-            </p>
-            <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-              Pick the level that fits.
-            </h2>
-            <p className="mt-4 text-base sm:text-[17px] text-white/75 leading-relaxed">
-              Every tier contributes to direct founder sponsorships for
-              cohort standouts. Custom packages available — just ask.
-            </p>
-          </div>
+      <section id="tiers" className="border-t border-line bg-wash px-5 py-16 sm:px-6 md:py-24">
+        <div className="mx-auto max-w-[1100px]">
+          <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
+            Tiers
+          </h2>
+          <p className="mt-4 max-w-[38rem] text-[15px] leading-[1.65] text-ink-soft">
+            Every tier contributes to the founder grant pool. Custom
+            packages: email us.
+          </p>
 
-          <div className="mt-10 sm:mt-12 grid gap-4 sm:gap-5 md:grid-cols-3">
+          <div className="mt-10 grid gap-6 md:grid-cols-3 md:gap-0 md:divide-x md:divide-line md:border md:border-line md:bg-paper">
             {TIERS.map((t) => (
-              <div
-                key={t.name}
-                className={`relative flex flex-col rounded-2xl border p-6 sm:p-7 ${
-                  t.highlight
-                    ? "border-spark/40 bg-gradient-to-br from-spark/[0.08] to-transparent"
-                    : "border-white/10 bg-white/[0.02]"
-                }`}
-              >
-                {t.highlight && (
-                  <span className="absolute -top-3 left-6 rounded-full bg-spark px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">
-                    Most popular
-                  </span>
-                )}
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/55">
+              <div key={t.name} className="border border-line bg-paper p-6 md:border-0 sm:p-7">
+                <p className="font-mono text-[12px] uppercase tracking-[0.08em] text-ink-faint">
                   {t.name}
                 </p>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span
-                    className={`text-3xl sm:text-4xl font-bold tracking-[-0.02em] ${
-                      t.highlight ? "text-spark" : "text-white"
-                    }`}
-                  >
-                    {t.price}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-white/75">{t.tagline}</p>
-                <ul className="mt-5 space-y-2.5 text-[14px] text-white/80">
+                <p className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
+                  {t.price}
+                </p>
+                <p className="mt-2 text-sm text-ink-soft">{t.tagline}</p>
+                <ul className="mt-5 space-y-2.5 text-[14px] leading-[1.55] text-ink-soft">
                   {t.perks.map((p) => (
                     <li key={p} className="flex items-start gap-2.5">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-spark" />
+                      <span aria-hidden className="mt-[0.62em] h-[3px] w-[12px] shrink-0 bg-spark" />
                       <span>{p}</span>
                     </li>
                   ))}
                 </ul>
                 <a
                   href="#contact"
-                  className={`press mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold ${
-                    t.highlight
-                      ? "bg-spark text-black hover:bg-spark-200"
-                      : "border border-white/15 text-white hover:border-white/30 hover:bg-white/5"
-                  }`}
+                  className="press mt-6 inline-flex w-full items-center justify-center rounded-md border border-ink/20 px-4 py-2.5 text-sm font-semibold text-ink hover:border-ink/40"
                 >
-                  Talk to us
-                  <span aria-hidden>→</span>
+                  Start with {t.name}
                 </a>
               </div>
             ))}
@@ -183,31 +132,23 @@ export default function SponsorsPage() {
       </section>
 
       {/* Contact */}
-      <section
-        id="contact"
-        className="relative py-16 sm:py-20 md:py-28 px-5 sm:px-6 border-t border-white/10"
-      >
-        <div className="mx-auto max-w-3xl">
-          <div className="max-w-2xl">
-            <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark">
-              Get in touch
-            </p>
-            <h2 className="mt-3 text-[32px] sm:text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white leading-[1.05]">
-              Let's build something together.
-            </h2>
-            <p className="mt-4 text-base sm:text-[17px] text-white/75 leading-relaxed">
-              Tell us a bit about your company and which tier looks right —
-              we'll come back with a tailored proposal.
-            </p>
-          </div>
-
-          <div className="mt-10 sm:mt-12 rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8">
-            <SponsorContactForm />
+      <section id="contact" className="border-t border-line px-5 py-16 sm:px-6 md:py-24">
+        <div className="mx-auto max-w-[720px]">
+          <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
+            Talk to the founder
+          </h2>
+          <p className="mt-4 max-w-[38rem] text-[15px] leading-[1.65] text-ink-soft">
+            This opens an email to {config.settings.contactEmail} with your
+            details. It lands with Rish directly, and you&apos;ll hear back
+            from a person.
+          </p>
+          <div className="mt-8">
+            <SponsorContactForm contactEmail={config.settings.contactEmail} />
           </div>
         </div>
       </section>
 
-      <Footer />
+      <Footer config={config} />
     </main>
   );
 }

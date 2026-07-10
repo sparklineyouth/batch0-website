@@ -19,50 +19,65 @@ const config: Config = {
           500: "#CA8A04",
         },
         ink: {
+          // Light-surface ink ramp (DESIGN.md). The numbered dark shades
+          // below are legacy tokens still used by the product app.
+          DEFAULT: "#141414",
+          soft: "#4A4A4A",
+          // 4.74:1 on the wash background, 5.05:1 on white — AA on both.
+          faint: "#6F6F6F",
           950: "#000000",
           900: "#0A0A0A",
           800: "#111111",
           700: "#1A1A1A",
           600: "#222222",
         },
+        // DESIGN.md tokens — marketing surface.
+        paper: "#FFFFFF",
+        wash: "#F7F7F5",
+        line: "#E4E4E1",
+        // The accent as *text on white* (AA 5.4:1). Same hue family as
+        // spark, darkened — not a second accent.
+        "spark-ink": "#8A6A00",
       },
       fontFamily: {
-        sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Inter", "sans-serif"],
+        sans: [
+          "var(--font-sans)",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "sans-serif",
+        ],
+        display: [
+          "var(--font-display)",
+          "var(--font-sans)",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
+        mono: [
+          "var(--font-mono)",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "monospace",
+        ],
+      },
+      boxShadow: {
+        // The one shadow (DESIGN.md) — primary CTA only.
+        cta: "0 1px 2px rgb(20 20 20 / 0.08)",
       },
       animation: {
-        "spark-pulse": "sparkPulse 2.4s ease-in-out infinite",
-        "fade-up": "fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both",
-        "fade-in": "fadeIn 0.5s ease-out both",
-        "slide-down": "slideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
-        "marquee": "marquee 40s linear infinite",
+        // Marketing hero: the single orchestrated moment. CSS-only,
+        // runs once, disabled by prefers-reduced-motion in globals.css.
+        rise: "rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
       },
       keyframes: {
-        sparkPulse: {
-          "0%, 100%": { opacity: "1", filter: "drop-shadow(0 0 16px rgba(250,204,21,0.6))" },
-          "50%": { opacity: "0.85", filter: "drop-shadow(0 0 32px rgba(250,204,21,0.9))" },
-        },
-        fadeUp: {
-          "0%": { opacity: "0", transform: "translateY(24px)" },
+        rise: {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
-        fadeIn: {
-          "0%": { opacity: "0" },
-          "100%": { opacity: "1" },
-        },
-        slideDown: {
-          "0%": { opacity: "0", transform: "translateY(-24px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
-        },
-        marquee: {
-          "0%": { transform: "translateX(0)" },
-          "100%": { transform: "translateX(-50%)" },
-        },
-      },
-      backgroundImage: {
-        "spark-grid":
-          "radial-gradient(circle at 1px 1px, rgba(250,204,21,0.08) 1px, transparent 0)",
-        "spark-radial":
-          "radial-gradient(ellipse at top, rgba(250,204,21,0.15), transparent 60%)",
       },
     },
   },

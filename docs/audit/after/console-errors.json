@@ -1,0 +1,52 @@
+{
+  "/": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/program": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/sponsors": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/login": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/signup": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/forgot-password": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/terms": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/privacy": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/refund-policy": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "/apply": [
+    "[390px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768px error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1440px error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

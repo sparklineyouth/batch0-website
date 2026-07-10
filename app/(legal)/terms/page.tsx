@@ -1,10 +1,14 @@
-export const metadata = { title: "Terms of Service · SparkLine Youth" };
+export const metadata = {
+  title: "Terms of Service · SparkLine Youth",
+  description: "The terms that govern SparkLine Youth, the live online startup accelerator for U.S. high schoolers run by Impetus AI LLC.",
+  alternates: { canonical: "/terms" },
+};
 
 export default function TermsPage() {
   return (
     <>
       <h1 className="text-4xl font-bold tracking-tight">Terms of Service</h1>
-      <p className="mt-2 text-sm text-white/60">
+      <p className="mt-2 text-sm text-ink-faint">
         Last updated: May 12, 2026
       </p>
 
@@ -67,8 +71,8 @@ export default function TermsPage() {
         is attribution only and creates no ownership, partnership, or
         agency relationship between SparkLine Youth and your business. If you'd
         prefer not to be named publicly, email{" "}
-        <a href="mailto:hello@impetusai.net">
-          hello@impetusai.net
+        <a href="mailto:sparklineyouth@gmail.com">
+          sparklineyouth@gmail.com
         </a>{" "}
         and we'll honor that.
       </p>
@@ -90,8 +94,8 @@ export default function TermsPage() {
       <h2>Contact</h2>
       <p>
         Questions about these terms?{" "}
-        <a href="mailto:hello@impetusai.net">
-          hello@impetusai.net
+        <a href="mailto:sparklineyouth@gmail.com">
+          sparklineyouth@gmail.com
         </a>
       </p>
     </>

@@ -3,8 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --background: #000000;
-  --foreground: #fafafa;
+  /* DESIGN.md: white page, near-black ink. The authenticated app layouts
+   * paint their own dark surfaces on top of this. */
+  --background: #ffffff;
+  --foreground: #141414;
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
   --safe-left: env(safe-area-inset-left);
@@ -17,7 +19,7 @@
 
 html,
 body {
-  background: #000;
+  background: var(--background);
   color: var(--foreground);
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
@@ -83,25 +85,66 @@ a,
   transition-duration: 0ms;
 }
 
-/* Scroll-reveal without JS — initial state hides; the .revealed class
- * (added by a tiny inline IntersectionObserver in <ScrollReveal>) fades
- * the element in. Falls back to visible if JS never runs. */
-.reveal {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: opacity, transform;
-}
-.reveal.revealed,
-.reveal.no-js {
-  opacity: 1;
-  transform: none;
-}
-
 ::selection {
   background: #facc15;
-  color: #000;
+  color: #141414;
+}
+
+/* ============================================================================
+ * Marketing surface (DESIGN.md)
+ * ============================================================================ */
+
+/* The Cohort Ledger — the signature element. Mono rows with dotted
+ * leaders, every value rendered from live site-config. */
+.ledger {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.ledger-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+}
+.ledger-row + .ledger-row {
+  margin-top: 0.55rem;
+}
+.ledger-dots {
+  flex: 1;
+  min-width: 1.5rem;
+  border-bottom: 2px dotted #d6d6d1;
+  transform: translateY(-0.22em);
+}
+
+/* Flat highlighter sweep behind a key phrase — spark fill, ink text.
+ * box-decoration-break keeps the fill when the phrase wraps. */
+.hl {
+  background-color: #facc15;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0 0.12em;
+}
+
+/* Hero load: the one orchestrated moment. Stagger helpers pair with the
+ * `animate-rise` utility; prefers-reduced-motion zeroes all animation
+ * durations globally above. */
+.rise-1 { animation-delay: 0ms; }
+.rise-2 { animation-delay: 70ms; }
+.rise-3 { animation-delay: 140ms; }
+.rise-4 { animation-delay: 210ms; }
+.rise-5 { animation-delay: 280ms; }
+
+/* Marketing body links: ink text, spark underline. */
+.link-ink {
+  color: #141414;
+  text-decoration: underline;
+  text-decoration-color: #facc15;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.link-ink:hover {
+  background-color: #facc15;
+  text-decoration-color: #141414;
 }
 
 /* Slim, unobtrusive scrollbar for the in-app sidebars + similar inner
@@ -132,14 +175,14 @@ a,
  * comfortable reading rhythm, WCAG-AA-passing body contrast, and clear
  * heading hierarchy. */
 .legal-prose {
-  color: rgba(255, 255, 255, 0.85);
+  color: #4a4a4a;
   line-height: 1.7;
   font-size: 16px;
 }
 .legal-prose h1,
 .legal-prose h2,
 .legal-prose h3 {
-  color: #ffffff;
+  color: #141414;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.25;
@@ -168,58 +211,17 @@ a,
 .legal-prose ol { list-style: decimal; }
 .legal-prose li { margin-top: 0.35rem; }
 .legal-prose a {
-  color: #facc15;
+  color: #141414;
   text-decoration: underline;
-  text-decoration-thickness: 1px;
+  text-decoration-color: #facc15;
+  text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
-.legal-prose a:hover { color: #fde047; }
-.legal-prose strong { color: #ffffff; font-weight: 600; }
+.legal-prose a:hover { background-color: #facc15; }
+.legal-prose strong { color: #141414; font-weight: 600; }
 .legal-prose hr {
   margin: 2.5rem 0;
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-.glow-text {
-  text-shadow: 0 0 40px rgba(250, 204, 21, 0.35);
-}
-
-.grid-bg {
-  background-image: radial-gradient(circle at 1px 1px, rgba(250, 204, 21, 0.07) 1px, transparent 0);
-  background-size: 32px 32px;
-}
-
-.gradient-border {
-  position: relative;
-}
-.gradient-border::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(250, 204, 21, 0.6), rgba(250, 204, 21, 0));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
-.shine {
-  background: linear-gradient(110deg, #facc15 0%, #fde047 45%, #facc15 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.noise::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 0.85 0 0 0 0 0.1 0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  pointer-events: none;
-  opacity: 0.5;
-  mix-blend-mode: overlay;
+  border-color: #e4e4e1;
 }
 
 /* ============================================================================
@@ -300,10 +302,7 @@ a,
 .theme-light .hover\:bg-white\/\[0\.03\]:hover { background-color: rgba(24, 24, 27, 0.04); }
 .theme-light .hover\:text-white:hover { color: #18181b; }
 
-/* Spark variants — keep the brand yellow but dial down the heavy glows for light mode */
-.theme-light .shadow-\[0_0_24px_-6px_rgba\(250\,204\,21\,0\.7\)\] {
-  box-shadow: 0 6px 16px -8px rgba(250, 204, 21, 0.45);
-}
+/* Spark variants — corrected dark-amber accent for light surfaces */
 .theme-light .text-spark { color: #b88e00; }
 .theme-light .text-spark\/80 { color: rgba(184, 142, 0, 0.85); }
 .theme-light .text-spark\/30 { color: rgba(184, 142, 0, 0.35); }
