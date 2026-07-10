@@ -16,30 +16,14 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | undefined>(initialError);
   const [loading, setLoading] = useState(false);
-  // Surface a "Resend verification email" CTA when login fails because
-  // the account exists but hasn't been confirmed yet — otherwise the
-  // user is stuck with no obvious next step.
-  const [needsVerify, setNeedsVerify] = useState(false);
-  const [resendState, setResendState] = useState<
-    "idle" | "sending" | "sent" | "error"
-  >("idle");
-  const [resendMessage, setResendMessage] = useState<string | undefined>();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(undefined);
-    setNeedsVerify(false);
-    setResendState("idle");
-    setResendMessage(undefined);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      const code = (error.code || "").toLowerCase();
-      const msg = (error.message || "").toLowerCase();
-      if (code === "email_not_confirmed" || msg.includes("email not confirmed")) {
-        setNeedsVerify(true);
-      }
       setError(friendlyAuthError(error));
       setLoading(false);
       return;
@@ -56,34 +40,6 @@ export function LoginForm({
         ? next
         : "/dashboard";
     window.location.assign(safe);
-  }
-
-  async function resendVerification() {
-    if (!email) return;
-    setResendState("sending");
-    setResendMessage(undefined);
-    const supabase = createClient();
-    // Carry `next` through the verification email so the user lands on
-    // their intended page (e.g. /apply) after confirming, not /dashboard.
-    const safeNext =
-      next && next.startsWith("/") && !next.startsWith("//") ? next : null;
-    const callbackUrl = safeNext
-      ? `${location.origin}/auth/callback?next=${encodeURIComponent(safeNext)}`
-      : `${location.origin}/auth/callback`;
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email,
-      options: {
-        emailRedirectTo: callbackUrl,
-      },
-    });
-    if (error) {
-      setResendState("error");
-      setResendMessage(friendlyAuthError(error));
-      return;
-    }
-    setResendState("sent");
-    setResendMessage("New verification link sent. Check your inbox.");
   }
 
   return (
@@ -124,34 +80,6 @@ export function LoginForm({
         />
       </div>
       <FieldError id="login-error">{error}</FieldError>
-      {needsVerify && (
-        <div className="rounded-lg border border-spark/30 bg-spark/5 p-3 text-xs text-white/75">
-          <div className="flex items-center justify-between gap-3">
-            <span>Need a new verification link?</span>
-            <button
-              type="button"
-              onClick={resendVerification}
-              disabled={resendState === "sending" || resendState === "sent"}
-              className="rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/85 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {resendState === "sending"
-                ? "Sending…"
-                : resendState === "sent"
-                  ? "Sent"
-                  : "Resend email"}
-            </button>
-          </div>
-          {resendMessage && (
-            <p
-              className={`mt-2 ${
-                resendState === "error" ? "text-red-300" : "text-white/65"
-              }`}
-            >
-              {resendMessage}
-            </p>
-          )}
-        </div>
-      )}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Logging in…" : "Log in"}
       </Button>
