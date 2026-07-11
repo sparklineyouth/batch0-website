@@ -288,78 +288,82 @@ a,
 
 .theme-light body {
   background: #ffffff;
-  color: #18181b;
+  color: #141414;
 }
 .theme-light ::selection {
   background: #facc15;
-  color: #18181b;
+  color: #141414;
 }
 
-/* Backgrounds: dark surfaces -> light surfaces */
+/* Backgrounds: dark surfaces -> light surfaces.
+ * Hero palette: paper #ffffff (page), wash #f7f7f5 (raised panels),
+ * line #e4e4e1 (hairlines), ink 20 20 20 for tint alphas. */
 .theme-light .bg-black { background-color: #ffffff; }
-.theme-light .bg-black\/30 { background-color: rgba(244, 244, 245, 0.6); }
-.theme-light .bg-black\/40 { background-color: rgba(244, 244, 245, 0.7); }
-.theme-light .bg-black\/50 { background-color: rgba(244, 244, 245, 0.75); }
-.theme-light .bg-black\/70 { background-color: rgba(24, 24, 27, 0.4); }
+.theme-light .bg-black\/30 { background-color: rgba(247, 247, 245, 0.6); }
+.theme-light .bg-black\/40 { background-color: rgba(247, 247, 245, 0.7); }
+.theme-light .bg-black\/50 { background-color: rgba(247, 247, 245, 0.75); }
+.theme-light .bg-black\/70 { background-color: rgba(20, 20, 20, 0.4); }
 .theme-light .bg-black\/80 { background-color: rgba(255, 255, 255, 0.85); }
 .theme-light .bg-zinc-900,
-.theme-light .bg-zinc-950 { background-color: #f4f4f5; }
+.theme-light .bg-zinc-950 { background-color: #f7f7f5; }
 .theme-light .bg-zinc-900\/30,
 .theme-light .bg-zinc-900\/40,
 .theme-light .bg-zinc-900\/60,
-.theme-light .bg-zinc-900\/80 { background-color: rgba(244, 244, 245, 0.7); }
+.theme-light .bg-zinc-900\/80 { background-color: rgba(247, 247, 245, 0.7); }
 .theme-light .bg-zinc-950\/40,
-.theme-light .bg-zinc-950\/60 { background-color: rgba(244, 244, 245, 0.6); }
+.theme-light .bg-zinc-950\/60 { background-color: rgba(247, 247, 245, 0.6); }
 
-.theme-light .bg-white\/5 { background-color: rgba(24, 24, 27, 0.05); }
-.theme-light .bg-white\/10 { background-color: rgba(24, 24, 27, 0.1); }
-.theme-light .bg-white\/\[0\.02\] { background-color: rgba(24, 24, 27, 0.02); }
-.theme-light .bg-white\/\[0\.03\] { background-color: rgba(24, 24, 27, 0.04); }
-.theme-light .bg-white\/\[0\.04\] { background-color: rgba(24, 24, 27, 0.04); }
+.theme-light .bg-white\/5 { background-color: rgba(20, 20, 20, 0.05); }
+.theme-light .bg-white\/10 { background-color: rgba(20, 20, 20, 0.1); }
+.theme-light .bg-white\/\[0\.02\] { background-color: rgba(20, 20, 20, 0.02); }
+.theme-light .bg-white\/\[0\.03\] { background-color: rgba(20, 20, 20, 0.04); }
+.theme-light .bg-white\/\[0\.04\] { background-color: rgba(20, 20, 20, 0.04); }
 
-/* Text */
-.theme-light .text-white { color: #18181b; }
-.theme-light .text-white\/90 { color: rgba(24, 24, 27, 0.9); }
-.theme-light .text-white\/80 { color: rgba(24, 24, 27, 0.82); }
-.theme-light .text-white\/70 { color: rgba(24, 24, 27, 0.75); }
-.theme-light .text-white\/65 { color: rgba(24, 24, 27, 0.7); }
-.theme-light .text-white\/60 { color: rgba(24, 24, 27, 0.65); }
-.theme-light .text-white\/55 { color: rgba(24, 24, 27, 0.6); }
-.theme-light .text-white\/50 { color: rgba(24, 24, 27, 0.55); }
-.theme-light .text-white\/45 { color: rgba(24, 24, 27, 0.5); }
-.theme-light .text-white\/40 { color: rgba(24, 24, 27, 0.5); }
-.theme-light .text-white\/30 { color: rgba(24, 24, 27, 0.4); }
+/* Text — hero ink ramp. Solid stops land on the exact ink tokens:
+ * ink #141414, ink-soft #4a4a4a (74 74 74), ink-faint #6f6f6f (111 111 111). */
+.theme-light .text-white { color: #141414; }
+.theme-light .text-white\/90 { color: rgba(20, 20, 20, 0.9); }
+.theme-light .text-white\/80 { color: rgba(20, 20, 20, 0.82); }
+.theme-light .text-white\/70 { color: #4a4a4a; }
+.theme-light .text-white\/65 { color: #4a4a4a; }
+.theme-light .text-white\/60 { color: #4a4a4a; }
+.theme-light .text-white\/55 { color: #4a4a4a; }
+.theme-light .text-white\/50 { color: #6f6f6f; }
+.theme-light .text-white\/45 { color: #6f6f6f; }
+.theme-light .text-white\/40 { color: #6f6f6f; }
+.theme-light .text-white\/30 { color: #6f6f6f; }
 
 /* Placeholders */
-.theme-light .placeholder\:text-white\/30::placeholder { color: rgba(24, 24, 27, 0.4); }
+.theme-light .placeholder\:text-white\/30::placeholder { color: #6f6f6f; }
 
-/* Borders */
-.theme-light .border-white\/5 { border-color: rgba(24, 24, 27, 0.06); }
-.theme-light .border-white\/10 { border-color: rgba(24, 24, 27, 0.1); }
-.theme-light .border-white\/15 { border-color: rgba(24, 24, 27, 0.15); }
-.theme-light .border-white\/20 { border-color: rgba(24, 24, 27, 0.2); }
+/* Borders — all hairlines collapse to the hero line color #e4e4e1. */
+.theme-light .border-white\/5 { border-color: #e4e4e1; }
+.theme-light .border-white\/10 { border-color: #e4e4e1; }
+.theme-light .border-white\/15 { border-color: #e4e4e1; }
+.theme-light .border-white\/20 { border-color: rgba(20, 20, 20, 0.2); }
 .theme-light .divide-white\/5 > :not([hidden]) ~ :not([hidden]) {
-  border-color: rgba(24, 24, 27, 0.06);
+  border-color: #e4e4e1;
 }
 .theme-light .divide-white\/10 > :not([hidden]) ~ :not([hidden]) {
-  border-color: rgba(24, 24, 27, 0.1);
+  border-color: #e4e4e1;
 }
 
 /* Hovers */
-.theme-light .hover\:bg-white\/5:hover { background-color: rgba(24, 24, 27, 0.05); }
-.theme-light .hover\:bg-white\/10:hover { background-color: rgba(24, 24, 27, 0.1); }
-.theme-light .hover\:bg-white\/\[0\.02\]:hover { background-color: rgba(24, 24, 27, 0.03); }
-.theme-light .hover\:bg-white\/\[0\.03\]:hover { background-color: rgba(24, 24, 27, 0.04); }
-.theme-light .hover\:text-white:hover { color: #18181b; }
+.theme-light .hover\:bg-white\/5:hover { background-color: rgba(20, 20, 20, 0.05); }
+.theme-light .hover\:bg-white\/10:hover { background-color: rgba(20, 20, 20, 0.1); }
+.theme-light .hover\:bg-white\/\[0\.02\]:hover { background-color: rgba(20, 20, 20, 0.03); }
+.theme-light .hover\:bg-white\/\[0\.03\]:hover { background-color: rgba(20, 20, 20, 0.04); }
+.theme-light .hover\:text-white:hover { color: #141414; }
 
-/* Spark variants — corrected dark-amber accent for light surfaces */
-.theme-light .text-spark { color: #b88e00; }
-.theme-light .text-spark\/80 { color: rgba(184, 142, 0, 0.85); }
-.theme-light .text-spark\/30 { color: rgba(184, 142, 0, 0.35); }
-.theme-light .bg-spark\/5 { background-color: rgba(184, 142, 0, 0.08); }
-.theme-light .bg-spark\/10 { background-color: rgba(184, 142, 0, 0.12); }
-.theme-light .bg-spark\/15 { background-color: rgba(184, 142, 0, 0.16); }
-.theme-light .border-spark\/30 { border-color: rgba(184, 142, 0, 0.4); }
+/* Spark variants — the hero spark-ink accent (rgb 138 106 0 = #8a6a00),
+ * AA on white. The constant yellow `bg-spark` fill is NOT overridden. */
+.theme-light .text-spark { color: #8a6a00; }
+.theme-light .text-spark\/80 { color: rgba(138, 106, 0, 0.85); }
+.theme-light .text-spark\/30 { color: rgba(138, 106, 0, 0.35); }
+.theme-light .bg-spark\/5 { background-color: rgba(138, 106, 0, 0.08); }
+.theme-light .bg-spark\/10 { background-color: rgba(138, 106, 0, 0.12); }
+.theme-light .bg-spark\/15 { background-color: rgba(138, 106, 0, 0.16); }
+.theme-light .border-spark\/30 { border-color: rgba(138, 106, 0, 0.4); }
 
 /* Status colors readable on white backgrounds. */
 .theme-light .text-emerald-200,
@@ -372,12 +376,12 @@ a,
 .theme-light .text-blue-300 { color: #1d4ed8; }
 
 /* Cards (rounded-2xl + border-white/10) lose all separation in light
- * mode against the white body. Give them a soft white surface, a
- * hairline border, and a 1px shadow so they read as elevated objects. */
+ * mode against the white body. Give them the hero wash surface (#f7f7f5)
+ * and a hairline line border (#e4e4e1) so they read as raised panels —
+ * no shadow, matching the converted <Card> component. */
 .theme-light .rounded-2xl.border.border-white\/10 {
-  background-color: #ffffff;
-  border-color: rgba(24, 24, 27, 0.08);
-  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.04);
+  background-color: #f7f7f5;
+  border-color: #e4e4e1;
 }
 
 /* The mobile-nav sticky header + dropdown sheets use heavy black/blur
@@ -391,7 +395,7 @@ a,
 .theme-light .shadow-\[0_30px_60px_-15px_rgba\(0\,0\,0\,0\.6\)\],
 .theme-light .shadow-\[0_30px_60px_-15px_rgba\(0\,0\,0\,0\.7\)\],
 .theme-light .shadow-\[0_30px_80px_-20px_rgba\(0\,0\,0\,0\.6\)\] {
-  box-shadow: 0 20px 40px -20px rgba(24, 24, 27, 0.18);
+  box-shadow: 0 20px 40px -20px rgba(20, 20, 20, 0.18);
 }
 
 /* The brand-yellow primary button keeps a dark text for contrast — already correct */
@@ -401,27 +405,27 @@ a,
  * mode look broken (white text on white panels, missing borders, etc.). */
 
 /* Additional surface variants used by cards/badges. */
-.theme-light .bg-white\/\[0\.05\] { background-color: rgba(24, 24, 27, 0.05); }
-.theme-light .bg-white\/\[0\.06\] { background-color: rgba(24, 24, 27, 0.06); }
+.theme-light .bg-white\/\[0\.05\] { background-color: rgba(20, 20, 20, 0.05); }
+.theme-light .bg-white\/\[0\.06\] { background-color: rgba(20, 20, 20, 0.06); }
 .theme-light .bg-zinc-800,
 .theme-light .bg-zinc-800\/40,
 .theme-light .bg-zinc-800\/50,
-.theme-light .bg-zinc-800\/60 { background-color: rgba(244, 244, 245, 0.7); }
-.theme-light .bg-zinc-950\/30 { background-color: rgba(244, 244, 245, 0.5); }
+.theme-light .bg-zinc-800\/60 { background-color: rgba(247, 247, 245, 0.7); }
+.theme-light .bg-zinc-950\/30 { background-color: rgba(247, 247, 245, 0.5); }
 
-/* Text strengths we missed. */
-.theme-light .text-white\/85 { color: rgba(24, 24, 27, 0.88); }
-.theme-light .text-white\/75 { color: rgba(24, 24, 27, 0.78); }
-.theme-light .text-white\/35 { color: rgba(24, 24, 27, 0.45); }
-.theme-light .text-white\/25 { color: rgba(24, 24, 27, 0.4); }
-.theme-light .text-white\/20 { color: rgba(24, 24, 27, 0.35); }
+/* Text strengths we missed — snapped to the ink ramp. */
+.theme-light .text-white\/85 { color: rgba(20, 20, 20, 0.88); }
+.theme-light .text-white\/75 { color: #4a4a4a; }
+.theme-light .text-white\/35 { color: #6f6f6f; }
+.theme-light .text-white\/25 { color: #6f6f6f; }
+.theme-light .text-white\/20 { color: #6f6f6f; }
 
-/* Border strengths used in dividers. */
-.theme-light .border-white\/\[0\.06\] { border-color: rgba(24, 24, 27, 0.08); }
-.theme-light .border-white\/\[0\.08\] { border-color: rgba(24, 24, 27, 0.1); }
-.theme-light .border-spark\/40 { border-color: rgba(184, 142, 0, 0.45); }
-.theme-light .border-spark\/50 { border-color: rgba(184, 142, 0, 0.55); }
-.theme-light .border-spark\/60 { border-color: rgba(184, 142, 0, 0.6); }
+/* Border strengths used in dividers — all fold to the hero line color. */
+.theme-light .border-white\/\[0\.06\] { border-color: #e4e4e1; }
+.theme-light .border-white\/\[0\.08\] { border-color: #e4e4e1; }
+.theme-light .border-spark\/40 { border-color: rgba(138, 106, 0, 0.45); }
+.theme-light .border-spark\/50 { border-color: rgba(138, 106, 0, 0.55); }
+.theme-light .border-spark\/60 { border-color: rgba(138, 106, 0, 0.6); }
 .theme-light .border-amber-300\/30 { border-color: rgba(217, 119, 6, 0.3); }
 .theme-light .border-red-400\/30,
 .theme-light .border-red-500\/30 { border-color: rgba(220, 38, 38, 0.3); }
@@ -439,32 +443,33 @@ a,
 .theme-light .bg-emerald-400\/5,
 .theme-light .bg-emerald-400\/10 { background-color: rgba(4, 120, 87, 0.08); }
 
-/* Spark surfaces — keep amber but adjust opacity for white BG */
-.theme-light .bg-spark\/\[0\.04\] { background-color: rgba(184, 142, 0, 0.07); }
-.theme-light .bg-spark\/\[0\.06\] { background-color: rgba(184, 142, 0, 0.09); }
-.theme-light .bg-spark\/20 { background-color: rgba(184, 142, 0, 0.18); }
-.theme-light .bg-spark\/25 { background-color: rgba(184, 142, 0, 0.2); }
+/* Spark surfaces — keep the amber hue but adjust opacity for white BG */
+.theme-light .bg-spark\/\[0\.04\] { background-color: rgba(138, 106, 0, 0.07); }
+.theme-light .bg-spark\/\[0\.06\] { background-color: rgba(138, 106, 0, 0.09); }
+.theme-light .bg-spark\/20 { background-color: rgba(138, 106, 0, 0.18); }
+.theme-light .bg-spark\/25 { background-color: rgba(138, 106, 0, 0.2); }
 
 /* Hover variants we missed */
-.theme-light .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(24, 24, 27, 0.04); }
-.theme-light .hover\:bg-white\/\[0\.05\]:hover { background-color: rgba(24, 24, 27, 0.05); }
-.theme-light .hover\:bg-zinc-900\/60:hover { background-color: rgba(244, 244, 245, 0.7); }
+.theme-light .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(20, 20, 20, 0.04); }
+.theme-light .hover\:bg-white\/\[0\.05\]:hover { background-color: rgba(20, 20, 20, 0.05); }
+.theme-light .hover\:bg-zinc-900\/60:hover { background-color: rgba(247, 247, 245, 0.7); }
+.theme-light .hover\:bg-white\/\[0\.07\]:hover { background-color: rgba(20, 20, 20, 0.06); }
 
 /* Gradients used on cards — the dark-to-darker gradient becomes a flat
- * pale surface that reads as elevated, not dim. */
+ * pale wash surface that reads as elevated, not dim. */
 .theme-light .from-zinc-900\/80,
 .theme-light .from-zinc-900\/60,
 .theme-light .from-zinc-900\/40,
 .theme-light .from-white\/\[0\.04\] {
-  --tw-gradient-from: rgba(244, 244, 245, 0.7) var(--tw-gradient-from-position) !important;
-  --tw-gradient-to: rgba(244, 244, 245, 0) var(--tw-gradient-to-position);
+  --tw-gradient-from: rgba(247, 247, 245, 0.7) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(247, 247, 245, 0) var(--tw-gradient-to-position);
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
 .theme-light .to-black,
 .theme-light .to-zinc-900,
 .theme-light .to-zinc-900\/80,
 .theme-light .to-transparent {
-  --tw-gradient-to: rgba(244, 244, 245, 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-to: rgba(247, 247, 245, 0) var(--tw-gradient-to-position) !important;
 }
 .theme-light .bg-gradient-to-b,
 .theme-light .bg-gradient-to-br,
@@ -472,38 +477,41 @@ a,
 .theme-light .bg-gradient-to-tr {
   background-image: linear-gradient(
     to bottom,
-    rgba(244, 244, 245, 0.5),
+    rgba(247, 247, 245, 0.5),
     transparent
   );
 }
 
-/* Inputs / selects — dark surfaces become subtle off-white with a
- * stronger border so the field reads as enclosed on the page. */
+/* Inputs / selects — dark surfaces become paper white with a hairline
+ * line border so the field reads as enclosed on the page. */
 .theme-light input,
 .theme-light textarea,
 .theme-light select {
   background-color: #ffffff;
-  color: #18181b;
-  border-color: rgba(24, 24, 27, 0.18);
+  color: #141414;
+  border-color: #e4e4e1;
 }
 .theme-light input::placeholder,
-.theme-light textarea::placeholder { color: rgba(24, 24, 27, 0.45); }
+.theme-light textarea::placeholder { color: #6f6f6f; }
 .theme-light input:focus,
 .theme-light textarea:focus,
-.theme-light select:focus { border-color: rgba(184, 142, 0, 0.5); }
+.theme-light select:focus { border-color: rgba(138, 106, 0, 0.5); }
 
 /* Dividers used inside cards */
 .theme-light .divide-white\/15 > :not([hidden]) ~ :not([hidden]) {
-  border-color: rgba(24, 24, 27, 0.12);
+  border-color: #e4e4e1;
 }
 
 /* Sidebar/notification bell active state should keep the spark tint
  * but with the corrected dark-amber accent. Already handled by the
  * text-spark + bg-spark/X overrides above. */
 
-/* Buttons with bg-spark + shadow keep their hover state. Override the
- * generic hover background that bleeds white into light buttons. */
+/* Buttons with bg-spark + shadow keep their hover state. The constant
+ * yellow fill (spark-200 = #fde047) is theme-invariant by design. */
 .theme-light .hover\:bg-spark-200:hover { background-color: #fde047; }
+
+/* Border variant used by the secondary button on un-converted pages. */
+.theme-light .hover\:border-white\/30:hover { border-color: rgba(20, 20, 20, 0.25); }
 
 /* The mobile-nav menu icon button uses border-white/10 + text-white/70.
  * Already covered. */

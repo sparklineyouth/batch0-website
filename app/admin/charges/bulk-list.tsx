@@ -87,17 +87,17 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
   }
 
   if (charges.length === 0) {
-    return <p className="p-6 text-sm text-white/55">No charges match.</p>;
+    return <p className="p-6 text-sm text-ink-soft">No charges match.</p>;
   }
 
   return (
     <div className="text-sm">
-      <div className="grid grid-cols-[auto_minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(0,0.7fr)_minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,1fr)] items-center gap-3 border-b border-white/10 px-5 py-3 text-xs uppercase tracking-wider text-white/40">
+      <div className="grid grid-cols-[auto_minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(0,0.7fr)_minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,1fr)] items-center gap-3 border-b border-line px-5 py-3 text-xs uppercase tracking-wider text-ink-faint">
         <button
           type="button"
           onClick={toggleAll}
           aria-label={allSelected ? "Deselect all" : "Select all pending"}
-          className="-ml-1 -my-1 rounded p-1 text-white/40 hover:text-white"
+          className="-ml-1 -my-1 rounded p-1 text-ink-faint hover:text-ink"
         >
           {allSelected ? (
             <CheckSquare className="h-4 w-4" />
@@ -120,7 +120,7 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
         return (
           <div
             key={c.id}
-            className={`grid grid-cols-[auto_minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(0,0.7fr)_minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,1fr)] items-center gap-3 border-b border-white/5 px-5 py-3 last:border-0 hover:bg-white/[0.02] ${
+            className={`grid grid-cols-[auto_minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(0,0.7fr)_minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,1fr)] items-center gap-3 border-b border-line px-5 py-3 last:border-0 hover:bg-wash ${
               checked ? "bg-spark/5" : ""
             }`}
           >
@@ -135,22 +135,22 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
                     : "Select"
                   : `Not bulk-actionable (${c.status})`
               }
-              className="-ml-1 -my-1 rounded p-1 text-white/40 enabled:hover:text-white disabled:opacity-30"
+              className="-ml-1 -my-1 rounded p-1 text-ink-faint enabled:hover:text-ink disabled:opacity-30"
             >
               {checked ? (
-                <CheckSquare className="h-4 w-4 text-spark" />
+                <CheckSquare className="h-4 w-4 text-spark-ink" />
               ) : (
                 <Square className="h-4 w-4" />
               )}
             </button>
-            <div className="truncate text-white/60">
+            <div className="truncate text-ink-soft">
               <LocalTime value={c.created_at} />
             </div>
             <div className="truncate">
-              <div className="truncate text-white">
+              <div className="truncate text-ink">
                 {c.profile?.full_name ?? "—"}
               </div>
-              <div className="truncate text-xs text-white/40">
+              <div className="truncate text-xs text-ink-faint">
                 {c.profile?.email}
               </div>
             </div>
@@ -158,15 +158,15 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                   c.kind === "fine"
-                    ? "bg-red-400/10 text-red-300"
-                    : "bg-amber-300/10 text-amber-200"
+                    ? "bg-red-500/10 text-red-700 dark:text-red-300"
+                    : "bg-amber-500/10 text-amber-700 dark:text-amber-200"
                 }`}
               >
                 {c.kind}
               </span>
             </div>
-            <div className="text-white/80">{fmt(c.amount_cents)}</div>
-            <div className="truncate text-white/60">{c.description}</div>
+            <div className="text-ink-soft">{fmt(c.amount_cents)}</div>
+            <div className="truncate text-ink-soft">{c.description}</div>
             <div>
               <StatusBadge status={c.status} />
             </div>
@@ -180,16 +180,16 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
       })}
 
       {someSelected && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/15 bg-zinc-950/95 backdrop-blur md:left-60">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 backdrop-blur md:left-60">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-3">
             <div className="text-sm">
-              <span className="font-semibold text-white">{selected.size}</span>
-              <span className="text-white/55"> selected</span>
+              <span className="font-semibold text-ink">{selected.size}</span>
+              <span className="text-ink-soft"> selected</span>
             </div>
             {lastResult && (
-              <span className="text-xs text-emerald-300">{lastResult}</span>
+              <span className="text-xs text-emerald-700 dark:text-emerald-300">{lastResult}</span>
             )}
-            {err && <span className="text-xs text-red-300">{err}</span>}
+            {err && <span className="text-xs text-red-700 dark:text-red-300">{err}</span>}
             <div className="flex-1" />
             <Button
               variant="ghost"
@@ -227,7 +227,7 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
         onConfirm={() => runBulk("waive")}
         description={
           <div className="text-left">
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-ink-soft">
               Selected pending charges will be marked waived; students
               get an in-app notification. Non-pending rows are skipped.
             </p>
@@ -254,7 +254,7 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
         onCancel={() => !pending && setConfirm(null)}
         onConfirm={() => runBulk("cancel")}
         description={
-          <p className="text-sm text-white/70">
+          <p className="text-sm text-ink-soft">
             Selected pending charges will be cancelled without payment or
             waiver. Non-pending rows are skipped.
           </p>

@@ -127,7 +127,7 @@ export function ReviewActions({
           disabled={pending}
         />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] uppercase tracking-wider text-white/40">
+          <span className="text-[11px] uppercase tracking-wider text-ink-faint">
             Templates
           </span>
           {NOTE_TEMPLATES.map((t) => (
@@ -136,14 +136,14 @@ export function ReviewActions({
               type="button"
               onClick={() => applyTemplate(t.body)}
               disabled={pending}
-              className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/75 hover:border-white/25 hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full border border-line bg-wash px-2.5 py-1 text-xs text-ink-soft hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t.label}
             </button>
           ))}
         </div>
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
       <div className="flex flex-wrap gap-2">
         {!decided && (
           <>
@@ -174,12 +174,12 @@ export function ReviewActions({
           </Button>
         )}
         {feeWaived && (
-          <span className="inline-flex items-center rounded-full bg-spark/10 px-2.5 py-1 text-xs font-medium text-spark">
+          <span className="inline-flex items-center rounded-full border border-spark/30 bg-spark/10 px-2.5 py-1 text-xs font-medium text-spark-ink">
             Fee waived
           </span>
         )}
         {(status === "paid" || status === "enrolled") && !feeWaived && (
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-ink-soft">
             Payment received. Application is locked.
           </p>
         )}

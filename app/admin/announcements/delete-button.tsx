@@ -36,7 +36,7 @@ export function DeleteAnnouncementButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs text-white/65 hover:border-red-400/50 hover:text-red-300"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs text-ink-soft hover:border-red-400/50 hover:text-red-700 dark:hover:text-red-300"
       >
         <Trash2 className="h-3.5 w-3.5" />
         Delete
@@ -51,12 +51,12 @@ export function DeleteAnnouncementButton({
         onConfirm={onConfirm}
         description={
           <div className="text-left">
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-ink-soft">
               Removes the announcement and any deep-links that point at
               it. Reactions are deleted with it.
             </p>
             {err && (
-              <p className="mt-2 text-xs text-red-300">{err}</p>
+              <p className="mt-2 text-xs text-red-700 dark:text-red-300">{err}</p>
             )}
           </div>
         }

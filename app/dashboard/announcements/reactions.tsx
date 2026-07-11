@@ -76,8 +76,8 @@ export function Reactions({
             aria-pressed={reacted}
             className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition ${
               reacted
-                ? "border-spark/40 bg-spark/10 text-spark"
-                : "border-white/15 bg-white/[0.03] text-white/70 hover:border-white/30 hover:bg-white/[0.07]"
+                ? "border-spark/40 bg-spark/10 text-spark-ink"
+                : "border-line bg-wash text-ink-soft hover:border-ink/30 hover:bg-wash"
             } ${count === 0 && !reacted ? "opacity-60" : ""}`}
           >
             <span>{EMOJI_GLYPH[e]}</span>

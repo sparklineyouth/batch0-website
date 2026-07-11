@@ -27,19 +27,19 @@ export default async function CohortLandingPage({
     <div className="mx-auto max-w-3xl">
       <Link
         href="/admin/cohorts"
-        className="text-sm text-white/55 hover:text-white"
+        className="text-sm text-ink-faint hover:text-ink"
       >
         ← Cohorts
       </Link>
-      <h1 className="mt-3 text-3xl font-bold tracking-tight">
+      <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
         {cohort.name} landing
       </h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Override the public landing copy + accent color for this cohort. Live
         at{" "}
         <Link
           href={`/cohort/${cohort.slug}`}
-          className="text-spark hover:underline"
+          className="text-spark-ink hover:underline"
         >
           /cohort/{cohort.slug}
         </Link>

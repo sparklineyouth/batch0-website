@@ -96,7 +96,7 @@ export default async function CohortHealthPage({
       <div className="mx-auto max-w-6xl">
         <Header cohort={cohort} totalStudents={0} />
         <Card className="mt-6">
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-ink-soft">
             No students are enrolled in this cohort yet.
           </p>
         </Card>
@@ -259,12 +259,12 @@ export default async function CohortHealthPage({
       </section>
 
       <Card className="mt-6 !p-0 overflow-hidden">
-        <div className="border-b border-white/10 px-5 py-3 text-xs uppercase tracking-wider text-white/40">
+        <div className="border-b border-line bg-wash px-5 py-3 text-xs font-mono uppercase tracking-wider text-ink-faint">
           Per-student health · {WEEKS_TO_SHOW}-week check-in heatmap
         </div>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+            <tr className="border-b border-line bg-wash text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
               <th className="px-5 py-3">Student</th>
               <th className="px-5 py-3">Team</th>
               {weeks.map((w) => (
@@ -283,21 +283,21 @@ export default async function CohortHealthPage({
             {rows.map((r) => (
               <tr
                 key={r.userId}
-                className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
+                className="border-b border-line last:border-0 hover:bg-wash"
               >
                 <td className="px-5 py-3">
                   <Link
                     href={`/admin/students/${r.userId}`}
-                    className="text-white hover:text-spark"
+                    className="text-ink hover:text-spark-ink"
                   >
                     {r.name}
                   </Link>
                   {r.email && r.email !== r.name && (
-                    <div className="text-[11px] text-white/40">{r.email}</div>
+                    <div className="text-[11px] text-ink-faint">{r.email}</div>
                   )}
                 </td>
-                <td className="px-5 py-3 text-white/65">
-                  {r.teamName ?? <span className="text-red-300/80">—</span>}
+                <td className="px-5 py-3 text-ink-soft">
+                  {r.teamName ?? <span className="text-red-700 dark:text-red-300">—</span>}
                 </td>
                 {weeks.map((w) => {
                   const checked = r.checkinWeeks.includes(w.key);
@@ -307,25 +307,25 @@ export default async function CohortHealthPage({
                         title={`Week of ${w.label} — ${checked ? "checked in" : "no check-in"}`}
                         className={`inline-block h-4 w-4 rounded ${
                           checked
-                            ? "bg-emerald-400/70"
-                            : "bg-white/[0.06]"
+                            ? "bg-emerald-500/70"
+                            : "bg-line"
                         }`}
                       />
                     </td>
                   );
                 })}
-                <td className="px-5 py-3 text-right tabular-nums text-white/75">
+                <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
                   {r.ai.tokens > 0 ? (
                     <>
                       {fmtTokens(r.ai.tokens)}
                       {r.ai.billed > 0 && (
-                        <span className="ml-1 text-[10px] text-spark">
+                        <span className="ml-1 text-[10px] text-spark-ink">
                           ${(r.ai.billed / 100).toFixed(2)}
                         </span>
                       )}
                     </>
                   ) : (
-                    <span className="text-white/25">—</span>
+                    <span className="text-ink-faint">—</span>
                   )}
                 </td>
                 <td className="px-5 py-3">
@@ -337,7 +337,7 @@ export default async function CohortHealthPage({
         </table>
       </Card>
 
-      <p className="mt-3 text-[11px] text-white/35">
+      <p className="mt-3 text-[11px] text-ink-faint">
         Health heuristics are intentionally generous: at-risk means two
         consecutive missed weeks of check-ins. Empty heatmap cells are not
         proof of disengagement on their own.
@@ -357,20 +357,20 @@ function Header({
     <>
       <Link
         href="/admin/cohorts"
-        className="inline-flex items-center gap-1.5 text-sm text-white/55 hover:text-white"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-faint hover:text-ink"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         All cohorts
       </Link>
       <div className="mt-3 flex items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+          <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-spark-ink">
             Cohort health
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight">
+          <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
             {cohort.name}
           </h1>
-          <p className="mt-1 text-sm text-white/55">
+          <p className="mt-1 text-sm text-ink-soft tabular-nums">
             {cohort.starts_on ?? "—"} → {cohort.ends_on ?? "—"} ·{" "}
             {totalStudents} enrolled
           </p>
@@ -378,7 +378,7 @@ function Header({
         <div className="text-right">
           <Link
             href={`/admin/cohorts`}
-            className="text-xs text-spark hover:underline"
+            className="text-xs text-spark-ink hover:underline"
           >
             Edit cohort →
           </Link>
@@ -402,30 +402,30 @@ function SummaryTile({
   hint?: string;
 }) {
   const colors = {
-    ok: "text-emerald-300",
-    warn: "text-amber-300",
-    bad: "text-red-300",
-    muted: "text-white/55",
+    ok: "text-emerald-700 dark:text-emerald-300",
+    warn: "text-amber-700 dark:text-amber-300",
+    bad: "text-red-700 dark:text-red-300",
+    muted: "text-ink-soft",
   } as const;
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-4">
-      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+    <div className="rounded-xl border border-line bg-wash px-4 py-4">
+      <div className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-[0.2em] text-ink-faint">
         <Icon className={`h-3.5 w-3.5 ${colors[tone]}`} />
         {label}
       </div>
-      <div className={`mt-2 text-2xl font-semibold tracking-tight ${colors[tone]}`}>
+      <div className={`mt-2 text-2xl font-semibold tracking-tight tabular-nums ${colors[tone]}`}>
         {value}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-white/45">{hint}</div>}
+      {hint && <div className="mt-1 text-[11px] text-ink-faint">{hint}</div>}
     </div>
   );
 }
 
 function RiskBadge({ risk }: { risk: RiskLevel }) {
   const config = {
-    at_risk: { label: "At risk", cls: "bg-red-400/15 text-red-300" },
-    watch: { label: "Watch", cls: "bg-amber-400/15 text-amber-300" },
-    ok: { label: "OK", cls: "bg-emerald-400/15 text-emerald-300" },
+    at_risk: { label: "At risk", cls: "bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-300" },
+    watch: { label: "Watch", cls: "bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300" },
+    ok: { label: "OK", cls: "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300" },
   } as const;
   const { label, cls } = config[risk];
   return (

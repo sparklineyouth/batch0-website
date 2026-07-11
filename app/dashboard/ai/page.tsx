@@ -35,10 +35,10 @@ export default async function AiPage({
     return (
       <div className="mx-auto max-w-3xl">
         <h1 className="text-3xl font-bold tracking-tight">AI co-founder</h1>
-        <Card className="mt-6 border-amber-300/30 bg-amber-300/5">
-          <p className="text-sm text-amber-200">
+        <Card className="mt-6 border-amber-500/30 bg-amber-500/10">
+          <p className="text-sm text-amber-700 dark:text-amber-300">
             The AI co-founder isn't enabled on this deployment yet. Set{" "}
-            <code className="rounded bg-black/40 px-1.5 py-0.5">ANTHROPIC_API_KEY</code>{" "}
+            <code className="rounded border border-line bg-paper px-1.5 py-0.5">ANTHROPIC_API_KEY</code>{" "}
             in your production env vars and redeploy.
           </p>
         </Card>
@@ -89,14 +89,14 @@ export default async function AiPage({
         />
         <Card className="!p-0">
           <details className="group">
-            <summary className="cursor-pointer list-none select-none px-5 py-4 text-sm font-semibold text-white">
+            <summary className="cursor-pointer list-none select-none px-5 py-4 text-sm font-semibold text-ink">
               <span className="mr-1 inline-block transition-transform group-open:rotate-90">
                 ›
               </span>
               Startup context
             </summary>
             <div className="px-5 pb-5">
-              <p className="mb-3 text-xs text-white/55">
+              <p className="mb-3 text-xs text-ink-soft">
                 The AI uses these as background in every chat. Update as your
                 idea evolves.
               </p>
@@ -118,7 +118,7 @@ export default async function AiPage({
           />
         ) : (
           <Card>
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-ink-soft">
               Start a new chat to talk to your AI co-founder.
             </p>
           </Card>
@@ -134,14 +134,14 @@ function LockedView() {
       <h1 className="text-3xl font-bold tracking-tight">AI co-founder</h1>
       <Card className="mt-6">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-spark/10 text-spark">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-spark/10 text-spark-ink">
             <Lock className="h-4 w-4" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-white">
+            <h2 className="text-base font-semibold text-ink">
               Locked until you're accepted
             </h2>
-            <p className="mt-1 text-sm text-white/65">
+            <p className="mt-1 text-sm text-ink-soft">
               The AI co-founder is part of the Sparkline Youth program. It unlocks
               the moment your application is accepted — submit your
               application and we'll review it on a rolling basis.
@@ -149,14 +149,14 @@ function LockedView() {
             <div className="mt-4 flex flex-wrap gap-2 text-sm">
               <Link
                 href="/apply"
-                className="inline-flex items-center gap-1.5 rounded-full bg-spark px-3 py-1.5 font-semibold text-black hover:bg-spark-200"
+                className="inline-flex items-center gap-1.5 rounded-full bg-spark px-3 py-1.5 font-semibold text-on-spark hover:bg-spark-200"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Apply now
               </Link>
               <Link
                 href="/dashboard/application"
-                className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-white/80 hover:bg-white/10"
+                className="inline-flex items-center rounded-full border border-line px-3 py-1.5 text-ink hover:border-ink/30 hover:bg-wash"
               >
                 View application status
               </Link>

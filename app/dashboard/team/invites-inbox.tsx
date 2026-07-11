@@ -49,13 +49,13 @@ export function InvitesInbox({ invites }: { invites: Invite[] }) {
               <div className="min-w-0 flex-1">
                 <h3 className="text-base font-semibold">{t?.name}</h3>
                 {t?.tagline && (
-                  <p className="mt-0.5 text-sm text-white/55">{t.tagline}</p>
+                  <p className="mt-0.5 text-sm text-ink-soft">{t.tagline}</p>
                 )}
-                <p className="mt-2 text-xs text-white/45">
+                <p className="mt-2 text-xs text-ink-faint">
                   Invited by {by?.full_name ?? by?.email}
                 </p>
                 {inv.message && (
-                  <p className="mt-3 whitespace-pre-wrap text-sm text-white/80">
+                  <p className="mt-3 whitespace-pre-wrap text-sm text-ink-soft">
                     {inv.message}
                   </p>
                 )}

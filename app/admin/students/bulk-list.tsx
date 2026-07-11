@@ -75,17 +75,17 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
   }
 
   if (rows.length === 0) {
-    return <p className="p-6 text-sm text-white/50">No matching people.</p>;
+    return <p className="p-6 text-sm text-ink-faint">No matching people.</p>;
   }
 
   return (
     <div className="text-sm">
-      <div className="grid grid-cols-[auto_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.6fr)] items-center gap-3 border-b border-white/10 px-5 py-3 text-xs uppercase tracking-wider text-white/40">
+      <div className="grid grid-cols-[auto_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.6fr)] items-center gap-3 border-b border-line bg-wash px-5 py-3 text-xs font-mono uppercase tracking-wider text-ink-faint">
         <button
           type="button"
           onClick={toggleAll}
           aria-label={allSelected ? "Deselect all" : "Select all"}
-          className="-ml-1 -my-1 rounded p-1 text-white/40 hover:text-white"
+          className="-ml-1 -my-1 rounded p-1 text-ink-faint hover:text-ink"
         >
           {allSelected ? (
             <CheckSquare className="h-4 w-4" />
@@ -107,7 +107,7 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
         return (
           <div
             key={p.id}
-            className={`grid grid-cols-[auto_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.6fr)] items-center gap-3 border-b border-white/5 px-5 py-3 last:border-0 hover:bg-white/[0.02] ${
+            className={`grid grid-cols-[auto_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.6fr)] items-center gap-3 border-b border-line px-5 py-3 last:border-0 hover:bg-wash ${
               checked ? "bg-spark/5" : ""
             }`}
           >
@@ -115,16 +115,16 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
               type="button"
               onClick={() => toggle(p.id)}
               aria-label={checked ? "Deselect" : "Select"}
-              className="-ml-1 -my-1 rounded p-1 text-white/40 hover:text-white"
+              className="-ml-1 -my-1 rounded p-1 text-ink-faint hover:text-ink"
             >
               {checked ? (
-                <CheckSquare className="h-4 w-4 text-spark" />
+                <CheckSquare className="h-4 w-4 text-spark-ink" />
               ) : (
                 <Square className="h-4 w-4" />
               )}
             </button>
-            <div className="truncate text-white">{p.full_name || "—"}</div>
-            <div className="truncate text-white/70">{p.email}</div>
+            <div className="truncate text-ink">{p.full_name || "—"}</div>
+            <div className="truncate text-ink-soft">{p.email}</div>
             <div>
               <RoleSelect userId={p.id} role={p.role} />
             </div>
@@ -132,19 +132,19 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
               {p.latest_app_status ? (
                 <StatusBadge status={p.latest_app_status} />
               ) : (
-                <span className="text-white/30">—</span>
+                <span className="text-ink-faint">—</span>
               )}
             </div>
-            <div className="truncate text-white/70">
-              {p.cohort_name ?? <span className="text-white/30">—</span>}
+            <div className="truncate text-ink-soft">
+              {p.cohort_name ?? <span className="text-ink-faint">—</span>}
             </div>
-            <div className="text-white/50">
+            <div className="text-ink-faint font-mono tabular-nums">
               <LocalTime value={p.created_at} mode="date" />
             </div>
             <div className="text-right">
               <Link
                 href={`/admin/students/${p.id}`}
-                className="text-xs text-spark hover:underline"
+                className="text-xs text-spark-ink hover:underline"
               >
                 Manage →
               </Link>
@@ -154,16 +154,16 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
       })}
 
       {someSelected && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/15 bg-zinc-950/95 backdrop-blur md:left-60">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-3">
             <div className="text-sm">
-              <span className="font-semibold text-white">{selected.size}</span>
-              <span className="text-white/55"> selected</span>
+              <span className="font-semibold text-ink tabular-nums">{selected.size}</span>
+              <span className="text-ink-soft"> selected</span>
             </div>
             {lastResult && (
-              <span className="text-xs text-emerald-300">{lastResult}</span>
+              <span className="text-xs text-emerald-700 dark:text-emerald-300">{lastResult}</span>
             )}
-            {err && <span className="text-xs text-red-300">{err}</span>}
+            {err && <span className="text-xs text-red-700 dark:text-red-300">{err}</span>}
             <div className="flex-1" />
             <Button
               variant="ghost"
@@ -173,7 +173,7 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
             >
               Clear
             </Button>
-            <label className="text-xs text-white/55">Change role to</label>
+            <label className="text-xs text-ink-soft">Change role to</label>
             <Select
               value={bulkRole}
               onChange={(e) => setBulkRole(e.target.value as Role)}
@@ -205,7 +205,7 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
         onCancel={() => !pending && setConfirmRole(null)}
         onConfirm={() => confirmRole && runBulk(confirmRole)}
         description={
-          <p className="text-sm text-white/70">
+          <p className="text-sm text-ink-soft">
             Each user's role is updated and any linked Discord membership
             is re-synced. You can't downgrade your own admin role through
             this flow — it's skipped automatically.

@@ -24,8 +24,8 @@ export default async function InvestorOverview() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-3xl font-bold tracking-tight">Investor overview</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Investor overview</h1>
+      <p className="mt-1 text-sm text-ink-faint">
         Browse cohort startups and track which you're following.
       </p>
 
@@ -42,8 +42,8 @@ export default async function InvestorOverview() {
       </div>
 
       <Card className="mt-10">
-        <p className="text-sm text-white/60">
-          Head to <Link href="/investor/teams" className="text-spark hover:underline">Teams</Link> to browse all the
+        <p className="text-sm text-ink-soft">
+          Head to <Link href="/investor/teams" className="text-spark-ink hover:underline">Teams</Link> to browse all the
           startups in this cohort, see their pitch decks, and mark your level
           of interest.
         </p>
@@ -55,10 +55,10 @@ export default async function InvestorOverview() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <Card>
-      <div className="text-xs uppercase tracking-wider text-white/40">
+      <div className="font-mono text-xs uppercase tracking-wider text-ink-faint">
         {label}
       </div>
-      <div className="mt-2 text-3xl font-bold tracking-tight text-white">
+      <div className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] tabular-nums text-ink">
         {value}
       </div>
     </Card>

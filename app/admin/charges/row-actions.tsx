@@ -46,14 +46,14 @@ export function ChargeRowActions({
             <button
               type="button"
               onClick={() => setConfirmKind("waive")}
-              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-white/70 hover:border-emerald-300/40 hover:text-emerald-300"
+              className="inline-flex items-center gap-1 rounded-md border border-line bg-wash px-2 py-1 text-ink-soft hover:border-emerald-300/40 hover:text-emerald-700 dark:hover:text-emerald-300"
             >
               <Check className="h-3 w-3" /> Waive
             </button>
             <button
               type="button"
               onClick={() => setConfirmKind("cancel")}
-              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-white/70 hover:border-red-400/40 hover:text-red-300"
+              className="inline-flex items-center gap-1 rounded-md border border-line bg-wash px-2 py-1 text-ink-soft hover:border-red-400/40 hover:text-red-700 dark:hover:text-red-300"
             >
               <X className="h-3 w-3" /> Cancel
             </button>
@@ -63,7 +63,7 @@ export function ChargeRowActions({
           <button
             type="button"
             onClick={() => setConfirmKind("refund")}
-            className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-white/70 hover:border-amber-300/40 hover:text-amber-300"
+            className="inline-flex items-center gap-1 rounded-md border border-line bg-wash px-2 py-1 text-ink-soft hover:border-amber-300/40 hover:text-amber-700 dark:hover:text-amber-300"
           >
             <Undo2 className="h-3 w-3" /> Refund
           </button>
@@ -84,7 +84,7 @@ export function ChargeRowActions({
                 placeholder="e.g. financial-aid scholarship"
               />
             </div>
-            {error && <p className="mt-2 text-red-300">{error}</p>}
+            {error && <p className="mt-2 text-red-700 dark:text-red-300">{error}</p>}
           </>
         }
         confirmLabel="Waive"
@@ -98,7 +98,7 @@ export function ChargeRowActions({
         description={
           <>
             <p>The charge is removed without payment or waiver. Use this if it was issued by mistake.</p>
-            {error && <p className="mt-2 text-red-300">{error}</p>}
+            {error && <p className="mt-2 text-red-700 dark:text-red-300">{error}</p>}
           </>
         }
         confirmLabel="Cancel charge"
@@ -125,7 +125,7 @@ export function ChargeRowActions({
                 placeholder="e.g. charge issued in error"
               />
             </div>
-            {error && <p className="mt-2 text-red-300">{error}</p>}
+            {error && <p className="mt-2 text-red-700 dark:text-red-300">{error}</p>}
           </>
         }
         confirmLabel="Refund"

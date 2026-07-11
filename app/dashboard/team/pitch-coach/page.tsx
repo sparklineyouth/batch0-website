@@ -34,12 +34,12 @@ export default async function PitchCoachPage() {
     <div className="mx-auto max-w-3xl">
       <Link
         href="/dashboard/team"
-        className="text-sm text-white/55 hover:text-white"
+        className="text-sm text-ink-soft hover:text-ink"
       >
         ← Team
       </Link>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">Pitch coach</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Paste a deck link, Loom URL, or your pitch transcript. The coach scores
         you against the Demo Day rubric and tells you exactly what to fix
         before pitching live.
@@ -51,23 +51,23 @@ export default async function PitchCoachPage() {
 
       {(history?.length ?? 0) > 0 && (
         <div className="mt-8 space-y-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             History
           </h2>
           {(history ?? []).map((h: any) => (
             <Card key={h.id}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-xs uppercase tracking-wider text-white/45">
+                <p className="text-xs uppercase tracking-wider text-ink-faint">
                   {h.source_kind.replace("_", " ")}
                 </p>
-                <p className="text-xs text-white/45">
+                <p className="text-xs text-ink-faint">
                   <LocalTime value={h.created_at} />
                 </p>
               </div>
               {typeof h.overall_score === "number" && (
-                <p className="mt-1 text-2xl font-bold tracking-tight text-spark">
+                <p className="mt-1 text-2xl font-bold tracking-tight text-spark-ink">
                   {Number(h.overall_score).toFixed(1)}
-                  <span className="ml-1 text-xs font-normal text-white/45">
+                  <span className="ml-1 text-xs font-normal text-ink-faint">
                     / 100
                   </span>
                 </p>
@@ -78,18 +78,18 @@ export default async function PitchCoachPage() {
                     ([label, val]: any) => (
                       <li
                         key={label}
-                        className="rounded-lg border border-white/10 bg-black/30 p-2"
+                        className="rounded-lg border border-line bg-paper p-2"
                       >
                         <div className="flex items-baseline justify-between">
-                          <span className="font-medium text-white">
+                          <span className="font-medium text-ink">
                             {label}
                           </span>
-                          <span className="text-spark">
+                          <span className="text-spark-ink">
                             {val?.score ?? "—"}
                           </span>
                         </div>
                         {val?.why && (
-                          <p className="mt-1 text-white/65">{val.why}</p>
+                          <p className="mt-1 text-ink-soft">{val.why}</p>
                         )}
                       </li>
                     ),
@@ -97,26 +97,26 @@ export default async function PitchCoachPage() {
                 </ul>
               )}
               {h.summary && (
-                <p className="mt-3 whitespace-pre-wrap text-sm text-white/85">
+                <p className="mt-3 whitespace-pre-wrap text-sm text-ink-soft">
                   {h.summary}
                 </p>
               )}
               {h.strengths && (
                 <details className="mt-3">
-                  <summary className="cursor-pointer text-xs uppercase tracking-wider text-emerald-300">
+                  <summary className="cursor-pointer text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                     Strengths
                   </summary>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-white/80">
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">
                     {h.strengths}
                   </p>
                 </details>
               )}
               {h.improvements && (
                 <details className="mt-3" open>
-                  <summary className="cursor-pointer text-xs uppercase tracking-wider text-amber-200">
+                  <summary className="cursor-pointer text-xs uppercase tracking-wider text-amber-700 dark:text-amber-300">
                     Fix these
                   </summary>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-white/85">
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">
                     {h.improvements}
                   </p>
                 </details>

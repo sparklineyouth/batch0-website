@@ -32,16 +32,16 @@ export function DiscordCard({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <Image src={DISCORD_ICON} alt="" width={20} height={20} unoptimized />
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Discord
           </h2>
         </div>
         {linked ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-200">
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
             <CheckCircle2 className="h-3 w-3" /> Linked
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/55">
+          <span className="inline-flex items-center gap-1 rounded-full border border-line bg-wash px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
             <AlertCircle className="h-3 w-3" /> Not linked
           </span>
         )}
@@ -49,7 +49,7 @@ export function DiscordCard({
 
       {linked ? (
         <>
-          <div className="mt-5 flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 p-3">
+          <div className="mt-5 flex items-center gap-3 rounded-xl border border-line bg-paper p-3">
             {avatar ? (
               <Image
                 src={avatar}
@@ -60,20 +60,20 @@ export function DiscordCard({
                 unoptimized
               />
             ) : (
-              <div className="h-10 w-10 rounded-full bg-white/10" />
+              <div className="h-10 w-10 rounded-full bg-wash" />
             )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">
+              <p className="truncate text-sm font-medium text-ink">
                 @{profile.discord_username ?? "discord-user"}
               </p>
-              <p className="truncate text-xs text-white/45">
+              <p className="truncate text-xs text-ink-faint">
                 Linked <LocalTime value={profile.discord_linked_at} mode="date" fallback="" />
               </p>
             </div>
           </div>
-          <p className="mt-4 text-xs text-white/55">
+          <p className="mt-4 text-xs text-ink-soft">
             We auto-assign your Sparkline Youth role in the Discord server. Use{" "}
-            <code className="rounded bg-white/5 px-1 py-0.5 text-[11px] text-white/80">
+            <code className="rounded border border-line bg-paper px-1 py-0.5 text-[11px] text-ink-soft">
               /me
             </code>{" "}
             in any channel to check your status.
@@ -95,7 +95,7 @@ export function DiscordCard({
         </>
       ) : (
         <>
-          <p className="mt-4 text-sm text-white/65">
+          <p className="mt-4 text-sm text-ink-soft">
             Link your Discord account to join the Sparkline Youth community server.
             We'll auto-assign you a role, drop you into the right channels, and
             keep your role in sync with your status on the website.

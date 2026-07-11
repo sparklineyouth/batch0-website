@@ -22,8 +22,8 @@ export default async function AdminCohortsPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-3xl font-bold tracking-tight">Cohorts</h1>
-      <p className="mt-1 text-sm text-white/50">Create and manage cohort runs.</p>
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Cohorts</h1>
+      <p className="mt-1 text-sm text-ink-faint">Create and manage cohort runs.</p>
 
       <Card className="mt-6">
         <CohortsManager initialCohorts={cohorts as any[] ?? []} />

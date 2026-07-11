@@ -240,35 +240,35 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
         left: pos.left,
         right: pos.right,
       }}
-      className="z-[60] max-w-[calc(100vw-1.5rem)] w-[22rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-950 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.7)]"
+      className="z-[60] max-w-[calc(100vw-1.5rem)] w-[22rem] overflow-hidden rounded-2xl border border-line bg-paper shadow-[0_30px_60px_-15px_rgba(20,20,20,0.25)]"
     >
-          <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/50">
+          <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+            <p className="text-xs font-mono font-semibold uppercase tracking-wider text-ink-faint">
               Notifications
             </p>
             {unread > 0 && (
               <button
                 type="button"
                 onClick={markAll}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-spark transition hover:text-spark-200"
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-spark-ink transition hover:opacity-80"
               >
                 <CheckCheck className="h-3 w-3" /> Mark all read
               </button>
             )}
           </div>
-          <ul className="max-h-[26rem] divide-y divide-white/5 overflow-y-auto">
+          <ul className="max-h-[26rem] divide-y divide-line overflow-y-auto">
             {loading && items.length === 0 && (
-              <li className="px-4 py-8 text-center text-sm text-white/40">
+              <li className="px-4 py-8 text-center text-sm text-ink-faint">
                 Loading…
               </li>
             )}
             {!loading && items.length === 0 && (
               <li className="px-4 py-10 text-center">
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-zinc-900/60">
-                  <Bell className="h-4 w-4 text-white/30" />
+                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-line bg-wash">
+                  <Bell className="h-4 w-4 text-ink-faint" />
                 </div>
-                <p className="mt-3 text-sm text-white/50">No notifications</p>
-                <p className="mt-0.5 text-xs text-white/30">
+                <p className="mt-3 text-sm text-ink-soft">No notifications</p>
+                <p className="mt-0.5 text-xs text-ink-faint">
                   You&apos;re all caught up.
                 </p>
               </li>
@@ -286,21 +286,21 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
                   <button
                     type="button"
                     onClick={() => clickItem(n)}
-                    className="press block w-full px-4 py-3 text-left hover:bg-white/[0.03]"
+                    className="press block w-full px-4 py-3 text-left hover:bg-wash"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <p
                         className={`min-w-0 flex-1 break-words line-clamp-2 text-sm leading-snug ${
                           isUnread
-                            ? "font-medium text-white"
-                            : "font-normal text-white/65"
+                            ? "font-medium text-ink"
+                            : "font-normal text-ink-soft"
                         }`}
                       >
                         {n.title}
                       </p>
                       <p
-                        className={`shrink-0 pt-0.5 text-[10px] tabular-nums ${
-                          isUnread ? "text-white/55" : "text-white/35"
+                        className={`shrink-0 pt-0.5 text-[10px] font-mono tabular-nums ${
+                          isUnread ? "text-ink-soft" : "text-ink-faint"
                         }`}
                       >
                         {formatRelativeTime(n.created_at)}
@@ -309,7 +309,7 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
                     {n.body && (
                       <p
                         className={`mt-1 line-clamp-2 break-words text-xs ${
-                          isUnread ? "text-white/70" : "text-white/45"
+                          isUnread ? "text-ink-soft" : "text-ink-faint"
                         }`}
                       >
                         {n.body}
@@ -320,11 +320,11 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
               );
             })}
           </ul>
-          <div className="border-t border-white/10 bg-black/40 px-4 py-2.5">
+          <div className="border-t border-line bg-wash px-4 py-2.5">
             <Link
               href="/notifications"
               onClick={() => setOpen(false)}
-              className="text-xs font-medium text-white/60 transition hover:text-white"
+              className="text-xs font-medium text-ink-soft transition hover:text-ink"
             >
               View all →
             </Link>
@@ -342,11 +342,11 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
         }
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/70 transition hover:bg-white/5 hover:text-white"
+        className="relative flex h-9 w-9 items-center justify-center rounded-md border border-line text-ink-soft transition hover:bg-wash hover:text-ink"
       >
         <Bell className="h-4 w-4" />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-spark px-1 text-[10px] font-bold leading-none text-black">
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-spark px-1 text-[10px] font-bold leading-none text-on-spark">
             {unread > 9 ? "9+" : unread}
           </span>
         )}

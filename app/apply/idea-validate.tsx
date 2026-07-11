@@ -54,27 +54,27 @@ export function IdeaValidator({ idea }: { idea: string }) {
         {busy ? "Thinking…" : "Pressure-test my idea"}
       </Button>
       {err && (
-        <p className="mt-2 text-xs text-amber-200">{err}</p>
+        <p className="mt-2 text-xs text-amber-600">{err}</p>
       )}
       {result && (
-        <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-4 text-sm">
+        <div className="mt-3 rounded-xl border border-line bg-paper p-4 text-sm">
           {result.similars.length > 0 ? (
             <>
-              <p className="text-xs font-semibold uppercase tracking-wider text-amber-200">
+              <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">
                 {result.similars.length} similar idea
                 {result.similars.length === 1 ? "" : "s"} have applied
               </p>
-              <p className="mt-1 text-xs text-white/55">
+              <p className="mt-1 text-xs text-ink-soft">
                 That doesn't disqualify you — it means you need to be
                 exceptionally clear about how yours is different.
               </p>
-              <ul className="mt-3 space-y-2 text-xs text-white/70">
+              <ul className="mt-3 space-y-2 text-xs text-ink-soft">
                 {result.similars.map((s, i) => (
                   <li
                     key={i}
-                    className="rounded-lg border border-white/5 bg-black/40 p-2"
+                    className="rounded-lg border border-line bg-wash p-2"
                   >
-                    <span className="text-[10px] uppercase tracking-wider text-white/40">
+                    <span className="text-[10px] uppercase tracking-wider text-ink-faint">
                       {s.status}
                     </span>
                     <p className="mt-1 whitespace-pre-wrap">{s.idea}</p>
@@ -83,14 +83,14 @@ export function IdeaValidator({ idea }: { idea: string }) {
               </ul>
             </>
           ) : (
-            <p className="text-xs text-emerald-300">
+            <p className="text-xs text-emerald-600">
               No close matches in accepted past applications.
             </p>
           )}
-          <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-white/55">
+          <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-faint">
             Tightening suggestions
           </p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-white/85">
+          <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
             {result.critique}
           </p>
         </div>

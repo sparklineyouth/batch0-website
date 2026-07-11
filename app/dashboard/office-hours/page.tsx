@@ -89,14 +89,14 @@ export default async function StudentOfficeHoursPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Office hours</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Pick a slot with a mentor. They'll see your topic so they can show up
         prepared.
       </p>
 
       {rows.length === 0 ? (
         <Card className="mt-8 text-center">
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-ink-faint">
             No mentor slots published in the next two weeks. Check back later.
           </p>
         </Card>
@@ -108,35 +108,35 @@ export default async function StudentOfficeHoursPage() {
 
       {pastRows.length > 0 && (
         <section className="mt-10">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Past sessions
           </h2>
           <ul className="mt-3 space-y-3">
             {pastRows.map((b: any) => (
               <li
                 key={b.id}
-                className="rounded-lg border border-white/10 bg-white/[0.02] p-4"
+                className="rounded-lg border border-line bg-wash p-4"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <div className="text-sm font-medium text-white">
+                  <div className="text-sm font-medium text-ink">
                     {b.mentor?.full_name ?? b.mentor?.email ?? "Mentor"}
                   </div>
-                  <span className="text-xs text-white/45">
+                  <span className="text-xs text-ink-faint">
                     <LocalTime value={b.slot.starts_at} />
                   </span>
                 </div>
                 {b.topic && (
-                  <p className="mt-1 text-xs text-white/55">
+                  <p className="mt-1 text-xs text-ink-soft">
                     Topic: {b.topic}
                   </p>
                 )}
                 {b.recap_notes ? (
-                  <div className="mt-3 rounded border border-emerald-400/20 bg-emerald-400/[0.04] px-3 py-2">
-                    <div className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-emerald-300">
+                  <div className="mt-3 rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+                    <div className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                       <CheckCircle2 className="h-3 w-3" />
                       Recap
                       {b.recap_posted_at && (
-                        <span className="ml-1 normal-case tracking-normal text-emerald-200/60">
+                        <span className="ml-1 normal-case tracking-normal text-emerald-700 dark:text-emerald-300">
                           ·{" "}
                           <LocalTime
                             value={b.recap_posted_at}
@@ -145,12 +145,12 @@ export default async function StudentOfficeHoursPage() {
                         </span>
                       )}
                     </div>
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm text-white/85">
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink-soft">
                       {b.recap_notes}
                     </p>
                   </div>
                 ) : (
-                  <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-white/35">
+                  <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-ink-faint">
                     <MessageSquare className="h-3 w-3" />
                     No recap yet
                   </p>

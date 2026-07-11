@@ -97,14 +97,14 @@ export default async function DashboardHome() {
   return (
     <div className="mx-auto max-w-5xl">
       {/* Hero row — name + lifecycle stage. Mirrors the marketing voice. */}
-      <div className="border-b border-white/10 pb-8">
-        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+      <div className="border-b border-line pb-8">
+        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
           {status.label}
         </p>
-        <h1 className="mt-3 text-4xl md:text-5xl font-bold tracking-[-0.02em] text-white">
+        <h1 className="mt-3 text-4xl md:text-5xl font-bold tracking-[-0.02em] text-ink">
           Welcome, {greeting}.
         </h1>
-        <p className="mt-3 max-w-xl text-[15px] text-white/75 leading-relaxed">
+        <p className="mt-3 max-w-xl text-[15px] text-ink-soft leading-relaxed">
           {status.lede(priceLabel)}
         </p>
         {status.cta && (
@@ -134,19 +134,19 @@ export default async function DashboardHome() {
               <Link
                 key={i.id}
                 href="/dashboard/intros"
-                className="press group flex items-center gap-3 rounded-xl border border-emerald-400/30 bg-emerald-400/[0.05] px-5 py-4 hover:border-emerald-400/60 hover:bg-emerald-400/[0.08]"
+                className="press group flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 hover:border-emerald-500/40 hover:bg-emerald-500/[0.15]"
               >
-                <Handshake className="h-5 w-5 shrink-0 text-emerald-300" />
+                <Handshake className="h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-300" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-emerald-100">
+                  <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
                     {name} wired your team{team?.name ? ` (${team.name})` : ""}
                   </p>
-                  <p className="mt-0.5 text-xs text-emerald-200/75">
+                  <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">
                     Funds received <LocalTime value={i.updated_at} mode="date" />.
                     Open intros for next steps.
                   </p>
                 </div>
-                <ArrowRight className="h-4 w-4 shrink-0 text-emerald-300/70 group-hover:text-emerald-200" />
+                <ArrowRight className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300 group-hover:text-emerald-700 dark:group-hover:text-emerald-300" />
               </Link>
             );
           })}
@@ -159,14 +159,14 @@ export default async function DashboardHome() {
           {(pendingFees ?? []).map((f: any) => (
             <div
               key={f.id}
-              className="flex items-start gap-3 rounded-xl border border-amber-300/30 bg-amber-300/5 px-5 py-4"
+              className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4"
             >
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-amber-200">
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
                   Fee due — {f.description}
                 </p>
-                <p className="mt-0.5 text-xs text-white/65">
+                <p className="mt-0.5 text-xs text-ink-soft">
                   ${(f.amount_cents / 100).toFixed(2)}. Settle when you can;
                   Sparkline Youth stays open in the meantime.
                 </p>
@@ -180,10 +180,10 @@ export default async function DashboardHome() {
       {/* Two editorial blocks: program + this week. */}
       <section className="mt-10 grid gap-10 md:grid-cols-12">
         <div className="md:col-span-7">
-          <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/45">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
             Program
           </h2>
-          <div className="mt-4 border-t border-white/10">
+          <div className="mt-4 border-t border-line">
             <Row
               icon={GraduationCap}
               label="Cohort"
@@ -242,7 +242,7 @@ export default async function DashboardHome() {
         </div>
 
         <aside className="md:col-span-5">
-          <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/45">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
             Quick links
           </h2>
           <ul className="mt-4 grid grid-cols-2 gap-2">
@@ -257,10 +257,10 @@ export default async function DashboardHome() {
               <li key={l.href}>
                 <Link
                   href={l.href}
-                  className="press flex items-center justify-between rounded-md border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm text-white/85 hover:border-white/25 hover:bg-white/[0.05]"
+                  className="press flex items-center justify-between rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink-soft hover:border-ink/30 hover:bg-wash hover:text-ink"
                 >
                   <span>{l.label}</span>
-                  <ArrowRight className="h-3.5 w-3.5 text-white/30" />
+                  <ArrowRight className="h-3.5 w-3.5 text-ink-faint" />
                 </Link>
               </li>
             ))}
@@ -281,10 +281,10 @@ export default async function DashboardHome() {
       {certificate && (
         <div className="mt-12 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-spark/30 bg-spark/[0.04] px-5 py-4">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
               Certificate of completion
             </p>
-            <p className="mt-1 text-sm text-white/80">
+            <p className="mt-1 text-sm text-ink-soft">
               You graduated. Share it on LinkedIn or anywhere.
             </p>
           </div>
@@ -379,34 +379,34 @@ function Row({
   statusBadge?: string;
 }) {
   const inner = (
-    <div className="group flex items-center gap-4 border-b border-white/10 py-5">
+    <div className="group flex items-center gap-4 border-b border-line py-5">
       <Icon
-        className={`h-5 w-5 shrink-0 ${muted ? "text-white/25" : "text-spark"}`}
+        className={`h-5 w-5 shrink-0 ${muted ? "text-ink-faint" : "text-spark-ink"}`}
       />
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+        <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
           {label}
         </p>
         <p
           className={`mt-1 text-base font-medium ${
-            muted ? "text-white/55" : "text-white"
+            muted ? "text-ink-soft" : "text-ink"
           }`}
         >
           {value}
         </p>
         {sub && (
-          <p className="mt-0.5 text-xs text-white/55 truncate">{sub}</p>
+          <p className="mt-0.5 text-xs text-ink-soft truncate">{sub}</p>
         )}
       </div>
       {statusBadge && <StatusBadge status={statusBadge} />}
       {href && (
-        <ArrowRight className="h-4 w-4 shrink-0 text-white/30 group-hover:text-white/70" />
+        <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint group-hover:text-ink-soft" />
       )}
     </div>
   );
   if (href) {
     return (
-      <Link href={href} className="press block hover:bg-white/[0.02]">
+      <Link href={href} className="press block hover:bg-wash">
         {inner}
       </Link>
     );

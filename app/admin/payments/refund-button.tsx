@@ -37,7 +37,7 @@ export function RefundButton({
         type="button"
         onClick={() => setOpen(true)}
         title="Refund this payment"
-        className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/70 hover:border-red-400/40 hover:text-red-300"
+        className="inline-flex items-center gap-1 rounded-md border border-line bg-wash px-2 py-1 text-[11px] text-ink-soft hover:border-red-400/40 hover:text-red-700 dark:hover:text-red-300"
       >
         <Undo2 className="h-3 w-3" /> Refund
       </button>
@@ -47,15 +47,15 @@ export function RefundButton({
         description={
           <>
             <p>
-              Refund <span className="text-white">{amountLabel}</span> back to
+              Refund <span className="text-ink">{amountLabel}</span> back to
               the customer's card?
             </p>
-            <p className="mt-2 text-amber-300/80">
+            <p className="mt-2 text-amber-700/90 dark:text-amber-300/80">
               This is irreversible — the student will need to pay again to
               re-enroll.
             </p>
             {error && (
-              <p className="mt-3 text-red-300">{error}</p>
+              <p className="mt-3 text-red-700 dark:text-red-300">{error}</p>
             )}
           </>
         }

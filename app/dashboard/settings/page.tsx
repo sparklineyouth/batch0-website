@@ -50,28 +50,28 @@ export default async function SettingsPage({
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Update your profile, preferences, and account.
       </p>
 
       {(linkedJustNow || unlinkedJustNow) && (
-        <div className="mt-5 rounded-lg border border-spark/30 bg-spark/5 p-3 text-sm text-spark">
+        <div className="mt-5 rounded-lg border border-spark/30 bg-spark/5 p-3 text-sm text-spark-ink">
           {linkedJustNow
             ? "Discord linked. Welcome to the community."
             : "Discord unlinked."}
         </div>
       )}
       {error && (
-        <div className="mt-5 rounded-lg border border-red-400/30 bg-red-400/5 p-3 text-sm text-red-200">
+        <div className="mt-5 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">
           {error}
         </div>
       )}
 
       <Card className="mt-8">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Appearance
         </h2>
-        <p className="mb-4 text-sm text-white/60">
+        <p className="mb-4 text-sm text-ink-soft">
           Switch between light and dark mode. Applies across your dashboard
           on every device you sign in to.
         </p>

@@ -93,13 +93,13 @@ export default async function TeamPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Team</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Build your startup with up to 4 teammates from your cohort.
       </p>
 
       {(pendingForMe?.length ?? 0) > 0 && (
         <div className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/60">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Invites for you
           </h2>
           <InvitesInbox invites={pendingForMe as any[]} />
@@ -108,7 +108,7 @@ export default async function TeamPage() {
 
       <Card className="mt-8">
         <h2 className="text-lg font-semibold">Start a new team</h2>
-        <p className="mt-1 text-sm text-white/55">
+        <p className="mt-1 text-sm text-ink-soft">
           Pick a working name — you can rename it any time.
         </p>
         <div className="mt-4">

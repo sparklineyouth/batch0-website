@@ -19,11 +19,11 @@ export default async function AdminCoursePage() {
     <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Course content</h1>
-          <p className="mt-1 text-sm text-white/50">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Course content</h1>
+          <p className="mt-1 text-sm text-ink-faint">
             Manage modules and lessons. Upload videos directly in the Supabase
             Storage UI under{" "}
-            <span className="text-white/70">course-videos</span>, then paste the
+            <span className="text-ink-soft">course-videos</span>, then paste the
             path here.
           </p>
         </div>

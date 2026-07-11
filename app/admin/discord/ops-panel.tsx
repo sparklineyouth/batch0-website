@@ -83,8 +83,8 @@ export function OpsPanel({
         <p
           className={
             status.kind === "ok"
-              ? "text-xs text-emerald-300"
-              : "text-xs text-red-300"
+              ? "text-xs text-emerald-700 dark:text-emerald-300"
+              : "text-xs text-red-700 dark:text-red-300"
           }
         >
           {status.text}
@@ -92,15 +92,15 @@ export function OpsPanel({
       )}
 
       <div>
-        <p className="text-xs uppercase tracking-wider text-white/45">
+        <p className="text-xs uppercase tracking-wider text-ink-faint">
           Currently registered with Discord
         </p>
         {names === null ? (
-          <p className="mt-2 text-xs text-white/50">
+          <p className="mt-2 text-xs text-ink-faint">
             Couldn't reach Discord — check the bot token.
           </p>
         ) : names.length === 0 ? (
-          <p className="mt-2 text-xs text-amber-200">
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-200">
             No commands registered yet. Click <strong>Register slash commands</strong> above.
           </p>
         ) : (
@@ -108,7 +108,7 @@ export function OpsPanel({
             {names.map((n) => (
               <li
                 key={n}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-spark"
+                className="rounded-full border border-line bg-wash px-2 py-0.5 text-[11px] text-spark-ink"
               >
                 /{n}
               </li>

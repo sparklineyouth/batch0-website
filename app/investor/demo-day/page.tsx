@@ -28,15 +28,15 @@ export default async function InvestorDemoDayPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-3xl font-bold tracking-tight">Demo Day</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Demo Day</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Submitted pitches you can review and score.
       </p>
 
       <div className="mt-6 grid gap-3">
         {(subs ?? []).length === 0 && (
           <Card>
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-ink-faint">
               No submissions yet. Check back after Demo Day eve.
             </p>
           </Card>
@@ -47,37 +47,37 @@ export default async function InvestorDemoDayPage() {
           const scored = scoredSet.has(s.team_id);
           return (
             <Link key={s.team_id} href={`/investor/teams/${s.team_id}`}>
-              <Card className="transition hover:border-white/20">
+              <Card className="transition hover:border-ink/20">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-zinc-900">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-paper">
                     {t?.logo_url && t?.logo_status === "approved" ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={t.logo_url} alt="" className="h-full w-full object-cover" />
                     ) : (
-                      <span className="text-lg font-bold text-spark">
+                      <span className="text-lg font-bold text-spark-ink">
                         {t?.name?.slice(0, 1).toUpperCase()}
                       </span>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold text-white">
+                    <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
                       {t?.name}
                     </h3>
                     {t?.tagline && (
-                      <p className="mt-0.5 text-sm text-white/55">
+                      <p className="mt-0.5 text-sm text-ink-soft">
                         {t.tagline}
                       </p>
                     )}
-                    <p className="mt-1 text-xs text-white/40">
+                    <p className="mt-1 text-xs text-ink-faint">
                       {cohort?.name ?? ""} · Submitted{" "}
                       <LocalTime value={s.submitted_at} mode="date" />
                     </p>
                   </div>
                   <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                    className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
                       scored
-                        ? "bg-emerald-400/15 text-emerald-300"
-                        : "bg-white/10 text-white/50"
+                        ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                        : "bg-wash text-ink-faint"
                     }`}
                   >
                     {scored ? "Scored" : "Not scored"}

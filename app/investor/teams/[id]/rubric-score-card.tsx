@@ -44,7 +44,7 @@ export function RubricScoreCard({
   if (criteria.length === 0) {
     return (
       <Card>
-        <p className="text-sm text-white/55">
+        <p className="text-sm text-ink-soft">
           No demo-day rubric is configured yet.
         </p>
       </Card>
@@ -85,8 +85,8 @@ export function RubricScoreCard({
 
   return (
     <Card>
-      <h3 className="text-base font-semibold">Scorecard</h3>
-      <p className="text-xs text-white/50">
+      <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Scorecard</h3>
+      <p className="text-xs text-ink-faint">
         Your scores roll into the weighted leaderboard. Visible to admins and
         you.
       </p>
@@ -97,12 +97,12 @@ export function RubricScoreCard({
             <div key={c.id}>
               <div className="flex items-baseline justify-between gap-3">
                 <Label>{c.label}</Label>
-                <span className="text-[11px] text-white/40">
+                <span className="text-[11px] text-ink-faint tabular-nums">
                   weight {c.weight} · 0–{c.max_score}
                 </span>
               </div>
               {c.description && (
-                <p className="mt-0.5 text-xs text-white/45">{c.description}</p>
+                <p className="mt-0.5 text-xs text-ink-faint">{c.description}</p>
               )}
               <div className="mt-2 flex flex-wrap gap-2">
                 {Array.from({ length: c.max_score + 1 }, (_, n) => n).map(
@@ -115,10 +115,10 @@ export function RubricScoreCard({
                         onClick={() =>
                           set(c.id, { score: active ? null : n })
                         }
-                        className={`h-9 w-9 rounded-lg border text-sm font-medium transition ${
+                        className={`h-9 w-9 rounded-lg border text-sm font-medium tabular-nums transition ${
                           active
-                            ? "border-spark bg-spark/15 text-spark"
-                            : "border-white/10 text-white/60 hover:border-white/30 hover:text-white"
+                            ? "border-spark bg-spark/15 text-spark-ink"
+                            : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
                         }`}
                       >
                         {n}
@@ -141,7 +141,7 @@ export function RubricScoreCard({
         <div className="flex items-center justify-between">
           <FieldError>{err}</FieldError>
           <div className="flex items-center gap-2">
-            {saved && <span className="text-xs text-emerald-300">Saved</span>}
+            {saved && <span className="text-xs text-emerald-700 dark:text-emerald-300">Saved</span>}
             <Button onClick={save} disabled={pending}>
               {pending ? "Saving…" : "Save scores"}
             </Button>

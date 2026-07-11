@@ -48,14 +48,14 @@ export function Comments({
   const tree = buildTree(initial);
   return (
     <div>
-      <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-white/50">
+      <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink-faint">
         <MessageSquare className="h-3.5 w-3.5" />
         Discussion ({initial.length})
       </div>
       <Composer lessonId={lessonId} parentId={null} placeholder="Ask a question or share what you learned…" />
       <ul className="mt-6 space-y-4">
         {tree.length === 0 && (
-          <li className="text-sm text-white/40">
+          <li className="text-sm text-ink-faint">
             Be the first to comment.
           </li>
         )}
@@ -103,28 +103,28 @@ function CommentItem({
   }
 
   return (
-    <li className={depth > 0 ? "ml-6 border-l border-white/10 pl-4" : ""}>
+    <li className={depth > 0 ? "ml-6 border-l border-line pl-4" : ""}>
       <div className="flex items-baseline gap-2">
-        <span className="text-sm font-medium text-white">
+        <span className="text-sm font-medium text-ink">
           {comment.author?.full_name || comment.author?.email || "—"}
         </span>
         {comment.author?.role && comment.author.role !== "student" && (
-          <span className="rounded-full bg-spark/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-spark">
+          <span className="rounded-full bg-spark/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-spark-ink">
             {comment.author.role}
           </span>
         )}
-        <span className="text-xs text-white/40">
+        <span className="text-xs text-ink-faint">
           <LocalTime value={comment.created_at} />
         </span>
       </div>
-      <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-white/80">
+      <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
         {comment.body}
       </p>
       <div className="mt-2 flex items-center gap-3 text-xs">
         <button
           type="button"
           onClick={() => setReplying((v) => !v)}
-          className="inline-flex items-center gap-1 text-white/40 hover:text-white"
+          className="inline-flex items-center gap-1 text-ink-faint hover:text-ink"
         >
           <CornerDownRight className="h-3 w-3" /> Reply
         </button>
@@ -132,7 +132,7 @@ function CommentItem({
           <button
             type="button"
             onClick={() => setConfirmDel(true)}
-            className="inline-flex items-center gap-1 text-white/40 hover:text-red-400"
+            className="inline-flex items-center gap-1 text-ink-faint hover:text-red-600 dark:hover:text-red-400"
           >
             <Trash2 className="h-3 w-3" /> Delete
           </button>
@@ -220,7 +220,7 @@ function Composer({
       />
       <div className="mt-2 flex items-center justify-between">
         {error ? (
-          <span className="text-xs text-red-400">{error}</span>
+          <span className="text-xs text-red-700 dark:text-red-300">{error}</span>
         ) : (
           <span />
         )}

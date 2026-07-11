@@ -67,15 +67,15 @@ export function ConfirmDialog({
         type="button"
         aria-label="Close"
         onClick={() => !pending && onCancel()}
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
       />
-      <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]">
+      <div className="relative w-full max-w-md rounded-2xl border border-line bg-paper p-6 shadow-[0_30px_80px_-20px_rgba(20,20,20,0.25)]">
         <button
           type="button"
           aria-label="Close"
           disabled={pending}
           onClick={onCancel}
-          className="absolute right-4 top-4 text-white/40 hover:text-white"
+          className="absolute right-4 top-4 text-ink-faint hover:text-ink"
         >
           <X className="h-4 w-4" />
         </button>
@@ -88,12 +88,12 @@ export function ConfirmDialog({
           <div className="flex-1">
             <h2
               id="confirm-dialog-title"
-              className="text-lg font-semibold text-white"
+              className="font-display text-lg font-semibold tracking-[-0.02em] text-ink"
             >
               {title}
             </h2>
             {description && (
-              <div className="mt-2 text-sm text-white/60">{description}</div>
+              <div className="mt-2 text-sm text-ink-soft">{description}</div>
             )}
           </div>
         </div>

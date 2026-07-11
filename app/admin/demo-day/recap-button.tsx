@@ -48,9 +48,9 @@ export function RecapButton({
             : "Generate + send Demo Day recap"}
       </Button>
       {status && (
-        <p className="mt-2 text-xs text-emerald-300">{status}</p>
+        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">{status}</p>
       )}
-      {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );
 }

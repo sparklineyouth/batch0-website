@@ -25,12 +25,12 @@ export default async function NotificationsPage() {
   const read = all.filter((i) => i.read_at);
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="border-b border-white/10">
+    <div className="min-h-screen bg-paper text-ink">
+      <div className="border-b border-line">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-4 md:px-8">
           <Link
             href={home}
-            className="press inline-flex items-center gap-1.5 text-sm text-white/65 hover:text-white"
+            className="press inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
@@ -42,14 +42,14 @@ export default async function NotificationsPage() {
       <main className="mx-auto max-w-3xl px-5 py-10 md:px-8 md:py-14">
         <div className="flex items-baseline justify-between gap-4">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
               Inbox
             </p>
-            <h1 className="mt-2 text-3xl md:text-4xl font-bold tracking-[-0.02em]">
+            <h1 className="mt-2 font-display text-3xl md:text-4xl font-bold tracking-[-0.02em] text-ink">
               Notifications
             </h1>
           </div>
-          <p className="shrink-0 text-sm text-white/60">
+          <p className="shrink-0 text-sm text-ink-soft">
             {unread.length > 0
               ? `${unread.length} unread`
               : "All caught up"}
@@ -57,12 +57,12 @@ export default async function NotificationsPage() {
         </div>
 
         {all.length === 0 ? (
-          <div className="mt-12 rounded-xl border border-white/10 bg-white/[0.02] px-6 py-14 text-center">
-            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/10">
-              <Bell className="h-4 w-4 text-white/40" />
+          <div className="mt-12 rounded-2xl border border-line bg-wash px-6 py-14 text-center">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-line">
+              <Bell className="h-4 w-4 text-ink-faint" />
             </div>
-            <p className="mt-4 text-sm text-white/75">No notifications yet.</p>
-            <p className="mt-1 text-xs text-white/50">
+            <p className="mt-4 text-sm text-ink-soft">No notifications yet.</p>
+            <p className="mt-1 text-xs text-ink-faint">
               You&apos;ll see updates here when there&apos;s activity on your
               account.
             </p>
@@ -71,10 +71,10 @@ export default async function NotificationsPage() {
           <div className="mt-10 space-y-10">
             {unread.length > 0 && (
               <section>
-                <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                <h2 className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-ink-faint">
                   Unread
                 </h2>
-                <ul className="divide-y divide-white/10 border-y border-white/10">
+                <ul className="divide-y divide-line border-y border-line">
                   {unread.map((n) => (
                     <NotificationItem key={n.id} n={n as any} />
                   ))}
@@ -83,10 +83,10 @@ export default async function NotificationsPage() {
             )}
             {read.length > 0 && (
               <section>
-                <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                <h2 className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-ink-faint">
                   Earlier
                 </h2>
-                <ul className="divide-y divide-white/10 border-y border-white/10">
+                <ul className="divide-y divide-line border-y border-line">
                   {read.map((n) => (
                     <NotificationItem key={n.id} n={n as any} />
                   ))}

@@ -67,7 +67,7 @@ export function TeamHome({
   return (
     <div className="mx-auto max-w-5xl">
       <header className="flex items-start gap-5">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-zinc-900">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-line bg-wash">
           {showApprovedLogo ? (
             // Unoptimized so we don't need to pre-allowlist supabase storage
             // hosts at build time.
@@ -78,7 +78,7 @@ export function TeamHome({
               className="h-full w-full object-cover"
             />
           ) : (
-            <span className="text-2xl font-bold text-spark">
+            <span className="text-2xl font-bold text-spark-ink">
               {team.name.slice(0, 1).toUpperCase()}
             </span>
           )}
@@ -88,23 +88,23 @@ export function TeamHome({
             {team.name}
           </h1>
           {team.tagline && (
-            <p className="mt-1 text-sm text-white/55">{team.tagline}</p>
+            <p className="mt-1 text-sm text-ink-soft">{team.tagline}</p>
           )}
-          <p className="mt-1 text-xs text-white/40">
+          <p className="mt-1 text-xs text-ink-faint">
             {members.length} member{members.length === 1 ? "" : "s"} ·{" "}
-            <span className="text-white/60">{team.my_role}</span>
+            <span className="text-ink-soft">{team.my_role}</span>
           </p>
         </div>
       </header>
 
       {team.logo_status === "pending" && team.logo_url && (
-        <div className="mt-4 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs text-amber-200">
+        <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
           Your logo is awaiting admin review. The placeholder shows on public
           pages until it's approved.
         </div>
       )}
       {team.logo_status === "rejected" && (
-        <div className="mt-4 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-200">
+        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
           Logo rejected
           {team.logo_rejected_reason ? `: ${team.logo_rejected_reason}` : "."}{" "}
           Upload a different one.
@@ -113,18 +113,18 @@ export function TeamHome({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Link href="/dashboard/team/offers">
-          <button className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-medium text-white/75 transition hover:border-white/30 hover:text-white">
+          <button className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink">
             <FileSignature className="h-3.5 w-3.5" /> SAFE offers
           </button>
         </Link>
         <Link href="/dashboard/team/pitch-coach">
-          <button className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-medium text-white/75 transition hover:border-white/30 hover:text-white">
+          <button className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink">
             <Sparkles className="h-3.5 w-3.5" /> Pitch coach
           </button>
         </Link>
       </div>
 
-      <nav className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-zinc-950/40 p-1">
+      <nav className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-line bg-wash p-1">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
@@ -134,8 +134,8 @@ export function TeamHome({
               onClick={() => setTab(t.id)}
               className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                 active
-                  ? "bg-spark/15 text-spark"
-                  : "text-white/60 hover:text-white"
+                  ? "bg-spark/15 text-spark-ink"
+                  : "text-ink-soft hover:text-ink"
               }`}
             >
               <Icon className="h-3.5 w-3.5" />

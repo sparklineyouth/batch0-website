@@ -38,10 +38,10 @@ export function BootstrapPanel() {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-4">
-        <p className="text-sm font-semibold text-red-200">
+        <p className="text-sm font-semibold text-red-700 dark:text-red-200">
           This deletes every channel and role in your guild.
         </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-red-100/80">
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-red-700/80 dark:text-red-100/80">
           <li>All channels (and their entire message history) are gone forever.</li>
           <li>All custom roles are deleted. @everyone and bot-managed roles are kept.</li>
           <li>
@@ -53,7 +53,7 @@ export function BootstrapPanel() {
             — you don&apos;t need to copy anything by hand.
           </li>
         </ul>
-        <p className="mt-3 text-xs text-red-100/70">
+        <p className="mt-3 text-xs text-red-700/70 dark:text-red-100/70">
           The bot needs <strong>Manage Channels</strong> and{" "}
           <strong>Manage Roles</strong> permissions, and its role must sit above
           the roles it&apos;s creating (Server Settings → Roles → drag the bot
@@ -64,7 +64,7 @@ export function BootstrapPanel() {
       <div>
         <Label>
           Type{" "}
-          <code className="rounded bg-black/40 px-1 py-0.5 text-spark">
+          <code className="rounded bg-wash px-1 py-0.5 text-spark-ink">
             {CONFIRM_PHRASE}
           </code>{" "}
           to enable the button
@@ -78,7 +78,7 @@ export function BootstrapPanel() {
         />
       </div>
 
-      <label className="flex items-center gap-2 text-xs text-white/70">
+      <label className="flex items-center gap-2 text-xs text-ink-soft">
         <input
           type="checkbox"
           checked={armed}
@@ -93,26 +93,26 @@ export function BootstrapPanel() {
           variant="secondary"
           disabled={!canRun || pending}
           onClick={run}
-          className="!bg-red-500/15 !text-red-100 hover:!bg-red-500/25 disabled:!opacity-40"
+          className="!bg-red-500/15 !text-red-700 dark:!text-red-100 hover:!bg-red-500/25 disabled:!opacity-40"
         >
           {pending ? "Rebuilding… (10–30s)" : "Wipe and rebuild server"}
         </Button>
         {pending && (
-          <span className="text-xs text-white/55">
+          <span className="text-xs text-ink-soft">
             Don&apos;t navigate away.
           </span>
         )}
       </div>
 
       {error && (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/[0.08] p-3 text-xs text-red-200">
+        <p className="rounded-lg border border-red-500/30 bg-red-500/[0.08] p-3 text-xs text-red-700 dark:text-red-200">
           {error}
         </p>
       )}
 
       {result && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-4 text-xs text-emerald-100/90">
-          <p className="font-semibold text-emerald-200">
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-4 text-xs text-emerald-700/90 dark:text-emerald-100/90">
+          <p className="font-semibold text-emerald-700 dark:text-emerald-200">
             ✅ Server rebuilt successfully.
           </p>
           <ul className="mt-2 space-y-1">

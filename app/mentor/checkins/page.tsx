@@ -62,14 +62,14 @@ export default async function MentorCheckinsPage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-3xl font-bold tracking-tight">Weekly check-ins</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Weekly check-ins</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Read what students said this week. Drop a quick reply — they get a
         notification.
       </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wider text-white/40">
+        <span className="font-mono text-xs uppercase tracking-wider text-ink-faint">
           Week
         </span>
         <div className="flex flex-wrap gap-2">
@@ -82,7 +82,7 @@ export default async function MentorCheckinsPage({
             />
           ))}
         </div>
-        <span className="ml-4 text-xs uppercase tracking-wider text-white/40">
+        <span className="ml-4 font-mono text-xs uppercase tracking-wider text-ink-faint">
           Cohort
         </span>
         <Pill
@@ -103,7 +103,7 @@ export default async function MentorCheckinsPage({
       <div className="mt-6 space-y-4">
         {(checkins?.length ?? 0) === 0 ? (
           <Card>
-            <p className="text-sm text-white/55">
+            <p className="text-sm text-ink-soft">
               No check-ins for {formatWeekRange(week)} yet.
             </p>
           </Card>
@@ -115,10 +115,10 @@ export default async function MentorCheckinsPage({
               <Card key={c.id}>
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <div>
-                    <h3 className="text-base font-semibold text-white">
+                    <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
                       {user?.full_name ?? user?.email ?? "—"}
                     </h3>
-                    <p className="text-xs text-white/45">
+                    <p className="text-xs text-ink-faint">
                       {cohort?.name ?? "Unassigned cohort"} · Saved{" "}
                       <LocalTime value={c.updated_at} />
                     </p>
@@ -129,8 +129,8 @@ export default async function MentorCheckinsPage({
                 <ReadOnlyField label="Blockers" value={c.blockers} />
 
                 {(feedbackByCheckin.get(c.id) ?? []).length > 0 && (
-                  <div className="mt-5 border-t border-white/10 pt-4">
-                    <div className="mb-2 text-xs uppercase tracking-wider text-spark">
+                  <div className="mt-5 border-t border-line pt-4">
+                    <div className="mb-2 font-mono text-xs uppercase tracking-wider text-spark-ink">
                       Feedback so far
                     </div>
                     <ul className="space-y-2">
@@ -141,9 +141,9 @@ export default async function MentorCheckinsPage({
                         return (
                           <li
                             key={f.id}
-                            className="rounded-lg border border-white/10 bg-black/30 p-3"
+                            className="rounded-lg border border-line bg-paper p-3"
                           >
-                            <div className="flex items-baseline justify-between text-xs text-white/45">
+                            <div className="flex items-baseline justify-between text-xs text-ink-faint">
                               <span>
                                 {author?.full_name ?? author?.email ?? "Mentor"}
                               </span>
@@ -151,7 +151,7 @@ export default async function MentorCheckinsPage({
                                 <LocalTime value={f.created_at} />
                               </span>
                             </div>
-                            <p className="mt-1 whitespace-pre-wrap text-sm text-white/85 break-words [overflow-wrap:anywhere]">
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-ink-soft break-words [overflow-wrap:anywhere]">
                               {f.body}
                             </p>
                           </li>
@@ -183,10 +183,10 @@ function Pill({
   return (
     <Link
       href={href}
-      className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
+      className={`rounded-full border px-3 py-1 font-mono text-xs uppercase tracking-wider transition ${
         active
-          ? "border-spark bg-spark/10 text-spark"
-          : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+          ? "border-spark bg-spark/10 text-spark-ink"
+          : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
       }`}
     >
       {label}
@@ -204,10 +204,10 @@ function ReadOnlyField({
   if (!value) return null;
   return (
     <div className="mt-4">
-      <div className="text-xs uppercase tracking-wider text-white/40">
+      <div className="font-mono text-xs uppercase tracking-wider text-ink-faint">
         {label}
       </div>
-      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-white/85 [overflow-wrap:anywhere]">
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-soft [overflow-wrap:anywhere]">
         {value}
       </p>
     </div>

@@ -56,19 +56,19 @@ export default async function AdminEmailMetricsPage() {
   if (error && /relation .*email_events.* does not exist/i.test(error.message)) {
     return (
       <div className="mx-auto max-w-3xl">
-        <h1 className="text-3xl font-bold tracking-tight">Email metrics</h1>
+        <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Email metrics</h1>
         <Card className="mt-6">
-          <p className="text-sm text-white/70">
+          <p className="text-sm text-ink-soft">
             Run migration{" "}
-            <code className="font-mono text-spark">
+            <code className="font-mono text-spark-ink">
               0024_email_events.sql
             </code>{" "}
             in your Supabase SQL editor, then set{" "}
-            <code className="font-mono text-spark">
+            <code className="font-mono text-spark-ink">
               RESEND_WEBHOOK_SECRET
             </code>{" "}
             and add a webhook in the Resend dashboard pointing at{" "}
-            <code className="font-mono text-spark">
+            <code className="font-mono text-spark-ink">
               /api/resend/webhook
             </code>
             . Subscribe to <em>delivered, opened, clicked, bounced,
@@ -190,18 +190,18 @@ export default async function AdminEmailMetricsPage() {
     <div className="mx-auto max-w-6xl">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Email metrics</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Email metrics</h1>
+          <p className="mt-1 text-sm text-ink-soft">
             Open and click rates from the last 30 days of Resend events.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <p className="text-[11px] text-white/40">
+          <p className="text-[11px] text-ink-faint">
             {rows.length.toLocaleString()} events ingested
           </p>
           <a
             href="/admin/email/blast"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-spark px-3 py-1.5 text-xs font-semibold text-black hover:bg-spark-200"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-spark px-3 py-1.5 text-xs font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             Compose blast
           </a>
@@ -242,10 +242,10 @@ export default async function AdminEmailMetricsPage() {
       </section>
 
       <Card className="mt-8">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Last 14 days
         </h2>
-        <p className="mt-1 text-xs text-white/40">
+        <p className="mt-1 text-xs text-ink-faint">
           Sent vs opened. Tall sent bars with short opens = subject lines
           need work.
         </p>
@@ -271,13 +271,13 @@ export default async function AdminEmailMetricsPage() {
                   }}
                 />
               </div>
-              <div className="text-[9px] tabular-nums text-white/40 text-center">
+              <div className="text-[9px] tabular-nums text-ink-faint text-center">
                 {d.key.slice(5)}
               </div>
             </div>
           ))}
         </div>
-        <div className="mt-2 flex gap-4 text-[10px] text-white/55">
+        <div className="mt-2 flex gap-4 text-[10px] text-ink-soft">
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-2 w-2 rounded bg-spark/50" /> Sent
           </span>
@@ -289,18 +289,18 @@ export default async function AdminEmailMetricsPage() {
       </Card>
 
       <Card className="mt-6 !p-0 overflow-hidden">
-        <div className="border-b border-white/10 px-5 py-3 text-xs uppercase tracking-wider text-white/40">
+        <div className="border-b border-line px-5 py-3 text-xs uppercase tracking-wider text-ink-faint">
           By template
         </div>
         {templates.length === 0 ? (
-          <p className="p-6 text-sm text-white/55">
+          <p className="p-6 text-sm text-ink-soft">
             No engagement data yet. Once a few delivered events come in,
             they'll show up grouped by subject here.
           </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-3">Template</th>
                 <th className="px-5 py-3 text-right">Sent</th>
                 <th className="px-5 py-3 text-right">Open rate</th>
@@ -314,22 +314,22 @@ export default async function AdminEmailMetricsPage() {
                 return (
                   <tr
                     key={t.subject}
-                    className="border-b border-white/5 last:border-0"
+                    className="border-b border-line last:border-0"
                   >
-                    <td className="px-5 py-3 text-white">{t.subject}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-white/75">
+                    <td className="px-5 py-3 text-ink">{t.subject}</td>
+                    <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
                       {denom}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-white/75">
+                    <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
                       {fmtPct(t.opened, denom)}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-white/75">
+                    <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
                       {fmtPct(t.clicked, denom)}
                     </td>
                     <td className="px-5 py-3 text-right tabular-nums">
                       <span
                         className={
-                          t.bounced > 0 ? "text-red-300" : "text-white/30"
+                          t.bounced > 0 ? "text-red-700 dark:text-red-300" : "text-ink-faint"
                         }
                       >
                         {t.bounced}
@@ -360,21 +360,21 @@ function Tile({
   tone?: "default" | "ok" | "warn" | "bad";
 }) {
   const colors = {
-    default: "text-white",
-    ok: "text-emerald-300",
-    warn: "text-amber-300",
-    bad: "text-red-300",
+    default: "text-ink",
+    ok: "text-emerald-700 dark:text-emerald-300",
+    warn: "text-amber-700 dark:text-amber-300",
+    bad: "text-red-700 dark:text-red-300",
   } as const;
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-4">
-      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+    <div className="rounded-xl border border-line bg-wash px-4 py-4">
+      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
         <Icon className={`h-3.5 w-3.5 ${tone !== "default" ? colors[tone] : ""}`} />
         {label}
       </div>
       <div className={`mt-2 text-2xl font-semibold tracking-tight ${colors[tone]}`}>
         {value}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-white/45">{hint}</div>}
+      {hint && <div className="mt-1 text-[11px] text-ink-faint">{hint}</div>}
     </div>
   );
 }

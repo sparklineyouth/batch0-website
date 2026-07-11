@@ -87,7 +87,7 @@ export function AssignmentManager({
   return (
     <div>
       {mentors.length === 0 ? (
-        <p className="rounded-lg border border-amber-300/30 bg-amber-300/5 p-3 text-sm text-amber-200">
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-200">
           You don't have any users with the mentor role yet. Promote someone
           to mentor in the People page first.
         </p>
@@ -134,11 +134,11 @@ export function AssignmentManager({
           </div>
         </div>
       )}
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
 
       <table className="mt-8 w-full text-sm">
         <thead>
-          <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+          <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
             <th className="px-3 py-3">Mentor</th>
             <th className="px-3 py-3">Student</th>
             <th className="px-3 py-3">Cohort</th>
@@ -148,7 +148,7 @@ export function AssignmentManager({
         <tbody>
           {assignments.length === 0 && (
             <tr>
-              <td colSpan={4} className="px-3 py-6 text-center text-sm text-white/50">
+              <td colSpan={4} className="px-3 py-6 text-center text-sm text-ink-faint">
                 No assignments yet.
               </td>
             </tr>
@@ -158,20 +158,20 @@ export function AssignmentManager({
             const s = pick(a.student);
             const c = pick(a.cohort);
             return (
-              <tr key={a.id} className="border-b border-white/5 last:border-0">
-                <td className="px-3 py-3 text-white">
+              <tr key={a.id} className="border-b border-line last:border-0">
+                <td className="px-3 py-3 text-ink">
                   {m?.full_name || m?.email}
                 </td>
-                <td className="px-3 py-3 text-white">
+                <td className="px-3 py-3 text-ink">
                   {s?.full_name || s?.email}
                 </td>
-                <td className="px-3 py-3 text-white/60">
-                  {c?.name ?? <span className="text-white/30">—</span>}
+                <td className="px-3 py-3 text-ink-soft">
+                  {c?.name ?? <span className="text-ink-faint">—</span>}
                 </td>
                 <td className="px-3 py-3 text-right">
                   <button
                     onClick={() => setConfirmDeleteId(a.id)}
-                    className="p-1.5 text-white/50 hover:text-red-400"
+                    className="p-1.5 text-ink-faint hover:text-red-600 dark:hover:text-red-400"
                     aria-label="Unassign"
                   >
                     <Trash2 className="h-4 w-4" />

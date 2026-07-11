@@ -16,11 +16,11 @@ export default async function NewResourcePage() {
     <div className="mx-auto max-w-2xl">
       <Link
         href="/admin/resources"
-        className="text-sm text-white/55 hover:text-white"
+        className="text-sm text-ink-soft hover:text-ink"
       >
         ← Resources
       </Link>
-      <h1 className="mt-3 text-3xl font-bold tracking-tight">New resource</h1>
+      <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">New resource</h1>
       <Card className="mt-6">
         <ResourceForm
           initial={{

@@ -80,23 +80,23 @@ export default async function AdminStudentDetail({
     <div className="mx-auto max-w-5xl">
       <Link
         href="/admin/students"
-        className="text-sm text-white/55 hover:text-white"
+        className="text-sm text-ink-faint hover:text-ink"
       >
         ← People
       </Link>
 
       <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
             {profile.full_name || "—"}
           </h1>
-          <p className="mt-1 text-sm text-white/55">{profile.email}</p>
-          <p className="mt-1 text-xs text-white/40">
+          <p className="mt-1 text-sm text-ink-soft">{profile.email}</p>
+          <p className="mt-1 text-xs text-ink-faint">
             Joined <LocalTime value={profile.created_at} mode="date" />
             {referralsEnabled && (
               <>
                 {" · "}Referral code{" "}
-                <span className="text-white/70">
+                <span className="text-ink-soft">
                   {profile.referral_code ?? "—"}
                 </span>
               </>
@@ -104,7 +104,7 @@ export default async function AdminStudentDetail({
             {profile.discord_user_id && (
               <>
                 {" "}· Discord{" "}
-                <span className="text-white/70">
+                <span className="text-ink-soft">
                   @{profile.discord_username ?? profile.discord_user_id}
                 </span>
               </>
@@ -112,7 +112,7 @@ export default async function AdminStudentDetail({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-wider text-white/40">
+          <span className="text-xs uppercase tracking-wider text-ink-faint">
             Role
           </span>
           <RoleSelect userId={profile.id} role={profile.role as Role} />
@@ -120,7 +120,7 @@ export default async function AdminStudentDetail({
       </div>
 
       <Card className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Snapshot
         </h2>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -137,7 +137,7 @@ export default async function AdminStudentDetail({
       </Card>
 
       <Card className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Manage
         </h2>
         <ManagePanel
@@ -153,15 +153,15 @@ export default async function AdminStudentDetail({
       </Card>
 
       <Card className="mt-6 !p-0 overflow-hidden">
-        <div className="px-5 py-3 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <div className="px-5 py-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Applications
         </div>
         {(applications?.length ?? 0) === 0 ? (
-          <p className="px-5 pb-5 text-sm text-white/55">No applications.</p>
+          <p className="px-5 pb-5 text-sm text-ink-soft">No applications.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-y border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-y border-line bg-wash text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-2">Submitted</th>
                 <th className="px-5 py-2">Cohort</th>
                 <th className="px-5 py-2">Status</th>
@@ -173,24 +173,24 @@ export default async function AdminStudentDetail({
               {(applications ?? []).map((a: any) => (
                 <tr
                   key={a.id}
-                  className="border-b border-white/5 last:border-0"
+                  className="border-b border-line last:border-0 hover:bg-wash"
                 >
-                  <td className="px-5 py-3 text-white/70">
+                  <td className="px-5 py-3 text-ink-soft">
                     <LocalTime value={a.submitted_at} />
                   </td>
-                  <td className="px-5 py-3 text-white/70">
+                  <td className="px-5 py-3 text-ink-soft">
                     {a.cohort?.name ?? "—"}
                   </td>
                   <td className="px-5 py-3">
                     <StatusBadge status={a.status} />
                   </td>
-                  <td className="px-5 py-3 text-white/70">
+                  <td className="px-5 py-3 text-ink-soft">
                     {a.fee_waived ? "Yes" : "—"}
                   </td>
                   <td className="px-5 py-3 text-right">
                     <Link
                       href={`/admin/applications/${a.id}`}
-                      className="text-xs text-spark hover:underline"
+                      className="text-xs text-spark-ink hover:underline"
                     >
                       Open →
                     </Link>
@@ -203,15 +203,15 @@ export default async function AdminStudentDetail({
       </Card>
 
       <Card className="mt-6 !p-0 overflow-hidden">
-        <div className="px-5 py-3 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <div className="px-5 py-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Payments
         </div>
         {(payments?.length ?? 0) === 0 ? (
-          <p className="px-5 pb-5 text-sm text-white/55">No payments.</p>
+          <p className="px-5 pb-5 text-sm text-ink-soft">No payments.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-y border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-y border-line bg-wash text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-2">Date</th>
                 <th className="px-5 py-2">Amount</th>
                 <th className="px-5 py-2">Status</th>
@@ -222,18 +222,18 @@ export default async function AdminStudentDetail({
               {(payments ?? []).map((p: any) => (
                 <tr
                   key={p.id}
-                  className="border-b border-white/5 last:border-0"
+                  className="border-b border-line last:border-0 hover:bg-wash"
                 >
-                  <td className="px-5 py-3 text-white/70">
+                  <td className="px-5 py-3 text-ink-soft">
                     <LocalTime value={p.created_at} />
                   </td>
-                  <td className="px-5 py-3 text-white/80">
+                  <td className="px-5 py-3 text-ink tabular-nums">
                     {fmtMoney(p.amount_cents, p.currency)}
                   </td>
                   <td className="px-5 py-3">
                     <StatusBadge status={p.status} />
                   </td>
-                  <td className="px-5 py-3 text-xs text-white/40">
+                  <td className="px-5 py-3 text-xs text-ink-faint font-mono">
                     {p.stripe_payment_intent_id ?? "—"}
                   </td>
                 </tr>
@@ -245,22 +245,22 @@ export default async function AdminStudentDetail({
 
       <Card className="mt-6 !p-0 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3">
-          <div className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <div className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
             Fees & fines
           </div>
           <Link
             href={`/admin/charges?user=${profile.id}`}
-            className="text-xs text-spark hover:underline"
+            className="text-xs text-spark-ink hover:underline"
           >
             Issue a charge →
           </Link>
         </div>
         {(charges?.length ?? 0) === 0 ? (
-          <p className="px-5 pb-5 text-sm text-white/55">No charges.</p>
+          <p className="px-5 pb-5 text-sm text-ink-soft">No charges.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-y border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-y border-line bg-wash text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-2">Issued</th>
                 <th className="px-5 py-2">Type</th>
                 <th className="px-5 py-2">Amount</th>
@@ -272,18 +272,18 @@ export default async function AdminStudentDetail({
               {(charges ?? []).map((c: any) => (
                 <tr
                   key={c.id}
-                  className="border-b border-white/5 last:border-0"
+                  className="border-b border-line last:border-0 hover:bg-wash"
                 >
-                  <td className="px-5 py-3 text-white/70">
+                  <td className="px-5 py-3 text-ink-soft">
                     <LocalTime value={c.created_at} mode="date" />
                   </td>
-                  <td className="px-5 py-3 text-white/70 capitalize">
+                  <td className="px-5 py-3 text-ink-soft capitalize">
                     {c.kind}
                   </td>
-                  <td className="px-5 py-3 text-white/80">
+                  <td className="px-5 py-3 text-ink tabular-nums">
                     {fmtMoney(c.amount_cents)}
                   </td>
-                  <td className="px-5 py-3 text-white/60 max-w-xs truncate">
+                  <td className="px-5 py-3 text-ink-soft max-w-xs truncate">
                     {c.description}
                   </td>
                   <td className="px-5 py-3">
@@ -301,11 +301,11 @@ export default async function AdminStudentDetail({
 
 function Mini({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-      <div className="text-xs uppercase tracking-wider text-white/40">
+    <div className="rounded-xl border border-line bg-wash p-4">
+      <div className="text-xs uppercase tracking-wider text-ink-faint">
         {label}
       </div>
-      <div className="mt-1 text-lg font-semibold capitalize text-white">
+      <div className="mt-1 text-lg font-semibold capitalize text-ink">
         {value}
       </div>
     </div>

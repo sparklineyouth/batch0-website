@@ -19,9 +19,11 @@ const DECIDABLE = new Set(["submitted", "draft"]);
 // hoisting to a shared file because the list is the only consumer and a
 // shared helper would feel premature for one function.
 function scoreTone(score: number) {
-  if (score >= 8) return "bg-emerald-400/15 text-emerald-300";
-  if (score >= 5) return "bg-amber-400/15 text-amber-300";
-  return "bg-red-400/15 text-red-300";
+  if (score >= 8)
+    return "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300";
+  if (score >= 5)
+    return "bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300";
+  return "bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-300";
 }
 
 const NOTE_TEMPLATES: { label: string; body: string }[] = [
@@ -113,17 +115,17 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
   }
 
   if (apps.length === 0) {
-    return <p className="p-6 text-sm text-white/50">No applications.</p>;
+    return <p className="p-6 text-sm text-ink-faint">No applications.</p>;
   }
 
   return (
     <div className="text-sm">
-      <div className="grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-white/10 px-5 py-3 text-xs uppercase tracking-wider text-white/40">
+      <div className="grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-line bg-wash px-5 py-3 text-xs font-mono uppercase tracking-wider text-ink-faint">
         <button
           type="button"
           onClick={toggleAll}
           aria-label={allSelected ? "Deselect all" : "Select all decidable"}
-          className="-ml-1 -my-1 rounded p-1 text-white/40 hover:text-white"
+          className="-ml-1 -my-1 rounded p-1 text-ink-faint hover:text-ink"
         >
           {allSelected ? (
             <CheckSquare className="h-4 w-4" />
@@ -145,7 +147,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
         return (
           <div
             key={a.id}
-            className={`group grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-white/5 px-5 py-3 last:border-0 hover:bg-white/[0.02] ${
+            className={`group grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-line px-5 py-3 last:border-0 hover:bg-wash ${
               checked ? "bg-spark/5" : ""
             }`}
           >
@@ -160,24 +162,24 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
                     : "Select"
                   : `Cannot bulk-decide (${a.status})`
               }
-              className="-ml-1 -my-1 rounded p-1 text-white/40 enabled:hover:text-white disabled:opacity-30"
+              className="-ml-1 -my-1 rounded p-1 text-ink-faint enabled:hover:text-ink disabled:opacity-30"
             >
               {checked ? (
-                <CheckSquare className="h-4 w-4 text-spark" />
+                <CheckSquare className="h-4 w-4 text-spark-ink" />
               ) : (
                 <Square className="h-4 w-4" />
               )}
             </button>
             <Link
               href={`/admin/applications/${a.id}`}
-              className="truncate text-white group-hover:text-spark"
+              className="truncate text-ink group-hover:text-spark-ink"
             >
               {a.full_name || "—"}
             </Link>
-            <div className="truncate text-white/60">
+            <div className="truncate text-ink-soft">
               {a.profile?.email ?? "—"}
             </div>
-            <div className="text-white/60">{a.age ?? "—"}</div>
+            <div className="text-ink-soft tabular-nums">{a.age ?? "—"}</div>
             <div>
               {typeof a.ai_score === "number" ? (
                 <span
@@ -191,13 +193,13 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
                   {a.ai_score}/10
                 </span>
               ) : (
-                <span className="text-white/25">—</span>
+                <span className="text-ink-faint">—</span>
               )}
             </div>
             <div>
               <StatusBadge status={a.status} />
             </div>
-            <div className="text-white/50">
+            <div className="text-ink-faint font-mono tabular-nums">
               <LocalTime value={a.submitted_at} mode="date" />
             </div>
           </div>
@@ -208,16 +210,16 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
           rows are selected. Positioned outside the table grid so the
           column layout doesn't grow when it appears. */}
       {someSelected && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/15 bg-zinc-950/95 backdrop-blur md:left-60">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-3">
             <div className="text-sm">
-              <span className="font-semibold text-white">{selected.size}</span>
-              <span className="text-white/55"> selected</span>
+              <span className="font-semibold text-ink tabular-nums">{selected.size}</span>
+              <span className="text-ink-soft"> selected</span>
             </div>
             {lastResult && (
-              <span className="text-xs text-emerald-300">{lastResult}</span>
+              <span className="text-xs text-emerald-700 dark:text-emerald-300">{lastResult}</span>
             )}
-            {err && <span className="text-xs text-red-300">{err}</span>}
+            {err && <span className="text-xs text-red-700 dark:text-red-300">{err}</span>}
             <div className="flex-1" />
             <Button
               variant="ghost"
@@ -260,7 +262,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
         onConfirm={() => confirm && runBulk(confirm)}
         description={
           <div className="text-left">
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-ink-soft">
               Each applicant gets the same notes
               {confirm === "accepted"
                 ? " and an acceptance email."
@@ -285,7 +287,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
                     type="button"
                     onClick={() => applyTemplate(t.body)}
                     disabled={pending}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/75 hover:border-white/25 hover:text-white disabled:opacity-50"
+                    className="rounded-full border border-line bg-wash px-2.5 py-1 text-xs text-ink-soft hover:border-ink/30 hover:text-ink disabled:opacity-50"
                   >
                     {t.label}
                   </button>

@@ -68,13 +68,13 @@ export default async function DashboardResourcesPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Resources</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Templates, decks, guides, and tools curated by the Sparkline Youth team.
       </p>
 
       {(resources?.length ?? 0) === 0 ? (
         <Card className="mt-8">
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-ink-soft">
             Nothing here yet — staff haven't uploaded any resources.
           </p>
         </Card>
@@ -82,7 +82,7 @@ export default async function DashboardResourcesPage() {
         <div className="mt-8 space-y-8">
           {categories.map((cat) => (
             <div key={cat}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-spark">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-spark-ink">
                 {cat}
               </h2>
               <ul className="space-y-3">
@@ -98,15 +98,15 @@ export default async function DashboardResourcesPage() {
                       <Card>
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
-                            <h3 className="text-base font-semibold text-white">
+                            <h3 className="text-base font-semibold text-ink">
                               {r.title}
                             </h3>
                             {r.description && (
-                              <p className="mt-1 text-sm text-white/65">
+                              <p className="mt-1 text-sm text-ink-soft">
                                 {r.description}
                               </p>
                             )}
-                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-white/45">
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-faint">
                               {cohort?.name && (
                                 <span>{cohort.name}</span>
                               )}
@@ -124,7 +124,7 @@ export default async function DashboardResourcesPage() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-spark px-3 py-2 text-xs font-semibold text-black hover:bg-spark-200"
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-spark px-3 py-2 text-xs font-semibold text-on-spark hover:bg-spark-200"
                             >
                               {r.storage_path ? (
                                 <>
@@ -137,7 +137,7 @@ export default async function DashboardResourcesPage() {
                               )}
                             </a>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 text-xs text-white/40">
+                            <span className="inline-flex items-center gap-1.5 text-xs text-ink-faint">
                               <FileText className="h-3.5 w-3.5" /> No file
                             </span>
                           )}

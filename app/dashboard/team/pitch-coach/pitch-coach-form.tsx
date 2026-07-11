@@ -54,7 +54,7 @@ export function PitchCoachForm({ teamId }: { teamId: string }) {
             placeholder="Paste your 2-minute pitch script, or a transcript of your last recorded pitch."
             maxLength={12000}
           />
-          <p className="mt-1 text-[11px] text-white/45">
+          <p className="mt-1 text-[11px] text-ink-faint">
             {source.length.toLocaleString()} / 12,000 chars
           </p>
         </div>
@@ -69,7 +69,7 @@ export function PitchCoachForm({ teamId }: { teamId: string }) {
               placeholder="https://…"
             />
           </div>
-          <p className="text-xs text-amber-200/80">
+          <p className="text-xs text-amber-700 dark:text-amber-300">
             The coach can't follow URLs to read decks or watch videos yet, so
             it scores based on the URL + filename + any context it can infer.
             For deepest feedback, paste a transcript instead.

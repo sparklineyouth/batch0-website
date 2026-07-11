@@ -68,7 +68,7 @@ export function LessonPlayer({
 
   return (
     <div>
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-black aspect-video">
+      <div className="overflow-hidden rounded-2xl border border-line bg-paper aspect-video">
         {videoUrl ? (
           <video
             ref={videoRef}
@@ -78,18 +78,18 @@ export function LessonPlayer({
             playsInline
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-white/40 text-sm">
+          <div className="flex h-full items-center justify-center text-ink-faint text-sm">
             No video uploaded yet.
           </div>
         )}
       </div>
       <div className="mt-4 flex items-center justify-between">
         {completed ? (
-          <span className="inline-flex items-center gap-2 text-sm text-emerald-300">
+          <span className="inline-flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
             <CheckCircle2 className="h-4 w-4" /> Completed
           </span>
         ) : (
-          <span className="text-sm text-white/40">Mark this lesson complete when you finish.</span>
+          <span className="text-sm text-ink-faint">Mark this lesson complete when you finish.</span>
         )}
         <Button onClick={markComplete} disabled={saving || completed} variant={completed ? "secondary" : "primary"}>
           {completed ? "Completed" : saving ? "Saving…" : "Mark complete"}

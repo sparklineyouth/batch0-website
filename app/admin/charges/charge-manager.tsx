@@ -96,7 +96,7 @@ export function ChargeManager({ profiles }: { profiles: Profile[] }) {
         <Button onClick={submit} disabled={pending}>
           {pending ? "Issuing…" : `Issue ${kind}`}
         </Button>
-        {okMsg && <span className="text-xs text-emerald-300">{okMsg}</span>}
+        {okMsg && <span className="text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</span>}
       </div>
       {error && <FieldError>{error}</FieldError>}
     </div>

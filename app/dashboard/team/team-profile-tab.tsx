@@ -119,23 +119,23 @@ export function TeamProfileTab({ team }: { team: Team }) {
     <div className="space-y-6">
       <Card>
         <h3 className="text-base font-semibold">Logo</h3>
-        <p className="mt-1 text-xs text-white/50">
+        <p className="mt-1 text-xs text-ink-faint">
           Used on your team's public page. Uploads are reviewed before
           showing publicly to keep cohorts safe.
         </p>
         <div className="mt-4 flex items-center gap-4">
-          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-zinc-900">
+          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-line bg-wash">
             {team.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={team.logo_url} alt="" className="h-full w-full object-cover" />
             ) : (
-              <span className="text-3xl font-bold text-spark">
+              <span className="text-3xl font-bold text-spark-ink">
                 {team.name.slice(0, 1).toUpperCase()}
               </span>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-spark px-3 text-sm font-semibold text-black hover:bg-spark-200">
+            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-spark px-3 text-sm font-semibold text-on-spark hover:bg-spark-200">
               <Upload className="h-4 w-4" />
               {uploading ? "Uploading…" : "Upload logo"}
               <input
@@ -215,8 +215,8 @@ export function TeamProfileTab({ team }: { team: Team }) {
       </Card>
 
       <Card>
-        <h3 className="text-base font-semibold text-red-300">Danger zone</h3>
-        <p className="mt-1 text-xs text-white/50">
+        <h3 className="text-base font-semibold text-red-700 dark:text-red-300">Danger zone</h3>
+        <p className="mt-1 text-xs text-ink-faint">
           Leaving is permanent. If you're the last member the team will be
           deleted (and all drive files lost).
         </p>

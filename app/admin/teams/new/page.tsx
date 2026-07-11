@@ -13,10 +13,10 @@ export default async function NewTeamPage() {
     .order("starts_on");
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/admin/teams" className="text-sm text-white/55 hover:text-white">
+      <Link href="/admin/teams" className="text-sm text-ink-faint hover:text-ink">
         ← All teams
       </Link>
-      <h1 className="mt-3 text-3xl font-bold tracking-tight">New team</h1>
+      <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">New team</h1>
       <Card className="mt-6">
         <TeamForm
           initial={{

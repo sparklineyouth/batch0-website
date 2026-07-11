@@ -22,20 +22,20 @@ export function AdminMyDiscordLinkCard({
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Your Discord link
           </h2>
-          <p className="mt-1 text-xs text-white/50">
+          <p className="mt-1 text-xs text-ink-faint">
             Link your own account so <code>/whois</code>, <code>/announce</code>,
             and the admin role auto-sync work for you.
           </p>
         </div>
         {linked ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-200">
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-200">
             <CheckCircle2 className="h-3 w-3" /> Linked
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/55">
+          <span className="inline-flex items-center gap-1 rounded-full border border-line bg-wash px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
             <AlertCircle className="h-3 w-3" /> Not linked
           </span>
         )}
@@ -43,10 +43,10 @@ export function AdminMyDiscordLinkCard({
 
       {linked ? (
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-white/80">
+          <span className="text-ink-soft">
             @{profile.discord_username ?? profile.discord_user_id}
           </span>
-          <span className="text-xs text-white/45">
+          <span className="text-xs text-ink-faint">
             Linked{" "}
             <LocalTime value={profile.discord_linked_at} mode="date" fallback="" />
           </span>

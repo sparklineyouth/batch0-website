@@ -34,18 +34,18 @@ export function ConversationList({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 p-3">
+    <div className="rounded-2xl border border-line bg-wash p-3">
       <button
         type="button"
         onClick={newChat}
         disabled={pending}
-        className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-spark px-3 py-2 text-xs font-semibold text-black hover:bg-spark-200 disabled:opacity-50"
+        className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-spark px-3 py-2 text-xs font-semibold text-on-spark hover:bg-spark-200 disabled:opacity-50"
       >
         <Plus className="h-3.5 w-3.5" /> New chat
       </button>
       <ul className="space-y-1">
         {conversations.length === 0 && (
-          <li className="px-2 py-3 text-xs text-white/40">No chats yet.</li>
+          <li className="px-2 py-3 text-xs text-ink-faint">No chats yet.</li>
         )}
         {conversations.map((c) => {
           const active = c.id === selectedId;
@@ -55,13 +55,13 @@ export function ConversationList({
                 className={`flex items-center gap-1 rounded-lg px-2 py-1.5 ${
                   active
                     ? "bg-spark/10"
-                    : "hover:bg-white/[0.03]"
+                    : "hover:bg-wash"
                 }`}
               >
                 <Link
                   href={`/dashboard/ai?c=${c.id}`}
                   className={`min-w-0 flex-1 truncate text-sm ${
-                    active ? "text-spark" : "text-white/80"
+                    active ? "text-spark-ink" : "text-ink-soft"
                   }`}
                 >
                   {c.title || "New chat"}
@@ -70,7 +70,7 @@ export function ConversationList({
                   type="button"
                   onClick={() => remove(c.id)}
                   disabled={pending}
-                  className="opacity-0 transition group-hover:opacity-100 text-white/40 hover:text-red-400"
+                  className="opacity-0 transition group-hover:opacity-100 text-ink-faint hover:text-red-600 dark:hover:text-red-400"
                   aria-label="Delete chat"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

@@ -47,15 +47,15 @@ export default async function AdminStudentsPage({
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">People</h1>
-          <p className="mt-1 text-sm text-white/50">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">People</h1>
+          <p className="mt-1 text-sm text-ink-faint">
             Everyone with an account. Change a role inline to grant or revoke
             access.
           </p>
         </div>
         <a
           href="/api/admin/export/people"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink hover:border-ink/30 hover:bg-wash"
         >
           Export CSV
         </a>
@@ -75,8 +75,8 @@ export default async function AdminStudentsPage({
               href={f === "all" ? "/admin/students" : `/admin/students?role=${f}`}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
-                  ? "border-spark bg-spark/10 text-spark"
-                  : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+                  ? "border-spark/30 bg-spark/10 text-spark-ink"
+                  : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
               {f === "all" ? "All" : f + "s"} · {count}

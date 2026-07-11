@@ -121,7 +121,7 @@ export function EventsManager({
       </div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+          <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
             <th className="pb-3">Title</th>
             <th className="pb-3">Type</th>
             <th className="pb-3">Cohort</th>
@@ -133,7 +133,7 @@ export function EventsManager({
         <tbody>
           {events.length === 0 && (
             <tr>
-              <td colSpan={6} className="py-6 text-center text-sm text-white/50">
+              <td colSpan={6} className="py-6 text-center text-sm text-ink-faint">
                 No events yet.
               </td>
             </tr>
@@ -141,27 +141,27 @@ export function EventsManager({
           {events.map((e) => {
             const cohort = cohorts.find((c) => c.id === e.cohort_id);
             return (
-            <tr key={e.id} className="border-b border-white/5 last:border-0">
-              <td className="py-3 text-white">{e.title}</td>
-              <td className="py-3 text-white/60">{e.type}</td>
-              <td className="py-3 text-white/70">
+            <tr key={e.id} className="border-b border-line last:border-0">
+              <td className="py-3 text-ink">{e.title}</td>
+              <td className="py-3 text-ink-soft">{e.type}</td>
+              <td className="py-3 text-ink-soft">
                 {cohort?.name ?? (e.cohort_id ? "—" : "Any")}
               </td>
-              <td className="py-3 text-white/70">
+              <td className="py-3 text-ink-soft">
                 <LocalTime value={e.starts_at} />
               </td>
-              <td className="py-3 text-white/60">{e.visibility}</td>
+              <td className="py-3 text-ink-soft">{e.visibility}</td>
               <td className="py-3 text-right">
                 <button
                   onClick={() => setEditing(e)}
-                  className="p-1.5 text-white/50 hover:text-white"
+                  className="p-1.5 text-ink-faint hover:text-ink"
                   aria-label="Edit"
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setConfirmDeleteId(e.id)}
-                  className="p-1.5 text-white/50 hover:text-red-400"
+                  className="p-1.5 text-ink-faint hover:text-red-600 dark:hover:text-red-400"
                   aria-label="Delete"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -172,7 +172,7 @@ export function EventsManager({
           })}
         </tbody>
       </table>
-      {error && <p className="mt-4 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>}
 
       <ConfirmDialog
         open={confirmDeleteId !== null}

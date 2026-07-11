@@ -15,8 +15,8 @@ export default async function MentorCoursePage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-3xl font-bold tracking-tight">Course content</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Course content</h1>
+      <p className="mt-1 text-sm text-ink-faint">
         Manage modules and lessons. Upload videos and materials directly
         below; students enrolled in the matching cohort see them.
       </p>

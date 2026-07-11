@@ -85,15 +85,15 @@ export default async function AdminApplicationDetail({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/admin/applications" className="text-sm text-white/50 hover:text-white">
+      <Link href="/admin/applications" className="text-sm text-ink-faint hover:text-ink">
         ← All applications
       </Link>
       <div className="mt-3 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
             {app.full_name || "Unnamed applicant"}
           </h1>
-          <p className="mt-1 text-sm text-white/50">{(app as any).profile?.email}</p>
+          <p className="mt-1 text-sm text-ink-faint">{(app as any).profile?.email}</p>
         </div>
         <StatusBadge status={app.status} />
       </div>
@@ -101,30 +101,30 @@ export default async function AdminApplicationDetail({
       <Card className="mt-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-white/50">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
               AI pre-score
             </h3>
             {(app as any).ai_score != null ? (
               <div className="mt-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight text-spark">
+                  <span className="text-3xl font-bold tracking-tight tabular-nums text-spark-ink">
                     {(app as any).ai_score}
                   </span>
-                  <span className="text-xs text-white/40">/ 10</span>
+                  <span className="text-xs text-ink-faint">/ 10</span>
                 </div>
                 {(app as any).ai_summary && (
-                  <p className="mt-2 text-sm text-white/70">
+                  <p className="mt-2 text-sm text-ink-soft">
                     {(app as any).ai_summary}
                   </p>
                 )}
-                <p className="mt-2 text-[11px] text-white/30">
+                <p className="mt-2 text-[11px] text-ink-faint">
                   Scored{" "}
                   <LocalTime value={(app as any).ai_reviewed_at} fallback="" />{" "}
                   · advisory only
                 </p>
               </div>
             ) : (
-              <p className="mt-2 text-sm text-white/50">
+              <p className="mt-2 text-sm text-ink-faint">
                 Not yet screened.
               </p>
             )}
@@ -155,7 +155,7 @@ export default async function AdminApplicationDetail({
       </Card>
 
       <Card className="mt-6">
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Links
         </h3>
         <div className="space-y-2 text-sm">
@@ -166,34 +166,34 @@ export default async function AdminApplicationDetail({
       </Card>
 
       <Card className="mt-6">
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Why Sparkline Youth
         </h3>
-        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-white/80">
+        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
           {app.why_join || "—"}
         </p>
       </Card>
 
       <Card className="mt-6">
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Startup idea
         </h3>
-        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-white/80">
+        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
           {app.startup_idea || "—"}
         </p>
       </Card>
 
       <Card className="mt-6">
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Experience
         </h3>
-        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-white/80">
+        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
           {app.experience || "—"}
         </p>
       </Card>
 
       <Card className="mt-6">
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Decision
         </h3>
         <ReviewActions
@@ -206,10 +206,10 @@ export default async function AdminApplicationDetail({
       </Card>
 
       <Card className="mt-6">
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/50">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Your scorecard
         </h3>
-        <p className="text-xs text-white/45">
+        <p className="text-xs text-ink-faint">
           Submit a recommendation when you're done. Other reviewers' scores
           are hidden until you submit yours.
         </p>
@@ -232,8 +232,8 @@ export default async function AdminApplicationDetail({
           />
         </div>
         {myReview && (myReview as any).submitted_at && otherSubmitted.length > 0 && (
-          <div className="mt-6 border-t border-white/5 pt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/55">
+          <div className="mt-6 border-t border-line pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
               Other reviewers ({otherSubmitted.length})
             </p>
             <ul className="mt-2 space-y-3 text-xs">
@@ -244,23 +244,23 @@ export default async function AdminApplicationDetail({
                 return (
                   <li
                     key={r.reviewer_id}
-                    className="rounded-lg border border-white/10 bg-black/30 p-3"
+                    className="rounded-lg border border-line bg-wash p-3"
                   >
                     <div className="flex items-baseline justify-between">
-                      <span className="font-semibold text-white">
+                      <span className="font-semibold text-ink">
                         {reviewer?.full_name ?? reviewer?.email ?? "Reviewer"}
                       </span>
-                      <span className="text-spark">
+                      <span className="text-spark-ink">
                         {(r.decision ?? "").replace("_", " ")}
                       </span>
                     </div>
-                    <div className="mt-1 text-white/60">
+                    <div className="mt-1 text-ink-soft">
                       Idea {r.idea ?? "—"} · Founder {r.founder ?? "—"} ·
                       Motivation {r.motivation ?? "—"} · Feasibility{" "}
                       {r.feasibility ?? "—"} · Fit {r.fit ?? "—"}
                     </div>
                     {r.notes && (
-                      <p className="mt-2 whitespace-pre-wrap text-white/70">
+                      <p className="mt-2 whitespace-pre-wrap text-ink-soft">
                         {r.notes}
                       </p>
                     )}
@@ -274,10 +274,10 @@ export default async function AdminApplicationDetail({
 
       {duplicates.length > 0 && (
         <Card className="mt-6">
-          <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-amber-200">
+          <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-amber-700 dark:text-amber-300">
             Possible duplicate ideas
           </h3>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-ink-faint">
             Heuristic word-overlap on the startup idea text. Useful for
             spotting copy-paste and coordinated applications.
           </p>
@@ -285,15 +285,15 @@ export default async function AdminApplicationDetail({
             {duplicates.map((d) => (
               <li
                 key={d.id}
-                className="rounded-lg border border-white/10 bg-black/30 p-3"
+                className="rounded-lg border border-line bg-wash p-3"
               >
                 <Link
                   href={`/admin/applications/${d.id}`}
-                  className="text-spark hover:underline"
+                  className="text-spark-ink hover:underline"
                 >
                   {d.full_name ?? "Applicant"} · {d.status}
                 </Link>
-                <p className="mt-1 line-clamp-2 text-xs text-white/55">
+                <p className="mt-1 line-clamp-2 text-xs text-ink-soft">
                   {d.startup_idea ?? ""}
                 </p>
               </li>
@@ -373,9 +373,9 @@ function Row({
   value?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-baseline justify-between border-b border-white/5 py-2 last:border-0">
-      <div className="text-xs uppercase tracking-wider text-white/40">{label}</div>
-      <div className="text-white/80">{value || <span className="text-white/30">—</span>}</div>
+    <div className="flex items-baseline justify-between border-b border-line py-2 last:border-0">
+      <div className="text-xs uppercase tracking-wider text-ink-faint">{label}</div>
+      <div className="text-ink-soft">{value || <span className="text-ink-faint">—</span>}</div>
     </div>
   );
 }
@@ -388,8 +388,8 @@ function LinkRow({
   value?: string | null;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-white/5 py-2 last:border-0">
-      <div className="text-xs uppercase tracking-wider text-white/40">
+    <div className="flex items-baseline justify-between gap-3 border-b border-line py-2 last:border-0">
+      <div className="text-xs uppercase tracking-wider text-ink-faint">
         {label}
       </div>
       {value ? (
@@ -397,12 +397,12 @@ function LinkRow({
           href={value}
           target="_blank"
           rel="noopener noreferrer"
-          className="min-w-0 truncate text-spark hover:underline"
+          className="min-w-0 truncate text-spark-ink hover:underline"
         >
           {value}
         </a>
       ) : (
-        <span className="text-white/30">—</span>
+        <span className="text-ink-faint">—</span>
       )}
     </div>
   );

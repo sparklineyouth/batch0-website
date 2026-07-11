@@ -69,7 +69,7 @@ export function SlotsManager({ slots }: { slots: any[] }) {
   return (
     <div className="space-y-6">
       <Card>
-        <h3 className="text-base font-semibold">New slot</h3>
+        <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">New slot</h3>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <Label>Starts</Label>
@@ -115,12 +115,12 @@ export function SlotsManager({ slots }: { slots: any[] }) {
       </Card>
 
       <Card className="!p-0">
-        <h3 className="px-5 pt-5 text-base font-semibold">
+        <h3 className="px-5 pt-5 font-display text-base font-semibold tracking-[-0.02em] text-ink">
           Upcoming + recent
         </h3>
-        <ul className="mt-3 divide-y divide-white/5">
+        <ul className="mt-3 divide-y divide-line">
           {slots.length === 0 && (
-            <li className="px-5 py-6 text-sm text-white/40">
+            <li className="px-5 py-6 text-sm text-ink-faint">
               No slots yet.
             </li>
           )}
@@ -138,9 +138,9 @@ export function SlotsManager({ slots }: { slots: any[] }) {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">
+                    <div className="text-sm font-medium text-ink">
                       <LocalTime value={s.starts_at} /> ·{" "}
-                      <span className="text-white/40">
+                      <span className="text-ink-faint">
                         {Math.round(
                           (new Date(s.ends_at).getTime() -
                             new Date(s.starts_at).getTime()) /
@@ -154,23 +154,23 @@ export function SlotsManager({ slots }: { slots: any[] }) {
                         href={s.zoom_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-0.5 inline-flex items-center gap-1 text-xs text-spark hover:underline"
+                        className="mt-0.5 inline-flex items-center gap-1 text-xs text-spark-ink hover:underline"
                       >
                         <Video className="h-3 w-3" /> Join
                       </a>
                     )}
                     {s.booking ? (
-                      <div className="mt-1 text-xs text-emerald-300">
+                      <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
                         Booked by {student?.full_name ?? student?.email}
                         {s.booking.topic && (
-                          <span className="text-white/55">
+                          <span className="text-ink-soft">
                             {" "}
                             · "{s.booking.topic.slice(0, 60)}"
                           </span>
                         )}
                       </div>
                     ) : (
-                      <div className="mt-1 text-xs text-white/40">
+                      <div className="mt-1 text-xs text-ink-faint">
                         {isPast ? "Past, unclaimed" : "Open"}
                       </div>
                     )}
@@ -179,7 +179,7 @@ export function SlotsManager({ slots }: { slots: any[] }) {
                     {s.booking && (
                       <button
                         onClick={() => cancel(s.booking.id)}
-                        className="p-1.5 text-white/40 hover:text-amber-300"
+                        className="p-1.5 text-ink-faint hover:text-amber-700 dark:hover:text-amber-300"
                         title="Cancel booking"
                       >
                         <X className="h-4 w-4" />
@@ -188,7 +188,7 @@ export function SlotsManager({ slots }: { slots: any[] }) {
                     {!s.booking && (
                       <button
                         onClick={() => remove(s.id)}
-                        className="p-1.5 text-white/40 hover:text-red-400"
+                        className="p-1.5 text-ink-faint hover:text-red-700 dark:hover:text-red-300"
                         title="Delete slot"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -242,13 +242,13 @@ function RecapEditor({
 
   if (!editing && initial) {
     return (
-      <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.04] px-3 py-2 text-sm">
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-emerald-300">
+          <span className="inline-flex items-center gap-1 font-mono text-xs font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
             <CheckCircle2 className="h-3 w-3" />
             Recap posted
             {postedAt && (
-              <span className="ml-1 normal-case tracking-normal text-emerald-200/60">
+              <span className="ml-1 normal-case tracking-normal text-emerald-700/70 dark:text-emerald-200/60">
                 · <LocalTime value={postedAt} mode="datetime-short" />
               </span>
             )}
@@ -256,12 +256,12 @@ function RecapEditor({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="text-xs text-white/55 hover:text-white"
+            className="text-xs text-ink-soft hover:text-ink"
           >
             Edit
           </button>
         </div>
-        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-white/85">
+        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink-soft">
           {initial}
         </p>
       </div>
@@ -269,7 +269,7 @@ function RecapEditor({
   }
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
+    <div className="rounded-lg border border-line bg-wash px-3 py-2">
       <Label htmlFor={`recap-${bookingId}`}>
         <span className="inline-flex items-center gap-1">
           <MessageSquare className="h-3 w-3" />

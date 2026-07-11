@@ -30,26 +30,26 @@ export default async function AdminReferralsPage() {
     <div className="mx-auto max-w-5xl">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Referrals</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Referrals</h1>
+          <p className="mt-1 text-sm text-ink-soft">
             Top recruiters by paid enrollments. Sort tiebreaks on accepted
             then total applied.
           </p>
         </div>
         <Link
           href="/admin/settings"
-          className="text-xs text-spark hover:underline"
+          className="text-xs text-spark-ink hover:underline"
         >
           Toggle referrals globally →
         </Link>
       </div>
 
       {!enabled && (
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+        <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
           <div className="min-w-0 flex-1">
             <p className="font-medium">Referrals are paused program-wide.</p>
-            <p className="mt-0.5 text-amber-200/80">
+            <p className="mt-0.5 text-amber-700/80 dark:text-amber-200/80">
               Students can't view or share their referral links. Historical
               data below is read-only — turn it back on in settings to resume
               tracking.
@@ -57,7 +57,7 @@ export default async function AdminReferralsPage() {
           </div>
           <Link
             href="/admin/settings"
-            className="shrink-0 rounded-md border border-amber-300/40 bg-amber-300/10 px-3 py-1.5 text-xs font-medium text-amber-100 hover:bg-amber-300/20"
+            className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-100 hover:bg-amber-500/20"
           >
             Open settings
           </Link>
@@ -72,13 +72,13 @@ export default async function AdminReferralsPage() {
 
       <Card className="mt-6 !p-0 overflow-hidden">
         {leaderboard.length === 0 ? (
-          <p className="p-6 text-sm text-white/55">
+          <p className="p-6 text-sm text-ink-soft">
             No referred applications yet.
           </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-3 w-12">Rank</th>
                 <th className="px-5 py-3">Recruiter</th>
                 <th className="px-5 py-3">Code</th>
@@ -91,44 +91,44 @@ export default async function AdminReferralsPage() {
               {leaderboard.map((r, i) => (
                 <tr
                   key={r.referralCode}
-                  className="border-b border-white/5 last:border-0"
+                  className="border-b border-line last:border-0"
                 >
-                  <td className="px-5 py-3 text-white/55 tabular-nums">
+                  <td className="px-5 py-3 text-ink-soft tabular-nums">
                     {i + 1}
                   </td>
                   <td className="px-5 py-3">
                     {r.userId ? (
                       <Link
                         href={`/admin/students/${r.userId}`}
-                        className="text-white hover:text-spark"
+                        className="text-ink hover:text-spark-ink"
                       >
                         {r.fullName ?? r.email ?? r.referralCode}
                       </Link>
                     ) : (
-                      <span className="text-white/45">
+                      <span className="text-ink-faint">
                         (unknown — code {r.referralCode})
                       </span>
                     )}
                     {r.email && r.fullName && (
-                      <div className="text-[11px] text-white/40">
+                      <div className="text-[11px] text-ink-faint">
                         {r.email}
                       </div>
                     )}
                   </td>
-                  <td className="px-5 py-3 font-mono text-xs text-white/55">
+                  <td className="px-5 py-3 font-mono text-xs text-ink-soft">
                     {r.referralCode}
                   </td>
-                  <td className="px-5 py-3 text-right tabular-nums text-white/75">
+                  <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
                     {r.counts.applied}
                   </td>
-                  <td className="px-5 py-3 text-right tabular-nums text-emerald-300">
+                  <td className="px-5 py-3 text-right tabular-nums text-emerald-700 dark:text-emerald-300">
                     {r.counts.accepted || (
-                      <span className="text-white/25">0</span>
+                      <span className="text-ink-faint">0</span>
                     )}
                   </td>
-                  <td className="px-5 py-3 text-right tabular-nums text-spark">
+                  <td className="px-5 py-3 text-right tabular-nums text-spark-ink">
                     {r.counts.paidOrEnrolled || (
-                      <span className="text-white/25">0</span>
+                      <span className="text-ink-faint">0</span>
                     )}
                   </td>
                 </tr>
@@ -153,14 +153,14 @@ function Tile({
   tone?: "default" | "spark";
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-4">
-      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
-        <Icon className={`h-3.5 w-3.5 ${tone === "spark" ? "text-spark" : ""}`} />
+    <div className="rounded-xl border border-line bg-wash px-4 py-4">
+      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
+        <Icon className={`h-3.5 w-3.5 ${tone === "spark" ? "text-spark-ink" : ""}`} />
         {label}
       </div>
       <div
         className={`mt-2 text-2xl font-semibold tracking-tight ${
-          tone === "spark" ? "text-spark" : "text-white"
+          tone === "spark" ? "text-spark-ink" : "text-ink"
         }`}
       >
         {value}

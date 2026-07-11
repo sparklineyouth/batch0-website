@@ -176,14 +176,14 @@ export function MobileNav({
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/10 bg-black/80 px-4 backdrop-blur md:hidden">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-paper/80 px-4 backdrop-blur md:hidden">
         <Link href="/" className="flex items-center gap-2">
           <Image src="/logo.svg" alt="" width={22} height={22} />
-          <span className="font-semibold tracking-tight text-white">
-            Spark<span className="text-spark">Line</span> Youth
+          <span className="font-display font-semibold tracking-tight text-ink">
+            Spark<span className="text-spark-ink">Line</span> Youth
           </span>
           {label && (
-            <span className="ml-2 rounded-full bg-spark/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-spark">
+            <span className="ml-2 rounded-full bg-spark/15 px-2 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wider text-spark-ink">
               {label}
             </span>
           )}
@@ -197,7 +197,7 @@ export function MobileNav({
             aria-label="Open menu"
             aria-expanded={open}
             aria-controls="mobile-nav-drawer"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/70 hover:bg-white/5 hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-line text-ink-soft hover:bg-wash hover:text-ink"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -211,7 +211,7 @@ export function MobileNav({
             aria-label="Close menu"
             tabIndex={-1}
             onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
           />
           <aside
             ref={drawerRef}
@@ -219,13 +219,13 @@ export function MobileNav({
             role="dialog"
             aria-modal="true"
             aria-label="Site navigation"
-            className="absolute right-0 top-0 flex h-full w-72 flex-col border-l border-white/10 bg-zinc-950 p-4"
+            className="absolute right-0 top-0 flex h-full w-72 flex-col border-l border-line bg-paper p-4"
           >
             <div className="mb-4 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-2">
                 <Image src="/logo.svg" alt="" width={22} height={22} />
-                <span className="font-semibold tracking-tight text-white">
-                  Spark<span className="text-spark">Line</span> Youth
+                <span className="font-display font-semibold tracking-tight text-ink">
+                  Spark<span className="text-spark-ink">Line</span> Youth
                 </span>
               </Link>
               <button
@@ -233,27 +233,27 @@ export function MobileNav({
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close menu"
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-white/60 hover:bg-white/5 hover:text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-ink-soft hover:bg-wash hover:text-ink"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="relative mb-3">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
               <input
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filter…"
                 aria-label="Filter navigation"
-                className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-8 pr-3 text-sm text-white placeholder:text-white/30 focus:border-spark/40 focus:outline-none focus:ring-1 focus:ring-spark/30"
+                className="w-full rounded-md border border-line bg-wash py-2 pl-8 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-spark focus:outline-none focus:ring-1 focus:ring-spark/30"
               />
             </div>
 
             <nav className="flex-1 space-y-3 overflow-y-auto pr-1">
               {visibleGroups.length === 0 && (
-                <p className="px-2 py-4 text-xs text-white/40">
+                <p className="px-2 py-4 text-xs text-ink-faint">
                   No matches for "{query}".
                 </p>
               )}
@@ -267,7 +267,7 @@ export function MobileNav({
                         type="button"
                         onClick={() => toggleGroup(g.label)}
                         aria-expanded={isOpen}
-                        className="flex w-full items-center justify-between px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40 hover:text-white/70"
+                        className="flex w-full items-center justify-between px-3 pb-1 text-[10px] font-mono font-semibold uppercase tracking-[0.18em] text-ink-faint hover:text-ink"
                       >
                         <span>{g.label}</span>
                         <ChevronDown
@@ -289,10 +289,10 @@ export function MobileNav({
                               key={it.href}
                               href={it.href}
                               aria-current={active ? "page" : undefined}
-                              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
+                              className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition ${
                                 active
-                                  ? "bg-spark/10 text-spark"
-                                  : "text-white/70 hover:bg-white/5 hover:text-white"
+                                  ? "bg-spark/10 text-spark-ink font-medium"
+                                  : "text-ink-soft hover:bg-wash hover:text-ink"
                               }`}
                             >
                               <Icon className="h-4 w-4 shrink-0" />
@@ -306,14 +306,14 @@ export function MobileNav({
                 );
               })}
               {extras.length > 0 && (
-                <div className="mt-2 space-y-0.5 border-t border-white/10 pt-3">
+                <div className="mt-2 space-y-0.5 border-t border-line pt-3">
                   {extras.map((it) => {
                     const Icon = it.icon;
                     return (
                       <Link
                         key={it.href}
                         href={it.href}
-                        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-spark/80 hover:bg-spark/10 hover:text-spark"
+                        className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-spark-ink hover:bg-spark/10"
                       >
                         {Icon ? <Icon className="h-4 w-4" /> : null}
                         {it.label}
@@ -326,7 +326,7 @@ export function MobileNav({
             <form action="/auth/signout" method="post" className="mt-4">
               <button
                 type="submit"
-                className="flex w-full items-center justify-center rounded-lg border border-white/10 px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white"
+                className="flex w-full items-center justify-center rounded-md border border-line px-3 py-2 text-sm text-ink-soft hover:bg-wash hover:text-ink"
               >
                 Sign out
               </button>

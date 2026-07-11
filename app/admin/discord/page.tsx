@@ -138,8 +138,8 @@ export default async function AdminDiscordPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-3xl font-bold tracking-tight">Discord</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Discord</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Wire Sparkline Youth into your Discord server. Account linking, role sync,
         cross-posts, and slash commands run off of this configuration.
       </p>
@@ -159,7 +159,7 @@ export default async function AdminDiscordPage() {
       </div>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Connection status
         </h2>
         <ul className="mt-4 space-y-2 text-sm">
@@ -212,7 +212,7 @@ export default async function AdminDiscordPage() {
       </Card>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           At a glance
         </h2>
         <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -246,10 +246,10 @@ export default async function AdminDiscordPage() {
       </Card>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Operations
         </h2>
-        <p className="mt-1 text-xs text-white/50">
+        <p className="mt-1 text-xs text-ink-faint">
           Register commands after editing the spec, then re-sync roles or refresh
           stored usernames as needed.
         </p>
@@ -263,10 +263,10 @@ export default async function AdminDiscordPage() {
       </Card>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Bootstrap server from scratch
         </h2>
-        <p className="mt-1 text-xs text-white/50">
+        <p className="mt-1 text-xs text-ink-faint">
           First-time setup: wipe every existing channel + role and rebuild the
           canonical Sparkline Youth layout in one click. New IDs are saved to
           the config above automatically.
@@ -277,17 +277,17 @@ export default async function AdminDiscordPage() {
       </Card>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Slash commands
         </h2>
-        <p className="mt-2 text-sm text-white/60">
+        <p className="mt-2 text-sm text-ink-soft">
           Set the interactions endpoint URL in your Discord application to:
         </p>
-        <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-spark">
+        <pre className="mt-2 overflow-x-auto rounded-lg bg-wash p-3 text-xs text-spark-ink">
           {env.siteUrl}/api/discord/interactions
         </pre>
-        <p className="mt-3 text-sm text-white/60">Built-in commands:</p>
-        <ul className="mt-2 grid gap-1.5 text-sm text-white/75 sm:grid-cols-2">
+        <p className="mt-3 text-sm text-ink-soft">Built-in commands:</p>
+        <ul className="mt-2 grid gap-1.5 text-sm text-ink-soft sm:grid-cols-2">
           {SLASH_COMMANDS.map((c) => {
             // type 3 = MESSAGE context menu — appears under "right-click →
             // Apps", not as a slash command, so render the difference.
@@ -295,12 +295,12 @@ export default async function AdminDiscordPage() {
             return (
               <li
                 key={c.name}
-                className="rounded-lg border border-white/10 bg-black/30 px-3 py-2"
+                className="rounded-lg border border-line bg-wash px-3 py-2"
               >
-                <code className="text-spark">
+                <code className="text-spark-ink">
                   {isContextMenu ? "≡ " : "/"}{c.name}
                 </code>
-                <p className="mt-0.5 text-xs text-white/55">
+                <p className="mt-0.5 text-xs text-ink-faint">
                   {(c as any).description ??
                     (isContextMenu
                       ? "Right-click on a message → Apps."
@@ -310,7 +310,7 @@ export default async function AdminDiscordPage() {
             );
           })}
         </ul>
-        <p className="mt-3 text-xs text-white/45">
+        <p className="mt-3 text-xs text-ink-faint">
           Editing the list lives in <code>SLASH_COMMANDS</code> in{" "}
           <code>lib/discord.ts</code>. Click <strong>Register slash commands</strong>{" "}
           above after changes — Discord propagates global commands within an hour
@@ -320,16 +320,16 @@ export default async function AdminDiscordPage() {
 
       {recentActivity.length > 0 && (
         <Card className="mt-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Recent Discord activity
           </h2>
-          <ul className="mt-3 divide-y divide-white/5 text-sm">
+          <ul className="mt-3 divide-y divide-line text-sm">
             {recentActivity.map((a) => (
               <li key={a.id} className="flex items-baseline justify-between gap-4 py-2">
-                <span className="font-mono text-xs text-spark">
+                <span className="font-mono text-xs text-spark-ink">
                   {a.action.replace(/^discord\./, "")}
                 </span>
-                <span className="truncate text-xs text-white/45">
+                <span className="truncate text-xs text-ink-faint">
                   {a.actor_email ?? "system"} · <LocalTime value={a.created_at} mode="datetime" />
                 </span>
               </li>
@@ -343,9 +343,9 @@ export default async function AdminDiscordPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-      <p className="text-[10px] uppercase tracking-wider text-white/45">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+    <div className="rounded-xl border border-line bg-wash p-3">
+      <p className="text-[10px] uppercase tracking-wider text-ink-faint">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -363,12 +363,12 @@ function Status({
     <li className="flex items-start gap-3">
       <span
         className={`mt-1 inline-block h-2 w-2 rounded-full ${
-          ok ? "bg-emerald-400" : "bg-amber-400"
+          ok ? "bg-emerald-500" : "bg-amber-500"
         }`}
       />
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-white">{label}</p>
-        <p className="text-xs text-white/50">{hint}</p>
+        <p className="font-medium text-ink">{label}</p>
+        <p className="text-xs text-ink-faint">{hint}</p>
       </div>
     </li>
   );

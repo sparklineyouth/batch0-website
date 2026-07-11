@@ -19,18 +19,18 @@ export function LockedFeature({
   const { lede, cta } = copyFor(applicationStatus);
   return (
     <div className="mx-auto max-w-2xl">
-      <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+      <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
         {title} · locked
       </p>
-      <h1 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.02em] text-white">
+      <h1 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.02em] text-ink">
         {title} unlocks at enrollment.
       </h1>
-      <p className="mt-4 text-[15px] leading-relaxed text-white/75">{lede}</p>
+      <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">{lede}</p>
       <div className="mt-7 flex items-center gap-3">
         {cta && (
           <Link
             href={cta.href}
-            className="press inline-flex items-center gap-2 rounded-md bg-spark px-4 py-2.5 text-sm font-semibold text-black hover:bg-spark-200"
+            className="press inline-flex items-center gap-2 rounded-md bg-spark px-4 py-2.5 text-sm font-semibold text-on-spark hover:bg-spark-200"
           >
             {cta.label}
             <ArrowRight className="h-4 w-4" />
@@ -38,13 +38,13 @@ export function LockedFeature({
         )}
         <Link
           href="/dashboard"
-          className="press inline-flex items-center gap-2 rounded-md border border-white/15 px-4 py-2.5 text-sm font-medium text-white/85 hover:border-white/30 hover:bg-white/[0.04]"
+          className="press inline-flex items-center gap-2 rounded-md border border-line px-4 py-2.5 text-sm font-medium text-ink-soft hover:border-ink/30 hover:bg-wash"
         >
           Back to dashboard
         </Link>
       </div>
-      <div className="mt-10 flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4 text-sm text-white/70">
-        <Lock className="mt-0.5 h-4 w-4 shrink-0 text-white/40" />
+      <div className="mt-10 flex items-start gap-3 rounded-xl border border-line bg-wash px-5 py-4 text-sm text-ink-soft">
+        <Lock className="mt-0.5 h-4 w-4 shrink-0 text-ink-faint" />
         <p>
           Cohort-only features (Team, Check-in, Course, Office hours, Events,
           Resources, Files) unlock once you're enrolled. You'll see them in

@@ -92,11 +92,11 @@ export function MembersManager({
           <Plus className="h-3.5 w-3.5" /> Add
         </Button>
       </div>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>}
 
-      <ul className="mt-6 divide-y divide-white/5">
+      <ul className="mt-6 divide-y divide-line">
         {members.length === 0 && (
-          <li className="py-4 text-sm text-white/50">No members yet.</li>
+          <li className="py-4 text-sm text-ink-faint">No members yet.</li>
         )}
         {members.map((m) => {
           const u = pick(m.user);
@@ -106,18 +106,18 @@ export function MembersManager({
               className="flex items-center justify-between py-2.5"
             >
               <div>
-                <div className="text-sm text-white">
+                <div className="text-sm text-ink">
                   {u?.full_name || "—"}
                 </div>
-                <div className="text-xs text-white/40">{u?.email}</div>
+                <div className="text-xs text-ink-faint">{u?.email}</div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/60">
+                <span className="rounded-full bg-wash px-2 py-0.5 text-[10px] uppercase tracking-wider text-ink-soft">
                   {m.role}
                 </span>
                 <button
                   onClick={() => remove(m.id)}
-                  className="text-white/40 hover:text-red-400"
+                  className="text-ink-faint hover:text-red-700 dark:hover:text-red-300"
                   aria-label="Remove"
                 >
                   <Trash2 className="h-4 w-4" />

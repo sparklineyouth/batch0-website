@@ -16,13 +16,13 @@ export const Button = React.forwardRef<HTMLButtonElement, Props>(function Button
   // on a single line when the button sits inside a narrow flex column —
   // without it the hyphen / ampersand becomes a soft wrap point.
   const base =
-    "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium leading-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark/60";
+    "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-semibold leading-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
   const variants = {
-    primary: "bg-spark text-black hover:bg-spark-200",
+    primary: "bg-spark text-on-spark shadow-cta hover:bg-spark-200",
     secondary:
-      "bg-white/[0.04] text-white border border-white/15 hover:border-white/30 hover:bg-white/[0.07]",
-    ghost: "text-white/70 hover:text-white hover:bg-white/5",
-    danger: "bg-red-500/90 text-white hover:bg-red-500",
+      "bg-paper text-ink border border-line hover:border-ink/30 hover:bg-wash",
+    ghost: "text-ink-soft hover:text-ink hover:bg-wash",
+    danger: "bg-red-500 text-white hover:bg-red-600",
   } as const;
   const sizes = {
     sm: "h-8 px-3 text-xs",

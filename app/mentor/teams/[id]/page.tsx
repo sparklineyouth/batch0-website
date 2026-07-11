@@ -60,52 +60,52 @@ export default async function MentorTeamDetailPage({
     <div className="mx-auto max-w-4xl">
       <Link
         href="/mentor/teams"
-        className="inline-flex items-center gap-1 text-xs text-white/50 hover:text-white"
+        className="inline-flex items-center gap-1 text-xs text-ink-faint hover:text-ink"
       >
         <ArrowLeft className="h-3 w-3" /> Teams
       </Link>
       <header className="mt-3 flex items-start gap-4">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-zinc-900">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-line bg-paper">
           {team.logo_url && team.logo_status === "approved" ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={team.logo_url} alt="" className="h-full w-full object-cover" />
           ) : (
-            <span className="text-2xl font-bold text-spark">
+            <span className="text-2xl font-bold text-spark-ink">
               {team.name.slice(0, 1).toUpperCase()}
             </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+          <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-ink md:text-3xl">
             {team.name}
           </h1>
           {team.tagline && (
-            <p className="text-sm text-white/55">{team.tagline}</p>
+            <p className="text-sm text-ink-soft">{team.tagline}</p>
           )}
-          <p className="mt-1 text-xs text-white/40">{cohort?.name ?? ""}</p>
+          <p className="mt-1 text-xs text-ink-faint">{cohort?.name ?? ""}</p>
         </div>
       </header>
 
       {team.description && (
         <Card className="mt-6">
-          <h2 className="text-base font-semibold">About</h2>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-white/75">
+          <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">About</h2>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">
             {team.description}
           </p>
         </Card>
       )}
 
       <Card className="mt-6">
-        <h2 className="text-base font-semibold">Members</h2>
-        <ul className="mt-3 divide-y divide-white/5">
+        <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Members</h2>
+        <ul className="mt-3 divide-y divide-line">
           {(members ?? []).map((m: any) => {
             const p = Array.isArray(m.profile) ? m.profile[0] : m.profile;
             return (
               <li key={m.user_id} className="flex justify-between py-2">
-                <span className="text-sm text-white">
+                <span className="text-sm text-ink">
                   {p?.full_name ?? p?.email}
                 </span>
-                <span className="text-xs text-white/40">{m.role}</span>
+                <span className="text-xs text-ink-faint">{m.role}</span>
               </li>
             );
           })}
@@ -114,14 +114,14 @@ export default async function MentorTeamDetailPage({
 
       {(pitch as any)?.submitted_at && (
         <Card className="mt-6">
-          <h2 className="text-base font-semibold">Demo Day submission</h2>
-          <div className="mt-2 text-xs text-emerald-300">
+          <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Demo Day submission</h2>
+          <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
             Submitted on <LocalTime value={(pitch as any).submitted_at} />
           </div>
           {(pitch as any).video_url && (
             <a
               href={(pitch as any).video_url}
-              className="mt-3 inline-block text-sm text-spark hover:underline"
+              className="mt-3 inline-block text-sm text-spark-ink hover:underline"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -132,20 +132,20 @@ export default async function MentorTeamDetailPage({
       )}
 
       <Card className="mt-6">
-        <h2 className="text-base font-semibold">
+        <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
           Drive ({(files ?? []).length})
         </h2>
-        <ul className="mt-3 divide-y divide-white/5">
+        <ul className="mt-3 divide-y divide-line">
           {(files ?? []).map((f: any) => (
             <li key={f.id} className="flex justify-between py-2 text-sm">
-              <span className="truncate text-white">{f.name}</span>
-              <span className="text-xs text-white/40">
+              <span className="truncate text-ink">{f.name}</span>
+              <span className="text-xs text-ink-faint tabular-nums">
                 <LocalTime value={f.created_at} mode="date" />
               </span>
             </li>
           ))}
           {(files ?? []).length === 0 && (
-            <li className="py-3 text-sm text-white/40">Empty.</li>
+            <li className="py-3 text-sm text-ink-faint">Empty.</li>
           )}
         </ul>
       </Card>

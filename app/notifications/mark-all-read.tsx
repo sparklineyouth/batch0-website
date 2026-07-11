@@ -19,7 +19,7 @@ export function MarkAllRead() {
           router.refresh();
         })
       }
-      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-zinc-950/40 px-3 py-1.5 text-xs font-medium text-white/80 transition hover:border-white/20 hover:text-white disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-md border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink disabled:opacity-50"
     >
       <CheckCheck className="h-3.5 w-3.5" />
       {pending ? "Marking…" : "Mark all read"}

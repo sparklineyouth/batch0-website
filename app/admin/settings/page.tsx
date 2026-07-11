@@ -75,16 +75,16 @@ export default async function AdminSettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-3xl font-bold tracking-tight">Site settings</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Site settings</h1>
+      <p className="mt-1 text-sm text-ink-faint">
         Public-facing site config. Changes apply immediately.
       </p>
 
       <Card className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Appearance
         </h2>
-        <p className="mb-4 text-sm text-white/60">
+        <p className="mb-4 text-sm text-ink-soft">
           Switch the admin shell between light and dark mode. Applies across
           your account on every device you sign in to.
         </p>

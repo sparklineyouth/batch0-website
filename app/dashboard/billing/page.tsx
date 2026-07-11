@@ -48,14 +48,14 @@ export default async function BillingPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Billing</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <p className="mt-1 text-sm text-ink-soft">
             Your payment history and any fees or fines on your account.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href="/dashboard/billing/receipts"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-1.5 text-xs font-medium text-ink hover:border-ink/30 hover:bg-wash"
           >
             <Receipt className="h-3.5 w-3.5" />
             Receipts
@@ -65,37 +65,37 @@ export default async function BillingPage() {
       </div>
 
       {pending.length > 0 && (
-        <Card className="mt-6 border-amber-300/30 bg-amber-300/5">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-amber-200">
+        <Card className="mt-6 border-amber-500/30 bg-amber-500/10">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
             Outstanding charges
           </h2>
           <ul className="space-y-3">
             {pending.map((c: any) => (
               <li
                 key={c.id}
-                className="flex flex-wrap items-start justify-between gap-3 border-t border-white/5 pt-3 first:border-t-0 first:pt-0"
+                className="flex flex-wrap items-start justify-between gap-3 border-t border-line pt-3 first:border-t-0 first:pt-0"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                         c.kind === "fine"
-                          ? "bg-red-400/10 text-red-300"
-                          : "bg-amber-300/10 text-amber-200"
+                          ? "bg-red-500/10 text-red-700 dark:text-red-300"
+                          : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
                       }`}
                     >
                       {c.kind}
                     </span>
-                    <span className="text-sm font-medium text-white">
+                    <span className="text-sm font-medium text-ink">
                       {c.description}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-xs text-white/45">
+                  <p className="mt-0.5 text-xs text-ink-faint">
                     Issued <LocalTime value={c.created_at} />
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-base font-bold text-spark">
+                  <span className="text-base font-bold text-spark-ink">
                     {fmtMoney(c.amount_cents)}
                   </span>
                   <ChargePayButton chargeId={c.id} />
@@ -107,15 +107,15 @@ export default async function BillingPage() {
       )}
 
       <Card className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Payment history
         </h2>
         {(payments?.length ?? 0) === 0 && history.length === 0 ? (
-          <p className="text-sm text-white/55">No payments yet.</p>
+          <p className="text-sm text-ink-soft">No payments yet.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
                 <th className="pb-3">Date</th>
                 <th className="pb-3">Description</th>
                 <th className="pb-3">Amount</th>
@@ -124,12 +124,12 @@ export default async function BillingPage() {
             </thead>
             <tbody>
               {(payments ?? []).map((p) => (
-                <tr key={p.id} className="border-b border-white/5">
-                  <td className="py-3 text-white/80">
+                <tr key={p.id} className="border-b border-line">
+                  <td className="py-3 text-ink-soft">
                     <LocalTime value={p.created_at} />
                   </td>
-                  <td className="py-3 text-white/70">Cohort enrollment</td>
-                  <td className="py-3 text-white/80">
+                  <td className="py-3 text-ink-soft">Cohort enrollment</td>
+                  <td className="py-3 text-ink-soft">
                     {fmtMoney(p.amount_cents, p.currency)}
                   </td>
                   <td className="py-3">
@@ -138,14 +138,14 @@ export default async function BillingPage() {
                 </tr>
               ))}
               {history.map((c: any) => (
-                <tr key={c.id} className="border-b border-white/5 last:border-0">
-                  <td className="py-3 text-white/80">
+                <tr key={c.id} className="border-b border-line last:border-0">
+                  <td className="py-3 text-ink-soft">
                     <LocalTime value={c.created_at} />
                   </td>
-                  <td className="py-3 text-white/70">
+                  <td className="py-3 text-ink-soft">
                     {c.kind === "fine" ? "Fine" : "Fee"}: {c.description}
                   </td>
-                  <td className="py-3 text-white/80">
+                  <td className="py-3 text-ink-soft">
                     {fmtMoney(c.amount_cents)}
                   </td>
                   <td className="py-3">

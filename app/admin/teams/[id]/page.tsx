@@ -45,13 +45,13 @@ export default async function AdminTeamDetail({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/admin/teams" className="text-sm text-white/55 hover:text-white">
+      <Link href="/admin/teams" className="text-sm text-ink-faint hover:text-ink">
         ← All teams
       </Link>
-      <h1 className="mt-3 text-3xl font-bold tracking-tight">{team.name}</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">{team.name}</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         {team.is_public ? "Public" : "Private"} · slug{" "}
-        <code className="rounded bg-white/5 px-1.5">{team.slug}</code>
+        <code className="rounded bg-wash px-1.5 font-mono text-ink-soft">{team.slug}</code>
       </p>
 
       <Card className="mt-6">
@@ -80,7 +80,7 @@ export default async function AdminTeamDetail({
       </Card>
 
       <Card className="mt-6">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Members
         </h2>
         <MembersManager
@@ -113,15 +113,15 @@ export default async function AdminTeamDetail({
       </Card>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Demo Day recap
         </h2>
-        <p className="mt-1 text-xs text-white/50">
+        <p className="mt-1 text-xs text-ink-faint">
           AI-written narrative pulled from judge scores + comments + audience
           reactions. Emails every member when sent.
         </p>
         {(team as any).demo_day_recap && (
-          <p className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/75">
+          <p className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-wash p-3 text-xs text-ink-soft">
             {(team as any).demo_day_recap}
           </p>
         )}

@@ -128,6 +128,11 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
     label: "Applicants & people",
     items: [
       { href: "/admin/applications", label: "Applications", icon: Inbox },
+      {
+        href: "/admin/application-questions",
+        label: "Application form",
+        icon: FileText,
+      },
       { href: "/admin/students", label: "People", icon: Users },
       { href: "/admin/mentors", label: "Mentors", icon: Handshake },
     ],

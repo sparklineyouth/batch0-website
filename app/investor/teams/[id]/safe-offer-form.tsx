@@ -63,8 +63,8 @@ export function SafeOfferForm({ teamId }: { teamId: string }) {
 
   return (
     <Card>
-      <h3 className="text-base font-semibold">Send a SAFE</h3>
-      <p className="text-xs text-white/50">
+      <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Send a SAFE</h3>
+      <p className="text-xs text-ink-faint">
         Drafts a SAFE memo, signs as you, and emails the team for counter-
         signature. Sparkline Youth logs every signature in an audit trail.
       </p>
@@ -133,7 +133,7 @@ export function SafeOfferForm({ teamId }: { teamId: string }) {
             onChange={(e) => setSig(e.target.value)}
             placeholder="Type your full legal name"
           />
-          <label className="mt-3 flex items-start gap-2 text-xs text-white/70">
+          <label className="mt-3 flex items-start gap-2 text-xs text-ink-soft">
             <input
               type="checkbox"
               checked={confirm}
@@ -150,7 +150,7 @@ export function SafeOfferForm({ teamId }: { teamId: string }) {
           <FieldError>{error}</FieldError>
         </div>
       )}
-      {okMsg && <p className="mt-3 text-xs text-emerald-300">{okMsg}</p>}
+      {okMsg && <p className="mt-3 text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</p>}
       <div className="mt-4 flex justify-end">
         <Button onClick={submit} disabled={pending || !sig.trim() || !amount}>
           {pending ? "Sending…" : "Send SAFE offer"}

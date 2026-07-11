@@ -43,13 +43,13 @@ export default async function MentorStudentsPage({
 
   return (
     <div className="mx-auto max-w-6xl">
-      <h1 className="text-3xl font-bold tracking-tight">Students</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Students</h1>
+      <p className="mt-1 text-sm text-ink-faint">
         Students enrolled in your cohorts.
       </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wider text-white/40">
+        <span className="font-mono text-xs uppercase tracking-wider text-ink-faint">
           Cohort
         </span>
         <Filter href="/mentor/students" label="All" active={cohortFilter === "all"} />
@@ -65,11 +65,11 @@ export default async function MentorStudentsPage({
 
       <Card className="mt-6 !p-0 overflow-hidden">
         {filtered.length === 0 ? (
-          <p className="p-6 text-sm text-white/50">No enrolled students.</p>
+          <p className="p-6 text-sm text-ink-faint">No enrolled students.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-b border-line text-left font-mono text-xs uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-3">Name</th>
                 <th className="px-5 py-3">Email</th>
                 <th className="px-5 py-3">Cohort</th>
@@ -81,26 +81,26 @@ export default async function MentorStudentsPage({
               {filtered.map((e: any) => (
                 <tr
                   key={e.id}
-                  className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
+                  className="border-b border-line last:border-0 hover:bg-wash"
                 >
-                  <td className="px-5 py-3 text-white">
+                  <td className="px-5 py-3 text-ink">
                     <Link
                       href={`/mentor/students/${e.profile?.id}`}
-                      className="hover:text-spark"
+                      className="hover:text-spark-ink"
                     >
                       {e.profile?.full_name || "—"}
                     </Link>
                   </td>
-                  <td className="px-5 py-3 text-white/70">
+                  <td className="px-5 py-3 text-ink-soft">
                     {e.profile?.email}
                   </td>
-                  <td className="px-5 py-3 text-white/70">
+                  <td className="px-5 py-3 text-ink-soft">
                     {e.cohort?.name ?? "—"}
                   </td>
-                  <td className="px-5 py-3 text-white/50">
+                  <td className="px-5 py-3 text-ink-faint tabular-nums">
                     <LocalTime value={e.enrolled_at} mode="date" />
                   </td>
-                  <td className="px-5 py-3 text-white/80">
+                  <td className="px-5 py-3 text-ink-soft tabular-nums">
                     {completedByUser.get(e.profile?.id) ?? 0}
                   </td>
                 </tr>
@@ -125,10 +125,10 @@ function Filter({
   return (
     <Link
       href={href}
-      className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
+      className={`rounded-full border px-3 py-1 font-mono text-xs uppercase tracking-wider transition ${
         active
-          ? "border-spark bg-spark/10 text-spark"
-          : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+          ? "border-spark bg-spark/10 text-spark-ink"
+          : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
       }`}
     >
       {label}

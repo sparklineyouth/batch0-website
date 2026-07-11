@@ -149,29 +149,29 @@ export function ResourceForm({
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+      <div className="rounded-xl border border-line bg-wash p-4">
         <Label>File</Label>
-        <p className="text-xs text-white/45">
+        <p className="text-xs text-ink-faint">
           Upload a file (PDF, deck, image, etc.) OR paste an external link
           below. One or the other.
         </p>
         {v.storage_path ? (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/40 p-2">
-            <div className="flex min-w-0 items-center gap-2 text-sm text-white/80">
-              <FileText className="h-4 w-4 shrink-0 text-spark" />
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-line bg-paper p-2">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-ink-soft">
+              <FileText className="h-4 w-4 shrink-0 text-spark-ink" />
               <span className="truncate">{v.storage_path}</span>
             </div>
             <button
               type="button"
               onClick={() => set("storage_path", null)}
-              className="rounded-md p-1 text-white/40 hover:text-white"
+              className="rounded-md p-1 text-ink-faint hover:text-ink"
               aria-label="Remove file"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
         ) : (
-          <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 px-4 py-6 text-sm text-white/55 hover:border-white/30 hover:text-white">
+          <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-line px-4 py-6 text-sm text-ink-soft hover:border-ink/30 hover:text-ink">
             <Upload className="h-4 w-4" />
             {uploading ? "Uploading…" : "Pick a file"}
             <input
@@ -232,7 +232,7 @@ export function ResourceForm({
         title="Delete this resource?"
         description={
           <p>
-            <span className="text-white">{v.title}</span> will be removed for
+            <span className="text-ink">{v.title}</span> will be removed for
             everyone. The uploaded file (if any) is also deleted. This cannot
             be undone.
           </p>

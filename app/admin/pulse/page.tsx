@@ -229,15 +229,15 @@ export default async function PulsePage() {
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="flex items-end justify-between gap-3 border-b border-white/10 pb-6">
+      <div className="flex items-end justify-between gap-3 border-b border-line pb-6">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+          <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-spark-ink">
             Pulse
           </p>
-          <h1 className="mt-3 text-4xl md:text-5xl font-bold tracking-[-0.02em]">
+          <h1 className="mt-3 font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-ink">
             How the program is moving.
           </h1>
-          <p className="mt-3 max-w-xl text-[15px] text-white/70 leading-relaxed">
+          <p className="mt-3 max-w-xl text-[15px] text-ink-soft leading-relaxed">
             Weekly snapshot: applications, revenue, check-in health, AI spend.
             Everything you'd want to glance at on a Monday morning.
           </p>
@@ -323,16 +323,16 @@ export default async function PulsePage() {
       {/* Trend cards */}
       <section className="mt-8 grid gap-6 md:grid-cols-2">
         <Card>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Applications · 8 weeks
           </h2>
-          <p className="mt-1 text-xs text-white/40">
+          <p className="mt-1 text-xs text-ink-faint">
             New applications received per ISO week.
           </p>
           <div className="mt-6 grid grid-cols-8 items-end gap-2 h-32">
             {appsByWeek.map((w) => (
               <div key={w.key} className="flex flex-col items-center gap-1">
-                <div className="text-[10px] tabular-nums text-white/55">
+                <div className="text-[10px] tabular-nums text-ink-soft">
                   {w.count || ""}
                 </div>
                 <div
@@ -341,7 +341,7 @@ export default async function PulsePage() {
                     height: `${Math.max(2, Math.round((w.count / maxAppsWk) * 100))}%`,
                   }}
                 />
-                <div className="text-[9px] tabular-nums text-white/40">
+                <div className="text-[9px] tabular-nums text-ink-faint">
                   {w.label}
                 </div>
               </div>
@@ -350,16 +350,16 @@ export default async function PulsePage() {
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Revenue · 8 weeks
           </h2>
-          <p className="mt-1 text-xs text-white/40">
+          <p className="mt-1 text-xs text-ink-faint">
             Succeeded payments only. Excludes fees & fines.
           </p>
           <div className="mt-6 grid grid-cols-8 items-end gap-2 h-32">
             {revByWeek.map((w) => (
               <div key={w.key} className="flex flex-col items-center gap-1">
-                <div className="text-[10px] tabular-nums text-white/55">
+                <div className="text-[10px] tabular-nums text-ink-soft">
                   {w.cents > 0 ? fmtMoney(w.cents) : ""}
                 </div>
                 <div
@@ -368,7 +368,7 @@ export default async function PulsePage() {
                     height: `${Math.max(2, Math.round((w.cents / maxRevWk) * 100))}%`,
                   }}
                 />
-                <div className="text-[9px] tabular-nums text-white/40">
+                <div className="text-[9px] tabular-nums text-ink-faint">
                   {w.label}
                 </div>
               </div>
@@ -379,12 +379,12 @@ export default async function PulsePage() {
 
       {/* Cohorts row */}
       <section className="mt-8">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Cohorts in flight
         </h2>
-        <div className="mt-3 divide-y divide-white/10 rounded-2xl border border-white/10 bg-zinc-900/40">
+        <div className="mt-3 divide-y divide-line rounded-2xl border border-line bg-wash">
           {(activeCohorts?.length ?? 0) === 0 ? (
-            <p className="p-6 text-sm text-white/50">
+            <p className="p-6 text-sm text-ink-faint">
               No upcoming or active cohorts.
             </p>
           ) : (
@@ -397,36 +397,36 @@ export default async function PulsePage() {
                 <Link
                   key={c.id}
                   href={`/admin/cohorts`}
-                  className="group flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02]"
+                  className="group flex items-center gap-4 px-5 py-4 hover:bg-wash"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-base font-semibold text-white group-hover:text-spark">
+                      <span className="text-base font-semibold text-ink group-hover:text-spark-ink">
                         {c.name}
                       </span>
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
                           c.status === "active"
-                            ? "bg-emerald-400/15 text-emerald-300"
-                            : "bg-blue-400/15 text-blue-300"
+                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                            : "bg-blue-500/15 text-blue-700 dark:text-blue-300"
                         }`}
                       >
                         {c.status}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-white/50">
+                    <p className="mt-1 text-xs text-ink-faint">
                       {c.starts_on} → {c.ends_on ?? "tbd"}
                     </p>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm tabular-nums text-white/85">
+                    <div className="text-sm tabular-nums text-ink-soft">
                       {enrolled} / {c.capacity ?? "?"}
                     </div>
-                    <div className="text-[11px] text-white/45">
+                    <div className="text-[11px] text-ink-faint">
                       {c.capacity ? `${capPct}% full` : ""}
                     </div>
                   </div>
-                  <ArrowRight className="h-4 w-4 text-white/30 group-hover:text-white/70" />
+                  <ArrowRight className="h-4 w-4 text-ink-faint group-hover:text-ink" />
                 </Link>
               );
             })
@@ -472,19 +472,19 @@ function Delta({
     trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
   const trendColor =
     trend === "up"
-      ? "text-emerald-300"
+      ? "text-emerald-700 dark:text-emerald-300"
       : trend === "down"
-        ? "text-red-300"
-        : "text-white/40";
+        ? "text-red-700 dark:text-red-300"
+        : "text-ink-faint";
 
   const body = (
     <>
-      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
       <div className="mt-2 flex items-baseline gap-2">
-        <div className="text-2xl font-semibold tracking-tight text-white">
+        <div className="text-2xl font-semibold tracking-tight text-ink">
           {format(current)}
         </div>
         {prior != null && trend !== "none" && (
@@ -494,12 +494,12 @@ function Delta({
           </span>
         )}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-white/45">{hint}</div>}
+      {hint && <div className="mt-1 text-[11px] text-ink-faint">{hint}</div>}
     </>
   );
 
   const classes =
-    "block rounded-xl border border-white/10 bg-white/[0.02] px-4 py-4 hover:border-white/25";
+    "block rounded-xl border border-line bg-wash px-4 py-4 hover:border-ink/30";
   return href ? (
     <Link href={href} className={classes}>
       {body}
@@ -527,20 +527,20 @@ function InboxRow({
   hint?: string;
 }) {
   const colors = {
-    spark: "text-spark",
-    warn: "text-amber-300",
-    muted: "text-white/45",
-    ok: "text-emerald-300",
-    bad: "text-red-300",
+    spark: "text-spark-ink",
+    warn: "text-amber-700 dark:text-amber-300",
+    muted: "text-ink-faint",
+    ok: "text-emerald-700 dark:text-emerald-300",
+    bad: "text-red-700 dark:text-red-300",
   } as const;
   return (
     <Link
       href={href}
-      className="press group flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4 hover:border-white/25 hover:bg-white/[0.05]"
+      className="press group flex items-center gap-4 rounded-xl border border-line bg-wash px-5 py-4 hover:border-ink/30 hover:bg-wash"
     >
       <Icon className={`h-5 w-5 shrink-0 ${colors[tone]}`} />
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+        <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
           {label}
         </p>
         <p
@@ -549,9 +549,9 @@ function InboxRow({
           {count}
           {suffix}
         </p>
-        {hint && <p className="mt-0.5 text-[11px] text-white/40">{hint}</p>}
+        {hint && <p className="mt-0.5 text-[11px] text-ink-faint">{hint}</p>}
       </div>
-      <ArrowRight className="h-4 w-4 shrink-0 text-white/30 group-hover:text-white/70" />
+      <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint group-hover:text-ink" />
     </Link>
   );
 }

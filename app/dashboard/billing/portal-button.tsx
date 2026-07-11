@@ -25,7 +25,7 @@ export function PortalButton() {
       <Button variant="secondary" size="sm" onClick={open} disabled={loading}>
         {loading ? "Opening…" : "Manage billing"}
       </Button>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );
 }

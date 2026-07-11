@@ -169,10 +169,10 @@ export function TeamForm({
           the section from investor views. Inputs are in WHOLE DOLLARS,
           converted to cents on the way in/out so the DB stays in cents
           (matches the rest of the app). */}
-      <details className="rounded-lg border border-white/10 bg-white/[0.02] p-4 open:bg-white/[0.04]">
-        <summary className="cursor-pointer select-none text-sm font-semibold text-white">
+      <details className="rounded-lg border border-line bg-wash p-4">
+        <summary className="cursor-pointer select-none text-sm font-semibold text-ink">
           Cap-table (optional)
-          <span className="ml-2 text-xs font-normal text-white/45">
+          <span className="ml-2 text-xs font-normal text-ink-faint">
             Fundraising snapshot — shown to investors when populated.
           </span>
         </summary>
@@ -287,10 +287,10 @@ export function TeamForm({
         description={
           <>
             <p>
-              <span className="text-white">{t.name}</span>, all members, and
+              <span className="text-ink">{t.name}</span>, all members, and
               any investor interests will be removed.
             </p>
-            <p className="mt-2 text-amber-300/80">This cannot be undone.</p>
+            <p className="mt-2 text-amber-700 dark:text-amber-300">This cannot be undone.</p>
           </>
         }
         confirmLabel="Delete"

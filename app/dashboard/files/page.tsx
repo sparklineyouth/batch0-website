@@ -30,7 +30,7 @@ export default async function StudentFilesPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Files</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <p className="mt-1 text-sm text-ink-faint">
         Your private cloud space — store anything you're working on. Files
         are private to you (your mentors can also see them when grading).
       </p>

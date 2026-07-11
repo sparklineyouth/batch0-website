@@ -46,8 +46,8 @@ export default async function AdminAnnouncementsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-3xl font-bold tracking-tight">Announcements</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Announcements</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Broadcast to enrolled students. Optionally cross-post to your
         Discord announcements channel.
       </p>
@@ -58,14 +58,14 @@ export default async function AdminAnnouncementsPage() {
         />
       </Card>
 
-      <h2 className="mt-10 text-sm font-semibold uppercase tracking-wider text-white/55">
+      <h2 className="mt-10 text-sm font-semibold uppercase tracking-wider text-ink-soft">
         Past announcements
       </h2>
       {announcementsTableMissing ? (
         <Card className="mt-3">
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-ink-soft">
             Announcements aren't enabled yet — apply migration{" "}
-            <code className="font-mono text-spark">
+            <code className="font-mono text-spark-ink">
               0027_announcements_and_reactions.sql
             </code>
             .
@@ -73,7 +73,7 @@ export default async function AdminAnnouncementsPage() {
         </Card>
       ) : (anns?.length ?? 0) === 0 ? (
         <Card className="mt-3">
-          <p className="text-sm text-white/55">No announcements sent yet.</p>
+          <p className="text-sm text-ink-soft">No announcements sent yet.</p>
         </Card>
       ) : (
         <ul className="mt-3 space-y-3">
@@ -82,24 +82,24 @@ export default async function AdminAnnouncementsPage() {
             return (
               <li
                 key={a.id}
-                className="rounded-xl border border-white/10 bg-zinc-900/40 p-5"
+                className="rounded-xl border border-line bg-wash p-5"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="text-base font-semibold text-white">
+                  <h3 className="text-base font-semibold text-ink">
                     {a.title}
                   </h3>
-                  <span className="shrink-0 text-xs text-white/45">
+                  <span className="shrink-0 text-xs text-ink-faint">
                     <LocalTime value={a.created_at} mode="datetime-short" />
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] uppercase tracking-wider text-white/40">
+                <p className="mt-1 text-[11px] uppercase tracking-wider text-ink-faint">
                   {cohort
                     ? cohort.cohort_number != null
                       ? `Cohort ${cohort.cohort_number} · ${cohort.name}`
                       : cohort.name
                     : "All enrolled cohorts"}
                 </p>
-                <p className="mt-3 whitespace-pre-wrap break-words text-sm text-white/80">
+                <p className="mt-3 whitespace-pre-wrap break-words text-sm text-ink-soft">
                   {a.body}
                 </p>
                 <div className="mt-3 flex justify-end">

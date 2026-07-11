@@ -45,29 +45,29 @@ export default async function AdminChargesPage({
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Fees &amp; fines</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Fees &amp; fines</h1>
+          <p className="mt-1 text-sm text-ink-soft">
             Issue an admin-driven fee (soft prompt) or fine (hard block until
             paid). Both can be paid via Stripe or waived.
           </p>
         </div>
         <a
           href="/api/admin/export/charges"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink-soft hover:border-ink/30 hover:bg-wash"
         >
           Export CSV
         </a>
       </div>
 
       <Card className="mt-6">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Issue a charge
         </h2>
         <ChargeManager profiles={(profiles ?? []) as any} />
       </Card>
 
       <div className="mt-8 flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wider text-white/40">
+        <span className="text-xs uppercase tracking-wider text-ink-faint">
           Status
         </span>
         {STATUSES.map((s) => {
@@ -86,7 +86,7 @@ export default async function AdminChargesPage({
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
                   ? "border-spark bg-spark/10 text-spark"
-                  : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+                  : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
               {s}

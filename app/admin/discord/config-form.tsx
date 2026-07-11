@@ -141,7 +141,7 @@ export function DiscordConfigForm({
       </Section>
 
       {error && <FieldError>{error}</FieldError>}
-      {okMsg && <p className="text-xs text-emerald-300">{okMsg}</p>}
+      {okMsg && <p className="text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</p>}
 
       <div className="flex justify-end">
         <Button onClick={save} disabled={pending}>
@@ -163,10 +163,10 @@ function Section({
 }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
         {title}
       </h3>
-      {hint && <p className="mt-1 text-xs text-white/50">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-ink-faint">{hint}</p>}
       <div className="mt-4 space-y-4">{children}</div>
     </div>
   );
@@ -209,7 +209,7 @@ function Row({
           </Button>
         )}
       </div>
-      {hint && <p className="mt-1 text-xs text-white/45">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-ink-faint">{hint}</p>}
     </div>
   );
 }

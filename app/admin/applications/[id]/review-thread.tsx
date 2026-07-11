@@ -59,16 +59,16 @@ export function ReviewThread({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm font-medium uppercase tracking-wider text-white/50">
+      <div className="flex items-center gap-2 text-sm font-medium uppercase tracking-wider text-ink-faint">
         <MessageSquare className="h-3.5 w-3.5" />
         Reviewer notes ({comments.length})
       </div>
-      <p className="text-xs text-white/40">
+      <p className="text-xs text-ink-faint">
         Internal-only thread for reviewers. Applicant never sees these.
       </p>
 
       {comments.length === 0 ? (
-        <p className="rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white/45">
+        <p className="rounded-lg border border-line bg-wash px-4 py-3 text-sm text-ink-faint">
           No reviewer notes yet.
         </p>
       ) : (
@@ -82,12 +82,12 @@ export function ReviewThread({
             return (
               <li
                 key={c.id}
-                className="rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3"
+                className="rounded-lg border border-line bg-wash px-4 py-3"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <div className="text-xs text-white/55">
-                    <span className="font-medium text-white/80">{author}</span>
-                    <span className="ml-2 text-white/35">
+                  <div className="text-xs text-ink-soft">
+                    <span className="font-medium text-ink">{author}</span>
+                    <span className="ml-2 text-ink-faint font-mono tabular-nums">
                       <LocalTime value={c.created_at} mode="datetime-short" />
                     </span>
                   </div>
@@ -97,13 +97,13 @@ export function ReviewThread({
                       onClick={() => remove(c.id)}
                       disabled={pending}
                       aria-label="Delete comment"
-                      className="text-white/30 hover:text-red-300 disabled:opacity-30"
+                      className="text-ink-faint hover:text-red-700 dark:hover:text-red-300 disabled:opacity-30"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
-                <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-white/85">
+                <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
                   {c.body}
                 </p>
               </li>
@@ -112,7 +112,7 @@ export function ReviewThread({
         </ul>
       )}
 
-      <div className="border-t border-white/10 pt-4">
+      <div className="border-t border-line pt-4">
         <Textarea
           rows={3}
           value={body}

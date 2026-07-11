@@ -130,11 +130,11 @@ export function TeamDriveTab({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold">Team drive</h3>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-ink-faint">
             Shared with all members, mentors, and (during demo day) investors.
           </p>
         </div>
-        <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-spark px-3 text-sm font-semibold text-black hover:bg-spark-200">
+        <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-spark px-3 text-sm font-semibold text-on-spark hover:bg-spark-200">
           {uploading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
@@ -154,29 +154,29 @@ export function TeamDriveTab({
       <FieldError>{err}</FieldError>
 
       {files.length === 0 ? (
-        <p className="py-10 text-center text-sm text-white/40">
+        <p className="py-10 text-center text-sm text-ink-faint">
           Drive is empty. Upload decks, prototypes, or anything your team
           shares.
         </p>
       ) : (
-        <ul className="mt-4 divide-y divide-white/5">
+        <ul className="mt-4 divide-y divide-line">
           {files.map((f) => {
             const Icon = iconFor(f.mime_type);
             return (
               <li key={f.id} className="flex items-center gap-3 py-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-white/60">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-wash text-ink-soft">
                   <Icon className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm text-white">{f.name}</div>
-                  <div className="text-xs text-white/40">
+                  <div className="truncate text-sm text-ink">{f.name}</div>
+                  <div className="text-xs text-ink-faint">
                     {fmtBytes(f.size_bytes)} ·{" "}
                     <LocalTime value={f.created_at} mode="date" />
                   </div>
                 </div>
                 <button
                   onClick={() => download(f.id)}
-                  className="p-1.5 text-white/50 hover:text-white"
+                  className="p-1.5 text-ink-faint hover:text-ink"
                   aria-label="Download"
                 >
                   <Download className="h-4 w-4" />
@@ -184,7 +184,7 @@ export function TeamDriveTab({
                 <button
                   onClick={() => del(f.id)}
                   disabled={pending}
-                  className="p-1.5 text-white/50 hover:text-red-400"
+                  className="p-1.5 text-ink-faint hover:text-red-600 dark:hover:text-red-400"
                   aria-label="Delete"
                 >
                   <Trash2 className="h-4 w-4" />

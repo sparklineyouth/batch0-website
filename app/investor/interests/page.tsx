@@ -26,17 +26,17 @@ export default async function InvestorInterestsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-3xl font-bold tracking-tight">My interests</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">My interests</h1>
+      <p className="mt-1 text-sm text-ink-faint">
         Teams you've flagged. Private to you.
       </p>
 
       <div className="mt-8 space-y-8">
         {(rows?.length ?? 0) === 0 && (
           <Card>
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-ink-faint">
               You haven't marked interest on any teams yet. Browse{" "}
-              <Link href="/investor/teams" className="text-spark hover:underline">
+              <Link href="/investor/teams" className="text-spark-ink hover:underline">
                 Teams
               </Link>
               .
@@ -48,7 +48,7 @@ export default async function InvestorInterestsPage() {
           if (arr.length === 0) return null;
           return (
             <section key={level}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-spark">
+              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-spark-ink">
                 {level} ({arr.length})
               </h2>
               <ul className="space-y-2">
@@ -62,16 +62,16 @@ export default async function InvestorInterestsPage() {
                       <Card className="!p-4">
                         <div className="flex items-baseline justify-between gap-3">
                           <div>
-                            <div className="text-sm font-medium text-white">
+                            <div className="text-sm font-medium text-ink">
                               {t?.name ?? "—"}
                             </div>
                             {t?.tagline && (
-                              <div className="text-xs text-white/50">
+                              <div className="text-xs text-ink-faint">
                                 {t.tagline}
                               </div>
                             )}
                           </div>
-                          <div className="text-xs text-white/40">
+                          <div className="text-xs text-ink-faint">
                             {cohort?.name ?? ""}
                           </div>
                         </div>

@@ -11,7 +11,7 @@ export default async function InvestorLayout({
   // Theme driven site-wide by next-themes on <html> (see ThemeProvider).
   return (
     <div
-      className="flex min-h-screen bg-black text-white md:flex-row flex-col"
+      className="flex min-h-screen bg-paper text-ink md:flex-row flex-col"
     >
       <RoleSidebar kind="investor" role={profile.role} />
       <div className="flex flex-1 flex-col">

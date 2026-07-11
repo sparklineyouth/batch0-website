@@ -82,21 +82,21 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
     // content height and overflow-y-auto silently no-ops.
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative mb-3">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Filter…"
           aria-label="Filter navigation"
-          className="w-full rounded-lg border border-white/10 bg-black/30 py-1.5 pl-8 pr-7 text-xs text-white placeholder:text-white/30 focus:border-spark/40 focus:outline-none focus:ring-1 focus:ring-spark/30"
+          className="w-full rounded-md border border-line bg-paper py-1.5 pl-8 pr-7 text-xs text-ink placeholder:text-ink-faint focus:border-spark focus:outline-none focus:ring-1 focus:ring-spark/30"
         />
         {query && (
           <button
             type="button"
             aria-label="Clear filter"
             onClick={() => setQuery("")}
-            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-white/40 hover:text-white"
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-ink-faint hover:text-ink"
           >
             <X className="h-3 w-3" />
           </button>
@@ -105,7 +105,7 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
 
       <nav className="scrollbar-thin flex-1 space-y-3 overflow-y-auto pr-1">
         {visibleGroups.length === 0 && (
-          <p className="px-2 py-4 text-xs text-white/40">
+          <p className="px-2 py-4 text-xs text-ink-faint">
             No matches for "{query}".
           </p>
         )}
@@ -119,7 +119,7 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
                   type="button"
                   onClick={() => toggle(g.label)}
                   aria-expanded={isOpen}
-                  className="group flex w-full items-center justify-between gap-2 px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35 hover:text-white/70"
+                  className="group flex w-full items-center justify-between gap-2 px-3 pb-1 text-[10px] font-mono font-semibold uppercase tracking-[0.18em] text-ink-faint hover:text-ink"
                 >
                   <span>{g.label}</span>
                   <ChevronDown
@@ -141,10 +141,10 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
                         key={it.href}
                         href={it.href}
                         aria-current={active ? "page" : undefined}
-                        className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm transition ${
+                        className={`flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition ${
                           active
-                            ? "bg-spark/10 text-spark"
-                            : "text-white/60 hover:bg-white/5 hover:text-white"
+                            ? "bg-spark/10 text-spark-ink font-medium"
+                            : "text-ink-soft hover:bg-paper hover:text-ink"
                         }`}
                       >
                         <Icon className="h-4 w-4 shrink-0" />

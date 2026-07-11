@@ -109,7 +109,7 @@ export default async function ReceiptsPage({
     <div className="mx-auto max-w-3xl">
       <Link
         href="/dashboard/billing"
-        className="inline-flex items-center gap-1.5 text-sm text-white/55 hover:text-white"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         Back to billing
@@ -117,7 +117,7 @@ export default async function ReceiptsPage({
       <div className="mt-3 flex items-baseline justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Receipts</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <p className="mt-1 text-sm text-ink-soft">
             Every charge, payment, and refund on your account. Download a
             Stripe receipt for tax records.
           </p>
@@ -152,15 +152,15 @@ export default async function ReceiptsPage({
 
       {years.length > 1 && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wider text-white/40">
+          <span className="text-xs uppercase tracking-wider text-ink-faint">
             Year
           </span>
           <Link
             href="/dashboard/billing/receipts"
             className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
               !selectedYear
-                ? "border-spark bg-spark/10 text-spark"
-                : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+                ? "border-spark bg-spark/10 text-spark-ink"
+                : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
             }`}
           >
             All
@@ -171,8 +171,8 @@ export default async function ReceiptsPage({
               href={`/dashboard/billing/receipts?year=${y}`}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 selectedYear === y
-                  ? "border-spark bg-spark/10 text-spark"
-                  : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+                  ? "border-spark bg-spark/10 text-spark-ink"
+                  : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
               {y}
@@ -183,13 +183,13 @@ export default async function ReceiptsPage({
 
       <Card className="mt-6 !p-0 overflow-hidden">
         {filteredRows.length === 0 ? (
-          <p className="p-6 text-sm text-white/55">
+          <p className="p-6 text-sm text-ink-soft">
             {selectedYear
               ? `No charges in ${selectedYear}.`
               : "No charges yet. Receipts will appear here after your first payment."}
           </p>
         ) : (
-          <ul className="divide-y divide-white/10">
+          <ul className="divide-y divide-line">
             {filteredRows.map((r) => (
               <li
                 key={r.id}
@@ -198,18 +198,18 @@ export default async function ReceiptsPage({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <SourceBadge source={r.source} />
-                    <span className="text-sm font-medium text-white">
+                    <span className="text-sm font-medium text-ink">
                       {r.description}
                     </span>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/45">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-faint">
                     <LocalTime value={r.date} />
                   </div>
                 </div>
                 <div className="text-right">
                   <div
                     className={`text-base font-semibold tabular-nums ${
-                      r.refunded ? "text-white/40 line-through" : "text-white"
+                      r.refunded ? "text-ink-faint line-through" : "text-ink"
                     }`}
                   >
                     {fmtMoney(r.amountCents, r.currency)}
@@ -224,13 +224,13 @@ export default async function ReceiptsPage({
                       href={r.receiptUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-1.5 text-xs font-medium text-ink hover:border-ink/30 hover:bg-wash"
                     >
                       <Download className="h-3.5 w-3.5" />
                       Receipt
                     </a>
                   ) : (
-                    <span className="text-[11px] text-white/30">
+                    <span className="text-[11px] text-ink-faint">
                       {r.status === "pending" || r.status === "failed"
                         ? "—"
                         : "Older charge"}
@@ -243,11 +243,11 @@ export default async function ReceiptsPage({
         )}
       </Card>
 
-      <p className="mt-4 text-[11px] text-white/35">
+      <p className="mt-4 text-[11px] text-ink-faint">
         Receipts are hosted by Stripe. Older charges from before the receipt
         archive was rolled out may not have a downloadable link — request one
         from{" "}
-        <a href="mailto:hello@sparklineyouth.org" className="text-spark hover:underline">
+        <a href="mailto:hello@sparklineyouth.org" className="text-spark-ink hover:underline">
           hello@sparklineyouth.org
         </a>{" "}
         if you need it for taxes.
@@ -258,9 +258,9 @@ export default async function ReceiptsPage({
 
 function SourceBadge({ source }: { source: "payment" | "fee" | "fine" }) {
   const config = {
-    payment: { label: "Enrollment", cls: "bg-spark/15 text-spark" },
-    fee: { label: "Fee", cls: "bg-amber-300/15 text-amber-200" },
-    fine: { label: "Fine", cls: "bg-red-400/15 text-red-300" },
+    payment: { label: "Enrollment", cls: "bg-spark/15 text-spark-ink" },
+    fee: { label: "Fee", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+    fine: { label: "Fine", cls: "bg-red-500/10 text-red-700 dark:text-red-300" },
   } as const;
   const { label, cls } = config[source];
   return (
@@ -284,15 +284,15 @@ function Tile({
   hint?: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-4">
-      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+    <div className="rounded-xl border border-line bg-wash px-4 py-4">
+      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight text-white tabular-nums">
+      <div className="mt-2 text-2xl font-semibold tracking-tight text-ink tabular-nums">
         {value}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-white/45">{hint}</div>}
+      {hint && <div className="mt-1 text-[11px] text-ink-faint">{hint}</div>}
     </div>
   );
 }

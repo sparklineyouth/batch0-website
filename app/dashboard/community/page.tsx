@@ -42,7 +42,7 @@ export default async function CommunityPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Community</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         The Sparkline Youth Discord server is where every cohort lives: workshops,
         peer reviews, demo-day prep, post-grad alumni. Link your account once
         and we keep your role in sync forever.
@@ -56,14 +56,14 @@ export default async function CommunityPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold">Discord access</h2>
-            <p className="mt-1 text-sm text-white/55">
+            <p className="mt-1 text-sm text-ink-soft">
               {linked
                 ? "Your account is linked. Use /me in the server to check status anytime."
                 : "Link to get the right role, the right channels, and a server invite."}
             </p>
           </div>
           {linked && avatar ? (
-            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+            <div className="flex items-center gap-3 rounded-xl border border-line bg-paper px-3 py-2">
               <Image
                 src={avatar}
                 alt=""
@@ -73,10 +73,10 @@ export default async function CommunityPage() {
                 unoptimized
               />
               <div>
-                <p className="text-sm font-medium text-white">
+                <p className="text-sm font-medium text-ink">
                   @{profile?.discord_username ?? "discord"}
                 </p>
-                <p className="text-xs text-white/50">Linked</p>
+                <p className="text-xs text-ink-faint">Linked</p>
               </div>
             </div>
           ) : null}
@@ -100,10 +100,10 @@ export default async function CommunityPage() {
       </Card>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Slash commands
         </h2>
-        <p className="mt-2 text-sm text-white/60">
+        <p className="mt-2 text-sm text-ink-soft">
           Anyone in the server can run these. Replies are private — only you
           see them.
         </p>
@@ -116,24 +116,24 @@ export default async function CommunityPage() {
       </Card>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Recent announcements
         </h2>
         {(announcements?.length ?? 0) === 0 ? (
-          <p className="mt-3 text-sm text-white/55">
+          <p className="mt-3 text-sm text-ink-soft">
             Nothing yet. Announcements posted by admins (here or from Discord
-            with <code className="text-spark">/announce</code>) will show up
+            with <code className="text-spark-ink">/announce</code>) will show up
             here.
           </p>
         ) : (
-          <ul className="mt-3 divide-y divide-white/5">
+          <ul className="mt-3 divide-y divide-line">
             {(announcements ?? []).map((n: any) => (
               <li key={n.id} className="py-3">
-                <p className="text-sm font-medium text-white">{n.title}</p>
+                <p className="text-sm font-medium text-ink">{n.title}</p>
                 {n.body && (
-                  <p className="mt-0.5 text-sm text-white/65">{n.body}</p>
+                  <p className="mt-0.5 text-sm text-ink-soft">{n.body}</p>
                 )}
-                <p className="mt-1 text-xs text-white/40">
+                <p className="mt-1 text-xs text-ink-faint">
                   <LocalTime value={n.created_at} />
                 </p>
               </li>
@@ -147,9 +147,9 @@ export default async function CommunityPage() {
 
 function Cmd({ cmd, desc }: { cmd: string; desc: string }) {
   return (
-    <li className="rounded-xl border border-white/10 bg-black/30 p-3">
-      <code className="text-sm font-semibold text-spark">{cmd}</code>
-      <p className="mt-1 text-xs text-white/55">{desc}</p>
+    <li className="rounded-xl border border-line bg-paper p-3">
+      <code className="text-sm font-semibold text-spark-ink">{cmd}</code>
+      <p className="mt-1 text-xs text-ink-soft">{desc}</p>
     </li>
   );
 }

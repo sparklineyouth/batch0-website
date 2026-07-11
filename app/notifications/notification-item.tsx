@@ -72,7 +72,7 @@ export function NotificationItem({ n }: { n: N }) {
         type="button"
         onClick={onClick}
         disabled={pending}
-        className="group press relative flex w-full items-start gap-4 py-5 text-left hover:bg-white/[0.02]"
+        className="group press relative flex w-full items-start gap-4 py-5 text-left hover:bg-wash"
       >
         {isUnread && (
           <span
@@ -83,8 +83,8 @@ export function NotificationItem({ n }: { n: N }) {
         <div
           className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
             isUnread
-              ? "border-spark/30 bg-spark/10 text-spark"
-              : "border-white/10 text-white/45"
+              ? "border-spark/30 bg-spark/10 text-spark-ink"
+              : "border-line text-ink-faint"
           }`}
         >
           <Icon className="h-4 w-4" />
@@ -94,15 +94,15 @@ export function NotificationItem({ n }: { n: N }) {
             <p
               className={`min-w-0 flex-1 break-words text-[15px] leading-snug ${
                 isUnread
-                  ? "font-medium text-white"
-                  : "font-normal text-white/65"
+                  ? "font-medium text-ink"
+                  : "font-normal text-ink-soft"
               }`}
             >
               {n.title}
             </p>
             <p
-              className={`shrink-0 pt-0.5 text-[11px] tabular-nums ${
-                isUnread ? "text-white/55" : "text-white/35"
+              className={`shrink-0 pt-0.5 font-mono text-[11px] tabular-nums ${
+                isUnread ? "text-ink-soft" : "text-ink-faint"
               }`}
             >
               {formatRelativeTime(n.created_at)}
@@ -111,7 +111,7 @@ export function NotificationItem({ n }: { n: N }) {
           {n.body && (
             <p
               className={`mt-1 break-words text-sm leading-relaxed ${
-                isUnread ? "text-white/70" : "text-white/50"
+                isUnread ? "text-ink-soft" : "text-ink-faint"
               }`}
             >
               {n.body}
@@ -119,7 +119,7 @@ export function NotificationItem({ n }: { n: N }) {
           )}
         </div>
         {n.link && (
-          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-white/25 transition-transform group-hover:translate-x-0.5 group-hover:text-white/60" />
+          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-ink-soft" />
         )}
       </button>
     </li>

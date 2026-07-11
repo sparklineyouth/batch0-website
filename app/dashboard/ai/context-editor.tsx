@@ -71,8 +71,8 @@ export function ContextEditor({
         <Button size="sm" onClick={save} disabled={pending}>
           {pending ? "Saving…" : "Save context"}
         </Button>
-        {saved && <span className="text-xs text-emerald-300">Saved.</span>}
-        {error && <span className="text-xs text-red-400">{error}</span>}
+        {saved && <span className="text-xs text-emerald-700 dark:text-emerald-300">Saved.</span>}
+        {error && <span className="text-xs text-red-700 dark:text-red-300">{error}</span>}
       </div>
     </div>
   );

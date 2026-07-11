@@ -37,8 +37,8 @@ export default async function MentorOfficeHoursPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-3xl font-bold tracking-tight">Office hours</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Office hours</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Publish slots students can claim. Cancellations free the slot up
         instantly.
       </p>

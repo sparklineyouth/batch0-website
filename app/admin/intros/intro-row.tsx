@@ -58,15 +58,15 @@ export function IntroRow({ row }: { row: any }) {
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold">
+          <h3 className="text-base font-semibold text-ink">
             {investor?.full_name ?? investor?.email}{" "}
-            <span className="text-white/40">→</span> {team?.name}
+            <span className="text-ink-faint">→</span> {team?.name}
           </h3>
-          <p className="text-xs text-white/40">
+          <p className="text-xs text-ink-faint">
             Requested <LocalTime value={row.created_at} />
           </p>
           {row.message && (
-            <p className="mt-3 whitespace-pre-wrap rounded-lg border border-white/10 bg-zinc-950/40 p-3 text-sm text-white/80">
+            <p className="mt-3 whitespace-pre-wrap rounded-lg border border-line bg-wash p-3 text-sm text-ink-soft">
               {row.message}
             </p>
           )}

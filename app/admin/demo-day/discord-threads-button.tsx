@@ -52,19 +52,19 @@ export function DemoDayDiscordThreadsButton({
   }
 
   return (
-    <div className="mt-6 rounded-xl border border-white/10 bg-black/30 p-4">
+    <div className="mt-6 rounded-xl border border-line bg-wash p-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[12rem]">
-          <label className="block text-[10px] uppercase tracking-wider text-white/45">
+          <label className="block text-[10px] uppercase tracking-wider text-ink-faint">
             Discord pitch threads
           </label>
-          <p className="mt-1 text-xs text-white/55">
+          <p className="mt-1 text-xs text-ink-soft">
             Spawn a thread per pitch in #events with audience-reaction
             buttons (🔥 💡 🚀). Clicks land on the leaderboard.
           </p>
         </div>
         <select
-          className="rounded-md border border-white/10 bg-zinc-900 px-2.5 py-1.5 text-sm text-white"
+          className="rounded-md border border-line bg-paper px-2.5 py-1.5 text-sm text-ink"
           value={cohortId}
           onChange={(e) => setCohortId(e.target.value)}
         >
@@ -79,9 +79,9 @@ export function DemoDayDiscordThreadsButton({
         </Button>
       </div>
       {result && (
-        <p className="mt-2 text-xs text-emerald-300">{result}</p>
+        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">{result}</p>
       )}
-      {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );
 }

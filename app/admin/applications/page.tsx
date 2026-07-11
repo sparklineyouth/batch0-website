@@ -48,14 +48,14 @@ export default async function AdminApplicationsPage({
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Applications</h1>
-          <p className="mt-1 text-sm text-white/50">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Applications</h1>
+          <p className="mt-1 text-sm text-ink-faint">
             Review and decide on applications.
           </p>
         </div>
         <a
           href="/api/admin/export/applications"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink hover:border-ink/30 hover:bg-wash"
         >
           Export CSV
         </a>
@@ -75,24 +75,24 @@ export default async function AdminApplicationsPage({
               href={href}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
-                  ? "border-spark bg-spark/10 text-spark"
-                  : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+                  ? "border-spark/30 bg-spark/10 text-spark-ink"
+                  : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
               {f}
             </Link>
           );
         })}
-        <span className="ml-2 h-4 w-px bg-white/10" aria-hidden />
-        <span className="text-[10px] uppercase tracking-wider text-white/40">
+        <span className="ml-2 h-4 w-px bg-line" aria-hidden />
+        <span className="text-[10px] font-mono uppercase tracking-wider text-ink-faint">
           Sort
         </span>
         <Link
           href={sortParam("recent")}
           className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
             sort === "recent"
-              ? "border-spark bg-spark/10 text-spark"
-              : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+              ? "border-spark/30 bg-spark/10 text-spark-ink"
+              : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
           }`}
         >
           Newest
@@ -101,8 +101,8 @@ export default async function AdminApplicationsPage({
           href={sortParam("score")}
           className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
             sort === "score"
-              ? "border-spark bg-spark/10 text-spark"
-              : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+              ? "border-spark/30 bg-spark/10 text-spark-ink"
+              : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
           }`}
         >
           <Sparkles className="h-3 w-3" />

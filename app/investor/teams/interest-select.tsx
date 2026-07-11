@@ -13,11 +13,11 @@ const OPTIONS: { value: InvestorInterestLevel | ""; label: string }[] = [
 ];
 
 const COLORS: Record<string, string> = {
-  watching: "border-blue-400/40 text-blue-300",
-  interested: "border-spark/50 text-spark",
-  committed: "border-emerald-400/40 text-emerald-300",
-  passed: "border-white/15 text-white/40",
-  "": "border-white/15 text-white/60",
+  watching: "border-blue-500/40 text-blue-700 dark:text-blue-300",
+  interested: "border-spark/50 text-spark-ink",
+  committed: "border-emerald-500/40 text-emerald-700 dark:text-emerald-300",
+  passed: "border-line text-ink-faint",
+  "": "border-line text-ink-soft",
 };
 
 export function InterestSelect({
@@ -62,15 +62,15 @@ export function InterestSelect({
         disabled={pending}
         onChange={onChange}
         aria-label="Set interest level"
-        className={`appearance-none rounded-full border bg-transparent px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-spark/40 ${COLORS[level]} ${pending ? "opacity-50" : ""}`}
+        className={`appearance-none rounded-full border bg-transparent px-2.5 py-0.5 font-mono text-xs font-medium uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-spark/40 ${COLORS[level]} ${pending ? "opacity-50" : ""}`}
       >
         {OPTIONS.map((o) => (
-          <option key={o.value} value={o.value} className="bg-zinc-900 text-white">
+          <option key={o.value} value={o.value} className="bg-paper text-ink">
             {o.label}
           </option>
         ))}
       </select>
-      {error && <span className="text-[10px] text-red-400">{error}</span>}
+      {error && <span className="text-[10px] text-red-700 dark:text-red-300">{error}</span>}
     </div>
   );
 }

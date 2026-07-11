@@ -71,10 +71,10 @@ export default async function AdminEmailBlastPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Email blast</h1>
-        <p className="mt-1 text-sm text-white/55">
+        <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Email blast</h1>
+        <p className="mt-1 text-sm text-ink-soft">
           Compose a branded email and send it to any set of students. Use{" "}
-          <code className="rounded bg-white/10 px-1 font-mono text-spark">
+          <code className="rounded bg-wash px-1 font-mono text-spark-ink">
             {"{{name}}"}
           </code>{" "}
           to personalize with each recipient&apos;s first name.

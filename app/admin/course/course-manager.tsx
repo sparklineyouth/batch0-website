@@ -128,7 +128,7 @@ export function CourseManager({
   }
 
   if (cohorts.length === 0) {
-    return <p className="text-sm text-white/60">Create a cohort first.</p>;
+    return <p className="text-sm text-ink-soft">Create a cohort first.</p>;
   }
 
   return (
@@ -151,7 +151,7 @@ export function CourseManager({
 
       <div className="space-y-3">
         {modules.length === 0 && (
-          <p className="text-sm text-white/50">No modules yet.</p>
+          <p className="text-sm text-ink-faint">No modules yet.</p>
         )}
         {modules.map((m) => {
           const open = openModuleId === m.id;
@@ -161,7 +161,7 @@ export function CourseManager({
           return (
             <div
               key={m.id}
-              className="rounded-xl border border-white/10 bg-black/30"
+              className="rounded-xl border border-line bg-wash"
             >
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <button
@@ -169,21 +169,21 @@ export function CourseManager({
                   className="flex flex-1 items-center gap-2 text-left"
                 >
                   {open ? (
-                    <ChevronDown className="h-4 w-4 text-white/40" />
+                    <ChevronDown className="h-4 w-4 text-ink-faint" />
                   ) : (
-                    <ChevronRight className="h-4 w-4 text-white/40" />
+                    <ChevronRight className="h-4 w-4 text-ink-faint" />
                   )}
                   <div>
-                    <div className="text-xs uppercase tracking-wider text-spark">
+                    <div className="text-xs uppercase tracking-wider text-spark-ink">
                       Week {m.week}
                     </div>
-                    <div className="text-sm font-medium text-white">{m.title}</div>
+                    <div className="text-sm font-medium text-ink">{m.title}</div>
                   </div>
                 </button>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setEditingModule(m)}
-                    className="p-1.5 text-white/50 hover:text-white"
+                    className="p-1.5 text-ink-faint hover:text-ink"
                     aria-label="Edit module"
                   >
                     <Pencil className="h-4 w-4" />
@@ -196,7 +196,7 @@ export function CourseManager({
                         title: m.title,
                       })
                     }
-                    className="p-1.5 text-white/50 hover:text-red-400"
+                    className="p-1.5 text-ink-faint hover:text-red-600 dark:hover:text-red-400"
                     aria-label="Delete module"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -204,7 +204,7 @@ export function CourseManager({
                 </div>
               </div>
               {open && (
-                <div className="border-t border-white/10 p-4">
+                <div className="border-t border-line p-4">
                   <div className="mb-3 flex justify-end">
                     <Button
                       size="sm"
@@ -225,17 +225,17 @@ export function CourseManager({
                     </Button>
                   </div>
                   {moduleLessons.length === 0 ? (
-                    <p className="text-xs text-white/40">No lessons yet.</p>
+                    <p className="text-xs text-ink-faint">No lessons yet.</p>
                   ) : (
-                    <ul className="divide-y divide-white/5">
+                    <ul className="divide-y divide-line">
                       {moduleLessons.map((l) => (
                         <li
                           key={l.id}
                           className="flex items-center justify-between py-2"
                         >
                           <div>
-                            <div className="text-sm text-white">{l.title}</div>
-                            <div className="text-xs text-white/40">
+                            <div className="text-sm text-ink">{l.title}</div>
+                            <div className="text-xs text-ink-faint">
                               {l.video_path || l.video_url || "no video"}
                               {l.duration_seconds
                                 ? ` · ${Math.round(l.duration_seconds / 60)} min`
@@ -245,7 +245,7 @@ export function CourseManager({
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => setEditingLesson(l)}
-                              className="p-1.5 text-white/50 hover:text-white"
+                              className="p-1.5 text-ink-faint hover:text-ink"
                               aria-label="Edit lesson"
                             >
                               <Pencil className="h-4 w-4" />
@@ -258,7 +258,7 @@ export function CourseManager({
                                   title: l.title,
                                 })
                               }
-                              className="p-1.5 text-white/50 hover:text-red-400"
+                              className="p-1.5 text-ink-faint hover:text-red-600 dark:hover:text-red-400"
                               aria-label="Delete lesson"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -274,7 +274,7 @@ export function CourseManager({
           );
         })}
       </div>
-      {error && <p className="mt-4 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>}
 
       <ConfirmDialog
         open={confirmDelete !== null}
@@ -287,12 +287,12 @@ export function CourseManager({
           confirmDelete && (
             <>
               <p>
-                <span className="text-white">{confirmDelete.title}</span>
+                <span className="text-ink">{confirmDelete.title}</span>
                 {confirmDelete.kind === "module"
                   ? " and all of its lessons will be removed."
                   : " will be removed from the course."}
               </p>
-              <p className="mt-2 text-amber-300/80">This cannot be undone.</p>
+              <p className="mt-2 text-amber-700/90 dark:text-amber-300/80">This cannot be undone.</p>
             </>
           )
         }
@@ -388,7 +388,7 @@ function ModuleForm({
           onChange={(e) => setM({ ...m, summary: e.target.value })}
         />
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-700 dark:text-red-400">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save"}
@@ -477,13 +477,13 @@ function LessonForm({
       </div>
 
       {/* Video upload */}
-      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+      <div className="rounded-xl border border-line bg-wash p-4">
         <div className="mb-2 flex items-center justify-between">
           <Label className="!mb-0">Video</Label>
           {l.video_path && (
             <button
               type="button"
-              className="text-xs text-white/40 hover:text-red-400"
+              className="text-xs text-ink-faint hover:text-red-600 dark:hover:text-red-400"
               onClick={() => setL({ ...l, video_path: "" })}
             >
               Clear
@@ -491,8 +491,8 @@ function LessonForm({
           )}
         </div>
         {l.video_path ? (
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white/70">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink-soft">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <span className="font-mono">{l.video_path}</span>
           </div>
         ) : (
@@ -542,18 +542,18 @@ function LessonForm({
       </div>
 
       {/* Materials */}
-      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+      <div className="rounded-xl border border-line bg-wash p-4">
         <div className="mb-3 flex items-center justify-between">
           <Label className="!mb-0">Materials</Label>
         </div>
         {materials.length === 0 ? (
-          <p className="mb-3 text-xs text-white/40">No materials yet.</p>
+          <p className="mb-3 text-xs text-ink-faint">No materials yet.</p>
         ) : (
           <ul className="mb-3 space-y-2">
             {materials.map((mat, i) => (
               <li
                 key={i}
-                className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-3 py-2"
+                className="flex items-center gap-2 rounded-lg border border-line bg-paper px-3 py-2"
               >
                 <Input
                   placeholder="Title"
@@ -565,7 +565,7 @@ function LessonForm({
                   }}
                   className="flex-1"
                 />
-                <span className="font-mono text-xs text-white/40 truncate max-w-[40%]">
+                <span className="font-mono text-xs text-ink-faint truncate max-w-[40%]">
                   {mat.path}
                 </span>
                 <button
@@ -573,7 +573,7 @@ function LessonForm({
                   onClick={() =>
                     setMaterials(materials.filter((_, j) => j !== i))
                   }
-                  className="text-white/50 hover:text-red-400"
+                  className="text-ink-faint hover:text-red-600 dark:hover:text-red-400"
                   aria-label="Remove material"
                 >
                   <X className="h-4 w-4" />
@@ -596,7 +596,7 @@ function LessonForm({
         />
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-700 dark:text-red-400">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save"}
@@ -652,7 +652,7 @@ function FileUploader({
 
   return (
     <div>
-      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10">
+      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-wash px-3 py-2 text-xs text-ink-soft hover:border-ink/30 hover:bg-wash">
         {progress !== null ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : (
@@ -667,7 +667,7 @@ function FileUploader({
           disabled={progress !== null}
         />
       </label>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
     </div>
   );
 }

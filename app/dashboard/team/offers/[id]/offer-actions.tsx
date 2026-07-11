@@ -52,7 +52,7 @@ export function OfferActions({ offerId }: { offerId: string }) {
     <div className="mt-4 space-y-5">
       <div>
         <Label>Counter-sign</Label>
-        <p className="mt-0.5 text-xs text-white/50">
+        <p className="mt-0.5 text-xs text-ink-faint">
           By typing your full legal name and clicking <em>Counter-sign</em>,
           you accept the offer on behalf of the team. Sparkline Youth logs the
           timestamp + IP as evidence of execution.
@@ -63,7 +63,7 @@ export function OfferActions({ offerId }: { offerId: string }) {
           placeholder="Type your full legal name"
           className="mt-2"
         />
-        <label className="mt-3 flex items-start gap-2 text-xs text-white/70">
+        <label className="mt-3 flex items-start gap-2 text-xs text-ink-soft">
           <input
             type="checkbox"
             checked={confirmSign}
@@ -82,7 +82,7 @@ export function OfferActions({ offerId }: { offerId: string }) {
         </Button>
       </div>
 
-      <div className="border-t border-white/5 pt-5">
+      <div className="border-t border-line pt-5">
         {!showDecline ? (
           <Button
             variant="ghost"

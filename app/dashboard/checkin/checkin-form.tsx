@@ -75,7 +75,7 @@ export function CheckinForm({
         onChange={(v) => set("is_milestone", v)}
       />
       {error && <FieldError>{error}</FieldError>}
-      {okMsg && <p className="text-xs text-emerald-300">{okMsg}</p>}
+      {okMsg && <p className="text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</p>}
       <div className="flex justify-end">
         <Button onClick={save} disabled={pending}>
           {pending ? "Saving…" : "Save this week's check-in"}
@@ -101,14 +101,14 @@ function Field({
   return (
     <div>
       <Label>{label}</Label>
-      <p className="mb-2 text-xs text-white/50">{hint}</p>
+      <p className="mb-2 text-xs text-ink-faint">{hint}</p>
       <Textarea
         rows={4}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
       />
-      <div className="mt-1 text-right text-[10px] text-white/30">
+      <div className="mt-1 text-right text-[10px] text-ink-faint">
         {value.length} / 4000
       </div>
     </div>

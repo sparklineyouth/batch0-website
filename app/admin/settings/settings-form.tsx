@@ -145,7 +145,7 @@ export function SettingsForm({
       </Section>
 
       {error && (
-        <p className="rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-xs text-red-300">
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
           {error}
         </p>
       )}
@@ -154,7 +154,7 @@ export function SettingsForm({
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save settings"}
         </Button>
-        {saved && <span className="text-xs text-emerald-300">Saved.</span>}
+        {saved && <span className="text-xs text-emerald-700 dark:text-emerald-300">Saved.</span>}
       </div>
     </form>
   );
@@ -169,7 +169,7 @@ function Section({
 }) {
   return (
     <section>
-      <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-spark">
+      <h3 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-spark-ink">
         {title}
       </h3>
       <div className="space-y-5">{children}</div>
@@ -193,5 +193,5 @@ function Field({
 }
 
 function Hint({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1.5 text-xs text-white/40">{children}</p>;
+  return <p className="mt-1.5 text-xs text-ink-faint">{children}</p>;
 }

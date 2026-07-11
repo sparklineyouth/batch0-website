@@ -52,7 +52,7 @@ export function IntroRequestButton({
 
   if (existing) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-spark/30 bg-spark/10 px-3 py-2 text-xs font-semibold text-spark">
+      <div className="flex items-center gap-2 rounded-lg border border-spark/30 bg-spark/10 px-3 py-2 text-xs font-semibold text-spark-ink">
         <Handshake className="h-3.5 w-3.5" />
         {STATUS_LABEL[existing.status] ?? existing.status}
       </div>
@@ -63,7 +63,7 @@ export function IntroRequestButton({
   // intros must come from an actual investor profile.
   if (viewerRole === "admin") {
     return (
-      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/55">
+      <div className="rounded-lg border border-line bg-wash px-3 py-2 text-[11px] text-ink-soft">
         Admin view — intros must come from an investor account.
       </div>
     );

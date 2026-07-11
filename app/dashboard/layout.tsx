@@ -22,7 +22,7 @@ export default async function DashboardLayout({
   // sidebar so the chrome doesn't mislead.
   if (profile.role === "mentor" || profile.role === "investor") {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-paper text-ink">
         <main className="px-5 py-6 md:px-10 md:py-10">{children}</main>
       </div>
     );
@@ -51,7 +51,7 @@ export default async function DashboardLayout({
 
   return (
     <div
-      className="flex min-h-screen bg-black text-white md:flex-row flex-col"
+      className="flex min-h-screen bg-paper text-ink md:flex-row flex-col"
     >
       <StudentSidebar
         role={profile.role}

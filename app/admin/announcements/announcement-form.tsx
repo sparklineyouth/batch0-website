@@ -100,7 +100,7 @@ export function AnnouncementForm({
         onChange={setDiscordToo}
       />
       {discordToo && (
-        <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3.5">
+        <div className="rounded-xl border border-line bg-wash px-4 py-3.5">
           <Label>Discord ping</Label>
           <Select
             value={discordPing}
@@ -117,7 +117,7 @@ export function AnnouncementForm({
               </option>
             ))}
           </Select>
-          <p className="mt-1.5 text-xs text-white/50">
+          <p className="mt-1.5 text-xs text-ink-faint">
             Use @everyone sparingly — it notifies everyone in the server,
             including unrelated members. Role pings only configure if the
             role ID is set under Admin → Discord.
@@ -125,7 +125,7 @@ export function AnnouncementForm({
         </div>
       )}
       {result && (
-        <p className="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">
+        <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-200">
           {result}
         </p>
       )}

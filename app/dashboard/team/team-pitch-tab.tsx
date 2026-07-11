@@ -102,14 +102,14 @@ export function TeamPitchTab({
     <div className="space-y-6">
       <Card>
         <h3 className="text-base font-semibold">Demo Day submission</h3>
-        <p className="mt-1 text-xs text-white/50">
+        <p className="mt-1 text-xs text-ink-faint">
           Upload your pitch deck (PDF) and a 3-min recorded pitch (or paste a
           link), add any notes for judges, then submit. You can keep editing
           before you submit.
         </p>
 
         {submitted && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
             <CheckCircle2 className="h-4 w-4" />
             Submitted on <LocalTime value={pitch!.submitted_at} />. Investors and
             judges can now see it.
@@ -153,7 +153,7 @@ export function TeamPitchTab({
               placeholder="Context, asks, traction highlights…"
             />
           </div>
-          <div className="flex items-center justify-between border-t border-white/10 pt-4">
+          <div className="flex items-center justify-between border-t border-line pt-4">
             <Button
               variant="secondary"
               onClick={saveMeta}
@@ -190,12 +190,12 @@ function UploadRow({
   onPick: (f: File) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-zinc-950/40 px-3 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-wash px-3 py-3">
       <div>
         <div className="text-sm font-medium">{label}</div>
-        <div className="text-xs text-white/50">{badge}</div>
+        <div className="text-xs text-ink-faint">{badge}</div>
       </div>
-      <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-white/5 border border-white/10 px-3 text-xs font-medium text-white hover:bg-white/10">
+      <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper px-3 text-xs font-medium text-ink hover:border-ink/30 hover:bg-wash">
         <Upload className="h-3.5 w-3.5" />
         {uploading ? "Uploading…" : "Choose file"}
         <input

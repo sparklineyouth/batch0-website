@@ -94,10 +94,10 @@ export function CapTable({
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
             Cap table
           </h2>
-          <p className="mt-1 text-xs text-white/50">
+          <p className="mt-1 text-xs text-ink-faint">
             Founders + options + SAFEs. Investors and members can view.
           </p>
         </div>
@@ -126,24 +126,24 @@ export function CapTable({
       </div>
 
       {rows.length === 0 ? (
-        <p className="mt-5 text-sm text-white/50">
+        <p className="mt-5 text-sm text-ink-faint">
           No holders yet. Add founders and any SAFE/option grants.
         </p>
       ) : (
-        <ul className="mt-5 divide-y divide-white/5">
+        <ul className="mt-5 divide-y divide-line">
           {rows.map((r) => (
             <li
               key={r.id}
               className="flex flex-wrap items-baseline justify-between gap-3 py-3"
             >
               <div className="min-w-0">
-                <p className="text-sm font-medium text-white">
+                <p className="text-sm font-medium text-ink">
                   {r.display_name}{" "}
-                  <span className="ml-2 rounded bg-white/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-white/55">
+                  <span className="ml-2 rounded bg-wash px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-ink-soft">
                     {KIND_LABELS[r.kind]}
                   </span>
                 </p>
-                <p className="mt-0.5 text-xs text-white/50">
+                <p className="mt-0.5 text-xs text-ink-faint tabular-nums">
                   {r.shares_bp != null
                     ? `${(r.shares_bp / 100).toFixed(2)}%`
                     : null}
@@ -203,11 +203,11 @@ export function CapTable({
 
 function Totals({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-      <p className="text-[10px] uppercase tracking-wider text-white/45">
+    <div className="rounded-lg border border-line bg-wash p-3">
+      <p className="text-[10px] uppercase tracking-wider text-ink-faint">
         {label}
       </p>
-      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+      <p className="mt-1 text-sm font-semibold text-ink tabular-nums">{value}</p>
     </div>
   );
 }
@@ -227,8 +227,8 @@ function HolderEditor({
 }) {
   const [h, setH] = useState<HolderInput>(value);
   return (
-    <div className="mt-5 rounded-xl border border-white/10 bg-black/30 p-4">
-      <h3 className="text-sm font-semibold text-white">
+    <div className="mt-5 rounded-xl border border-line bg-wash p-4">
+      <h3 className="text-sm font-semibold text-ink">
         {value.id ? "Edit holder" : "Add holder"}
       </h3>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">

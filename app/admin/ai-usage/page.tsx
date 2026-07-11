@@ -158,15 +158,15 @@ export default async function AdminAiUsagePage() {
     <div className="mx-auto max-w-6xl">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">AI usage</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">AI usage</h1>
+          <p className="mt-1 text-sm text-ink-soft">
             Token consumption and overage billing across all users. Refreshes
             on every page load.
           </p>
         </div>
         <Link
           href="/admin/audit?action=application.ai_screened"
-          className="text-xs text-spark hover:underline"
+          className="text-xs text-spark-ink hover:underline"
         >
           Recent AI screenings →
         </Link>
@@ -207,10 +207,10 @@ export default async function AdminAiUsagePage() {
       </section>
 
       <Card className="mt-8">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Monthly billed overage
         </h2>
-        <p className="mt-1 text-xs text-white/40">
+        <p className="mt-1 text-xs text-ink-faint">
           What we charged students. Free tier covered the rest.
         </p>
         <div className="mt-6 grid grid-cols-6 items-end gap-3 h-40">
@@ -219,14 +219,14 @@ export default async function AdminAiUsagePage() {
             const isCurrent = m.key === currentMonth.key;
             return (
               <div key={m.key} className="flex flex-col items-center gap-1.5">
-                <div className="text-[10px] tabular-nums text-white/55">
+                <div className="text-[10px] tabular-nums text-ink-soft">
                   {m.billed > 0 ? fmtMoney(m.billed) : "—"}
                 </div>
                 <div
                   className={`w-full rounded-t ${isCurrent ? "bg-spark" : "bg-spark/40"}`}
                   style={{ height: `${h}%` }}
                 />
-                <div className="text-[10px] uppercase tracking-wider text-white/40">
+                <div className="text-[10px] uppercase tracking-wider text-ink-faint">
                   {m.label}
                 </div>
               </div>
@@ -236,10 +236,10 @@ export default async function AdminAiUsagePage() {
       </Card>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Daily tokens · last 30 days
         </h2>
-        <p className="mt-1 text-xs text-white/40">
+        <p className="mt-1 text-xs text-ink-faint">
           Input + output combined. Spikes mean someone ran a long session.
         </p>
         <div className="mt-6 flex h-32 items-end gap-[3px]">
@@ -255,30 +255,30 @@ export default async function AdminAiUsagePage() {
             );
           })}
         </div>
-        <div className="mt-2 flex justify-between text-[10px] text-white/40">
+        <div className="mt-2 flex justify-between text-[10px] text-ink-faint">
           <span>{daySeries[0]?.key}</span>
           <span>today</span>
         </div>
       </Card>
 
       <Card className="mt-6 !p-0 overflow-hidden">
-        <div className="flex items-baseline justify-between border-b border-white/10 px-5 py-4">
+        <div className="flex items-baseline justify-between border-b border-line px-5 py-4">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
               Top users this month
             </h2>
-            <p className="mt-1 text-xs text-white/40">
+            <p className="mt-1 text-xs text-ink-faint">
               Sorted by input tokens. Cap is {fmtMoney(MONTHLY_HARD_CAP_CENTS)} —
               past that, the chat handler refuses further messages.
             </p>
           </div>
         </div>
         {(userRows?.length ?? 0) === 0 ? (
-          <p className="p-6 text-sm text-white/50">No AI usage yet this month.</p>
+          <p className="p-6 text-sm text-ink-faint">No AI usage yet this month.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-3">User</th>
                 <th className="px-5 py-3 text-right">Input</th>
                 <th className="px-5 py-3 text-right">Output</th>
@@ -296,38 +296,38 @@ export default async function AdminAiUsagePage() {
                 return (
                   <tr
                     key={r.user_id}
-                    className="border-b border-white/5 last:border-0"
+                    className="border-b border-line last:border-0"
                   >
                     <td className="px-5 py-3">
                       <Link
                         href={`/admin/students?q=${encodeURIComponent(r.profile?.email ?? "")}`}
-                        className="text-white hover:text-spark"
+                        className="text-ink hover:text-spark-ink"
                       >
                         {name}
                       </Link>
                       {r.profile?.full_name && r.profile?.email && (
-                        <div className="text-[11px] text-white/40">
+                        <div className="text-[11px] text-ink-faint">
                           {r.profile.email}
                         </div>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-white/75">
+                    <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
                       {fmtTokens(r.input_tokens ?? 0)}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-white/75">
+                    <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
                       {fmtTokens(r.output_tokens ?? 0)}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-white/55">
+                    <td className="px-5 py-3 text-right tabular-nums text-ink-faint">
                       {fmtTokens(r.cache_read_tokens ?? 0)}
                     </td>
                     <td className="px-5 py-3 text-right tabular-nums">
                       <span
                         className={
                           atCap
-                            ? "rounded-full bg-red-400/15 px-2 py-0.5 text-red-300"
+                            ? "rounded-full bg-red-500/15 px-2 py-0.5 text-red-700 dark:text-red-300"
                             : (r.billed_cents ?? 0) > 0
-                              ? "text-spark"
-                              : "text-white/30"
+                              ? "text-spark-ink"
+                              : "text-ink-faint"
                         }
                       >
                         {fmtMoney(r.billed_cents ?? 0)}
@@ -359,22 +359,22 @@ function Tile({
 }) {
   return (
     <div
-      className={`rounded-xl border bg-white/[0.02] px-4 py-4 ${
-        warn ? "border-red-400/30" : "border-white/10"
+      className={`rounded-xl border bg-wash px-4 py-4 ${
+        warn ? "border-red-500/30" : "border-line"
       }`}
     >
-      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
-        <Icon className={`h-3.5 w-3.5 ${warn ? "text-red-300" : ""}`} />
+      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
+        <Icon className={`h-3.5 w-3.5 ${warn ? "text-red-700 dark:text-red-300" : ""}`} />
         {label}
       </div>
       <div
         className={`mt-2 text-2xl font-semibold tracking-tight ${
-          warn ? "text-red-300" : "text-white"
+          warn ? "text-red-700 dark:text-red-300" : "text-ink"
         }`}
       >
         {value}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-white/45">{hint}</div>}
+      {hint && <div className="mt-1 text-[11px] text-ink-faint">{hint}</div>}
     </div>
   );
 }

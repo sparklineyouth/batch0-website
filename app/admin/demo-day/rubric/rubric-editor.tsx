@@ -73,7 +73,7 @@ export function RubricEditor({
         {rows.map((r, i) => (
           <div
             key={r.id ?? i}
-            className="rounded-xl border border-white/10 bg-black/30 p-4"
+            className="rounded-xl border border-line bg-wash p-4"
           >
             <div className="grid gap-3 sm:grid-cols-6">
               <div className="sm:col-span-3">
@@ -185,7 +185,7 @@ export function RubricEditor({
       </div>
 
       {error && <FieldError>{error}</FieldError>}
-      {okMsg && <p className="text-xs text-emerald-300">{okMsg}</p>}
+      {okMsg && <p className="text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</p>}
 
       <div className="flex flex-wrap justify-between gap-2">
         <Button variant="secondary" onClick={add} disabled={pending}>

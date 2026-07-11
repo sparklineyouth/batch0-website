@@ -32,21 +32,21 @@ export default async function AdminTeamsPage({
     <div className="mx-auto max-w-5xl">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Teams</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Teams</h1>
+          <p className="mt-1 text-sm text-ink-soft">
             Cohort startups. Public teams get a shareable team page.
           </p>
         </div>
         <Link
           href="/admin/teams/new"
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-spark px-4 text-sm font-semibold text-black hover:bg-spark-200"
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-spark px-4 text-sm font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           <Plus className="h-4 w-4" /> New team
         </Link>
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wider text-white/40">
+        <span className="text-xs uppercase tracking-wider text-ink-faint">
           Cohort
         </span>
         <Filter href="/admin/teams" label="All" active={cohortFilter === "all"} />
@@ -63,7 +63,7 @@ export default async function AdminTeamsPage({
       <div className="mt-6 grid gap-3">
         {filtered.length === 0 && (
           <Card>
-            <p className="text-sm text-white/55">No teams yet.</p>
+            <p className="text-sm text-ink-soft">No teams yet.</p>
           </Card>
         )}
         {filtered.map((t: any) => {
@@ -75,25 +75,25 @@ export default async function AdminTeamsPage({
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-base font-semibold text-white">
+                      <h3 className="text-base font-semibold text-ink">
                         {t.name}
                       </h3>
                       {t.is_public ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-emerald-300">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                           <Globe className="h-3 w-3" /> Public
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/40">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-wash px-2 py-0.5 text-[10px] uppercase tracking-wider text-ink-faint">
                           <EyeOff className="h-3 w-3" /> Private
                         </span>
                       )}
                     </div>
-                    <div className="mt-0.5 text-xs text-white/45">
+                    <div className="mt-0.5 text-xs text-ink-faint">
                       {cohort?.name} · {members} member
                       {members === 1 ? "" : "s"}
                     </div>
                     {t.tagline && (
-                      <p className="mt-2 text-sm text-white/60">{t.tagline}</p>
+                      <p className="mt-2 text-sm text-ink-soft">{t.tagline}</p>
                     )}
                   </div>
                 </div>
@@ -120,8 +120,8 @@ function Filter({
       href={href}
       className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
         active
-          ? "border-spark bg-spark/10 text-spark"
-          : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+          ? "border-spark/30 bg-spark/10 text-spark-ink"
+          : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
       }`}
     >
       {label}

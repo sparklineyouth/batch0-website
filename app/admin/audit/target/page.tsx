@@ -20,11 +20,11 @@ export default async function AuditTargetPage({
       <div className="mx-auto max-w-3xl">
         <Link
           href="/admin/audit"
-          className="text-sm text-white/55 hover:text-white"
+          className="text-sm text-ink-soft hover:text-ink"
         >
           ← Audit log
         </Link>
-        <p className="mt-6 text-sm text-white/55">
+        <p className="mt-6 text-sm text-ink-soft">
           Pass <code>?type=...&id=...</code> in the URL. Linked from any
           domain row that calls{" "}
           <code>logAudit(...)</code> with a target.
@@ -45,20 +45,20 @@ export default async function AuditTargetPage({
     <div className="mx-auto max-w-3xl">
       <Link
         href="/admin/audit"
-        className="text-sm text-white/55 hover:text-white"
+        className="text-sm text-ink-soft hover:text-ink"
       >
         ← Audit log
       </Link>
-      <h1 className="mt-3 text-3xl font-bold tracking-tight">
+      <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
         {type} · {id.slice(0, 8)}
       </h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Append-only history. Newest first.
       </p>
 
       {(rows?.length ?? 0) === 0 ? (
         <Card className="mt-6">
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-ink-soft">
             No audit entries for this target.
           </p>
         </Card>
@@ -73,10 +73,10 @@ export default async function AuditTargetPage({
               <li key={r.id}>
                 <Card>
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="font-mono text-sm font-semibold text-spark">
+                    <p className="font-mono text-sm font-semibold text-spark-ink">
                       {r.action}
                     </p>
-                    <p className="text-xs text-white/45">
+                    <p className="text-xs text-ink-faint">
                       {r.actor_email ?? "system"} ·{" "}
                       <LocalTime value={r.created_at} />
                     </p>
@@ -84,7 +84,7 @@ export default async function AuditTargetPage({
                   {hasDiff ? (
                     <Diff before={before} after={after} />
                   ) : (
-                    <pre className="mt-3 max-h-60 overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-[11px] text-white/70">
+                    <pre className="mt-3 max-h-60 overflow-auto rounded-lg border border-line bg-wash p-3 text-[11px] text-ink-soft">
                       {JSON.stringify(payload, null, 2)}
                     </pre>
                   )}
@@ -113,7 +113,7 @@ function Diff({
   );
   if (changed.length === 0) {
     return (
-      <p className="mt-3 text-xs text-white/45">
+      <p className="mt-3 text-xs text-ink-faint">
         No diff (payload had identical before/after).
       </p>
     );
@@ -121,20 +121,20 @@ function Diff({
   return (
     <table className="mt-3 w-full text-xs">
       <thead>
-        <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
+        <tr className="text-left text-[10px] uppercase tracking-wider text-ink-faint">
           <th className="pb-2">Field</th>
           <th className="pb-2">Before</th>
           <th className="pb-2">After</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-white/5">
+      <tbody className="divide-y divide-line">
         {changed.map((k) => (
           <tr key={k}>
-            <td className="py-2 font-mono text-white/75">{k}</td>
-            <td className="py-2 text-red-300">
+            <td className="py-2 font-mono text-ink-soft">{k}</td>
+            <td className="py-2 text-red-700 dark:text-red-300">
               {format(before?.[k])}
             </td>
-            <td className="py-2 text-emerald-300">{format(after?.[k])}</td>
+            <td className="py-2 text-emerald-700 dark:text-emerald-300">{format(after?.[k])}</td>
           </tr>
         ))}
       </tbody>

@@ -39,17 +39,17 @@ export default async function StudentEventsPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Events</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <p className="mt-1 text-sm text-ink-faint">
         Demo Day, office hours, workshops.
       </p>
 
       <section className="mt-8">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-spark">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-spark-ink">
           Upcoming
         </h2>
         {(upcoming?.length ?? 0) === 0 ? (
           <Card>
-            <p className="text-sm text-white/50">Nothing scheduled yet.</p>
+            <p className="text-sm text-ink-faint">Nothing scheduled yet.</p>
           </Card>
         ) : (
           <div className="space-y-3">
@@ -62,7 +62,7 @@ export default async function StudentEventsPage() {
 
       {(past?.length ?? 0) > 0 && (
         <section className="mt-10">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
             Past
           </h2>
           <div className="space-y-3">
@@ -81,7 +81,7 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
   return (
     <Card>
       <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-spark/10 text-spark">
+        <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-spark/10 text-spark-ink">
           <span className="text-[10px] font-bold uppercase">
             {startsAt.toLocaleString("en-US", { month: "short" })}
           </span>
@@ -91,17 +91,17 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-2">
-            <h3 className="text-base font-semibold text-white">
+            <h3 className="text-base font-semibold text-ink">
               {event.title}
             </h3>
-            <span className="text-[10px] uppercase tracking-wider text-spark/80">
+            <span className="text-[10px] uppercase tracking-wider text-spark-ink/80">
               {event.type.replace("_", " ")}
             </span>
           </div>
           {event.description && (
-            <p className="mt-1 text-sm text-white/60">{event.description}</p>
+            <p className="mt-1 text-sm text-ink-soft">{event.description}</p>
           )}
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-faint">
             <span className="inline-flex items-center gap-1">
               <CalendarDays className="h-3.5 w-3.5" />
               {startsAt.toLocaleString()}
@@ -117,7 +117,7 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
                 href={event.zoom_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-spark hover:underline"
+                className="inline-flex items-center gap-1 text-spark-ink hover:underline"
               >
                 <Video className="h-3.5 w-3.5" />
                 Join Zoom
@@ -128,7 +128,7 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
                 href={event.recording_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-spark hover:underline"
+                className="text-spark-ink hover:underline"
               >
                 Watch recording →
               </a>
@@ -136,7 +136,7 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
             {upcoming && (
               <a
                 href={`/api/events/${event.id}/ics`}
-                className="text-white/50 hover:text-white"
+                className="text-ink-faint hover:text-ink"
               >
                 Add to calendar
               </a>

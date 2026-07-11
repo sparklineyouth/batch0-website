@@ -30,7 +30,7 @@ export default async function ApplicationPage({
     return (
       <div className="mx-auto max-w-3xl">
         <h1 className="text-3xl font-bold tracking-tight">Application</h1>
-        <p className="mt-2 text-white/60">You haven't started an application yet.</p>
+        <p className="mt-2 text-ink-soft">You haven't started an application yet.</p>
         <Link href="/apply" className="mt-5 inline-block">
           <Button>Start application</Button>
         </Link>
@@ -52,22 +52,22 @@ export default async function ApplicationPage({
       {searchParams.submitted && (
         <div className="mt-5 rounded-lg border border-spark/30 bg-spark/5 p-4 text-sm">
           <TrackSubmitted />
-          <p className="font-medium text-spark">Application submitted</p>
-          <p className="mt-1 text-white/60">
+          <p className="font-medium text-spark-ink">Application submitted</p>
+          <p className="mt-1 text-ink-soft">
             We'll review and get back to you by email. You can check status here anytime.
           </p>
         </div>
       )}
       {searchParams.canceled && (
-        <div className="mt-5 rounded-lg border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-200">
+        <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">
           Payment canceled. You can retry any time.
         </div>
       )}
 
       {app.status === "accepted" && (
         <Card className="mt-6 border-spark/40 bg-spark/5">
-          <h3 className="text-lg font-semibold text-spark">You're in.</h3>
-          <p className="mt-1 text-sm text-white/70">
+          <h3 className="text-lg font-semibold text-spark-ink">You're in.</h3>
+          <p className="mt-1 text-sm text-ink-soft">
             Welcome to {app.cohort?.name ?? "Sparkline Youth"}. Pay your one-time ${(priceCents / 100).toFixed(0)} to lock in your seat. Course access unlocks immediately after.
           </p>
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
@@ -80,7 +80,7 @@ export default async function ApplicationPage({
       {app.status === "rejected" && (
         <Card className="mt-6">
           <h3 className="text-lg font-semibold">Decision: not this cohort</h3>
-          <p className="mt-1 text-sm text-white/60">
+          <p className="mt-1 text-sm text-ink-soft">
             Thanks for applying. We can't offer you a seat in this cohort.
           </p>
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
@@ -88,9 +88,9 @@ export default async function ApplicationPage({
       )}
 
       {(app.status === "paid" || app.status === "enrolled") && (
-        <Card className="mt-6 border-emerald-400/40 bg-emerald-400/5">
-          <h3 className="text-lg font-semibold text-emerald-300">Enrolled</h3>
-          <p className="mt-1 text-sm text-white/70">
+        <Card className="mt-6 border-emerald-500/30 bg-emerald-500/10">
+          <h3 className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">Enrolled</h3>
+          <p className="mt-1 text-sm text-ink-soft">
             Payment received. You're all set.
           </p>
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
@@ -102,7 +102,7 @@ export default async function ApplicationPage({
 
       {app.status === "submitted" && app.review_notes && (
         <Card className="mt-6">
-          <h3 className="text-sm font-medium uppercase tracking-wider text-white/50">
+          <h3 className="text-sm font-medium uppercase tracking-wider text-ink-faint">
             Note from the team
           </h3>
           <ReviewerNote text={app.review_notes} />
@@ -110,7 +110,7 @@ export default async function ApplicationPage({
       )}
 
       <Card className="mt-6">
-        <h3 className="mb-4 text-sm font-medium uppercase tracking-wider text-white/50">
+        <h3 className="mb-4 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Your answers
         </h3>
         <div className="space-y-3 text-sm">
@@ -153,11 +153,11 @@ export default async function ApplicationPage({
 
 function ReviewerNote({ text }: { text: string }) {
   return (
-    <div className="mt-4 rounded-lg border border-white/10 bg-black/30 p-3">
-      <div className="text-[11px] font-medium uppercase tracking-wider text-white/40">
+    <div className="mt-4 rounded-lg border border-line bg-paper p-3">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
         Note from reviewer
       </div>
-      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-white/80">
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-soft">
         {text}
       </p>
     </div>
@@ -174,12 +174,12 @@ function Row({
   multiline?: boolean;
 }) {
   return (
-    <div className={`${multiline ? "" : "flex items-baseline gap-3"} min-w-0 border-b border-white/5 py-2 last:border-0`}>
-      <div className="text-xs uppercase tracking-wider text-white/40">{label}</div>
+    <div className={`${multiline ? "" : "flex items-baseline gap-3"} min-w-0 border-b border-line py-2 last:border-0`}>
+      <div className="text-xs uppercase tracking-wider text-ink-faint">{label}</div>
       <div
-        className={`${multiline ? "mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]" : "min-w-0 truncate"} text-white/80`}
+        className={`${multiline ? "mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]" : "min-w-0 truncate"} text-ink-soft`}
       >
-        {value || <span className="text-white/30">—</span>}
+        {value || <span className="text-ink-faint">—</span>}
       </div>
     </div>
   );

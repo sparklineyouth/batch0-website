@@ -8,12 +8,12 @@ import { LocalTime } from "@/components/ui/local-time";
 export const metadata = { title: "SAFE offers · Team" };
 
 const STATUS_TONE: Record<string, string> = {
-  sent: "bg-spark/10 text-spark border-spark/30",
-  accepted: "bg-emerald-400/10 text-emerald-300 border-emerald-400/30",
-  declined: "bg-zinc-500/10 text-zinc-300 border-zinc-500/30",
-  withdrawn: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
-  countersigned: "bg-spark/10 text-spark border-spark/30",
-  draft: "bg-zinc-500/10 text-zinc-300 border-zinc-500/30",
+  sent: "bg-spark/10 text-spark-ink border-spark/30",
+  accepted: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  declined: "bg-wash text-ink-soft border-line",
+  withdrawn: "bg-wash text-ink-faint border-line",
+  countersigned: "bg-spark/10 text-spark-ink border-spark/30",
+  draft: "bg-wash text-ink-soft border-line",
 };
 
 export default async function TeamOffersPage() {
@@ -40,19 +40,19 @@ export default async function TeamOffersPage() {
     <div className="mx-auto max-w-3xl">
       <Link
         href="/dashboard/team"
-        className="text-sm text-white/55 hover:text-white"
+        className="text-sm text-ink-soft hover:text-ink"
       >
         ← Team
       </Link>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">SAFE offers</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Every investor offer routed through Sparkline Youth. Review carefully — these
         are real legal commitments once counter-signed.
       </p>
 
       {(offers?.length ?? 0) === 0 ? (
         <Card className="mt-6">
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-ink-soft">
             No offers yet. When an investor sends a SAFE, it shows up here and
             we'll email every team member.
           </p>
@@ -64,24 +64,24 @@ export default async function TeamOffersPage() {
             return (
               <li key={o.id}>
                 <Link href={`/dashboard/team/offers/${o.id}`}>
-                  <Card className="transition hover:border-white/20">
+                  <Card className="transition hover:border-line">
                     <div className="flex flex-wrap items-baseline justify-between gap-3">
                       <div>
-                        <p className="text-base font-semibold text-white">
+                        <p className="text-base font-semibold text-ink">
                           ${(o.amount_cents / 100).toLocaleString()}
                           {o.valuation_cap_cents != null && (
-                            <span className="ml-1 text-sm font-normal text-white/55">
+                            <span className="ml-1 text-sm font-normal text-ink-soft">
                               · cap $
                               {(o.valuation_cap_cents / 100).toLocaleString()}
                             </span>
                           )}
                           {o.discount_pct != null && (
-                            <span className="ml-1 text-sm font-normal text-white/55">
+                            <span className="ml-1 text-sm font-normal text-ink-soft">
                               · {o.discount_pct}% disc
                             </span>
                           )}
                         </p>
-                        <p className="mt-0.5 text-xs text-white/55">
+                        <p className="mt-0.5 text-xs text-ink-soft">
                           From <strong>{inv?.full_name ?? inv?.email ?? "investor"}</strong>
                           {o.sent_at && (
                             <>

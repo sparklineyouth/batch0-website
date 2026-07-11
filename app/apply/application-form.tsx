@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
 import {
@@ -10,6 +10,11 @@ import {
 import type { Application } from "@/lib/types";
 import { Check, Loader2, AlertCircle } from "lucide-react";
 import { IdeaValidator } from "./idea-validate";
+import {
+  QUESTION_FIELDS,
+  isRequiredCore,
+  type MergedQuestion,
+} from "@/lib/application-questions";
 
 const STEPS = [
   { id: 1, title: "About you" },
@@ -18,18 +23,11 @@ const STEPS = [
   { id: 4, title: "Review & submit" },
 ] as const;
 
-const TEAM_SIZE_OPTIONS: { value: number; label: string }[] = [
-  { value: 1, label: "Solo (just me)" },
-  { value: 2, label: "2 (me + 1 co-founder)" },
-  { value: 3, label: "3" },
-  { value: 4, label: "4" },
-  { value: 5, label: "5+" },
-];
-
-function teamSizeLabel(value: string): string {
-  const opt = TEAM_SIZE_OPTIONS.find((o) => String(o.value) === value);
-  return opt?.label ?? "";
-}
+// Theme-native field styling. The shared Input/Textarea components ship dark
+// literals; we append these tokens so they override to the marketing surface
+// (works in light + dark). Kept in one place so every field stays consistent.
+const FIELD_CLASS =
+  "bg-paper border-line text-ink placeholder:text-ink-faint focus:border-spark";
 
 type FormState = {
   full_name: string;
@@ -53,10 +51,44 @@ type FormState = {
 const URL_RE = /^https?:\/\/.+/;
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
+// Resolved, per-render view of the (admin-editable) question config. Keyed by
+// field key. Always has an entry for every fixed field — see buildConfig.
+type QuestionMap = Record<string, MergedQuestion>;
+
+function buildConfig(questions: MergedQuestion[] | undefined): QuestionMap {
+  const map: QuestionMap = {};
+  // Seed with code defaults so a missing/partial prop can never leave a field
+  // undefined — the form still renders even if the config fetch returned less.
+  for (const f of QUESTION_FIELDS) map[f.key] = { ...f };
+  for (const q of questions ?? []) map[q.key] = q;
+  return map;
+}
+
+/** Whether a field should be shown. Server-required cores are never hidden. */
+function isVisible(cfg: QuestionMap, key: string): boolean {
+  if (isRequiredCore(key)) return true;
+  return !cfg[key]?.hidden;
+}
+
+/** Whether a field is required per config (cores are always required). The
+ *  parent_email age-conditional rule is layered on top by the caller. */
+function isRequired(cfg: QuestionMap, key: string): boolean {
+  if (isRequiredCore(key)) return true;
+  return !!cfg[key]?.required;
+}
+
+function teamSizeLabel(cfg: QuestionMap, value: string): string {
+  const opt = cfg.team_size?.options?.find((o) => String(o.value) === value);
+  return opt?.label ?? "";
+}
+
 // Per-step required-field validation (mirrors the server SubmitSchema).
+// Hidden fields are skipped; the `*`/required rules follow the config, with the
+// parent_email age-conditional rule preserved on top.
 function validateStep(
   step: number,
   form: FormState,
+  cfg: QuestionMap,
 ): Record<string, string> {
   const errs: Record<string, string> = {};
   if (step === 1) {
@@ -68,22 +100,40 @@ function validateStep(
     }
     // Parent/guardian email is required for under-18 applicants —
     // mirrors the SubmitSchema rule and satisfies the parental-consent
-    // claim made in the Terms of Service.
-    const isMinor = !Number.isNaN(ageNum) && ageNum < 18;
-    if (isMinor && !form.parent_email.trim()) {
-      errs.parent_email = "Required if you're under 18";
-    } else if (form.parent_email && !EMAIL_RE.test(form.parent_email)) {
-      errs.parent_email = "Must be a valid email";
+    // claim made in the Terms of Service. Only validated when the field
+    // is visible.
+    if (isVisible(cfg, "parent_email")) {
+      const isMinor = !Number.isNaN(ageNum) && ageNum < 18;
+      const required = isMinor || isRequired(cfg, "parent_email");
+      if (required && !form.parent_email.trim()) {
+        errs.parent_email = isMinor
+          ? "Required if you're under 18"
+          : "Required";
+      } else if (form.parent_email && !EMAIL_RE.test(form.parent_email)) {
+        errs.parent_email = "Must be a valid email";
+      }
     }
   }
   if (step === 2) {
-    if (form.linkedin_url && !URL_RE.test(form.linkedin_url)) {
+    if (
+      isVisible(cfg, "linkedin_url") &&
+      form.linkedin_url &&
+      !URL_RE.test(form.linkedin_url)
+    ) {
       errs.linkedin_url = "Must start with http(s)://";
     }
-    if (form.resume_url && !URL_RE.test(form.resume_url)) {
+    if (
+      isVisible(cfg, "resume_url") &&
+      form.resume_url &&
+      !URL_RE.test(form.resume_url)
+    ) {
       errs.resume_url = "Must start with http(s)://";
     }
-    if (form.portfolio_url && !URL_RE.test(form.portfolio_url)) {
+    if (
+      isVisible(cfg, "portfolio_url") &&
+      form.portfolio_url &&
+      !URL_RE.test(form.portfolio_url)
+    ) {
       errs.portfolio_url = "Must start with http(s)://";
     }
   }
@@ -122,6 +172,7 @@ export function ApplicationForm({
   email,
   priceLabel = "$130",
   cohortId = null,
+  questions,
 }: {
   defaults: Application | null;
   email: string;
@@ -130,7 +181,13 @@ export function ApplicationForm({
    *  sent up with every draft save + final submit so the server-side
    *  action can attach the row to that cohort. */
   cohortId?: string | null;
+  /** Admin-editable question content (labels/help/placeholder/required/
+   *  hidden + team_size option labels). Resolved server-side; falls back
+   *  to code defaults per key if omitted. */
+  questions?: MergedQuestion[];
 }) {
+  const cfg = useMemo(() => buildConfig(questions), [questions]);
+
   const [step, setStep] = useState(1);
   const [submitPending, startSubmit] = useTransition();
   const [submitError, setSubmitError] = useState<string | undefined>();
@@ -288,7 +345,7 @@ export function ApplicationForm({
   }
 
   function goNext() {
-    const errs = validateStep(step, form);
+    const errs = validateStep(step, form, cfg);
     if (Object.keys(errs).length > 0) {
       setFieldErrors((prev) => ({ ...prev, ...errs }));
       focusFirstError(errs);
@@ -301,14 +358,14 @@ export function ApplicationForm({
     // Run validation across every step before submit.
     const errs: Record<string, string> = {};
     for (let s = 1; s <= STEPS.length; s++) {
-      Object.assign(errs, validateStep(s, form));
+      Object.assign(errs, validateStep(s, form, cfg));
     }
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
       // Jump to the first step with an error.
       let firstErrorStep = step;
       for (const s of [1, 2, 3] as const) {
-        if (Object.keys(validateStep(s, form)).length > 0) {
+        if (Object.keys(validateStep(s, form, cfg)).length > 0) {
           firstErrorStep = s;
           setStep(s);
           break;
@@ -316,7 +373,10 @@ export function ApplicationForm({
       }
       setSubmitError("Please fix the highlighted fields.");
       // Defer the scroll/focus until the step has actually rendered.
-      setTimeout(() => focusFirstError(validateStep(firstErrorStep, form)), 80);
+      setTimeout(
+        () => focusFirstError(validateStep(firstErrorStep, form, cfg)),
+        80,
+      );
       return;
     }
     setSubmitError(undefined);
@@ -334,16 +394,29 @@ export function ApplicationForm({
   }
 
   const stepHasErrors = (s: number) =>
-    Object.keys(validateStep(s, form)).length > 0;
+    Object.keys(validateStep(s, form, cfg)).length > 0;
 
   // Derive parent-email requirement from the current age value. Used
   // both to enforce HTML-level required + aria-required and to swap the
-  // placeholder copy so the user knows why the field has lit up.
+  // placeholder copy so the user knows why the field has lit up. Layered
+  // on top of the admin `required` config.
   const ageNum = parseInt(form.age, 10);
-  const parentEmailRequired = !Number.isNaN(ageNum) && ageNum < 18;
+  const parentEmailAgeRequired = !Number.isNaN(ageNum) && ageNum < 18;
+  const parentEmailRequired =
+    parentEmailAgeRequired || isRequired(cfg, "parent_email");
+
+  // Required-marker helper for a config-driven field.
+  const reqMark = (key: string) =>
+    isRequired(cfg, key) ? (
+      <span aria-hidden className="text-spark-ink">
+        *
+      </span>
+    ) : null;
+
+  const show = (key: string) => isVisible(cfg, key);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 p-5 sm:p-6 md:p-8">
+    <div className="rounded-2xl border border-line bg-wash p-5 sm:p-6 md:p-8">
       {/* Mobile stepper: compact progress + current label only. The full
           4-up stepper wraps awkwardly under 380px. */}
       <div
@@ -351,16 +424,16 @@ export function ApplicationForm({
         aria-label={`Application progress: step ${step} of ${STEPS.length}`}
       >
         <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]">
-          <span className="text-spark">
+          <span className="text-spark-ink">
             Step {step} of {STEPS.length}
           </span>
-          <span className="text-white/55">
+          <span className="text-ink-soft">
             {STEPS.find((s) => s.id === step)?.title}
           </span>
         </div>
         <div
           aria-hidden
-          className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]"
+          className="mt-2 h-1 w-full overflow-hidden rounded-full bg-line"
         >
           <div
             className="h-full bg-spark transition-all duration-300"
@@ -381,12 +454,12 @@ export function ApplicationForm({
                 aria-current={isCurrent ? "step" : undefined}
                 className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-medium ${
                   isCurrent
-                    ? "border-spark bg-spark text-black"
+                    ? "border-spark bg-spark text-on-spark"
                     : reached
                       ? hasErr
-                        ? "border-red-400/60 bg-red-400/10 text-red-300"
-                        : "border-spark/40 bg-spark/10 text-spark"
-                      : "border-white/15 text-white/40"
+                        ? "border-red-400/60 bg-red-400/10 text-red-500"
+                        : "border-spark/40 bg-spark/10 text-spark-ink"
+                      : "border-line text-ink-faint"
                 }`}
               >
                 {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
@@ -417,12 +490,12 @@ export function ApplicationForm({
                 <span
                   className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
                     isCurrent
-                      ? "border-spark bg-spark text-black"
+                      ? "border-spark bg-spark text-on-spark"
                       : reached
                         ? hasErr
-                          ? "border-red-400/60 bg-red-400/10 text-red-300"
-                          : "border-spark/40 bg-spark/10 text-spark"
-                        : "border-white/15 text-white/40 group-hover:border-white/30 group-hover:text-white/60"
+                          ? "border-red-400/60 bg-red-400/10 text-red-500"
+                          : "border-spark/40 bg-spark/10 text-spark-ink"
+                        : "border-line text-ink-faint group-hover:border-ink/30 group-hover:text-ink-soft"
                   }`}
                 >
                   {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
@@ -430,15 +503,17 @@ export function ApplicationForm({
                 <span
                   className={
                     isCurrent
-                      ? "text-white"
-                      : "text-white/45 group-hover:text-white/70"
+                      ? "text-ink"
+                      : "text-ink-faint group-hover:text-ink-soft"
                   }
                 >
                   {s.title}
                 </span>
               </button>
               {i < STEPS.length - 1 && (
-                <span aria-hidden className="mx-1 text-white/25">›</span>
+                <span aria-hidden className="mx-1 text-ink-faint">
+                  ›
+                </span>
               )}
             </li>
           );
@@ -449,275 +524,466 @@ export function ApplicationForm({
         <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <Label htmlFor="account_email">Account email</Label>
-            <Input id="account_email" value={email} disabled autoComplete="email" />
-          </div>
-          <div className="md:col-span-2">
-            <Label htmlFor="full_name" required>
-              Full name <span aria-hidden className="text-spark">*</span>
-            </Label>
             <Input
-              id="full_name"
-              autoComplete="name"
-              required
-              aria-required="true"
-              error={fieldErrors.full_name}
-              value={form.full_name}
-              onChange={(e) => set("full_name", e.target.value)}
-            />
-            <FieldError id="full_name-error">{fieldErrors.full_name}</FieldError>
-          </div>
-          <div>
-            <Label htmlFor="age" required>
-              Age <span aria-hidden className="text-spark">*</span>
-            </Label>
-            <Input
-              id="age"
-              type="number"
-              inputMode="numeric"
-              min={10}
-              max={25}
-              required
-              aria-required="true"
-              error={fieldErrors.age}
-              value={form.age}
-              onChange={(e) => set("age", e.target.value)}
-            />
-            <FieldError id="age-error">{fieldErrors.age}</FieldError>
-          </div>
-          <div>
-            <Label htmlFor="grade">Grade</Label>
-            <Input
-              id="grade"
-              value={form.grade}
-              onChange={(e) => set("grade", e.target.value)}
-              placeholder="e.g. 11th"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Label htmlFor="school">School</Label>
-            <Input
-              id="school"
-              autoComplete="organization"
-              value={form.school}
-              onChange={(e) => set("school", e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="city">City</Label>
-            <Input
-              id="city"
-              autoComplete="address-level2"
-              value={form.city}
-              onChange={(e) => set("city", e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="country">Country</Label>
-            <Input
-              id="country"
-              autoComplete="country-name"
-              value={form.country}
-              onChange={(e) => set("country", e.target.value)}
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Label htmlFor="parent_email">
-              Parent / guardian email{" "}
-              {parentEmailRequired && (
-                <>
-                  <span aria-hidden className="text-spark">*</span>
-                  <span className="sr-only"> required</span>
-                </>
-              )}
-            </Label>
-            <Input
-              id="parent_email"
-              type="email"
+              id="account_email"
+              className={FIELD_CLASS}
+              value={email}
+              disabled
               autoComplete="email"
-              required={parentEmailRequired}
-              aria-required={parentEmailRequired || undefined}
-              error={fieldErrors.parent_email}
-              value={form.parent_email}
-              onChange={(e) => set("parent_email", e.target.value)}
-              placeholder={
-                parentEmailRequired
-                  ? "Required — you're under 18"
-                  : "Optional — only needed if you're under 18"
-              }
             />
-            <FieldError id="parent_email-error">
-              {fieldErrors.parent_email}
-            </FieldError>
-            <p className="mt-1 text-xs text-white/55">
-              For applicants under 18, we email your parent/guardian a
-              short note about the program once you submit.
-            </p>
           </div>
+          {show("full_name") && (
+            <div className="md:col-span-2">
+              <Label htmlFor="full_name" required={isRequired(cfg, "full_name")}>
+                {cfg.full_name.label} {reqMark("full_name")}
+              </Label>
+              <Input
+                id="full_name"
+                className={FIELD_CLASS}
+                autoComplete="name"
+                required={isRequired(cfg, "full_name")}
+                aria-required={isRequired(cfg, "full_name") || undefined}
+                error={fieldErrors.full_name}
+                value={form.full_name}
+                onChange={(e) => set("full_name", e.target.value)}
+                placeholder={cfg.full_name.placeholder || undefined}
+              />
+              <FieldError id="full_name-error">
+                {fieldErrors.full_name}
+              </FieldError>
+              {cfg.full_name.help && (
+                <p className="mt-1 text-xs text-ink-soft">
+                  {cfg.full_name.help}
+                </p>
+              )}
+            </div>
+          )}
+          {show("age") && (
+            <div>
+              <Label htmlFor="age" required={isRequired(cfg, "age")}>
+                {cfg.age.label} {reqMark("age")}
+              </Label>
+              <Input
+                id="age"
+                className={FIELD_CLASS}
+                type="number"
+                inputMode="numeric"
+                min={10}
+                max={25}
+                required={isRequired(cfg, "age")}
+                aria-required={isRequired(cfg, "age") || undefined}
+                error={fieldErrors.age}
+                value={form.age}
+                onChange={(e) => set("age", e.target.value)}
+                placeholder={cfg.age.placeholder || undefined}
+              />
+              <FieldError id="age-error">{fieldErrors.age}</FieldError>
+              {cfg.age.help && (
+                <p className="mt-1 text-xs text-ink-soft">{cfg.age.help}</p>
+              )}
+            </div>
+          )}
+          {show("grade") && (
+            <div>
+              <Label htmlFor="grade" required={isRequired(cfg, "grade")}>
+                {cfg.grade.label} {reqMark("grade")}
+              </Label>
+              <Input
+                id="grade"
+                className={FIELD_CLASS}
+                value={form.grade}
+                onChange={(e) => set("grade", e.target.value)}
+                placeholder={cfg.grade.placeholder || undefined}
+                required={isRequired(cfg, "grade")}
+                aria-required={isRequired(cfg, "grade") || undefined}
+              />
+              {cfg.grade.help && (
+                <p className="mt-1 text-xs text-ink-soft">{cfg.grade.help}</p>
+              )}
+            </div>
+          )}
+          {show("school") && (
+            <div className="md:col-span-2">
+              <Label htmlFor="school" required={isRequired(cfg, "school")}>
+                {cfg.school.label} {reqMark("school")}
+              </Label>
+              <Input
+                id="school"
+                className={FIELD_CLASS}
+                autoComplete="organization"
+                value={form.school}
+                onChange={(e) => set("school", e.target.value)}
+                placeholder={cfg.school.placeholder || undefined}
+                required={isRequired(cfg, "school")}
+                aria-required={isRequired(cfg, "school") || undefined}
+              />
+              {cfg.school.help && (
+                <p className="mt-1 text-xs text-ink-soft">{cfg.school.help}</p>
+              )}
+            </div>
+          )}
+          {show("city") && (
+            <div>
+              <Label htmlFor="city" required={isRequired(cfg, "city")}>
+                {cfg.city.label} {reqMark("city")}
+              </Label>
+              <Input
+                id="city"
+                className={FIELD_CLASS}
+                autoComplete="address-level2"
+                value={form.city}
+                onChange={(e) => set("city", e.target.value)}
+                placeholder={cfg.city.placeholder || undefined}
+                required={isRequired(cfg, "city")}
+                aria-required={isRequired(cfg, "city") || undefined}
+              />
+              {cfg.city.help && (
+                <p className="mt-1 text-xs text-ink-soft">{cfg.city.help}</p>
+              )}
+            </div>
+          )}
+          {show("country") && (
+            <div>
+              <Label htmlFor="country" required={isRequired(cfg, "country")}>
+                {cfg.country.label} {reqMark("country")}
+              </Label>
+              <Input
+                id="country"
+                className={FIELD_CLASS}
+                autoComplete="country-name"
+                value={form.country}
+                onChange={(e) => set("country", e.target.value)}
+                placeholder={cfg.country.placeholder || undefined}
+                required={isRequired(cfg, "country")}
+                aria-required={isRequired(cfg, "country") || undefined}
+              />
+              {cfg.country.help && (
+                <p className="mt-1 text-xs text-ink-soft">{cfg.country.help}</p>
+              )}
+            </div>
+          )}
+          {show("parent_email") && (
+            <div className="md:col-span-2">
+              <Label htmlFor="parent_email">
+                {cfg.parent_email.label}{" "}
+                {parentEmailRequired && (
+                  <>
+                    <span aria-hidden className="text-spark-ink">
+                      *
+                    </span>
+                    <span className="sr-only"> required</span>
+                  </>
+                )}
+              </Label>
+              <Input
+                id="parent_email"
+                className={FIELD_CLASS}
+                type="email"
+                autoComplete="email"
+                required={parentEmailRequired}
+                aria-required={parentEmailRequired || undefined}
+                error={fieldErrors.parent_email}
+                value={form.parent_email}
+                onChange={(e) => set("parent_email", e.target.value)}
+                placeholder={
+                  parentEmailAgeRequired
+                    ? "Required — you're under 18"
+                    : cfg.parent_email.placeholder || undefined
+                }
+              />
+              <FieldError id="parent_email-error">
+                {fieldErrors.parent_email}
+              </FieldError>
+              {cfg.parent_email.help && (
+                <p className="mt-1 text-xs text-ink-soft">
+                  {cfg.parent_email.help}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {step === 2 && (
         <div className="space-y-4">
-          <div>
-            <Label htmlFor="experience">
-              Tell us about your relevant experience
-            </Label>
-            <Textarea
-              id="experience"
-              rows={5}
-              value={form.experience}
-              onChange={(e) => set("experience", e.target.value)}
-              placeholder="Past projects, clubs, jobs, hackathons, side hustles — anything."
-            />
-          </div>
+          {show("experience") && (
+            <div>
+              <Label
+                htmlFor="experience"
+                required={isRequired(cfg, "experience")}
+              >
+                {cfg.experience.label} {reqMark("experience")}
+              </Label>
+              <Textarea
+                id="experience"
+                className={FIELD_CLASS}
+                rows={5}
+                value={form.experience}
+                onChange={(e) => set("experience", e.target.value)}
+                placeholder={cfg.experience.placeholder || undefined}
+                required={isRequired(cfg, "experience")}
+                aria-required={isRequired(cfg, "experience") || undefined}
+              />
+              {cfg.experience.help && (
+                <p className="mt-1 text-xs text-ink-soft">
+                  {cfg.experience.help}
+                </p>
+              )}
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="hours_per_week">
-                Hours per week you can commit
-              </Label>
-              <Input
-                id="hours_per_week"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={168}
-                value={form.hours_per_week}
-                onChange={(e) => set("hours_per_week", e.target.value)}
-                placeholder="10"
-              />
-            </div>
-            <div>
-              <Label htmlFor="referral_source">
-                How did you hear about us?
-              </Label>
-              <Input
-                id="referral_source"
-                value={form.referral_source}
-                onChange={(e) => set("referral_source", e.target.value)}
-              />
-            </div>
+            {show("hours_per_week") && (
+              <div>
+                <Label
+                  htmlFor="hours_per_week"
+                  required={isRequired(cfg, "hours_per_week")}
+                >
+                  {cfg.hours_per_week.label} {reqMark("hours_per_week")}
+                </Label>
+                <Input
+                  id="hours_per_week"
+                  className={FIELD_CLASS}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={168}
+                  value={form.hours_per_week}
+                  onChange={(e) => set("hours_per_week", e.target.value)}
+                  placeholder={cfg.hours_per_week.placeholder || undefined}
+                  required={isRequired(cfg, "hours_per_week")}
+                  aria-required={
+                    isRequired(cfg, "hours_per_week") || undefined
+                  }
+                />
+                {cfg.hours_per_week.help && (
+                  <p className="mt-1 text-xs text-ink-soft">
+                    {cfg.hours_per_week.help}
+                  </p>
+                )}
+              </div>
+            )}
+            {show("referral_source") && (
+              <div>
+                <Label
+                  htmlFor="referral_source"
+                  required={isRequired(cfg, "referral_source")}
+                >
+                  {cfg.referral_source.label} {reqMark("referral_source")}
+                </Label>
+                <Input
+                  id="referral_source"
+                  className={FIELD_CLASS}
+                  value={form.referral_source}
+                  onChange={(e) => set("referral_source", e.target.value)}
+                  placeholder={cfg.referral_source.placeholder || undefined}
+                  required={isRequired(cfg, "referral_source")}
+                  aria-required={
+                    isRequired(cfg, "referral_source") || undefined
+                  }
+                />
+                {cfg.referral_source.help && (
+                  <p className="mt-1 text-xs text-ink-soft">
+                    {cfg.referral_source.help}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-spark">
-              Links (optional)
-            </p>
-            <p className="mt-1 text-xs text-white/55">
-              Anything that helps us see what you've built.
-            </p>
-            <div className="mt-4 space-y-3">
-              <div>
-                <Label htmlFor="linkedin_url">LinkedIn</Label>
-                <Input
-                  id="linkedin_url"
-                  type="url"
-                  inputMode="url"
-                  autoComplete="url"
-                  placeholder="https://linkedin.com/in/…"
-                  error={fieldErrors.linkedin_url}
-                  value={form.linkedin_url}
-                  onChange={(e) => set("linkedin_url", e.target.value)}
-                />
-                <FieldError id="linkedin_url-error">
-                  {fieldErrors.linkedin_url}
-                </FieldError>
-              </div>
-              <div>
-                <Label htmlFor="resume_url">Resume URL</Label>
-                <Input
-                  id="resume_url"
-                  type="url"
-                  inputMode="url"
-                  autoComplete="url"
-                  placeholder="https://… (Google Drive, Dropbox, your site)"
-                  error={fieldErrors.resume_url}
-                  value={form.resume_url}
-                  onChange={(e) => set("resume_url", e.target.value)}
-                />
-                <FieldError id="resume_url-error">
-                  {fieldErrors.resume_url}
-                </FieldError>
-              </div>
-              <div>
-                <Label htmlFor="portfolio_url">Portfolio / project link</Label>
-                <Input
-                  id="portfolio_url"
-                  type="url"
-                  inputMode="url"
-                  autoComplete="url"
-                  placeholder="https://…"
-                  error={fieldErrors.portfolio_url}
-                  value={form.portfolio_url}
-                  onChange={(e) => set("portfolio_url", e.target.value)}
-                />
-                <FieldError id="portfolio_url-error">
-                  {fieldErrors.portfolio_url}
-                </FieldError>
+          {(show("linkedin_url") ||
+            show("resume_url") ||
+            show("portfolio_url")) && (
+            <div className="rounded-xl border border-line bg-paper p-4">
+              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-spark-ink">
+                Links (optional)
+              </p>
+              <p className="mt-1 text-xs text-ink-soft">
+                Anything that helps us see what you've built.
+              </p>
+              <div className="mt-4 space-y-3">
+                {show("linkedin_url") && (
+                  <div>
+                    <Label
+                      htmlFor="linkedin_url"
+                      required={isRequired(cfg, "linkedin_url")}
+                    >
+                      {cfg.linkedin_url.label} {reqMark("linkedin_url")}
+                    </Label>
+                    <Input
+                      id="linkedin_url"
+                      className={FIELD_CLASS}
+                      type="url"
+                      inputMode="url"
+                      autoComplete="url"
+                      placeholder={cfg.linkedin_url.placeholder || undefined}
+                      error={fieldErrors.linkedin_url}
+                      value={form.linkedin_url}
+                      onChange={(e) => set("linkedin_url", e.target.value)}
+                      required={isRequired(cfg, "linkedin_url")}
+                      aria-required={
+                        isRequired(cfg, "linkedin_url") || undefined
+                      }
+                    />
+                    <FieldError id="linkedin_url-error">
+                      {fieldErrors.linkedin_url}
+                    </FieldError>
+                    {cfg.linkedin_url.help && (
+                      <p className="mt-1 text-xs text-ink-soft">
+                        {cfg.linkedin_url.help}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {show("resume_url") && (
+                  <div>
+                    <Label
+                      htmlFor="resume_url"
+                      required={isRequired(cfg, "resume_url")}
+                    >
+                      {cfg.resume_url.label} {reqMark("resume_url")}
+                    </Label>
+                    <Input
+                      id="resume_url"
+                      className={FIELD_CLASS}
+                      type="url"
+                      inputMode="url"
+                      autoComplete="url"
+                      placeholder={cfg.resume_url.placeholder || undefined}
+                      error={fieldErrors.resume_url}
+                      value={form.resume_url}
+                      onChange={(e) => set("resume_url", e.target.value)}
+                      required={isRequired(cfg, "resume_url")}
+                      aria-required={
+                        isRequired(cfg, "resume_url") || undefined
+                      }
+                    />
+                    <FieldError id="resume_url-error">
+                      {fieldErrors.resume_url}
+                    </FieldError>
+                    {cfg.resume_url.help && (
+                      <p className="mt-1 text-xs text-ink-soft">
+                        {cfg.resume_url.help}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {show("portfolio_url") && (
+                  <div>
+                    <Label
+                      htmlFor="portfolio_url"
+                      required={isRequired(cfg, "portfolio_url")}
+                    >
+                      {cfg.portfolio_url.label} {reqMark("portfolio_url")}
+                    </Label>
+                    <Input
+                      id="portfolio_url"
+                      className={FIELD_CLASS}
+                      type="url"
+                      inputMode="url"
+                      autoComplete="url"
+                      placeholder={cfg.portfolio_url.placeholder || undefined}
+                      error={fieldErrors.portfolio_url}
+                      value={form.portfolio_url}
+                      onChange={(e) => set("portfolio_url", e.target.value)}
+                      required={isRequired(cfg, "portfolio_url")}
+                      aria-required={
+                        isRequired(cfg, "portfolio_url") || undefined
+                      }
+                    />
+                    <FieldError id="portfolio_url-error">
+                      {fieldErrors.portfolio_url}
+                    </FieldError>
+                    {cfg.portfolio_url.help && (
+                      <p className="mt-1 text-xs text-ink-soft">
+                        {cfg.portfolio_url.help}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
       {step === 3 && (
         <div className="space-y-4">
           <div>
-            <Label htmlFor="why_join" required>
-              Why Sparkline Youth? <span aria-hidden className="text-spark">*</span>
+            <Label htmlFor="why_join" required={isRequired(cfg, "why_join")}>
+              {cfg.why_join.label} {reqMark("why_join")}
             </Label>
             <Textarea
               id="why_join"
+              className={FIELD_CLASS}
               rows={6}
-              required
-              aria-required="true"
+              required={isRequired(cfg, "why_join")}
+              aria-required={isRequired(cfg, "why_join") || undefined}
               error={fieldErrors.why_join}
               aria-describedby="why_join-counter"
               value={form.why_join}
               onChange={(e) => set("why_join", e.target.value)}
-              placeholder="What do you want to get out of these 4 weeks?"
+              placeholder={cfg.why_join.placeholder || undefined}
             />
             <div className="mt-1 flex items-center justify-between text-xs">
-              <FieldError id="why_join-error">{fieldErrors.why_join}</FieldError>
-              <span id="why_join-counter" className="text-white/50">
+              <FieldError id="why_join-error">
+                {fieldErrors.why_join}
+              </FieldError>
+              <span id="why_join-counter" className="text-ink-faint">
                 {form.why_join.trim().length} / 40+ chars
               </span>
             </div>
+            {cfg.why_join.help && (
+              <p className="mt-1 text-xs text-ink-soft">{cfg.why_join.help}</p>
+            )}
           </div>
+          {show("startup_idea") && (
+            <div>
+              <Label
+                htmlFor="startup_idea"
+                required={isRequired(cfg, "startup_idea")}
+              >
+                {cfg.startup_idea.label} {reqMark("startup_idea")}
+              </Label>
+              <Textarea
+                id="startup_idea"
+                className={FIELD_CLASS}
+                rows={6}
+                value={form.startup_idea}
+                onChange={(e) => set("startup_idea", e.target.value)}
+                placeholder={cfg.startup_idea.placeholder || undefined}
+                required={isRequired(cfg, "startup_idea")}
+                aria-required={isRequired(cfg, "startup_idea") || undefined}
+              />
+              {cfg.startup_idea.help && (
+                <p className="mt-1 text-xs text-ink-soft">
+                  {cfg.startup_idea.help}
+                </p>
+              )}
+              <IdeaValidator idea={form.startup_idea} />
+            </div>
+          )}
           <div>
-            <Label htmlFor="startup_idea">
-              Do you have a project idea? (optional)
+            <Label required={isRequired(cfg, "team_size")}>
+              {cfg.team_size.label} {reqMark("team_size")}
             </Label>
-            <Textarea
-              id="startup_idea"
-              rows={6}
-              value={form.startup_idea}
-              onChange={(e) => set("startup_idea", e.target.value)}
-              placeholder="It's totally fine if you don't. Tell us anything you've been thinking about."
-            />
-            <IdeaValidator idea={form.startup_idea} />
-          </div>
-          <div>
-            <Label required>
-              Founding team size{" "}
-              <span aria-hidden className="text-spark">*</span>
-            </Label>
-            <p className="mt-0.5 mb-2 text-xs text-white/55">
-              How many of you are working on this together? You don't need to
-              list anyone — just the count, including yourself.
-            </p>
+            {cfg.team_size.help && (
+              <p className="mt-0.5 mb-2 text-xs text-ink-soft">
+                {cfg.team_size.help}
+              </p>
+            )}
             <div
               id="team_size"
               role="radiogroup"
-              aria-label="Founding team size"
+              aria-label={cfg.team_size.label}
               aria-required="true"
               aria-invalid={fieldErrors.team_size ? true : undefined}
               tabIndex={-1}
               className={`flex flex-wrap gap-2 rounded-lg ${
                 fieldErrors.team_size
-                  ? "ring-1 ring-red-400/40 ring-offset-2 ring-offset-black/0 p-2 -m-2"
+                  ? "ring-1 ring-red-400/40 ring-offset-2 ring-offset-transparent p-2 -m-2"
                   : ""
               }`}
             >
-              {TEAM_SIZE_OPTIONS.map((opt) => {
+              {(cfg.team_size.options ?? []).map((opt) => {
                 const selected = form.team_size === String(opt.value);
                 return (
                   <button
@@ -728,8 +994,8 @@ export function ApplicationForm({
                     onClick={() => set("team_size", String(opt.value))}
                     className={`rounded-lg border px-3 py-2 text-sm transition active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark/60 ${
                       selected
-                        ? "border-spark bg-spark/15 text-white"
-                        : "border-white/15 bg-black/20 text-white/75 hover:border-white/30 hover:text-white"
+                        ? "border-spark bg-spark/15 text-ink"
+                        : "border-line bg-paper text-ink-soft hover:border-ink/30 hover:text-ink"
                     }`}
                   >
                     {opt.label}
@@ -737,42 +1003,109 @@ export function ApplicationForm({
                 );
               })}
             </div>
-            <FieldError id="team_size-error">{fieldErrors.team_size}</FieldError>
+            <FieldError id="team_size-error">
+              {fieldErrors.team_size}
+            </FieldError>
           </div>
         </div>
       )}
 
       {step === 4 && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-white/10 bg-black/30 p-5 text-sm">
-            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-spark">
+          <div className="rounded-xl border border-line bg-paper p-5 text-sm">
+            <h4 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wider text-spark-ink">
               Review your answers
             </h4>
-            <ReviewRow label="Full name" value={form.full_name} />
-            <ReviewRow label="Age" value={form.age} />
-            <ReviewRow label="Grade" value={form.grade} />
-            <ReviewRow label="School" value={form.school} />
-            <ReviewRow
-              label="Location"
-              value={[form.city, form.country].filter(Boolean).join(", ")}
-            />
-            <ReviewRow label="Parent email" value={form.parent_email} />
-            <ReviewRow label="Hours/week" value={form.hours_per_week} />
-            <ReviewRow
-              label="Team size"
-              value={teamSizeLabel(form.team_size)}
-            />
-            <ReviewRow label="Heard about us" value={form.referral_source} />
-            <ReviewRow label="LinkedIn" value={form.linkedin_url} />
-            <ReviewRow label="Resume" value={form.resume_url} />
-            <ReviewRow label="Portfolio" value={form.portfolio_url} />
-            <ReviewRow label="Why Sparkline Youth" value={form.why_join} multiline />
-            <ReviewRow label="Project idea" value={form.startup_idea} multiline />
-            <ReviewRow label="Experience" value={form.experience} multiline />
+            {show("full_name") && (
+              <ReviewRow label={cfg.full_name.label} value={form.full_name} />
+            )}
+            {show("age") && (
+              <ReviewRow label={cfg.age.label} value={form.age} />
+            )}
+            {show("grade") && (
+              <ReviewRow label={cfg.grade.label} value={form.grade} />
+            )}
+            {show("school") && (
+              <ReviewRow label={cfg.school.label} value={form.school} />
+            )}
+            {(show("city") || show("country")) && (
+              <ReviewRow
+                label="Location"
+                value={[
+                  show("city") ? form.city : "",
+                  show("country") ? form.country : "",
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              />
+            )}
+            {show("parent_email") && (
+              <ReviewRow
+                label={cfg.parent_email.label}
+                value={form.parent_email}
+              />
+            )}
+            {show("hours_per_week") && (
+              <ReviewRow
+                label={cfg.hours_per_week.label}
+                value={form.hours_per_week}
+              />
+            )}
+            {show("team_size") && (
+              <ReviewRow
+                label={cfg.team_size.label}
+                value={teamSizeLabel(cfg, form.team_size)}
+              />
+            )}
+            {show("referral_source") && (
+              <ReviewRow
+                label={cfg.referral_source.label}
+                value={form.referral_source}
+              />
+            )}
+            {show("linkedin_url") && (
+              <ReviewRow
+                label={cfg.linkedin_url.label}
+                value={form.linkedin_url}
+              />
+            )}
+            {show("resume_url") && (
+              <ReviewRow
+                label={cfg.resume_url.label}
+                value={form.resume_url}
+              />
+            )}
+            {show("portfolio_url") && (
+              <ReviewRow
+                label={cfg.portfolio_url.label}
+                value={form.portfolio_url}
+              />
+            )}
+            {show("why_join") && (
+              <ReviewRow
+                label={cfg.why_join.label}
+                value={form.why_join}
+                multiline
+              />
+            )}
+            {show("startup_idea") && (
+              <ReviewRow
+                label={cfg.startup_idea.label}
+                value={form.startup_idea}
+                multiline
+              />
+            )}
+            {show("experience") && (
+              <ReviewRow
+                label={cfg.experience.label}
+                value={form.experience}
+                multiline
+              />
+            )}
           </div>
-          <div className="rounded-xl border border-spark/30 bg-spark/5 p-4 text-sm text-white/70">
+          <div className="rounded-xl border border-spark/30 bg-spark/5 p-4 text-sm text-ink-soft">
             Submitting moves your application to{" "}
-            <span className="text-white">review</span>. You won't be charged
+            <span className="text-ink">review</span>. You won't be charged
             anything yet — payment ({priceLabel}) only happens after we accept
             you.
           </div>
@@ -782,7 +1115,7 @@ export function ApplicationForm({
       {submitError && (
         <div
           role="alert"
-          className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200"
+          className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-500"
         >
           {submitError}
         </div>
@@ -834,20 +1167,20 @@ function SaveStatusIndicator({ status }: { status: SaveStatus }) {
   // "Draft saved" without us hijacking their focus.
   const body =
     status.kind === "saving" ? (
-      <span className="inline-flex items-center gap-1.5 text-xs text-white/65">
+      <span className="inline-flex items-center gap-1.5 text-xs text-ink-soft">
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Saving draft…
       </span>
     ) : status.kind === "saved" ? (
-      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-300">
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500">
         <Check className="h-3 w-3" aria-hidden /> Draft saved at{" "}
         {status.at.toLocaleTimeString()}
       </span>
     ) : status.kind === "error" ? (
-      <span className="inline-flex items-center gap-1.5 text-xs text-red-300">
+      <span className="inline-flex items-center gap-1.5 text-xs text-red-500">
         <AlertCircle className="h-3 w-3" aria-hidden /> {status.message}
       </span>
     ) : (
-      <span className="text-xs text-white/45">
+      <span className="text-xs text-ink-faint">
         Drafts autosave as you type.
       </span>
     );
@@ -869,15 +1202,15 @@ function ReviewRow({
 }) {
   return (
     <div
-      className={`flex ${multiline ? "flex-col gap-1" : "items-baseline gap-3"} border-b border-white/5 py-2 last:border-0`}
+      className={`flex ${multiline ? "flex-col gap-1" : "items-baseline gap-3"} border-b border-line py-2 last:border-0`}
     >
-      <div className="text-xs uppercase tracking-wider text-white/55">
+      <div className="text-xs uppercase tracking-wider text-ink-faint">
         {label}
       </div>
       <div
-        className={`text-white/85 ${multiline ? "whitespace-pre-wrap break-words [overflow-wrap:anywhere]" : "truncate"}`}
+        className={`text-ink ${multiline ? "whitespace-pre-wrap break-words [overflow-wrap:anywhere]" : "truncate"}`}
       >
-        {value || <span className="text-white/40">—</span>}
+        {value || <span className="text-ink-faint">—</span>}
       </div>
     </div>
   );

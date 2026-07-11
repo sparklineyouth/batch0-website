@@ -33,9 +33,9 @@ export default async function AnnouncementsPage() {
       <div className="mx-auto max-w-3xl">
         <h1 className="text-3xl font-bold tracking-tight">Announcements</h1>
         <Card className="mt-6">
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-ink-soft">
             Announcements aren't enabled yet — apply migration{" "}
-            <code className="font-mono text-spark">
+            <code className="font-mono text-spark-ink">
               0027_announcements_and_reactions.sql
             </code>
             .
@@ -76,7 +76,7 @@ export default async function AnnouncementsPage() {
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Announcements</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <p className="mt-1 text-sm text-ink-soft">
             Updates from the Sparkline Youth team. React to let us know they
             landed.
           </p>
@@ -84,7 +84,7 @@ export default async function AnnouncementsPage() {
         {profile?.role === "admin" && (
           <a
             href="/admin/announcements"
-            className="text-xs text-spark hover:underline"
+            className="text-xs text-spark-ink hover:underline"
           >
             Send announcement →
           </a>
@@ -93,8 +93,8 @@ export default async function AnnouncementsPage() {
 
       {(anns?.length ?? 0) === 0 ? (
         <Card className="mt-6 text-center">
-          <Megaphone className="mx-auto h-6 w-6 text-white/30" />
-          <p className="mt-3 text-sm text-white/55">
+          <Megaphone className="mx-auto h-6 w-6 text-ink-faint" />
+          <p className="mt-3 text-sm text-ink-soft">
             No announcements yet. When the team posts one, it'll show up
             here.
           </p>
@@ -109,24 +109,24 @@ export default async function AnnouncementsPage() {
               <li
                 id={`a-${a.id}`}
                 key={a.id}
-                className="scroll-mt-24 rounded-xl border border-white/10 bg-zinc-900/40 p-5"
+                className="scroll-mt-24 rounded-xl border border-line bg-wash p-5"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-white">
+                  <h2 className="text-lg font-semibold text-ink">
                     {a.title}
                   </h2>
-                  <span className="shrink-0 text-xs text-white/45">
+                  <span className="shrink-0 text-xs text-ink-faint">
                     <LocalTime value={a.created_at} mode="datetime-short" />
                   </span>
                 </div>
                 {cohort && (
-                  <p className="mt-1 text-[11px] uppercase tracking-wider text-white/40">
+                  <p className="mt-1 text-[11px] uppercase tracking-wider text-ink-faint">
                     {cohort.cohort_number != null
                       ? `Cohort ${cohort.cohort_number} · ${cohort.name}`
                       : cohort.name}
                   </p>
                 )}
-                <p className="mt-3 whitespace-pre-wrap break-words text-sm text-white/85">
+                <p className="mt-3 whitespace-pre-wrap break-words text-sm text-ink-soft">
                   {a.body}
                 </p>
                 <Reactions

@@ -18,15 +18,15 @@ export default async function AdminIntrosPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-3xl font-bold tracking-tight">Investor intros</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Investor intros</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Funnel from intro request → meeting → committed → wired.
       </p>
 
       <div className="mt-6 space-y-3">
         {(rows ?? []).length === 0 && (
           <Card>
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-ink-faint">
               No intro requests yet.
             </p>
           </Card>

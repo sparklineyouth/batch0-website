@@ -42,7 +42,7 @@ export function ModerationRow({ team }: { team: any }) {
 
   return (
     <Card className="!p-4">
-      <div className="aspect-square w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
+      <div className="aspect-square w-full overflow-hidden rounded-lg border border-line bg-wash">
         {team.logo_url && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -53,12 +53,12 @@ export function ModerationRow({ team }: { team: any }) {
         )}
       </div>
       <div className="mt-3">
-        <div className="text-sm font-semibold">{team.name}</div>
+        <div className="text-sm font-semibold text-ink">{team.name}</div>
         {cohort?.name && (
-          <div className="text-xs text-white/40">{cohort.name}</div>
+          <div className="text-xs text-ink-faint">{cohort.name}</div>
         )}
         {team.logo_rejected_reason && (
-          <p className="mt-1 text-xs text-amber-300/80">
+          <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-300/80">
             AI flagged: {team.logo_rejected_reason}
           </p>
         )}

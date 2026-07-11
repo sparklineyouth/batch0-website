@@ -15,15 +15,15 @@ export default async function ModerationPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-3xl font-bold tracking-tight">Moderation</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Moderation</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Team logos awaiting review. Reject anything that wouldn't be safe in a
         high-school setting.
       </p>
 
       {(pending?.length ?? 0) === 0 ? (
         <Card className="mt-8 text-center">
-          <p className="text-sm text-white/50">No logos pending review.</p>
+          <p className="text-sm text-ink-faint">No logos pending review.</p>
         </Card>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2">

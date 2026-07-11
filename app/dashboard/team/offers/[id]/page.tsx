@@ -44,20 +44,20 @@ export default async function TeamOfferPage({
     <div className="mx-auto max-w-3xl">
       <Link
         href="/dashboard/team/offers"
-        className="text-sm text-white/55 hover:text-white"
+        className="text-sm text-ink-soft hover:text-ink"
       >
         ← Offers
       </Link>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">
         SAFE — ${(offer.amount_cents / 100).toLocaleString()}
       </h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         From {investor?.full_name ?? investor?.email ?? "investor"} · status{" "}
-        <strong className="text-white">{offer.status}</strong>
+        <strong className="text-ink">{offer.status}</strong>
       </p>
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Terms
         </h2>
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -81,48 +81,48 @@ export default async function TeamOfferPage({
 
       {offer.document_md && (
         <Card className="mt-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Memo
           </h2>
-          <pre className="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/30 p-4 text-xs leading-relaxed text-white/80">
+          <pre className="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-paper p-4 text-xs leading-relaxed text-ink-soft">
             {offer.document_md}
           </pre>
         </Card>
       )}
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Signatures
         </h2>
         <ul className="mt-4 space-y-3 text-sm">
           <li>
-            <span className="text-xs uppercase tracking-wider text-white/40">
+            <span className="text-xs uppercase tracking-wider text-ink-faint">
               Investor
             </span>
             {offer.investor_signed_at ? (
               <p className="mt-0.5">
                 <strong>{offer.investor_signature_name ?? "Signed"}</strong>{" "}
-                <span className="text-white/45">
+                <span className="text-ink-faint">
                   · <LocalTime value={offer.investor_signed_at} />
                 </span>
               </p>
             ) : (
-              <p className="mt-0.5 text-white/45">Not signed</p>
+              <p className="mt-0.5 text-ink-faint">Not signed</p>
             )}
           </li>
           <li>
-            <span className="text-xs uppercase tracking-wider text-white/40">
+            <span className="text-xs uppercase tracking-wider text-ink-faint">
               Team
             </span>
             {offer.team_signed_at ? (
               <p className="mt-0.5">
                 <strong>{offer.team_signature_name ?? "Signed"}</strong>{" "}
-                <span className="text-white/45">
+                <span className="text-ink-faint">
                   · <LocalTime value={offer.team_signed_at} />
                 </span>
               </p>
             ) : (
-              <p className="mt-0.5 text-white/45">Awaiting counter-signature</p>
+              <p className="mt-0.5 text-ink-faint">Awaiting counter-signature</p>
             )}
           </li>
         </ul>
@@ -130,7 +130,7 @@ export default async function TeamOfferPage({
 
       {offer.status === "sent" && (
         <Card className="mt-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Take action
           </h2>
           <OfferActions offerId={offer.id} />
@@ -143,10 +143,10 @@ export default async function TeamOfferPage({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wider text-white/45">
+      <p className="text-[10px] uppercase tracking-wider text-ink-faint">
         {label}
       </p>
-      <p className="mt-0.5 text-white">{value}</p>
+      <p className="mt-0.5 text-ink">{value}</p>
     </div>
   );
 }

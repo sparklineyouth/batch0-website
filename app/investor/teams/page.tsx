@@ -41,13 +41,13 @@ export default async function InvestorTeamsPage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-3xl font-bold tracking-tight">Teams</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Teams</h1>
+      <p className="mt-1 text-sm text-ink-faint">
         Every team in our cohorts. Mark interest to track them privately.
       </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wider text-white/40">
+        <span className="font-mono text-xs uppercase tracking-wider text-ink-faint">
           Cohort
         </span>
         <Filter href="/investor/teams" label="All" active={cohortFilter === "all"} />
@@ -64,7 +64,7 @@ export default async function InvestorTeamsPage({
       <div className="mt-6 grid gap-3">
         {filtered.length === 0 && (
           <Card>
-            <p className="text-sm text-white/50">No teams to show yet.</p>
+            <p className="text-sm text-ink-faint">No teams to show yet.</p>
           </Card>
         )}
         {filtered.map((t: any) => {
@@ -81,19 +81,19 @@ export default async function InvestorTeamsPage({
                   <div className="flex items-baseline gap-2">
                     <Link
                       href={`/investor/teams/${t.id}`}
-                      className="text-base font-semibold text-white hover:text-spark"
+                      className="font-display text-base font-semibold tracking-[-0.02em] text-ink hover:text-spark-ink"
                     >
                       {t.name}
                     </Link>
-                    <span className="text-xs text-white/40">
+                    <span className="text-xs text-ink-faint">
                       {cohort?.name ?? ""}
                     </span>
                   </div>
                   {t.tagline && (
-                    <p className="mt-1 text-sm text-white/60">{t.tagline}</p>
+                    <p className="mt-1 text-sm text-ink-soft">{t.tagline}</p>
                   )}
                   {t.description && (
-                    <p className="mt-2 line-clamp-3 text-sm text-white/55">
+                    <p className="mt-2 line-clamp-3 text-sm text-ink-soft">
                       {t.description}
                     </p>
                   )}
@@ -103,7 +103,7 @@ export default async function InvestorTeamsPage({
                         href={t.pitch_deck_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-spark hover:underline"
+                        className="text-spark-ink hover:underline"
                       >
                         Pitch deck →
                       </a>
@@ -113,7 +113,7 @@ export default async function InvestorTeamsPage({
                         href={t.pitch_video_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-spark hover:underline"
+                        className="text-spark-ink hover:underline"
                       >
                         Pitch video →
                       </a>
@@ -123,13 +123,13 @@ export default async function InvestorTeamsPage({
                         href={t.website_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-spark hover:underline"
+                        className="text-spark-ink hover:underline"
                       >
                         Website →
                       </a>
                     )}
                     {publicHref && (
-                      <Link href={publicHref} className="text-white/60 hover:text-white">
+                      <Link href={publicHref} className="text-ink-soft hover:text-ink">
                         Public profile →
                       </Link>
                     )}
@@ -157,10 +157,10 @@ function Filter({
   return (
     <Link
       href={href}
-      className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
+      className={`rounded-full border px-3 py-1 font-mono text-xs uppercase tracking-wider transition ${
         active
-          ? "border-spark bg-spark/10 text-spark"
-          : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+          ? "border-spark bg-spark/10 text-spark-ink"
+          : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
       }`}
     >
       {label}

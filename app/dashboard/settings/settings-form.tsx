@@ -63,13 +63,13 @@ export function SettingsForm({
   return (
     <div className="space-y-8">
       <form onSubmit={saveProfile} className="space-y-4">
-        <h3 className="text-sm font-medium uppercase tracking-wider text-white/50">
+        <h3 className="text-sm font-medium uppercase tracking-wider text-ink-faint">
           Profile
         </h3>
         <div>
           <Label>Email</Label>
           <Input value={email} disabled />
-          <p className="mt-1 text-xs text-white/40">
+          <p className="mt-1 text-xs text-ink-faint">
             To change your email, contact us.
           </p>
         </div>
@@ -82,15 +82,15 @@ export function SettingsForm({
           />
         </div>
         <FieldError>{profileError}</FieldError>
-        {profileOk && <p className="text-xs text-emerald-300">Saved.</p>}
+        {profileOk && <p className="text-xs text-emerald-700 dark:text-emerald-300">Saved.</p>}
         <Button type="submit" disabled={profileSaving}>
           {profileSaving ? "Saving…" : "Save profile"}
         </Button>
       </form>
 
-      <div className="border-t border-white/10 pt-8">
+      <div className="border-t border-line pt-8">
         <form onSubmit={changePassword} className="space-y-4">
-          <h3 className="text-sm font-medium uppercase tracking-wider text-white/50">
+          <h3 className="text-sm font-medium uppercase tracking-wider text-ink-faint">
             Change password
           </h3>
           <div>
@@ -105,7 +105,7 @@ export function SettingsForm({
             />
           </div>
           <FieldError>{pwError}</FieldError>
-          {pwOk && <p className="text-xs text-emerald-300">Password updated.</p>}
+          {pwOk && <p className="text-xs text-emerald-700 dark:text-emerald-300">Password updated.</p>}
           <Button type="submit" disabled={pwSaving || password.length < 8}>
             {pwSaving ? "Saving…" : "Update password"}
           </Button>

@@ -121,20 +121,20 @@ export function FileFeedbackPanel({
 
   return (
     <Card className="!p-0 overflow-hidden">
-      <div className="border-b border-white/10 px-4 py-3 md:px-5">
-        <h2 className="text-base font-semibold">Files + feedback</h2>
-        <p className="text-xs text-white/50">
+      <div className="border-b border-line px-4 py-3 md:px-5">
+        <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Files + feedback</h2>
+        <p className="text-xs text-ink-faint">
           The student's personal uploads. Open one to download or leave
           mentor feedback.
         </p>
       </div>
       {files.length === 0 ? (
-        <p className="px-4 py-8 text-center text-sm text-white/40">
+        <p className="px-4 py-8 text-center text-sm text-ink-faint">
           No files uploaded yet.
         </p>
       ) : (
         <div className="grid md:grid-cols-[16rem_minmax(0,1fr)]">
-          <ul className="max-h-80 divide-y divide-white/5 overflow-y-auto md:max-h-[28rem] md:border-r md:border-white/10">
+          <ul className="max-h-80 divide-y divide-line overflow-y-auto md:max-h-[28rem] md:border-r md:border-line">
             {files.map((f) => (
               <li key={f.id}>
                 <button
@@ -142,14 +142,14 @@ export function FileFeedbackPanel({
                   onClick={() => setActive(f.id)}
                   className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition ${
                     active === f.id
-                      ? "bg-spark/10 text-white"
-                      : "text-white/70 hover:bg-white/[0.03]"
+                      ? "bg-spark/10 text-ink"
+                      : "text-ink-soft hover:bg-wash"
                   }`}
                 >
-                  <FileText className="h-4 w-4 shrink-0 text-white/40" />
+                  <FileText className="h-4 w-4 shrink-0 text-ink-faint" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate">{f.name}</div>
-                    <div className="text-[11px] text-white/40">
+                    <div className="text-[11px] text-ink-faint">
                       {fmtBytes(f.size_bytes)} ·{" "}
                       <LocalTime value={f.created_at} mode="date" />
                     </div>
@@ -164,7 +164,7 @@ export function FileFeedbackPanel({
               <>
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-white">
+                    <div className="truncate text-sm font-medium text-ink">
                       {files.find((f) => f.id === active)?.name}
                     </div>
                   </div>
@@ -178,28 +178,28 @@ export function FileFeedbackPanel({
                 </div>
                 <ul className="space-y-3">
                   {feedback.length === 0 && (
-                    <li className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-xs text-white/40">
+                    <li className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-xs text-ink-faint">
                       No feedback yet.
                     </li>
                   )}
                   {feedback.map((f) => (
                     <li
                       key={f.id}
-                      className="rounded-lg border border-white/10 bg-zinc-950/40 p-3"
+                      className="rounded-lg border border-line bg-paper p-3"
                     >
-                      <div className="flex items-baseline justify-between text-xs text-white/45">
+                      <div className="flex items-baseline justify-between text-xs text-ink-faint">
                         <span>
                           {f.author.full_name ?? f.author.email}
                         </span>
                         <span>{formatRelativeTime(f.created_at)}</span>
                       </div>
-                      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-white/85">
+                      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-soft">
                         {f.body}
                       </p>
                     </li>
                   ))}
                 </ul>
-                <div className="mt-4 border-t border-white/10 pt-3">
+                <div className="mt-4 border-t border-line pt-3">
                   <Textarea
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
@@ -221,7 +221,7 @@ export function FileFeedbackPanel({
                 </div>
               </>
             ) : (
-              <p className="text-sm text-white/40">Pick a file to review.</p>
+              <p className="text-sm text-ink-faint">Pick a file to review.</p>
             )}
           </div>
         </div>

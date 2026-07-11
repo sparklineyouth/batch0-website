@@ -64,7 +64,7 @@ export function LandingForm({ initial }: { initial: LandingInput }) {
           />
           {v.accent_hex && (
             <div
-              className="mt-2 h-6 w-12 rounded border border-white/10"
+              className="mt-2 h-6 w-12 rounded border border-line"
               style={{ background: v.accent_hex || "transparent" }}
             />
           )}
@@ -79,7 +79,7 @@ export function LandingForm({ initial }: { initial: LandingInput }) {
         </div>
       </div>
       {error && <FieldError>{error}</FieldError>}
-      {okMsg && <p className="text-xs text-emerald-300">{okMsg}</p>}
+      {okMsg && <p className="text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</p>}
       <div className="flex justify-end">
         <Button onClick={save} disabled={pending}>
           {pending ? "Saving…" : "Save landing"}

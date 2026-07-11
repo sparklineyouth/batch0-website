@@ -32,15 +32,15 @@ export default async function AdminResourcesPage() {
     <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Resources</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Resources</h1>
+          <p className="mt-1 text-sm text-ink-soft">
             Shared decks, templates, guides — visible to enrolled students in
             the chosen cohort (or everyone, if left global).
           </p>
         </div>
         <Link
           href="/admin/resources/new"
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-spark px-4 text-sm font-semibold text-black hover:bg-spark-200"
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-spark px-4 text-sm font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           <Plus className="h-4 w-4" /> New resource
         </Link>
@@ -48,14 +48,14 @@ export default async function AdminResourcesPage() {
 
       <Card className="mt-6 !p-0 overflow-hidden">
         {(resources?.length ?? 0) === 0 ? (
-          <p className="p-6 text-sm text-white/55">
+          <p className="p-6 text-sm text-ink-soft">
             Nothing here yet. Upload your first resource — try cohort
             templates, kickoff decks, or recommended reading.
           </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/40">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-3">Title</th>
                 <th className="px-5 py-3">Category</th>
                 <th className="px-5 py-3">Cohort</th>
@@ -73,16 +73,16 @@ export default async function AdminResourcesPage() {
                 return (
                   <tr
                     key={r.id}
-                    className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
+                    className="border-b border-line last:border-0 hover:bg-wash"
                   >
-                    <td className="px-5 py-3 text-white">{r.title}</td>
-                    <td className="px-5 py-3 text-white/60 capitalize">
+                    <td className="px-5 py-3 text-ink">{r.title}</td>
+                    <td className="px-5 py-3 text-ink-soft capitalize">
                       {r.category}
                     </td>
-                    <td className="px-5 py-3 text-white/60">
-                      {cohort?.name ?? <span className="text-white/30">All</span>}
+                    <td className="px-5 py-3 text-ink-soft">
+                      {cohort?.name ?? <span className="text-ink-faint">All</span>}
                     </td>
-                    <td className="px-5 py-3 text-white/60">
+                    <td className="px-5 py-3 text-ink-soft">
                       {r.storage_path ? (
                         <span className="inline-flex items-center gap-1">
                           <FileText className="h-3.5 w-3.5" /> File
@@ -95,16 +95,16 @@ export default async function AdminResourcesPage() {
                         "—"
                       )}
                     </td>
-                    <td className="px-5 py-3 text-white/60">
+                    <td className="px-5 py-3 text-ink-soft">
                       {fmtBytes(r.size_bytes)}
                     </td>
-                    <td className="px-5 py-3 text-white/45">
+                    <td className="px-5 py-3 text-ink-faint">
                       <LocalTime value={r.created_at} mode="date" />
                     </td>
                     <td className="px-5 py-3 text-right">
                       <Link
                         href={`/admin/resources/${r.id}`}
-                        className="text-xs text-spark hover:underline"
+                        className="text-xs text-spark-ink hover:underline"
                       >
                         Edit →
                       </Link>
@@ -117,7 +117,7 @@ export default async function AdminResourcesPage() {
         )}
       </Card>
 
-      <p className="mt-6 text-xs text-white/40">
+      <p className="mt-6 text-xs text-ink-faint">
         Tip: leave Cohort empty to make a resource visible to every enrolled
         student, regardless of cohort.
       </p>

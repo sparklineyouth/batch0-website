@@ -88,14 +88,14 @@ export default async function AdminOverview() {
   return (
     <div className="mx-auto max-w-6xl">
       {/* Hero row */}
-      <div className="border-b border-white/10 pb-8">
-        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+      <div className="border-b border-line pb-8">
+        <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-spark-ink">
           Admin overview
         </p>
-        <h1 className="mt-3 text-4xl md:text-5xl font-bold tracking-[-0.02em]">
+        <h1 className="mt-3 font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-ink">
           What needs your attention.
         </h1>
-        <p className="mt-3 max-w-xl text-[15px] text-white/75 leading-relaxed">
+        <p className="mt-3 max-w-xl text-[15px] text-ink-soft leading-relaxed">
           Daily snapshot of applications, enrollments, and revenue across the
           program.
         </p>
@@ -107,32 +107,32 @@ export default async function AdminOverview() {
           <Link
             key={it.label}
             href={it.href}
-            className="press group flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4 hover:border-white/25 hover:bg-white/[0.05]"
+            className="press group flex items-center gap-4 rounded-xl border border-line bg-wash px-5 py-4 hover:border-ink/30"
           >
             <it.icon
               className={`h-5 w-5 shrink-0 ${
-                it.tone === "spark" ? "text-spark" : "text-white/40"
+                it.tone === "spark" ? "text-spark-ink" : "text-ink-faint"
               }`}
             />
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
+              <p className="text-[10px] font-mono font-medium uppercase tracking-[0.2em] text-ink-faint">
                 {it.label}
               </p>
               <p
-                className={`mt-1 text-3xl font-semibold tracking-tight ${
-                  it.tone === "spark" ? "text-spark" : "text-white"
+                className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums ${
+                  it.tone === "spark" ? "text-spark-ink" : "text-ink"
                 }`}
               >
                 {it.count}
               </p>
             </div>
-            <ArrowRight className="h-4 w-4 shrink-0 text-white/30 group-hover:text-white/70" />
+            <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint group-hover:text-ink" />
           </Link>
         ))}
       </section>
 
       {/* Program metrics — editorial, not card-y. */}
-      <section className="mt-12 grid grid-cols-3 gap-6 border-y border-white/10 py-8">
+      <section className="mt-12 grid grid-cols-3 gap-6 border-y border-line py-8">
         <Metric
           icon={Inbox}
           label="Total applications"
@@ -158,33 +158,33 @@ export default async function AdminOverview() {
       {/* Recent applications — editorial list, no inner card chrome. */}
       <section className="mt-12">
         <div className="mb-5 flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold tracking-tight">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
             Recent applications
           </h2>
           <Link
             href="/admin/applications"
-            className="press text-sm text-spark hover:underline"
+            className="press text-sm text-spark-ink hover:underline"
           >
             View all →
           </Link>
         </div>
         {(recentApps?.length ?? 0) === 0 ? (
-          <p className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-8 text-center text-sm text-white/55">
+          <p className="rounded-xl border border-line bg-wash px-5 py-8 text-center text-sm text-ink-soft">
             No applications yet.
           </p>
         ) : (
-          <ul className="divide-y divide-white/10 border-y border-white/10">
+          <ul className="divide-y divide-line border-y border-line">
             {recentApps!.map((a) => (
               <li key={a.id}>
                 <Link
                   href={`/admin/applications/${a.id}`}
-                  className="press group flex items-center gap-4 py-4 hover:bg-white/[0.02]"
+                  className="press group flex items-center gap-4 py-4 hover:bg-wash"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-medium text-white">
+                    <p className="text-[15px] font-medium text-ink">
                       {a.full_name || "Unnamed applicant"}
                     </p>
-                    <p className="mt-0.5 text-xs text-white/55">
+                    <p className="mt-0.5 text-xs text-ink-faint font-mono tabular-nums">
                       <LocalTime
                         value={a.submitted_at || a.created_at}
                         mode="datetime-short"
@@ -192,7 +192,7 @@ export default async function AdminOverview() {
                     </p>
                   </div>
                   <StatusBadge status={a.status} />
-                  <ArrowRight className="h-4 w-4 shrink-0 text-white/30 group-hover:text-white/70" />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint group-hover:text-ink" />
                 </Link>
               </li>
             ))}
@@ -216,15 +216,15 @@ function Metric({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-white/45">
+      <div className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-[0.22em] text-ink-faint">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <div className="mt-2 text-3xl md:text-4xl font-semibold tracking-tight text-white">
+      <div className="mt-2 text-3xl md:text-4xl font-semibold tracking-tight tabular-nums text-ink">
         {value}
       </div>
       {hint && (
-        <div className="mt-1 text-[11px] text-white/45">{hint}</div>
+        <div className="mt-1 text-[11px] text-ink-faint">{hint}</div>
       )}
     </div>
   );

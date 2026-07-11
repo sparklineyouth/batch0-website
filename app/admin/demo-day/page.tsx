@@ -91,8 +91,8 @@ export default async function AdminDemoDayPage() {
     <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Demo Day</h1>
-          <p className="mt-1 text-sm text-white/55">
+          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Demo Day</h1>
+          <p className="mt-1 text-sm text-ink-soft">
             Submission status, weighted leaderboard, and audience reactions.
           </p>
         </div>
@@ -104,7 +104,7 @@ export default async function AdminDemoDayPage() {
       </div>
 
       <Card className="mt-6 !p-0">
-        <div className="grid grid-cols-12 border-b border-white/10 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+        <div className="grid grid-cols-12 border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
           <div className="col-span-4">Team</div>
           <div className="col-span-2">Cohort</div>
           <div className="col-span-2">Submitted</div>
@@ -112,36 +112,36 @@ export default async function AdminDemoDayPage() {
           <div className="col-span-1">React</div>
           <div className="col-span-2 text-right">Weighted</div>
         </div>
-        <ul className="divide-y divide-white/5">
+        <ul className="divide-y divide-line">
           {teamRows.length === 0 && (
-            <li className="px-4 py-6 text-sm text-white/40">No teams yet.</li>
+            <li className="px-4 py-6 text-sm text-ink-faint">No teams yet.</li>
           )}
           {teamRows.map((r) => (
             <li key={r.id}>
               <Link
                 href={`/admin/teams/${r.id}`}
-                className="grid grid-cols-12 items-center px-4 py-3 hover:bg-white/[0.02]"
+                className="grid grid-cols-12 items-center px-4 py-3 hover:bg-wash"
               >
-                <div className="col-span-4 truncate text-sm text-white">
+                <div className="col-span-4 truncate text-sm text-ink">
                   {r.name}
                 </div>
-                <div className="col-span-2 truncate text-xs text-white/50">
+                <div className="col-span-2 truncate text-xs text-ink-faint">
                   {r.cohort}
                 </div>
                 <div className="col-span-2 text-xs">
                   {r.submitted ? (
-                    <span className="text-emerald-300">Yes</span>
+                    <span className="text-emerald-700 dark:text-emerald-300">Yes</span>
                   ) : (
-                    <span className="text-white/40">No</span>
+                    <span className="text-ink-faint">No</span>
                   )}
                 </div>
-                <div className="col-span-1 text-xs text-white/60">
+                <div className="col-span-1 text-xs text-ink-soft">
                   {r.judgeCount}
                 </div>
-                <div className="col-span-1 text-xs text-white/60">
+                <div className="col-span-1 text-xs text-ink-soft">
                   {r.reactions}
                 </div>
-                <div className="col-span-2 text-right text-sm font-semibold tracking-tight text-spark">
+                <div className="col-span-2 text-right text-sm font-semibold tracking-tight text-spark-ink">
                   {r.weighted != null ? `${r.weighted.toFixed(1)}%` : "—"}
                 </div>
               </Link>
@@ -151,7 +151,7 @@ export default async function AdminDemoDayPage() {
       </Card>
 
       {criteria?.length === 0 && (
-        <p className="mt-6 text-sm text-amber-200">
+        <p className="mt-6 text-sm text-amber-700 dark:text-amber-200">
           No rubric yet —{" "}
           <Link
             href="/admin/demo-day/rubric"

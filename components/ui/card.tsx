@@ -9,7 +9,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-white/10 bg-zinc-900/40 p-6 ${className}`}
+      className={`rounded-2xl border border-line bg-wash p-6 ${className}`}
     >
       {children}
     </div>
@@ -28,9 +28,11 @@ export function CardHeader({
   return (
     <div className="mb-5 flex items-start justify-between gap-4">
       <div>
-        <h3 className="text-lg font-semibold text-white">{title}</h3>
+        <h3 className="font-display text-lg font-semibold tracking-[-0.02em] text-ink">
+          {title}
+        </h3>
         {description && (
-          <p className="mt-1 text-sm text-white/50">{description}</p>
+          <p className="mt-1 text-sm text-ink-soft">{description}</p>
         )}
       </div>
       {action}
@@ -40,26 +42,26 @@ export function CardHeader({
 
 export function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    draft: "bg-white/10 text-white/60",
+    draft: "bg-wash text-ink-soft",
     submitted: "bg-blue-400/15 text-blue-300",
     accepted: "bg-emerald-400/15 text-emerald-300",
     rejected: "bg-red-400/15 text-red-300",
-    paid: "bg-spark/15 text-spark",
-    enrolled: "bg-spark/15 text-spark",
-    withdrawn: "bg-white/10 text-white/40",
+    paid: "bg-spark/15 text-spark-ink",
+    enrolled: "bg-spark/15 text-spark-ink",
+    withdrawn: "bg-wash text-ink-faint",
     succeeded: "bg-emerald-400/15 text-emerald-300",
     pending: "bg-amber-400/15 text-amber-300",
     failed: "bg-red-400/15 text-red-300",
-    refunded: "bg-white/10 text-white/60",
+    refunded: "bg-wash text-ink-soft",
     upcoming: "bg-blue-400/15 text-blue-300",
     active: "bg-emerald-400/15 text-emerald-300",
-    completed: "bg-white/10 text-white/60",
+    completed: "bg-wash text-ink-soft",
     cancelled: "bg-red-400/15 text-red-300",
   };
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${
-        colors[status] || "bg-white/10 text-white/60"
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-mono font-medium uppercase tracking-wider ${
+        colors[status] || "bg-wash text-ink-soft"
       }`}
     >
       {status}

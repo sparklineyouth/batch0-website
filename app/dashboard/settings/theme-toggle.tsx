@@ -20,11 +20,11 @@ export function ThemeToggle({ initial }: { initial?: Theme }) {
 
   const pill = (active: boolean) =>
     `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition ${
-      active ? "bg-spark text-black" : "text-white/60 hover:text-white"
+      active ? "bg-spark text-on-spark" : "text-ink-soft hover:text-ink"
     }`;
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1">
+    <div className="inline-flex items-center gap-1 rounded-full border border-line bg-paper p-1">
       <button type="button" onClick={() => setTheme("dark")} className={pill(current === "dark")}>
         <Moon className="h-3.5 w-3.5" /> Dark
       </button>

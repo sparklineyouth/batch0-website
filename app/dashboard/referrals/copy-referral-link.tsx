@@ -25,17 +25,17 @@ export function CopyReferralLink({
 
   return (
     <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-center">
-      <div className="min-w-0 flex-1 select-all overflow-x-auto rounded-md border border-white/15 bg-black/40 px-3 py-2 font-mono text-sm text-white/85">
+      <div className="min-w-0 flex-1 select-all overflow-x-auto rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm text-ink-soft">
         {href}
       </div>
       <button
         type="button"
         onClick={copy}
-        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-white/85 hover:bg-white/10"
+        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-line px-3 py-2 text-sm font-medium text-ink hover:border-ink/30 hover:bg-wash"
       >
         {copied ? (
           <>
-            <Check className="h-3.5 w-3.5 text-emerald-300" />
+            <Check className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
             Copied
           </>
         ) : (
@@ -45,7 +45,7 @@ export function CopyReferralLink({
           </>
         )}
       </button>
-      <span className="font-mono text-[11px] text-white/40 md:ml-2">
+      <span className="font-mono text-[11px] text-ink-faint md:ml-2">
         code: {code}
       </span>
     </div>

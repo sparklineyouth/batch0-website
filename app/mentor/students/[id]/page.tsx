@@ -94,14 +94,14 @@ export default async function StudentProgressPage({
     <div className="mx-auto max-w-4xl">
       <Link
         href="/mentor/students"
-        className="inline-flex items-center gap-1 text-xs text-white/50 hover:text-white"
+        className="inline-flex items-center gap-1 text-xs text-ink-faint hover:text-ink"
       >
         <ArrowLeft className="h-3 w-3" /> Students
       </Link>
-      <h1 className="mt-3 text-2xl font-bold tracking-tight md:text-3xl">
+      <h1 className="mt-3 font-display text-2xl font-bold tracking-[-0.02em] text-ink md:text-3xl">
         {profile.full_name ?? profile.email}
       </h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         {profile.email}
         {enrollment?.cohort?.name && <> · {(enrollment as any).cohort.name}</>}
       </p>
@@ -129,14 +129,14 @@ export default async function StudentProgressPage({
         <Card className="mt-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-white/40">
+              <h2 className="font-mono text-sm font-semibold uppercase tracking-wider text-ink-faint">
                 Team
               </h2>
-              <p className="mt-1 text-lg font-semibold">{t.name}</p>
+              <p className="mt-1 font-display text-lg font-semibold tracking-[-0.02em] text-ink">{t.name}</p>
             </div>
             <Link
               href={`/mentor/teams/${t.id}`}
-              className="text-sm text-spark hover:underline"
+              className="text-sm text-spark-ink hover:underline"
             >
               Open team →
             </Link>
@@ -152,28 +152,28 @@ export default async function StudentProgressPage({
       </div>
 
       <Card className="mt-6">
-        <h2 className="text-base font-semibold">Recent check-ins</h2>
+        <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Recent check-ins</h2>
         {recentCheckins.length === 0 ? (
-          <p className="mt-2 text-sm text-white/40">None yet.</p>
+          <p className="mt-2 text-sm text-ink-faint">None yet.</p>
         ) : (
           <ul className="mt-3 space-y-3">
             {recentCheckins.slice(0, 4).map((c: any) => (
               <li
                 key={c.id}
-                className="rounded-lg border border-white/10 bg-zinc-950/40 p-3"
+                className="rounded-lg border border-line bg-paper p-3"
               >
-                <div className="text-xs uppercase tracking-wider text-white/40">
+                <div className="font-mono text-xs uppercase tracking-wider text-ink-faint">
                   Week of {c.week_start}
                 </div>
                 {c.accomplished && (
-                  <p className="mt-1 line-clamp-3 text-sm text-white/85">
-                    <span className="text-white/40">Did:</span>{" "}
+                  <p className="mt-1 line-clamp-3 text-sm text-ink-soft">
+                    <span className="text-ink-faint">Did:</span>{" "}
                     {c.accomplished}
                   </p>
                 )}
                 {c.blockers && (
-                  <p className="mt-1 line-clamp-2 text-sm text-amber-200/80">
-                    <span className="text-white/40">Blockers:</span>{" "}
+                  <p className="mt-1 line-clamp-2 text-sm text-amber-700 dark:text-amber-300">
+                    <span className="text-ink-faint">Blockers:</span>{" "}
                     {c.blockers}
                   </p>
                 )}
@@ -184,17 +184,17 @@ export default async function StudentProgressPage({
       </Card>
 
       <Card className="mt-6">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
+        <h2 className="flex items-center gap-2 font-display text-base font-semibold tracking-[-0.02em] text-ink">
           <MessageSquare className="h-4 w-4" /> AI usage
         </h2>
         {(aiConvos ?? []).length === 0 ? (
-          <p className="mt-2 text-sm text-white/40">No AI conversations.</p>
+          <p className="mt-2 text-sm text-ink-faint">No AI conversations.</p>
         ) : (
-          <ul className="mt-3 space-y-1 text-sm text-white/70">
+          <ul className="mt-3 space-y-1 text-sm text-ink-soft">
             {(aiConvos ?? []).map((c: any) => (
               <li key={c.id}>
                 {c.title ?? "Untitled conversation"}{" "}
-                <span className="text-xs text-white/40">
+                <span className="text-xs text-ink-faint">
                   · <LocalTime value={c.created_at} mode="date" />
                 </span>
               </li>
@@ -221,15 +221,15 @@ function Stat({
 }) {
   return (
     <Card className="!p-4">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/40">
+      <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-ink-faint">
         <Icon className="h-3.5 w-3.5" /> {label}
       </div>
-      <div className="mt-2 text-2xl font-bold tracking-tight text-white">
+      <div className="mt-2 font-display text-2xl font-bold tracking-[-0.02em] tabular-nums text-ink">
         {value}
       </div>
-      {extra && <p className="mt-1 text-xs text-white/50">{extra}</p>}
+      {extra && <p className="mt-1 text-xs text-ink-faint">{extra}</p>}
       {typeof accent === "number" && accent > 0 && (
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line">
           <div
             className="h-full rounded-full bg-spark"
             style={{ width: `${Math.min(100, accent)}%` }}

@@ -146,14 +146,14 @@ export function TeamMembersTab({
         <h3 className="text-base font-semibold">
           Members ({members.length} / 5)
         </h3>
-        <ul className="mt-4 divide-y divide-white/5">
+        <ul className="mt-4 divide-y divide-line">
           {members.map((m) => (
             <li key={m.id} className="flex items-center justify-between py-3">
               <div className="min-w-0">
-                <div className="truncate text-sm text-white">
+                <div className="truncate text-sm text-ink">
                   {m.profile?.full_name ?? m.profile?.email}
                 </div>
-                <div className="text-xs text-white/40">
+                <div className="text-xs text-ink-faint">
                   {m.role}
                   {m.user_id === currentUserId && " · you"}
                 </div>
@@ -163,7 +163,7 @@ export function TeamMembersTab({
                   type="button"
                   onClick={() => removeMember(m.user_id)}
                   disabled={pending}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-white/40 hover:bg-white/5 hover:text-red-400"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-ink-faint hover:bg-wash hover:text-red-600 dark:hover:text-red-400"
                 >
                   <UserMinus className="h-3 w-3" /> Remove
                 </button>
@@ -175,19 +175,19 @@ export function TeamMembersTab({
 
       <Card>
         <h3 className="text-base font-semibold">Invite a teammate</h3>
-        <p className="mt-1 text-xs text-white/50">
+        <p className="mt-1 text-xs text-ink-faint">
           They'll get a notification and decide whether to accept — they're
           not on the team until they accept.
         </p>
 
-        <div className="mt-3 inline-flex rounded-md border border-white/10 p-0.5">
+        <div className="mt-3 inline-flex rounded-md border border-line p-0.5">
           <button
             type="button"
             onClick={() => setMode("search")}
             className={`rounded-[5px] px-3 py-1 text-xs font-medium transition ${
               mode === "search"
-                ? "bg-white/10 text-white"
-                : "text-white/55 hover:text-white"
+                ? "bg-wash text-ink"
+                : "text-ink-soft hover:text-ink"
             }`}
           >
             Search
@@ -197,8 +197,8 @@ export function TeamMembersTab({
             onClick={() => setMode("email")}
             className={`rounded-[5px] px-3 py-1 text-xs font-medium transition ${
               mode === "email"
-                ? "bg-white/10 text-white"
-                : "text-white/55 hover:text-white"
+                ? "bg-wash text-ink"
+                : "text-ink-soft hover:text-ink"
             }`}
           >
             By email
@@ -217,7 +217,7 @@ export function TeamMembersTab({
                 placeholder="teammate@school.edu"
                 autoComplete="off"
               />
-              <p className="mt-1 text-[11px] text-white/40">
+              <p className="mt-1 text-[11px] text-ink-faint">
                 They need a Sparkline Youth account first. If they haven't signed
                 up yet, send them the apply link.
               </p>
@@ -248,7 +248,7 @@ export function TeamMembersTab({
           <>
             <div className="mt-4 flex gap-2">
               <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -269,17 +269,17 @@ export function TeamMembersTab({
             </div>
 
             {results.length > 0 && (
-              <ul className="mt-3 divide-y divide-white/5 rounded-lg border border-white/10">
+              <ul className="mt-3 divide-y divide-line rounded-lg border border-line">
                 {results.map((r) => (
                   <li
                     key={r.id}
                     className="flex items-center justify-between gap-2 px-3 py-2"
                   >
                     <div className="min-w-0">
-                      <div className="truncate text-sm text-white">
+                      <div className="truncate text-sm text-ink">
                         {r.full_name ?? "—"}
                       </div>
-                      <div className="truncate text-xs text-white/40">
+                      <div className="truncate text-xs text-ink-faint">
                         {r.email}
                       </div>
                     </div>
@@ -297,7 +297,7 @@ export function TeamMembersTab({
             {query.trim().length >= 2 &&
               results.length === 0 &&
               !searching && (
-                <p className="mt-3 text-xs text-white/40">
+                <p className="mt-3 text-xs text-ink-faint">
                   No matches. They might already be on a team, or have a
                   different role.
                 </p>
@@ -307,19 +307,19 @@ export function TeamMembersTab({
 
         {mode === "search" && picked && (
           <div className="mt-4 space-y-3">
-            <div className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-900/50 px-3 py-2">
+            <div className="flex items-center justify-between rounded-lg border border-line bg-paper px-3 py-2">
               <div className="min-w-0">
                 <div className="truncate text-sm">
                   {picked.full_name ?? picked.email}
                 </div>
-                <div className="truncate text-xs text-white/40">
+                <div className="truncate text-xs text-ink-faint">
                   {picked.email}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setPicked(null)}
-                className="text-white/40 hover:text-white"
+                className="text-ink-faint hover:text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -346,7 +346,7 @@ export function TeamMembersTab({
       {pendingInvites.length > 0 && (
         <Card>
           <h3 className="text-base font-semibold">Pending invites</h3>
-          <ul className="mt-3 divide-y divide-white/5">
+          <ul className="mt-3 divide-y divide-line">
             {pendingInvites.map((inv) => {
               const p = Array.isArray(inv.invitee)
                 ? inv.invitee[0]
@@ -360,7 +360,7 @@ export function TeamMembersTab({
                     <div className="truncate text-sm">
                       {p?.full_name ?? p?.email}
                     </div>
-                    <div className="text-xs text-white/40">
+                    <div className="text-xs text-ink-faint">
                       Sent <LocalTime value={inv.created_at} mode="date" />
                     </div>
                   </div>
@@ -368,7 +368,7 @@ export function TeamMembersTab({
                     type="button"
                     onClick={() => cancelOutbound(inv.id)}
                     disabled={pending}
-                    className="rounded-md px-2 py-1 text-xs text-white/40 hover:text-red-400"
+                    className="rounded-md px-2 py-1 text-xs text-ink-faint hover:text-red-600 dark:hover:text-red-400"
                   >
                     Cancel
                   </button>

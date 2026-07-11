@@ -90,15 +90,15 @@ export default async function MentorMatchmakerPage({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-3xl font-bold tracking-tight">Mentor matchmaker</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Mentor matchmaker</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Pick a team to surface mentors whose bio + tags overlap with what the
         team is building. Use it as a starting point — final assignment
-        still happens in <Link href="/admin/mentors" className="text-spark hover:underline">/admin/mentors</Link>.
+        still happens in <Link href="/admin/mentors" className="text-spark-ink hover:underline">/admin/mentors</Link>.
       </p>
 
       <Card className="mt-6">
-        <label htmlFor="match-team" className="text-xs uppercase tracking-wider text-white/55">
+        <label htmlFor="match-team" className="text-xs uppercase tracking-wider text-ink-soft">
           Team
         </label>
         <form className="mt-2 flex gap-2" method="get">
@@ -106,7 +106,7 @@ export default async function MentorMatchmakerPage({
             id="match-team"
             name="team_id"
             defaultValue={teamId}
-            className="h-10 flex-1 rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-white"
+            className="h-10 flex-1 rounded-lg border border-line bg-paper px-3 text-sm text-ink"
           >
             <option value="">— Pick team —</option>
             {(teams ?? []).map((t: any) => {
@@ -121,7 +121,7 @@ export default async function MentorMatchmakerPage({
           </select>
           <button
             type="submit"
-            className="rounded-lg bg-spark px-4 text-sm font-semibold text-black transition active:scale-95"
+            className="rounded-lg bg-spark px-4 text-sm font-semibold text-on-spark shadow-cta transition hover:bg-spark-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             Match
           </button>
@@ -131,25 +131,25 @@ export default async function MentorMatchmakerPage({
       {team && (
         <>
           <Card className="mt-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
               {team.name}
             </h2>
             {team.tagline && (
-              <p className="mt-2 text-sm text-white/70">{team.tagline}</p>
+              <p className="mt-2 text-sm text-ink-soft">{team.tagline}</p>
             )}
             {team.description && (
-              <p className="mt-3 line-clamp-4 text-sm text-white/55">
+              <p className="mt-3 line-clamp-4 text-sm text-ink-soft">
                 {team.description}
               </p>
             )}
           </Card>
 
           <Card className="mt-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
               Top matches
             </h2>
             {ranked.filter((r) => r.score > 0).length === 0 ? (
-              <p className="mt-3 text-sm text-white/50">
+              <p className="mt-3 text-sm text-ink-faint">
                 No matches. Make sure mentors have filled in{" "}
                 <code>mentor_bio</code> and <code>mentor_tags</code> on their
                 profile.
@@ -162,20 +162,20 @@ export default async function MentorMatchmakerPage({
                   .map(({ mentor, score, reasons }, i) => (
                     <li
                       key={mentor.id}
-                      className="rounded-lg border border-white/10 bg-black/30 p-3"
+                      className="rounded-lg border border-line bg-wash p-3"
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <div>
-                          <p className="text-sm font-medium text-white">
+                          <p className="text-sm font-medium text-ink">
                             #{i + 1}. {mentor.full_name ?? mentor.email}
                           </p>
                           {mentor.mentor_bio && (
-                            <p className="mt-0.5 line-clamp-2 text-xs text-white/55">
+                            <p className="mt-0.5 line-clamp-2 text-xs text-ink-soft">
                               {mentor.mentor_bio}
                             </p>
                           )}
                         </div>
-                        <span className="text-xs font-semibold text-spark">
+                        <span className="text-xs font-semibold text-spark-ink">
                           {score.toFixed(0)} pts
                         </span>
                       </div>
@@ -184,7 +184,7 @@ export default async function MentorMatchmakerPage({
                           {reasons.map((r) => (
                             <span
                               key={r}
-                              className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-white/65"
+                              className="rounded-full border border-line bg-paper px-2 py-0.5 text-[10px] text-ink-soft"
                             >
                               {r}
                             </span>

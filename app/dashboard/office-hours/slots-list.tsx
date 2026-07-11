@@ -55,21 +55,21 @@ export function SlotsList({ slots }: { slots: any[] }) {
           <Card key={s.id}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold text-white">
+                <h3 className="text-sm font-semibold text-ink">
                   {mentor?.full_name ?? mentor?.email}
                 </h3>
-                <p className="text-xs text-white/55">
+                <p className="text-xs text-ink-soft">
                   <LocalTime value={s.starts_at} /> · {duration} min
                 </p>
                 {s.notes && (
-                  <p className="mt-2 text-sm text-white/65">{s.notes}</p>
+                  <p className="mt-2 text-sm text-ink-soft">{s.notes}</p>
                 )}
                 {s.mine && s.zoom_url && (
                   <a
                     href={s.zoom_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-xs text-spark hover:underline"
+                    className="mt-2 inline-flex items-center gap-1 text-xs text-spark-ink hover:underline"
                   >
                     <Video className="h-3 w-3" /> Join Zoom
                   </a>
@@ -78,19 +78,19 @@ export function SlotsList({ slots }: { slots: any[] }) {
               <div className="flex flex-col items-end gap-2">
                 {s.mine ? (
                   <>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                       <CheckCircle2 className="h-3 w-3" /> Booked
                     </span>
                     <button
                       onClick={() => release(s.booking_id)}
                       disabled={pending}
-                      className="text-xs text-white/40 hover:text-amber-300"
+                      className="text-xs text-ink-faint hover:text-amber-700 dark:text-amber-300"
                     >
                       Cancel booking
                     </button>
                   </>
                 ) : s.taken ? (
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                  <span className="rounded-full bg-wash px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
                     Taken
                   </span>
                 ) : active === s.id ? (

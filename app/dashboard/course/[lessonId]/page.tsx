@@ -83,19 +83,19 @@ export default async function LessonPage({
     <div className="mx-auto max-w-4xl">
       <Link
         href="/dashboard/course"
-        className="inline-flex items-center gap-1.5 text-sm text-white/55 hover:text-white"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink"
       >
         <ArrowLeft className="h-4 w-4" /> Back to course
       </Link>
       <div className="mt-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-spark">
+        <p className="text-xs font-medium uppercase tracking-wider text-spark-ink">
           Week {lesson.module?.week} · {lesson.module?.title}
         </p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">
           {lesson.title}
         </h1>
         {lesson.description && (
-          <p className="mt-2 text-white/65">{lesson.description}</p>
+          <p className="mt-2 text-ink-soft">{lesson.description}</p>
         )}
       </div>
 
@@ -109,7 +109,7 @@ export default async function LessonPage({
 
       {materials.length > 0 && (
         <Card className="mt-6">
-          <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-white/55">
+          <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-soft">
             Materials
           </h3>
           <ul className="space-y-2">
@@ -119,7 +119,7 @@ export default async function LessonPage({
                   href={m.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-sm text-spark hover:underline"
+                  className="inline-flex items-center gap-2 text-sm text-spark-ink hover:underline"
                 >
                   <FileText className="h-4 w-4" />
                   {m.title}

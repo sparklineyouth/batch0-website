@@ -36,8 +36,8 @@ export function TearSheetCard({
     <div>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold">Investor tear sheet</h2>
-          <p className="mt-1 text-xs text-white/45">
+          <h2 className="text-base font-semibold text-ink">Investor tear sheet</h2>
+          <p className="mt-1 text-xs text-ink-faint">
             AI summary shown on the investor team page. Regenerate after
             material team changes.
           </p>
@@ -52,20 +52,20 @@ export function TearSheetCard({
           {pending ? "Generating…" : existing ? "Regenerate" : "Generate"}
         </Button>
       </div>
-      {err && <p className="mt-2 text-xs text-red-300">{err}</p>}
+      {err && <p className="mt-2 text-xs text-red-700 dark:text-red-300">{err}</p>}
       {existing ? (
         <>
-          <p className="mt-4 whitespace-pre-wrap text-sm text-white/85">
+          <p className="mt-4 whitespace-pre-wrap text-sm text-ink-soft">
             {existing}
           </p>
           {generatedAt && (
-            <p className="mt-3 text-[11px] text-white/35">
+            <p className="mt-3 text-[11px] text-ink-faint">
               Last generated <LocalTime value={generatedAt} />
             </p>
           )}
         </>
       ) : (
-        <p className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white/55">
+        <p className="mt-4 rounded-lg border border-line bg-wash px-4 py-3 text-sm text-ink-soft">
           No tear sheet yet. Click Generate to draft one from this team's
           description, members, and pitch submission.
         </p>

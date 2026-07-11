@@ -30,9 +30,9 @@ export default async function PayFinePage() {
   );
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-paper">
       <div className="mx-auto max-w-2xl px-6 py-20">
-        <div className="mb-6 flex items-center gap-2 text-spark">
+        <div className="mb-6 flex items-center gap-2 text-spark-ink">
           <AlertTriangle className="h-5 w-5" />
           <span className="text-xs font-semibold uppercase tracking-[0.2em]">
             Account paused
@@ -41,12 +41,12 @@ export default async function PayFinePage() {
         <h1 className="text-3xl font-bold tracking-tight">
           Resolve your outstanding fine{fines.length > 1 ? "s" : ""}
         </h1>
-        <p className="mt-2 text-sm text-white/60">
+        <p className="mt-2 text-sm text-ink-soft">
           Your access is paused until the {fines.length > 1 ? "fines below are" : "fine below is"} paid or waived by an admin.
           Email{" "}
           <a
             href="mailto:hello@sparklineyouth.org"
-            className="text-spark hover:underline"
+            className="text-spark-ink hover:underline"
           >
             hello@sparklineyouth.org
           </a>{" "}
@@ -57,22 +57,22 @@ export default async function PayFinePage() {
           {fines.map((f: any) => (
             <Card
               key={f.id}
-              className="border-red-400/30 bg-red-400/5"
+              className="border-red-500/30 bg-red-500/10"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-red-300">
+                  <div className="text-xs uppercase tracking-wider text-red-700 dark:text-red-300">
                     Fine
                   </div>
                   <h3 className="mt-1 text-base font-semibold">
                     {f.description}
                   </h3>
-                  <p className="mt-1 text-xs text-white/45">
+                  <p className="mt-1 text-xs text-ink-faint">
                     Issued <LocalTime value={f.created_at} />
                   </p>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-spark">
+                  <div className="text-2xl font-bold text-spark-ink">
                     ${(f.amount_cents / 100).toFixed(2)}
                   </div>
                 </div>
@@ -85,18 +85,18 @@ export default async function PayFinePage() {
         </div>
 
         <div className="mt-6 flex items-center justify-between text-sm">
-          <span className="text-white/50">Total outstanding</span>
-          <span className="text-xl font-bold text-spark">
+          <span className="text-ink-faint">Total outstanding</span>
+          <span className="text-xl font-bold text-spark-ink">
             ${(total / 100).toFixed(2)}
           </span>
         </div>
 
-        <div className="mt-12 flex items-center justify-between text-xs text-white/40">
-          <Link href="/dashboard/billing" className="hover:text-white">
+        <div className="mt-12 flex items-center justify-between text-xs text-ink-faint">
+          <Link href="/dashboard/billing" className="hover:text-ink">
             Billing history
           </Link>
           <form action="/auth/signout" method="post">
-            <button type="submit" className="hover:text-white">
+            <button type="submit" className="hover:text-ink">
               Sign out
             </button>
           </form>

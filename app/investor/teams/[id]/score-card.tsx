@@ -64,8 +64,8 @@ export function ScoreCard({
 
   return (
     <Card>
-      <h3 className="text-base font-semibold">Your scorecard</h3>
-      <p className="text-xs text-white/50">
+      <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Your scorecard</h3>
+      <p className="text-xs text-ink-faint">
         Private to you and admins until Demo Day aggregates results. 1 = weak,
         5 = exceptional.
       </p>
@@ -75,7 +75,7 @@ export function ScoreCard({
           <div key={key as string}>
             <div className="flex items-baseline justify-between">
               <Label>{label}</Label>
-              <span className="text-[11px] text-white/40">{hint}</span>
+              <span className="text-[11px] text-ink-faint">{hint}</span>
             </div>
             <div className="mt-1 flex gap-2">
               {[1, 2, 3, 4, 5].map((n) => {
@@ -87,10 +87,10 @@ export function ScoreCard({
                     onClick={() =>
                       set(key, active ? (null as any) : (n as any))
                     }
-                    className={`h-9 w-9 rounded-lg border text-sm font-medium transition ${
+                    className={`h-9 w-9 rounded-lg border text-sm font-medium tabular-nums transition ${
                       active
-                        ? "border-spark bg-spark/15 text-spark"
-                        : "border-white/10 text-white/60 hover:border-white/30 hover:text-white"
+                        ? "border-spark bg-spark/15 text-spark-ink"
+                        : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
                     }`}
                   >
                     {n}
@@ -115,7 +115,7 @@ export function ScoreCard({
           <FieldError>{err}</FieldError>
           <div className="flex items-center gap-2">
             {saved && (
-              <span className="text-xs text-emerald-300">Saved</span>
+              <span className="text-xs text-emerald-700 dark:text-emerald-300">Saved</span>
             )}
             <Button onClick={save} disabled={pending}>
               {pending ? "Saving…" : "Save scorecard"}

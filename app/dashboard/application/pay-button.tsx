@@ -30,7 +30,7 @@ export function PayButton({ applicationId }: { applicationId: string }) {
       <Button onClick={pay} disabled={loading}>
         {loading ? "Redirecting…" : "Pay & enroll →"}
       </Button>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );
 }

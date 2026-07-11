@@ -18,8 +18,8 @@ export default async function MentorTeamsPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-3xl font-bold tracking-tight">Teams</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Teams</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Click a team to view their progress, send feedback, or browse their
         drive.
       </p>
@@ -31,9 +31,9 @@ export default async function MentorTeamsPage() {
             : t.team_members?.count;
           return (
             <Link key={t.id} href={`/mentor/teams/${t.id}`}>
-              <Card className="transition hover:border-white/20">
+              <Card className="transition hover:border-ink/20">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-zinc-900">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-paper">
                     {t.logo_url && t.logo_status === "approved" ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -42,21 +42,21 @@ export default async function MentorTeamsPage() {
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <span className="text-lg font-bold text-spark">
+                      <span className="text-lg font-bold text-spark-ink">
                         {t.name?.slice(0, 1).toUpperCase()}
                       </span>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold text-white">
+                    <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
                       {t.name}
                     </h3>
-                    <p className="text-xs text-white/40">
+                    <p className="text-xs text-ink-faint">
                       {cohort?.name ?? ""} · {count ?? 0} member
                       {count === 1 ? "" : "s"}
                     </p>
                     {t.tagline && (
-                      <p className="mt-2 line-clamp-2 text-sm text-white/55">
+                      <p className="mt-2 line-clamp-2 text-sm text-ink-soft">
                         {t.tagline}
                       </p>
                     )}
@@ -68,7 +68,7 @@ export default async function MentorTeamsPage() {
         })}
         {(teams?.length ?? 0) === 0 && (
           <Card>
-            <p className="text-sm text-white/50">No teams yet.</p>
+            <p className="text-sm text-ink-faint">No teams yet.</p>
           </Card>
         )}
       </div>

@@ -31,11 +31,11 @@ export function UsageMeter({
   return (
     <Card className="!p-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wider text-white/55">
+        <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
           This month
         </p>
         {overage && (
-          <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200">
+          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
             Overage
           </span>
         )}
@@ -43,29 +43,29 @@ export function UsageMeter({
 
       <div className="mt-3 space-y-3">
         <div>
-          <div className="flex items-center justify-between text-[11px] text-white/55">
+          <div className="flex items-center justify-between text-[11px] text-ink-soft">
             <span>Input</span>
             <span>
               {fmt(inputTokens)} / {fmt(freeInput)}
             </span>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-wash">
             <div
-              className={`h-full ${inPct >= 100 ? "bg-amber-300" : "bg-spark"}`}
+              className={`h-full ${inPct >= 100 ? "bg-amber-500" : "bg-spark"}`}
               style={{ width: `${Math.min(100, inPct)}%` }}
             />
           </div>
         </div>
         <div>
-          <div className="flex items-center justify-between text-[11px] text-white/55">
+          <div className="flex items-center justify-between text-[11px] text-ink-soft">
             <span>Output</span>
             <span>
               {fmt(outputTokens)} / {fmt(freeOutput)}
             </span>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-wash">
             <div
-              className={`h-full ${outPct >= 100 ? "bg-amber-300" : "bg-spark"}`}
+              className={`h-full ${outPct >= 100 ? "bg-amber-500" : "bg-spark"}`}
               style={{ width: `${Math.min(100, outPct)}%` }}
             />
           </div>
@@ -73,7 +73,7 @@ export function UsageMeter({
       </div>
 
       {overage ? (
-        <p className="mt-3 text-[11px] text-amber-200/85">
+        <p className="mt-3 text-[11px] text-amber-700 dark:text-amber-300">
           ${(billedCents / 100).toFixed(2)} added to your account this month for
           overage. View on the{" "}
           <a href="/dashboard/billing" className="underline">
@@ -82,7 +82,7 @@ export function UsageMeter({
           page.
         </p>
       ) : (
-        <p className="mt-3 text-[11px] text-white/40">
+        <p className="mt-3 text-[11px] text-ink-faint">
           Free tier resets the 1st of every month.
         </p>
       )}

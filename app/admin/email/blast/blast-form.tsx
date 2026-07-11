@@ -190,10 +190,10 @@ export function BlastForm({
       {/* ---------------- recipients ---------------- */}
       <Card className="lg:sticky lg:top-6 self-start">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink-soft">
             <Users className="h-4 w-4" /> Recipients
           </h2>
-          <span className="rounded-full border border-spark/40 bg-spark/10 px-2.5 py-0.5 text-xs font-medium tabular-nums text-spark">
+          <span className="rounded-full border border-spark/40 bg-spark/10 px-2.5 py-0.5 text-xs font-medium tabular-nums text-spark-ink">
             {selected.size} selected
           </span>
         </div>
@@ -206,8 +206,8 @@ export function BlastForm({
               onClick={() => setAudience(a.key)}
               className={`rounded-full border px-3 py-1 text-xs transition ${
                 audience === a.key
-                  ? "border-spark bg-spark/10 text-spark"
-                  : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
+                  ? "border-spark bg-spark/10 text-spark-ink"
+                  : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
               {a.label}
@@ -225,7 +225,7 @@ export function BlastForm({
             <select
               value={cohort}
               onChange={(e) => setCohort(e.target.value)}
-              className="h-10 rounded-md border border-white/15 bg-zinc-900 px-2 text-sm text-white/80 focus:outline-none focus:ring-2 focus:ring-spark/60"
+              className="h-10 rounded-md border border-line bg-paper px-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-spark/60"
             >
               <option value="">Any cohort</option>
               {cohortNames.map((c) => (
@@ -241,7 +241,7 @@ export function BlastForm({
           <button
             type="button"
             onClick={selectFiltered}
-            className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/5 px-2.5 py-1 font-medium text-white/80 hover:bg-white/10"
+            className="inline-flex items-center gap-1 rounded-md border border-line bg-wash px-2.5 py-1 font-medium text-ink-soft hover:border-ink/30 hover:bg-wash"
           >
             <CheckCheck className="h-3.5 w-3.5" />
             Select all {filtered.length} shown
@@ -250,7 +250,7 @@ export function BlastForm({
             <button
               type="button"
               onClick={() => setSelected(new Set())}
-              className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/5 px-2.5 py-1 font-medium text-white/60 hover:bg-white/10"
+              className="inline-flex items-center gap-1 rounded-md border border-line bg-wash px-2.5 py-1 font-medium text-ink-soft hover:border-ink/30 hover:bg-wash"
             >
               <X className="h-3.5 w-3.5" />
               Clear
@@ -258,15 +258,15 @@ export function BlastForm({
           )}
         </div>
 
-        <ul className="mt-3 max-h-80 divide-y divide-white/5 overflow-y-auto rounded-lg border border-white/10">
+        <ul className="mt-3 max-h-80 divide-y divide-line overflow-y-auto rounded-lg border border-line">
           {filtered.length === 0 && (
-            <li className="p-4 text-sm text-white/45">
+            <li className="p-4 text-sm text-ink-faint">
               No one matches this filter.
             </li>
           )}
           {filtered.map((r) => (
             <li key={r.id}>
-              <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-white/[0.03]">
+              <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-wash">
                 <input
                   type="checkbox"
                   checked={selected.has(r.id)}
@@ -274,17 +274,17 @@ export function BlastForm({
                   className="h-4 w-4 accent-[#facc15]"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-white">
+                  <span className="block truncate text-sm text-ink">
                     {r.name || r.email}
                   </span>
-                  <span className="block truncate text-xs text-white/45">
+                  <span className="block truncate text-xs text-ink-faint">
                     {r.email}
                     {r.appStatus ? ` · ${r.appStatus}` : ""}
                     {r.cohorts.length > 0 ? ` · ${r.cohorts.join(", ")}` : ""}
                   </span>
                 </span>
                 {r.role !== "student" && (
-                  <span className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
+                  <span className="rounded border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-ink-faint">
                     {r.role}
                   </span>
                 )}
@@ -297,7 +297,7 @@ export function BlastForm({
       {/* ---------------- compose ---------------- */}
       <div className="space-y-6">
         <Card>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Compose
           </h2>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -306,7 +306,7 @@ export function BlastForm({
                 key={t.key}
                 type="button"
                 onClick={() => applyTemplate(t.key)}
-                className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/60 transition hover:border-spark/50 hover:text-spark"
+                className="rounded-full border border-line px-3 py-1 text-xs text-ink-soft transition hover:border-spark/50 hover:text-spark-ink"
               >
                 {t.label}
               </button>
@@ -335,9 +335,9 @@ export function BlastForm({
                 onChange={(e) => setBody(e.target.value)}
                 placeholder={"Hi {{name}},\n\nYour message…"}
               />
-              <p className="mt-1 text-xs text-white/45">
+              <p className="mt-1 text-xs text-ink-faint">
                 Plain text. Blank line = new paragraph.{" "}
-                <code className="rounded bg-white/10 px-1 font-mono">
+                <code className="rounded bg-wash px-1 font-mono">
                   {"{{name}}"}
                 </code>{" "}
                 becomes each recipient&apos;s first name.
@@ -368,7 +368,7 @@ export function BlastForm({
 
         <Card>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
               Preview
             </h2>
             <Button
@@ -385,7 +385,7 @@ export function BlastForm({
           {testState.message && (
             <p
               className={`mt-2 text-xs ${
-                testState.ok ? "text-emerald-300" : "text-red-300"
+                testState.ok ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"
               }`}
             >
               {testState.message}
@@ -396,10 +396,10 @@ export function BlastForm({
               title="Email preview"
               sandbox=""
               srcDoc={previewHtml}
-              className="mt-4 h-[420px] w-full rounded-lg border border-white/10 bg-[#0a0a0a]"
+              className="mt-4 h-[420px] w-full rounded-lg border border-line bg-paper"
             />
           ) : (
-            <p className="mt-4 rounded-lg border border-dashed border-white/15 p-8 text-center text-sm text-white/40">
+            <p className="mt-4 rounded-lg border border-dashed border-line p-8 text-center text-sm text-ink-faint">
               Fill in a subject and body to see the branded preview.
             </p>
           )}
@@ -408,10 +408,10 @@ export function BlastForm({
         {/* ---------------- send ---------------- */}
         <Card>
           {result && result.ok && (
-            <div className="mb-4 rounded-lg border border-emerald-400/30 bg-emerald-400/5 p-3 text-sm text-emerald-200">
+            <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-700 dark:text-emerald-200">
               Sent to {result.sent} recipient{result.sent === 1 ? "" : "s"}.
               {result.failed.length > 0 && (
-                <div className="mt-2 text-red-300">
+                <div className="mt-2 text-red-700 dark:text-red-300">
                   {result.failed.length} failed:
                   <ul className="mt-1 list-inside list-disc text-xs">
                     {result.failed.slice(0, 10).map((f) => (
@@ -428,7 +428,7 @@ export function BlastForm({
             </div>
           )}
           {result && !result.ok && (
-            <div className="mb-4 rounded-lg border border-red-400/30 bg-red-400/5 p-3 text-sm text-red-300">
+            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-700 dark:text-red-300">
               {result.error}
             </div>
           )}
@@ -465,7 +465,7 @@ export function BlastForm({
               </Button>
             </div>
           )}
-          <p className="mt-2 text-center text-xs text-white/40">
+          <p className="mt-2 text-center text-xs text-ink-faint">
             Emails send from your Resend account with the Sparkline template.
             There&apos;s no undo — send a test first.
           </p>

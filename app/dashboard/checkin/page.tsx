@@ -62,17 +62,17 @@ export default async function CheckinPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Weekly check-in</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <p className="mt-1 text-sm text-ink-soft">
         Take five minutes each week to share progress and roadblocks. Your
         mentor and the admin team see this and can leave feedback.
       </p>
 
       <Card className="mt-6">
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             This week
           </h2>
-          <span className="text-xs text-white/45">
+          <span className="text-xs text-ink-faint">
             {formatWeekRange(weekStart)}
           </span>
         </div>
@@ -94,7 +94,7 @@ export default async function CheckinPage() {
 
       {(history?.length ?? 0) > 0 && (
         <div className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/55">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-soft">
             History
           </h2>
           <div className="space-y-4">
@@ -104,7 +104,7 @@ export default async function CheckinPage() {
                   <h3 className="text-base font-semibold">
                     {formatWeekRange(h.week_start)}
                   </h3>
-                  <span className="text-xs text-white/40">
+                  <span className="text-xs text-ink-faint">
                     Saved <LocalTime value={h.updated_at} mode="date" />
                   </span>
                 </div>
@@ -136,10 +136,10 @@ function ReadOnlyField({
   if (!value) return null;
   return (
     <div className="mt-4">
-      <div className="text-xs uppercase tracking-wider text-white/40">
+      <div className="text-xs uppercase tracking-wider text-ink-faint">
         {label}
       </div>
-      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-white/80 [overflow-wrap:anywhere]">
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-soft [overflow-wrap:anywhere]">
         {value}
       </p>
     </div>
@@ -154,8 +154,8 @@ function FeedbackList({
   label: string;
 }) {
   return (
-    <div className="mt-5 border-t border-white/10 pt-4">
-      <div className="mb-2 text-xs uppercase tracking-wider text-spark">
+    <div className="mt-5 border-t border-line pt-4">
+      <div className="mb-2 text-xs uppercase tracking-wider text-spark-ink">
         {label}
       </div>
       <ul className="space-y-3">
@@ -164,13 +164,13 @@ function FeedbackList({
           return (
             <li
               key={f.id}
-              className="rounded-lg border border-white/10 bg-black/30 p-3"
+              className="rounded-lg border border-line bg-paper p-3"
             >
-              <div className="flex items-baseline justify-between text-xs text-white/45">
+              <div className="flex items-baseline justify-between text-xs text-ink-faint">
                 <span>{author?.full_name ?? author?.email ?? "Mentor"}</span>
                 <span><LocalTime value={f.created_at} /></span>
               </div>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-white/85 break-words [overflow-wrap:anywhere]">
+              <p className="mt-1 whitespace-pre-wrap text-sm text-ink-soft break-words [overflow-wrap:anywhere]">
                 {f.body}
               </p>
             </li>

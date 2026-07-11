@@ -140,7 +140,7 @@ export function ManagePanel({
         />
       </div>
       {okMsg && (
-        <p className="mt-3 text-xs text-emerald-300">{okMsg}</p>
+        <p className="mt-3 text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</p>
       )}
 
       <ConfirmDialog
@@ -170,7 +170,7 @@ export function ManagePanel({
                 </option>
               ))}
             </Select>
-            <p className="mt-3 text-xs text-white/55">
+            <p className="mt-3 text-xs text-ink-soft">
               Their latest application moves to this cohort. If they were
               paid/enrolled, the enrollment is re-created against the new
               cohort.
@@ -190,7 +190,7 @@ export function ManagePanel({
         description={
           <>
             <p>
-              Marks their application <span className="text-white">withdrawn</span>
+              Marks their application <span className="text-ink">withdrawn</span>
               {" "}and deletes any enrollment. They'll be emailed.
             </p>
             <div className="mt-3">
@@ -219,9 +219,9 @@ export function ManagePanel({
           <>
             <p>
               Issues a Stripe refund for the most recent succeeded payment,
-              marks the row <span className="text-white">refunded</span>, and
+              marks the row <span className="text-ink">refunded</span>, and
               resets the related application back to{" "}
-              <span className="text-white">accepted</span>.
+              <span className="text-ink">accepted</span>.
             </p>
             <div className="mt-3">
               <Label>Internal reason (audit only)</Label>
@@ -247,7 +247,7 @@ export function ManagePanel({
         title="Delete this user permanently?"
         description={
           <>
-            <p className="text-amber-300/90">
+            <p className="text-amber-700 dark:text-amber-300">
               This deletes the auth user and cascades through every related
               row (applications, enrollments, submissions, files, payments).
               This is irreversible.
@@ -291,21 +291,21 @@ function ActionButton({
 }) {
   const toneCls =
     tone === "danger"
-      ? "border-red-400/30 hover:border-red-400/60 hover:bg-red-400/5 text-red-200"
+      ? "border-red-500/30 hover:border-red-500/60 hover:bg-red-500/5 text-red-700 dark:text-red-300"
       : tone === "warn"
-        ? "border-amber-300/30 hover:border-amber-300/60 hover:bg-amber-300/5 text-amber-100"
-        : "border-white/10 hover:border-white/30 hover:bg-white/5 text-white/80";
+        ? "border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-500/5 text-amber-700 dark:text-amber-300"
+        : "border-line hover:border-ink/30 hover:bg-wash text-ink";
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-start gap-3 rounded-xl border bg-black/30 px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${toneCls}`}
+      className={`flex items-start gap-3 rounded-xl border bg-wash px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${toneCls}`}
     >
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
-        <div className="text-xs text-white/50">{hint}</div>
+        <div className="text-xs text-ink-faint">{hint}</div>
       </div>
     </button>
   );

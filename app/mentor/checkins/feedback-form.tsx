@@ -26,7 +26,7 @@ export function CheckinFeedbackForm({ checkinId }: { checkinId: string }) {
   }
 
   return (
-    <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3">
+    <div className="mt-3 rounded-lg border border-line bg-paper p-3">
       <Textarea
         rows={2}
         value={body}

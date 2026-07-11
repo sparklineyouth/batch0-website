@@ -54,20 +54,20 @@ export default async function MentorResourcesPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
         Resources
       </p>
-      <h1 className="mt-3 text-3xl font-bold tracking-tight">
+      <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
         Materials curated for the cohort
       </h1>
-      <p className="mt-1 text-sm text-white/65">
+      <p className="mt-1 text-sm text-ink-soft">
         Same library students see — useful when prepping a check-in reply
         or pointing a team at a template.
       </p>
 
       {(resources?.length ?? 0) === 0 ? (
         <Card className="mt-8">
-          <p className="text-sm text-white/55">
+          <p className="text-sm text-ink-soft">
             Nothing here yet — staff haven't uploaded any resources.
           </p>
         </Card>
@@ -75,7 +75,7 @@ export default async function MentorResourcesPage() {
         <div className="mt-8 space-y-8">
           {categories.map((cat) => (
             <div key={cat}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-spark">
+              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-spark-ink">
                 {cat}
               </h2>
               <ul className="space-y-3">
@@ -91,15 +91,15 @@ export default async function MentorResourcesPage() {
                       <Card>
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
-                            <h3 className="text-base font-semibold text-white">
+                            <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
                               {r.title}
                             </h3>
                             {r.description && (
-                              <p className="mt-1 text-sm text-white/65">
+                              <p className="mt-1 text-sm text-ink-soft">
                                 {r.description}
                               </p>
                             )}
-                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-white/45">
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-faint">
                               {cohort?.name && <span>{cohort.name}</span>}
                               {r.size_bytes && (
                                 <span>{fmtBytes(r.size_bytes)}</span>
@@ -115,7 +115,7 @@ export default async function MentorResourcesPage() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="press inline-flex shrink-0 items-center gap-1.5 rounded-md bg-spark px-3 py-2 text-xs font-semibold text-black hover:bg-spark-200"
+                              className="press inline-flex shrink-0 items-center gap-1.5 rounded-md bg-spark px-3 py-2 text-xs font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                             >
                               {r.storage_path ? (
                                 <>
@@ -128,7 +128,7 @@ export default async function MentorResourcesPage() {
                               )}
                             </a>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 text-xs text-white/40">
+                            <span className="inline-flex items-center gap-1.5 text-xs text-ink-faint">
                               <FileText className="h-3.5 w-3.5" /> No file
                             </span>
                           )}

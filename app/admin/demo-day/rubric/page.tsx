@@ -21,12 +21,12 @@ export default async function AdminDemoDayRubricPage() {
     <div className="mx-auto max-w-3xl">
       <Link
         href="/admin/demo-day"
-        className="text-sm text-white/55 hover:text-white"
+        className="text-sm text-ink-soft hover:text-ink"
       >
         ← Demo Day
       </Link>
-      <h1 className="mt-3 text-3xl font-bold tracking-tight">Rubric</h1>
-      <p className="mt-1 text-sm text-white/55">
+      <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">Rubric</h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Per-criterion weights drive the leaderboard. Judges see hints next to
         each criterion while scoring.
       </p>
