@@ -7,7 +7,7 @@ import { PortalButton } from "./portal-button";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { Receipt } from "lucide-react";
 
-export const metadata = { title: "Billing · SparkLine Youth" };
+export const metadata = { title: "Billing · Sparkline Youth" };
 
 function fmtMoney(cents: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {

@@ -68,7 +68,7 @@ export async function removeFromProgram(userId: string, reason: string) {
   // Drop all enrollments.
   await admin.from("enrollments").delete().eq("user_id", userId);
 
-  // Strip SparkLine-managed Discord roles. We keep them on the server
+  // Strip Sparkline-managed Discord roles. We keep them on the server
   // (use Delete account to fully remove) but they lose access to
   // role-gated channels.
   if (target.discord_user_id) {
@@ -106,13 +106,13 @@ export async function removeFromProgram(userId: string, reason: string) {
       <div style="max-width:560px;margin:0 auto;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
         <div style="font-weight:700">Spark<span style="color:#facc15">Line</span> Youth</div>
         <h1 style="font-size:20px;color:#fff;margin-top:16px">You've been removed from your cohort</h1>
-        <p style="color:#bbb">An admin has withdrawn your participation in SparkLine Youth.${reason?.trim() ? ` Reason: <em>${escapeHtml(reason.trim())}</em>.` : ""}</p>
+        <p style="color:#bbb">An admin has withdrawn your participation in Sparkline Youth.${reason?.trim() ? ` Reason: <em>${escapeHtml(reason.trim())}</em>.` : ""}</p>
         <p style="color:#bbb">If you believe this is an error, reply to this email or write to <a style="color:#facc15" href="mailto:${env.contactEmail}">${env.contactEmail}</a>.</p>
       </div>
     </body></html>`;
     await sendEmail({
       to: target.email,
-      subject: "You've been removed from your SparkLine Youth cohort",
+      subject: "You've been removed from your Sparkline Youth cohort",
       html,
     });
   }

@@ -22,21 +22,20 @@ export default function Hero({
         <div className="md:col-span-7">
           <h1 className="animate-rise rise-1 font-display text-[clamp(2.5rem,6.5vw,4.25rem)] font-bold leading-[1.02] tracking-[-0.025em] text-ink">
             Don&apos;t wait for college to start{" "}
-            <span className="hl">your company.</span>
+            <span className="hl">building</span>
           </h1>
 
           <p className="animate-rise rise-2 mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft sm:text-lg">
-            SparkLine Youth is a live, online startup accelerator for U.S.
-            high schoolers. Four one-week build sprints, a company of your
-            own, and a live demo day at the end. Funding is never
-            guaranteed — the work is real either way.
+            Sparkline Youth is a live, online startup accelerator for
+            high schoolers. Seasonal build sprints, mentorship, and a supportive community
+            resulting in a company of your own.
           </p>
 
           <div className="animate-rise rise-3 mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
             {isAuthed ? (
               <a
                 href={authedHome!}
-                className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3.5 text-[15px] font-semibold text-ink shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3.5 text-[15px] font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
               >
                 Go to dashboard
               </a>

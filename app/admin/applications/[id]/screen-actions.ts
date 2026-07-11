@@ -55,7 +55,7 @@ ${app.experience ?? "(blank)"}`;
     system: [
       {
         type: "text",
-        text: `You're screening high-school applicants for SparkLine Youth, a four-sprint startup accelerator. Be honest and direct — admins make the final decision, you're sorting the queue.
+        text: `You're screening high-school applicants for Sparkline Youth, a four-sprint startup accelerator. Be honest and direct — admins make the final decision, you're sorting the queue.
 
 Score each dimension 1–10:
 1. specificity (is the idea concrete and well-understood, not generic?)

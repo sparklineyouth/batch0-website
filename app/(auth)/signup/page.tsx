@@ -3,9 +3,9 @@ import { SignupForm } from "./signup-form";
 import { getSiteConfig } from "@/lib/site-config";
 
 export const metadata = {
-  title: "Apply — Create Your Account · SparkLine Youth",
+  title: "Apply — Create Your Account · Sparkline Youth",
   description:
-    "Step 1 of applying to SparkLine Youth: create your free account, then fill in the application. Free to apply; tuition is charged only if accepted.",
+    "Step 1 of applying to Sparkline Youth: create your free account, then fill in the application. Free to apply; tuition is charged only if accepted.",
 };
 
 // Mirrors safeNext in app/(auth)/login/page.tsx — same-origin paths only,
@@ -50,7 +50,7 @@ export default async function SignupPage({
             Create your account
           </h1>
           <p className="mt-1 text-sm text-white/50">
-            Sign up for SparkLine Youth. Takes 30 seconds.
+            Sign up for Sparkline Youth. Takes 30 seconds.
           </p>
         </>
       )}

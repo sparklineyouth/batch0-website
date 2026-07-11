@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { discordAvatarUrl, isDiscordEnabled } from "@/lib/discord";
 
-export const metadata = { title: "Community · SparkLine Youth" };
+export const metadata = { title: "Community · Sparkline Youth" };
 
 export default async function CommunityPage() {
   const user = await requireUser();
@@ -43,7 +43,7 @@ export default async function CommunityPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Community</h1>
       <p className="mt-1 text-sm text-white/55">
-        The SparkLine Youth Discord server is where every cohort lives: workshops,
+        The Sparkline Youth Discord server is where every cohort lives: workshops,
         peer reviews, demo-day prep, post-grad alumni. Link your account once
         and we keep your role in sync forever.
       </p>

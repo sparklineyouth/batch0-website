@@ -8,7 +8,7 @@ import { getSiteConfig } from "@/lib/site-config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const alt =
-  "SparkLine Youth — startup accelerator for high schoolers. Cohort facts: dates, tuition, no equity taken.";
+  "Sparkline Youth — startup accelerator for high schoolers. Cohort facts: dates, tuition, no equity taken.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -46,7 +46,7 @@ export default async function OpengraphImage() {
           }}
         >
           <div style={{ display: "flex", fontSize: 28, fontWeight: 700 }}>
-            SparkLine Youth
+            Sparkline Youth
           </div>
           <div
             style={{

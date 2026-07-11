@@ -8,7 +8,7 @@ import { FileText, ExternalLink, Download } from "lucide-react";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
-export const metadata = { title: "Resources · SparkLine Youth" };
+export const metadata = { title: "Resources · Sparkline Youth" };
 
 function fmtBytes(n: number | null) {
   if (!n) return null;
@@ -69,7 +69,7 @@ export default async function DashboardResourcesPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Resources</h1>
       <p className="mt-1 text-sm text-white/55">
-        Templates, decks, guides, and tools curated by the SparkLine Youth team.
+        Templates, decks, guides, and tools curated by the Sparkline Youth team.
       </p>
 
       {(resources?.length ?? 0) === 0 ? (

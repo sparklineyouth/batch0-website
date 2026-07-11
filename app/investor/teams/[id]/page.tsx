@@ -301,7 +301,7 @@ function CapTableBlock({
     <Card className="mt-6">
       <h2 className="text-base font-semibold">Cap-table snapshot</h2>
       <p className="mt-1 text-[11px] text-white/40">
-        Self-reported by the team. Not audited by SparkLine Youth.
+        Self-reported by the team. Not audited by Sparkline Youth.
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-4">
         {roundKind && (

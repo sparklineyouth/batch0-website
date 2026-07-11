@@ -5,6 +5,7 @@ import {
   IBM_Plex_Mono,
 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 // Type system (DESIGN.md): display with a pulse, body with a spine, mono
@@ -31,7 +32,11 @@ export const viewport: Viewport = {
   initialScale: 1,
   // viewport-fit=cover lets safe-area-inset-* expose the notch on iOS.
   viewportFit: "cover",
-  themeColor: "#ffffff",
+  // Browser chrome tracks the OS preference (matches defaultTheme: "system").
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c0c0d" },
+  ],
 };
 
 // The site serves from www (apex 307s there) — canonicals must match.
@@ -42,30 +47,30 @@ export const metadata: Metadata = {
   // 57 chars — search phrase first, brand last. Differentiates from the
   // crowded Spark* namespace (Spark Teen, SparkHub, SparkYouth NYC) by
   // saying exactly what this is: an accelerator, for high schoolers.
-  title: "Startup Accelerator for High Schoolers — SparkLine Youth",
+  title: "Startup Accelerator for High Schoolers — Sparkline Youth",
   description:
-    "SparkLine Youth is a live, online startup accelerator for U.S. high schoolers. Cohort 1 runs Jul 30–Sep 13, 2026. $130 tuition, free to apply. No equity taken.",
+    "Sparkline Youth is a live, online startup accelerator for U.S. high schoolers. Cohort 1 runs Jul 30–Sep 13, 2026. $130 tuition, free to apply. No equity taken.",
   keywords: [
     "high school startup accelerator",
     "startup programs for high schoolers",
     "youth entrepreneurship program",
     "teen startup accelerator",
     "virtual accelerator",
-    "SparkLine Youth",
+    "Sparkline Youth",
   ],
   openGraph: {
-    title: "Startup Accelerator for High Schoolers — SparkLine Youth",
+    title: "Startup Accelerator for High Schoolers — Sparkline Youth",
     description:
       "A live, online startup accelerator for U.S. high schoolers. Build a real company in four sprint weeks, then pitch it at demo day. $130, free to apply, no equity taken.",
     url: SITE,
-    siteName: "SparkLine Youth",
+    siteName: "Sparkline Youth",
     // Image is generated dynamically by app/opengraph-image.tsx and picked
     // up automatically — no explicit `images:` entry needed here.
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Startup Accelerator for High Schoolers — SparkLine Youth",
+    title: "Startup Accelerator for High Schoolers — Sparkline Youth",
     description:
       "A live, online startup accelerator for U.S. high schoolers. Build a real company in four sprint weeks, then pitch it at demo day. $130, free to apply, no equity taken.",
   },
@@ -88,12 +93,12 @@ export const metadata: Metadata = {
 const orgJsonLd = {
   "@context": "https://schema.org",
   "@type": "EducationalOrganization",
-  name: "SparkLine Youth",
-  alternateName: "SparkLine",
+  name: "Sparkline Youth",
+  alternateName: "Sparkline",
   url: SITE,
   logo: `${SITE}/logo.svg`,
   description:
-    "SparkLine Youth is a live, online startup accelerator for U.S. high schoolers, run by Impetus AI LLC. Students build a real company across four sprint weeks and pitch it at a live demo day. No equity is taken; sponsorship for standouts is merit-based and funding is never guaranteed.",
+    "Sparkline Youth is a live, online startup accelerator for U.S. high schoolers, run by Impetus AI LLC. Students build a real company across four sprint weeks and pitch it at a live demo day. No equity is taken; sponsorship for standouts is merit-based and funding is never guaranteed.",
   parentOrganization: {
     "@type": "Organization",
     name: "Impetus AI LLC",
@@ -101,7 +106,7 @@ const orgJsonLd = {
   contactPoint: {
     "@type": "ContactPoint",
     contactType: "customer support",
-    email: "sparklineyouth@gmail.com",
+    email: "hello@sparklineyouth.org",
   },
   audience: {
     "@type": "EducationalAudience",
@@ -123,26 +128,35 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // The page default is the light marketing surface (DESIGN.md). The
-  // authenticated product layouts (dashboard/admin/mentor/investor) each
-  // set their own dark palette explicitly, so they are unaffected.
+  // Marketing surface defaults to the visitor's system theme (light or dark),
+  // toggleable from the navbar and remembered by next-themes. The marketing
+  // design tokens (globals.css) flip off the `data-theme` attribute it sets on
+  // <html>. The authenticated product layouts run their own cookie theme on the
+  // <html> *class* list, so the two never collide. suppressHydrationWarning is
+  // required: next-themes sets data-theme before hydration.
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${display.variable} ${sans.variable} ${mono.variable}`}
+    >
       <body className="bg-paper font-sans text-ink antialiased">
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-spark focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-ink"
-        >
-          Skip to content
-        </a>
-        <div id="main-content">{children}</div>
-        <script
-          type="application/ld+json"
-          // JSON.stringify is safe here — the payload is a fixed literal,
-          // no user input is interpolated.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
-        />
-        <Analytics />
+        <ThemeProvider>
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-spark focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-spark"
+          >
+            Skip to content
+          </a>
+          <div id="main-content">{children}</div>
+          <script
+            type="application/ld+json"
+            // JSON.stringify is safe here — the payload is a fixed literal,
+            // no user input is interpolated.
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+          />
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   );

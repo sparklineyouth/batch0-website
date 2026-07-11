@@ -334,7 +334,26 @@ async function upsertApplication(
         name: profile?.full_name ?? null,
       });
       if (user.email) {
-        await sendEmail({ to: user.email, subject: t.subject, html: t.html });
+        // Best-effort: the applicant confirmation must never affect the
+        // submit result. sendEmail already returns (rather than throws) when
+        // Resend is unconfigured or errors; the extra .catch is belt-and-
+        // suspenders so a thrown error here can't skip the admin notifications
+        // below or surface to the student. Requires RESEND_API_KEY +
+        // RESEND_FROM (verified domain) to actually deliver.
+        const emailRes = await sendEmail({
+          to: user.email,
+          subject: t.subject,
+          html: t.html,
+        }).catch((err) => {
+          console.error("[apply] applicant email threw", err);
+          return { ok: false as const, reason: "threw" };
+        });
+        if (!emailRes.ok) {
+          console.warn(
+            "[apply] applicant confirmation email not sent:",
+            emailRes.reason,
+          );
+        }
       }
       await notify({
         userId: user.id,

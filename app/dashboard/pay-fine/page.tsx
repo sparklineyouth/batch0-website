@@ -7,7 +7,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { AlertTriangle } from "lucide-react";
 
-export const metadata = { title: "Outstanding fine · SparkLine Youth" };
+export const metadata = { title: "Outstanding fine · Sparkline Youth" };
 
 export default async function PayFinePage() {
   const user = await requireUser();
@@ -45,10 +45,10 @@ export default async function PayFinePage() {
           Your access is paused until the {fines.length > 1 ? "fines below are" : "fine below is"} paid or waived by an admin.
           Email{" "}
           <a
-            href="mailto:sparklineyouth@gmail.com"
+            href="mailto:hello@sparklineyouth.org"
             className="text-spark hover:underline"
           >
-            sparklineyouth@gmail.com
+            hello@sparklineyouth.org
           </a>{" "}
           if you think this is wrong.
         </p>

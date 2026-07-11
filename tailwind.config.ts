@@ -19,25 +19,33 @@ const config: Config = {
           500: "#CA8A04",
         },
         ink: {
-          // Light-surface ink ramp (DESIGN.md). The numbered dark shades
-          // below are legacy tokens still used by the product app.
-          DEFAULT: "#141414",
-          soft: "#4A4A4A",
-          // 4.74:1 on the wash background, 5.05:1 on white — AA on both.
-          faint: "#6F6F6F",
+          // Light-surface ink ramp (DESIGN.md). DEFAULT/soft/faint are
+          // theme-reactive CSS variables (see globals.css :root/.dark) so
+          // the marketing surface flips light↔dark from one place. The
+          // <alpha-value> placeholder keeps opacity modifiers (text-ink/30)
+          // working. The numbered dark shades below are legacy fixed tokens
+          // still used by the product app.
+          DEFAULT: "rgb(var(--ink) / <alpha-value>)",
+          soft: "rgb(var(--ink-soft) / <alpha-value>)",
+          faint: "rgb(var(--ink-faint) / <alpha-value>)",
           950: "#000000",
           900: "#0A0A0A",
           800: "#111111",
           700: "#1A1A1A",
           600: "#222222",
         },
-        // DESIGN.md tokens — marketing surface.
-        paper: "#FFFFFF",
-        wash: "#F7F7F5",
-        line: "#E4E4E1",
-        // The accent as *text on white* (AA 5.4:1). Same hue family as
-        // spark, darkened — not a second accent.
-        "spark-ink": "#8A6A00",
+        // DESIGN.md tokens — marketing surface. Theme-reactive CSS vars.
+        paper: "rgb(var(--paper) / <alpha-value>)",
+        wash: "rgb(var(--wash) / <alpha-value>)",
+        line: "rgb(var(--line) / <alpha-value>)",
+        // The accent as *text* (AA on both surfaces). Same hue family as
+        // spark, darkened on light / brightened on dark — not a second accent.
+        "spark-ink": "rgb(var(--spark-ink) / <alpha-value>)",
+        // Text/icons that sit ON the constant yellow `spark` fill (buttons,
+        // highlight, badges). The fill never changes with the theme, so this
+        // MUST stay dark in both light and dark mode — never use the reactive
+        // `text-ink` on a spark background or it turns white-on-yellow.
+        "on-spark": "#141414",
       },
       fontFamily: {
         sans: [

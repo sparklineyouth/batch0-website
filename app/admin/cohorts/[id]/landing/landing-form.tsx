@@ -34,7 +34,7 @@ export function LandingForm({ initial }: { initial: LandingInput }) {
         <Input
           value={v.landing_headline}
           onChange={(e) => setV({ ...v, landing_headline: e.target.value })}
-          placeholder="Default: Startups built at SparkLine Youth"
+          placeholder="Default: Startups built at Sparkline Youth"
         />
       </div>
       <div>

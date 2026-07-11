@@ -1,4 +1,4 @@
-# REPORT.md — SparkLine Youth overhaul, 2026-07-10
+# REPORT.md — Sparkline Youth overhaul, 2026-07-10
 
 A stranger's audit map: what was found, what shipped, what remains for Rish.
 Companion docs: [SLOP_REPORT.md](SLOP_REPORT.md) (73 before-findings),
@@ -57,7 +57,7 @@ Three independent reviewers re-ran the checklist against the redesign:
 - Banned word "journey" in the login subhead.
 - Em-dash density (~1/50 words) cut to ≤1 per section; nine "X, not Y"
   aphorisms culled to one ("Grants, not swag").
-- Over-implication of a "SparkLine team" → sessions attributed to Rish by
+- Over-implication of a "Sparkline team" → sessions attributed to Rish by
   name, with a name-before-you-pay promise.
 - Competitor price figures removed from machine-readable FAQ JSON-LD
   (kept in pricing prose with a re-verify TODO).

@@ -43,7 +43,7 @@ async function syncStripePrice(args: {
   existingProductId: string | null;
   existingPriceId: string | null;
 }): Promise<{ productId: string; priceId: string }> {
-  const productName = `SparkLine Youth — ${args.name}`;
+  const productName = `Sparkline Youth — ${args.name}`;
 
   let productId = args.existingProductId;
   if (productId) {

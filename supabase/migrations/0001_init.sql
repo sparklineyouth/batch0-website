@@ -1,5 +1,5 @@
 -- ============================================================================
--- SparkLine — Initial schema
+-- Sparkline — Initial schema
 -- Run this in the Supabase SQL Editor (Dashboard → SQL → New query → Run).
 -- ============================================================================
 

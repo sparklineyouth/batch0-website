@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Refund Policy · SparkLine Youth",
-  description: "SparkLine Youth tuition refund terms — what is refundable, when, and how to request one.",
+  title: "Refund Policy · Sparkline Youth",
+  description: "Sparkline Youth tuition refund terms — what is refundable, when, and how to request one.",
   alternates: { canonical: "/refund-policy" },
 };
 
@@ -13,15 +13,15 @@ export default function RefundPolicyPage() {
       </p>
 
       <p>
-        We want everyone to be happy with SparkLine Youth. Here's how refunds work.
+        We want everyone to be happy with Sparkline Youth. Here's how refunds work.
       </p>
 
       <h2>Full refund within 7 days</h2>
       <p>
         If you're not satisfied for any reason, you can request a full
         refund within 7 days of payment. Email us at{" "}
-        <a href="mailto:sparklineyouth@gmail.com">
-          sparklineyouth@gmail.com
+        <a href="mailto:hello@sparklineyouth.org">
+          hello@sparklineyouth.org
         </a>{" "}
         from the email tied to your account.
       </p>
@@ -40,8 +40,8 @@ export default function RefundPolicyPage() {
 
       <h2>Questions</h2>
       <p>
-        <a href="mailto:sparklineyouth@gmail.com">
-          sparklineyouth@gmail.com
+        <a href="mailto:hello@sparklineyouth.org">
+          hello@sparklineyouth.org
         </a>
       </p>
     </>

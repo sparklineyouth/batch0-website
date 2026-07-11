@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import type { SiteConfig } from "@/lib/site-config";
 
 /**
@@ -16,13 +17,13 @@ export default function Pricing({ config }: { config: SiteConfig }) {
             {derived.priceLabel}, once
           </h2>
           <p className="mt-4 max-w-[34rem] text-[15px] leading-[1.65] text-ink-soft">
-            Free to apply — tuition is charged only if you&apos;re accepted.
+            Sparkline is 100% free to apply, tuition is charged only if you&apos;re accepted.
             Comparable summer programs (LaunchX, LeanGap) list tuition in the
-            $3,000–$8,000+ range.
+            $3,000–$8,000+ range, even for online programs!
             {/* TODO(RISH): re-verify current LaunchX / LeanGap list prices
                 before each cohort; logged in NEEDED_FACTS.md. */}{" "}
-            Tuition here covers the program itself; sponsorship and any
-            introductions are merit-based, never paid for, and never
+            Tuition here covers the program itself. Sponsorship and any
+            investor/mentor relationship are merit-based, never paid for, and never
             guaranteed.
           </p>
           {derived.isRegionalPrice && (
@@ -49,13 +50,13 @@ export default function Pricing({ config }: { config: SiteConfig }) {
           </dl>
           <p className="mt-5 text-[13px] text-ink-faint">
             Full terms:{" "}
-            <a href="/refund-policy" className="link-ink">
+            <Link href="/refund-policy" className="link-ink">
               refund policy
-            </a>
+            </Link>
             {" · "}
-            <a href="/terms" className="link-ink">
+            <Link href="/terms" className="link-ink">
               terms
-            </a>
+            </Link>
             . Reduced regional pricing applies automatically in select
             countries.
           </p>

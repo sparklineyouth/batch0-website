@@ -140,7 +140,7 @@ export default async function AdminDiscordPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Discord</h1>
       <p className="mt-1 text-sm text-white/55">
-        Wire SparkLine Youth into your Discord server. Account linking, role sync,
+        Wire Sparkline Youth into your Discord server. Account linking, role sync,
         cross-posts, and slash commands run off of this configuration.
       </p>
 
@@ -268,7 +268,7 @@ export default async function AdminDiscordPage() {
         </h2>
         <p className="mt-1 text-xs text-white/50">
           First-time setup: wipe every existing channel + role and rebuild the
-          canonical SparkLine Youth layout in one click. New IDs are saved to
+          canonical Sparkline Youth layout in one click. New IDs are saved to
           the config above automatically.
         </p>
         <div className="mt-4">

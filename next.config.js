@@ -12,6 +12,18 @@ const nextConfig = {
       static: 30,
     },
   },
+  webpack: (config) => {
+    // Silence the noisy "Critical dependency: the request of a dependency is
+    // an expression" warning emitted by @prisma/instrumentation (pulled in
+    // transitively via @sentry/node). It comes from a dynamic require webpack
+    // can't statically resolve; it's harmless and not fixable in our code.
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings ?? []),
+      { module: /@opentelemetry\/instrumentation/ },
+      { module: /@prisma\/instrumentation/ },
+    ];
+    return config;
+  },
 };
 
 const enableSentry =

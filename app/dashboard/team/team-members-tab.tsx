@@ -208,7 +208,7 @@ export function TeamMembersTab({
         {mode === "email" && (
           <div className="mt-4 space-y-3">
             <div>
-              <Label htmlFor="invite-email">Their SparkLine Youth email</Label>
+              <Label htmlFor="invite-email">Their Sparkline Youth email</Label>
               <Input
                 id="invite-email"
                 type="email"
@@ -218,7 +218,7 @@ export function TeamMembersTab({
                 autoComplete="off"
               />
               <p className="mt-1 text-[11px] text-white/40">
-                They need a SparkLine Youth account first. If they haven't signed
+                They need a Sparkline Youth account first. If they haven't signed
                 up yet, send them the apply link.
               </p>
             </div>

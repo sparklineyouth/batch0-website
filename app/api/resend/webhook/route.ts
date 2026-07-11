@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Resend → SparkLine Youth email-event ingest.
+ * Resend → Sparkline Youth email-event ingest.
  *
  * Resend delivers via Svix; verify the signature with the shared
  * secret, then persist the event into `email_events`. The PK is the

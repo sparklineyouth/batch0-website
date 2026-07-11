@@ -98,7 +98,7 @@ export async function GET(req: Request) {
   }
 
   // Best-effort: pull current role + drop them into the guild with the
-  // role for that SparkLine Youth role. The bot needs MANAGE_ROLES + the
+  // role for that Sparkline Youth role. The bot needs MANAGE_ROLES + the
   // role for the user must be below the bot's role.
   const { data: profile } = await admin
     .from("profiles")

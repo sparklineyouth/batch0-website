@@ -15,7 +15,7 @@ import {
 import { env } from "@/lib/env";
 import { Lock, Sparkles } from "lucide-react";
 
-export const metadata = { title: "AI co-founder · SparkLine Youth" };
+export const metadata = { title: "AI co-founder · Sparkline Youth" };
 
 export default async function AiPage({
   searchParams,
@@ -142,7 +142,7 @@ function LockedView() {
               Locked until you're accepted
             </h2>
             <p className="mt-1 text-sm text-white/65">
-              The AI co-founder is part of the SparkLine Youth program. It unlocks
+              The AI co-founder is part of the Sparkline Youth program. It unlocks
               the moment your application is accepted — submit your
               application and we'll review it on a rolling basis.
             </p>

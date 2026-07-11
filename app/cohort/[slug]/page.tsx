@@ -15,17 +15,17 @@ export async function generateMetadata({
     .select("name, landing_headline, landing_subhead")
     .eq("slug", params.slug)
     .maybeSingle();
-  if (!cohort) return { title: "Cohort · SparkLine Youth" };
+  if (!cohort) return { title: "Cohort · Sparkline Youth" };
   return {
-    title: `${cohort.name} · SparkLine Youth`,
+    title: `${cohort.name} · Sparkline Youth`,
     description:
       (cohort as any).landing_subhead ||
-      `Projects built in ${cohort.name} at SparkLine Youth.`,
+      `Projects built in ${cohort.name} at Sparkline Youth.`,
     openGraph: {
       title: (cohort as any).landing_headline ?? cohort.name,
       description:
         (cohort as any).landing_subhead ||
-        `Projects built in ${cohort.name} at SparkLine Youth.`,
+        `Projects built in ${cohort.name} at Sparkline Youth.`,
     },
   };
 }
@@ -74,7 +74,7 @@ export default async function CohortPage({
           {cohort.name}
         </p>
         <h1 className="mt-3 text-4xl font-bold tracking-tight md:text-6xl">
-          {c.landing_headline || "Projects built at SparkLine Youth"}
+          {c.landing_headline || "Projects built at Sparkline Youth"}
         </h1>
         <p className="mt-5 max-w-2xl text-lg text-white/60">
           {c.landing_subhead ||
@@ -92,7 +92,7 @@ export default async function CohortPage({
             href="/"
             className="inline-flex items-center rounded-full border border-white/20 px-5 py-2.5 text-sm font-medium text-white/85 transition hover:border-white/40"
           >
-            About SparkLine Youth
+            About Sparkline Youth
           </Link>
         </div>
 

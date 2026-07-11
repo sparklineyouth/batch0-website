@@ -7,19 +7,19 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### Root metadata — app/layout.tsx
 
-> Title: "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers"
+> Title: "Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers"
 > Description: "Apply, learn how to launch a real startup in 4 weeks, then pitch live to our investor network. Curriculum, mentor support, and optional sponsorship for standouts — funding never guaranteed. For U.S. high schoolers."
-> Keywords: "high school startup accelerator", "youth entrepreneurship", "teen entrepreneur program", "virtual accelerator", "SparkLine Youth"
-> OG title: "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers"
+> Keywords: "high school startup accelerator", "youth entrepreneurship", "teen entrepreneur program", "virtual accelerator", "Sparkline Youth"
+> OG title: "Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers"
 > OG description: "Apply, learn how to launch a real startup in 4 weeks, then pitch live to our investor network. Optional sponsorship for standouts; funding never guaranteed. Keep 100% of your equity."
-> OG siteName: "SparkLine Youth" · OG url: https://sparklineyouth.org
-> Twitter title: "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers"
+> OG siteName: "Sparkline Youth" · OG url: https://sparklineyouth.org
+> Twitter title: "Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers"
 > Twitter description: "Apply, learn how to launch a real startup in 4 weeks, then pitch live to our investor network. Optional sponsorship for standouts; funding never guaranteed. Keep 100% of your equity."
 
 ### JSON-LD structured data — app/layout.tsx
 
-> name: "SparkLine Youth" · alternateName: "SparkLine"
-> description: "SparkLine Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Students learn how to launch a real startup with mentor support, then pitch live in front of our investor network — keeping 100% of their equity. Optional sponsorship for standouts; funding is never guaranteed."
+> name: "Sparkline Youth" · alternateName: "Sparkline"
+> description: "Sparkline Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Students learn how to launch a real startup with mentor support, then pitch live in front of our investor network — keeping 100% of their equity. Optional sponsorship for standouts; funding is never guaranteed."
 > contactPoint email: hello@impetusai.net (contactType: "customer support")
 > audienceType: "U.S. high school students, ages 13–18"
 > offer: price "130" USD, category "Tuition", description: "4-week virtual entrepreneurship program cohort tuition. Reduced regional pricing available in select countries."
@@ -47,8 +47,8 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### OG image (dynamic) — app/opengraph-image.tsx
 
-> Alt: "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers"
-> Brand: "SparkLine Youth" (Spark / Line / Youth)
+> Alt: "Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers"
+> Brand: "Sparkline Youth" (Spark / Line / Youth)
 > Badge (dynamic): "{cohortHeadline} · {priceLabel}" → e.g. "Cohort 1 · Summer 2026 · $130"
 > Headline: "Learn to build a startup." / "Pitch it to investors."
 > Sub: "The 4-week, fully virtual entrepreneurship program for U.S. high schoolers."
@@ -70,20 +70,20 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### Navbar — components/navbar.tsx
 
-> Brand: "SparkLine Youth" (rendered Spark/Line/Youth with accent on "Line")
+> Brand: "Sparkline Youth" (rendered Spark/Line/Youth with accent on "Line")
 > Nav links: "Program" (/#how-it-works), "Curriculum" (/#curriculum), "Sponsors" (/sponsors), "FAQ" (/#faq)
 > Desktop CTAs: "Create account" (/signup); primary button "Apply" → (authed: "Dashboard") with "→"
 > Hamburger aria-label: "Open menu"
 > Mobile drawer: aria-label "Site navigation"; close button aria-label "Close menu" (x2 — backdrop + X button)
 > Drawer CTAs: "Apply" → (authed: "Go to dashboard") with "→"; "Create account"; "Already have an account? Log in"
 > Drawer footer links: "Terms" · "Privacy" · "Refunds"
-> Logo alt: "SparkLine Youth"
+> Logo alt: "Sparkline Youth"
 
 ### Hero — components/hero.tsx
 
 > Eyebrow pill (dynamic): "{cohortHeadline} · {acceptingLabel}" — acceptingLabel is the live signal (countdown label or "{n} spots left" when ≤5 left) or "Applications open" / "Applications closed"
 > H1: "Learn to build a startup." / "Pitch it to investors." ("investors" has shine treatment)
-> Subhead: "SparkLine Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers. You get the curriculum, mentor support, and a live pitch to our investor network. Funding is never guaranteed — we open the room; what investors decide is up to them."
+> Subhead: "Sparkline Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers. You get the curriculum, mentor support, and a live pitch to our investor network. Funding is never guaranteed — we open the room; what investors decide is up to them."
 > Primary CTA: "Start your application" (authed: "Go to dashboard") with "→"
 > Secondary CTA: "See how it works"
 > Sub-CTA line (unauthed): "Free to apply · {priceLabel} only if accepted" (+ optional "· {spotsLabel}")
@@ -95,7 +95,7 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### Marquee — components/marquee.tsx (aria-hidden decorative strip)
 
-> "Customer Discovery" / "Lean Canvas" / "MVP & Product" / "Business Model" / "Pricing Strategy" / "Go-to-Market" / "Brand Positioning" / "Pitch Deck" / "SparkLine Sponsorship" / "Investor Intros" / "Zero Equity" (items repeat, separated by "/") — NOTE: section is aria-hidden
+> "Customer Discovery" / "Lean Canvas" / "MVP & Product" / "Business Model" / "Pricing Strategy" / "Go-to-Market" / "Brand Positioning" / "Pitch Deck" / "Sparkline Sponsorship" / "Investor Intros" / "Zero Equity" (items repeat, separated by "/") — NOTE: section is aria-hidden
 
 ### Problem — components/problem.tsx
 
@@ -125,9 +125,9 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 > MOBILE feature cards (eyebrow / title / body):
 > - "Curriculum" / "Weekly skill blocks + live sessions" / "Pre-recorded startup modules you can watch on your schedule, plus a weekly group session with mentors and peers."
 > - "Always-on" / "Your AI co-founder" / "Stuck on a Lean Canvas at 11pm? Your AI co-founder is trained on the cohort curriculum and your own progress."
-> - "Pitch Day" / "Investor pitch + intros" / "Week 4 ends live on Zoom in front of the SparkLine team and our investor network. Standouts may be offered sponsorship and warm intros — zero equity, ever. Funding is never guaranteed."
+> - "Pitch Day" / "Investor pitch + intros" / "Week 4 ends live on Zoom in front of the Sparkline team and our investor network. Standouts may be offered sponsorship and warm intros — zero equity, ever. Funding is never guaranteed."
 > Mobile footer line: "Everything ships inside one dashboard · Apply" (link to #apply)
-> DESKTOP mock-dashboard copy: sidebar brand "SparkLine Youth"; badge "2"; nav items "Home, Application, Course, Assignments, Check-in, Events, Resources, Community, AI co-founder, Files, Billing, Settings"; "Welcome, Riya."; "Your startup, your skill blocks, your investor prep."; card "Application" + badge "Accepted" + "You're in" + button "Pay {priceLabel}" ($130); card "Course access" + "{cohortName}" (Summer 2026) + "{dateRangeLabel}" (Jun 15 → Jul 13) + button "Open course"; "Quick links": "View application", "Billing", "Settings", "Community"; banner "This week" / "Week 1 · Customer discovery due Sunday" / button "Open"
+> DESKTOP mock-dashboard copy: sidebar brand "Sparkline Youth"; badge "2"; nav items "Home, Application, Course, Assignments, Check-in, Events, Resources, Community, AI co-founder, Files, Billing, Settings"; "Welcome, Riya."; "Your startup, your skill blocks, your investor prep."; card "Application" + badge "Accepted" + "You're in" + button "Pay {priceLabel}" ($130); card "Course access" + "{cohortName}" (Summer 2026) + "{dateRangeLabel}" (Jun 15 → Jul 13) + button "Open course"; "Quick links": "View application", "Billing", "Settings", "Community"; banner "This week" / "Week 1 · Customer discovery due Sunday" / button "Open"
 
 ### Curriculum — components/curriculum.tsx (#curriculum)
 
@@ -137,7 +137,7 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 > Week 1 "Validate" (deliverable "Validated Lean Canvas"): "Lean Canvas. Problem-solution fit. Real customer interviews — not friends and family. End the week with a hypothesis you've actually tested in the wild."
 > Week 2 "Build" (deliverable "MVP + Business Model"): "Ship a v1 — landing page, no-code MVP, or working prototype. Business model, pricing, and unit economics that hold up to a sharp question."
 > Week 3 "Market" (deliverable "GTM Plan + Brand"): "Go-to-market plan, competitive landscape, brand positioning. Find your first hundred users — and the distribution wedge that gets you there."
-> Week 4 "Pitch" (deliverable "Sponsor + Investor Pitch (Live)"): "Final pitch deck. Rehearsals with mentors. Pitch live on Zoom in front of our investor network — cohort standouts may be offered SparkLine sponsorship and warm intros. Funding is never guaranteed."
+> Week 4 "Pitch" (deliverable "Sponsor + Investor Pitch (Live)"): "Final pitch deck. Rehearsals with mentors. Pitch live on Zoom in front of our investor network — cohort standouts may be offered Sparkline sponsorship and warm intros. Funding is never guaranteed."
 
 ### Stats / tuition band — components/stats.tsx
 
@@ -153,7 +153,7 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 > Badge: "Presenting sponsor"
 > H2: "Powered by Impetus AI."
-> Body: "SparkLine Youth runs on the backing of Impetus AI — AI consulting for local businesses. They bring enterprise-grade AI strategy to small and medium-sized companies that don't have Fortune 500 resources, and they fund the seats, mentors, and infrastructure that make this cohort free to apply."
+> Body: "Sparkline Youth runs on the backing of Impetus AI — AI consulting for local businesses. They bring enterprise-grade AI strategy to small and medium-sized companies that don't have Fortune 500 resources, and they fund the seats, mentors, and infrastructure that make this cohort free to apply."
 > Pillars:
 > - "AI Audit": "Free 48-hour operations review with a prioritized opportunity map and vendor recommendations."
 > - "AI Roadmap": "90-day implementation plan with budget projections and build-vs-buy analysis."
@@ -164,7 +164,7 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### Comparison — components/comparison.tsx (#compare)
 
-> Eyebrow: "Why SparkLine Youth"
+> Eyebrow: "Why Sparkline Youth"
 > H2: "Affordable. Virtual. Real investor exposure."
 > Intro: "Four axes worth comparing: cost, what happens after Pitch Day, whether it actually runs online, and whether you can join when it fits your year. Funding is never guaranteed — but the room is."
 > Badge: "Zero equity. Ever."
@@ -173,21 +173,21 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 > - LaunchX: "$3,000–$8,000" / "Investors" / "Partial" / No
 > - LeanGap: "Varies" / "Investors" / "Partial" / No
 > - YEA!: "School-based" / "Panel only" / No / "Academic year"
-> - SparkLine Youth (highlighted): "{priceLabel}" ($130) / "Pitch + intros" / Yes / Yes
+> - Sparkline Youth (highlighted): "{priceLabel}" ($130) / "Pitch + intros" / Yes / Yes
 > Boolean cells render as "Yes" / "No"
 
 ### FAQ — components/faq.tsx (#faq)
 
 > Eyebrow: "FAQ" · H2: "Questions, answered."
-> Q: "Who is SparkLine Youth for?" A: "Any U.S. high schooler ages 13–18 who wants to learn how to build a real startup — and is willing to put in 4 weeks of focused work. Bring an idea, a half-formed hunch, or nothing at all. No prior experience required, but the application is selective."
+> Q: "Who is Sparkline Youth for?" A: "Any U.S. high schooler ages 13–18 who wants to learn how to build a real startup — and is willing to put in 4 weeks of focused work. Bring an idea, a half-formed hunch, or nothing at all. No prior experience required, but the application is selective."
 > Q: "How much does it cost?" A: "{priceLabel} for the full 4-week cohort. No hidden fees, no upsells. Comparable programs run $3,000–$8,000."
 > Q: "Is it really fully virtual?" A: "Yes. Pre-recorded skill modules plus live weekly group sessions on Zoom, 1:1 mentor checkpoints, and an active Discord community. You can join from anywhere in the U.S."
-> Q: "How does the sponsorship and investor side actually work?" A: "Pitch Day at the end of Week 4 happens live on Zoom in front of the SparkLine team and our investor network. Cohort standouts may be offered direct sponsorship from SparkLine, and we make warm introductions to investors in our network — angels, scout funds, and pre-seed VCs interested in young founders. Sponsorship, if offered, is a non-dilutive grant. Investor intros are connections, not checks. We make no guarantee any of this leads to funding; what investors decide is up to them."
+> Q: "How does the sponsorship and investor side actually work?" A: "Pitch Day at the end of Week 4 happens live on Zoom in front of the Sparkline team and our investor network. Cohort standouts may be offered direct sponsorship from Sparkline, and we make warm introductions to investors in our network — angels, scout funds, and pre-seed VCs interested in young founders. Sponsorship, if offered, is a non-dilutive grant. Investor intros are connections, not checks. We make no guarantee any of this leads to funding; what investors decide is up to them."
 > Q: "What am I actually paying for?" A: "Tuition pays for the program: the 4-week curriculum, our team's mentor support, the Discord community, and a live pitch slot in front of our investor network. You are not paying for funding, an investment, or a sponsorship offer — those are merit-based, separate, and never guaranteed."
 > Q: "What if I don't have an idea yet?" A: "Week 1 is built for that. We walk you through customer discovery and structured idea validation — so you find a real problem worth solving, not just guess at one."
 > Q: "How big are the cohorts?" A: "Small enough that mentors and peers know you by name. {cohortPrefix} is capped at {capacityLabel} students." (cohortPrefix → "Cohort 1 (Summer 2026)")
-> Q: "What do I walk away with?" A: "A validated Lean Canvas, a working v1 of your startup, a real business model, a go-to-market plan, and an investor-ready pitch deck — plus a live pitch in front of our investor network, with warm intros and a shot at SparkLine sponsorship for cohort standouts. Funding is never guaranteed."
-> Q: "Does SparkLine Youth take equity or own my idea?" A: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. SparkLine Youth takes no equity, no IP, and no royalties on the program itself. Sponsorship, if offered, is a non-dilutive grant. Any investment that comes from our investor intros is a separate conversation between you and the investor — we never take a cut, and we never guarantee a check."
+> Q: "What do I walk away with?" A: "A validated Lean Canvas, a working v1 of your startup, a real business model, a go-to-market plan, and an investor-ready pitch deck — plus a live pitch in front of our investor network, with warm intros and a shot at Sparkline sponsorship for cohort standouts. Funding is never guaranteed."
+> Q: "Does Sparkline Youth take equity or own my idea?" A: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. Sparkline Youth takes no equity, no IP, and no royalties on the program itself. Sponsorship, if offered, is a non-dilutive grant. Any investment that comes from our investor intros is a separate conversation between you and the investor — we never take a cut, and we never guarantee a check."
 
 ### CTA — components/cta.tsx (#apply)
 
@@ -204,22 +204,22 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### Footer — components/footer.tsx
 
-> Brand: "SparkLine Youth" (logo alt "SparkLine Youth")
+> Brand: "Sparkline Youth" (logo alt "Sparkline Youth")
 > Blurb: "A 4-week, fully virtual entrepreneurship program for U.S. high schoolers. Curriculum, mentor support, and a live pitch in front of our investor network. Optional sponsorship for standouts — zero equity, ever. Funding is never guaranteed."
 > "sparklineyouth.org"
-> Column "Program": "How it works", "Curriculum", "Why SparkLine Youth", "Sponsors", "Apply"
+> Column "Program": "How it works", "Curriculum", "Why Sparkline Youth", "Sponsors", "Apply"
 > Column "Connect": "{contactEmail}" (hello@impetusai.net), "Log in", "Apply"
-> Legal row: "© {year} SparkLine Youth. All rights reserved." · "Terms" · "Privacy" · "Refunds"
+> Legal row: "© {year} Sparkline Youth. All rights reserved." · "Terms" · "Privacy" · "Refunds"
 
 ### Sticky mobile CTA — components/sticky-mobile-cta.tsx
 
-> Button (→ /apply): "Apply to SparkLine Youth" / subline "Free · {priceLabel} if accepted" ($130) / "→" — shown only on mobile, after scrolling past hero, when unauthenticated and applications are open
+> Button (→ /apply): "Apply to Sparkline Youth" / subline "Free · {priceLabel} if accepted" ($130) / "→" — shown only on mobile, after scrolling past hero, when unauthenticated and applications are open
 
 ## Route: /sponsors
 
 ### Metadata — app/sponsors/page.tsx
 
-> Title: "Sponsor SparkLine Youth — Fund the next generation of founders"
+> Title: "Sponsor Sparkline Youth — Fund the next generation of founders"
 > Description: "Get your brand in front of 100 vetted teen founders per cohort. Fund standout founders directly. Build pipeline."
 
 ### Hero — app/sponsors/page.tsx
@@ -231,7 +231,7 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### Why sponsor — app/sponsors/page.tsx
 
-> Eyebrow: "Why sponsor SparkLine?" · H2: "Three things you get back."
+> Eyebrow: "Why sponsor Sparkline?" · H2: "Three things you get back."
 > - "Pipeline": "100 vetted teen founders per cohort, many headed to top engineering and business programs in 12–24 months. Get early reads on talent before recruiters do."
 > - "Brand": "Logo on the cohort dashboard, workshop slot, presence on Pitch Day alongside our investor network. Be visible where teen founders actually spend their time."
 > - "Impact": "Direct, non-dilutive sponsorship to teen founders. Real outcomes, real reportable impact for ESG and community programs."
@@ -255,19 +255,19 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 > Tier select options: "Supporter ($1,500)", "Partner ($5,000)", "Lead ($15,000)", "Custom / not sure yet"
 > Helper: "Opens your mail client. We reply within 2 business days."
 > Submit: "Send inquiry" with "→"
-> Generated mailto (to hello@impetusai.net) subject: "Sponsorship inquiry — {company|name|SparkLine Youth}"; body fields: "Name:", "Company:", "Email:", "Tier interest:", "Message:"
+> Generated mailto (to hello@impetusai.net) subject: "Sponsorship inquiry — {company|name|Sparkline Youth}"; body fields: "Name:", "Company:", "Email:", "Tier interest:", "Message:"
 
 ## Route: /login
 
 ### Auth layout (shared) — app/(auth)/layout.tsx
 
-> Brand link: "SparkLine Youth" (logo alt "SparkLine Youth")
+> Brand link: "Sparkline Youth" (logo alt "Sparkline Youth")
 
 ### Login page — app/(auth)/login/page.tsx
 
-> Meta title: "Log in · SparkLine Youth"
+> Meta title: "Log in · Sparkline Youth"
 > H1: "Welcome back"
-> Sub: "Log in to continue your SparkLine Youth journey."
+> Sub: "Log in to continue your Sparkline Youth journey."
 > "New here? Create an account"
 > "Forgot your password?"
 
@@ -281,9 +281,9 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### Signup page — app/(auth)/signup/page.tsx
 
-> Meta title: "Sign up · SparkLine Youth"
+> Meta title: "Sign up · Sparkline Youth"
 > H1: "Create your account"
-> Sub: "Sign up to apply for SparkLine Youth. Takes 30 seconds."
+> Sub: "Sign up to apply for Sparkline Youth. Takes 30 seconds."
 > "Already have an account? Log in"
 
 ### Signup form — app/(auth)/signup/signup-form.tsx
@@ -298,7 +298,7 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 > "Email and password are required."
 > "Pick a stronger password — at least 8 characters."
 > (plus friendlyAuthError fallbacks)
-> Welcome notification (in-app, post-signup): title "Welcome to SparkLine Youth", body "Your account is ready. Apply when you're ready."
+> Welcome notification (in-app, post-signup): title "Welcome to Sparkline Youth", body "Your account is ready. Apply when you're ready."
 
 ## Route: /forgot-password
 
@@ -326,41 +326,41 @@ Extracted 2026-07-10 from the pre-overhaul site. The AFTER copy deck is appended
 
 ### Terms of Service — app/(legal)/terms/page.tsx
 
-> Meta title: "Terms of Service · SparkLine Youth"
+> Meta title: "Terms of Service · Sparkline Youth"
 > H1: "Terms of Service" · "Last updated: May 12, 2026"
-> Intro: "These Terms of Service govern your use of SparkLine Youth (sparklineyouth.org), operated by SparkLine Youth. By creating an account or using the platform, you agree to these terms."
-> "Eligibility": "SparkLine Youth is intended for U.S. high schoolers, generally ages 13–18. If you are under 18, you must have permission from a parent or legal guardian to use the platform."
+> Intro: "These Terms of Service govern your use of Sparkline Youth (sparklineyouth.org), operated by Sparkline Youth. By creating an account or using the platform, you agree to these terms."
+> "Eligibility": "Sparkline Youth is intended for U.S. high schoolers, generally ages 13–18. If you are under 18, you must have permission from a parent or legal guardian to use the platform."
 > "Accounts": "You're responsible for keeping your password secure and for all activity under your account. Don't share your credentials. Notify us promptly if you believe your account has been compromised."
-> "Payments": "SparkLine Youth charges a one-time enrollment fee per cohort. All payments are processed by Stripe. Prices are listed in USD. See our refund policy for refund terms."
-> "Acceptable use": "Don't use SparkLine Youth to harass other users, infringe intellectual property, distribute malware, or attempt to compromise the platform's security."
-> "Content you upload": "You retain ownership of anything you upload (drafts, files, pitch decks, submissions). You grant SparkLine Youth a limited license to host and display your content for the purpose of running the program."
-> "Your ideas, your IP, your company": "You own 100% of your idea, your intellectual property, and any company you build during or after the program. SparkLine Youth does not take equity, royalties, revenue share, or any ownership interest in your business as a condition of participating. We don't claim your IP, we don't license your work to third parties, and we don't sell information about your idea. Mentors, instructors, and staff are bound by the same rule." + "The only thing we ask: permission to attribute. We may publicly mention that a project, founder, or company \"was built at SparkLine Youth\" or \"started in a SparkLine Youth cohort\" — for example, in case studies, alumni lists, social posts, and our website. This is attribution only and creates no ownership, partnership, or agency relationship between SparkLine Youth and your business. If you'd prefer not to be named publicly, email hello@impetusai.net and we'll honor that."
-> "Termination": "You can delete your account at any time from your settings page. SparkLine Youth may suspend or terminate accounts that violate these terms."
-> "Disclaimer": "SparkLine Youth is provided \"as is\" without warranties. We don't guarantee investment outcomes — Demo Day connects students with real investors, but funding is at the investors' discretion."
+> "Payments": "Sparkline Youth charges a one-time enrollment fee per cohort. All payments are processed by Stripe. Prices are listed in USD. See our refund policy for refund terms."
+> "Acceptable use": "Don't use Sparkline Youth to harass other users, infringe intellectual property, distribute malware, or attempt to compromise the platform's security."
+> "Content you upload": "You retain ownership of anything you upload (drafts, files, pitch decks, submissions). You grant Sparkline Youth a limited license to host and display your content for the purpose of running the program."
+> "Your ideas, your IP, your company": "You own 100% of your idea, your intellectual property, and any company you build during or after the program. Sparkline Youth does not take equity, royalties, revenue share, or any ownership interest in your business as a condition of participating. We don't claim your IP, we don't license your work to third parties, and we don't sell information about your idea. Mentors, instructors, and staff are bound by the same rule." + "The only thing we ask: permission to attribute. We may publicly mention that a project, founder, or company \"was built at Sparkline Youth\" or \"started in a Sparkline Youth cohort\" — for example, in case studies, alumni lists, social posts, and our website. This is attribution only and creates no ownership, partnership, or agency relationship between Sparkline Youth and your business. If you'd prefer not to be named publicly, email hello@impetusai.net and we'll honor that."
+> "Termination": "You can delete your account at any time from your settings page. Sparkline Youth may suspend or terminate accounts that violate these terms."
+> "Disclaimer": "Sparkline Youth is provided \"as is\" without warranties. We don't guarantee investment outcomes — Demo Day connects students with real investors, but funding is at the investors' discretion."
 > "Contact": "Questions about these terms? hello@impetusai.net"
 
 ## Route: /privacy
 
 ### Privacy Policy — app/(legal)/privacy/page.tsx
 
-> Meta title: "Privacy Policy · SparkLine Youth"
+> Meta title: "Privacy Policy · Sparkline Youth"
 > H1: "Privacy Policy" · "Last updated: May 12, 2026"
-> Intro: "We collect the minimum personal information needed to run the SparkLine Youth program, and we never sell your data."
+> Intro: "We collect the minimum personal information needed to run the Sparkline Youth program, and we never sell your data."
 > "What we collect": "Account info: name, email, password (hashed via Supabase Auth)." / "Application info: what you submit on /apply — age, grade, school, parent email, links." / "Payment info: we don't store your card. Stripe handles all payment data." / "Program usage: lesson progress, weekly check-ins, team threads, comments, and files you upload to your drive." / "Operational logs: standard server logs (IP, user agent) for security and debugging."
 > "How we use it": "To run the application + payment + course flow." / "To send transactional emails about your account and the program." / "To improve the platform and protect against abuse."
 > "Who we share with": "Service providers we use to operate the platform: Supabase (database + auth + storage), Stripe (payments), Resend (email), Anthropic (AI co-founder), Vercel (hosting). They process data on our behalf only." / "Mentors and investors only see what you choose to publish (e.g. a public team profile)."
 > "Your rights": "You can update your profile or delete your account from settings. You can email us to request a copy of your data or full deletion at hello@impetusai.net."
 > "Minors": "Many of our students are under 18. We rely on parental consent captured during application."
-> "Your ideas and IP": "Anything you upload — pitch decks, business plans, customer research, code, drafts — belongs to you. SparkLine Youth will never sell, license, or share the substance of your idea with third parties for their own use. We don't take equity in your company and we don't claim ownership of your IP. The only public reference we may make is attribution (e.g. \"built at SparkLine Youth\"). Full terms are in our Terms of Service."
+> "Your ideas and IP": "Anything you upload — pitch decks, business plans, customer research, code, drafts — belongs to you. Sparkline Youth will never sell, license, or share the substance of your idea with third parties for their own use. We don't take equity in your company and we don't claim ownership of your IP. The only public reference we may make is attribution (e.g. \"built at Sparkline Youth\"). Full terms are in our Terms of Service."
 > "Contact": "Questions: hello@impetusai.net"
 
 ## Route: /refund-policy
 
 ### Refund Policy — app/(legal)/refund-policy/page.tsx
 
-> Meta title: "Refund Policy · SparkLine Youth"
+> Meta title: "Refund Policy · Sparkline Youth"
 > H1: "Refund Policy" · "Last updated: May 12, 2026"
-> Intro: "We want everyone to be happy with SparkLine Youth. Here's how refunds work."
+> Intro: "We want everyone to be happy with Sparkline Youth. Here's how refunds work."
 > "Full refund within 7 days": "If you're not satisfied for any reason, you can request a full refund within 7 days of payment. Email us at hello@impetusai.net from the email tied to your account."
 > "After the cohort starts": "Once your cohort begins, refunds are at our discretion. We're reasonable — if life happens, write to us."
 > "How refunds are processed": "Refunds go back to the original payment method via Stripe. They typically appear within 5–10 business days."
@@ -374,14 +374,14 @@ Full copy lives in the components (git diff `26f36f6..HEAD`). The moves that mat
 
 | Where | Before | After | Why |
 |---|---|---|---|
-| `<title>` | "SparkLine Youth — The 4-Week Entrepreneurship Program…" | "Startup Accelerator for High Schoolers — SparkLine Youth" | Search phrase first; kills the false duration claim; 57 chars |
+| `<title>` | "Sparkline Youth — The 4-Week Entrepreneurship Program…" | "Startup Accelerator for High Schoolers — Sparkline Youth" | Search phrase first; kills the false duration claim; 57 chars |
 | Hero H1 | "Learn to build a startup. Pitch it to investors." | "Don't wait for college to start your company." | POV that argues with the reader's real objection; "learn" was course-speak; investor claim unverifiable |
 | Hero sub | "…4-week… mentor support, and a live pitch to our investor network." | "…Four one-week build sprints, a company of your own, and a live demo day at the end. Funding is never guaranteed — the work is real either way." | Only owned mechanics; keeps the honest hedge |
 | Proof bar | "Cohort size 24 · Tuition $130 · Format 4 wks · Pitch Day Live (Sponsors + investors)" | **The Cohort Ledger** — 6 rows rendered live from the cohorts table | Zero invented values; can't drift from the DB |
 | Primary CTA | "Start your application" / "Apply" / "Get Started"-style variance | **"Apply for Cohort 1"** everywhere (config-derived) | One action, one name |
 | Problem section | "Youth entrepreneurship is broken." + 3 essays | cut; its one defensible fact (competitor pricing) moved into Pricing | Generic category rant; claims about competitors we can't stand behind |
-| Comparison table | 4 programs × 4 axes incl. "SparkLine: Year-round ✓" | cut | "Year-round" was false with one cohort ever |
-| Mentor claims | "1:1 mentor checkpoints", "mentors who have shipped", "real founder mentors" | "every live session is run by the SparkLine team, led by founder Rish Dagli… no anonymous 'mentor networks'" | 0 mentors exist; names-before-payment is the promise we can keep |
+| Comparison table | 4 programs × 4 axes incl. "Sparkline: Year-round ✓" | cut | "Year-round" was false with one cohort ever |
+| Mentor claims | "1:1 mentor checkpoints", "mentors who have shipped", "real founder mentors" | "every live session is run by the Sparkline team, led by founder Rish Dagli… no anonymous 'mentor networks'" | 0 mentors exist; names-before-payment is the promise we can keep |
 | Investor claims | "our investor network — angels, scout funds, and pre-seed VCs" | "a live demo day where you pitch what you built" + sponsorship (real, Impetus-funded, merit-based) | The network doesn't verifiably exist; demo day does |
 | "Active Discord community" | present-tense asset | cut | discord_url unset, no cohort has run |
 | Sponsor section (home) | "Presenting sponsor… backed by Impetus AI" + invented stats | "Who runs this" — Rish Dagli + Impetus AI LLC as operator | Self-sponsorship framed as third-party backing; stats unverifiable |

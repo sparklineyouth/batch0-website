@@ -1,30 +1,31 @@
 import React from "react";
+import Link from "next/link";
 
 // The real syllabus — four one-week sprints. The full week-by-week detail
 // lives on /program; this is the home-page summary.
 export const WEEKS = [
   {
-    week: "Wk 1",
+    week: "Step 1",
     title: "Validate",
     body: "Lean Canvas, problem-solution fit, and customer interviews with strangers. End the week with a hypothesis you've tested in the wild.",
     deliverable: "Validated Lean Canvas",
   },
   {
-    week: "Wk 2",
+    week: "Step 2",
     title: "Build",
     body: "Ship a v1: landing page, no-code MVP, or working prototype. Business model, pricing, and unit economics that hold up to a sharp question.",
     deliverable: "MVP + business model",
   },
   {
-    week: "Wk 3",
+    week: "Step 3",
     title: "Market",
     body: "Go-to-market plan, competitive landscape, positioning. Find your first hundred users and the distribution wedge that gets you there.",
     deliverable: "GTM plan + brand",
   },
   {
-    week: "Wk 4",
+    week: "Step 4",
     title: "Pitch",
-    body: "Final deck, rehearsals, and a live pitch at demo day. Standouts may be offered SparkLine sponsorship. Never guaranteed.",
+    body: "Final deck, rehearsals, and a live pitch at demo day. Standouts may be offered Sparkline sponsorship. Never guaranteed.",
     deliverable: "Live demo-day pitch",
   },
 ];
@@ -43,9 +44,9 @@ export default function Curriculum() {
               closed out by a deliverable you shipped yourself.
             </p>
           </div>
-          <a href="/program" className="link-ink text-[15px] font-medium">
+          <Link href="/program" className="link-ink text-[15px] font-medium">
             Full week-by-week program
-          </a>
+          </Link>
         </div>
 
         <div className="mt-10 overflow-x-auto">

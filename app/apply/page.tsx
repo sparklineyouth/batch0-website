@@ -8,18 +8,18 @@ import { Card } from "@/components/ui/card";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 
 export const metadata = {
-  title: "Apply · SparkLine Youth",
+  title: "Apply · Sparkline Youth",
   description:
-    "Apply to SparkLine Youth — the live, online startup accelerator for U.S. high schoolers. Free to apply; tuition charged only if accepted. Rolling review.",
+    "Apply to Sparkline Youth — the live, online startup accelerator for U.S. high schoolers. Free to apply; tuition charged only if accepted. Rolling review.",
   openGraph: {
-    title: "Apply to SparkLine Youth",
+    title: "Apply to Sparkline Youth",
     description:
       "Four build sprints, a company of your own, and a live demo day. Free to apply; tuition charged only if accepted. Rolling review.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Apply to SparkLine Youth",
+    title: "Apply to Sparkline Youth",
     description:
       "Four build sprints, a company of your own, and a live demo day. Free to apply; tuition charged only if accepted.",
   },
@@ -146,7 +146,7 @@ export default async function ApplyPage({
           {reapplying ? "Reapply" : "Apply"}
         </p>
         <h1 className="mt-3 text-[30px] sm:text-4xl font-bold tracking-tight text-white leading-[1.1]">
-          Apply to SparkLine Youth
+          Apply to Sparkline Youth
         </h1>
         <p className="mt-3 max-w-2xl text-[15px] sm:text-base text-white/75 leading-[1.55]">
           {cohortName} is capped at {capacity} students. Applications are

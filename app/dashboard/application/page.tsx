@@ -8,7 +8,7 @@ import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { PayButton } from "./pay-button";
 import { TrackSubmitted } from "./track-submitted";
 
-export const metadata = { title: "Application · SparkLine Youth" };
+export const metadata = { title: "Application · Sparkline Youth" };
 
 export default async function ApplicationPage({
   searchParams,
@@ -68,7 +68,7 @@ export default async function ApplicationPage({
         <Card className="mt-6 border-spark/40 bg-spark/5">
           <h3 className="text-lg font-semibold text-spark">You're in.</h3>
           <p className="mt-1 text-sm text-white/70">
-            Welcome to {app.cohort?.name ?? "SparkLine Youth"}. Pay your one-time ${(priceCents / 100).toFixed(0)} to lock in your seat. Course access unlocks immediately after.
+            Welcome to {app.cohort?.name ?? "Sparkline Youth"}. Pay your one-time ${(priceCents / 100).toFixed(0)} to lock in your seat. Course access unlocks immediately after.
           </p>
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
           <div className="mt-5">
@@ -137,7 +137,7 @@ export default async function ApplicationPage({
           <Row label="LinkedIn" value={app.linkedin_url} />
           <Row label="Resume" value={app.resume_url} />
           <Row label="Portfolio" value={app.portfolio_url} />
-          <Row label="Why SparkLine Youth" value={app.why_join} multiline />
+          <Row label="Why Sparkline Youth" value={app.why_join} multiline />
           <Row label="Startup idea" value={app.startup_idea} multiline />
           <Row label="Experience" value={app.experience} multiline />
         </div>

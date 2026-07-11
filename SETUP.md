@@ -1,4 +1,4 @@
-# SparkLine — Setup
+# Sparkline — Setup
 
 This app is a Next.js 14 marketing site + a full Supabase + Stripe backend for student applications, payments, and an embedded course (LMS).
 

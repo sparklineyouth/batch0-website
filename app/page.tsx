@@ -34,7 +34,6 @@ export default async function Home() {
       <Hero config={config} authedHome={authedHome} />
       <HowItWorks config={config} />
       <Deliverables />
-      <Curriculum />
       <Founder contactEmail={config.settings.contactEmail} />
       <Pricing config={config} />
       <FAQ config={config} />

@@ -79,7 +79,7 @@ export type SiteConfig = {
 };
 
 const FALLBACK_SETTINGS: SiteSettings = {
-  contactEmail: "sparklineyouth@gmail.com",
+  contactEmail: "hello@sparklineyouth.org",
   discordUrl: "",
   applicationsOpen: true,
   applicationsClosedMessage:

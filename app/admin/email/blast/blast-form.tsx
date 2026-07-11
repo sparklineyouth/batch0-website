@@ -39,8 +39,8 @@ function templates(siteUrl: string) {
     {
       key: "announcement",
       label: "Announcement",
-      subject: "An update from SparkLine Youth",
-      body: "Hi {{name}},\n\nWe've got news to share:\n\n[Write your announcement here.]\n\n— The SparkLine Youth team",
+      subject: "An update from Sparkline Youth",
+      body: "Hi {{name}},\n\nWe've got news to share:\n\n[Write your announcement here.]\n\n— The Sparkline Youth team",
       ctaLabel: "Open dashboard",
       ctaUrl: `${siteUrl}/dashboard`,
     },
@@ -48,15 +48,15 @@ function templates(siteUrl: string) {
       key: "event",
       label: "Event reminder",
       subject: "Coming up: [event name]",
-      body: "Hi {{name}},\n\nQuick reminder — [event name] is happening [day/time]. Don't miss it.\n\nSee you there,\nThe SparkLine Youth team",
+      body: "Hi {{name}},\n\nQuick reminder — [event name] is happening [day/time]. Don't miss it.\n\nSee you there,\nThe Sparkline Youth team",
       ctaLabel: "View events",
       ctaUrl: `${siteUrl}/dashboard/events`,
     },
     {
       key: "nudge",
       label: "Application nudge",
-      subject: "Finish your SparkLine Youth application",
-      body: "Hi {{name}},\n\nYou started an application but haven't submitted it yet. Seats are limited and reviews are rolling — a few minutes now keeps your spot in the running.\n\n— The SparkLine Youth team",
+      subject: "Finish your Sparkline Youth application",
+      body: "Hi {{name}},\n\nYou started an application but haven't submitted it yet. Seats are limited and reviews are rolling — a few minutes now keeps your spot in the running.\n\n— The Sparkline Youth team",
       ctaLabel: "Continue application",
       ctaUrl: `${siteUrl}/apply`,
     },
@@ -466,7 +466,7 @@ export function BlastForm({
             </div>
           )}
           <p className="mt-2 text-center text-xs text-white/40">
-            Emails send from your Resend account with the SparkLine template.
+            Emails send from your Resend account with the Sparkline template.
             There&apos;s no undo — send a test first.
           </p>
         </Card>

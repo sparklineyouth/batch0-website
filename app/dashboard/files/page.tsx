@@ -5,7 +5,7 @@ import { FilesManager } from "./files-manager";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
-export const metadata = { title: "Files · SparkLine Youth" };
+export const metadata = { title: "Files · Sparkline Youth" };
 
 export default async function StudentFilesPage() {
   const user = await requireUser();

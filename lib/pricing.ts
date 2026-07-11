@@ -1,4 +1,4 @@
-// Regional pricing for SparkLine Youth tuition.
+// Regional pricing for Sparkline Youth tuition.
 //
 // All amounts are billed in USD. We adjust the USD price by detected
 // country so that purchasing-power differences don't price out applicants

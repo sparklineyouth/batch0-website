@@ -6,9 +6,9 @@ import { getSiteConfig } from "@/lib/site-config";
 import { getProfile, roleHome } from "@/lib/auth";
 
 export const metadata = {
-  title: "Fund Grants for High-School Founders — SparkLine Youth",
+  title: "Fund Grants for High-School Founders — Sparkline Youth",
   description:
-    "Fund non-dilutive grants for high-school founders in SparkLine Youth's founding cohort. Three tiers, every dollar disclosed, run by Impetus AI LLC.",
+    "Fund non-dilutive grants for high-school founders in Sparkline Youth's founding cohort. Three tiers, every dollar disclosed, run by Impetus AI LLC.",
   alternates: { canonical: "/sponsors" },
 };
 
@@ -19,7 +19,7 @@ const WHY = [
   },
   {
     title: "Early talent",
-    body: "Cohort 1 seats up to 100 U.S. high schoolers, each building a real company across four sprint weeks. Meet them before recruiters do, as builders with work you can inspect.",
+    body: "Cohort 1 seats up to 100 U.S. high schoolers, each building a real company. Meet them before recruiters do, as builders with work you can inspect.",
   },
   {
     title: "A straight ledger",
@@ -45,17 +45,17 @@ export default async function SponsorsPage() {
             Fund a high schooler&apos;s <span className="hl">first company</span>.
           </h1>
           <p className="mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
-            SparkLine Youth is a live, online accelerator for U.S. high
-            schoolers, run by Impetus AI LLC. Sponsorship pays for
+            Sparkline Youth is a live, online accelerator for U.S. high
+            schoolers. Sponsorship pays for
             non-dilutive founder grants and keeps tuition at{" "}
-            {config.derived.priceLabel} instead of the $3,000+ programs
+            {config.derived.priceLabel} instead of the $3,000+ other programs
             charge. Cohort 1 runs{" "}
             {config.derived.dateRangeLabel.replace("→", "–")}.
           </p>
           <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
             <a
               href="#tiers"
-              className="press inline-flex items-center justify-center rounded-md bg-spark px-5 py-3.5 text-[15px] font-semibold text-ink shadow-cta hover:bg-spark-200"
+              className="press inline-flex items-center justify-center rounded-md bg-spark px-5 py-3.5 text-[15px] font-semibold text-on-spark shadow-cta hover:bg-spark-200"
             >
               See sponsor tiers
             </a>
@@ -139,8 +139,8 @@ export default async function SponsorsPage() {
           </h2>
           <p className="mt-4 max-w-[38rem] text-[15px] leading-[1.65] text-ink-soft">
             This opens an email to {config.settings.contactEmail} with your
-            details. It lands with Rish directly, and you&apos;ll hear back
-            from a person.
+            details. It lands with our team directly, and you&apos;ll hear back
+            from a real person.
           </p>
           <div className="mt-8">
             <SponsorContactForm contactEmail={config.settings.contactEmail} />

@@ -5,7 +5,6 @@ import { isDiscordEnabled } from "@/lib/discord";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { StudentSidebar } from "@/components/dashboard/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
-import { getThemeFromCookie } from "@/lib/theme";
 import { getSiteConfig } from "@/lib/site-config";
 
 export default async function DashboardLayout({
@@ -15,8 +14,7 @@ export default async function DashboardLayout({
 }) {
   const profile = await getProfile();
   if (!profile) redirect("/login");
-  const themeClass =
-    getThemeFromCookie() === "light" ? "theme-light" : "";
+  // Theme driven site-wide by next-themes on <html> (see ThemeProvider).
 
   // Middleware gates /dashboard to students and admins. Mentors and
   // investors only land here when middleware sent them to a shared
@@ -24,7 +22,7 @@ export default async function DashboardLayout({
   // sidebar so the chrome doesn't mislead.
   if (profile.role === "mentor" || profile.role === "investor") {
     return (
-      <div className={`${themeClass} min-h-screen bg-black text-white`}>
+      <div className="min-h-screen bg-black text-white">
         <main className="px-5 py-6 md:px-10 md:py-10">{children}</main>
       </div>
     );
@@ -53,7 +51,7 @@ export default async function DashboardLayout({
 
   return (
     <div
-      className={`${themeClass} flex min-h-screen bg-black text-white md:flex-row flex-col`}
+      className="flex min-h-screen bg-black text-white md:flex-row flex-col"
     >
       <StudentSidebar
         role={profile.role}

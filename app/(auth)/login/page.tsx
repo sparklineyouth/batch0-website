@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { LoginForm } from "./login-form";
 
-export const metadata = { title: "Log in · SparkLine Youth" };
+export const metadata = { title: "Log in · Sparkline Youth" };
 
 /**
  * Same-origin "next" gate. Mirrors `safeNext` in app/auth/callback/route.ts;
@@ -25,7 +25,7 @@ export default function LoginPage({
     <div>
       <h1 className="text-2xl font-bold tracking-tight text-white">Welcome back</h1>
       <p className="mt-1 text-sm text-white/50">
-        Log in to your SparkLine Youth account.
+        Log in to your Sparkline Youth account.
       </p>
       <LoginForm next={safe} initialError={searchParams.error} />
       <p className="mt-6 text-center text-sm text-white/50">

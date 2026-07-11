@@ -18,10 +18,10 @@ export async function generateMetadata({
     )
     .eq("code", params.code)
     .maybeSingle();
-  if (!cert) return { title: "Certificate · SparkLine Youth" };
+  if (!cert) return { title: "Certificate · Sparkline Youth" };
   const user = Array.isArray(cert.user) ? cert.user[0] : cert.user;
   return {
-    title: `${user?.full_name ?? "Graduate"} · SparkLine Youth certificate`,
+    title: `${user?.full_name ?? "Graduate"} · Sparkline Youth certificate`,
     openGraph: {
       images: [`/verify/${params.code}/og`],
     },
@@ -52,7 +52,7 @@ export default async function VerifyCertificatePage({
           href="/"
           className="text-xs uppercase tracking-wider text-white/40 hover:text-white"
         >
-          SparkLine Youth
+          Sparkline Youth
         </Link>
         <div className="mt-8 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-300">
@@ -63,7 +63,7 @@ export default async function VerifyCertificatePage({
               Verified certificate
             </h1>
             <p className="text-sm text-white/55">
-              This certificate is genuine and issued by SparkLine Youth.
+              This certificate is genuine and issued by Sparkline Youth.
             </p>
           </div>
         </div>
@@ -94,7 +94,7 @@ export default async function VerifyCertificatePage({
           </p>
         </Card>
         <p className="mt-6 text-center text-xs text-white/40">
-          Verify any SparkLine Youth certificate at sparkline.app/verify/&lt;code&gt;
+          Verify any Sparkline Youth certificate at sparkline.app/verify/&lt;code&gt;
         </p>
       </main>
     </div>

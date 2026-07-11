@@ -23,12 +23,12 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
           <div className="flex items-center gap-2">
             <Image src="/logo.svg" alt="" width={22} height={22} />
             <span className="font-display text-[15px] font-bold tracking-tight text-ink">
-              SparkLine Youth
+              Sparkline Youth
             </span>
           </div>
           <p className="mt-3 text-sm leading-[1.6] text-ink-soft">
             A live, online startup accelerator for U.S. high schoolers.
-            Run by Impetus AI LLC, New Jersey. No equity taken; funding is
+            No equity taken; funding is
             never guaranteed.
           </p>
           <a
@@ -56,18 +56,18 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
 
       <div className="mx-auto mt-10 flex max-w-[1100px] flex-col items-start justify-between gap-3 border-t border-line pt-6 text-[13px] text-ink-faint md:flex-row md:items-center">
         <span>
-          © {new Date().getFullYear()} Impetus AI LLC. All rights reserved.
+          © {new Date().getFullYear()} Sparkline Youth LLC. All rights reserved.
         </span>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-          <a href="/terms" className="hover:text-ink">
+          <Link href="/terms" className="hover:text-ink">
             Terms
-          </a>
-          <a href="/privacy" className="hover:text-ink">
+          </Link>
+          <Link href="/privacy" className="hover:text-ink">
             Privacy
-          </a>
-          <a href="/refund-policy" className="hover:text-ink">
+          </Link>
+          <Link href="/refund-policy" className="hover:text-ink">
             Refund policy
-          </a>
+          </Link>
         </div>
       </div>
     </footer>

@@ -9,9 +9,9 @@ import { getCountryFromHeaders } from "@/lib/pricing";
 import { getProfile, roleHome } from "@/lib/auth";
 
 export const metadata = {
-  title: "Program: Four Sprints to Demo Day — SparkLine Youth",
+  title: "Program: Four Sprints to Demo Day — Sparkline Youth",
   description:
-    "What actually happens inside SparkLine Youth, week by week: four build sprints, live sessions on Zoom, one deliverable per week, and a live demo day at the end.",
+    "What actually happens inside Sparkline Youth, week by week: four build sprints, live sessions on Zoom, one deliverable per week, and a live demo day at the end.",
   alternates: { canonical: "/program" },
 };
 
@@ -35,7 +35,7 @@ const DETAIL: Record<string, string[]> = {
   ],
   Pitch: [
     "Write the deck: problem, product, traction, model, ask",
-    "Rehearse with the SparkLine team until the delivery holds",
+    "Rehearse with the Sparkline team until the delivery holds",
     "Pitch live at demo day",
   ],
 };
@@ -61,13 +61,11 @@ export default async function ProgramPage() {
         <div className="mx-auto grid max-w-[1100px] gap-12 md:grid-cols-12 md:gap-8">
           <div className="md:col-span-7">
             <h1 className="font-display text-[clamp(2.25rem,5.5vw,3.5rem)] font-bold leading-[1.03] tracking-[-0.025em] text-ink">
-              Four sprints. One company. <span className="hl">Yours.</span>
+              Build sessions. One company. <span className="hl">Yours.</span>
             </h1>
             <p className="mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
-              This page is the whole program, no mystery: what you build
-              each week, what a week looks like, and what happens at the
-              end. Sessions run live on Zoom; the building happens on your
-              own company, on your own schedule.
+              This page is the whole program, no mystery: exactly the steps we take to help you take your company from
+              idea to demo day.
               {/* TODO(RISH): exact weekly live-session schedule + expected
                   hours/week — logged in NEEDED_FACTS.md. */}
             </p>
@@ -81,7 +79,7 @@ export default async function ProgramPage() {
       <section className="border-t border-line px-5 py-16 sm:px-6 md:py-24">
         <div className="mx-auto max-w-[1100px]">
           <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
-            Week by week
+            Step by Step
           </h2>
           <ol className="mt-10">
             {WEEKS.map((w) => (
@@ -126,10 +124,10 @@ export default async function ProgramPage() {
           </div>
           <div className="md:col-span-8">
             <p className="max-w-[40rem] text-[1.0625rem] leading-[1.65] text-ink-soft">
-              The cohort ends with a live demo day on Zoom: you pitch the
-              company you built to the SparkLine team and invited guests.
-              Cohort standouts may be offered SparkLine sponsorship: a
-              non-dilutive grant funded by Impetus AI LLC, decided purely on
+              The cohort ends with a live demo day: you pitch the
+              company you built to the Sparkline team and invited guests.
+              Cohort standouts may be offered Sparkline sponsorship: a
+              non-dilutive grant funded by our organization, decided purely on
               merit. Funding is never guaranteed, tuition never buys a
               sponsorship, and every student keeps 100% of their company
               either way.
@@ -137,11 +135,7 @@ export default async function ProgramPage() {
                   and the confirmed guest list once it exists — see
                   NEEDED_FACTS.md. */}
             </p>
-            <p className="mt-5 max-w-[40rem] text-[15px] leading-[1.65] text-ink-soft">
-              Who teaches: every live session in Cohort 1 is run by founder
-              Rish Dagli himself. If that changes, each new name gets listed
-              on this page before you pay. No anonymous mentor networks.
-            </p>
+            
           </div>
         </div>
       </section>

@@ -1,4 +1,4 @@
-# DESIGN.md — SparkLine Youth
+# DESIGN.md — Sparkline Youth
 
 Direction: **YC-plain confidence.** White page, near-black ink, one yellow,
 dense specific text, almost nothing moves. The site should feel like a

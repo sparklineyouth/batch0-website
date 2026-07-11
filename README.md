@@ -1,6 +1,6 @@
-# SparkLine — sparklineyouth.org
+# Sparkline — sparklineyouth.org
 
-The marketing site for SparkLine, the 4-week virtual startup accelerator for high schoolers.
+The marketing site for Sparkline, the 4-week virtual startup accelerator for high schoolers.
 
 ## Stack
 

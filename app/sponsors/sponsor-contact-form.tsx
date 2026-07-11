@@ -17,7 +17,7 @@ export function SponsorContactForm({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const subject = `Sponsorship inquiry — ${company || name || "SparkLine Youth"}`;
+    const subject = `Sponsorship inquiry — ${company || name || "Sparkline Youth"}`;
     const body = [
       `Name: ${name}`,
       `Company: ${company}`,
@@ -113,7 +113,7 @@ export function SponsorContactForm({
         </p>
         <button
           type="submit"
-          className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3 text-[14px] font-semibold text-ink shadow-cta hover:bg-spark-200"
+          className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3 text-[14px] font-semibold text-on-spark shadow-cta hover:bg-spark-200"
         >
           Send inquiry
         </button>

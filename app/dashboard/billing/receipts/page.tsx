@@ -5,7 +5,7 @@ import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { ArrowLeft, Download, FileText, Receipt } from "lucide-react";
 
-export const metadata = { title: "Receipts · SparkLine Youth" };
+export const metadata = { title: "Receipts · Sparkline Youth" };
 
 function fmtMoney(cents: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -247,8 +247,8 @@ export default async function ReceiptsPage({
         Receipts are hosted by Stripe. Older charges from before the receipt
         archive was rolled out may not have a downloadable link — request one
         from{" "}
-        <a href="mailto:sparklineyouth@gmail.com" className="text-spark hover:underline">
-          sparklineyouth@gmail.com
+        <a href="mailto:hello@sparklineyouth.org" className="text-spark hover:underline">
+          hello@sparklineyouth.org
         </a>{" "}
         if you need it for taxes.
       </p>

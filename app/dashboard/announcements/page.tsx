@@ -7,7 +7,7 @@ import { Megaphone } from "lucide-react";
 import { Reactions } from "./reactions";
 import { EMOJIS, type Emoji } from "./emoji";
 
-export const metadata = { title: "Announcements · SparkLine Youth" };
+export const metadata = { title: "Announcements · Sparkline Youth" };
 export const dynamic = "force-dynamic";
 
 export default async function AnnouncementsPage() {
@@ -77,7 +77,7 @@ export default async function AnnouncementsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Announcements</h1>
           <p className="mt-1 text-sm text-white/55">
-            Updates from the SparkLine Youth team. React to let us know they
+            Updates from the Sparkline Youth team. React to let us know they
             landed.
           </p>
         </div>

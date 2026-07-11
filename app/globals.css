@@ -3,14 +3,59 @@
 @tailwind utilities;
 
 :root {
-  /* DESIGN.md: white page, near-black ink. The authenticated app layouts
-   * paint their own dark surfaces on top of this. */
+  /* DESIGN.md marketing tokens as space-separated RGB channels so Tailwind
+   * can apply opacity (rgb(var(--ink) / <alpha-value>)). next-themes sets
+   * `dark`/`theme-light` on <html>; the blocks below flip these. */
+  --paper: 255 255 255;
+  --wash: 247 247 245;
+  --line: 228 228 225;
+  --ink: 20 20 20;
+  --ink-soft: 74 74 74;
+  --ink-faint: 111 111 111;
+  --spark-ink: 138 106 0;
+
+  /* Raw page surface used by html/body + browser theme-color. */
   --background: #ffffff;
   --foreground: #141414;
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
   --safe-left: env(safe-area-inset-left);
   --safe-right: env(safe-area-inset-right);
+}
+
+/* Marketing dark surface. Warm near-black paper, off-white ink, zinc-family
+ * secondary text — coherent with the product app's dark palette. next-themes
+ * puts `dark` on <html> for the dark theme. */
+.dark {
+  --paper: 12 12 13;
+  --wash: 24 24 27;
+  --line: 42 42 46;
+  --ink: 245 245 244;
+  --ink-soft: 161 161 170;
+  /* AA (4.5:1) on the raised wash footer (24 24 27) *and* on paper — the
+   * footer's faint legal text was the binding constraint. */
+  --ink-faint: 135 135 145;
+  --spark-ink: 250 204 21;
+
+  --background: #0c0c0d;
+  --foreground: #f5f5f4;
+}
+
+/* The auth funnel, legal shell, and the product app's light mode opt into a
+ * fixed light palette via `.theme-light`. Re-pin the marketing tokens to
+ * light here so those subtrees stay light even when the global theme is dark
+ * (`.theme-light` sits inside <html class="dark">, and custom properties
+ * resolve from the nearest ancestor). */
+.theme-light {
+  --paper: 255 255 255;
+  --wash: 247 247 245;
+  --line: 228 228 225;
+  --ink: 20 20 20;
+  --ink-soft: 74 74 74;
+  --ink-faint: 111 111 111;
+  --spark-ink: 138 106 0;
+  --background: #ffffff;
+  --foreground: #141414;
 }
 
 * {
@@ -112,7 +157,7 @@ a,
 .ledger-dots {
   flex: 1;
   min-width: 1.5rem;
-  border-bottom: 2px dotted #d6d6d1;
+  border-bottom: 2px dotted rgb(var(--line));
   transform: translateY(-0.22em);
 }
 
@@ -120,6 +165,9 @@ a,
  * box-decoration-break keeps the fill when the phrase wraps. */
 .hl {
   background-color: #facc15;
+  /* The yellow fill is constant across themes, so the swept text must stay
+   * dark even in dark mode (where the surrounding text-ink is near-white). */
+  color: #141414;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   padding: 0 0.12em;
@@ -136,7 +184,7 @@ a,
 
 /* Marketing body links: ink text, spark underline. */
 .link-ink {
-  color: #141414;
+  color: rgb(var(--ink));
   text-decoration: underline;
   text-decoration-color: #facc15;
   text-decoration-thickness: 2px;
@@ -144,6 +192,8 @@ a,
 }
 .link-ink:hover {
   background-color: #facc15;
+  /* On the yellow hover fill the text must stay dark in both themes. */
+  color: #141414;
   text-decoration-color: #141414;
 }
 
@@ -175,14 +225,14 @@ a,
  * comfortable reading rhythm, WCAG-AA-passing body contrast, and clear
  * heading hierarchy. */
 .legal-prose {
-  color: #4a4a4a;
+  color: rgb(var(--ink-soft));
   line-height: 1.7;
   font-size: 16px;
 }
 .legal-prose h1,
 .legal-prose h2,
 .legal-prose h3 {
-  color: #141414;
+  color: rgb(var(--ink));
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.25;
@@ -211,17 +261,17 @@ a,
 .legal-prose ol { list-style: decimal; }
 .legal-prose li { margin-top: 0.35rem; }
 .legal-prose a {
-  color: #141414;
+  color: rgb(var(--ink));
   text-decoration: underline;
   text-decoration-color: #facc15;
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
-.legal-prose a:hover { background-color: #facc15; }
-.legal-prose strong { color: #141414; font-weight: 600; }
+.legal-prose a:hover { background-color: #facc15; color: #141414; }
+.legal-prose strong { color: rgb(var(--ink)); font-weight: 600; }
 .legal-prose hr {
   margin: 2.5rem 0;
-  border-color: #e4e4e1;
+  border-color: rgb(var(--line));
 }
 
 /* ============================================================================

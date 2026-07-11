@@ -17,16 +17,16 @@ Totals: visual 22 · copy 29 · technical 22
 ### [CRITICAL] eyebrow-labels — components/problem.tsx:28
 **Issue:** Every single section on the marketing surface opens with the identical tiny uppercase tracked eyebrow kicker in brand yellow — 12+ instances of the same class recipe (text-[11px] uppercase tracking-[0.22em] text-spark), 35 uppercase-tracking labels total across the scoped files. The unbroken kicker→bold-heading→white/75-paragraph rhythm on all ~12 sections is the single strongest AI-template signature on the site.
 
-**Evidence:** `problem.tsx:28 "The problem"; builds.tsx:57 "What you'll learn"; scroll-preview.tsx:79/142 "The product"; curriculum.tsx:41 "The 4-week sprint"; stats.tsx:21 "Tuition"; comparison.tsx:72 "Why SparkLine Youth"; faq.tsx:58 "FAQ"; cta.tsx:17 "Reserve your seat"; sponsors/page.tsx:82/120/192; all: className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark"`
+**Evidence:** `problem.tsx:28 "The problem"; builds.tsx:57 "What you'll learn"; scroll-preview.tsx:79/142 "The product"; curriculum.tsx:41 "The 4-week sprint"; stats.tsx:21 "Tuition"; comparison.tsx:72 "Why Sparkline Youth"; faq.tsx:58 "FAQ"; cta.tsx:17 "Reserve your seat"; sponsors/page.tsx:82/120/192; all: className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark"`
 
 **Fix:** Kill the eyebrow on at least 8 of the 12 sections and let headings carry hierarchy. Where a label genuinely earns its place (e.g. FAQ), vary the treatment — numbered sections, inline lead-ins, or plain-weight small text in white/50 — so no two consecutive sections share the kicker recipe.
 
 ### [MAJOR] comparison-table — components/comparison.tsx:36
 **Issue:** Named-competitor comparison table (LaunchX, LeanGap, YEA!) with Check/Minus Lucide cells and our-row-highlighted-in-brand-color — the canonical AI 'Us vs Them' table, legally risky and instantly template-flavored. The $3,000–$8,000 competitor price is also repeated in problem.tsx:8, stats.tsx:31, and faq.tsx:19.
 
-**Evidence:** `rows: Row[] = [{ program: "LaunchX", cost: "$3,000–$8,000", ... }, { program: "LeanGap", ... }, { program: "YEA!", ... }, { program: "SparkLine Youth", ... highlight: true }] ... r.highlight ? "bg-spark/[0.04]" : ""`
+**Evidence:** `rows: Row[] = [{ program: "LaunchX", cost: "$3,000–$8,000", ... }, { program: "LeanGap", ... }, { program: "YEA!", ... }, { program: "Sparkline Youth", ... highlight: true }] ... r.highlight ? "bg-spark/[0.04]" : ""`
 
-**Fix:** Replace the named-competitor grid with a single honest positioning statement or an anonymous 'typical programs vs. SparkLine' two-column contrast (cost, format, outcome) written as prose/definition list. Deduplicate the $3,000–$8,000 claim to one location with a source.
+**Fix:** Replace the named-competitor grid with a single honest positioning statement or an anonymous 'typical programs vs. Sparkline' two-column contrast (cost, format, outcome) written as prose/definition list. Deduplicate the $3,000–$8,000 claim to one location with a source.
 
 ### [MAJOR] neon-glow — components/hero.tsx:71
 **Issue:** Dark-mode-only site with a neon accent and a colored glow shadow under the primary CTA — and the identical spark-glow shadow recipe is copy-pasted onto six different buttons across the surface (hero, cta.tsx:90, sponsor.tsx:106, sticky-mobile-cta.tsx:49, sponsors/page.tsx:63, sponsor-contact-form.tsx:113).
@@ -167,7 +167,7 @@ Totals: visual 22 · copy 29 · technical 22
 ### [CRITICAL] fact-contradiction — components/hero.tsx:61
 **Issue:** "4-week" program claim contradicts the real cohort: Summer 2026 runs 2026-07-30 to 2026-09-13 (~6.5 weeks). The same page renders derived.dateRangeLabel ("Jul 30 → Sep 13") in the scroll-preview dashboard mock, so the contradiction is visible on-screen. The claim repeats at hero.tsx:107 ("4 wks"), stats.tsx:13 ("4 wks"), curriculum.tsx:42 ("The 4-week sprint"), footer.tsx:23, faq.tsx:15/19/31, cta.tsx:62, app/layout.tsx:17/28/39/60/78, app/opengraph-image.tsx:11/92, and scroll-preview.tsx:65 ("Week 4 ends live on Zoom").
 
-**Evidence:** `SparkLine Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers.`
+**Evidence:** `Sparkline Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers.`
 
 **Fix:** Pick the true duration. Either restructure the curriculum copy around the actual ~6.5-week window (e.g. "6 weeks, Jul 30–Sep 13") or shorten the cohort in the DB to match. Then sweep every listed location including metadata, JSON-LD, and the OG image — they must all read from one source of truth (site-config), not hardcoded strings.
 
@@ -176,7 +176,7 @@ Totals: visual 22 · copy 29 · technical 22
 
 **Evidence:** `with feedback from mentors who have shipped.`
 
-**Fix:** Either recruit and name real mentors before launch, or rewrite to what is true today: direct feedback from the founder/team, e.g. "weekly feedback from the SparkLine team." Never say "mentors" (plural, credentialed) while the mentor count is zero.
+**Fix:** Either recruit and name real mentors before launch, or rewrite to what is true today: direct feedback from the founder/team, e.g. "weekly feedback from the Sparkline team." Never say "mentors" (plural, credentialed) while the mentor count is zero.
 
 ### [CRITICAL] fabricated-claim — components/faq.tsx:27
 **Issue:** The most specific version of the "investor network" claim — naming investor types ("angels, scout funds, and pre-seed VCs interested in young founders") with zero named investors, zero events in the system, and no cohort ever run. "Our investor network" also appears in hero.tsx:63, problem.tsx:18, curriculum.tsx:30/51, scroll-preview.tsx:65, faq.tsx:31/43, cta.tsx:64, footer.tsx:25, comparison ("Pitch + intros"), sponsors page:57-58, and layout.tsx metadata. The "funding never guaranteed" disclaimers don't cure this — the network itself is the unverified claim.
@@ -193,11 +193,11 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Delete the stat row or replace with facts that survive a diligence check (e.g. founding year of the LLC, real shipped project names with links). If Quantiphi/Schroders refer to a family member's or advisor's career, attribute it honestly or cut it. "Reported by clients" needs a named, consenting client or it goes.
 
 ### [CRITICAL] fabricated-claim — components/sponsor.tsx:47
-**Issue:** Self-sponsorship presented as third-party backing. Impetus AI LLC is the legal entity that operates SparkLine Youth — the site frames its own owner as a "Presenting sponsor" that "backs" the program, which reads as an external endorsement/funding relationship that doesn't exist.
+**Issue:** Self-sponsorship presented as third-party backing. Impetus AI LLC is the legal entity that operates Sparkline Youth — the site frames its own owner as a "Presenting sponsor" that "backs" the program, which reads as an external endorsement/funding relationship that doesn't exist.
 
-**Evidence:** `SparkLine Youth runs on the backing of Impetus AI — AI consulting for local businesses.`
+**Evidence:** `Sparkline Youth runs on the backing of Impetus AI — AI consulting for local businesses.`
 
-**Fix:** Reframe truthfully: "SparkLine Youth is a program by Impetus AI LLC" — parent-company disclosure, not a sponsor slot. Move the AI-consulting pillars (AI Audit/Roadmap/Full Build — B2B copy aimed at the wrong audience anyway) off the teen landing page entirely, and reserve "Presenting sponsor" for an actual external sponsor.
+**Fix:** Reframe truthfully: "Sparkline Youth is a program by Impetus AI LLC" — parent-company disclosure, not a sponsor slot. Move the AI-consulting pillars (AI Audit/Roadmap/Full Build — B2B copy aimed at the wrong audience anyway) off the teen landing page entirely, and reserve "Presenting sponsor" for an actual external sponsor.
 
 ### [CRITICAL] fabricated-claim — app/sponsors/page.tsx:56
 **Issue:** "100 vetted teen founders per cohort" stated as present fact to prospective sponsors. Reality: 0 enrollments, 2 draft applications, no cohort has run. Capacity (100) is real; "vetted teen founders" is invented. Repeated in metadata (line 10) and the Pipeline card (line 18).
@@ -228,7 +228,7 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Future tense and honest scale: "a private Discord for your cohort" — drop "active." Cut "the application is selective" until there's an applicant pool that makes selection real, or state the actual bar ("we review every application; not everyone is admitted").
 
 ### [CRITICAL] fact-contradiction — components/comparison.tsx:63
-**Issue:** Comparison table awards SparkLine "Year-round: Yes" when exactly one cohort exists (Summer 2026) and none has run. The axis is chosen to beat competitors on a capability SparkLine doesn't have.
+**Issue:** Comparison table awards Sparkline "Year-round: Yes" when exactly one cohort exists (Summer 2026) and none has run. The axis is chosen to beat competitors on a capability Sparkline doesn't have.
 
 **Evidence:** `yearRound: true,`
 
@@ -256,7 +256,7 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Replace with the concrete offer: "Put your brand in front of 100 teen founders this summer" / "Fund a named grant for Cohort 1." Specificity (cohort, date, count) is what a generic competitor can't copy.
 
 ### [MAJOR] swap-test — components/problem.tsx:32
-**Issue:** Swap-test failures — headlines that work verbatim for "SparkHub" or any teen accelerator: "Youth entrepreneurship is broken." (here), "Learn to build a startup. Pitch it to investors." (hero.tsx:55-57), "The skills founders actually use." (builds.tsx:61), "Idea to investor-ready." (curriculum.tsx:45), "Questions, answered." (faq.tsx:62), "Affordable. Virtual. Real investor exposure." (comparison.tsx:76), "Let's build something together." (sponsors:196), "Pick the level that fits." (sponsors:124). None contains a name, number, date, or claim unique to SparkLine.
+**Issue:** Swap-test failures — headlines that work verbatim for "SparkHub" or any teen accelerator: "Youth entrepreneurship is broken." (here), "Learn to build a startup. Pitch it to investors." (hero.tsx:55-57), "The skills founders actually use." (builds.tsx:61), "Idea to investor-ready." (curriculum.tsx:45), "Questions, answered." (faq.tsx:62), "Affordable. Virtual. Real investor exposure." (comparison.tsx:76), "Let's build something together." (sponsors:196), "Pick the level that fits." (sponsors:124). None contains a name, number, date, or claim unique to Sparkline.
 
 **Evidence:** `Youth entrepreneurship is broken.`
 
@@ -291,7 +291,7 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Budget one em dash per section. Convert most to periods or commas: "Ship a v1 fast: a landing page, no-code MVP, or working prototype. Don't overbuild before validation."
 
 ### [MAJOR] cta-inconsistency — components/cta.tsx:92
-**Issue:** Same label, different destinations — and inconsistent naming across sections. "Start your application" goes to /apply in the hero (hero.tsx:29-30) but to /signup?next=%2Fapply here. Meanwhile the navbar says "Apply" (/apply), the sticky mobile bar says "Apply to SparkLine Youth" (/apply), scroll-preview mobile's "Apply" link goes to the #apply in-page anchor (scroll-preview.tsx:131) — not the apply page, and the CTA section eyebrow says "Reserve your seat." Five names, three destinations, one action.
+**Issue:** Same label, different destinations — and inconsistent naming across sections. "Start your application" goes to /apply in the hero (hero.tsx:29-30) but to /signup?next=%2Fapply here. Meanwhile the navbar says "Apply" (/apply), the sticky mobile bar says "Apply to Sparkline Youth" (/apply), scroll-preview mobile's "Apply" link goes to the #apply in-page anchor (scroll-preview.tsx:131) — not the apply page, and the CTA section eyebrow says "Reserve your seat." Five names, three destinations, one action.
 
 **Evidence:** `href="/signup?next=%2Fapply" … Start your application`
 
@@ -319,16 +319,16 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Pick one name — "Pitch Day" is the dominant usage — and sweep tiers.ts, the sponsors page, and admin/dashboard surfaces.
 
 ### [MAJOR] fact-contradiction — app/(legal)/terms/page.tsx:13
-**Issue:** Terms say the platform is "operated by SparkLine Youth," but SparkLine Youth is not a legal entity — the operator is Impetus AI LLC. A contract that names a non-entity as the counterparty is a real legal defect, not just copy slop. (Noticed in passing; scope for legal pages was titles, which are fine.)
+**Issue:** Terms say the platform is "operated by Sparkline Youth," but Sparkline Youth is not a legal entity — the operator is Impetus AI LLC. A contract that names a non-entity as the counterparty is a real legal defect, not just copy slop. (Noticed in passing; scope for legal pages was titles, which are fine.)
 
-**Evidence:** `(sparklineyouth.org), operated by SparkLine Youth.`
+**Evidence:** `(sparklineyouth.org), operated by Sparkline Youth.`
 
-**Fix:** "operated by Impetus AI LLC (d/b/a SparkLine Youth)" — and check privacy/refund pages for the same entity naming.
+**Fix:** "operated by Impetus AI LLC (d/b/a Sparkline Youth)" — and check privacy/refund pages for the same entity naming.
 
 ### [MINOR] brochure-copy — components/marquee.tsx:14
-**Issue:** The marquee is framed (in its own code comment) as a curriculum manifest, but items 9–11 are sales claims, not curriculum: "SparkLine Sponsorship," "Investor Intros," "Zero Equity." Benefits dressed as course content — and "Investor Intros" repeats the unverified network claim in a strip that scrolls past sceptical parents.
+**Issue:** The marquee is framed (in its own code comment) as a curriculum manifest, but items 9–11 are sales claims, not curriculum: "Sparkline Sponsorship," "Investor Intros," "Zero Equity." Benefits dressed as course content — and "Investor Intros" repeats the unverified network claim in a strip that scrolls past sceptical parents.
 
-**Evidence:** `"SparkLine Sponsorship", "Investor Intros", "Zero Equity",`
+**Evidence:** `"Sparkline Sponsorship", "Investor Intros", "Zero Equity",`
 
 **Fix:** Keep the strip pure curriculum (the first 8 items are genuinely good) and drop the three benefit items.
 
@@ -342,16 +342,16 @@ Totals: visual 22 · copy 29 · technical 22
 ### [MINOR] slop-vocabulary — app/(auth)/login/page.tsx:28
 **Issue:** Checklist-2 word "journey" on the login screen — the one place a returning user needs zero persuasion.
 
-**Evidence:** `Log in to continue your SparkLine Youth journey.`
+**Evidence:** `Log in to continue your Sparkline Youth journey.`
 
 **Fix:** "Log in to your dashboard." Also "enterprise-grade AI strategy" (components/sponsor.tsx:50) is the same class of filler — swap for a concrete capability.
 
 ### [MINOR] swap-test — app/layout.tsx:17
 **Issue:** Metadata title claims category ownership with a definite article ("The 4-Week Entrepreneurship Program") — generic enough to be any competitor's title, and carries the wrong duration (see CRITICAL 4-week finding).
 
-**Evidence:** `SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers`
+**Evidence:** `Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers`
 
-**Fix:** "SparkLine Youth — $130 Virtual Startup Program for High Schoolers (Summer 2026)" — price, format, date; nothing a rival can claim verbatim.
+**Fix:** "Sparkline Youth — $130 Virtual Startup Program for High Schoolers (Summer 2026)" — price, format, date; nothing a rival can claim verbatim.
 
 ### [MINOR] fabricated-claim — components/cta.tsx:101
 **Issue:** "Rolling admissions · Reviewed weekly" is a process commitment from a solo founder with 2 draft applications ever received — plausible, but currently unverifiable and easy to break the first busy week.
@@ -373,7 +373,7 @@ Totals: visual 22 · copy 29 · technical 22
 ### [CRITICAL] copy-accuracy — app/layout.tsx:17
 **Issue:** Site-wide '4-week' program claim contradicts the only real cohort: Summer 2026 runs 2026-07-30 to 2026-09-13 (~6.5 weeks). The claim is baked into the <title>, meta description, OG/Twitter titles, JSON-LD description (lines 60, 78), OG image alt+subline (app/opengraph-image.tsx:11,92), hero copy (components/hero.tsx:61-65), hero proof stat 'Format 4 wks' (hero.tsx:107), stats.tsx:13 ('4 wks Idea → pitch'), curriculum.tsx:42 ('The 4-week sprint', Weeks 1-4), faq.tsx:15,19,27,31, footer.tsx:23, and apply metadata (app/apply/page.tsx:13). Worse: scroll-preview.tsx:235-237 renders the REAL cohort dates from the DB ('Jul 30 → Sep 13') on the same homepage, so the site visibly contradicts itself.
 
-**Evidence:** `title: "SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers" … vs cohort window 2026-07-30→2026-09-13 rendered by dateRangeLabel in scroll-preview.tsx`
+**Evidence:** `title: "Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers" … vs cohort window 2026-07-30→2026-09-13 rendered by dateRangeLabel in scroll-preview.tsx`
 
 **Fix:** Pick one truth. Either restructure the cohort to 4 weeks in the DB, or rewrite every '4-week'/'4 wks'/'Week 4' string to a duration derived from cohort startsOn/endsOn (site-config already computes the dates). Grep: '4-week', '4 wks', 'Week 4', '4-Week'.
 
@@ -413,11 +413,11 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Generate a real set: app/favicon.ico, app/icon.png (512), app/apple-icon.png (180, opaque background — the brand yellow square works), and reference them via Next file conventions so metadata is emitted automatically.
 
 ### [MAJOR] legal — app/(legal)/terms/page.tsx:13
-**Issue:** Terms of Service claims the platform is 'operated by SparkLine Youth' — but the legal entity is Impetus AI LLC. The LLC is never named in Terms, Privacy, or Refund Policy, while payments from minors' families are processed under it and the contact email is on impetusai.net. An unnamed counterparty makes the contract ambiguous.
+**Issue:** Terms of Service claims the platform is 'operated by Sparkline Youth' — but the legal entity is Impetus AI LLC. The LLC is never named in Terms, Privacy, or Refund Policy, while payments from minors' families are processed under it and the contact email is on impetusai.net. An unnamed counterparty makes the contract ambiguous.
 
-**Evidence:** `"…SparkLine Youth (sparklineyouth.org), operated by SparkLine Youth."`
+**Evidence:** `"…Sparkline Youth (sparklineyouth.org), operated by Sparkline Youth."`
 
-**Fix:** Name the entity: 'SparkLine Youth is a program of Impetus AI LLC' in Terms, Privacy, Refund Policy, and the footer legal line.
+**Fix:** Name the entity: 'Sparkline Youth is a program of Impetus AI LLC' in Terms, Privacy, Refund Policy, and the footer legal line.
 
 ### [MAJOR] copy-accuracy — app/sponsors/page.tsx:10
 **Issue:** Sponsors page sells '100 vetted teen founders per cohort' (meta description, hero copy line 56-58, WHY card line 18) as present fact. Reality: 0 enrollments, 2 draft applications, cohort has never run. '100' is the capacity, not an audience. Sponsor tiers up to $15,000 (tiers.ts) are being sold against an audience that does not exist yet.
@@ -438,14 +438,14 @@ Totals: visual 22 · copy 29 · technical 22
 
 **Evidence:** `app/(auth)/forgot-password/page.tsx is 'use client' with no metadata export; login/signup/legal pages: export const metadata = { title: "…" } only`
 
-**Fix:** Add title: { default: …, template: "%s · SparkLine Youth" } to root, give every public page a unique ~150-char description, and move forgot-password/reset metadata into a small server wrapper or layout.
+**Fix:** Add title: { default: …, template: "%s · Sparkline Youth" } to root, give every public page a unique ~150-char description, and move forgot-password/reset metadata into a small server wrapper or layout.
 
 ### [MAJOR] seo-metadata — app/layout.tsx:17
 **Issue:** Length violations: root title is 72 chars (truncates in SERPs at ~60), root description 214 chars (cut at ~155-160), root OG description 182 chars, sponsors title 62 chars (app/sponsors/page.tsx:8), apply description ~245 chars (app/apply/page.tsx:13).
 
-**Evidence:** `"SparkLine Youth — The 4-Week Entrepreneurship Program for High Schoolers" = 72 chars; description = 214 chars`
+**Evidence:** `"Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers" = 72 chars; description = 214 chars`
 
-**Fix:** Trim titles to ≤60 ('SparkLine Youth — Startup Program for High Schoolers'), descriptions to ≤155 leading with the differentiator (price, live pitch).
+**Fix:** Trim titles to ≤60 ('Sparkline Youth — Startup Program for High Schoolers'), descriptions to ≤155 leading with the differentiator (price, live pitch).
 
 ### [MAJOR] links — components/footer.tsx:40
 **Issue:** Footer 'Program' links use bare hash hrefs (#how-it-works line 40, #curriculum line 48, #compare line 56) but the footer renders on /sponsors and all three legal pages, where those ids don't exist — clicking does nothing (dead anchors) on every page except the homepage. navbar.tsx:8-14 already solved this with '/#anchor' hrefs and even documents why.
@@ -462,9 +462,9 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Add @vercel/analytics (or Plausible) with events on apply-CTA click, signup success, application submit; unify all CTAs on one href (direct /signup?next=%2Fapply for logged-out) using <Link>.
 
 ### [MINOR] copy-accuracy — components/comparison.tsx:63
-**Issue:** Comparison table claims SparkLine is 'Year-round: Yes' — exactly one cohort exists and none has ever run. Also asserts specific competitor facts (LaunchX '$3,000–$8,000', repeated in stats.tsx:31 and problem.tsx:8) that invite dispute.
+**Issue:** Comparison table claims Sparkline is 'Year-round: Yes' — exactly one cohort exists and none has ever run. Also asserts specific competitor facts (LaunchX '$3,000–$8,000', repeated in stats.tsx:31 and problem.tsx:8) that invite dispute.
 
-**Evidence:** `{ program: "SparkLine Youth", … yearRound: true, highlight: true }`
+**Evidence:** `{ program: "Sparkline Youth", … yearRound: true, highlight: true }`
 
 **Fix:** Change to 'Multiple cohorts planned' or drop the row until a second cohort is scheduled; soften competitor pricing to 'typically thousands of dollars'.
 

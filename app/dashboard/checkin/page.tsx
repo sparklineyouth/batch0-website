@@ -7,7 +7,7 @@ import { isoWeekStart, formatWeekRange } from "@/lib/week";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
-export const metadata = { title: "Weekly check-in · SparkLine Youth" };
+export const metadata = { title: "Weekly check-in · Sparkline Youth" };
 
 export default async function CheckinPage() {
   const user = await requireUser();

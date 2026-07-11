@@ -11,23 +11,23 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
   const steps: { title: string; body: string }[] = [
     {
       title: "Apply",
-      body: "Free. One form about you and what you want to build: a real idea, a half-formed hunch, or nothing yet. All three are fine; week one exists to find the idea.",
+      body: "Free. Come with an idea you want to build, or just a desire to learn. We admit students who show they'll actually do the work, not just ideas.",
     },
     {
       title: "Get a decision by email",
-      body: "Applications are reviewed on a rolling basis. We admit students who show they'll actually do the work.",
+      body: "Applications are reviewed on a rolling basis. Each application and thoughtfully and thouroughly reviewed by our team.",
     },
     {
       title: "Enroll",
-      body: `${derived.priceLabel} tuition, charged only if you're accepted. That's the whole cost: no upsells, no materials fees. Refund terms are published on the refund policy page.`,
+      body: `${derived.priceLabel} tuition, charged only if you're accepted. That's it. Nothing more. Refund terms are published on the refund policy page.`,
     },
     {
-      title: "Build for four sprint weeks",
-      body: "Validate, build, market, pitch — one sprint each week, each ending in a deliverable for your own company. Live sessions run on Zoom.",
+      title: "Build season",
+      body: "Validate, build, market, pitch and most importantly, transform your idea into a company.",
     },
     {
       title: "Pitch at demo day",
-      body: "The cohort closes with a live demo day where you present the company you built. Standouts may be offered SparkLine sponsorship: a non-dilutive grant, decided on merit, never guaranteed.",
+      body: "The cohort closes with a live demo day where you present the company you built. Standouts may be offered Sparkline sponsorship, a non-dilutive grant, decided on merit, never guaranteed.",
     },
   ];
 
@@ -39,8 +39,7 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
             How it works
           </h2>
           <p className="mt-4 max-w-[34rem] text-[15px] leading-[1.65] text-ink-soft">
-            Five steps between reading this sentence and pitching a company
-            you built. The dates are set by the cohort calendar
+            There are just 5 steps to building a real company at Sparkline. The dates are set by the {derived.cohortLabel} calendar
             {derived.dateRangeLabel
               ? ` (${derived.dateRangeLabel.replace("→", "–")})`
               : ""}

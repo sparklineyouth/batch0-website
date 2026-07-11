@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Drops the Discord link off the user's profile and revokes any
- * SparkLine-managed roles they had. Doesn't kick them from the
+ * Sparkline-managed roles they had. Doesn't kick them from the
  * server — staff might still want them around.
  */
 export async function POST() {
@@ -52,7 +52,7 @@ export async function POST() {
         embeds: [
           announcementEmbed({
             title: `🔌 Unlinked: ${p?.full_name ?? p?.email ?? "user"}`,
-            body: `Removed SparkLine-managed roles from <@${profile.discord_user_id}>.`,
+            body: `Removed Sparkline-managed roles from <@${profile.discord_user_id}>.`,
           }),
         ],
       });

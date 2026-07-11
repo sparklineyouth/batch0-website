@@ -168,7 +168,7 @@ export default async function DashboardHome() {
                 </p>
                 <p className="mt-0.5 text-xs text-white/65">
                   ${(f.amount_cents / 100).toFixed(2)}. Settle when you can;
-                  SparkLine Youth stays open in the meantime.
+                  Sparkline Youth stays open in the meantime.
                 </p>
               </div>
               <ChargePayButton chargeId={f.id} />

@@ -662,7 +662,7 @@ export function ApplicationForm({
         <div className="space-y-4">
           <div>
             <Label htmlFor="why_join" required>
-              Why SparkLine Youth? <span aria-hidden className="text-spark">*</span>
+              Why Sparkline Youth? <span aria-hidden className="text-spark">*</span>
             </Label>
             <Textarea
               id="why_join"
@@ -766,7 +766,7 @@ export function ApplicationForm({
             <ReviewRow label="LinkedIn" value={form.linkedin_url} />
             <ReviewRow label="Resume" value={form.resume_url} />
             <ReviewRow label="Portfolio" value={form.portfolio_url} />
-            <ReviewRow label="Why SparkLine Youth" value={form.why_join} multiline />
+            <ReviewRow label="Why Sparkline Youth" value={form.why_join} multiline />
             <ReviewRow label="Project idea" value={form.startup_idea} multiline />
             <ReviewRow label="Experience" value={form.experience} multiline />
           </div>

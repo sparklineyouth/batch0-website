@@ -6,7 +6,7 @@ import React from "react";
  * links (NEEDED_FACTS); no invented credentials in the meantime.
  */
 export default function Founder({
-  contactEmail = "sparklineyouth@gmail.com",
+  contactEmail = "hello@sparklineyouth.org",
 }: {
   /** Admin-set contact from site_settings — the one real inbox. */
   contactEmail?: string;
@@ -21,12 +21,11 @@ export default function Founder({
         </div>
         <div className="md:col-span-8">
           <p className="max-w-[40rem] text-[1.0625rem] leading-[1.65] text-ink-soft">
-            SparkLine Youth is built and run by{" "}
-            <strong className="font-semibold text-ink">Rish Dagli</strong>, an
-            18-year-old founder, and operated by{" "}
-            <strong className="font-semibold text-ink">Impetus AI LLC</strong>{" "}
-            (New Jersey), the legal entity behind the program, the platform,
-            and the sponsorship budget.
+            Sparkline Youth is built and run by{" "}
+            <strong className="font-semibold text-ink">Rishabh Dagli and Taran Bethi</strong>, two
+            17-year-old serial founders. We built Sparkline Youth to give high schoolers the same chance
+            that we wish we had: to build a REAL company with mentorship and support, and even the chance
+            of funding!
             {/* TODO(RISH): 2–3 public receipts (links) — shipped products,
                 hardware, repos, press — to add specifics here. Logged in
                 NEEDED_FACTS.md. */}
@@ -34,9 +33,9 @@ export default function Founder({
           <p className="mt-5 max-w-[40rem] text-[15px] leading-[1.65] text-ink-soft">
             Cohort 1 is deliberately the first. There are no glossy alumni
             stats to show you yet, and we won&apos;t invent any. What we can
-            promise: Rish runs every live session himself, reads every
-            application, and answers every parent question personally within
-            a couple of days.
+            promise: Rishabh and Taran runs every live session themselves, read every
+            application, and answer every parent question personally within
+            a couple of days. 
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
             <a href={`mailto:${contactEmail}`} className="link-ink text-[15px] font-medium">

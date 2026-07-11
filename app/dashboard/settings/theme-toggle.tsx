@@ -1,80 +1,36 @@
 "use client";
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Sun, Moon } from "lucide-react";
-import { setTheme } from "./theme-actions";
+import { useTheme } from "next-themes";
 import type { Theme } from "@/lib/types";
-import { getActionError } from "@/lib/action-error";
 
-export function ThemeToggle({ initial }: { initial: Theme }) {
-  const router = useRouter();
-  const [theme, setLocal] = useState<Theme>(initial);
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | undefined>();
+/**
+ * Appearance control for the product settings pages. Wired to the single
+ * site-wide next-themes controller (see components/theme-provider), so the
+ * choice here is the SAME theme used on the marketing site and persists across
+ * every page and reload. `initial` is an optional pre-mount hint to avoid a
+ * flash of the wrong active pill before hydration.
+ */
+export function ThemeToggle({ initial }: { initial?: Theme }) {
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  function pick(next: Theme) {
-    if (next === theme) return;
-    const previous = theme;
-    setLocal(next);
-    setError(undefined);
-    // Apply instantly client-side so the user sees the change without
-    // waiting for the round-trip.
-    if (typeof document !== "undefined") {
-      document.documentElement.classList.remove(
-        previous === "light" ? "theme-light" : "dark",
-      );
-      document.documentElement.classList.add(
-        next === "light" ? "theme-light" : "dark",
-      );
-    }
-    start(async () => {
-      try {
-        await setTheme(next);
-        router.refresh();
-      } catch (e: any) {
-        setLocal(previous);
-        if (typeof document !== "undefined") {
-          document.documentElement.classList.remove(
-            next === "light" ? "theme-light" : "dark",
-          );
-          document.documentElement.classList.add(
-            previous === "light" ? "theme-light" : "dark",
-          );
-        }
-        setError(getActionError(e));
-      }
-    });
-  }
+  const current = mounted ? resolvedTheme : initial;
+
+  const pill = (active: boolean) =>
+    `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition ${
+      active ? "bg-spark text-black" : "text-white/60 hover:text-white"
+    }`;
 
   return (
-    <div>
-      <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1">
-        <button
-          type="button"
-          onClick={() => pick("dark")}
-          disabled={pending}
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition ${
-            theme === "dark"
-              ? "bg-spark text-black"
-              : "text-white/60 hover:text-white"
-          }`}
-        >
-          <Moon className="h-3.5 w-3.5" /> Dark
-        </button>
-        <button
-          type="button"
-          onClick={() => pick("light")}
-          disabled={pending}
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition ${
-            theme === "light"
-              ? "bg-spark text-black"
-              : "text-white/60 hover:text-white"
-          }`}
-        >
-          <Sun className="h-3.5 w-3.5" /> Light
-        </button>
-      </div>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+    <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1">
+      <button type="button" onClick={() => setTheme("dark")} className={pill(current === "dark")}>
+        <Moon className="h-3.5 w-3.5" /> Dark
+      </button>
+      <button type="button" onClick={() => setTheme("light")} className={pill(current === "light")}>
+        <Sun className="h-3.5 w-3.5" /> Light
+      </button>
     </div>
   );
 }

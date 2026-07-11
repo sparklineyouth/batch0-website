@@ -4,16 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { requireUser, getProfile, roleHome } from "@/lib/auth";
 import { MarkAllRead } from "./mark-all-read";
 import { NotificationItem } from "./notification-item";
-import { getThemeFromCookie } from "@/lib/theme";
 
-export const metadata = { title: "Notifications · SparkLine Youth" };
+export const metadata = { title: "Notifications · Sparkline Youth" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();
   const profile = await getProfile();
   const home = roleHome(profile?.role ?? "student");
-  const themeClass =
-    getThemeFromCookie() === "light" ? "theme-light" : "";
 
   const supabase = createClient();
   const { data: items } = await supabase
@@ -28,7 +25,7 @@ export default async function NotificationsPage() {
   const read = all.filter((i) => i.read_at);
 
   return (
-    <div className={`${themeClass} min-h-screen bg-black text-white`}>
+    <div className="min-h-screen bg-black text-white">
       <div className="border-b border-white/10">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-4 md:px-8">
           <Link

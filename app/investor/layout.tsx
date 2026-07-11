@@ -1,7 +1,6 @@
 import { requireInvestor } from "@/lib/auth";
 import { RoleSidebar } from "@/components/role-sidebar";
 import { MobileNav } from "@/components/mobile-nav";
-import { getThemeFromCookie } from "@/lib/theme";
 
 export default async function InvestorLayout({
   children,
@@ -9,11 +8,10 @@ export default async function InvestorLayout({
   children: React.ReactNode;
 }) {
   const profile = await requireInvestor();
-  const themeClass =
-    getThemeFromCookie() === "light" ? "theme-light" : "";
+  // Theme driven site-wide by next-themes on <html> (see ThemeProvider).
   return (
     <div
-      className={`${themeClass} flex min-h-screen bg-black text-white md:flex-row flex-col`}
+      className="flex min-h-screen bg-black text-white md:flex-row flex-col"
     >
       <RoleSidebar kind="investor" role={profile.role} />
       <div className="flex flex-1 flex-col">

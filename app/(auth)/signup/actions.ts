@@ -72,7 +72,7 @@ export async function signUpAction(input: SignUpInput): Promise<SignUpResult> {
       await notify({
         userId: user.id,
         type: "welcome",
-        title: "Welcome to SparkLine Youth",
+        title: "Welcome to Sparkline Youth",
         body: "Your account is ready. Apply when you're ready.",
         link: "/apply",
         dedupeKey: "welcome",

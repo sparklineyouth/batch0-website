@@ -20,16 +20,16 @@ export default function FAQ({ config }: { config: SiteConfig }) {
       a: `${price}, once, and only if you're accepted; applying is free. There are no hidden fees, no upsells, and no materials costs. Comparable summer accelerators list tuition in the thousands. Reduced regional pricing applies automatically in select countries, and refund terms are published on the refund policy page.`,
     },
     {
-      q: "Who runs SparkLine Youth?",
-      a: `Rish Dagli, an 18-year-old founder, runs the program day to day. The legal entity behind it is Impetus AI LLC, registered in New Jersey. Parents: you can reach a human at ${contactEmail}. Questions get answers, not autoresponders.`,
+      q: "Who runs Sparkline Youth?",
+      a: `Rishabh Dagli and Taran Bethi, two serial founders building real companies that have changed the world. Rishabh and Taran personally review applications, run live sessions, and coordinate mentor and investor relationships for students.`,
     },
     {
       q: "Who is it for?",
-      a: "U.S. high schoolers, ages 13–18. Bring a real idea, a half-formed hunch, or nothing at all. The first sprint week exists to find and validate an idea. No prior startup experience required.",
+      a: "U.S. high schoolers, ages 13–18. Bring a real idea, a half-formed hunch, or nothing at all. The first sessions EXIST to help you refine your idea, just come with a desire to learn and build. No startup experience required.",
     },
     {
       q: "How much time does it take?",
-      a: "Each of the four sprint weeks ends in a deliverable you build on your own schedule, plus live sessions on Zoom. Plan for it the way you would a serious extracurricular." /* TODO(RISH): exact hours/week + live-session schedule — logged in NEEDED_FACTS.md */,
+      a: "Each sessions helps students set individual and personalized deliverables. The amount of time a student spends per week varies for everyone, so plan for it the way you would a serious extracurricular." /* TODO(RISH): exact hours/week + live-session schedule — logged in NEEDED_FACTS.md */,
     },
     {
       q: "Is it really fully online?",
@@ -37,15 +37,15 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "What is demo day?",
-      a: "The last day of the cohort: you pitch the company you built, live. Cohort standouts may be offered SparkLine sponsorship: a non-dilutive grant funded by Impetus AI, decided on merit. Sponsorship and any introductions are never guaranteed, and tuition never buys them.",
+      a: "The last day of the cohort: you pitch the company you built, live. Cohort standouts may be offered Sparkline sponsorship: a non-dilutive grant funded by our organization, decided on merit. Sponsorship and any introductions are never guaranteed, and tuition never buys them.",
     },
     {
-      q: "Does SparkLine take equity or own my idea?",
-      a: "No. You own 100% of your idea, your work, and your company — before, during, and after the cohort. No equity, no IP claims, no royalties. Sponsorship, if offered, is a non-dilutive grant.",
+      q: "Does Sparkline take equity or own my idea?",
+      a: "No. You own 100% of your idea, your work, and your company, before, during, and after the cohort. No equity, no IP claims, no royalties. Sponsorship, if offered, is a non-dilutive grant.",
     },
     {
       q: "How are applications judged?",
-      a: `Rish reads every application. We admit students who show they'll actually do the work; clear thinking about a problem beats a long résumé. ${cohort} is capped at ${derived.capacityLabel} students, reviewed on a rolling basis${settings.applicationsOpen ? "" : " (applications are currently closed)"}.`,
+      a: `Our team reads every application. We admit students who show they'll actually do the work; clear thinking about a problem beats a long résumé. ${cohort} is capped at ${derived.capacityLabel} students, reviewed on a rolling basis${settings.applicationsOpen ? "" : " (applications are currently closed)"}.`,
     },
   ];
 
