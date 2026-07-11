@@ -146,6 +146,14 @@ export default async function AdminApplicationDetail({
           <Row label="Hours/week" value={app.hours_per_week?.toString()} />
           <Row label="Team size" value={teamSizeAdminLabel(app.team_size)} />
           <Row label="Heard about us" value={app.referral_source} />
+          <Row
+            label="Referred by (code)"
+            value={
+              app.referral_code ? (
+                <span className="font-mono text-xs">{app.referral_code}</span>
+              ) : undefined
+            }
+          />
           <Row label="Cohort" value={(app as any).cohort?.name} />
           <Row
             label="Submitted"

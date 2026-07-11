@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
 import { friendlyAuthError } from "@/lib/auth-errors";
+import { stashRefFromLocation } from "@/lib/referral-code";
 
 export function LoginForm({
   next,
@@ -16,6 +17,13 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | undefined>(initialError);
   const [loading, setLoading] = useState(false);
+
+  // A referred visitor who already has an account bounces to /login?next=…
+  // with the code nested in `next`. Stash it so the apply flow still finds
+  // it even if the URL query is dropped on the way back.
+  useEffect(() => {
+    stashRefFromLocation();
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -15,6 +15,7 @@ import {
   isRequiredCore,
   type MergedQuestion,
 } from "@/lib/application-questions";
+import { REF_STORAGE_KEY, readRefFromLocation } from "@/lib/referral-code";
 
 const STEPS = [
   { id: 1, title: "About you" },
@@ -217,15 +218,16 @@ export function ApplicationForm({
   // We use a dedicated server action so we don't blow away every other
   // field on the existing draft by sending only the referral_code key.
   useEffect(() => {
-    const fromUrl = new URL(window.location.href).searchParams.get("ref");
-    let code = "";
-    try {
-      code = fromUrl ?? window.localStorage.getItem("sparkline_ref") ?? "";
-    } catch {}
+    let code = readRefFromLocation();
+    if (!code) {
+      try {
+        code = window.localStorage.getItem(REF_STORAGE_KEY) ?? "";
+      } catch {}
+    }
     if (code) {
       attachReferralCodeAction(code).catch(() => {});
       try {
-        window.localStorage.removeItem("sparkline_ref");
+        window.localStorage.removeItem(REF_STORAGE_KEY);
       } catch {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

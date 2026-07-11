@@ -4,22 +4,18 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
 import { friendlyAuthError } from "@/lib/auth-errors";
+import { stashRefFromLocation } from "@/lib/referral-code";
 import { signUpAction } from "./actions";
-
-const REF_KEY = "sparkline_ref";
 
 export function SignupForm({ next }: { next?: string }) {
   const [fullName, setFullName] = useState("");
 
-  // Capture ?ref= from URL on mount and stash it so the apply flow can
-  // pick it up later.
+  // Capture the referral code on mount and stash it so the apply flow can
+  // pick it up later even if the URL query is lost. The middleware bounces
+  // a logged-out /apply?ref=CODE visitor here as /signup?next=%2Fapply%3Fref%3DCODE,
+  // so the code is usually nested inside `next` rather than a top-level ?ref.
   useEffect(() => {
-    const ref = new URL(window.location.href).searchParams.get("ref");
-    if (ref) {
-      try {
-        window.localStorage.setItem(REF_KEY, ref.slice(0, 32));
-      } catch {}
-    }
+    stashRefFromLocation();
   }, []);
 
   const [email, setEmail] = useState("");

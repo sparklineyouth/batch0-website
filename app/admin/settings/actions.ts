@@ -64,5 +64,10 @@ export async function saveSiteSettings(
     revalidatePath("/");
     revalidatePath("/apply");
     revalidatePath("/opengraph-image");
+    // Surfaces gated on referrals_enabled (and other settings). Refresh
+    // their route caches too so a toggle change shows immediately.
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/referrals");
+    revalidatePath("/admin/referrals");
   });
 }
