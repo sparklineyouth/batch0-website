@@ -25,7 +25,7 @@ export default async function SignupPage({
   const loginHref = safe ? `/login?next=${encodeURIComponent(safe)}` : "/login";
   const config = await getSiteConfig();
   const { derived } = config;
-  const isApplyFlow = safe === "/apply" || !safe;
+  const isApplyFlow = !safe || safe === "/apply" || safe.startsWith("/apply?");
 
   return (
     <div>

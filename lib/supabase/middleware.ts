@@ -108,7 +108,13 @@ export async function updateSession(request: NextRequest) {
     // protected routes (admin/dashboard/mentor/investor) are returning-user
     // surfaces, so keep /login as the default.
     const dest = path === "/apply" || path.startsWith("/apply/") ? "/signup" : "/login";
-    return redirectTo(dest, `?next=${encodeURIComponent(path)}`);
+    // Preserve the full path INCLUDING query (e.g. `?ref=CODE`) so a referral
+    // code survives the auth bounce — otherwise a logged-out referred visitor
+    // loses their referrer on the way through signup.
+    return redirectTo(
+      dest,
+      `?next=${encodeURIComponent(path + request.nextUrl.search)}`,
+    );
   }
 
   if (authPath && user) {

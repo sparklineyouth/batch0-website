@@ -12,7 +12,7 @@ export function ReferralCard({
   siteUrl: string;
   referralCount: number;
 }) {
-  const link = `${siteUrl}/signup?ref=${code}`;
+  const link = `${siteUrl}/apply?ref=${code}`;
   const [copied, setCopied] = useState(false);
 
   function copy() {

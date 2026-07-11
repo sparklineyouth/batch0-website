@@ -1,4 +1,3 @@
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStudent } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
@@ -23,7 +22,6 @@ function maskName(full: string | null, fallback: string) {
 
 export default async function StudentReferralsPage() {
   const profile = await requireStudent();
-  const supabase = createClient();
   const admin = createAdminClient();
   const siteConfig = await getSiteConfig();
 
@@ -40,7 +38,10 @@ export default async function StudentReferralsPage() {
     );
   }
 
-  const { data: ownReferred } = await supabase
+  // Use the admin client: a student's own referral count spans OTHER users'
+  // applications, which RLS (own-or-staff) would hide from the scoped client.
+  // Only non-PII status is selected.
+  const { data: ownReferred } = await admin
     .from("applications")
     .select("status")
     .eq("referral_code", profile.referral_code ?? "__none__");

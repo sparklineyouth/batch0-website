@@ -475,6 +475,17 @@ export async function attachReferralCodeAction(code: string) {
   const trimmed = code.trim().toLowerCase().slice(0, 32);
   if (!trimmed) return { ok: false };
 
+  // Reject self-referral (a user clicking their own link) so it can't inflate
+  // their own recruiter stats.
+  const { data: self } = await supabase
+    .from("profiles")
+    .select("referral_code")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (self?.referral_code && self.referral_code.toLowerCase() === trimmed) {
+    return { ok: false };
+  }
+
   const { data: existing } = await supabase
     .from("applications")
     .select("id, status, referral_code")
