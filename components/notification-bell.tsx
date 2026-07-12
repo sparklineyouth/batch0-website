@@ -21,6 +21,15 @@ type Notification = {
   created_at: string;
 };
 
+/** Short unique-per-mount suffix for realtime channel topics. */
+function uniqueSuffix(): string {
+  try {
+    return crypto.randomUUID().slice(0, 8);
+  } catch {
+    return `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+  }
+}
+
 type Align = "left" | "right";
 
 /**
@@ -95,8 +104,14 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
       } = await supabase.auth.getUser();
       if (cancelled || !user) return;
       userId = user.id;
-      channel = supabase
-        .channel(`notif-${user.id}`)
+      // Unique topic per mount. The browser Supabase client is a singleton,
+      // so a stable name like `notif-<id>` gets REUSED across React Strict
+      // Mode's dev double-mount; adding postgres_changes callbacks to that
+      // already-subscribed channel throws. A per-mount suffix guarantees a
+      // fresh channel every time; cleanup removes it.
+      const topic = `notif-${user.id}-${uniqueSuffix()}`;
+      const ch = supabase
+        .channel(topic)
         .on(
           "postgres_changes" as any,
           {
@@ -129,6 +144,14 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
           },
         )
         .subscribe();
+      channel = ch;
+      // If the effect was torn down while we were awaiting getUser(), the
+      // cleanup already ran (with channel still null) — remove now so we
+      // don't leak a live subscription.
+      if (cancelled) {
+        supabase.removeChannel(ch);
+        channel = null;
+      }
     })();
 
     // Safety net: re-sync once a minute in case a Realtime event was missed.
@@ -137,7 +160,12 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
     return () => {
       cancelled = true;
       clearInterval(safety);
-      if (channel) channel.unsubscribe();
+      // removeChannel (not just unsubscribe) evicts the channel from the
+      // client registry. Otherwise a remount — e.g. React Strict Mode's
+      // double-invoke in dev — reuses the same-named, already-subscribed
+      // channel and re-adding postgres_changes callbacks throws
+      // "cannot add ... callbacks after subscribe()".
+      if (channel) supabase.removeChannel(channel);
     };
   }, []);
 

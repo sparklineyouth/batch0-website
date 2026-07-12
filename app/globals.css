@@ -182,6 +182,37 @@ a,
 .rise-4 { animation-delay: 210ms; }
 .rise-5 { animation-delay: 280ms; }
 
+/* Weekly-challenge marquee — the single deliberately-moving element on the
+ * otherwise-static homepage. Two identical copies translate as one track; at
+ * -50% the frame is pixel-identical to 0%, so the loop is seamless. Pauses on
+ * hover/focus so it's readable. The component ALSO detects reduced motion in
+ * JS and renders a static single line; this rule freezes any residual motion
+ * as belt-and-suspenders (the global reduced-motion block only zeroes the
+ * duration, which would otherwise leave a clipped, frozen scroll). */
+@keyframes challenge-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.challenge-marquee-track {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-width: 200%;
+  animation: challenge-marquee var(--marquee-duration, 30s) linear infinite;
+  will-change: transform;
+}
+.challenge-marquee-viewport:hover .challenge-marquee-track,
+.challenge-marquee-viewport:focus-within .challenge-marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .challenge-marquee-track {
+    animation: none;
+    transform: none;
+    min-width: 0;
+  }
+}
+
 /* Marketing body links: ink text, spark underline. */
 .link-ink {
   color: rgb(var(--ink));

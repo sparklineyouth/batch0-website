@@ -25,6 +25,7 @@ import {
   Activity,
   Mail,
   Send,
+  Trophy,
   Calendar as CalendarIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -141,6 +142,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
     label: "Cohorts & teams",
     items: [
       { href: "/admin/cohorts", label: "Cohorts", icon: Calendar },
+      { href: "/admin/challenges", label: "Challenges", icon: Trophy },
       { href: "/admin/teams", label: "Teams", icon: Briefcase },
       { href: "/admin/demo-day", label: "Demo Day", icon: Rocket },
       { href: "/admin/intros", label: "Intros", icon: Handshake },
