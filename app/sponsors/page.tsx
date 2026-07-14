@@ -8,7 +8,7 @@ import { getProfile, roleHome } from "@/lib/auth";
 export const metadata = {
   title: "Fund Grants for High-School Founders — Sparkline Youth",
   description:
-    "Fund non-dilutive grants for high-school founders in Sparkline Youth's founding cohort. Three tiers, every dollar disclosed, run by Impetus AI LLC.",
+    "Fund non-dilutive grants for high-school founders in Sparkline Youth's founding cohort. Three tiers, every dollar disclosed.",
   alternates: { canonical: "/sponsors" },
 };
 

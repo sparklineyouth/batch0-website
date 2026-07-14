@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 // navbar is rendered on subroutes.
 const LINKS = [
   { href: "/program", label: "Program" },
+  { href: "/blog", label: "Blog" },
   { href: "/sponsors", label: "Sponsors" },
   { href: "/#faq", label: "FAQ" },
 ] as const;

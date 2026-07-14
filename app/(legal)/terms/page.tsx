@@ -1,6 +1,6 @@
 export const metadata = {
   title: "Terms of Service · Sparkline Youth",
-  description: "The terms that govern Sparkline Youth, the live online startup accelerator for U.S. high schoolers run by Impetus AI LLC.",
+  description: "The terms that govern Sparkline Youth, the live online startup accelerator for U.S. high schoolers.",
   alternates: { canonical: "/terms" },
 };
 

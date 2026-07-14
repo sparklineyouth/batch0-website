@@ -1,6 +1,6 @@
 export const metadata = {
   title: "Privacy Policy · Sparkline Youth",
-  description: "How Sparkline Youth (Impetus AI LLC) collects, uses, and protects student and parent data.",
+  description: "How Sparkline Youth collects, uses, and protects student and parent data.",
   alternates: { canonical: "/privacy" },
 };
 

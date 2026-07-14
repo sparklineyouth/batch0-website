@@ -98,11 +98,8 @@ const orgJsonLd = {
   url: SITE,
   logo: `${SITE}/logo.svg`,
   description:
-    "Sparkline Youth is a live, online startup accelerator for U.S. high schoolers, run by Impetus AI LLC. Students build a real company across four sprint weeks and pitch it at a live demo day. No equity is taken; sponsorship for standouts is merit-based and funding is never guaranteed.",
-  parentOrganization: {
-    "@type": "Organization",
-    name: "Impetus AI LLC",
-  },
+    "Sparkline Youth is a live, online startup accelerator for U.S. high schoolers. Students build a real company across four sprint weeks and pitch it at a live demo day. No equity is taken; sponsorship for standouts is merit-based and funding is never guaranteed.",
+  legalName: "Sparkline Youth LLC",
   contactPoint: {
     "@type": "ContactPoint",
     contactType: "customer support",
