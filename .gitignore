@@ -9,3 +9,6 @@ out
 .claude
 supabase/.temp
 *.tsbuildinfo
+
+# Design-audit screenshots (regenerable via scripts/design-audit/capture-all.mjs)
+docs/design-audit/shots/
