@@ -350,8 +350,11 @@ function appStatus(s?: string | null): StatusBucket {
     default:
       return {
         label: "Get started",
+        // No duration claim here: the cohort runs Aug 17 → Oct 18, so the old
+        // "in four weeks" was wrong. The real dates are on /program and the
+        // ledger; this line doesn't need to restate them.
         lede: () =>
-          "Take your idea from raw concept to investor-ready pitch in four weeks.",
+          "Take your idea from raw concept to investor-ready pitch.",
         cta: { href: "/apply", label: () => "Start application" },
       };
   }

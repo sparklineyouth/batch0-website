@@ -280,10 +280,16 @@ a,
 
 /* Slim, unobtrusive scrollbar for the in-app sidebars + similar inner
  * scroll containers. Falls back gracefully on Firefox (scrollbar-width)
- * and Safari/Chrome (-webkit-scrollbar). */
+ * and Safari/Chrome (-webkit-scrollbar).
+ *
+ * The thumb is derived from --ink rather than a literal white so it flips
+ * with the theme. A hardcoded white thumb was invisible on the light
+ * sidebar (near-white wash), which left the overflowing nav with no scroll
+ * affordance at all — the only hint that half the admin nav was below the
+ * fold. */
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: rgb(var(--ink) / 0.25) transparent;
 }
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;
@@ -293,11 +299,11 @@ a,
   background: transparent;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgb(var(--ink) / 0.2);
   border-radius: 9999px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: rgb(var(--ink) / 0.35);
 }
 
 /* Legal-page typography. We deliberately don't ship the Tailwind
@@ -562,6 +568,17 @@ a,
  * the public site stays intentionally dark.
  *
  * Keep this list in sync if you add new dark utilities you want to mirror.
+ *
+ * DELIBERATELY NOT MIRRORED — don't "complete the set" by adding these:
+ *   .bg-white   — the Discord enable-toggle knob. A white knob is correct on
+ *                 both the off track (bg-ink/20) and the on track (bg-phosphor),
+ *                 in both themes. Flipping it to dark would lose the knob on the
+ *                 yellow fill.
+ *   .text-black — only ever used as text ON a constant accent fill (bg-phosphor,
+ *                 or the per-cohort var(--accent)). Those fills don't change with
+ *                 the theme, so the text on them must stay dark in both. Same
+ *                 reasoning as the `on-phosphor` token in tailwind.config.ts —
+ *                 prefer `text-on-phosphor` for new code on bg-phosphor.
  * ============================================================================ */
 
 .theme-light body {
@@ -577,6 +594,9 @@ a,
  * Hero palette: paper #ffffff (page), wash #f7f7f5 (raised panels),
  * line #e4e4e1 (hairlines), ink 20 20 20 for tint alphas. */
 .theme-light .bg-black { background-color: #ffffff; }
+/* Without this, the admin application-questions cards rendered as 20%-black
+ * panels on the white page. */
+.theme-light .bg-black\/20 { background-color: rgba(247, 247, 245, 0.5); }
 .theme-light .bg-black\/30 { background-color: rgba(247, 247, 245, 0.6); }
 .theme-light .bg-black\/40 { background-color: rgba(247, 247, 245, 0.7); }
 .theme-light .bg-black\/50 { background-color: rgba(247, 247, 245, 0.75); }
@@ -788,8 +808,11 @@ a,
  * yellow fill (phosphor-200 = #FFD75C) is theme-invariant by design. */
 .theme-light .hover\:bg-phosphor-200:hover { background-color: #FFD75C; }
 
-/* Border variant used by the secondary button on un-converted pages. */
+/* Border variants used by secondary buttons on un-converted pages. Without
+ * the /40 rule the cohort page's "About batch0" button lost its border on
+ * hover in light mode (a white border on a white page). */
 .theme-light .hover\:border-white\/30:hover { border-color: rgba(20, 20, 20, 0.25); }
+.theme-light .hover\:border-white\/40:hover { border-color: rgba(20, 20, 20, 0.35); }
 
 /* The mobile-nav menu icon button uses border-white/10 + text-white/70.
  * Already covered. */

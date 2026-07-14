@@ -4,10 +4,31 @@ Everything the overhaul needed but refused to invent. Each item lists where
 the honest fallback currently lives. Answer these and the copy gets sharper;
 none of them block the site as shipped.
 
+> **Status update — 2026-07-14 (app-surface audit).** The 2026-07-10 pass
+> covered the marketing surface only; the authenticated app was re-audited on
+> 2026-07-14 (see [REPORT_APP_SURFACE.md](REPORT_APP_SURFACE.md)). Resolved
+> since this file was written:
+>
+> - **#1 duration — ANSWERED.** Cohort 1 now runs **Aug 17 → Oct 18, 2026
+>   (~9 weeks)**, not the Jul 30 → Sep 13 quoted below. Rish confirmed ~9
+>   weeks is correct, so every "four weeks" total-duration claim was removed
+>   from the app surface. "Four one-week build sprints" (a sprint count, not a
+>   duration) stays.
+> - **#2 applications close date — RESOLVED.** `applications_close_at` is set
+>   to 2026-08-10 23:59 UTC.
+> - **#6 contact email — RESOLVED.** `contact_email` is `hello@batch0.org`,
+>   and batch0.org has a live MX (`smtp.google.com`), so it actually receives
+>   mail. impetusai.net is still dead (no A, no MX) but is no longer
+>   referenced anywhere in code or data.
+>
+> Still open below: **#3** (demo day date — `demo_day_date` is still null),
+> #4, #5, #7–#11, #13–#16.
+
 ## Critical (affects claims already on the page)
 
-1. **The duration.** The curriculum is authored as four one-week sprints,
-   but the Cohort 1 record runs **Jul 30 → Sep 13 (6.5 weeks)**. Which is
+1. ~~**The duration.**~~ **ANSWERED 2026-07-14 — see status update above.**
+   Historical context: the curriculum is authored as four one-week sprints,
+   but the Cohort 1 record ran **Jul 30 → Sep 13 (6.5 weeks)**. Which is
    true? Buffer/orientation/demo-day weeks, or wrong dates in the cohort
    row? The site currently shows the real dates and says "four one-week
    build sprints" without a total-duration claim. Fix the cohort row in

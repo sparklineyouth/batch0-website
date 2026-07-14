@@ -117,8 +117,11 @@ export default async function CohortPage({
               <Link
                 key={t.id}
                 href={`/cohort/${cohort.slug}/teams/${t.slug}`}
+                // No inline borderColor here: it duplicated `border-white/10`
+                // and, being inline, outranked the light-mode override in
+                // globals.css — leaving these cards with a white border on the
+                // white page.
                 className="group rounded-2xl border border-white/10 bg-zinc-900/40 p-6 transition hover:bg-zinc-900/60"
-                style={{ borderColor: "rgba(255,255,255,0.1)" }}
               >
                 {t.logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element

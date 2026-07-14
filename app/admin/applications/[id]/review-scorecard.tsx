@@ -10,7 +10,7 @@ const DIMS: { key: keyof ScoreState; label: string; hint: string }[] = [
   { key: "idea", label: "Idea", hint: "Is the problem real, big enough, well understood?" },
   { key: "founder", label: "Founder", hint: "Agency, follow-through, founder/market fit." },
   { key: "motivation", label: "Motivation", hint: "Why this, why now, why them." },
-  { key: "feasibility", label: "Feasibility", hint: "Can they actually ship in 4 weeks?" },
+  { key: "feasibility", label: "Feasibility", hint: "Can they actually ship within the cohort?" },
   { key: "fit", label: "Fit", hint: "Will batch0 help them more than other paths?" },
 ];
 

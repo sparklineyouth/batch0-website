@@ -36,7 +36,7 @@ export default function Error({
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
           <button
             onClick={reset}
-            className="press rounded-md bg-phosphor px-4 py-2.5 text-sm font-semibold text-black hover:bg-phosphor-200"
+            className="press rounded-md bg-phosphor px-4 py-2.5 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200"
           >
             Try again
           </button>

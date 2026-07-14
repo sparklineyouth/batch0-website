@@ -205,7 +205,9 @@ export const QUESTION_FIELDS: readonly QuestionConfig[] = Object.freeze([
     type: "textarea",
     label: "Why batch0?",
     help: "",
-    placeholder: "What do you want to get out of these 4 weeks?",
+    // No duration claim — the cohort runs ~9 weeks (Aug 17 → Oct 18), so the
+    // old "these 4 weeks" was wrong.
+    placeholder: "What do you want to get out of the program?",
     required: true,
     hidden: false,
   },

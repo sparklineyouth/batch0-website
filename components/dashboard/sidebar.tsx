@@ -9,7 +9,7 @@ import {
   ENROLLED_ONLY_HREFS,
 } from "@/lib/nav-config";
 import { NotificationBell } from "@/components/notification-bell";
-import { SidebarNav } from "@/components/sidebar-nav";
+import { SidebarNav, SIDEBAR_ROW } from "@/components/sidebar-nav";
 
 export function StudentSidebar({
   role,
@@ -46,7 +46,7 @@ export function StudentSidebar({
         }}
       />
       {showAdminBack && (
-        <div className="mt-4 space-y-1 border-t border-line pt-4">
+        <div className="mt-4 space-y-0.5 border-t border-line pt-4">
           <p className="mb-1 px-3 text-[10px] font-mono font-semibold uppercase tracking-[0.2em] text-ink-faint">
             Staff
           </p>
@@ -54,10 +54,7 @@ export function StudentSidebar({
         </div>
       )}
       <form action="/auth/signout" method="post" className="mt-4">
-        <button
-          type="submit"
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-soft hover:bg-paper hover:text-ink"
-        >
+        <button type="submit" className={SIDEBAR_ROW}>
           <LogOut className="h-4 w-4" />
           Sign out
         </button>
@@ -76,10 +73,7 @@ function StaffLink({
   icon: any;
 }) {
   return (
-    <Link
-      href={href}
-      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-phosphor-ink hover:bg-phosphor/10"
-    >
+    <Link href={href} className={SIDEBAR_ROW}>
       <Icon className="h-4 w-4" />
       {label}
     </Link>

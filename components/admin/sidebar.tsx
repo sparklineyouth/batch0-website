@@ -4,7 +4,7 @@ import { Wordmark } from "@/components/wordmark";
 import { LogOut, Eye, Handshake, Briefcase } from "lucide-react";
 import { ADMIN_NAV_GROUPS } from "@/lib/nav-config";
 import { NotificationBell } from "@/components/notification-bell";
-import { SidebarNav } from "@/components/sidebar-nav";
+import { SidebarNav, SIDEBAR_ROW } from "@/components/sidebar-nav";
 
 // Cross-panel links shown to admins only. Each route's layout already
 // allows admins through (requireMentor/requireInvestor in lib/auth.ts),
@@ -34,21 +34,14 @@ export function AdminSidebar() {
         </p>
         <div className="space-y-0.5">
           {VIEW_AS_LINKS.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm text-ink-soft hover:bg-paper hover:text-ink"
-            >
+            <Link key={l.href} href={l.href} className={SIDEBAR_ROW}>
               <l.icon className="h-4 w-4" />
               {l.label}
             </Link>
           ))}
         </div>
         <form action="/auth/signout" method="post" className="mt-3">
-          <button
-            type="submit"
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-soft hover:bg-paper hover:text-ink"
-          >
+          <button type="submit" className={SIDEBAR_ROW}>
             <LogOut className="h-4 w-4" />
             Sign out
           </button>
