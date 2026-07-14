@@ -174,7 +174,7 @@ create table if not exists public.site_settings (
 );
 
 insert into public.site_settings (key, value) values
-  ('contact_email', '"batch0.youth@gmail.com"'),
+  ('contact_email', '"hello@batch0.org"'),
   ('applications_open', 'true'),
   ('active_cohort_name', '"Summer 2026"')
 on conflict (key) do nothing;
