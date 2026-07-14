@@ -33,9 +33,16 @@ export function ReferralCard({
             <Sparkles className="h-3.5 w-3.5" />
             Refer a friend
           </div>
+          {/* Promise only what we actually do. The old copy also offered "a
+              credit toward a 1:1 mentor session" — there is no credit system in
+              the schema and no mentor accounts exist, so it was a promise the
+              product couldn't keep.
+              The fast-track IS real: an application carrying a referral_code is
+              badged and sorted to the top of the review queue via the "Referred
+              first" sort on /admin/applications. */}
           <p className="mt-3 text-sm text-ink-soft">
             Send this link to other high schoolers. We'll fast-track their
-            application and you'll get a credit toward a 1:1 mentor session.
+            application.
           </p>
         </div>
         <div className="text-right">
