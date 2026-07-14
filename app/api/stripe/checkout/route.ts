@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
-import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
+import { getCountryFromHeaders, getRegionalPrice, DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 import {
   getOrCreateStripeCustomer,
   stripeErrorMessage,
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const basePriceCents = app.cohort?.price_cents ?? 13000;
+  const basePriceCents = app.cohort?.price_cents ?? DEFAULT_PRICE_CENTS;
   const cohortName = app.cohort?.name ?? "batch0 cohort";
   const stripePriceId: string | null = app.cohort?.stripe_price_id ?? null;
 

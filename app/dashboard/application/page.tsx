@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
+import { getCountryFromHeaders, getRegionalPrice, DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 import { PayButton } from "./pay-button";
 import { TrackSubmitted } from "./track-submitted";
 
@@ -38,7 +38,7 @@ export default async function ApplicationPage({
     );
   }
 
-  const basePriceCents = app.cohort?.price_cents ?? 13000;
+  const basePriceCents = app.cohort?.price_cents ?? DEFAULT_PRICE_CENTS;
   const country = getCountryFromHeaders(headers());
   const priceCents = getRegionalPrice(basePriceCents, country).amountCents;
 

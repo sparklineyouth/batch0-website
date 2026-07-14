@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { ApplicationForm } from "./application-form";
-import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
+import { getCountryFromHeaders, getRegionalPrice, DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 import { getApplicationQuestions } from "@/lib/application-questions";
 
 export const metadata = {
@@ -127,7 +127,7 @@ export default async function ApplyPage({
     selected?.name ?? settings.active_cohort_name ?? "the next cohort";
   const capacity = selected?.capacity ?? 24;
   const country = getCountryFromHeaders(headers());
-  const regional = getRegionalPrice(selected?.price_cents ?? 13000, country);
+  const regional = getRegionalPrice(selected?.price_cents ?? DEFAULT_PRICE_CENTS, country);
   const priceDollars = (regional.amountCents / 100).toFixed(0);
   const hasMultiple = cohorts.length > 1;
 

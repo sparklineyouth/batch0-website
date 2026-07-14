@@ -207,7 +207,7 @@ export function MobileNav({
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-paper/80 px-4 backdrop-blur md:hidden">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-paper px-4 md:hidden">
         <Link href="/" className="flex items-center gap-2">
           <Wordmark className="h-[18px] text-ink" />
           {label && (
@@ -239,7 +239,7 @@ export function MobileNav({
             aria-label="Close menu"
             tabIndex={-1}
             onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-ink/60"
           />
           <aside
             ref={drawerRef}

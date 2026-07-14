@@ -11,6 +11,12 @@
 // another CDN, `cf-ipcountry` is also honored. When neither is present
 // (local dev, missing header) we fall back to the default price.
 
+// The U.S. base tuition in cents — the single source of truth for the
+// default price. Used as the fallback everywhere a cohort row's `price_cents`
+// is missing, and mirrored by the fallback cohort in lib/site-config.ts, so
+// $130 is stated in exactly one place.
+export const DEFAULT_PRICE_CENTS = 13000;
+
 const PRICE_OVERRIDES_CENTS: Record<string, number> = {
   // India — PPP-adjusted vs. the U.S. base.
   IN: 11500,

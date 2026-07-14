@@ -7,6 +7,7 @@ import { Templates } from "@/lib/email/templates";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
 import { syncMemberRoles, postChannelMessage, announcementEmbed, getDiscordSettings } from "@/lib/discord";
+import { DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 
 export async function decideApplication(
   applicationId: string,
@@ -63,7 +64,7 @@ export async function decideApplication(
       const t = Templates.applicationAccepted({
         name: a.full_name ?? profile?.full_name ?? null,
         cohortName: cohort?.name ?? "batch0",
-        priceCents: cohort?.price_cents ?? 13000,
+        priceCents: cohort?.price_cents ?? DEFAULT_PRICE_CENTS,
       });
       if (profile?.email) {
         await sendEmail({

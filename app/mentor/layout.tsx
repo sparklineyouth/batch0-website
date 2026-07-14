@@ -8,7 +8,7 @@ export default async function MentorLayout({
   children: React.ReactNode;
 }) {
   const profile = await requireMentor();
-  // Theme driven site-wide by next-themes on <html> (see ThemeProvider).
+  // Flat-black dark-only; surfaces use the reactive ink/paper tokens.
   return (
     <div
       className="flex min-h-screen bg-paper text-ink md:flex-row flex-col"

@@ -18,8 +18,8 @@ export default function GlobalError({
     <html lang="en">
       <body
         style={{
-          backgroundColor: "#000",
-          color: "#fff",
+          backgroundColor: "#0c0c0d",
+          color: "#f5f5f4",
           fontFamily:
             "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
           margin: 0,
@@ -37,7 +37,7 @@ export default function GlobalError({
               fontWeight: 500,
               textTransform: "uppercase",
               letterSpacing: "0.22em",
-              color: "#FFD300",
+              color: "#FFBB00",
               margin: 0,
             }}
           >
@@ -96,8 +96,8 @@ export default function GlobalError({
             <button
               onClick={reset}
               style={{
-                background: "#FFD300",
-                color: "#000",
+                background: "#FFBB00",
+                color: "#141414",
                 fontWeight: 600,
                 fontSize: "14px",
                 padding: "10px 16px",

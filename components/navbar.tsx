@@ -3,7 +3,6 @@ import React, { useEffect, useState } from "react";
 import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { track } from "@vercel/analytics";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 // Use absolute hrefs (`/#anchor`) so hash links still resolve when the
 // navbar is rendered on subroutes.
@@ -62,7 +61,6 @@ export default function Navbar({
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
-          <ThemeToggle />
           {!isAuthed && (
             <Link href="/login" className="text-sm text-ink-soft hover:text-ink">
               Log in
@@ -78,7 +76,6 @@ export default function Navbar({
         </div>
 
         <div className="flex items-center gap-1.5 md:hidden">
-          <ThemeToggle />
           <button
             type="button"
             onClick={() => setOpen(!open)}

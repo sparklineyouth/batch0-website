@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
 import { Pencil, Trash2, Plus, Activity } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
+import { DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 
 type Cohort = CohortInput & {
   id: string;
@@ -22,7 +23,7 @@ const empty: CohortInput = {
   ends_on: "",
   capacity: 24,
   status: "upcoming",
-  price_cents: 13000,
+  price_cents: DEFAULT_PRICE_CENTS,
   applications_close_at: null,
 };
 

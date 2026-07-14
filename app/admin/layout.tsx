@@ -9,9 +9,8 @@ export default async function AdminLayout({
 }) {
   const profile = await requireAdmin();
 
-  // Theme is driven site-wide by next-themes on <html> (see ThemeProvider);
-  // the light compat layer in globals.css flips these dark utilities when the
-  // global theme is light.
+  // The site is flat-black dark-only; these literal dark utilities render
+  // natively against the dark tokens in globals.css.
   return (
     <div
       className="flex min-h-screen bg-black text-white md:flex-row flex-col"

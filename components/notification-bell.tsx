@@ -268,7 +268,7 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
         left: pos.left,
         right: pos.right,
       }}
-      className="z-[60] max-w-[calc(100vw-1.5rem)] w-[22rem] overflow-hidden rounded-2xl border border-line bg-paper shadow-[0_30px_60px_-15px_rgba(20,20,20,0.25)]"
+      className="z-[60] max-w-[calc(100vw-1.5rem)] w-[22rem] overflow-hidden rounded-2xl border border-line bg-paper"
     >
           <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
             <p className="text-xs font-mono font-semibold uppercase tracking-wider text-ink-faint">

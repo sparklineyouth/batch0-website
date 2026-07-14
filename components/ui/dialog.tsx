@@ -67,9 +67,9 @@ export function ConfirmDialog({
         type="button"
         aria-label="Close"
         onClick={() => !pending && onCancel()}
-        className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-ink/60"
       />
-      <div className="relative w-full max-w-md rounded-2xl border border-line bg-paper p-6 shadow-[0_30px_80px_-20px_rgba(20,20,20,0.25)]">
+      <div className="relative w-full max-w-md rounded-2xl border border-line bg-paper p-6">
         <button
           type="button"
           aria-label="Close"

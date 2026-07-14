@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getRegionalPrice } from "@/lib/pricing";
+import { getRegionalPrice, DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 
 // Single source of truth for public, admin-editable site facts (active
 // cohort + branding). The admin can change anything here from
@@ -104,7 +104,7 @@ const FALLBACK_COHORT: ActiveCohort = {
   startsOn: "2026-08-17",
   endsOn: "2026-10-18",
   capacity: 100,
-  priceCents: 12999,
+  priceCents: DEFAULT_PRICE_CENTS,
   status: "upcoming",
   applicationsCloseAt: "2026-08-10T23:59:00+00:00",
 };

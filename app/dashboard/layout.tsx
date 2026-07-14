@@ -14,7 +14,7 @@ export default async function DashboardLayout({
 }) {
   const profile = await getProfile();
   if (!profile) redirect("/login");
-  // Theme driven site-wide by next-themes on <html> (see ThemeProvider).
+  // Flat-black dark-only; surfaces use the reactive ink/paper tokens.
 
   // Middleware gates /dashboard to students and admins. Mentors and
   // investors only land here when middleware sent them to a shared

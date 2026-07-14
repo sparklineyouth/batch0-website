@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { VT323, IBM_Plex_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
-import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 // Type system (DESIGN.md): one idea — a terminal. VT323 is the DEC VT320
@@ -27,11 +26,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   // viewport-fit=cover lets safe-area-inset-* expose the notch on iOS.
   viewportFit: "cover",
-  // Browser chrome tracks the OS preference (matches defaultTheme: "system").
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0c0c0d" },
-  ],
+  // The site is dark-only; browser chrome always matches the flat-black paper.
+  themeColor: "#0c0c0d",
 };
 
 // The site serves from the apex; batchzero.org and the legacy
@@ -44,7 +40,7 @@ export const metadata: Metadata = {
   // so the page has to be findable by what it *is*, not what it's called.
   title: "Startup Accelerator for High Schoolers — batch0",
   description:
-    "batch0 is a live, online startup accelerator for U.S. high schoolers. Cohort 1 runs Jul 30–Sep 13, 2026. $130 tuition, free to apply. No equity taken.",
+    "batch0 is a live, online startup accelerator for U.S. high schoolers. Cohort 1 runs Aug 17–Oct 18, 2026. $130 tuition, free to apply. No equity taken.",
   keywords: [
     "high school startup accelerator",
     "startup programs for high schoolers",
@@ -112,7 +108,7 @@ const orgJsonLd = {
   },
   offers: {
     "@type": "Offer",
-    price: "129.99",
+    price: "130.00",
     priceCurrency: "USD",
     category: "Tuition",
     description:
@@ -125,35 +121,31 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Marketing surface defaults to the visitor's system theme (light or dark),
-  // toggleable from the navbar and remembered by next-themes. The marketing
-  // design tokens (globals.css) flip off the `data-theme` attribute it sets on
-  // <html>. The authenticated product layouts run their own cookie theme on the
-  // <html> *class* list, so the two never collide. suppressHydrationWarning is
-  // required: next-themes sets data-theme before hydration.
+  // The whole site — marketing, auth, and product app — is flat-black dark-only.
+  // The design tokens (globals.css :root) are the dark palette. The `dark` class
+  // is pinned here permanently (not via a theme provider): it no longer switches
+  // anything, but the product app's ~200 `dark:` utility variants still key off
+  // it, so it must stay present for them to render.
   return (
     <html
       lang="en"
-      suppressHydrationWarning
-      className={`${display.variable} ${mono.variable}`}
+      className={`dark ${display.variable} ${mono.variable}`}
     >
       <body className="bg-paper font-sans text-ink antialiased">
-        <ThemeProvider>
-          <a
-            href="#main-content"
-            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-phosphor focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-phosphor"
-          >
-            Skip to content
-          </a>
-          <div id="main-content">{children}</div>
-          <script
-            type="application/ld+json"
-            // JSON.stringify is safe here — the payload is a fixed literal,
-            // no user input is interpolated.
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
-          />
-          <Analytics />
-        </ThemeProvider>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-phosphor focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-phosphor"
+        >
+          Skip to content
+        </a>
+        <div id="main-content">{children}</div>
+        <script
+          type="application/ld+json"
+          // JSON.stringify is safe here — the payload is a fixed literal,
+          // no user input is interpolated.
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+        />
+        <Analytics />
       </body>
     </html>
   );
