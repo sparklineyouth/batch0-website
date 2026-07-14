@@ -14,7 +14,7 @@ Most students frame this as a status contest, like one line on a resume automati
 
 ## What is a startup summer program vs. an internship?
 
-A startup summer program is a structured environment where you build your own company over a few weeks, usually with a curriculum, mentors, and a deadline like a demo day. You're the founder. Nobody hands you tasks; you decide what to work on, then live with the results. At [Sparkline Youth](/program), for example, you move through four one-week sprints, Validate, Build, Market, and Pitch, and end by presenting a real company at a live demo day.
+A startup summer program is a structured environment where you build your own company over a few weeks, usually with a curriculum, mentors, and a deadline like a demo day. You're the founder. Nobody hands you tasks; you decide what to work on, then live with the results. At [batch0](/program), for example, you move through four one-week sprints, Validate, Build, Market, and Pitch, and end by presenting a real company at a live demo day.
 
 An internship is a role inside an existing organization. Someone else already built the thing; your job is to help run or improve a small piece of it. You get a manager, a scope, and usually a clear sense of what "good" looks like because there's a template to follow.
 
@@ -51,7 +51,7 @@ Skip the prestige math and answer these in order.
 
 1. **Do you have an industry you're already curious about?** If you're genuinely pulled toward one field, like architecture, medicine, or finance, an internship in it is worth a lot. You'll learn whether you actually like the day-to-day, which is priceless before you commit years to it in college.
 2. **Do you want to make something, or study something?** If the itch is to build, a program feeds that better than any internship will. You'll spend the summer making, not observing.
-3. **What can you realistically get in?** Most high schoolers can't land a serious internship without a family connection. Startup programs are usually open to anyone who applies. Sparkline's application is free, and tuition ($130) is only charged if you're accepted, so the barrier to trying is low.
+3. **What can you realistically get in?** Most high schoolers can't land a serious internship without a family connection. Startup programs are usually open to anyone who applies. batch0's application is free, and tuition ($130) is only charged if you're accepted, so the barrier to trying is low.
 4. **What will you have to show at the end?** A program ends with a real artifact: a product, a landing page, a pitch, maybe your first paying customers. An internship ends with experience and, if you're lucky, a project you can point to. Prefer the one that leaves you with proof.
 5. **Which story can you tell honestly?** In six months, on an application or in an interview, which experience gives you a specific, true story with your own decisions in it? Choose that.
 

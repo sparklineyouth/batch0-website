@@ -86,4 +86,4 @@ The biggest waste isn't a bad tool — it's buying tools for a product nobody ha
 
 You can build and launch a real product for the price of lunch, and keep it running for a couple dollars a month. The point of knowing your numbers isn't to be cheap — it's to spend deliberately, so every dollar is buying something a customer will notice. Start at $0, buy your domain, ship on free tiers, and only reach for the paid plan when a real user makes you.
 
-That kind of disciplined, cost-aware building is exactly what you'll practice in the Build sprint of the [Sparkline program](/program) — you'll get your product live without wasting money on things you don't need. When you're ready to actually do it with a cohort and mentors, [apply here](/apply) (it's free to apply; you only pay tuition if you're accepted).
+That kind of disciplined, cost-aware building is exactly what you'll practice in the Build sprint of the [batch0 program](/program) — you'll get your product live without wasting money on things you don't need. When you're ready to actually do it with a cohort and mentors, [apply here](/apply) (it's free to apply; you only pay tuition if you're accepted).

@@ -84,6 +84,6 @@ You can go from nothing to a tested idea in a few weeks if you work in a clear o
 
 You don't have to do it alone, either. A co-founder doubles your hours and covers the skills you don't have, and the right partner makes the doubt easier to carry. If you don't have one yet, [starting an entrepreneurship club at your school](/blog/how-to-start-an-entrepreneurship-club) is one of the easiest ways to find people who want to build alongside you.
 
-If you want structure and people going through it with you, that's the entire premise behind a program like [Sparkline Youth](/program): four one-week sprints that take you from validating an idea to a live pitch, done alongside other high schoolers. But you don't need permission or a program to begin. You need a problem worth solving and a free afternoon this week.
+If you want structure and people going through it with you, that's the entire premise behind a program like [batch0](/program): four one-week sprints that take you from validating an idea to a live pitch, done alongside other high schoolers. But you don't need permission or a program to begin. You need a problem worth solving and a free afternoon this week.
 
 The real cost of starting a company in high school isn't money or time. It's the discomfort of trying something you might be bad at. That discomfort is temporary. The skills you build fighting through it are not.

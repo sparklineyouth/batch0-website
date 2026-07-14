@@ -85,6 +85,6 @@ A manual MVP only works if you don't quietly cheat it. Watch for these:
 
 The concierge MVP is a Build move, but it's really a bridge. It sits right after you've validated that a problem exists and right before you build anything real. It's the cheapest way to learn what to actually make while it still costs almost nothing to change direction.
 
-This hand-first approach is baked into the Build sprint inside the [Sparkline Youth program](/program). Instead of rushing teen founders into an app they'll regret, we push you to deliver your idea by hand to real people first, so the thing you eventually build is one you already know people want. If you'd rather run this loop with mentors and a room full of other founders, you can [apply for free](/apply) and only pay tuition if you get in.
+This hand-first approach is baked into the Build sprint inside the [batch0 program](/program). Instead of rushing teen founders into an app they'll regret, we push you to deliver your idea by hand to real people first, so the thing you eventually build is one you already know people want. If you'd rather run this loop with mentors and a room full of other founders, you can [apply for free](/apply) and only pay tuition if you get in.
 
 But you don't need any of that to start today. Pick your outcome. Find three strangers. Charge a little. Deliver it by hand this week, and let what happens tell you the truth before you write a single line of code.

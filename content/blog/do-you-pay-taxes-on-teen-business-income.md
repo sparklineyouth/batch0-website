@@ -94,4 +94,4 @@ For the bigger money picture, [how much money do you need to start a business in
 
 If your teen business earns money, taxes are part of the deal. Clear $400 in profit and you file. Track expenses so you're taxed on profit, not revenue. Expect self-employment tax before income tax. Save your 1099s, set aside a chunk, and pull a parent in. Do those five things and the subject shrinks from scary to routine.
 
-Handling money like a real founder, tax part included, is exactly the muscle you build inside [the Sparkline program](/program), where you take a company from idea to a live demo day pitch across four one-week sprints. You don't need any of this figured out to [apply](/apply); applying is free, and you'll pick it up as you build.
+Handling money like a real founder, tax part included, is exactly the muscle you build inside [the batch0 program](/program), where you take a company from idea to a live demo day pitch across four one-week sprints. You don't need any of this figured out to [apply](/apply); applying is free, and you'll pick it up as you build.

@@ -7,7 +7,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { AlertTriangle } from "lucide-react";
 
-export const metadata = { title: "Outstanding fine · Sparkline Youth" };
+export const metadata = { title: "Outstanding fine · batch0" };
 
 export default async function PayFinePage() {
   const user = await requireUser();
@@ -32,7 +32,7 @@ export default async function PayFinePage() {
   return (
     <div className="min-h-screen bg-paper">
       <div className="mx-auto max-w-2xl px-6 py-20">
-        <div className="mb-6 flex items-center gap-2 text-spark-ink">
+        <div className="mb-6 flex items-center gap-2 text-phosphor-ink">
           <AlertTriangle className="h-5 w-5" />
           <span className="text-xs font-semibold uppercase tracking-[0.2em]">
             Account paused
@@ -45,10 +45,10 @@ export default async function PayFinePage() {
           Your access is paused until the {fines.length > 1 ? "fines below are" : "fine below is"} paid or waived by an admin.
           Email{" "}
           <a
-            href="mailto:hello@sparklineyouth.org"
-            className="text-spark-ink hover:underline"
+            href="mailto:hello@batch0.org"
+            className="text-phosphor-ink hover:underline"
           >
-            hello@sparklineyouth.org
+            hello@batch0.org
           </a>{" "}
           if you think this is wrong.
         </p>
@@ -72,7 +72,7 @@ export default async function PayFinePage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-spark-ink">
+                  <div className="text-2xl font-bold text-phosphor-ink">
                     ${(f.amount_cents / 100).toFixed(2)}
                   </div>
                 </div>
@@ -86,7 +86,7 @@ export default async function PayFinePage() {
 
         <div className="mt-6 flex items-center justify-between text-sm">
           <span className="text-ink-faint">Total outstanding</span>
-          <span className="text-xl font-bold text-spark-ink">
+          <span className="text-xl font-bold text-phosphor-ink">
             ${(total / 100).toFixed(2)}
           </span>
         </div>

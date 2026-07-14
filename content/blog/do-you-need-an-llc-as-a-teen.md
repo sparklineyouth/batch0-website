@@ -69,7 +69,7 @@ There's also a difference between "can I legally take money" and "should I incor
 
 ## What to do instead when you're just starting
 
-Skip the entity. Go find out if the idea is real. That's the entire job at the start, and it's what programs like Sparkline Youth push you to do before anything else: validate first, then build.
+Skip the entity. Go find out if the idea is real. That's the entire job at the start, and it's what programs like batch0 push you to do before anything else: validate first, then build.
 
 Here's the lean version of the early path:
 

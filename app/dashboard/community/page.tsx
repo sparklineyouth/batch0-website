@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { discordAvatarUrl, isDiscordEnabled } from "@/lib/discord";
 
-export const metadata = { title: "Community · Sparkline Youth" };
+export const metadata = { title: "Community · batch0" };
 
 export default async function CommunityPage() {
   const user = await requireUser();
@@ -43,7 +43,7 @@ export default async function CommunityPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Community</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        The Sparkline Youth Discord server is where every cohort lives: workshops,
+        The batch0 Discord server is where every cohort lives: workshops,
         peer reviews, demo-day prep, post-grad alumni. Link your account once
         and we keep your role in sync forever.
       </p>
@@ -122,7 +122,7 @@ export default async function CommunityPage() {
         {(announcements?.length ?? 0) === 0 ? (
           <p className="mt-3 text-sm text-ink-soft">
             Nothing yet. Announcements posted by admins (here or from Discord
-            with <code className="text-spark-ink">/announce</code>) will show up
+            with <code className="text-phosphor-ink">/announce</code>) will show up
             here.
           </p>
         ) : (
@@ -148,7 +148,7 @@ export default async function CommunityPage() {
 function Cmd({ cmd, desc }: { cmd: string; desc: string }) {
   return (
     <li className="rounded-xl border border-line bg-paper p-3">
-      <code className="text-sm font-semibold text-spark-ink">{cmd}</code>
+      <code className="text-sm font-semibold text-phosphor-ink">{cmd}</code>
       <p className="mt-1 text-xs text-ink-soft">{desc}</p>
     </li>
   );

@@ -36,7 +36,7 @@ export default async function InvestorInterestsPage() {
           <Card>
             <p className="text-sm text-ink-faint">
               You haven't marked interest on any teams yet. Browse{" "}
-              <Link href="/investor/teams" className="text-spark-ink hover:underline">
+              <Link href="/investor/teams" className="text-phosphor-ink hover:underline">
                 Teams
               </Link>
               .
@@ -48,7 +48,7 @@ export default async function InvestorInterestsPage() {
           if (arr.length === 0) return null;
           return (
             <section key={level}>
-              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-spark-ink">
+              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
                 {level} ({arr.length})
               </h2>
               <ul className="space-y-2">

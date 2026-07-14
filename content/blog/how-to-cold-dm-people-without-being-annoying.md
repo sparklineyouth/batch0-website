@@ -98,6 +98,6 @@ Most people won't reply. That is not a verdict on you or your idea — it's Tues
 
 And when someone does reply "no thanks," say "all good, thanks for reading!" and mean it. A gracious no leaves the door open, protects your reputation, and honestly just makes you someone people don't mind hearing from. Rejection is the tax on doing anything real, and the founders who make it are the ones who stop taking it personally.
 
-This is exactly the kind of unglamorous, high-leverage skill we drill during the Market sprint at [Sparkline Youth](/program). You don't just plan your outreach — you send real DMs to real strangers, get replies (and silence), and adjust with a mentor watching your messages. If you want a structured month to actually do the scary part instead of endlessly preparing for it, [apply here](/apply). Applying is free, and you only pay tuition if you get in.
+This is exactly the kind of unglamorous, high-leverage skill we drill during the Market sprint at [batch0](/program). You don't just plan your outreach — you send real DMs to real strangers, get replies (and silence), and adjust with a mentor watching your messages. If you want a structured month to actually do the scary part instead of endlessly preparing for it, [apply here](/apply). Applying is free, and you only pay tuition if you get in.
 
 Now go find one person who has the problem you're solving, write them three honest sentences, and hit send. The worst outcome is silence, which is exactly where you are right now anyway.

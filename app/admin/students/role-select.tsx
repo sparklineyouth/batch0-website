@@ -16,7 +16,7 @@ const COLORS: Record<Role, string> = {
   student: "border-line text-ink-soft",
   mentor: "border-emerald-500/40 text-emerald-700 dark:text-emerald-300",
   investor: "border-purple-500/40 text-purple-700 dark:text-purple-300",
-  admin: "border-spark/50 text-spark-ink",
+  admin: "border-phosphor/50 text-phosphor-ink",
 };
 
 export function RoleSelect({
@@ -55,7 +55,7 @@ export function RoleSelect({
         disabled={pending}
         onChange={onChange}
         aria-label="Change role"
-        className={`appearance-none rounded-full border bg-transparent px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-spark/40 ${COLORS[current]} ${pending ? "opacity-50" : ""}`}
+        className={`appearance-none rounded-full border bg-transparent px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-phosphor/40 ${COLORS[current]} ${pending ? "opacity-50" : ""}`}
       >
         {OPTIONS.map((r) => (
           <option key={r} value={r} className="bg-paper text-ink">

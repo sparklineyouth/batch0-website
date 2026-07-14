@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Menu, X, Search, ChevronDown } from "lucide-react";
 import {
@@ -178,12 +178,9 @@ export function MobileNav({
     <>
       <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-paper/80 px-4 backdrop-blur md:hidden">
         <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo.svg" alt="" width={22} height={22} />
-          <span className="font-display font-semibold tracking-tight text-ink">
-            Spark<span className="text-spark-ink">Line</span> Youth
-          </span>
+          <Wordmark className="h-[18px] text-ink" />
           {label && (
-            <span className="ml-2 rounded-full bg-spark/15 px-2 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wider text-spark-ink">
+            <span className="ml-2 rounded-full bg-phosphor/15 px-2 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wider text-phosphor-ink">
               {label}
             </span>
           )}
@@ -223,10 +220,7 @@ export function MobileNav({
           >
             <div className="mb-4 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-2">
-                <Image src="/logo.svg" alt="" width={22} height={22} />
-                <span className="font-display font-semibold tracking-tight text-ink">
-                  Spark<span className="text-spark-ink">Line</span> Youth
-                </span>
+                <Wordmark className="h-[18px] text-ink" />
               </Link>
               <button
                 ref={closeRef}
@@ -247,7 +241,7 @@ export function MobileNav({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filter…"
                 aria-label="Filter navigation"
-                className="w-full rounded-md border border-line bg-wash py-2 pl-8 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-spark focus:outline-none focus:ring-1 focus:ring-spark/30"
+                className="w-full rounded-md border border-line bg-wash py-2 pl-8 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor/30"
               />
             </div>
 
@@ -291,7 +285,7 @@ export function MobileNav({
                               aria-current={active ? "page" : undefined}
                               className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition ${
                                 active
-                                  ? "bg-spark/10 text-spark-ink font-medium"
+                                  ? "bg-phosphor/10 text-phosphor-ink font-medium"
                                   : "text-ink-soft hover:bg-wash hover:text-ink"
                               }`}
                             >
@@ -313,7 +307,7 @@ export function MobileNav({
                       <Link
                         key={it.href}
                         href={it.href}
-                        className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-spark-ink hover:bg-spark/10"
+                        className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-phosphor-ink hover:bg-phosphor/10"
                       >
                         {Icon ? <Icon className="h-4 w-4" /> : null}
                         {it.label}

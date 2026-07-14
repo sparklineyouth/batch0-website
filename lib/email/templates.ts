@@ -8,7 +8,7 @@ function layout(args: {
 }) {
   const cta = args.cta
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:32px 0">
-         <tr><td style="border-radius:8px;background:#facc15">
+         <tr><td style="border-radius:8px;background:#ffbb00">
            <a href="${args.cta.url}" style="display:inline-block;padding:12px 22px;font-family:Inter,Arial,sans-serif;font-size:14px;font-weight:600;color:#000;text-decoration:none;border-radius:8px">
              ${args.cta.label}
            </a>
@@ -29,7 +29,7 @@ ${preheader}
     <table role="presentation" cellpadding="0" cellspacing="0" width="560" style="max-width:560px;background:#111;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden">
       <tr><td style="padding:28px 32px 16px 32px">
         <div style="font-size:18px;font-weight:700;letter-spacing:-0.01em">
-          Spark<span style="color:#facc15">Line</span> Youth
+          <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">batch<span style="color:#ffbb00">0</span></span>
         </div>
       </td></tr>
       <tr><td style="padding:0 32px 32px 32px;font-size:15px;line-height:1.55;color:#e7e7e7">
@@ -37,8 +37,8 @@ ${preheader}
         ${cta}
       </td></tr>
       <tr><td style="padding:18px 32px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:#888">
-        <a href="${env.siteUrl}" style="color:#facc15;text-decoration:none">${env.siteUrl.replace(/^https?:\/\//, "")}</a> · Questions?
-        <a href="mailto:${env.contactEmail}" style="color:#facc15;text-decoration:none">${env.contactEmail}</a>
+        <a href="${env.siteUrl}" style="color:#ffbb00;text-decoration:none">${env.siteUrl.replace(/^https?:\/\//, "")}</a> · Questions?
+        <a href="mailto:${env.contactEmail}" style="color:#ffbb00;text-decoration:none">${env.contactEmail}</a>
       </td></tr>
     </table>
   </td></tr>
@@ -81,19 +81,19 @@ export const Templates = {
   }),
 
   welcome: (args: { name?: string | null }) => ({
-    subject: "Welcome to Sparkline Youth",
+    subject: "Welcome to batch0",
     html: layout({
       preheader: "Your account is ready.",
       body: `
         <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">Welcome${args.name ? `, ${escape(args.name)}` : ""}.</h1>
-        <p>Your Sparkline Youth account is ready. Apply when you're ready — applications are reviewed on a rolling basis.</p>
+        <p>Your batch0 account is ready. Apply when you're ready — applications are reviewed on a rolling basis.</p>
       `,
       cta: { url: `${env.siteUrl}/apply`, label: "Start your application" },
     }),
   }),
 
   applicationReceived: (args: { name?: string | null }) => ({
-    subject: "We got your Sparkline Youth application",
+    subject: "We got your batch0 application",
     html: layout({
       preheader: "We'll review and get back to you soon.",
       body: `
@@ -105,11 +105,11 @@ export const Templates = {
   }),
 
   applicationAccepted: (args: { name?: string | null; cohortName: string; priceCents: number }) => ({
-    subject: "You're in — accepted to Sparkline Youth",
+    subject: "You're in — accepted to batch0",
     html: layout({
       preheader: `Pay $${(args.priceCents / 100).toFixed(0)} to lock in your seat.`,
       body: `
-        <h1 style="margin:0 0 12px 0;font-size:22px;color:#facc15">You're in.</h1>
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">You're in.</h1>
         <p>Welcome to <strong>${escape(args.cohortName)}</strong>${args.name ? `, ${escape(args.name)}` : ""}. Your one-time enrollment fee is <strong>$${(args.priceCents / 100).toFixed(0)}</strong>. Pay below to lock in your seat.</p>
       `,
       cta: { url: `${env.siteUrl}/dashboard/application`, label: "Pay & enroll" },
@@ -117,12 +117,12 @@ export const Templates = {
   }),
 
   applicationRejected: (args: { name?: string | null; notes?: string | null }) => ({
-    subject: "Update on your Sparkline Youth application",
+    subject: "Update on your batch0 application",
     html: layout({
       preheader: "Decision on your application.",
       body: `
         <p>Hi${args.name ? ` ${escape(args.name)}` : ""},</p>
-        <p>Thanks for applying to Sparkline Youth. After reviewing your application, we're unable to offer you a seat in this cohort. We hope you'll apply again next time.</p>
+        <p>Thanks for applying to batch0. After reviewing your application, we're unable to offer you a seat in this cohort. We hope you'll apply again next time.</p>
         ${args.notes ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,255,255,0.2);color:#bbb">${escape(args.notes)}</p>` : ""}
       `,
     }),
@@ -131,9 +131,9 @@ export const Templates = {
   paymentReceipt: (args: { name?: string | null; amountCents: number; cohortName: string }) => ({
     subject: "Payment received — you're enrolled",
     html: layout({
-      preheader: "You're enrolled in Sparkline Youth.",
+      preheader: "You're enrolled in batch0.",
       body: `
-        <h1 style="margin:0 0 12px 0;font-size:22px;color:#facc15">Enrolled</h1>
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">Enrolled</h1>
         <p>We received your payment of <strong>$${(args.amountCents / 100).toFixed(2)}</strong> for ${escape(args.cohortName)}. Your course access is unlocked. Welcome aboard${args.name ? `, ${escape(args.name)}` : ""}.</p>
       `,
       cta: { url: `${env.siteUrl}/dashboard/course`, label: "Open course" },
@@ -146,7 +146,7 @@ export const Templates = {
     paid: number;
     revenue: number;
   }) => ({
-    subject: "Sparkline Youth weekly digest",
+    subject: "batch0 weekly digest",
     html: layout({
       preheader: `${args.apps} apps · ${args.paid} new enrollments · $${(args.revenue / 100).toFixed(0)} revenue`,
       body: `
@@ -173,7 +173,7 @@ export const Templates = {
       body: `
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
         <p>Starts <strong>${new Date(args.startsAt).toLocaleString()}</strong>.</p>
-        ${args.zoomUrl ? `<p>Join: <a href="${args.zoomUrl}" style="color:#facc15">${escape(args.zoomUrl)}</a></p>` : ""}
+        ${args.zoomUrl ? `<p>Join: <a href="${args.zoomUrl}" style="color:#ffbb00">${escape(args.zoomUrl)}</a></p>` : ""}
       `,
       cta: { url: `${env.siteUrl}/dashboard/events`, label: "All events" },
     }),
@@ -207,7 +207,7 @@ export const Templates = {
               s.mentorName
                 ? ` · mentor <strong style="color:#fff">${escape(s.mentorName)}</strong>`
                 : args.scope === "admin"
-                  ? " · <span style=\"color:#facc15\">no mentor assigned</span>"
+                  ? " · <span style=\"color:#ffbb00\">no mentor assigned</span>"
                   : ""
             }</span>
           </li>`,
@@ -309,7 +309,7 @@ export const Templates = {
           }
           ${
             args.upcomingEvents.length > 0
-              ? `<h2 style="font-size:14px;color:#facc15;margin:24px 0 10px 0;text-transform:uppercase;letter-spacing:0.08em">Coming up</h2>
+              ? `<h2 style="font-size:14px;color:#ffbb00;margin:24px 0 10px 0;text-transform:uppercase;letter-spacing:0.08em">Coming up</h2>
                  <ul style="padding-left:18px;margin:0">${eventItems}</ul>`
               : ""
           }
@@ -343,7 +343,7 @@ export const Templates = {
           ? `Ranked #${args.rank} of ${args.totalTeams}`
           : "Your Demo Day recap is here",
       body: `
-        <h1 style="margin:0 0 12px 0;font-size:22px;color:#facc15">Demo Day recap</h1>
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">Demo Day recap</h1>
         <p>Here's how ${escape(args.teamName)} landed.</p>
         <div style="margin:18px 0;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:12px">
           ${
@@ -403,13 +403,13 @@ export const Templates = {
           <p style="white-space:pre-wrap">${escape(args.summary)}</p>
           ${
             args.headlines.length > 0
-              ? `<h2 style="font-size:13px;color:#facc15;margin:20px 0 6px 0;text-transform:uppercase;letter-spacing:0.08em">Wins</h2>
+              ? `<h2 style="font-size:13px;color:#ffbb00;margin:20px 0 6px 0;text-transform:uppercase;letter-spacing:0.08em">Wins</h2>
                  <ul style="padding-left:18px;margin:0">${headlineItems}</ul>`
               : ""
           }
           ${
             args.blockers.length > 0
-              ? `<h2 style="font-size:13px;color:#facc15;margin:20px 0 6px 0;text-transform:uppercase;letter-spacing:0.08em">Blockers</h2>
+              ? `<h2 style="font-size:13px;color:#ffbb00;margin:20px 0 6px 0;text-transform:uppercase;letter-spacing:0.08em">Blockers</h2>
                  <ul style="padding-left:18px;margin:0">${blockerItems}</ul>`
               : ""
           }
@@ -434,7 +434,7 @@ export const Templates = {
     html: layout({
       preheader: `Offer: $${(args.amountCents / 100).toLocaleString()}`,
       body: `
-        <h1 style="margin:0 0 12px 0;font-size:22px;color:#facc15">SAFE offer received</h1>
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">SAFE offer received</h1>
         <p><strong>${escape(args.investorName ?? "An investor")}</strong> sent a SAFE to <strong>${escape(args.teamName)}</strong>:</p>
         <ul style="padding-left:18px;margin:14px 0">
           <li>Amount: <strong style="color:#fff">$${(args.amountCents / 100).toLocaleString()}</strong></li>

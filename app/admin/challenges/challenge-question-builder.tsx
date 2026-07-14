@@ -202,7 +202,7 @@ export function ChallengeQuestionBuilder({
                   <button
                     type="button"
                     onClick={() => addOption(i)}
-                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-spark-ink hover:underline"
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-phosphor-ink hover:underline"
                   >
                     <Plus className="h-3 w-3" /> Add choice
                   </button>

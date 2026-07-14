@@ -60,7 +60,7 @@ Batching turns ten small interruptions into two clean blocks. You'll get more do
 
 The school year is for slow, steady progress. Summer and long breaks are when you sprint. That's when you have full days and no problem sets hanging over you.
 
-Structured programs lean into this on purpose. Sparkline Youth runs as four one-week build sprints over the summer, which is exactly when high schoolers have the room to go deep without wrecking their grades. Plan your biggest pushes for when school isn't competing for the same hours.
+Structured programs lean into this on purpose. batch0 runs as four one-week build sprints over the summer, which is exactly when high schoolers have the room to go deep without wrecking their grades. Plan your biggest pushes for when school isn't competing for the same hours.
 
 ### 7. Protect sleep and grades like they're non-negotiable
 

@@ -56,7 +56,7 @@ export async function GET(req: Request) {
   const res = NextResponse.redirect(
     `https://discord.com/api/oauth2/authorize?${params}`,
   );
-  res.cookies.set("sparkline_discord_nonce", nonce, {
+  res.cookies.set("batch0_discord_nonce", nonce, {
     httpOnly: true,
     // secure: true would drop the cookie on http://localhost in dev,
     // breaking the OAuth round-trip — gate on NODE_ENV.

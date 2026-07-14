@@ -38,7 +38,7 @@ export async function sendOnboardingDM(
     `Welcome${profile.full_name ? `, ${profile.full_name}` : ""}!`,
     "",
     "Here's your 3-step setup:",
-    `1. ${linkedDone ? "✅" : "⬜"} Link your Sparkline Youth account`,
+    `1. ${linkedDone ? "✅" : "⬜"} Link your batch0 account`,
     `2. ${introDone ? "✅" : "⬜"} Introduce yourself${introCh ? ` in <#${introCh}>` : ""}`,
     `3. ${rsvpDone ? "✅" : "⬜"} RSVP to an event${eventsCh ? ` in <#${eventsCh}>` : ""}`,
   ];
@@ -61,9 +61,9 @@ export async function sendOnboardingDM(
   return await sendDirectMessage(discordUserId, {
     embeds: [
       {
-        title: "Welcome to Sparkline Youth 👋",
+        title: "Welcome to batch0 👋",
         description: lines.join("\n"),
-        color: 0xfacc15,
+        color: 0xffbb00,
       },
     ],
     ...(components.length ? { components } : {}),

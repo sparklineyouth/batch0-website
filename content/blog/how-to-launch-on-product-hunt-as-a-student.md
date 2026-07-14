@@ -71,4 +71,4 @@ The real value often isn't the traffic spike at all. It's the comments. Stranger
 
 Whatever happens, the launch isn't the finish line. It's a spike of attention you use to learn faster. Reply to everyone, save every piece of feedback, and get back to building the next day. A single good launch won't make your company, but knowing how to run one is a skill you'll use again and again.
 
-If you want people around you while you build the thing worth launching, that's exactly what [Sparkline's program](/program) is for: four one-week sprints where you validate, build, market, and pitch a real company, ending in a live demo day. Applying is free, and you can [apply here](/apply).
+If you want people around you while you build the thing worth launching, that's exactly what [batch0's program](/program) is for: four one-week sprints where you validate, build, market, and pitch a real company, ending in a live demo day. Applying is free, and you can [apply here](/apply).

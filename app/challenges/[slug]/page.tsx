@@ -7,7 +7,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { ChallengeForm } from "./challenge-form";
 
 export const metadata = {
-  title: "Weekly Challenge · Sparkline Youth",
+  title: "Weekly Challenge · batch0",
   // Gated + mutating — keep crawlers out (the marketing marquee/index carry SEO).
   robots: { index: false, follow: false },
 };
@@ -47,7 +47,7 @@ export default async function ChallengePage({
           ← All challenges
         </Link>
 
-        <p className="mt-6 font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+        <p className="mt-6 font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
           Weekly Challenge
         </p>
         <h1 className="mt-3 font-display text-[30px] sm:text-4xl font-bold leading-[1.1] tracking-[-0.02em] text-ink">
@@ -100,7 +100,7 @@ export default async function ChallengePage({
 
 function AlreadyApplied() {
   return (
-    <div className="rounded-2xl border border-spark/30 bg-spark/5 p-6">
+    <div className="rounded-2xl border border-phosphor/30 bg-phosphor/5 p-6">
       <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
         You&apos;ve already applied
       </h2>
@@ -111,7 +111,7 @@ function AlreadyApplied() {
       <div className="mt-4">
         <Link
           href="/dashboard"
-          className="text-sm text-spark-ink hover:underline"
+          className="text-sm text-phosphor-ink hover:underline"
         >
           Go to dashboard →
         </Link>
@@ -133,7 +133,7 @@ function ClosedPanel({ closesAt }: { closesAt: string | null }) {
         Keep an eye on the homepage — a new challenge drops most weeks.
       </p>
       <div className="mt-4">
-        <Link href="/challenges" className="text-sm text-spark-ink hover:underline">
+        <Link href="/challenges" className="text-sm text-phosphor-ink hover:underline">
           See other challenges →
         </Link>
       </div>

@@ -75,4 +75,4 @@ None of that means you can't ship — it means your first version should dodge t
 
 You don't need permission, a computer science class, or a co-founder who codes. Pick Lovable or Bolt, open it tonight, and describe the smallest useful version of your idea in one sentence. Build small, test every step, save what works, and get it in front of five real people by the weekend. That loop — build, test, watch, fix — is the entire game, and AI just handed you the keys.
 
-When you want structure, deadlines, and mentors who'll keep you shipping instead of spiraling in a broken build, that's what the four one-week sprints of the [Sparkline program](/program) are for. Applying is free, and you only pay tuition if you get in — [apply here](/apply). Now close this tab and go describe your app to an AI.
+When you want structure, deadlines, and mentors who'll keep you shipping instead of spiraling in a broken build, that's what the four one-week sprints of the [batch0 program](/program) are for. Applying is free, and you only pay tuition if you get in — [apply here](/apply). Now close this tab and go describe your app to an AI.

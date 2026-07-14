@@ -69,7 +69,7 @@ The version you launch should slightly embarrass you. That's the sign you shippe
 
 Once you have a few real users, you'll see exactly which manual step is eating your time, and *that's* the thing to automate next, not whatever you assumed. Maybe writing each plan takes an hour, so you build a template. Maybe no one signs up, so the fix is your pitch, not your product. The order is always the same: ship, watch, fix the biggest thing, repeat.
 
-At Sparkline Youth, one of the four build sprints is dedicated to exactly this: getting a working version live fast, then improving it based on what real users do. Building in public with a deadline is uncomfortable, and that discomfort is the point.
+At batch0, one of the four build sprints is dedicated to exactly this: getting a working version live fast, then improving it based on what real users do. Building in public with a deadline is uncomfortable, and that discomfort is the point.
 
 Keep your improvement loop tight:
 

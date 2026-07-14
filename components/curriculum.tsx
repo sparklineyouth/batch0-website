@@ -25,7 +25,7 @@ export const WEEKS = [
   {
     week: "Step 4",
     title: "Pitch",
-    body: "Final deck, rehearsals, and a live pitch at demo day. Standouts may be offered Sparkline sponsorship. Never guaranteed.",
+    body: "Final deck, rehearsals, and a live pitch at demo day. Standouts may be offered batch0 sponsorship. Never guaranteed.",
     deliverable: "Live demo-day pitch",
   },
 ];

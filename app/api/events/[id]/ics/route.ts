@@ -45,9 +45,9 @@ export async function GET(
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Sparkline Youth//Events//EN",
+    "PRODID:-//batch0//Events//EN",
     "BEGIN:VEVENT",
-    `UID:${ev.id}@sparklineyouth.org`,
+    `UID:${ev.id}@batch0.org`,
     `DTSTAMP:${toIcsDate(new Date().toISOString())}`,
     `DTSTART:${start}`,
     `DTEND:${end}`,

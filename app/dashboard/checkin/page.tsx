@@ -7,7 +7,7 @@ import { isoWeekStart, formatWeekRange } from "@/lib/week";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
-export const metadata = { title: "Weekly check-in · Sparkline Youth" };
+export const metadata = { title: "Weekly check-in · batch0" };
 
 export default async function CheckinPage() {
   const user = await requireUser();
@@ -155,7 +155,7 @@ function FeedbackList({
 }) {
   return (
     <div className="mt-5 border-t border-line pt-4">
-      <div className="mb-2 text-xs uppercase tracking-wider text-spark-ink">
+      <div className="mb-2 text-xs uppercase tracking-wider text-phosphor-ink">
         {label}
       </div>
       <ul className="space-y-3">

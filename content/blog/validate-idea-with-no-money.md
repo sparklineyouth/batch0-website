@@ -81,4 +81,4 @@ Once you've done a handful of interviews and gotten a few real yeses, you're no 
 
 The gap between people who talk about startups and people who start one is almost always this: the second group checked with real humans. That's the whole move, and it costs nothing but nerve.
 
-If you want to run this loop with a coach over your shoulder and a cohort alongside you, that's what the first week of the [Sparkline program](/program) is built around — a full sprint validating a real idea before you write a line of code. Applying is [free](/apply), and you only pay tuition if you get in. Either way, don't wait for money you don't need. Go get your first real yes this week.
+If you want to run this loop with a coach over your shoulder and a cohort alongside you, that's what the first week of the [batch0 program](/program) is built around — a full sprint validating a real idea before you write a line of code. Applying is [free](/apply), and you only pay tuition if you get in. Either way, don't wait for money you don't need. Go get your first real yes this week.

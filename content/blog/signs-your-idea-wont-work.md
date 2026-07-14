@@ -84,6 +84,6 @@ Here's the honest loop:
 4. Change one variable: the audience, the problem, or the price.
 5. Run the cheapest commitment test you can. Watch what people *do*, not what they say.
 
-Ideas are cheap and endless. The skill worth building is spotting a dead one fast so you can move your energy to a live one. That's most of what the Validate sprint inside the [Sparkline program](/program) trains — read the signals honestly, kill what's dead, double down on what's real. If you'd rather run that loop with mentors, you can [apply for free](/apply) and only pay if you get in.
+Ideas are cheap and endless. The skill worth building is spotting a dead one fast so you can move your energy to a live one. That's most of what the Validate sprint inside the [batch0 program](/program) trains — read the signals honestly, kill what's dead, double down on what's real. If you'd rather run that loop with mentors, you can [apply for free](/apply) and only pay if you get in.
 
 The founders who win aren't the ones who never have a bad idea. They're the ones who notice fastest.

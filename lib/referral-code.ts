@@ -8,7 +8,7 @@
 // reads it back on mount. Keep the storage key in one place so the writers
 // (auth forms) and the reader (apply form) can never drift.
 
-export const REF_STORAGE_KEY = "sparkline_ref";
+export const REF_STORAGE_KEY = "batch0_ref";
 
 /**
  * Extract a referral code from the current browser location: a top-level

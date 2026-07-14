@@ -64,7 +64,7 @@ export default async function ChallengeSubmissionsPage({
         </h1>
         <Link
           href={`/admin/challenges/${challenge.id}/edit`}
-          className="text-sm text-spark-ink hover:underline"
+          className="text-sm text-phosphor-ink hover:underline"
         >
           Edit challenge →
         </Link>
@@ -86,7 +86,7 @@ export default async function ChallengeSubmissionsPage({
               href={href}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
-                  ? "border-spark/30 bg-spark/10 text-spark-ink"
+                  ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
@@ -116,7 +116,7 @@ export default async function ChallengeSubmissionsPage({
                       </span>
                       <StatusBadge status={s.status} />
                       {s.winnerPublic && (
-                        <span className="rounded-full bg-spark/15 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-spark-ink">
+                        <span className="rounded-full bg-phosphor/15 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-phosphor-ink">
                           Public
                         </span>
                       )}
@@ -129,7 +129,7 @@ export default async function ChallengeSubmissionsPage({
                   </div>
                   <div className="flex items-center gap-4 text-xs text-ink-faint">
                     {s.payoutCents != null && (
-                      <span className="font-mono text-spark-ink">
+                      <span className="font-mono text-phosphor-ink">
                         {formatCents(s.payoutCents)}
                       </span>
                     )}

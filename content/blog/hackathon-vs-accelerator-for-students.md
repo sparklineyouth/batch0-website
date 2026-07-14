@@ -24,7 +24,7 @@ What a hackathon does not do: it doesn't ask if anyone wants the thing. You coul
 
 An accelerator is a program — weeks, not hours — designed to move you from "I have an idea" to "I have a small real company." Instead of one frantic weekend, you work in stages. You talk to real people about the problem, you build a minimum version, you try to get actual users, and you learn to pitch what you made.
 
-That staged structure is the whole difference. At [Sparkline Youth](/program), for example, students go through four one-week sprints — Validate, Build, Market, Pitch — and end at a live demo day pitching a company they actually built. The Validate week alone forces you to do something no hackathon ever will: find out whether the problem is real before you write a line of code. (If you're new to that idea, start with [how to validate a startup idea in high school](/blog/how-to-validate-startup-idea-high-school).)
+That staged structure is the whole difference. At [batch0](/program), for example, students go through four one-week sprints — Validate, Build, Market, Pitch — and end at a live demo day pitching a company they actually built. The Validate week alone forces you to do something no hackathon ever will: find out whether the problem is real before you write a line of code. (If you're new to that idea, start with [how to validate a startup idea in high school](/blog/how-to-validate-startup-idea-high-school).)
 
 An accelerator costs more time and sometimes money, but it hands you something a hackathon can't: proof that people want what you're building, and the skills to keep going after the program ends.
 
@@ -69,10 +69,10 @@ If you're on a part-time-job budget with no funding — which describes basicall
 - **Got an idea and a few weeks?** Do an accelerator. It's the difference between a project and a company.
 - **Not sure which programs are legit?** Read [how to choose a teen startup program that isn't a waste of money](/blog/how-to-choose-a-teen-startup-program) before you pay for anything, and if the program is paid, sanity-check it against [free vs. paid startup programs](/blog/free-vs-paid-startup-programs-teens).
 
-One more note on money, since it matters at your age: a good accelerator shouldn't gate you out because you're broke. Applying to Sparkline is free, and the $130 tuition only applies if you're accepted — no equity, no catch. If money is the thing holding you back, that's worth knowing before you rule it out.
+One more note on money, since it matters at your age: a good accelerator shouldn't gate you out because you're broke. Applying to batch0 is free, and the $130 tuition only applies if you're accepted — no equity, no catch. If money is the thing holding you back, that's worth knowing before you rule it out.
 
 ## The bottom line
 
 A hackathon is a great weekend that ends Sunday night. An accelerator is a season that ends with a company you can put on a college application, keep running, or hand to your first real customer. Do a hackathon to learn how to build. Do an accelerator when you're ready to find out if what you built matters.
 
-If you've got an idea you actually care about and a few weeks to give it, the accelerator side is where the real growth happens. You can [apply to Sparkline for free](/apply) and only pay if you get in — a low-risk way to find out if you're ready to turn a weekend project into something real.
+If you've got an idea you actually care about and a few weeks to give it, the accelerator side is where the real growth happens. You can [apply to batch0 for free](/apply) and only pay if you get in — a low-risk way to find out if you're ready to turn a weekend project into something real.

@@ -18,7 +18,7 @@ export default function Error({
   return (
     <div className="min-h-[60vh] px-6 py-24">
       <div className="mx-auto max-w-md text-center">
-        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark">
+        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor">
           Something broke
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-[-0.02em] md:text-4xl">
@@ -36,7 +36,7 @@ export default function Error({
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
           <button
             onClick={reset}
-            className="press rounded-md bg-spark px-4 py-2.5 text-sm font-semibold text-black hover:bg-spark-200"
+            className="press rounded-md bg-phosphor px-4 py-2.5 text-sm font-semibold text-black hover:bg-phosphor-200"
           >
             Try again
           </button>

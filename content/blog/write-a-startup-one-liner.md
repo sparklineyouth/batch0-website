@@ -73,6 +73,6 @@ Once you have it, this sentence earns its keep everywhere. It's the opening line
 
 Your one-liner will also change, and that's normal. As you run [customer interviews](/blog/customer-interviews-beginners-guide) and hear the exact words people use to describe their problem, steal those words. The best one-liners aren't invented at a desk; they're overheard. When a user describes your product back to you better than you described it to them, that's your new one-liner. Write it down.
 
-If you want to pressure-test yours against real people and sharpen it alongside everything else in your pitch, that's a lot of what happens inside [Sparkline's four-week program](/program) during the Pitch sprint. You'll say your line dozens of times to real humans and watch it get tighter every time. But you don't need us to start. Grab one of the formulas above, write the ugly version tonight, and cut it down until a stranger can repeat it back. When they can, you're done.
+If you want to pressure-test yours against real people and sharpen it alongside everything else in your pitch, that's a lot of what happens inside [batch0's four-week program](/program) during the Pitch sprint. You'll say your line dozens of times to real humans and watch it get tighter every time. But you don't need us to start. Grab one of the formulas above, write the ugly version tonight, and cut it down until a stranger can repeat it back. When they can, you're done.
 
-Ready to build something worth writing a one-liner about? [Apply to Sparkline](/apply) for free, and only pay if you're accepted.
+Ready to build something worth writing a one-liner about? [Apply to batch0](/apply) for free, and only pay if you're accepted.

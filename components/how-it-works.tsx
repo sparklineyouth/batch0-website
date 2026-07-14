@@ -27,7 +27,7 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
     },
     {
       title: "Pitch at demo day",
-      body: "The cohort closes with a live demo day where you present the company you built. Standouts may be offered Sparkline sponsorship, a non-dilutive grant, decided on merit, never guaranteed.",
+      body: "The cohort closes with a live demo day where you present the company you built. Standouts may be offered batch0 sponsorship, a non-dilutive grant, decided on merit, never guaranteed.",
     },
   ];
 
@@ -39,7 +39,7 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
             How it works
           </h2>
           <p className="mt-4 max-w-[34rem] text-[15px] leading-[1.65] text-ink-soft">
-            There are just 5 steps to building a real company at Sparkline. The dates are set by the {derived.cohortLabel} calendar
+            There are just 5 steps to building a real company at batch0. The dates are set by the {derived.cohortLabel} calendar
             {derived.dateRangeLabel
               ? ` (${derived.dateRangeLabel.replace("→", "–")})`
               : ""}

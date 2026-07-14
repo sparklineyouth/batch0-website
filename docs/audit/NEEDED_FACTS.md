@@ -28,7 +28,7 @@ none of them block the site as shipped.
    `hello@impetusai.net` **cannot receive email**: every "email us" link
    on the old site (legal pages, billing, sponsor form, Resend reply-to
    default) was a black hole. The overhaul replaced every instance with
-   `sparklineyouth@gmail.com` (the DB `contact_email`, and the verified
+   `batch0youth@gmail.com` (the DB `contact_email`, and the verified
    Resend account owner) and removed the impetusai.net links. Action:
    restore the domain's DNS (registrar/nameserver lapse?) or confirm
    gmail is the permanent contact. `RESEND_FROM`'s reply-to also now
@@ -56,9 +56,9 @@ none of them block the site as shipped.
 
 ## Housekeeping
 
-12. **sparklineyouth.com does not resolve** — this is almost certainly why
+12. **batch0youth.com does not resolve** — this is almost certainly why
     an external test reported the site "blocks crawlers." Register it (or
-    confirm you own it) and 301 it to www.sparklineyouth.org.
+    confirm you own it) and 301 it to batch0.org.
 13. **Competitor prices.** "LaunchX, LeanGap list tuition at $3,000–$8,000+"
     — re-verify each cohort season (marked TODO in components/pricing.tsx
     and faq.tsx).

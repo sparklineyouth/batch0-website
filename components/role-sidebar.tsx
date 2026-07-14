@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import Image from "next/image";
+import { Wordmark } from "@/components/wordmark";
 import { LogOut, ShieldCheck } from "lucide-react";
 import type { Role } from "@/lib/types";
 import { INVESTOR_NAV_GROUPS } from "@/lib/nav-config";
@@ -37,14 +37,11 @@ export function RoleSidebar({
     <aside className="hidden md:flex md:sticky md:top-0 md:h-screen w-60 shrink-0 flex-col border-r border-line bg-wash px-4 py-6 overflow-hidden">
       <div className="mb-2 flex items-center justify-between px-2">
         <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo.svg" alt="" width={24} height={24} />
-          <span className="font-display font-semibold tracking-tight text-ink">
-            Spark<span className="text-spark-ink">Line</span> Youth
-          </span>
+          <Wordmark className="h-5 text-ink" />
         </Link>
         <NotificationBell align="left" />
       </div>
-      <p className="mb-4 px-2 text-[10px] font-mono font-semibold uppercase tracking-[0.2em] text-spark-ink">
+      <p className="mb-4 px-2 text-[10px] font-mono font-semibold uppercase tracking-[0.2em] text-phosphor-ink">
         {label}
       </p>
       <SidebarNav storageKey={`role-${kind}`} groups={groups} />
@@ -52,7 +49,7 @@ export function RoleSidebar({
         <div className="mt-4 space-y-1 border-t border-line pt-4">
           <Link
             href="/admin"
-            className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-spark-ink hover:bg-spark/10"
+            className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-phosphor-ink hover:bg-phosphor/10"
           >
             <ShieldCheck className="h-4 w-4" />
             Admin panel

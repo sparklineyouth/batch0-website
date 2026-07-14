@@ -78,7 +78,7 @@ export function TeamHome({
               className="h-full w-full object-cover"
             />
           ) : (
-            <span className="text-2xl font-bold text-spark-ink">
+            <span className="text-2xl font-bold text-phosphor-ink">
               {team.name.slice(0, 1).toUpperCase()}
             </span>
           )}
@@ -134,7 +134,7 @@ export function TeamHome({
               onClick={() => setTab(t.id)}
               className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                 active
-                  ? "bg-spark/15 text-spark-ink"
+                  ? "bg-phosphor/15 text-phosphor-ink"
                   : "text-ink-soft hover:text-ink"
               }`}
             >

@@ -18,7 +18,7 @@ export async function generateMetadata({
     .eq("is_public", true)
     .maybeSingle();
   return {
-    title: data ? `${data.name} · Sparkline Youth` : "Team",
+    title: data ? `${data.name} · batch0` : "Team",
     description: (data as any)?.tagline ?? undefined,
   };
 }
@@ -69,7 +69,7 @@ export default async function TeamProfile({
               className="h-16 w-16 rounded-2xl object-cover"
             />
           ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-spark/15 text-2xl font-bold text-spark">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-phosphor/15 text-2xl font-bold text-phosphor">
               {team.name.charAt(0)}
             </div>
           )}
@@ -96,7 +96,7 @@ export default async function TeamProfile({
                 href={team.website_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-spark px-4 py-2 text-sm font-semibold text-black hover:bg-spark-200"
+                className="inline-flex items-center gap-1.5 rounded-full bg-phosphor px-4 py-2 text-sm font-semibold text-black hover:bg-phosphor-200"
               >
                 Visit website <ExternalLink className="h-3.5 w-3.5" />
               </a>
@@ -126,7 +126,7 @@ export default async function TeamProfile({
 
         {(members?.length ?? 0) > 0 && (
           <section className="mt-12 border-t border-white/10 pt-8">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-spark">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-phosphor">
               Team
             </h2>
             <ul className="mt-4 space-y-2">

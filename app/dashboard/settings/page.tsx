@@ -7,7 +7,7 @@ import { DiscordCard } from "./discord-card";
 import { Card } from "@/components/ui/card";
 import type { Theme } from "@/lib/types";
 
-export const metadata = { title: "Settings · Sparkline Youth" };
+export const metadata = { title: "Settings · batch0" };
 
 const ERROR_COPY: Record<string, string> = {
   not_configured: "Discord isn't configured on this site yet.",
@@ -17,7 +17,7 @@ const ERROR_COPY: Record<string, string> = {
   oauth_failed: "Discord rejected the login. Please retry.",
   save_failed: "We couldn't save the link. Try again.",
   already_linked_to_another_account:
-    "That Discord account is already linked to a different Sparkline Youth user.",
+    "That Discord account is already linked to a different batch0 user.",
 };
 
 export default async function SettingsPage({
@@ -55,7 +55,7 @@ export default async function SettingsPage({
       </p>
 
       {(linkedJustNow || unlinkedJustNow) && (
-        <div className="mt-5 rounded-lg border border-spark/30 bg-spark/5 p-3 text-sm text-spark-ink">
+        <div className="mt-5 rounded-lg border border-phosphor/30 bg-phosphor/5 p-3 text-sm text-phosphor-ink">
           {linkedJustNow
             ? "Discord linked. Welcome to the community."
             : "Discord unlinked."}

@@ -74,7 +74,7 @@ export async function GET(request: Request) {
           await notify({
             userId: user.id,
             type: "welcome",
-            title: "Welcome to Sparkline Youth",
+            title: "Welcome to batch0",
             body: "Your account is ready. Apply when you're ready.",
             link: "/apply",
           });

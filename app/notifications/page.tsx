@@ -5,7 +5,7 @@ import { requireUser, getProfile, roleHome } from "@/lib/auth";
 import { MarkAllRead } from "./mark-all-read";
 import { NotificationItem } from "./notification-item";
 
-export const metadata = { title: "Notifications · Sparkline Youth" };
+export const metadata = { title: "Notifications · batch0" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();
@@ -42,7 +42,7 @@ export default async function NotificationsPage() {
       <main className="mx-auto max-w-3xl px-5 py-10 md:px-8 md:py-14">
         <div className="flex items-baseline justify-between gap-4">
           <div>
-            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
               Inbox
             </p>
             <h1 className="mt-2 font-display text-3xl md:text-4xl font-bold tracking-[-0.02em] text-ink">

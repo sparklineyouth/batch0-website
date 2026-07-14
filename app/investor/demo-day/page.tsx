@@ -54,7 +54,7 @@ export default async function InvestorDemoDayPage() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={t.logo_url} alt="" className="h-full w-full object-cover" />
                     ) : (
-                      <span className="text-lg font-bold text-spark-ink">
+                      <span className="text-lg font-bold text-phosphor-ink">
                         {t?.name?.slice(0, 1).toUpperCase()}
                       </span>
                     )}

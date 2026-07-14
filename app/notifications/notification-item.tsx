@@ -77,13 +77,13 @@ export function NotificationItem({ n }: { n: N }) {
         {isUnread && (
           <span
             aria-hidden
-            className="absolute left-0 top-0 h-full w-[2px] bg-spark"
+            className="absolute left-0 top-0 h-full w-[2px] bg-phosphor"
           />
         )}
         <div
           className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
             isUnread
-              ? "border-spark/30 bg-spark/10 text-spark-ink"
+              ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
               : "border-line text-ink-faint"
           }`}
         >

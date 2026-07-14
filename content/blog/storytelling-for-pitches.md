@@ -96,7 +96,7 @@ If you're putting this into slides, the structure maps cleanly onto a deck. The 
 
 The story isn't a separate thing you bolt on. It's the thread that runs through every slide, so the deck feels like one argument instead of a stack of facts. When judges can retell your pitch to a friend in two sentences, you've done it right.
 
-At Sparkline Youth, the final week of the accelerator is built around exactly this: turning what you've built into a story you can pitch on demo day. The narrative comes last for a reason. You can only tell a true story about a product once it exists.
+At batch0, the final week of the accelerator is built around exactly this: turning what you've built into a story you can pitch on demo day. The narrative comes last for a reason. You can only tell a true story about a product once it exists.
 
 ## How long does it take to get good at this?
 

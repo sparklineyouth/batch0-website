@@ -28,7 +28,7 @@ const DELIVERABLES: { title: string; body: string }[] = [
   },
   {
     title: "100% of your company",
-    body: "Sparkline takes no equity, no IP, and no royalties. Everything you build is yours.",
+    body: "batch0 takes no equity, no IP, and no royalties. Everything you build is yours.",
   },
 ];
 
@@ -44,7 +44,7 @@ export default function Deliverables() {
         </p>
         <ul className="mt-10 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
           {DELIVERABLES.map((d) => (
-            <li key={d.title} className="border-t-2 border-spark pt-4">
+            <li key={d.title} className="border-t-2 border-phosphor pt-4">
               <h3 className="text-[1.0625rem] font-semibold tracking-tight text-ink">
                 {d.title}
               </h3>

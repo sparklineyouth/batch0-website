@@ -203,7 +203,7 @@ export const QUESTION_FIELDS: readonly QuestionConfig[] = Object.freeze([
   {
     key: "why_join",
     type: "textarea",
-    label: "Why Sparkline Youth?",
+    label: "Why batch0?",
     help: "",
     placeholder: "What do you want to get out of these 4 weeks?",
     required: true,

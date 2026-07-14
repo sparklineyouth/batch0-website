@@ -15,39 +15,39 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Delete container-scroll.tsx and the 80rem scroll runway it forces (h-[42rem] md:h-[80rem] wrapper, plus the h-[60rem] md:h-[80rem] loading placeholder in app/page.tsx:25). Show the dashboard mock as a static, honestly-framed screenshot/figure (simple border, no 3D tilt, no scroll-linked transform), which also removes the last framer-motion dependency from the marketing bundle.
 
 ### [CRITICAL] eyebrow-labels — components/problem.tsx:28
-**Issue:** Every single section on the marketing surface opens with the identical tiny uppercase tracked eyebrow kicker in brand yellow — 12+ instances of the same class recipe (text-[11px] uppercase tracking-[0.22em] text-spark), 35 uppercase-tracking labels total across the scoped files. The unbroken kicker→bold-heading→white/75-paragraph rhythm on all ~12 sections is the single strongest AI-template signature on the site.
+**Issue:** Every single section on the marketing surface opens with the identical tiny uppercase tracked eyebrow kicker in brand yellow — 12+ instances of the same class recipe (text-[11px] uppercase tracking-[0.22em] text-phosphor), 35 uppercase-tracking labels total across the scoped files. The unbroken kicker→bold-heading→white/75-paragraph rhythm on all ~12 sections is the single strongest AI-template signature on the site.
 
-**Evidence:** `problem.tsx:28 "The problem"; builds.tsx:57 "What you'll learn"; scroll-preview.tsx:79/142 "The product"; curriculum.tsx:41 "The 4-week sprint"; stats.tsx:21 "Tuition"; comparison.tsx:72 "Why Sparkline Youth"; faq.tsx:58 "FAQ"; cta.tsx:17 "Reserve your seat"; sponsors/page.tsx:82/120/192; all: className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-spark"`
+**Evidence:** `problem.tsx:28 "The problem"; builds.tsx:57 "What you'll learn"; scroll-preview.tsx:79/142 "The product"; curriculum.tsx:41 "The 4-week sprint"; stats.tsx:21 "Tuition"; comparison.tsx:72 "Why batch0"; faq.tsx:58 "FAQ"; cta.tsx:17 "Reserve your seat"; sponsors/page.tsx:82/120/192; all: className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.22em] text-phosphor"`
 
 **Fix:** Kill the eyebrow on at least 8 of the 12 sections and let headings carry hierarchy. Where a label genuinely earns its place (e.g. FAQ), vary the treatment — numbered sections, inline lead-ins, or plain-weight small text in white/50 — so no two consecutive sections share the kicker recipe.
 
 ### [MAJOR] comparison-table — components/comparison.tsx:36
 **Issue:** Named-competitor comparison table (LaunchX, LeanGap, YEA!) with Check/Minus Lucide cells and our-row-highlighted-in-brand-color — the canonical AI 'Us vs Them' table, legally risky and instantly template-flavored. The $3,000–$8,000 competitor price is also repeated in problem.tsx:8, stats.tsx:31, and faq.tsx:19.
 
-**Evidence:** `rows: Row[] = [{ program: "LaunchX", cost: "$3,000–$8,000", ... }, { program: "LeanGap", ... }, { program: "YEA!", ... }, { program: "Sparkline Youth", ... highlight: true }] ... r.highlight ? "bg-spark/[0.04]" : ""`
+**Evidence:** `rows: Row[] = [{ program: "LaunchX", cost: "$3,000–$8,000", ... }, { program: "LeanGap", ... }, { program: "YEA!", ... }, { program: "batch0", ... highlight: true }] ... r.highlight ? "bg-phosphor/[0.04]" : ""`
 
-**Fix:** Replace the named-competitor grid with a single honest positioning statement or an anonymous 'typical programs vs. Sparkline' two-column contrast (cost, format, outcome) written as prose/definition list. Deduplicate the $3,000–$8,000 claim to one location with a source.
+**Fix:** Replace the named-competitor grid with a single honest positioning statement or an anonymous 'typical programs vs. batch0' two-column contrast (cost, format, outcome) written as prose/definition list. Deduplicate the $3,000–$8,000 claim to one location with a source.
 
 ### [MAJOR] neon-glow — components/hero.tsx:71
-**Issue:** Dark-mode-only site with a neon accent and a colored glow shadow under the primary CTA — and the identical spark-glow shadow recipe is copy-pasted onto six different buttons across the surface (hero, cta.tsx:90, sponsor.tsx:106, sticky-mobile-cta.tsx:49, sponsors/page.tsx:63, sponsor-contact-form.tsx:113).
+**Issue:** Dark-mode-only site with a neon accent and a colored glow shadow under the primary CTA — and the identical phosphor-glow shadow recipe is copy-pasted onto six different buttons across the surface (hero, cta.tsx:90, sponsor.tsx:106, sticky-mobile-cta.tsx:49, sponsors/page.tsx:63, sponsor-contact-form.tsx:113).
 
-**Evidence:** `className="press group inline-flex ... bg-spark px-5 py-4 sm:py-3 text-[15px] font-semibold text-black shadow-[0_8px_24px_-8px_rgba(250,204,21,0.5)] hover:bg-spark-200 ..."`
+**Evidence:** `className="press group inline-flex ... bg-phosphor px-5 py-4 sm:py-3 text-[15px] font-semibold text-black shadow-[0_8px_24px_-8px_rgba(250,204,21,0.5)] hover:bg-phosphor-200 ..."`
 
-**Fix:** Drop the colored glow entirely — a solid #FACC15 button on black has more than enough contrast. If elevation is wanted, use a neutral shadow (shadow-md black) on at most the hero CTA. Extract one Button/CTA class so the recipe lives in one place instead of six copies.
+**Fix:** Drop the colored glow entirely — a solid #FFBB00 button on black has more than enough contrast. If elevation is wanted, use a neutral shadow (shadow-md black) on at most the hero CTA. Extract one Button/CTA class so the recipe lives in one place instead of six copies.
 
 ### [MAJOR] gradient-text — app/globals.css:208
 **Issue:** The .shine gradient-clipped-text utility applies the 'one shiny word in the hero headline' pattern — used on the key noun in every hero-level heading (hero 'investors', scroll-preview 'investor-ready' twice, sponsors 'founders'). Monochrome yellow rather than purple→blue, but the same instantly-recognizable template move.
 
-**Evidence:** `.shine { background: linear-gradient(110deg, #facc15 0%, #fde047 45%, #facc15 100%); -webkit-background-clip: text; background-clip: text; color: transparent; } — used at hero.tsx:57 'Pitch it to <span className="shine">investors</span>.'`
+**Evidence:** `.shine { background: linear-gradient(110deg, #ffbb00 0%, #fde047 45%, #ffbb00 100%); -webkit-background-clip: text; background-clip: text; color: transparent; } — used at hero.tsx:57 'Pitch it to <span className="shine">investors</span>.'`
 
-**Fix:** Replace .shine spans with plain text-spark (flat brand yellow) or no accent at all — the headline copy is strong enough. Delete the .shine utility.
+**Fix:** Replace .shine spans with plain text-phosphor (flat brand yellow) or no accent at all — the headline copy is strong enough. Delete the .shine utility.
 
 ### [MAJOR] pulse-glow — tailwind.config.ts:33
-**Issue:** spark-pulse is a pulsing drop-shadow glow animation (16px→32px yellow halo) — the flagged 'pulsing glow' tell. Applied to the auth-layout logo (app/(auth)/layout.tsx:13) and the 'Presenting sponsor' pill dot (components/sponsor.tsx:39); hero.tsx:48 additionally uses animate-ping on a fake 'live' status dot inside the eyebrow pill.
+**Issue:** phosphor-pulse is a pulsing drop-shadow glow animation (16px→32px yellow halo) — the flagged 'pulsing glow' tell. Applied to the auth-layout logo (app/(auth)/layout.tsx:13) and the 'Presenting sponsor' pill dot (components/sponsor.tsx:39); hero.tsx:48 additionally uses animate-ping on a fake 'live' status dot inside the eyebrow pill.
 
-**Evidence:** `sparkPulse: { "0%, 100%": { opacity: "1", filter: "drop-shadow(0 0 16px rgba(250,204,21,0.6))" }, "50%": { opacity: "0.85", filter: "drop-shadow(0 0 32px rgba(250,204,21,0.9))" } } ... hero.tsx:48 <span className="absolute inset-0 animate-ping rounded-full bg-spark/70" />`
+**Evidence:** `phosphorPulse: { "0%, 100%": { opacity: "1", filter: "drop-shadow(0 0 16px rgba(250,204,21,0.6))" }, "50%": { opacity: "0.85", filter: "drop-shadow(0 0 32px rgba(250,204,21,0.9))" } } ... hero.tsx:48 <span className="absolute inset-0 animate-ping rounded-full bg-phosphor/70" />`
 
-**Fix:** Delete the spark-pulse keyframe and both usages (static logo, static dot). Remove the animate-ping live-dot in the hero pill — a countdown/spots label is a real signal and needs no fake pulse; if a dot must stay, keep it static.
+**Fix:** Delete the phosphor-pulse keyframe and both usages (static logo, static dot). Remove the animate-ping live-dot in the hero pill — a countdown/spots label is a real signal and needs no fake pulse; if a dot must stay, keep it static.
 
 ### [MAJOR] marquee — components/marquee.tsx:35
 **Issue:** Infinite auto-scrolling text marquee of curriculum keywords directly under the hero — the logo/keyword marquee is a flagged template tell, and this one scrolls marketing claims ('Zero Equity', 'Investor Intros') rather than logos, so it reads as decoration with no proof value.
@@ -57,16 +57,16 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Remove the marquee section. If a curriculum teaser is wanted under the hero, render the same terms as a static wrapped row of plain text separated by slashes (no animation), or fold them into the curriculum section where they already live.
 
 ### [MAJOR] card-grid — components/builds.tsx:77
-**Issue:** Uniform icon-card grid: six identical rounded-2xl border-white/10 bg-white/[0.02] p-6 cards, each opening with a Lucide icon in a 10×10 rounded-xl bg-spark/15 chip — the untouched shadcn/template feature-card recipe. The exact same recipe repeats on app/sponsors/page.tsx:95 (3-up WHY cards, same classes and icon chip).
+**Issue:** Uniform icon-card grid: six identical rounded-2xl border-white/10 bg-white/[0.02] p-6 cards, each opening with a Lucide icon in a 10×10 rounded-xl bg-phosphor/15 chip — the untouched shadcn/template feature-card recipe. The exact same recipe repeats on app/sponsors/page.tsx:95 (3-up WHY cards, same classes and icon chip).
 
-**Evidence:** `className="rounded-2xl border border-white/10 bg-white/[0.02] p-6" ... <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-spark/15 text-spark"><Icon className="h-5 w-5" /></span>`
+**Evidence:** `className="rounded-2xl border border-white/10 bg-white/[0.02] p-6" ... <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-phosphor/15 text-phosphor"><Icon className="h-5 w-5" /></span>`
 
 **Fix:** Break the grid: the six skill blocks are sequential, so render them as a numbered two-column list (like problem.tsx already does well with its 01/02/03 list) or vary card sizes/orientation. Drop the icon chips entirely — generic Compass/Wrench/LineChart Lucide icons add no information.
 
 ### [MAJOR] card-grid — app/sponsors/page.tsx:143
 **Issue:** Three-tier pricing cards with a floating 'Most popular' pill on the highlighted middle tier — the default AI pricing-section template (rounded-2xl cards, Check-icon perk lists, highlighted tier with brand gradient background).
 
-**Evidence:** `<span className="absolute -top-3 left-6 rounded-full bg-spark px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">Most popular</span> ... t.highlight ? "border-spark/40 bg-gradient-to-br from-spark/[0.08] to-transparent"`
+**Evidence:** `<span className="absolute -top-3 left-6 rounded-full bg-phosphor px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">Most popular</span> ... t.highlight ? "border-phosphor/40 bg-gradient-to-br from-phosphor/[0.08] to-transparent"`
 
 **Fix:** Drop the 'Most popular' badge (with 3 B2B tiers it's presumptuous, not social proof) and flatten the tiers into a single comparison-style list or side-by-side columns with a shared table spine; differentiate the recommended tier with copy ('Best for first-time sponsors') instead of a floating pill.
 
@@ -78,9 +78,9 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Reserve Reveal for at most 2–3 hero-adjacent moments and let everything else render static. Where kept, shorten to ~300ms and remove per-item stagger on lists (animate the container once).
 
 ### [MAJOR] glassmorphism — app/(auth)/layout.tsx:18
-**Issue:** The auth shell is the full AI-template stack in one screen: radial yellow glow wash behind (bg-spark-radial opacity-60), a glassmorphic card (translucent zinc-900/60 + backdrop-blur + rounded-2xl + border-white/10), and a logo pulsing with the spark-pulse glow animation.
+**Issue:** The auth shell is the full AI-template stack in one screen: radial yellow glow wash behind (bg-phosphor-radial opacity-60), a glassmorphic card (translucent zinc-900/60 + backdrop-blur + rounded-2xl + border-white/10), and a logo pulsing with the phosphor-pulse glow animation.
 
-**Evidence:** `<div aria-hidden className="pointer-events-none absolute inset-0 bg-spark-radial opacity-60" /> ... <Image src="/logo.svg" ... className="animate-spark-pulse" /> ... <div className="w-full rounded-2xl border border-white/10 bg-zinc-900/60 p-7 backdrop-blur">`
+**Evidence:** `<div aria-hidden className="pointer-events-none absolute inset-0 bg-phosphor-radial opacity-60" /> ... <Image src="/logo.svg" ... className="animate-phosphor-pulse" /> ... <div className="w-full rounded-2xl border border-white/10 bg-zinc-900/60 p-7 backdrop-blur">`
 
 **Fix:** Make the card opaque (bg-zinc-950 or bg-ink-900), drop backdrop-blur (nothing is behind it worth blurring), remove the radial glow div, and render the logo static. A plain bordered panel on black is cleaner and loads lighter.
 
@@ -94,14 +94,14 @@ Totals: visual 22 · copy 29 · technical 22
 ### [MAJOR] og-image — app/opengraph-image.tsx:30
 **Issue:** The OG image is the same template stack in static form: black background + radial yellow glow at top, a featureless glowing yellow rounded square standing in for a logo (0 0 80px glow), pill badge, giant tight-tracked headline with one yellow word — reads as AI-generated placeholder art in link previews.
 
-**Evidence:** `backgroundImage: "radial-gradient(ellipse at top, rgba(250,204,21,0.22), rgba(0,0,0,1) 60%)" ... { width: 56, height: 56, borderRadius: 14, background: "#FACC15", boxShadow: "0 0 80px rgba(250,204,21,0.55)" }`
+**Evidence:** `backgroundImage: "radial-gradient(ellipse at top, rgba(250,204,21,0.22), rgba(0,0,0,1) 60%)" ... { width: 56, height: 56, borderRadius: 14, background: "#FFBB00", boxShadow: "0 0 80px rgba(250,204,21,0.55)" }`
 
 **Fix:** Embed the real logo.svg (fetch + data-URI or inline path) instead of a glowing square, drop the radial glow and the box-shadow, and let the card be flat black with the yellow reserved for the wordmark and one accent line.
 
 ### [MAJOR] pill-badge — components/hero.tsx:46
-**Issue:** The rounded-full brand-tinted pill badge with a tiny dot (border-spark/30 bg-spark/[0.06] + dot + uppercase tracked text) is stamped out five times across the surface — hero eyebrow, sponsor.tsx:38 'Presenting sponsor', comparison.tsx:84 'Zero equity. Ever.', sponsors/page.tsx:46 'Sponsorship' — the 'announcement pill above hero' template pattern generalized to every section.
+**Issue:** The rounded-full brand-tinted pill badge with a tiny dot (border-phosphor/30 bg-phosphor/[0.06] + dot + uppercase tracked text) is stamped out five times across the surface — hero eyebrow, sponsor.tsx:38 'Presenting sponsor', comparison.tsx:84 'Zero equity. Ever.', sponsors/page.tsx:46 'Sponsorship' — the 'announcement pill above hero' template pattern generalized to every section.
 
-**Evidence:** `className="inline-flex max-w-full items-center gap-2 rounded-full border border-spark/30 bg-spark/[0.06] px-3 py-1.5 text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.18em] sm:tracking-[0.2em] text-spark"`
+**Evidence:** `className="inline-flex max-w-full items-center gap-2 rounded-full border border-phosphor/30 bg-phosphor/[0.06] px-3 py-1.5 text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.18em] sm:tracking-[0.2em] text-phosphor"`
 
 **Fix:** Keep the pill only in the hero where it carries live data (countdown/spots), and restyle the other four as plain inline text labels or drop them. The hero pill itself works because it shows real state — the copies are pure chrome.
 
@@ -115,23 +115,23 @@ Totals: visual 22 · copy 29 · technical 22
 ### [MINOR] card-nesting — components/cta.tsx:50
 **Issue:** Cards nested in cards in the final CTA: the gradient-surfaced pricing card (rounded-2xl + bg-gradient-to-br) contains a bordered '$0 free to apply' box and a bordered countdown/spots box — three bordered boxes deep, with the $0 rendered inside a circular chip as a fourth level.
 
-**Evidence:** `outer: className="...rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent..." ; inner: className="mt-5 flex items-center gap-3 rounded-lg border border-spark/20 bg-spark/[0.04] px-3 py-2.5" with <span ... rounded-full bg-spark/15 ...>$0</span>`
+**Evidence:** `outer: className="...rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent..." ; inner: className="mt-5 flex items-center gap-3 rounded-lg border border-phosphor/20 bg-phosphor/[0.04] px-3 py-2.5" with <span ... rounded-full bg-phosphor/15 ...>$0</span>`
 
 **Fix:** Flatten one level: keep the outer card, render 'Free to apply · ~5 minutes' as a plain line with the checklist bullets, and show the countdown/spots label as unboxed text above the button.
 
 ### [MINOR] decorative-glow — components/hero.tsx:40
 **Issue:** Decorative yellow gradient wash floating behind the hero (and duplicated on the sponsors hero at app/sponsors/page.tsx:43) — the soft-glow-behind-hero decoration, a restrained cousin of the blurred-orb pattern.
 
-**Evidence:** `<div aria-hidden className="absolute inset-x-0 -top-16 h-64 bg-gradient-to-b from-spark/[0.08] to-transparent pointer-events-none" />`
+**Evidence:** `<div aria-hidden className="absolute inset-x-0 -top-16 h-64 bg-gradient-to-b from-phosphor/[0.08] to-transparent pointer-events-none" />`
 
 **Fix:** Remove both washes, or if some warmth is wanted keep exactly one (homepage hero) at lower opacity — the black-on-yellow brand contrast doesn't need atmospheric lighting.
 
 ### [MINOR] dead-decor — app/globals.css:183
-**Issue:** A drawer of unused AI-template decoration utilities ships in globals.css: .glow-text (yellow text-shadow), .grid-bg (dot grid), .gradient-border (masked gradient border), .noise (SVG turbulence overlay) — none referenced by any scoped component — plus tailwind.config.ts:62 spark-grid which duplicates .grid-bg and is also unused (spark-radial is used only by auth/apply).
+**Issue:** A drawer of unused AI-template decoration utilities ships in globals.css: .glow-text (yellow text-shadow), .grid-bg (dot grid), .gradient-border (masked gradient border), .noise (SVG turbulence overlay) — none referenced by any scoped component — plus tailwind.config.ts:62 phosphor-grid which duplicates .grid-bg and is also unused (phosphor-radial is used only by auth/apply).
 
 **Evidence:** `.glow-text { text-shadow: 0 0 40px rgba(250, 204, 21, 0.35); } ... .gradient-border::before { ... background: linear-gradient(135deg, rgba(250, 204, 21, 0.6), rgba(250, 204, 21, 0)); ... } ... .noise::after { ... feTurbulence ... }`
 
-**Fix:** Delete .glow-text, .grid-bg, .gradient-border, .noise from globals.css and the spark-grid backgroundImage from tailwind.config.ts; keep spark-radial only if the auth layout keeps it after its own fix.
+**Fix:** Delete .glow-text, .grid-bg, .gradient-border, .noise from globals.css and the phosphor-grid backgroundImage from tailwind.config.ts; keep phosphor-radial only if the auth layout keeps it after its own fix.
 
 ### [MINOR] glassmorphism — components/navbar.tsx:174
 **Issue:** Translucent blur-backed bars: fixed navbar and the sticky mobile CTA bar (sticky-mobile-cta.tsx:46) both use bg-black/80–95 + backdrop-blur; the mobile drawer scrim adds backdrop-blur-md (line 86). Near-opaque so the effect is subtle, but the blur costs compositing on scroll for close to zero visual payoff on a pure-black site.
@@ -157,7 +157,7 @@ Totals: visual 22 · copy 29 · technical 22
 ### [MINOR] template-component — components/faq.tsx:83
 **Issue:** FAQ accordion uses the stock Plus-icon-rotates-45°-into-an-X pattern with the default one-open-at-a-time state — the shadcn/Radix accordion default look reproduced by hand.
 
-**Evidence:** `<Plus className={'h-4 w-4 shrink-0 text-white/40 transition-transform duration-200 ${isOpen ? "rotate-45 text-spark" : ""}'} />`
+**Evidence:** `<Plus className={'h-4 w-4 shrink-0 text-white/40 transition-transform duration-200 ${isOpen ? "rotate-45 text-phosphor" : ""}'} />`
 
 **Fix:** Lowest priority, but swapping to a native <details>/<summary> with a custom marker, or simply always-open Q&A prose (9 answers of this quality deserve to be read, not hidden), would both read as more deliberate.
 
@@ -167,7 +167,7 @@ Totals: visual 22 · copy 29 · technical 22
 ### [CRITICAL] fact-contradiction — components/hero.tsx:61
 **Issue:** "4-week" program claim contradicts the real cohort: Summer 2026 runs 2026-07-30 to 2026-09-13 (~6.5 weeks). The same page renders derived.dateRangeLabel ("Jul 30 → Sep 13") in the scroll-preview dashboard mock, so the contradiction is visible on-screen. The claim repeats at hero.tsx:107 ("4 wks"), stats.tsx:13 ("4 wks"), curriculum.tsx:42 ("The 4-week sprint"), footer.tsx:23, faq.tsx:15/19/31, cta.tsx:62, app/layout.tsx:17/28/39/60/78, app/opengraph-image.tsx:11/92, and scroll-preview.tsx:65 ("Week 4 ends live on Zoom").
 
-**Evidence:** `Sparkline Youth is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers.`
+**Evidence:** `batch0 is a 4-week, fully virtual entrepreneurship program for U.S. high schoolers.`
 
 **Fix:** Pick the true duration. Either restructure the curriculum copy around the actual ~6.5-week window (e.g. "6 weeks, Jul 30–Sep 13") or shorten the cohort in the DB to match. Then sweep every listed location including metadata, JSON-LD, and the OG image — they must all read from one source of truth (site-config), not hardcoded strings.
 
@@ -176,7 +176,7 @@ Totals: visual 22 · copy 29 · technical 22
 
 **Evidence:** `with feedback from mentors who have shipped.`
 
-**Fix:** Either recruit and name real mentors before launch, or rewrite to what is true today: direct feedback from the founder/team, e.g. "weekly feedback from the Sparkline team." Never say "mentors" (plural, credentialed) while the mentor count is zero.
+**Fix:** Either recruit and name real mentors before launch, or rewrite to what is true today: direct feedback from the founder/team, e.g. "weekly feedback from the batch0 team." Never say "mentors" (plural, credentialed) while the mentor count is zero.
 
 ### [CRITICAL] fabricated-claim — components/faq.tsx:27
 **Issue:** The most specific version of the "investor network" claim — naming investor types ("angels, scout funds, and pre-seed VCs interested in young founders") with zero named investors, zero events in the system, and no cohort ever run. "Our investor network" also appears in hero.tsx:63, problem.tsx:18, curriculum.tsx:30/51, scroll-preview.tsx:65, faq.tsx:31/43, cta.tsx:64, footer.tsx:25, comparison ("Pitch + intros"), sponsors page:57-58, and layout.tsx metadata. The "funding never guaranteed" disclaimers don't cure this — the network itself is the unverified claim.
@@ -193,11 +193,11 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Delete the stat row or replace with facts that survive a diligence check (e.g. founding year of the LLC, real shipped project names with links). If Quantiphi/Schroders refer to a family member's or advisor's career, attribute it honestly or cut it. "Reported by clients" needs a named, consenting client or it goes.
 
 ### [CRITICAL] fabricated-claim — components/sponsor.tsx:47
-**Issue:** Self-sponsorship presented as third-party backing. Impetus AI LLC is the legal entity that operates Sparkline Youth — the site frames its own owner as a "Presenting sponsor" that "backs" the program, which reads as an external endorsement/funding relationship that doesn't exist.
+**Issue:** Self-sponsorship presented as third-party backing. Impetus AI LLC is the legal entity that operates batch0 — the site frames its own owner as a "Presenting sponsor" that "backs" the program, which reads as an external endorsement/funding relationship that doesn't exist.
 
-**Evidence:** `Sparkline Youth runs on the backing of Impetus AI — AI consulting for local businesses.`
+**Evidence:** `batch0 runs on the backing of Impetus AI — AI consulting for local businesses.`
 
-**Fix:** Reframe truthfully: "Sparkline Youth is a program by Impetus AI LLC" — parent-company disclosure, not a sponsor slot. Move the AI-consulting pillars (AI Audit/Roadmap/Full Build — B2B copy aimed at the wrong audience anyway) off the teen landing page entirely, and reserve "Presenting sponsor" for an actual external sponsor.
+**Fix:** Reframe truthfully: "batch0 is a program by Impetus AI LLC" — parent-company disclosure, not a sponsor slot. Move the AI-consulting pillars (AI Audit/Roadmap/Full Build — B2B copy aimed at the wrong audience anyway) off the teen landing page entirely, and reserve "Presenting sponsor" for an actual external sponsor.
 
 ### [CRITICAL] fabricated-claim — app/sponsors/page.tsx:56
 **Issue:** "100 vetted teen founders per cohort" stated as present fact to prospective sponsors. Reality: 0 enrollments, 2 draft applications, no cohort has run. Capacity (100) is real; "vetted teen founders" is invented. Repeated in metadata (line 10) and the Pipeline card (line 18).
@@ -228,7 +228,7 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Future tense and honest scale: "a private Discord for your cohort" — drop "active." Cut "the application is selective" until there's an applicant pool that makes selection real, or state the actual bar ("we review every application; not everyone is admitted").
 
 ### [CRITICAL] fact-contradiction — components/comparison.tsx:63
-**Issue:** Comparison table awards Sparkline "Year-round: Yes" when exactly one cohort exists (Summer 2026) and none has run. The axis is chosen to beat competitors on a capability Sparkline doesn't have.
+**Issue:** Comparison table awards batch0 "Year-round: Yes" when exactly one cohort exists (Summer 2026) and none has run. The axis is chosen to beat competitors on a capability batch0 doesn't have.
 
 **Evidence:** `yearRound: true,`
 
@@ -256,7 +256,7 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Replace with the concrete offer: "Put your brand in front of 100 teen founders this summer" / "Fund a named grant for Cohort 1." Specificity (cohort, date, count) is what a generic competitor can't copy.
 
 ### [MAJOR] swap-test — components/problem.tsx:32
-**Issue:** Swap-test failures — headlines that work verbatim for "SparkHub" or any teen accelerator: "Youth entrepreneurship is broken." (here), "Learn to build a startup. Pitch it to investors." (hero.tsx:55-57), "The skills founders actually use." (builds.tsx:61), "Idea to investor-ready." (curriculum.tsx:45), "Questions, answered." (faq.tsx:62), "Affordable. Virtual. Real investor exposure." (comparison.tsx:76), "Let's build something together." (sponsors:196), "Pick the level that fits." (sponsors:124). None contains a name, number, date, or claim unique to Sparkline.
+**Issue:** Swap-test failures — headlines that work verbatim for "SparkHub" or any teen accelerator: "Youth entrepreneurship is broken." (here), "Learn to build a startup. Pitch it to investors." (hero.tsx:55-57), "The skills founders actually use." (builds.tsx:61), "Idea to investor-ready." (curriculum.tsx:45), "Questions, answered." (faq.tsx:62), "Affordable. Virtual. Real investor exposure." (comparison.tsx:76), "Let's build something together." (sponsors:196), "Pick the level that fits." (sponsors:124). None contains a name, number, date, or claim unique to batch0.
 
 **Evidence:** `Youth entrepreneurship is broken.`
 
@@ -291,7 +291,7 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Budget one em dash per section. Convert most to periods or commas: "Ship a v1 fast: a landing page, no-code MVP, or working prototype. Don't overbuild before validation."
 
 ### [MAJOR] cta-inconsistency — components/cta.tsx:92
-**Issue:** Same label, different destinations — and inconsistent naming across sections. "Start your application" goes to /apply in the hero (hero.tsx:29-30) but to /signup?next=%2Fapply here. Meanwhile the navbar says "Apply" (/apply), the sticky mobile bar says "Apply to Sparkline Youth" (/apply), scroll-preview mobile's "Apply" link goes to the #apply in-page anchor (scroll-preview.tsx:131) — not the apply page, and the CTA section eyebrow says "Reserve your seat." Five names, three destinations, one action.
+**Issue:** Same label, different destinations — and inconsistent naming across sections. "Start your application" goes to /apply in the hero (hero.tsx:29-30) but to /signup?next=%2Fapply here. Meanwhile the navbar says "Apply" (/apply), the sticky mobile bar says "Apply to batch0" (/apply), scroll-preview mobile's "Apply" link goes to the #apply in-page anchor (scroll-preview.tsx:131) — not the apply page, and the CTA section eyebrow says "Reserve your seat." Five names, three destinations, one action.
 
 **Evidence:** `href="/signup?next=%2Fapply" … Start your application`
 
@@ -319,16 +319,16 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Pick one name — "Pitch Day" is the dominant usage — and sweep tiers.ts, the sponsors page, and admin/dashboard surfaces.
 
 ### [MAJOR] fact-contradiction — app/(legal)/terms/page.tsx:13
-**Issue:** Terms say the platform is "operated by Sparkline Youth," but Sparkline Youth is not a legal entity — the operator is Impetus AI LLC. A contract that names a non-entity as the counterparty is a real legal defect, not just copy slop. (Noticed in passing; scope for legal pages was titles, which are fine.)
+**Issue:** Terms say the platform is "operated by batch0," but batch0 is not a legal entity — the operator is Impetus AI LLC. A contract that names a non-entity as the counterparty is a real legal defect, not just copy slop. (Noticed in passing; scope for legal pages was titles, which are fine.)
 
-**Evidence:** `(sparklineyouth.org), operated by Sparkline Youth.`
+**Evidence:** `(batch0.org), operated by batch0.`
 
-**Fix:** "operated by Impetus AI LLC (d/b/a Sparkline Youth)" — and check privacy/refund pages for the same entity naming.
+**Fix:** "operated by Impetus AI LLC (d/b/a batch0)" — and check privacy/refund pages for the same entity naming.
 
 ### [MINOR] brochure-copy — components/marquee.tsx:14
-**Issue:** The marquee is framed (in its own code comment) as a curriculum manifest, but items 9–11 are sales claims, not curriculum: "Sparkline Sponsorship," "Investor Intros," "Zero Equity." Benefits dressed as course content — and "Investor Intros" repeats the unverified network claim in a strip that scrolls past sceptical parents.
+**Issue:** The marquee is framed (in its own code comment) as a curriculum manifest, but items 9–11 are sales claims, not curriculum: "batch0 Sponsorship," "Investor Intros," "Zero Equity." Benefits dressed as course content — and "Investor Intros" repeats the unverified network claim in a strip that scrolls past sceptical parents.
 
-**Evidence:** `"Sparkline Sponsorship", "Investor Intros", "Zero Equity",`
+**Evidence:** `"batch0 Sponsorship", "Investor Intros", "Zero Equity",`
 
 **Fix:** Keep the strip pure curriculum (the first 8 items are genuinely good) and drop the three benefit items.
 
@@ -342,16 +342,16 @@ Totals: visual 22 · copy 29 · technical 22
 ### [MINOR] slop-vocabulary — app/(auth)/login/page.tsx:28
 **Issue:** Checklist-2 word "journey" on the login screen — the one place a returning user needs zero persuasion.
 
-**Evidence:** `Log in to continue your Sparkline Youth journey.`
+**Evidence:** `Log in to continue your batch0 journey.`
 
 **Fix:** "Log in to your dashboard." Also "enterprise-grade AI strategy" (components/sponsor.tsx:50) is the same class of filler — swap for a concrete capability.
 
 ### [MINOR] swap-test — app/layout.tsx:17
 **Issue:** Metadata title claims category ownership with a definite article ("The 4-Week Entrepreneurship Program") — generic enough to be any competitor's title, and carries the wrong duration (see CRITICAL 4-week finding).
 
-**Evidence:** `Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers`
+**Evidence:** `batch0 — The 4-Week Entrepreneurship Program for High Schoolers`
 
-**Fix:** "Sparkline Youth — $130 Virtual Startup Program for High Schoolers (Summer 2026)" — price, format, date; nothing a rival can claim verbatim.
+**Fix:** "batch0 — $130 Virtual Startup Program for High Schoolers (Summer 2026)" — price, format, date; nothing a rival can claim verbatim.
 
 ### [MINOR] fabricated-claim — components/cta.tsx:101
 **Issue:** "Rolling admissions · Reviewed weekly" is a process commitment from a solo founder with 2 draft applications ever received — plausible, but currently unverifiable and easy to break the first busy week.
@@ -373,7 +373,7 @@ Totals: visual 22 · copy 29 · technical 22
 ### [CRITICAL] copy-accuracy — app/layout.tsx:17
 **Issue:** Site-wide '4-week' program claim contradicts the only real cohort: Summer 2026 runs 2026-07-30 to 2026-09-13 (~6.5 weeks). The claim is baked into the <title>, meta description, OG/Twitter titles, JSON-LD description (lines 60, 78), OG image alt+subline (app/opengraph-image.tsx:11,92), hero copy (components/hero.tsx:61-65), hero proof stat 'Format 4 wks' (hero.tsx:107), stats.tsx:13 ('4 wks Idea → pitch'), curriculum.tsx:42 ('The 4-week sprint', Weeks 1-4), faq.tsx:15,19,27,31, footer.tsx:23, and apply metadata (app/apply/page.tsx:13). Worse: scroll-preview.tsx:235-237 renders the REAL cohort dates from the DB ('Jul 30 → Sep 13') on the same homepage, so the site visibly contradicts itself.
 
-**Evidence:** `title: "Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers" … vs cohort window 2026-07-30→2026-09-13 rendered by dateRangeLabel in scroll-preview.tsx`
+**Evidence:** `title: "batch0 — The 4-Week Entrepreneurship Program for High Schoolers" … vs cohort window 2026-07-30→2026-09-13 rendered by dateRangeLabel in scroll-preview.tsx`
 
 **Fix:** Pick one truth. Either restructure the cohort to 4 weeks in the DB, or rewrite every '4-week'/'4 wks'/'Week 4' string to a duration derived from cohort startsOn/endsOn (site-config already computes the dates). Grep: '4-week', '4 wks', 'Week 4', '4-Week'.
 
@@ -392,11 +392,11 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Create a public, crawlable /apply landing (program info + 'Start application' button gated at the form step, not the URL), remove /apply from robots disallow, and add it plus /signup to sitemap.ts. Keep noindex only on the authed form step.
 
 ### [MAJOR] seo-canonical — app/layout.tsx:16
-**Issue:** Host inconsistency with zero canonicals: production serves https://www.sparklineyouth.org but metadataBase, openGraph.url (line 31), JSON-LD url/logo/sameAs (lines 57-61), sitemap BASE (app/sitemap.ts:3), robots sitemap URL (app/robots.ts:22), and env.siteUrl fallback (lib/env.ts:7) all use apex https://sparklineyouth.org. No page sets alternates.canonical anywhere (grep confirms). Crawlers see www pages whose og:url and sitemap point at the apex — split signals across two hosts.
+**Issue:** Host inconsistency with zero canonicals: production serves https://batch0.org but metadataBase, openGraph.url (line 31), JSON-LD url/logo/sameAs (lines 57-61), sitemap BASE (app/sitemap.ts:3), robots sitemap URL (app/robots.ts:22), and env.siteUrl fallback (lib/env.ts:7) all use apex https://batch0.org. No page sets alternates.canonical anywhere (grep confirms). Crawlers see www pages whose og:url and sitemap point at the apex — split signals across two hosts.
 
-**Evidence:** `metadataBase: new URL("https://sparklineyouth.org") … deployed domain is www.sparklineyouth.org`
+**Evidence:** `metadataBase: new URL("https://batch0.org") … deployed domain is batch0.org`
 
-**Fix:** Standardize on one host (www), set metadataBase to https://www.sparklineyouth.org, add alternates: { canonical: "./" } in root metadata so every page emits a self-canonical, update sitemap/robots/JSON-LD/env fallback, and confirm Vercel 308-redirects apex→www.
+**Fix:** Standardize on one host (www), set metadataBase to https://batch0.org, add alternates: { canonical: "./" } in root metadata so every page emits a self-canonical, update sitemap/robots/JSON-LD/env fallback, and confirm Vercel 308-redirects apex→www.
 
 ### [MAJOR] structured-data — app/layout.tsx:74
 **Issue:** JSON-LD Offer price is hardcoded "130" but the real cohort price is $129.99 (12999 cents) — structured-data price won't match the page/checkout price. Compounding: the site itself displays '$130' everywhere because lib/site-config.ts:135 does Math.round(amountCents/100), and apply/page.tsx:126 uses toFixed(0), so the advertised price ($130) differs from the Stripe charge ($129.99). Also no FAQPage schema despite a 9-question FAQ on the homepage (components/faq.tsx) — free rich-result eligibility left on the table.
@@ -413,11 +413,11 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Generate a real set: app/favicon.ico, app/icon.png (512), app/apple-icon.png (180, opaque background — the brand yellow square works), and reference them via Next file conventions so metadata is emitted automatically.
 
 ### [MAJOR] legal — app/(legal)/terms/page.tsx:13
-**Issue:** Terms of Service claims the platform is 'operated by Sparkline Youth' — but the legal entity is Impetus AI LLC. The LLC is never named in Terms, Privacy, or Refund Policy, while payments from minors' families are processed under it and the contact email is on impetusai.net. An unnamed counterparty makes the contract ambiguous.
+**Issue:** Terms of Service claims the platform is 'operated by batch0' — but the legal entity is Impetus AI LLC. The LLC is never named in Terms, Privacy, or Refund Policy, while payments from minors' families are processed under it and the contact email is on impetusai.net. An unnamed counterparty makes the contract ambiguous.
 
-**Evidence:** `"…Sparkline Youth (sparklineyouth.org), operated by Sparkline Youth."`
+**Evidence:** `"…batch0 (batch0.org), operated by batch0."`
 
-**Fix:** Name the entity: 'Sparkline Youth is a program of Impetus AI LLC' in Terms, Privacy, Refund Policy, and the footer legal line.
+**Fix:** Name the entity: 'batch0 is a program of Impetus AI LLC' in Terms, Privacy, Refund Policy, and the footer legal line.
 
 ### [MAJOR] copy-accuracy — app/sponsors/page.tsx:10
 **Issue:** Sponsors page sells '100 vetted teen founders per cohort' (meta description, hero copy line 56-58, WHY card line 18) as present fact. Reality: 0 enrollments, 2 draft applications, cohort has never run. '100' is the capacity, not an audience. Sponsor tiers up to $15,000 (tiers.ts) are being sold against an audience that does not exist yet.
@@ -438,14 +438,14 @@ Totals: visual 22 · copy 29 · technical 22
 
 **Evidence:** `app/(auth)/forgot-password/page.tsx is 'use client' with no metadata export; login/signup/legal pages: export const metadata = { title: "…" } only`
 
-**Fix:** Add title: { default: …, template: "%s · Sparkline Youth" } to root, give every public page a unique ~150-char description, and move forgot-password/reset metadata into a small server wrapper or layout.
+**Fix:** Add title: { default: …, template: "%s · batch0" } to root, give every public page a unique ~150-char description, and move forgot-password/reset metadata into a small server wrapper or layout.
 
 ### [MAJOR] seo-metadata — app/layout.tsx:17
 **Issue:** Length violations: root title is 72 chars (truncates in SERPs at ~60), root description 214 chars (cut at ~155-160), root OG description 182 chars, sponsors title 62 chars (app/sponsors/page.tsx:8), apply description ~245 chars (app/apply/page.tsx:13).
 
-**Evidence:** `"Sparkline Youth — The 4-Week Entrepreneurship Program for High Schoolers" = 72 chars; description = 214 chars`
+**Evidence:** `"batch0 — The 4-Week Entrepreneurship Program for High Schoolers" = 72 chars; description = 214 chars`
 
-**Fix:** Trim titles to ≤60 ('Sparkline Youth — Startup Program for High Schoolers'), descriptions to ≤155 leading with the differentiator (price, live pitch).
+**Fix:** Trim titles to ≤60 ('batch0 — Startup Program for High Schoolers'), descriptions to ≤155 leading with the differentiator (price, live pitch).
 
 ### [MAJOR] links — components/footer.tsx:40
 **Issue:** Footer 'Program' links use bare hash hrefs (#how-it-works line 40, #curriculum line 48, #compare line 56) but the footer renders on /sponsors and all three legal pages, where those ids don't exist — clicking does nothing (dead anchors) on every page except the homepage. navbar.tsx:8-14 already solved this with '/#anchor' hrefs and even documents why.
@@ -462,9 +462,9 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Add @vercel/analytics (or Plausible) with events on apply-CTA click, signup success, application submit; unify all CTAs on one href (direct /signup?next=%2Fapply for logged-out) using <Link>.
 
 ### [MINOR] copy-accuracy — components/comparison.tsx:63
-**Issue:** Comparison table claims Sparkline is 'Year-round: Yes' — exactly one cohort exists and none has ever run. Also asserts specific competitor facts (LaunchX '$3,000–$8,000', repeated in stats.tsx:31 and problem.tsx:8) that invite dispute.
+**Issue:** Comparison table claims batch0 is 'Year-round: Yes' — exactly one cohort exists and none has ever run. Also asserts specific competitor facts (LaunchX '$3,000–$8,000', repeated in stats.tsx:31 and problem.tsx:8) that invite dispute.
 
-**Evidence:** `{ program: "Sparkline Youth", … yearRound: true, highlight: true }`
+**Evidence:** `{ program: "batch0", … yearRound: true, highlight: true }`
 
 **Fix:** Change to 'Multiple cohorts planned' or drop the row until a second cohort is scheduled; soften competitor pricing to 'typically thousands of dollars'.
 
@@ -504,7 +504,7 @@ Totals: visual 22 · copy 29 · technical 22
 **Fix:** Put id="how-it-works" on the placeholder div (or wrap the dynamic component in a server-rendered <section id="how-it-works">).
 
 ### [MINOR] performance — app/opengraph-image.tsx:10
-**Issue:** OG image is force-dynamic with runtime nodejs — every scraper hit runs a full Supabase round-trip (getSiteConfig makes 4+ queries) to render an image whose data changes rarely. It also bakes in the '4-week' subline (line 92) and rounded price. Design verdict: the image itself is on-brand, not slop — black bg, #FACC15 radial glow, brand logomark, live 'Cohort 1 · Summer 2026 · $130' pill, 'Learn to build a startup. Pitch it to investors.' headline, 'sparklineyouth.org / Ages 13–18 · Fully Virtual' footer. Worth keeping, just fix the claims and caching.
+**Issue:** OG image is force-dynamic with runtime nodejs — every scraper hit runs a full Supabase round-trip (getSiteConfig makes 4+ queries) to render an image whose data changes rarely. It also bakes in the '4-week' subline (line 92) and rounded price. Design verdict: the image itself is on-brand, not slop — black bg, #FFBB00 radial glow, brand logomark, live 'Cohort 1 · Summer 2026 · $130' pill, 'Learn to build a startup. Pitch it to investors.' headline, 'batch0.org / Ages 13–18 · Fully Virtual' footer. Worth keeping, just fix the claims and caching.
 
 **Evidence:** `export const dynamic = "force-dynamic"; … "The 4-week, fully virtual entrepreneurship program for U.S. high schoolers."`
 
@@ -531,7 +531,7 @@ Audit covered every scoped file: app/page.tsx and all 15 imported marketing comp
 
 ## Copy auditor notes
 
-SCOPE COVERED: app/page.tsx + all 13 imported landing components, navbar (imported by page.tsx), app/(auth)/login|signup|forgot-password|reset + layout, app/(legal) titles, app/sponsors (page, tiers, form host), app/layout.tsx metadata + JSON-LD, app/opengraph-image.tsx, lib/site-config.ts, lib/pricing.ts. All domain references are sparklineyouth.org (correct); no .com references found. No literal customer testimonials exist on the site — the closest is sponsor.tsx \"12–20 hr weekly time saved — Reported by clients\" (flagged CRITICAL as an unattributed testimonial-class claim).
+SCOPE COVERED: app/page.tsx + all 13 imported landing components, navbar (imported by page.tsx), app/(auth)/login|signup|forgot-password|reset + layout, app/(legal) titles, app/sponsors (page, tiers, form host), app/layout.tsx metadata + JSON-LD, app/opengraph-image.tsx, lib/site-config.ts, lib/pricing.ts. All domain references are batch0.org (correct); no .com references found. No literal customer testimonials exist on the site — the closest is sponsor.tsx \"12–20 hr weekly time saved — Reported by clients\" (flagged CRITICAL as an unattributed testimonial-class claim).
 
 CHECKLIST 10 — FULL STATS INVENTORY (every number shown, verifiable vs invented):
 • Hero proof row: capacity \"100\" (VERIFIABLE, from DB) · \"$130\" tuition (NEAR — DB is $129.99; display rounds up, JSON-LD hardcodes 130) · \"4 wks\" (CONTRADICTED — cohort window Jul 30→Sep 13 ≈ 6.5 wks) · Pitch Day \"Live / Sponsors + investors\" (INVENTED — 0 events, 0 sponsors).

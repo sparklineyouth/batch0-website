@@ -130,7 +130,7 @@ export default async function MentorCheckinsPage({
 
                 {(feedbackByCheckin.get(c.id) ?? []).length > 0 && (
                   <div className="mt-5 border-t border-line pt-4">
-                    <div className="mb-2 font-mono text-xs uppercase tracking-wider text-spark-ink">
+                    <div className="mb-2 font-mono text-xs uppercase tracking-wider text-phosphor-ink">
                       Feedback so far
                     </div>
                     <ul className="space-y-2">
@@ -185,7 +185,7 @@ function Pill({
       href={href}
       className={`rounded-full border px-3 py-1 font-mono text-xs uppercase tracking-wider transition ${
         active
-          ? "border-spark bg-spark/10 text-spark-ink"
+          ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
           : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
       }`}
     >

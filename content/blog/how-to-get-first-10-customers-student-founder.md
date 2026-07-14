@@ -96,6 +96,6 @@ If the targeting is right but the ask still flops, the issue is often your pitch
 
 Landing 10 real customers by hand is a week or two of focused effort, not a semester. Building the list of 30 is an afternoon. Messaging them is a few days of sending and following up. The conversations and tweaks run alongside.
 
-The trick is treating it as a countable task, not a mood. Ten names, ten asks, ten follow-ups. This is also exactly the work you'd do in the Market week of an accelerator like Sparkline Youth, where the point is to get real people using the thing, not to admire a chart.
+The trick is treating it as a countable task, not a mood. Ten names, ten asks, ten follow-ups. This is also exactly the work you'd do in the Market week of an accelerator like batch0, where the point is to get real people using the thing, not to admire a chart.
 
 When you've got your first handful, don't stop to celebrate the number. Get on the phone with them. What you hear next — the complaints, the "I wish it did," the one person who won't shut up about it — is the map for your next 10.

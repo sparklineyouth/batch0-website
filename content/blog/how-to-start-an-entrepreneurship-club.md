@@ -85,6 +85,6 @@ Keep meetings cheap. Landing pages, prototypes, and interviews cost nothing. If 
 
 Once the club is running, the natural next step is to level up the founders inside it. A club gives you people, a room, and a schedule — but a structured program gives your most serious members deadlines, mentors, and a real demo day. Many student founders use a club as the on-ramp and then take the leap into an actual accelerator.
 
-If a few of your members catch the bug and want to build a real company across guided sprints, point them to the [Sparkline program](/program): it's a live online accelerator where high schoolers build and launch a startup in four one-week sprints and pitch it at a demo day. Applying is [free](/apply), and there's no equity taken, so it's a low-risk way for your strongest members to go further than a weekly club can take them.
+If a few of your members catch the bug and want to build a real company across guided sprints, point them to the [batch0 program](/program): it's a live online accelerator where high schoolers build and launch a startup in four one-week sprints and pitch it at a demo day. Applying is [free](/apply), and there's no equity taken, so it's a low-risk way for your strongest members to go further than a weekly club can take them.
 
 Start small this week. Ask one teacher. Get three friends to commit. Book a room. You can have your club approved and your first meeting scheduled inside of two weeks — and unlike most clubs at your school, yours will actually make something.

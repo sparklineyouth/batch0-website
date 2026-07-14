@@ -121,7 +121,7 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
           <div
             key={c.id}
             className={`grid grid-cols-[auto_minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(0,0.7fr)_minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,1fr)] items-center gap-3 border-b border-line px-5 py-3 last:border-0 hover:bg-wash ${
-              checked ? "bg-spark/5" : ""
+              checked ? "bg-phosphor/5" : ""
             }`}
           >
             <button
@@ -138,7 +138,7 @@ export function ChargesBulkList({ charges }: { charges: Row[] }) {
               className="-ml-1 -my-1 rounded p-1 text-ink-faint enabled:hover:text-ink disabled:opacity-30"
             >
               {checked ? (
-                <CheckSquare className="h-4 w-4 text-spark-ink" />
+                <CheckSquare className="h-4 w-4 text-phosphor-ink" />
               ) : (
                 <Square className="h-4 w-4" />
               )}

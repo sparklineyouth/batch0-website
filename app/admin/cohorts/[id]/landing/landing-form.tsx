@@ -34,7 +34,7 @@ export function LandingForm({ initial }: { initial: LandingInput }) {
         <Input
           value={v.landing_headline}
           onChange={(e) => setV({ ...v, landing_headline: e.target.value })}
-          placeholder="Default: Startups built at Sparkline Youth"
+          placeholder="Default: Startups built at batch0"
         />
       </div>
       <div>
@@ -60,7 +60,7 @@ export function LandingForm({ initial }: { initial: LandingInput }) {
           <Input
             value={v.accent_hex}
             onChange={(e) => setV({ ...v, accent_hex: e.target.value })}
-            placeholder="#facc15"
+            placeholder="#ffbb00"
           />
           {v.accent_hex && (
             <div

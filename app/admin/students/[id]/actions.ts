@@ -68,7 +68,7 @@ export async function removeFromProgram(userId: string, reason: string) {
   // Drop all enrollments.
   await admin.from("enrollments").delete().eq("user_id", userId);
 
-  // Strip Sparkline-managed Discord roles. We keep them on the server
+  // Strip batch0-managed Discord roles. We keep them on the server
   // (use Delete account to fully remove) but they lose access to
   // role-gated channels.
   if (target.discord_user_id) {
@@ -104,15 +104,15 @@ export async function removeFromProgram(userId: string, reason: string) {
   if (target.email) {
     const html = `<!doctype html><html><body style="background:#0a0a0a;color:#e7e7e7;font-family:Inter,Arial,sans-serif;margin:0;padding:32px">
       <div style="max-width:560px;margin:0 auto;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
-        <div style="font-weight:700">Spark<span style="color:#facc15">Line</span> Youth</div>
+        <div style="font-weight:700"><span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">batch<span style="color:#ffbb00">0</span></span></div>
         <h1 style="font-size:20px;color:#fff;margin-top:16px">You've been removed from your cohort</h1>
-        <p style="color:#bbb">An admin has withdrawn your participation in Sparkline Youth.${reason?.trim() ? ` Reason: <em>${escapeHtml(reason.trim())}</em>.` : ""}</p>
-        <p style="color:#bbb">If you believe this is an error, reply to this email or write to <a style="color:#facc15" href="mailto:${env.contactEmail}">${env.contactEmail}</a>.</p>
+        <p style="color:#bbb">An admin has withdrawn your participation in batch0.${reason?.trim() ? ` Reason: <em>${escapeHtml(reason.trim())}</em>.` : ""}</p>
+        <p style="color:#bbb">If you believe this is an error, reply to this email or write to <a style="color:#ffbb00" href="mailto:${env.contactEmail}">${env.contactEmail}</a>.</p>
       </div>
     </body></html>`;
     await sendEmail({
       to: target.email,
-      subject: "You've been removed from your Sparkline Youth cohort",
+      subject: "You've been removed from your batch0 cohort",
       html,
     });
   }
@@ -281,8 +281,8 @@ export async function refundLatestPayment(userId: string, reason: string) {
     payment_intent: payment.stripe_payment_intent_id,
     reason: "requested_by_customer",
     metadata: {
-      sparkline_user_id: userId,
-      sparkline_reason: reason?.trim() || "admin_refund",
+      batch0_user_id: userId,
+      batch0_reason: reason?.trim() || "admin_refund",
     },
   });
 

@@ -142,7 +142,7 @@ export function FileFeedbackPanel({
                   onClick={() => setActive(f.id)}
                   className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition ${
                     active === f.id
-                      ? "bg-spark/10 text-ink"
+                      ? "bg-phosphor/10 text-ink"
                       : "text-ink-soft hover:bg-wash"
                   }`}
                 >

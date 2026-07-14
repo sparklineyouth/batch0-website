@@ -1,4 +1,4 @@
-# DESIGN.md — Sparkline Youth
+# DESIGN.md — batch0
 
 Direction: **YC-plain confidence.** White page, near-black ink, one yellow,
 dense specific text, almost nothing moves. The site should feel like a
@@ -16,31 +16,47 @@ stripe.com (type contrast), linear.app (discipline). Reference ≠ copy.
 | `ink-soft` | `#4A4A4A` | Secondary body text. |
 | `ink-faint` | `#767676` | Captions, meta. AA on white (4.54:1). |
 | `line` | `#E4E4E1` | 1px hairlines. The only border color. |
-| `spark` | `#FACC15` | THE accent. Fills only: primary CTA, highlight marks, focus rings. Always with `ink` text (≈11:1). Never as text on white. |
-| `spark-ink` | `#8A6A00` | The accent as text (links, live meta) — AA on white (5.4:1). Same hue family, darkened; not a second accent. |
+| `phosphor` | `#FFBB00` | THE accent. Fills only: primary CTA, highlight marks, focus rings. Always with `ink` text (≈11:1). Never as text on white. |
+| `phosphor-ink` | `#8C6700` | The accent as text (links, live meta) — AA on white (5.2:1). Same hue family, darkened; not a second accent. |
 | `error` | `#B42318` | Form errors only. |
 
 No gradients. No shadows except one: `shadow-cta` = `0 1px 2px rgb(20 20 20 / 0.08)` on the primary button. No glow, no blur, no translucency.
 
 ## Type
 
-**Display: Bricolage Grotesque** (Google, variable). A grotesque with
-visible personality — chunky, slightly exuberant cuts that read
-"young founder," set tight so it stays serious.
-**Body: Public Sans** (Google, variable). The USWDS civic workhorse:
-plain, highly readable, credible to a parent filling in a form. Zero
-fashion, which is the point — the display face carries the energy.
-**Data: IBM Plex Mono** — ledger rows, dates, prices, week labels only.
-Rationale in one line: *display with a pulse, body with a spine, mono for
-the receipts.*
+One idea: **a terminal.** The logo is set in VT323, so the type system is
+the logo's own voice rather than a face chosen next to it.
 
-Scale (rem, desktop → mobile via clamp):
-- `display-1` hero: `clamp(2.5rem, 6.5vw, 4.25rem)` / leading 1.02 / tracking -0.025em / weight 700
-- `display-2` section: `clamp(1.75rem, 3.5vw, 2.5rem)` / 1.08 / -0.02em / 650
+**Display: VT323** (Google). The DEC VT320 terminal face the batch0
+wordmark is drawn in. Carries headlines, nav, the wordmark, and section
+heads. Two hard constraints, enforced centrally by `.font-display` in
+globals.css — do not fight them at the call site:
+- **One weight (400).** `font-bold` has no real weight to reach for, so the
+  browser fakes one and smears the pixels. `font-synthesis: none` refuses
+  it. Build hierarchy with **size**, never weight.
+- **No negative tracking.** It collides stems on a fixed pixel grid.
+- VT323 is optically small for its em box: display sizes run ~15–20%
+  larger than the proportional face they replaced.
+
+**Body: IBM Plex Mono** (Google, 400/500/600). Same terminal DNA, but with
+real weights, a readable lowercase, and a proper italic. Takes body copy,
+long-form legal, and every dense product surface — VT323 at 16px over a
+page of Terms is unreadable, and the dashboard needs weight to build
+hierarchy. Bound to the Tailwind `sans` key, so `font-sans` and default
+body text resolve to it.
+
+Rationale in one line: *the wordmark's voice for display, the same voice
+with a readable spine for everything you actually have to read.*
+
+Scale (rem, desktop → mobile via clamp). Display rows carry no weight or
+tracking column on purpose — VT323 has one weight, and `.font-display`
+pins tracking; both are listed above as hard constraints:
+- `display-1` hero: `clamp(3rem, 7.5vw, 5rem)` / leading 1.02
+- `display-2` section: `clamp(2rem, 4vw, 2.875rem)` / 1.08
 - `title` : 1.1875rem / 1.35 / 600
 - `body` : 1rem / 1.65, measure 65–72ch, ink-soft for long runs
 - `meta` : 0.8125rem mono / 1.5 (ledger, labels — replaces ALL uppercase-eyebrow patterns)
-- Body links: `ink` with 2px `spark` underline (`text-decoration-color`), hover fills to highlight.
+- Body links: `ink` with 2px `phosphor` underline (`text-decoration-color`), hover fills to highlight.
 
 ## Shape & depth
 Radius: 6px on buttons/inputs, 0 elsewhere. Borders: 1px `line`, used only

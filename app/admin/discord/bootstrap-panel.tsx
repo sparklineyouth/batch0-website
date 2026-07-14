@@ -64,7 +64,7 @@ export function BootstrapPanel() {
       <div>
         <Label>
           Type{" "}
-          <code className="rounded bg-wash px-1 py-0.5 text-spark-ink">
+          <code className="rounded bg-wash px-1 py-0.5 text-phosphor-ink">
             {CONFIRM_PHRASE}
           </code>{" "}
           to enable the button

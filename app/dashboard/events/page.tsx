@@ -5,7 +5,7 @@ import { CalendarDays, MapPin, Video } from "lucide-react";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
-export const metadata = { title: "Events · Sparkline Youth" };
+export const metadata = { title: "Events · batch0" };
 
 export default async function StudentEventsPage() {
   await requireUser();
@@ -44,7 +44,7 @@ export default async function StudentEventsPage() {
       </p>
 
       <section className="mt-8">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-spark-ink">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
           Upcoming
         </h2>
         {(upcoming?.length ?? 0) === 0 ? (
@@ -81,7 +81,7 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
   return (
     <Card>
       <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-spark/10 text-spark-ink">
+        <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-phosphor/10 text-phosphor-ink">
           <span className="text-[10px] font-bold uppercase">
             {startsAt.toLocaleString("en-US", { month: "short" })}
           </span>
@@ -94,7 +94,7 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
             <h3 className="text-base font-semibold text-ink">
               {event.title}
             </h3>
-            <span className="text-[10px] uppercase tracking-wider text-spark-ink/80">
+            <span className="text-[10px] uppercase tracking-wider text-phosphor-ink/80">
               {event.type.replace("_", " ")}
             </span>
           </div>
@@ -117,7 +117,7 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
                 href={event.zoom_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-spark-ink hover:underline"
+                className="inline-flex items-center gap-1 text-phosphor-ink hover:underline"
               >
                 <Video className="h-3.5 w-3.5" />
                 Join Zoom
@@ -128,7 +128,7 @@ function EventCard({ event, upcoming }: { event: any; upcoming: boolean }) {
                 href={event.recording_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-spark-ink hover:underline"
+                className="text-phosphor-ink hover:underline"
               >
                 Watch recording →
               </a>

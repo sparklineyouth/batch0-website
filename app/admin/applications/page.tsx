@@ -75,7 +75,7 @@ export default async function AdminApplicationsPage({
               href={href}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
-                  ? "border-spark/30 bg-spark/10 text-spark-ink"
+                  ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
@@ -91,7 +91,7 @@ export default async function AdminApplicationsPage({
           href={sortParam("recent")}
           className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
             sort === "recent"
-              ? "border-spark/30 bg-spark/10 text-spark-ink"
+              ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
               : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
           }`}
         >
@@ -101,7 +101,7 @@ export default async function AdminApplicationsPage({
           href={sortParam("score")}
           className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
             sort === "score"
-              ? "border-spark/30 bg-spark/10 text-spark-ink"
+              ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
               : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
           }`}
         >

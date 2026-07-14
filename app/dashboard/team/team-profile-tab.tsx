@@ -129,13 +129,13 @@ export function TeamProfileTab({ team }: { team: Team }) {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={team.logo_url} alt="" className="h-full w-full object-cover" />
             ) : (
-              <span className="text-3xl font-bold text-spark-ink">
+              <span className="text-3xl font-bold text-phosphor-ink">
                 {team.name.slice(0, 1).toUpperCase()}
               </span>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-spark px-3 text-sm font-semibold text-on-spark hover:bg-spark-200">
+            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-phosphor px-3 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200">
               <Upload className="h-4 w-4" />
               {uploading ? "Uploading…" : "Upload logo"}
               <input

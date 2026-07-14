@@ -76,19 +76,19 @@ export async function issueCharge(input: ChargeInput) {
     const dollars = (input.amountCents / 100).toFixed(2);
     const subject =
       input.kind === "fine"
-        ? `Fine on your Sparkline Youth account — $${dollars}`
-        : `Fee on your Sparkline Youth account — $${dollars}`;
+        ? `Fine on your batch0 account — $${dollars}`
+        : `Fee on your batch0 account — $${dollars}`;
     const body = `<!doctype html><html><body style="background:#0a0a0a;color:#e7e7e7;font-family:Inter,Arial,sans-serif;margin:0;padding:32px">
       <div style="max-width:560px;margin:0 auto;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
-        <div style="font-weight:700">Spark<span style="color:#facc15">Line</span> Youth</div>
+        <div style="font-weight:700"><span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">batch<span style="color:#ffbb00">0</span></span></div>
         <h1 style="font-size:20px;color:#fff">${escape(input.description)}</h1>
         <p>An admin has issued a${input.kind === "fine" ? " <strong>fine</strong> of " : " <strong>fee</strong> of "}<strong>$${dollars}</strong> on your account.</p>
         ${
           input.kind === "fine"
             ? "<p>Your dashboard access is paused until this is paid or waived.</p>"
-            : "<p>You can keep using Sparkline Youth, but you'll see a prompt to pay until it's settled.</p>"
+            : "<p>You can keep using batch0, but you'll see a prompt to pay until it's settled.</p>"
         }
-        <p><a href="${env.siteUrl}/dashboard/billing" style="display:inline-block;background:#facc15;color:#000;padding:10px 18px;border-radius:8px;font-weight:600;text-decoration:none">Open billing</a></p>
+        <p><a href="${env.siteUrl}/dashboard/billing" style="display:inline-block;background:#ffbb00;color:#000;padding:10px 18px;border-radius:8px;font-weight:600;text-decoration:none">Open billing</a></p>
       </div>
     </body></html>`;
     await sendEmail({ to: profile.email, subject, html: body });

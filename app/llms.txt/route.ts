@@ -6,21 +6,21 @@ import { getAllPostsMeta } from "@/lib/blog";
 // the same content as the site, so it stays accurate for free.
 export const dynamic = "force-static";
 
-const SITE = "https://www.sparklineyouth.org";
+const SITE = "https://batch0.org";
 
 export async function GET() {
   const posts = await getAllPostsMeta();
   const lines: string[] = [];
 
-  lines.push("# Sparkline Youth");
+  lines.push("# batch0");
   lines.push("");
   lines.push(
-    "> Sparkline Youth is a live, online startup accelerator for U.S. high schoolers (ages 13–18). Students build a real company across four one-week sprints — Validate, Build, Market, Pitch — and pitch it at a live demo day. Tuition is $130, charged only if accepted; applying is free and no equity is ever taken.",
+    "> batch0 is a live, online startup accelerator for U.S. high schoolers (ages 13–18). Students build a real company across four one-week sprints — Validate, Build, Market, Pitch — and pitch it at a live demo day. Tuition is $130, charged only if accepted; applying is free and no equity is ever taken.",
   );
   lines.push("");
   lines.push("## Key pages");
   lines.push("");
-  lines.push(`- [Home](${SITE}/): What Sparkline Youth is, cohort dates, tuition.`);
+  lines.push(`- [Home](${SITE}/): What batch0 is, cohort dates, tuition.`);
   lines.push(`- [Program](${SITE}/program): The week-by-week accelerator curriculum.`);
   lines.push(`- [Sponsors](${SITE}/sponsors): Fund non-dilutive grants for high-school founders.`);
   lines.push(`- [Blog](${SITE}/blog): Guides and essays for high-school founders.`);

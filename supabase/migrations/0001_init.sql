@@ -1,5 +1,5 @@
 -- ============================================================================
--- Sparkline — Initial schema
+-- batch0 — Initial schema
 -- Run this in the Supabase SQL Editor (Dashboard → SQL → New query → Run).
 -- ============================================================================
 
@@ -174,7 +174,7 @@ create table if not exists public.site_settings (
 );
 
 insert into public.site_settings (key, value) values
-  ('contact_email', '"sparkline.youth@gmail.com"'),
+  ('contact_email', '"batch0.youth@gmail.com"'),
   ('applications_open', 'true'),
   ('active_cohort_name', '"Summer 2026"')
 on conflict (key) do nothing;

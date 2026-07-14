@@ -89,7 +89,7 @@ export function ScoreCard({
                     }
                     className={`h-9 w-9 rounded-lg border text-sm font-medium tabular-nums transition ${
                       active
-                        ? "border-spark bg-spark/15 text-spark-ink"
+                        ? "border-phosphor bg-phosphor/15 text-phosphor-ink"
                         : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
                     }`}
                   >

@@ -120,7 +120,7 @@ Here's a simple loop:
 4. Run the test. Change the box based on what you actually heard.
 5. Repeat with the next-riskiest box.
 
-Sparkline Youth's first sprint is built around exactly this loop, validate before you build, because a canvas is only as good as the reality you check it against.
+batch0's first sprint is built around exactly this loop, validate before you build, because a canvas is only as good as the reality you check it against.
 
 ## How long should filling out a Lean Canvas take?
 

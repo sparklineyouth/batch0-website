@@ -17,7 +17,7 @@ export function SponsorContactForm({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const subject = `Sponsorship inquiry — ${company || name || "Sparkline Youth"}`;
+    const subject = `Sponsorship inquiry — ${company || name || "batch0"}`;
     const body = [
       `Name: ${name}`,
       `Company: ${company}`,
@@ -42,7 +42,7 @@ export function SponsorContactForm({
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
             placeholder="Your name"
           />
         }
@@ -56,7 +56,7 @@ export function SponsorContactForm({
             required
             value={company}
             onChange={(e) => setCompany(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
             placeholder="Company or organization"
           />
         }
@@ -71,7 +71,7 @@ export function SponsorContactForm({
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
             placeholder="you@company.com"
           />
         }
@@ -83,7 +83,7 @@ export function SponsorContactForm({
           <select
             value={tier}
             onChange={(e) => setTier(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
           >
             {TIERS.map((t) => (
               <option key={t.name} value={`${t.name} (${t.price})`}>
@@ -102,7 +102,7 @@ export function SponsorContactForm({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={5}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-spark-400 focus:outline-none focus:ring-1 focus:ring-spark"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
             placeholder="Anything else we should know? Goals, timing, questions."
           />
         }
@@ -113,7 +113,7 @@ export function SponsorContactForm({
         </p>
         <button
           type="submit"
-          className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3 text-[14px] font-semibold text-on-spark shadow-cta hover:bg-spark-200"
+          className="press inline-flex items-center justify-center gap-2 rounded-md bg-phosphor px-5 py-3 text-[14px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
         >
           Send inquiry
         </button>
@@ -137,7 +137,7 @@ function Field({
     <label className={`block ${className}`}>
       <span className="mb-1.5 block text-[13px] font-medium text-ink-soft">
         {label}
-        {required && <span aria-hidden className="ml-0.5 text-spark-ink">*</span>}
+        {required && <span aria-hidden className="ml-0.5 text-phosphor-ink">*</span>}
       </span>
       {input}
     </label>

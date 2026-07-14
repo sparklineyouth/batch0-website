@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ogFonts, OG_DISPLAY, OG_BODY } from "@/lib/og-fonts";
 
 export const runtime = "nodejs";
 
@@ -44,7 +45,7 @@ export async function GET(
           alignItems: "center",
           background: "#0a0a0a",
           color: "white",
-          fontFamily: "system-ui",
+          fontFamily: OG_BODY,
           padding: 64,
           position: "relative",
         }}
@@ -57,19 +58,19 @@ export async function GET(
             borderRadius: 24,
           }}
         />
-        <div style={{ fontSize: 18, letterSpacing: 6, color: "#facc15", textTransform: "uppercase", fontWeight: 600 }}>
-          Sparkline Youth
+        <div style={{ fontFamily: OG_DISPLAY, fontSize: 34, letterSpacing: 4, color: "#ffbb00" }}>
+          batch0
         </div>
         <div style={{ marginTop: 28, fontSize: 28, color: "rgba(255,255,255,0.55)" }}>
           Certificate of completion
         </div>
-        <div style={{ marginTop: 40, fontSize: 64, fontWeight: 700, letterSpacing: -1 }}>
+        <div style={{ marginTop: 40, fontFamily: OG_DISPLAY, fontSize: 76 }}>
           {name}
         </div>
         <div style={{ marginTop: 24, fontSize: 26, color: "rgba(255,255,255,0.7)" }}>
           completed
         </div>
-        <div style={{ marginTop: 12, fontSize: 36, color: "#facc15", fontWeight: 600 }}>
+        <div style={{ marginTop: 12, fontFamily: OG_DISPLAY, fontSize: 44, color: "#ffbb00" }}>
           {cohort}
         </div>
         <div style={{ marginTop: 56, fontSize: 20, color: "rgba(255,255,255,0.5)" }}>
@@ -80,6 +81,7 @@ export async function GET(
     {
       width: 1200,
       height: 630,
+      fonts: await ogFonts(),
     },
   );
 }

@@ -108,7 +108,7 @@ export function OpsPanel({
             {names.map((n) => (
               <li
                 key={n}
-                className="rounded-full border border-line bg-wash px-2 py-0.5 text-[11px] text-spark-ink"
+                className="rounded-full border border-line bg-wash px-2 py-0.5 text-[11px] text-phosphor-ink"
               >
                 /{n}
               </li>

@@ -138,7 +138,7 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
               <td className="py-3 text-right">
                 <Link
                   href={`/admin/cohorts/${c.id}/health`}
-                  className="inline-block p-1.5 text-ink-faint hover:text-spark-ink"
+                  className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
                   aria-label="View health"
                   title="Cohort health"
                 >

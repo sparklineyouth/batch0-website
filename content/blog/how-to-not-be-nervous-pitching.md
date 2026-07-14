@@ -76,6 +76,6 @@ The trick is deciding *in advance* that a stumble is allowed. When you've pre-fo
 
 Waiting to "feel ready" is a trap. Confidence doesn't come before the pitch; it comes *from* pitching. The first time is the worst it will ever be, and it's still survivable. Every pitch after that recalibrates your brain's idea of what's scary.
 
-So do the work: know your opening and closing cold, rehearse out loud ten-plus times, and run the 90-second body routine before you walk on. That's a system, and systems beat willpower. If you want reps in a room full of other founders who are just as nervous as you — and a real demo day at the end where you actually pitch a company you built — that's exactly what a program like [Sparkline](/program) is built to give you. You can [apply for free](/apply) and only pay if you get in.
+So do the work: know your opening and closing cold, rehearse out loud ten-plus times, and run the 90-second body routine before you walk on. That's a system, and systems beat willpower. If you want reps in a room full of other founders who are just as nervous as you — and a real demo day at the end where you actually pitch a company you built — that's exactly what a program like [batch0](/program) is built to give you. You can [apply for free](/apply) and only pay if you get in.
 
 The nerves won't fully go away. Good. That means you still care. Now go say your first two sentences like you've said them a hundred times — because you have.

@@ -52,7 +52,7 @@ The cohort matters more than founders expect going in. Seeing someone one desk o
 
 ## A concrete example: the four-sprint format
 
-To make this less abstract, here's one real structure. Sparkline Youth, a fully online accelerator for U.S. high schoolers ages 13 to 18, runs four one-week build sprints in order:
+To make this less abstract, here's one real structure. batch0, a fully online accelerator for U.S. high schoolers ages 13 to 18, runs four one-week build sprints in order:
 
 1. **Validate.** Prove people actually have the problem before you build anything. This is where most bad ideas die cheaply, which is the whole point.
 2. **Build.** Turn the validated idea into a working version, usually a no-code prototype or a scrappy MVP, not a polished app.

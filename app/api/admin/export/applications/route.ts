@@ -78,7 +78,7 @@ export async function GET() {
     rows,
   );
   return csvResponse(
-    `sparkline-applications-${new Date().toISOString().slice(0, 10)}.csv`,
+    `batch0-applications-${new Date().toISOString().slice(0, 10)}.csv`,
     csv,
   );
 }

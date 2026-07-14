@@ -20,7 +20,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
       a: `${price}, once, and only if you're accepted; applying is free. There are no hidden fees, no upsells, and no materials costs. Comparable summer accelerators list tuition in the thousands. Reduced regional pricing applies automatically in select countries, and refund terms are published on the refund policy page.`,
     },
     {
-      q: "Who runs Sparkline Youth?",
+      q: "Who runs batch0?",
       a: `Rishabh Dagli and Taran Bethi, two serial founders building real companies that have changed the world. Rishabh and Taran personally review applications, run live sessions, and coordinate mentor and investor relationships for students.`,
     },
     {
@@ -37,10 +37,10 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "What is demo day?",
-      a: "The last day of the cohort: you pitch the company you built, live. Cohort standouts may be offered Sparkline sponsorship: a non-dilutive grant funded by our organization, decided on merit. Sponsorship and any introductions are never guaranteed, and tuition never buys them.",
+      a: "The last day of the cohort: you pitch the company you built, live. Cohort standouts may be offered batch0 sponsorship: a non-dilutive grant funded by our organization, decided on merit. Sponsorship and any introductions are never guaranteed, and tuition never buys them.",
     },
     {
-      q: "Does Sparkline take equity or own my idea?",
+      q: "Does batch0 take equity or own my idea?",
       a: "No. You own 100% of your idea, your work, and your company, before, during, and after the cohort. No equity, no IP claims, no royalties. Sponsorship, if offered, is a non-dilutive grant.",
     },
     {

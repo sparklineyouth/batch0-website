@@ -89,7 +89,7 @@ export function SubmissionReview({
                 }}
                 className={`rounded-md border px-3 py-1.5 text-xs uppercase tracking-wider transition ${
                   active
-                    ? "border-spark bg-spark/10 text-spark-ink"
+                    ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
                     : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
                 }`}
               >

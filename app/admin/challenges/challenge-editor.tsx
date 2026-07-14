@@ -207,13 +207,13 @@ export function ChallengeEditor({
           </Field>
         </div>
         {/* Live preview of the yellow bar. */}
-        <div className="overflow-hidden rounded-md border border-on-spark/15">
-          <div className="flex items-center gap-3 bg-spark px-4 py-2 text-on-spark">
+        <div className="overflow-hidden rounded-md border border-on-phosphor/15">
+          <div className="flex items-center gap-3 bg-phosphor px-4 py-2 text-on-phosphor">
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em]">
               ⚡ Weekly Challenge
             </span>
             <span className="truncate text-[13px]">{marqueePreview}</span>
-            <span className="ml-auto shrink-0 text-[13px] font-semibold underline decoration-on-spark/40 underline-offset-2">
+            <span className="ml-auto shrink-0 text-[13px] font-semibold underline decoration-on-phosphor/40 underline-offset-2">
               {ctaLabel || "Apply"} →
             </span>
           </div>
@@ -282,7 +282,7 @@ function Section({
 }) {
   return (
     <section>
-      <h3 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-spark-ink">
+      <h3 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
         {title}
       </h3>
       <div className="space-y-5">{children}</div>

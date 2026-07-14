@@ -7,7 +7,7 @@ import { env } from "@/lib/env";
 import { CopyReferralLink } from "./copy-referral-link";
 import { Crown, Award, TrendingUp } from "lucide-react";
 
-export const metadata = { title: "Referrals · Sparkline Youth" };
+export const metadata = { title: "Referrals · batch0" };
 export const dynamic = "force-dynamic";
 
 // Show a small leaderboard with first-name-plus-initial only — full
@@ -66,7 +66,7 @@ export default async function StudentReferralsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Refer friends</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Send people you respect. Sparkline Youth works best with founders who
+        Send people you respect. batch0 works best with founders who
         know each other already.
       </p>
 
@@ -80,14 +80,14 @@ export default async function StudentReferralsPage() {
       <section className="mt-6 grid gap-3 md:grid-cols-3">
         <Tile label="Applied with your code" value={myCounts.applied} icon={TrendingUp} />
         <Tile label="Accepted" value={myCounts.accepted} icon={Award} />
-        <Tile label="Enrolled" value={myCounts.paid} icon={Crown} tone="spark" />
+        <Tile label="Enrolled" value={myCounts.paid} icon={Crown} tone="phosphor" />
       </section>
 
       <Card className="mt-6 !p-0 overflow-hidden">
         <div className="border-b border-line px-5 py-3 text-xs uppercase tracking-wider text-ink-faint">
           Top 10 recruiters
           {myRank != null && (
-            <span className="ml-3 text-spark-ink normal-case tracking-normal">
+            <span className="ml-3 text-phosphor-ink normal-case tracking-normal">
               You're ranked #{myRank}
             </span>
           )}
@@ -116,19 +116,19 @@ export default async function StudentReferralsPage() {
                   <tr
                     key={r.referralCode}
                     className={`border-b border-line last:border-0 ${
-                      isMe ? "bg-spark/5" : ""
+                      isMe ? "bg-phosphor/5" : ""
                     }`}
                   >
                     <td className="px-5 py-3 tabular-nums text-ink-soft">
                       {i + 1}
                     </td>
-                    <td className={`px-5 py-3 ${isMe ? "text-spark-ink" : "text-ink"}`}>
+                    <td className={`px-5 py-3 ${isMe ? "text-phosphor-ink" : "text-ink"}`}>
                       {displayName}
                     </td>
                     <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
                       {r.counts.applied}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-spark-ink">
+                    <td className="px-5 py-3 text-right tabular-nums text-phosphor-ink">
                       {r.counts.paidOrEnrolled || (
                         <span className="text-ink-faint">0</span>
                       )}
@@ -153,17 +153,17 @@ function Tile({
   label: string;
   value: number;
   icon: any;
-  tone?: "default" | "spark";
+  tone?: "default" | "phosphor";
 }) {
   return (
     <div className="rounded-xl border border-line bg-wash px-4 py-4">
       <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
-        <Icon className={`h-3.5 w-3.5 ${tone === "spark" ? "text-spark-ink" : ""}`} />
+        <Icon className={`h-3.5 w-3.5 ${tone === "phosphor" ? "text-phosphor-ink" : ""}`} />
         {label}
       </div>
       <div
         className={`mt-2 text-2xl font-semibold tracking-tight ${
-          tone === "spark" ? "text-spark-ink" : "text-ink"
+          tone === "phosphor" ? "text-phosphor-ink" : "text-ink"
         }`}
       >
         {value}

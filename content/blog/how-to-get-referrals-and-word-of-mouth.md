@@ -81,4 +81,4 @@ Pick one thing. Don't build a referral dashboard.
 - Find the one moment of peak excitement and add a specific, pre-written share prompt there.
 - Ask your five happiest users, by name, to send it to one person each. Watch what happens.
 
-Word of mouth isn't magic or luck. It's a good product plus a well-placed nudge at the right moment, repeated until it compounds. If you want structured help turning that into real traction — with mentors, a cohort of other teen founders, and a live demo day — that's exactly what the four-week sprints at Sparkline Youth are built for. Look at [the program](/program) or [apply for free](/apply) and start building something people can't help but talk about.
+Word of mouth isn't magic or luck. It's a good product plus a well-placed nudge at the right moment, repeated until it compounds. If you want structured help turning that into real traction — with mentors, a cohort of other teen founders, and a live demo day — that's exactly what the four-week sprints at batch0 are built for. Look at [the program](/program) or [apply for free](/apply) and start building something people can't help but talk about.

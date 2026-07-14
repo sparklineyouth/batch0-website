@@ -50,7 +50,7 @@ export async function GET() {
     rows,
   );
   return csvResponse(
-    `sparkline-payments-${new Date().toISOString().slice(0, 10)}.csv`,
+    `batch0-payments-${new Date().toISOString().slice(0, 10)}.csv`,
     csv,
   );
 }

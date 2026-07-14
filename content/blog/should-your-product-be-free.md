@@ -78,6 +78,6 @@ Compare that to the founder who charged $8 from day one, got twelve customers in
 
 None of this means free is banned forever. Big companies use free tiers brilliantly — but *after* they know exactly who pays, why, and how the free tier feeds the paid one. You get there by charging first, learning who your painkiller is for, and adding a free tier later as a growth lever.
 
-This is exactly the kind of decision you'd work through in the Build sprint of the Sparkline Youth [accelerator](/program): set a price, put it in front of real people, and find out whether you've got a painkiller or a vitamin before you sink a month into the wrong thing. Applying is free; if you want that structure and live feedback, [apply here](/apply).
+This is exactly the kind of decision you'd work through in the Build sprint of the batch0 [accelerator](/program): set a price, put it in front of real people, and find out whether you've got a painkiller or a vitamin before you sink a month into the wrong thing. Applying is free; if you want that structure and live feedback, [apply here](/apply).
 
 Bottom line: your first product should almost always cost money, because the point of a first product isn't to get users — it's to find out if you have a business. Free hides that answer. A price reveals it. Charge, learn, then decide what to give away.

@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 0036 — Weekly Challenges.
 --
--- Sparkline runs weekly "challenge promotions": students apply (free) with a
+-- batch0 runs weekly "challenge promotions": students apply (free) with a
 -- SHORT single-page form whose questions are ADMIN-AUTHORED per challenge and
 -- stored as JSONB (fully dynamic — unlike the fixed-skeleton cohort
 -- application). Admins review, shortlist, and fund winners (payout paid

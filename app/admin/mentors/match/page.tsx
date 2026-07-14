@@ -94,7 +94,7 @@ export default async function MentorMatchmakerPage({
       <p className="mt-1 text-sm text-ink-soft">
         Pick a team to surface mentors whose bio + tags overlap with what the
         team is building. Use it as a starting point — final assignment
-        still happens in <Link href="/admin/mentors" className="text-spark-ink hover:underline">/admin/mentors</Link>.
+        still happens in <Link href="/admin/mentors" className="text-phosphor-ink hover:underline">/admin/mentors</Link>.
       </p>
 
       <Card className="mt-6">
@@ -121,7 +121,7 @@ export default async function MentorMatchmakerPage({
           </select>
           <button
             type="submit"
-            className="rounded-lg bg-spark px-4 text-sm font-semibold text-on-spark shadow-cta transition hover:bg-spark-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="rounded-lg bg-phosphor px-4 text-sm font-semibold text-on-phosphor shadow-cta transition hover:bg-phosphor-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             Match
           </button>
@@ -175,7 +175,7 @@ export default async function MentorMatchmakerPage({
                             </p>
                           )}
                         </div>
-                        <span className="text-xs font-semibold text-spark-ink">
+                        <span className="text-xs font-semibold text-phosphor-ink">
                           {score.toFixed(0)} pts
                         </span>
                       </div>

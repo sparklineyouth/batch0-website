@@ -166,7 +166,7 @@ export default async function AdminAiUsagePage() {
         </div>
         <Link
           href="/admin/audit?action=application.ai_screened"
-          className="text-xs text-spark-ink hover:underline"
+          className="text-xs text-phosphor-ink hover:underline"
         >
           Recent AI screenings →
         </Link>
@@ -223,7 +223,7 @@ export default async function AdminAiUsagePage() {
                   {m.billed > 0 ? fmtMoney(m.billed) : "—"}
                 </div>
                 <div
-                  className={`w-full rounded-t ${isCurrent ? "bg-spark" : "bg-spark/40"}`}
+                  className={`w-full rounded-t ${isCurrent ? "bg-phosphor" : "bg-phosphor/40"}`}
                   style={{ height: `${h}%` }}
                 />
                 <div className="text-[10px] uppercase tracking-wider text-ink-faint">
@@ -249,7 +249,7 @@ export default async function AdminAiUsagePage() {
               <div
                 key={d.key}
                 title={`${d.key} · ${fmtTokens(d.total)} tokens`}
-                className="flex-1 rounded-t bg-spark/60 hover:bg-spark transition-colors"
+                className="flex-1 rounded-t bg-phosphor/60 hover:bg-phosphor transition-colors"
                 style={{ height: `${h}%` }}
               />
             );
@@ -301,7 +301,7 @@ export default async function AdminAiUsagePage() {
                     <td className="px-5 py-3">
                       <Link
                         href={`/admin/students?q=${encodeURIComponent(r.profile?.email ?? "")}`}
-                        className="text-ink hover:text-spark-ink"
+                        className="text-ink hover:text-phosphor-ink"
                       >
                         {name}
                       </Link>
@@ -326,7 +326,7 @@ export default async function AdminAiUsagePage() {
                           atCap
                             ? "rounded-full bg-red-500/15 px-2 py-0.5 text-red-700 dark:text-red-300"
                             : (r.billed_cents ?? 0) > 0
-                              ? "text-spark-ink"
+                              ? "text-phosphor-ink"
                               : "text-ink-faint"
                         }
                       >

@@ -59,7 +59,7 @@ export default async function InterventionsPage() {
                 <div className="flex items-center gap-2">
                   <Link
                     href={`/admin/students/${s?.id}`}
-                    className="text-xs text-spark-ink hover:underline"
+                    className="text-xs text-phosphor-ink hover:underline"
                   >
                     Open →
                   </Link>

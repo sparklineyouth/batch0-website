@@ -31,7 +31,7 @@ Most founders start with option one and only move up when the money justifies th
 
 ## The step-by-step setup with a parent
 
-This is the path 90% of Sparkline founders take, and it takes about 20 minutes.
+This is the path 90% of batch0 founders take, and it takes about 20 minutes.
 
 1. **Have the conversation first.** Your parent is going to be the legal owner of this account, and their name and Social Security number go on it. That means any income technically flows through them until you formalize things. If money and your startup are a touchy subject at home, [read our guide on talking to your parents about your startup](/blog/talking-to-parents-about-your-startup) before you spring a tax form on them.
 2. **Pick one processor.** For selling directly from your own website, use Stripe. For sending someone a quick payment link or invoice, use PayPal. For a physical product with a storefront, use Shopify (which uses Stripe under the hood). Don't sign up for all three. One.
@@ -71,4 +71,4 @@ This is genuinely the smart move for a first product because it removes the paym
 
 Accepting payments is a solved problem. The hard part was never the checkout button — it's having something people actually want to buy. If you're spending your energy on payment processors before you've confirmed demand, you're optimizing the wrong thing. Nail the product and the customer first, then wire up the money in an afternoon.
 
-At [Sparkline](/program), that's exactly the order we run it: over four one-week sprints — Validate, Build, Market, Pitch — you figure out what to build and who wants it before you ever worry about a checkout page. Applying is free, and we only charge tuition if you're accepted, so you can [apply here](/apply) without spending a cent to find out. Get the demand right, and setting up payments becomes the easy part.
+At [batch0](/program), that's exactly the order we run it: over four one-week sprints — Validate, Build, Market, Pitch — you figure out what to build and who wants it before you ever worry about a checkout page. Applying is free, and we only charge tuition if you're accepted, so you can [apply here](/apply) without spending a cent to find out. Get the demand right, and setting up payments becomes the easy part.

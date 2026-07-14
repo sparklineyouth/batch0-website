@@ -83,7 +83,7 @@ Do this the week before you present:
 
 This overlaps heavily with building the pitch itself, so don't treat them as separate jobs. As you learn [how to pitch your startup idea as a teenager](/blog/how-to-pitch-startup-idea-as-a-teenager) and [how to write a pitch deck for a high school competition](/blog/how-to-write-pitch-deck-high-school-competition), keep a running list of the questions each slide invites. Every claim you make is a question you're handing the judges.
 
-At Sparkline Youth, the four sprints end in a live demo day where students field exactly these questions in real time, which is the whole point of doing it live instead of recording a video. You want the reps before the moment counts.
+At batch0, the four sprints end in a live demo day where students field exactly these questions in real time, which is the whole point of doing it live instead of recording a video. You want the reps before the moment counts.
 
 ## What hard-question mistakes should you avoid?
 

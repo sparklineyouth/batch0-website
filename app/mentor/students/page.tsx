@@ -86,7 +86,7 @@ export default async function MentorStudentsPage({
                   <td className="px-5 py-3 text-ink">
                     <Link
                       href={`/mentor/students/${e.profile?.id}`}
-                      className="hover:text-spark-ink"
+                      className="hover:text-phosphor-ink"
                     >
                       {e.profile?.full_name || "—"}
                     </Link>
@@ -127,7 +127,7 @@ function Filter({
       href={href}
       className={`rounded-full border px-3 py-1 font-mono text-xs uppercase tracking-wider transition ${
         active
-          ? "border-spark bg-spark/10 text-spark-ink"
+          ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
           : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
       }`}
     >

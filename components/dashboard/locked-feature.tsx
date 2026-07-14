@@ -19,7 +19,7 @@ export function LockedFeature({
   const { lede, cta } = copyFor(applicationStatus);
   return (
     <div className="mx-auto max-w-2xl">
-      <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+      <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
         {title} · locked
       </p>
       <h1 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.02em] text-ink">
@@ -30,7 +30,7 @@ export function LockedFeature({
         {cta && (
           <Link
             href={cta.href}
-            className="press inline-flex items-center gap-2 rounded-md bg-spark px-4 py-2.5 text-sm font-semibold text-on-spark hover:bg-spark-200"
+            className="press inline-flex items-center gap-2 rounded-md bg-phosphor px-4 py-2.5 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200"
           >
             {cta.label}
             <ArrowRight className="h-4 w-4" />

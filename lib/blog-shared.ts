@@ -15,18 +15,18 @@ export const AUTHORS: Record<
 > = {
   rishabh: {
     name: "Rishabh Dagli",
-    role: "Co-founder, Sparkline Youth",
-    url: "https://www.sparklineyouth.org/#who-runs-this",
+    role: "Co-founder, batch0",
+    url: "https://batch0.org/#who-runs-this",
   },
   taran: {
     name: "Taran Bethi",
-    role: "Co-founder, Sparkline Youth",
-    url: "https://www.sparklineyouth.org/#who-runs-this",
+    role: "Co-founder, batch0",
+    url: "https://batch0.org/#who-runs-this",
   },
   team: {
-    name: "The Sparkline Team",
-    role: "Sparkline Youth",
-    url: "https://www.sparklineyouth.org/#who-runs-this",
+    name: "The batch0 Team",
+    role: "batch0",
+    url: "https://batch0.org/#who-runs-this",
   },
 };
 

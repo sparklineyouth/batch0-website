@@ -46,7 +46,7 @@ export const Input = React.forwardRef<
       aria-invalid={error ? true : undefined}
       aria-describedby={describedBy(error, id, ariaDescribedBy)}
       data-invalid={error ? true : undefined}
-      className={`h-10 w-full rounded-md border ${state} px-3 text-base text-ink placeholder:text-ink-faint focus:border-spark focus:outline-none focus:ring-2 focus:ring-spark/30 md:text-sm ${className}`}
+      className={`h-10 w-full rounded-md border ${state} px-3 text-base text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-2 focus:ring-phosphor/30 md:text-sm ${className}`}
       {...props}
     />
   );
@@ -67,7 +67,7 @@ export const Textarea = React.forwardRef<
       aria-invalid={error ? true : undefined}
       aria-describedby={describedBy(error, id, ariaDescribedBy)}
       data-invalid={error ? true : undefined}
-      className={`min-h-24 w-full rounded-md border ${state} px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-spark focus:outline-none focus:ring-2 focus:ring-spark/30 md:text-sm ${className}`}
+      className={`min-h-24 w-full rounded-md border ${state} px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-2 focus:ring-phosphor/30 md:text-sm ${className}`}
       {...props}
     />
   );
@@ -88,7 +88,7 @@ export const Select = React.forwardRef<
       aria-invalid={error ? true : undefined}
       aria-describedby={describedBy(error, id, ariaDescribedBy)}
       data-invalid={error ? true : undefined}
-      className={`h-10 w-full rounded-md border ${state} px-3 text-base text-ink focus:border-spark focus:outline-none focus:ring-2 focus:ring-spark/30 md:text-sm ${className}`}
+      className={`h-10 w-full rounded-md border ${state} px-3 text-base text-ink focus:border-phosphor focus:outline-none focus:ring-2 focus:ring-phosphor/30 md:text-sm ${className}`}
       {...props}
     >
       {children}

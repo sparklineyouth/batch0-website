@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   const cookieNonce = req.headers
     .get("cookie")
     ?.split(/;\s*/)
-    .find((c) => c.startsWith("sparkline_discord_nonce="))
+    .find((c) => c.startsWith("batch0_discord_nonce="))
     ?.split("=")[1];
   if (!stateUserId || !stateNonce || stateNonce !== cookieNonce) {
     return back("bad_state");
@@ -98,7 +98,7 @@ export async function GET(req: Request) {
   }
 
   // Best-effort: pull current role + drop them into the guild with the
-  // role for that Sparkline Youth role. The bot needs MANAGE_ROLES + the
+  // role for that batch0 role. The bot needs MANAGE_ROLES + the
   // role for the user must be below the bot's role.
   const { data: profile } = await admin
     .from("profiles")

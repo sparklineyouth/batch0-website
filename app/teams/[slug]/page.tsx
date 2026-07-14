@@ -14,13 +14,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .select("name, tagline, public_blurb, is_public, demo_video_url, logo_url, logo_status")
     .ilike("slug", params.slug)
     .maybeSingle();
-  if (!team || !team.is_public) return { title: "Team · Sparkline Youth" };
+  if (!team || !team.is_public) return { title: "Team · batch0" };
   const desc =
     team.tagline ??
     team.public_blurb?.slice(0, 160) ??
-    "A Sparkline Youth team building in public.";
+    "A batch0 team building in public.";
   return {
-    title: `${team.name} · Sparkline Youth`,
+    title: `${team.name} · batch0`,
     description: desc,
     openGraph: {
       title: team.name,
@@ -67,7 +67,7 @@ export default async function PublicTeamPage({ params }: Props) {
         href="/"
         className="text-sm text-white/55 transition hover:text-white"
       >
-        ← Sparkline Youth
+        ← batch0
       </Link>
 
       <header className="mt-6 flex items-start gap-5">
@@ -80,7 +80,7 @@ export default async function PublicTeamPage({ params }: Props) {
               className="h-full w-full object-cover"
             />
           ) : (
-            <span className="text-3xl font-bold text-spark">
+            <span className="text-3xl font-bold text-phosphor">
               {team.name.slice(0, 1).toUpperCase()}
             </span>
           )}
@@ -94,7 +94,7 @@ export default async function PublicTeamPage({ params }: Props) {
           )}
           <p className="mt-2 text-xs text-white/45">
             {cohort?.name ? `${cohort.name} · ` : ""}
-            Built at Sparkline Youth
+            Built at batch0
           </p>
         </div>
       </header>
@@ -131,7 +131,7 @@ export default async function PublicTeamPage({ params }: Props) {
                 href={videoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block p-4 text-sm text-spark hover:underline"
+                className="block p-4 text-sm text-phosphor hover:underline"
               >
                 Watch demo video →
               </a>
@@ -174,8 +174,8 @@ export default async function PublicTeamPage({ params }: Props) {
         </Card>
       )}
 
-      <Card className="mt-6 border-spark/30 bg-spark/[0.04]">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-spark">
+      <Card className="mt-6 border-phosphor/30 bg-phosphor/[0.04]">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-phosphor">
           Back this team
         </h2>
         <p className="mt-2 text-sm text-white/80">
@@ -183,7 +183,7 @@ export default async function PublicTeamPage({ params }: Props) {
             ? `${backers} investor${backers === 1 ? "" : "s"} already watching.`
             : "Be the first to back them."}{" "}
           Investors get a private profile, scorecards, and a direct line to
-          the team through Sparkline Youth.
+          the team through batch0.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link href={`/investor?team=${team.slug}`}>

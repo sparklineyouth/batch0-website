@@ -19,7 +19,7 @@ export async function saveLanding(input: LandingInput) {
     input.accent_hex &&
     !/^#[0-9a-fA-F]{6}$/.test(input.accent_hex.trim())
   ) {
-    throw new Error("Accent must be a 6-digit hex color like #facc15.");
+    throw new Error("Accent must be a 6-digit hex color like #ffbb00.");
   }
   const admin = createAdminClient();
   const { data: before } = await admin

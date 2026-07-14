@@ -1,5 +1,5 @@
 import React from "react";
-import Image from "next/image";
+import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { getSiteConfig, type SiteConfig } from "@/lib/site-config";
 
@@ -22,10 +22,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
       <div className="mx-auto flex max-w-[1100px] flex-col gap-8 md:flex-row md:items-start md:justify-between">
         <div className="max-w-sm">
           <div className="flex items-center gap-2">
-            <Image src="/logo.svg" alt="" width={22} height={22} />
-            <span className="font-display text-[15px] font-bold tracking-tight text-ink">
-              Sparkline Youth
-            </span>
+            <Wordmark className="h-[18px] text-ink" />
           </div>
           <p className="mt-3 text-sm leading-[1.6] text-ink-soft">
             A live, online startup accelerator for U.S. high schoolers.

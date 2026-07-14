@@ -102,7 +102,7 @@ Then sort your signal by strength. Here's the ladder, weakest to strongest:
 
 The bottom two rows are what you're mining for. Anything a person already spends time or money on is a problem they've voted for with their behavior. Anything they only promise about the future is a wish.
 
-If you run ten interviews and nobody has a workaround, nobody has paid for anything, and nobody can name the last time it hurt — that's not a failed study. That's a successful one. You just saved yourself months building something nobody needs. At Sparkline Youth, the first of our four build sprints is entirely about this kind of validation, because founders who skip it tend to build beautiful things for problems that don't exist.
+If you run ten interviews and nobody has a workaround, nobody has paid for anything, and nobody can name the last time it hurt — that's not a failed study. That's a successful one. You just saved yourself months building something nobody needs. At batch0, the first of our four build sprints is entirely about this kind of validation, because founders who skip it tend to build beautiful things for problems that don't exist.
 
 ## What customer interviews are not
 

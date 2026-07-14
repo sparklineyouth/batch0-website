@@ -17,7 +17,7 @@ export default function Pricing({ config }: { config: SiteConfig }) {
             {derived.priceLabel}, once
           </h2>
           <p className="mt-4 max-w-[34rem] text-[15px] leading-[1.65] text-ink-soft">
-            Sparkline is 100% free to apply, tuition is charged only if you&apos;re accepted.
+            batch0 is 100% free to apply, tuition is charged only if you&apos;re accepted.
             Comparable summer programs (LaunchX, LeanGap) list tuition in the
             $3,000–$8,000+ range, even for online programs!
             {/* TODO(RISH): re-verify current LaunchX / LeanGap list prices

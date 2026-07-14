@@ -101,6 +101,6 @@ Check your slides in full-screen present mode before you leave the house. Text t
 
 ## Where this fits in the bigger picture
 
-A pitch deck is a tool, not the goal. The goal is that a room of people understands what you built and wants to help. At [Sparkline](/program), the whole final sprint is Pitch — you build a real company over four weeks and present it at a live demo day, and yes, a lot of founders build their first deck in Canva exactly like this. Applying is free, and if you want a deadline and a room full of people who'll tell you honestly whether your deck lands, [that's what the program is for](/apply).
+A pitch deck is a tool, not the goal. The goal is that a room of people understands what you built and wants to help. At [batch0](/program), the whole final sprint is Pitch — you build a real company over four weeks and present it at a live demo day, and yes, a lot of founders build their first deck in Canva exactly like this. Applying is free, and if you want a deadline and a room full of people who'll tell you honestly whether your deck lands, [that's what the program is for](/apply).
 
 Build the deck this week. Two hours, zero dollars, one clear idea per slide. Then go say it out loud until it stops sounding scary.

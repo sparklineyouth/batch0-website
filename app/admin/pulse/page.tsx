@@ -231,7 +231,7 @@ export default async function PulsePage() {
     <div className="mx-auto max-w-6xl">
       <div className="flex items-end justify-between gap-3 border-b border-line pb-6">
         <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-spark-ink">
+          <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-phosphor-ink">
             Pulse
           </p>
           <h1 className="mt-3 font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-ink">
@@ -289,7 +289,7 @@ export default async function PulsePage() {
             label="Pending review"
             count={pendingApps ?? 0}
             href="/admin/applications?status=submitted"
-            tone={(pendingApps ?? 0) > 0 ? "spark" : "muted"}
+            tone={(pendingApps ?? 0) > 0 ? "phosphor" : "muted"}
             icon={Inbox}
           />
           <InboxRow
@@ -336,7 +336,7 @@ export default async function PulsePage() {
                   {w.count || ""}
                 </div>
                 <div
-                  className="w-full rounded-t bg-spark/50"
+                  className="w-full rounded-t bg-phosphor/50"
                   style={{
                     height: `${Math.max(2, Math.round((w.count / maxAppsWk) * 100))}%`,
                   }}
@@ -401,7 +401,7 @@ export default async function PulsePage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-base font-semibold text-ink group-hover:text-spark-ink">
+                      <span className="text-base font-semibold text-ink group-hover:text-phosphor-ink">
                         {c.name}
                       </span>
                       <span
@@ -523,11 +523,11 @@ function InboxRow({
   count: number;
   suffix?: string;
   href: string;
-  tone: "spark" | "warn" | "muted" | "ok" | "bad";
+  tone: "phosphor" | "warn" | "muted" | "ok" | "bad";
   hint?: string;
 }) {
   const colors = {
-    spark: "text-spark-ink",
+    phosphor: "text-phosphor-ink",
     warn: "text-amber-700 dark:text-amber-300",
     muted: "text-ink-faint",
     ok: "text-emerald-700 dark:text-emerald-300",

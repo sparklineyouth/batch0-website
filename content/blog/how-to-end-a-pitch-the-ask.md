@@ -74,4 +74,4 @@ The ending deserves an outsized share of your rehearsal time. Run just the last 
 
 You don't need funding, a co-founder, or a fancy deck to nail this. Know your ask, write one good line, and practice stopping on time. It's free, and it's the highest-leverage 20 seconds in your whole pitch.
 
-If you want a real room to try it in, [Sparkline Youth](/program) runs four one-week sprints and ends with a live demo day where you make an actual ask to real judges. Applying is free, and you only pay tuition if you get in. [Apply here](/apply) when you're ready to pitch something you built.
+If you want a real room to try it in, [batch0](/program) runs four one-week sprints and ends with a live demo day where you make an actual ask to real judges. Applying is free, and you only pay tuition if you get in. [Apply here](/apply) when you're ready to pitch something you built.

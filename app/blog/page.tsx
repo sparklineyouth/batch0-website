@@ -5,15 +5,15 @@ import { getSiteConfig } from "@/lib/site-config";
 import { getProfile, roleHome } from "@/lib/auth";
 import { getAllPostsMeta, formatPostDate, type PostMeta } from "@/lib/blog";
 
-const SITE = "https://www.sparklineyouth.org";
+const SITE = "https://batch0.org";
 
 export const metadata = {
-  title: "Startup Guides for High Schoolers — Sparkline Youth Blog",
+  title: "Startup Guides for High Schoolers — batch0 Blog",
   description:
     "Practical, no-fluff guides and essays for high-school founders: how to validate an idea, run customer interviews, build an MVP with no code, price your first product, and pitch at demo day.",
   alternates: { canonical: "/blog" },
   openGraph: {
-    title: "Startup Guides for High Schoolers — Sparkline Youth Blog",
+    title: "Startup Guides for High Schoolers — batch0 Blog",
     description:
       "Practical guides and essays for high-school founders: validate an idea, run customer interviews, build an MVP, price it, and pitch it.",
     url: `${SITE}/blog`,
@@ -38,7 +38,7 @@ function PostRow({ post }: { post: PostMeta }) {
             </p>
           </div>
           <div className="md:col-span-9">
-            <h2 className="font-display text-[1.5rem] font-bold leading-[1.12] tracking-[-0.02em] text-ink underline decoration-transparent decoration-2 underline-offset-4 group-hover:decoration-spark">
+            <h2 className="font-display text-[1.5rem] font-bold leading-[1.12] tracking-[-0.02em] text-ink underline decoration-transparent decoration-2 underline-offset-4 group-hover:decoration-phosphor">
               {post.title}
             </h2>
             <p className="mt-2 max-w-[46rem] text-[15px] leading-[1.6] text-ink-soft">
@@ -69,15 +69,15 @@ export default async function BlogIndexPage() {
     "@context": "https://schema.org",
     "@type": "Blog",
     "@id": `${SITE}/blog`,
-    name: "Sparkline Youth Blog",
+    name: "batch0 Blog",
     description:
       "Guides and essays on building a startup as a high schooler — from idea validation to demo day.",
     url: `${SITE}/blog`,
     publisher: {
       "@type": "Organization",
-      name: "Sparkline Youth",
+      name: "batch0",
       url: SITE,
-      logo: `${SITE}/logo.svg`,
+      logo: `${SITE}/icon-512.png`,
     },
     blogPost: posts.map((p) => ({
       "@type": "BlogPosting",
@@ -105,13 +105,13 @@ export default async function BlogIndexPage() {
 
       <section className="px-5 pb-10 pt-14 sm:px-6 sm:pt-20">
         <div className="mx-auto max-w-[1100px]">
-          <p className="font-mono text-[13px] text-ink-faint">The Sparkline Blog</p>
+          <p className="font-mono text-[13px] text-ink-faint">The batch0 Blog</p>
           <h1 className="mt-3 max-w-[20ch] font-display text-[clamp(2.25rem,5.5vw,3.5rem)] font-bold leading-[1.03] tracking-[-0.025em] text-ink">
             How to actually <span className="hl">build a company</span> in high school.
           </h1>
           <p className="mt-6 max-w-[42rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
             No theory-for-theory&apos;s-sake. These are the same playbooks we
-            run inside the Sparkline cohort — validating an idea, interviewing
+            run inside the batch0 cohort — validating an idea, interviewing
             strangers, shipping an MVP with no code, pricing it, and pitching it
             live. Written for people who plan to finish.
           </p>

@@ -107,7 +107,7 @@ export default async function AdminApplicationDetail({
             {(app as any).ai_score != null ? (
               <div className="mt-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight tabular-nums text-spark-ink">
+                  <span className="text-3xl font-bold tracking-tight tabular-nums text-phosphor-ink">
                     {(app as any).ai_score}
                   </span>
                   <span className="text-xs text-ink-faint">/ 10</span>
@@ -175,7 +175,7 @@ export default async function AdminApplicationDetail({
 
       <Card className="mt-6">
         <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
-          Why Sparkline Youth
+          Why batch0
         </h3>
         <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
           {app.why_join || "—"}
@@ -258,7 +258,7 @@ export default async function AdminApplicationDetail({
                       <span className="font-semibold text-ink">
                         {reviewer?.full_name ?? reviewer?.email ?? "Reviewer"}
                       </span>
-                      <span className="text-spark-ink">
+                      <span className="text-phosphor-ink">
                         {(r.decision ?? "").replace("_", " ")}
                       </span>
                     </div>
@@ -297,7 +297,7 @@ export default async function AdminApplicationDetail({
               >
                 <Link
                   href={`/admin/applications/${d.id}`}
-                  className="text-spark-ink hover:underline"
+                  className="text-phosphor-ink hover:underline"
                 >
                   {d.full_name ?? "Applicant"} · {d.status}
                 </Link>
@@ -405,7 +405,7 @@ function LinkRow({
           href={value}
           target="_blank"
           rel="noopener noreferrer"
-          className="min-w-0 truncate text-spark-ink hover:underline"
+          className="min-w-0 truncate text-phosphor-ink hover:underline"
         >
           {value}
         </a>

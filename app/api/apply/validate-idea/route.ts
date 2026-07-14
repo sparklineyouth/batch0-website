@@ -98,7 +98,7 @@ export async function POST(req: Request) {
         model: "claude-haiku-4-5-20251001",
         max_tokens: 400,
         system:
-          "You're a sharp, kind co-founder helping a high schooler refine their Sparkline Youth application. " +
+          "You're a sharp, kind co-founder helping a high schooler refine their batch0 application. " +
           "Read the idea and give 3-4 short, concrete bullets that would meaningfully tighten it. " +
           "Focus on: who exactly the user is, what changes after they use it, and the one experiment they could run this week. " +
           "Don't fluff. Don't suggest they 'do market research' — be specific.",
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
             content:
               `My idea:\n\n${idea.slice(0, 1500)}` +
               (similars.length > 0
-                ? `\n\nFor context, similar accepted ideas at Sparkline Youth touched: ${similars
+                ? `\n\nFor context, similar accepted ideas at batch0 touched: ${similars
                     .map((s) => s.idea.slice(0, 120))
                     .join(" | ")}`
                 : ""),

@@ -98,7 +98,7 @@ export default async function DashboardHome() {
     <div className="mx-auto max-w-5xl">
       {/* Hero row — name + lifecycle stage. Mirrors the marketing voice. */}
       <div className="border-b border-line pb-8">
-        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
           {status.label}
         </p>
         <h1 className="mt-3 text-4xl md:text-5xl font-bold tracking-[-0.02em] text-ink">
@@ -168,7 +168,7 @@ export default async function DashboardHome() {
                 </p>
                 <p className="mt-0.5 text-xs text-ink-soft">
                   ${(f.amount_cents / 100).toFixed(2)}. Settle when you can;
-                  Sparkline Youth stays open in the meantime.
+                  batch0 stays open in the meantime.
                 </p>
               </div>
               <ChargePayButton chargeId={f.id} />
@@ -279,9 +279,9 @@ export default async function DashboardHome() {
       )}
 
       {certificate && (
-        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-spark/30 bg-spark/[0.04] px-5 py-4">
+        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-phosphor/30 bg-phosphor/[0.04] px-5 py-4">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
               Certificate of completion
             </p>
             <p className="mt-1 text-sm text-ink-soft">
@@ -381,7 +381,7 @@ function Row({
   const inner = (
     <div className="group flex items-center gap-4 border-b border-line py-5">
       <Icon
-        className={`h-5 w-5 shrink-0 ${muted ? "text-ink-faint" : "text-spark-ink"}`}
+        className={`h-5 w-5 shrink-0 ${muted ? "text-ink-faint" : "text-phosphor-ink"}`}
       />
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">

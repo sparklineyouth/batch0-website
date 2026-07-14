@@ -76,7 +76,7 @@ export async function postDemoDayPitchThreads(
           {
             title: `🚀 ${t.name}`,
             description: lines.join("\n"),
-            color: 0xfacc15,
+            color: 0xffbb00,
           },
         ],
         components: [

@@ -36,7 +36,7 @@ export async function requestPitchCoach(input: PitchCoachInput): Promise<{
   }
   if (role !== "admin" && (await isOverHardCap(user.id))) {
     throw new Error(
-      "You've hit your AI monthly cap. Contact Sparkline Youth if you need more.",
+      "You've hit your AI monthly cap. Contact batch0 if you need more.",
     );
   }
 
@@ -102,7 +102,7 @@ export async function requestPitchCoach(input: PitchCoachInput): Promise<{
 
   const client = new Anthropic({ apiKey: env.anthropicApiKey });
   const sys =
-    "You're a senior pitch coach at Sparkline Youth. Score this pitch against the rubric. " +
+    "You're a senior pitch coach at batch0. Score this pitch against the rubric. " +
     "Return STRICT JSON with shape: " +
     '{"scores": {"<label>": {"score": number, "why": string}}, "overall_score": number, "summary": string, "strengths": string, "improvements": string}. ' +
     "Each label MUST be one of the rubric labels provided. Scores must be 0..max_score for that label. " +

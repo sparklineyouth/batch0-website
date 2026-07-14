@@ -28,7 +28,7 @@ const STEPS = [
 // literals; we append these tokens so they override to the marketing surface
 // (works in light + dark). Kept in one place so every field stays consistent.
 const FIELD_CLASS =
-  "bg-paper border-line text-ink placeholder:text-ink-faint focus:border-spark";
+  "bg-paper border-line text-ink placeholder:text-ink-faint focus:border-phosphor";
 
 type FormState = {
   full_name: string;
@@ -410,7 +410,7 @@ export function ApplicationForm({
   // Required-marker helper for a config-driven field.
   const reqMark = (key: string) =>
     isRequired(cfg, key) ? (
-      <span aria-hidden className="text-spark-ink">
+      <span aria-hidden className="text-phosphor-ink">
         *
       </span>
     ) : null;
@@ -426,7 +426,7 @@ export function ApplicationForm({
         aria-label={`Application progress: step ${step} of ${STEPS.length}`}
       >
         <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]">
-          <span className="text-spark-ink">
+          <span className="text-phosphor-ink">
             Step {step} of {STEPS.length}
           </span>
           <span className="text-ink-soft">
@@ -438,7 +438,7 @@ export function ApplicationForm({
           className="mt-2 h-1 w-full overflow-hidden rounded-full bg-line"
         >
           <div
-            className="h-full bg-spark transition-all duration-300"
+            className="h-full bg-phosphor transition-all duration-300"
             style={{ width: `${(step / STEPS.length) * 100}%` }}
           />
         </div>
@@ -456,11 +456,11 @@ export function ApplicationForm({
                 aria-current={isCurrent ? "step" : undefined}
                 className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-medium ${
                   isCurrent
-                    ? "border-spark bg-spark text-on-spark"
+                    ? "border-phosphor bg-phosphor text-on-phosphor"
                     : reached
                       ? hasErr
                         ? "border-red-400/60 bg-red-400/10 text-red-500"
-                        : "border-spark/40 bg-spark/10 text-spark-ink"
+                        : "border-phosphor/40 bg-phosphor/10 text-phosphor-ink"
                       : "border-line text-ink-faint"
                 }`}
               >
@@ -487,16 +487,16 @@ export function ApplicationForm({
                 onClick={() => setStep(s.id)}
                 aria-label={`Step ${s.id}: ${s.title}${hasErr ? " (has errors)" : ""}`}
                 aria-current={isCurrent ? "step" : undefined}
-                className="group inline-flex items-center gap-2 rounded-full py-0.5 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark/60"
+                className="group inline-flex items-center gap-2 rounded-full py-0.5 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60"
               >
                 <span
                   className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
                     isCurrent
-                      ? "border-spark bg-spark text-on-spark"
+                      ? "border-phosphor bg-phosphor text-on-phosphor"
                       : reached
                         ? hasErr
                           ? "border-red-400/60 bg-red-400/10 text-red-500"
-                          : "border-spark/40 bg-spark/10 text-spark-ink"
+                          : "border-phosphor/40 bg-phosphor/10 text-phosphor-ink"
                         : "border-line text-ink-faint group-hover:border-ink/30 group-hover:text-ink-soft"
                   }`}
                 >
@@ -670,7 +670,7 @@ export function ApplicationForm({
                 {cfg.parent_email.label}{" "}
                 {parentEmailRequired && (
                   <>
-                    <span aria-hidden className="text-spark-ink">
+                    <span aria-hidden className="text-phosphor-ink">
                       *
                     </span>
                     <span className="sr-only"> required</span>
@@ -795,7 +795,7 @@ export function ApplicationForm({
             show("resume_url") ||
             show("portfolio_url")) && (
             <div className="rounded-xl border border-line bg-paper p-4">
-              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-spark-ink">
+              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
                 Links (optional)
               </p>
               <p className="mt-1 text-xs text-ink-soft">
@@ -994,9 +994,9 @@ export function ApplicationForm({
                     role="radio"
                     aria-checked={selected}
                     onClick={() => set("team_size", String(opt.value))}
-                    className={`rounded-lg border px-3 py-2 text-sm transition active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark/60 ${
+                    className={`rounded-lg border px-3 py-2 text-sm transition active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60 ${
                       selected
-                        ? "border-spark bg-spark/15 text-ink"
+                        ? "border-phosphor bg-phosphor/15 text-ink"
                         : "border-line bg-paper text-ink-soft hover:border-ink/30 hover:text-ink"
                     }`}
                   >
@@ -1015,7 +1015,7 @@ export function ApplicationForm({
       {step === 4 && (
         <div className="space-y-4">
           <div className="rounded-xl border border-line bg-paper p-5 text-sm">
-            <h4 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wider text-spark-ink">
+            <h4 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
               Review your answers
             </h4>
             {show("full_name") && (
@@ -1105,7 +1105,7 @@ export function ApplicationForm({
               />
             )}
           </div>
-          <div className="rounded-xl border border-spark/30 bg-spark/5 p-4 text-sm text-ink-soft">
+          <div className="rounded-xl border border-phosphor/30 bg-phosphor/5 p-4 text-sm text-ink-soft">
             Submitting moves your application to{" "}
             <span className="text-ink">review</span>. You won't be charged
             anything yet — payment ({priceLabel}) only happens after we accept

@@ -8,18 +8,18 @@ import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { getApplicationQuestions } from "@/lib/application-questions";
 
 export const metadata = {
-  title: "Apply · Sparkline Youth",
+  title: "Apply · batch0",
   description:
-    "Apply to Sparkline Youth — the live, online startup accelerator for U.S. high schoolers. Free to apply; tuition charged only if accepted. Rolling review.",
+    "Apply to batch0 — the live, online startup accelerator for U.S. high schoolers. Free to apply; tuition charged only if accepted. Rolling review.",
   openGraph: {
-    title: "Apply to Sparkline Youth",
+    title: "Apply to batch0",
     description:
       "Four build sprints, a company of your own, and a live demo day. Free to apply; tuition charged only if accepted. Rolling review.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Apply to Sparkline Youth",
+    title: "Apply to batch0",
     description:
       "Four build sprints, a company of your own, and a live demo day. Free to apply; tuition charged only if accepted.",
   },
@@ -147,11 +147,11 @@ export default async function ApplyPage({
             </Link>
           )}
         </div>
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
           {reapplying ? "Reapply" : "Apply"}
         </p>
         <h1 className="mt-3 font-display text-[30px] sm:text-4xl font-bold tracking-[-0.02em] text-ink leading-[1.1]">
-          Apply to Sparkline Youth
+          Apply to batch0
         </h1>
         <p className="mt-3 max-w-2xl text-[15px] sm:text-base text-ink-soft leading-[1.55]">
           {cohortName} is capped at {capacity} students. Applications are
@@ -173,14 +173,14 @@ export default async function ApplyPage({
                     href={`/apply?cohort=${c.id}`}
                     className={`press inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs ${
                       active
-                        ? "border-spark bg-spark/10 text-spark-ink"
+                        ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
                         : "border-line text-ink-soft hover:border-ink/30"
                     }`}
                   >
                     {c.name}
                     {c.starts_on && (
                       <span
-                        className={active ? "text-spark-ink" : "text-ink-faint"}
+                        className={active ? "text-phosphor-ink" : "text-ink-faint"}
                       >
                         · {c.starts_on}
                       </span>
@@ -212,9 +212,9 @@ export default async function ApplyPage({
         )}
 
         {existing?.status === "draft" && (
-          <div className="mt-6 flex items-start gap-3 rounded-xl border border-spark/40 bg-spark/5 p-4 text-sm">
+          <div className="mt-6 flex items-start gap-3 rounded-xl border border-phosphor/40 bg-phosphor/5 p-4 text-sm">
             <div>
-              <p className="font-medium text-spark-ink">
+              <p className="font-medium text-phosphor-ink">
                 Picking up where you left off
               </p>
               <p className="mt-1 text-ink-soft">

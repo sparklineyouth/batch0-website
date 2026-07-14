@@ -54,7 +54,7 @@ export default async function MentorResourcesPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
         Resources
       </p>
       <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
@@ -75,7 +75,7 @@ export default async function MentorResourcesPage() {
         <div className="mt-8 space-y-8">
           {categories.map((cat) => (
             <div key={cat}>
-              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-spark-ink">
+              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
                 {cat}
               </h2>
               <ul className="space-y-3">
@@ -115,7 +115,7 @@ export default async function MentorResourcesPage() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="press inline-flex shrink-0 items-center gap-1.5 rounded-md bg-spark px-3 py-2 text-xs font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                              className="press inline-flex shrink-0 items-center gap-1.5 rounded-md bg-phosphor px-3 py-2 text-xs font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                             >
                               {r.storage_path ? (
                                 <>

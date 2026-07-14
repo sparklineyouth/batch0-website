@@ -30,7 +30,7 @@ The fastest way to kill the "is this a scam" fear is to walk in having already i
 
 Do this before the conversation:
 
-1. **Find out exactly what it costs, and when.** Is there an application fee? Is tuition charged up front, or only if you're accepted? A trustworthy program is upfront about money. (Sparkline Youth, for example, is free to apply to, and the $130 tuition is only charged if you get in.)
+1. **Find out exactly what it costs, and when.** Is there an application fee? Is tuition charged up front, or only if you're accepted? A trustworthy program is upfront about money. (batch0, for example, is free to apply to, and the $130 tuition is only charged if you get in.)
 2. **Check whether they take equity.** A program that wants a slice of a company you haven't built yet is a red flag for a 16-year-old. No-equity programs are the safe default.
 3. **Read what actually happens week to week.** If you can't explain what you'll be doing on a given day, you can't defend it. Skim [what actually happens inside a startup accelerator](/blog/what-happens-in-a-startup-accelerator) so you can describe it in plain terms.
 4. **Compare it to the alternatives.** Line it up against a summer job, another camp, or a free program. [How to choose a teen startup program that isn't a waste of money](/blog/how-to-choose-a-teen-startup-program) gives you the checklist to do this honestly.
@@ -56,7 +56,7 @@ Two rules for this table. First, never promise an outcome you can't control — 
 
 Money is where most of these talks fall apart, so get ahead of it. The strongest move is radical transparency: put the exact number on the table before they have to pull it out of you.
 
-For a program with tuition, say the real figure — including that many good programs, like Sparkline, only charge if you're accepted, so applying costs nothing but time. Then separate two things in their mind: the cost of the *program* and the cost of *building the actual company*. The second is almost always tiny. You can validate an idea for close to zero, and [how much money you need to start a business in high school](/blog/how-much-money-to-start-a-business-in-high-school) has real numbers you can show them.
+For a program with tuition, say the real figure — including that many good programs, like batch0, only charge if you're accepted, so applying costs nothing but time. Then separate two things in their mind: the cost of the *program* and the cost of *building the actual company*. The second is almost always tiny. You can validate an idea for close to zero, and [how much money you need to start a business in high school](/blog/how-much-money-to-start-a-business-in-high-school) has real numbers you can show them.
 
 If cost is the sticking point, come with options instead of a standoff:
 

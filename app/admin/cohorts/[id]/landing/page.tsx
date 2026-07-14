@@ -39,7 +39,7 @@ export default async function CohortLandingPage({
         at{" "}
         <Link
           href={`/cohort/${cohort.slug}`}
-          className="text-spark-ink hover:underline"
+          className="text-phosphor-ink hover:underline"
         >
           /cohort/{cohort.slug}
         </Link>

@@ -81,7 +81,7 @@ export default async function InvestorTeamsPage({
                   <div className="flex items-baseline gap-2">
                     <Link
                       href={`/investor/teams/${t.id}`}
-                      className="font-display text-base font-semibold tracking-[-0.02em] text-ink hover:text-spark-ink"
+                      className="font-display text-base font-semibold tracking-[-0.02em] text-ink hover:text-phosphor-ink"
                     >
                       {t.name}
                     </Link>
@@ -103,7 +103,7 @@ export default async function InvestorTeamsPage({
                         href={t.pitch_deck_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-spark-ink hover:underline"
+                        className="text-phosphor-ink hover:underline"
                       >
                         Pitch deck →
                       </a>
@@ -113,7 +113,7 @@ export default async function InvestorTeamsPage({
                         href={t.pitch_video_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-spark-ink hover:underline"
+                        className="text-phosphor-ink hover:underline"
                       >
                         Pitch video →
                       </a>
@@ -123,7 +123,7 @@ export default async function InvestorTeamsPage({
                         href={t.website_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-spark-ink hover:underline"
+                        className="text-phosphor-ink hover:underline"
                       >
                         Website →
                       </a>
@@ -159,7 +159,7 @@ function Filter({
       href={href}
       className={`rounded-full border px-3 py-1 font-mono text-xs uppercase tracking-wider transition ${
         active
-          ? "border-spark bg-spark/10 text-spark-ink"
+          ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
           : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
       }`}
     >

@@ -34,7 +34,7 @@ Start close and work outward. The people most likely to say yes are the ones wit
 
 The single most underrated group is the second row: alumni from your own school. Sharing a school gives a stranger a reason to open your email and a reason to root for you. A message that starts "I go to [your school], class of 2028" gets read where an anonymous one gets deleted.
 
-The other underrated move is joining somewhere mentors already gather so you never have to cold-pitch at all. That's a big part of what a structured program does. Inside the [Sparkline Youth program](/program), you get mentors assigned to you across all four sprints, which skips the entire "will they even reply" problem. For the deep version of the do-it-yourself route, see our guide on [finding a startup mentor when you're still in high school](/blog/how-to-find-a-startup-mentor-in-high-school).
+The other underrated move is joining somewhere mentors already gather so you never have to cold-pitch at all. That's a big part of what a structured program does. Inside the [batch0 program](/program), you get mentors assigned to you across all four sprints, which skips the entire "will they even reply" problem. For the deep version of the do-it-yourself route, see our guide on [finding a startup mentor when you're still in high school](/blog/how-to-find-a-startup-mentor-in-high-school).
 
 ## How to write a cold email a busy person actually answers
 
@@ -82,6 +82,6 @@ You'll also get advice you disagree with. That's normal. A mentor gives you inpu
 
 If all of this sounds like a lot of cold emailing for uncertain results, there's a reason structured programs exist. The entire point is to hand you mentors who are already committed to helping you, on a schedule, without you having to convince anyone.
 
-That's how Sparkline is built: over four one-week sprints, real mentors review your validation, your build, your marketing, and your pitch. Applying is free, and you only pay if you get in. If you'd rather build than chase replies, [apply here](/apply) and let the mentorship come to you.
+That's how batch0 is built: over four one-week sprints, real mentors review your validation, your build, your marketing, and your pitch. Applying is free, and you only pay if you get in. If you'd rather build than chase replies, [apply here](/apply) and let the mentorship come to you.
 
 Either way, the principle holds. Mentors back founders who are already moving. So go make something small and real this week, then find the one person who knows more than you about the exact wall you just hit, and ask them one good question. That's how it starts.

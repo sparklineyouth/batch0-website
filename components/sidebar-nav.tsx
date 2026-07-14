@@ -15,7 +15,7 @@ type Props = {
   filterItem?: (item: NavItem) => boolean;
 };
 
-const COLLAPSED_PREFIX = "sparkline_nav_collapsed:";
+const COLLAPSED_PREFIX = "batch0_nav_collapsed:";
 
 function loadCollapsed(key: string): Record<string, boolean> {
   if (typeof window === "undefined") return {};
@@ -89,7 +89,7 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Filter…"
           aria-label="Filter navigation"
-          className="w-full rounded-md border border-line bg-paper py-1.5 pl-8 pr-7 text-xs text-ink placeholder:text-ink-faint focus:border-spark focus:outline-none focus:ring-1 focus:ring-spark/30"
+          className="w-full rounded-md border border-line bg-paper py-1.5 pl-8 pr-7 text-xs text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor/30"
         />
         {query && (
           <button
@@ -143,7 +143,7 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
                         aria-current={active ? "page" : undefined}
                         className={`flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition ${
                           active
-                            ? "bg-spark/10 text-spark-ink font-medium"
+                            ? "bg-phosphor/10 text-phosphor-ink font-medium"
                             : "text-ink-soft hover:bg-paper hover:text-ink"
                         }`}
                       >

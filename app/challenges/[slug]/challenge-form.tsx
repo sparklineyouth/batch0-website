@@ -63,8 +63,8 @@ export function ChallengeForm({
 
   if (submitted) {
     return (
-      <div className="rounded-2xl border border-spark/30 bg-spark/5 p-6">
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-spark-ink">
+      <div className="rounded-2xl border border-phosphor/30 bg-phosphor/5 p-6">
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-phosphor-ink">
           Application in
         </p>
         <h2 className="mt-2 font-display text-2xl font-bold tracking-[-0.02em] text-ink">
@@ -99,7 +99,7 @@ export function ChallengeForm({
             <div key={q.id}>
               <Label htmlFor={inputId} required={q.required}>
                 {q.label}
-                {q.required && <span aria-hidden className="text-spark-ink"> *</span>}
+                {q.required && <span aria-hidden className="text-phosphor-ink"> *</span>}
               </Label>
               {q.help && (
                 <p className="mb-1.5 text-xs text-ink-soft">{q.help}</p>
@@ -127,7 +127,7 @@ export function ChallengeForm({
                         key={opt}
                         className={`press inline-flex cursor-pointer items-center rounded-md border px-3.5 py-2 text-sm transition ${
                           active
-                            ? "border-spark bg-spark/10 text-spark-ink"
+                            ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
                             : "border-line text-ink-soft hover:border-ink/30"
                         }`}
                       >

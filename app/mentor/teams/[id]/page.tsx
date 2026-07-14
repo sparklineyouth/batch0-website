@@ -70,7 +70,7 @@ export default async function MentorTeamDetailPage({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={team.logo_url} alt="" className="h-full w-full object-cover" />
           ) : (
-            <span className="text-2xl font-bold text-spark-ink">
+            <span className="text-2xl font-bold text-phosphor-ink">
               {team.name.slice(0, 1).toUpperCase()}
             </span>
           )}
@@ -121,7 +121,7 @@ export default async function MentorTeamDetailPage({
           {(pitch as any).video_url && (
             <a
               href={(pitch as any).video_url}
-              className="mt-3 inline-block text-sm text-spark-ink hover:underline"
+              className="mt-3 inline-block text-sm text-phosphor-ink hover:underline"
               target="_blank"
               rel="noopener noreferrer"
             >

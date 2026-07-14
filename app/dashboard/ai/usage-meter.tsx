@@ -51,7 +51,7 @@ export function UsageMeter({
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-wash">
             <div
-              className={`h-full ${inPct >= 100 ? "bg-amber-500" : "bg-spark"}`}
+              className={`h-full ${inPct >= 100 ? "bg-amber-500" : "bg-phosphor"}`}
               style={{ width: `${Math.min(100, inPct)}%` }}
             />
           </div>
@@ -65,7 +65,7 @@ export function UsageMeter({
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-wash">
             <div
-              className={`h-full ${outPct >= 100 ? "bg-amber-500" : "bg-spark"}`}
+              className={`h-full ${outPct >= 100 ? "bg-amber-500" : "bg-phosphor"}`}
               style={{ width: `${Math.min(100, outPct)}%` }}
             />
           </div>

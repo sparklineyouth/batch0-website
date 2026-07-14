@@ -90,7 +90,7 @@ The point of a spike is that it sits on top of a solid academic foundation. It d
 
 No. Plenty of the strongest student ventures started with one person, a free tool, and a real problem. You can begin this weekend without permission or money.
 
-That said, a structured accelerator can compress months of trial and error and force the parts most students skip, like talking to customers and shipping on a deadline. [Sparkline Youth](/program) runs four one-week sprints (validate, build, market, pitch) that end in a live demo day, which is one way to get a real project off the ground fast. But the tool matters far less than the honesty of what you build. If you do go the program route, [how to choose a teen startup program that isn't a waste of money](/blog/how-to-choose-a-teen-startup-program) will help you avoid the ones selling titles instead of substance.
+That said, a structured accelerator can compress months of trial and error and force the parts most students skip, like talking to customers and shipping on a deadline. [batch0](/program) runs four one-week sprints (validate, build, market, pitch) that end in a live demo day, which is one way to get a real project off the ground fast. But the tool matters far less than the honesty of what you build. If you do go the program route, [how to choose a teen startup program that isn't a waste of money](/blog/how-to-choose-a-teen-startup-program) will help you avoid the ones selling titles instead of substance.
 
 ## What to do next
 

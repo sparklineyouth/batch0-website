@@ -197,7 +197,7 @@ export default async function CourseAnalyticsPage() {
                       r.confusedRate >= 30
                         ? "text-amber-700 dark:text-amber-300"
                         : r.confusedRate >= 15
-                          ? "text-spark-ink"
+                          ? "text-phosphor-ink"
                           : "text-ink-soft"
                     }`}
                   >

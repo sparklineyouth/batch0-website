@@ -78,4 +78,4 @@ If opening Figma helps you build faster, open it. If it helps you *avoid* buildi
 
 That's the entire test. Figma is a hammer, not a house. Use it when a screen is hard to picture, keep the work rough, and get back to the real product fast. The founders who win aren't the ones with the prettiest mockups — they're the ones whose ugly-but-real version got used, broke, taught them something, and got better.
 
-When you're ready to build a real company across four one-week sprints with people who'll keep you out of the design trap, that's what the [Sparkline program](/program) is built for. Applying is free — you can [apply here](/apply) and only pay tuition if you get in. Now close this tab and go ship something a real person can touch.
+When you're ready to build a real company across four one-week sprints with people who'll keep you out of the design trap, that's what the [batch0 program](/program) is built for. Applying is free — you can [apply here](/apply) and only pay tuition if you get in. Now close this tab and go ship something a real person can touch.

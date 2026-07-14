@@ -108,6 +108,6 @@ You don't need a designer. Free tools with clean templates get you 90% of the wa
 
 Write the story first, on paper or in a doc, before you open any slide software. One line per slide: what's the single point here? If the story doesn't hold as nine plain sentences, no template will save it. Once the outline works, build the slides in an afternoon, then practice out loud until you hit time without reading.
 
-A first draft takes a few hours. A deck you can deliver cleanly takes a few rounds of practice in front of a real person who'll tell you where they got lost. That loop, build then get honest feedback then cut, is the core of a program like [Sparkline Youth](/program), which ends in a live demo day where you pitch the real thing.
+A first draft takes a few hours. A deck you can deliver cleanly takes a few rounds of practice in front of a real person who'll tell you where they got lost. That loop, build then get honest feedback then cut, is the core of a program like [batch0](/program), which ends in a live demo day where you pitch the real thing.
 
 The deck follows the story, and the story comes from what you actually found by talking to people. If your slides feel thin, the fix usually isn't design. Go deeper on the underlying narrative in [the story structure behind every good pitch](/blog/storytelling-for-pitches), then come back and cut your deck to the bone.

@@ -174,7 +174,7 @@ export function CourseManager({
                     <ChevronRight className="h-4 w-4 text-ink-faint" />
                   )}
                   <div>
-                    <div className="text-xs uppercase tracking-wider text-spark-ink">
+                    <div className="text-xs uppercase tracking-wider text-phosphor-ink">
                       Week {m.week}
                     </div>
                     <div className="text-sm font-medium text-ink">{m.title}</div>

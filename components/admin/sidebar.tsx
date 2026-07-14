@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import Image from "next/image";
+import { Wordmark } from "@/components/wordmark";
 import { LogOut, Eye, Handshake, Briefcase } from "lucide-react";
 import { ADMIN_NAV_GROUPS } from "@/lib/nav-config";
 import { NotificationBell } from "@/components/notification-bell";
@@ -20,14 +20,11 @@ export function AdminSidebar() {
     <aside className="hidden md:flex md:sticky md:top-0 md:h-screen w-60 shrink-0 flex-col border-r border-line bg-wash px-4 py-6 overflow-hidden">
       <div className="mb-2 flex items-center justify-between px-2">
         <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo.svg" alt="" width={24} height={24} />
-          <span className="font-display font-semibold tracking-tight text-ink">
-            Spark<span className="text-spark-ink">Line</span> Youth
-          </span>
+          <Wordmark className="h-5 text-ink" />
         </Link>
         <NotificationBell align="left" />
       </div>
-      <p className="mb-4 px-2 text-[10px] font-mono font-semibold uppercase tracking-[0.2em] text-spark-ink">
+      <p className="mb-4 px-2 text-[10px] font-mono font-semibold uppercase tracking-[0.2em] text-phosphor-ink">
         Admin
       </p>
       <SidebarNav storageKey="admin" groups={ADMIN_NAV_GROUPS} />

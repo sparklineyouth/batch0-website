@@ -3,7 +3,7 @@ import { getAllPostsMeta } from "@/lib/blog";
 
 // Canonical host is www — the apex 307s there, so the sitemap must not
 // hand crawlers redirecting URLs.
-const BASE = "https://www.sparklineyouth.org";
+const BASE = "https://batch0.org";
 
 // Static marketing routes. Auth/product routes (/dashboard, /apply, /admin,
 // /mentor, /investor) are deliberately omitted — they're gated and shouldn't

@@ -34,7 +34,7 @@ values (
     "linkedin_url": {"label": "LinkedIn", "help": "", "placeholder": "https://linkedin.com/in/…", "required": false, "hidden": false},
     "resume_url": {"label": "Resume URL", "help": "", "placeholder": "https://… (Google Drive, Dropbox, your site)", "required": false, "hidden": false},
     "portfolio_url": {"label": "Portfolio / project link", "help": "", "placeholder": "https://…", "required": false, "hidden": false},
-    "why_join": {"label": "Why Sparkline Youth?", "help": "", "placeholder": "What do you want to get out of these 4 weeks?", "required": true, "hidden": false},
+    "why_join": {"label": "Why batch0?", "help": "", "placeholder": "What do you want to get out of these 4 weeks?", "required": true, "hidden": false},
     "startup_idea": {"label": "Do you have a project idea? (optional)", "help": "", "placeholder": "It''s totally fine if you don''t. Tell us anything you''ve been thinking about.", "required": false, "hidden": false},
     "team_size": {"label": "Founding team size", "help": "How many of you are working on this together? You don''t need to list anyone — just the count, including yourself.", "placeholder": "", "required": true, "hidden": false, "optionLabels": {"1": "Solo (just me)", "2": "2 (me + 1 co-founder)", "3": "3", "4": "4", "5": "5+"}}
   }'::jsonb

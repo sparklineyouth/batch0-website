@@ -20,7 +20,7 @@ const COLOR: Record<string, string> = {
   intro_made: "bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-300",
   meeting_held: "bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300",
   committed: "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300",
-  wired: "bg-spark/15 text-spark-ink",
+  wired: "bg-phosphor/15 text-phosphor-ink",
   passed: "bg-wash text-ink-faint",
 };
 
@@ -61,7 +61,7 @@ export default async function InvestorIntrosPage() {
                   {teamHref ? (
                     <Link
                       href={teamHref}
-                      className="font-display text-base font-semibold tracking-[-0.02em] text-ink hover:text-spark-ink"
+                      className="font-display text-base font-semibold tracking-[-0.02em] text-ink hover:text-phosphor-ink"
                     >
                       {t?.name ?? "Untitled team"}
                     </Link>

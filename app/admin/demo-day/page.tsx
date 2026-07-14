@@ -141,7 +141,7 @@ export default async function AdminDemoDayPage() {
                 <div className="col-span-1 text-xs text-ink-soft">
                   {r.reactions}
                 </div>
-                <div className="col-span-2 text-right text-sm font-semibold tracking-tight text-spark-ink">
+                <div className="col-span-2 text-right text-sm font-semibold tracking-tight text-phosphor-ink">
                   {r.weighted != null ? `${r.weighted.toFixed(1)}%` : "—"}
                 </div>
               </Link>

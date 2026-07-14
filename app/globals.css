@@ -12,7 +12,7 @@
   --ink: 20 20 20;
   --ink-soft: 74 74 74;
   --ink-faint: 111 111 111;
-  --spark-ink: 138 106 0;
+  --phosphor-ink: 140 103 0;
 
   /* Raw page surface used by html/body + browser theme-color. */
   --background: #ffffff;
@@ -35,7 +35,7 @@
   /* AA (4.5:1) on the raised wash footer (24 24 27) *and* on paper — the
    * footer's faint legal text was the binding constraint. */
   --ink-faint: 135 135 145;
-  --spark-ink: 250 204 21;
+  --phosphor-ink: 255 187 0;
 
   --background: #0c0c0d;
   --foreground: #f5f5f4;
@@ -53,7 +53,7 @@
   --ink: 20 20 20;
   --ink-soft: 74 74 74;
   --ink-faint: 111 111 111;
-  --spark-ink: 138 106 0;
+  --phosphor-ink: 140 103 0;
   --background: #ffffff;
   --foreground: #141414;
 }
@@ -102,6 +102,56 @@ body {
   }
 }
 
+/* ============================================================================
+ * The wordmark (components/wordmark.tsx)
+ *
+ * logo.svg painted as a mask over currentColor, so the mark inherits the
+ * surrounding ink and flips with the theme for free — an <img> would be
+ * locked to whatever colour is baked in the file. Height drives the size;
+ * the aspect ratio derives the width from the traced mark's 900x219 box.
+ * ========================================================================= */
+.wordmark {
+  display: inline-block;
+  aspect-ratio: 900 / 219;
+  background-color: currentColor;
+  -webkit-mask-image: url("/logo.svg");
+  mask-image: url("/logo.svg");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* ============================================================================
+ * VT323 guardrails
+ *
+ * VT323 is a bitmap CRT face and ships a single 400 weight. Two things break
+ * it, and both are already spread across ~137 `font-display` call sites that
+ * were written for a variable-weight face:
+ *
+ *   1. font-bold/font-semibold have no real weight to reach for, so browsers
+ *      synthesize one by smearing the glyph — on a pixel font that reads as
+ *      mud. font-synthesis: none refuses the fake and keeps the true 400.
+ *   2. Negative tracking (tracking-tight, tracking-[-0.025em]) was tuned for
+ *      Bricolage's tight fit; on a fixed pixel grid it collides adjacent
+ *      stems. A hair of positive tracking lets the pixels breathe.
+ *
+ * !important is deliberate here: these have to beat Tailwind utilities that
+ * sit later in the cascade, and fixing it centrally is safer than editing
+ * every call site. Set the size, not the weight, to build hierarchy.
+ * ========================================================================= */
+.font-display {
+  font-weight: 400 !important;
+  font-synthesis: none;
+  letter-spacing: 0.01em !important;
+  /* VT323 has a small optical size for its em box — it renders noticeably
+   * lighter than the face it replaced at the same px. Nudge the line box so
+   * headings don't sit oddly high in their container. */
+  line-height: 1.1;
+}
+
 /* Tactile press feedback. The previous version animated transform +
  * color + shadow with 80–120ms transitions which gave every click a
  * perceptible delay. Drop the transitions entirely; the only motion
@@ -131,7 +181,7 @@ a,
 }
 
 ::selection {
-  background: #facc15;
+  background: #ffbb00;
   color: #141414;
 }
 
@@ -161,10 +211,10 @@ a,
   transform: translateY(-0.22em);
 }
 
-/* Flat highlighter sweep behind a key phrase — spark fill, ink text.
+/* Flat highlighter sweep behind a key phrase — phosphor fill, ink text.
  * box-decoration-break keeps the fill when the phrase wraps. */
 .hl {
-  background-color: #facc15;
+  background-color: #ffbb00;
   /* The yellow fill is constant across themes, so the swept text must stay
    * dark even in dark mode (where the surrounding text-ink is near-white). */
   color: #141414;
@@ -213,16 +263,16 @@ a,
   }
 }
 
-/* Marketing body links: ink text, spark underline. */
+/* Marketing body links: ink text, phosphor underline. */
 .link-ink {
   color: rgb(var(--ink));
   text-decoration: underline;
-  text-decoration-color: #facc15;
+  text-decoration-color: #ffbb00;
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
 .link-ink:hover {
-  background-color: #facc15;
+  background-color: #ffbb00;
   /* On the yellow hover fill the text must stay dark in both themes. */
   color: #141414;
   text-decoration-color: #141414;
@@ -294,11 +344,11 @@ a,
 .legal-prose a {
   color: rgb(var(--ink));
   text-decoration: underline;
-  text-decoration-color: #facc15;
+  text-decoration-color: #ffbb00;
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
-.legal-prose a:hover { background-color: #facc15; color: #141414; }
+.legal-prose a:hover { background-color: #ffbb00; color: #141414; }
 .legal-prose strong { color: rgb(var(--ink)); font-weight: 600; }
 .legal-prose hr {
   margin: 2.5rem 0;
@@ -356,7 +406,7 @@ a,
 }
 .blog-prose .heading-anchor:hover {
   text-decoration: underline;
-  text-decoration-color: #facc15;
+  text-decoration-color: #ffbb00;
   text-decoration-thickness: 2px;
   text-underline-offset: 4px;
 }
@@ -370,12 +420,12 @@ a,
 .blog-prose a {
   color: rgb(var(--ink));
   text-decoration: underline;
-  text-decoration-color: #facc15;
+  text-decoration-color: #ffbb00;
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
 .blog-prose a:hover {
-  background-color: #facc15;
+  background-color: #ffbb00;
   color: #141414;
   text-decoration-color: #141414;
 }
@@ -396,7 +446,7 @@ a,
   top: 0.72em;
   width: 14px;
   height: 3px;
-  background: #facc15;
+  background: #ffbb00;
 }
 .blog-prose ol {
   counter-reset: blog-ol;
@@ -412,14 +462,14 @@ a,
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.85em;
   font-weight: 500;
-  color: rgb(var(--spark-ink));
+  color: rgb(var(--phosphor-ink));
 }
 .blog-prose li > ul,
 .blog-prose li > ol {
   margin-top: 0.6rem;
 }
 .blog-prose blockquote {
-  border-left: 3px solid #facc15;
+  border-left: 3px solid #ffbb00;
   padding-left: 1.25rem;
   margin-left: 0;
   color: rgb(var(--ink));
@@ -519,7 +569,7 @@ a,
   color: #141414;
 }
 .theme-light ::selection {
-  background: #facc15;
+  background: #ffbb00;
   color: #141414;
 }
 
@@ -583,15 +633,15 @@ a,
 .theme-light .hover\:bg-white\/\[0\.03\]:hover { background-color: rgba(20, 20, 20, 0.04); }
 .theme-light .hover\:text-white:hover { color: #141414; }
 
-/* Spark variants — the hero spark-ink accent (rgb 138 106 0 = #8a6a00),
- * AA on white. The constant yellow `bg-spark` fill is NOT overridden. */
-.theme-light .text-spark { color: #8a6a00; }
-.theme-light .text-spark\/80 { color: rgba(138, 106, 0, 0.85); }
-.theme-light .text-spark\/30 { color: rgba(138, 106, 0, 0.35); }
-.theme-light .bg-spark\/5 { background-color: rgba(138, 106, 0, 0.08); }
-.theme-light .bg-spark\/10 { background-color: rgba(138, 106, 0, 0.12); }
-.theme-light .bg-spark\/15 { background-color: rgba(138, 106, 0, 0.16); }
-.theme-light .border-spark\/30 { border-color: rgba(138, 106, 0, 0.4); }
+/* Phosphor variants — the hero phosphor-ink accent (rgb 140 103 0 = #8c6700),
+ * AA on white. The constant yellow `bg-phosphor` fill is NOT overridden. */
+.theme-light .text-phosphor { color: #8c6700; }
+.theme-light .text-phosphor\/80 { color: rgba(140, 103, 0, 0.85); }
+.theme-light .text-phosphor\/30 { color: rgba(140, 103, 0, 0.35); }
+.theme-light .bg-phosphor\/5 { background-color: rgba(140, 103, 0, 0.08); }
+.theme-light .bg-phosphor\/10 { background-color: rgba(140, 103, 0, 0.12); }
+.theme-light .bg-phosphor\/15 { background-color: rgba(140, 103, 0, 0.16); }
+.theme-light .border-phosphor\/30 { border-color: rgba(140, 103, 0, 0.4); }
 
 /* Status colors readable on white backgrounds. */
 .theme-light .text-emerald-200,
@@ -651,9 +701,9 @@ a,
 /* Border strengths used in dividers — all fold to the hero line color. */
 .theme-light .border-white\/\[0\.06\] { border-color: #e4e4e1; }
 .theme-light .border-white\/\[0\.08\] { border-color: #e4e4e1; }
-.theme-light .border-spark\/40 { border-color: rgba(138, 106, 0, 0.45); }
-.theme-light .border-spark\/50 { border-color: rgba(138, 106, 0, 0.55); }
-.theme-light .border-spark\/60 { border-color: rgba(138, 106, 0, 0.6); }
+.theme-light .border-phosphor\/40 { border-color: rgba(140, 103, 0, 0.45); }
+.theme-light .border-phosphor\/50 { border-color: rgba(140, 103, 0, 0.55); }
+.theme-light .border-phosphor\/60 { border-color: rgba(140, 103, 0, 0.6); }
 .theme-light .border-amber-300\/30 { border-color: rgba(217, 119, 6, 0.3); }
 .theme-light .border-red-400\/30,
 .theme-light .border-red-500\/30 { border-color: rgba(220, 38, 38, 0.3); }
@@ -672,10 +722,10 @@ a,
 .theme-light .bg-emerald-400\/10 { background-color: rgba(4, 120, 87, 0.08); }
 
 /* Spark surfaces — keep the amber hue but adjust opacity for white BG */
-.theme-light .bg-spark\/\[0\.04\] { background-color: rgba(138, 106, 0, 0.07); }
-.theme-light .bg-spark\/\[0\.06\] { background-color: rgba(138, 106, 0, 0.09); }
-.theme-light .bg-spark\/20 { background-color: rgba(138, 106, 0, 0.18); }
-.theme-light .bg-spark\/25 { background-color: rgba(138, 106, 0, 0.2); }
+.theme-light .bg-phosphor\/\[0\.04\] { background-color: rgba(140, 103, 0, 0.07); }
+.theme-light .bg-phosphor\/\[0\.06\] { background-color: rgba(140, 103, 0, 0.09); }
+.theme-light .bg-phosphor\/20 { background-color: rgba(140, 103, 0, 0.18); }
+.theme-light .bg-phosphor\/25 { background-color: rgba(140, 103, 0, 0.2); }
 
 /* Hover variants we missed */
 .theme-light .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(20, 20, 20, 0.04); }
@@ -723,20 +773,20 @@ a,
 .theme-light textarea::placeholder { color: #6f6f6f; }
 .theme-light input:focus,
 .theme-light textarea:focus,
-.theme-light select:focus { border-color: rgba(138, 106, 0, 0.5); }
+.theme-light select:focus { border-color: rgba(140, 103, 0, 0.5); }
 
 /* Dividers used inside cards */
 .theme-light .divide-white\/15 > :not([hidden]) ~ :not([hidden]) {
   border-color: #e4e4e1;
 }
 
-/* Sidebar/notification bell active state should keep the spark tint
+/* Sidebar/notification bell active state should keep the phosphor tint
  * but with the corrected dark-amber accent. Already handled by the
- * text-spark + bg-spark/X overrides above. */
+ * text-phosphor + bg-phosphor/X overrides above. */
 
-/* Buttons with bg-spark + shadow keep their hover state. The constant
- * yellow fill (spark-200 = #fde047) is theme-invariant by design. */
-.theme-light .hover\:bg-spark-200:hover { background-color: #fde047; }
+/* Buttons with bg-phosphor + shadow keep their hover state. The constant
+ * yellow fill (phosphor-200 = #FFD75C) is theme-invariant by design. */
+.theme-light .hover\:bg-phosphor-200:hover { background-color: #FFD75C; }
 
 /* Border variant used by the secondary button on un-converted pages. */
 .theme-light .hover\:border-white\/30:hover { border-color: rgba(20, 20, 20, 0.25); }

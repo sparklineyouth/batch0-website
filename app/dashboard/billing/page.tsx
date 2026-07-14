@@ -7,7 +7,7 @@ import { PortalButton } from "./portal-button";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { Receipt } from "lucide-react";
 
-export const metadata = { title: "Billing · Sparkline Youth" };
+export const metadata = { title: "Billing · batch0" };
 
 function fmtMoney(cents: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -95,7 +95,7 @@ export default async function BillingPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-base font-bold text-spark-ink">
+                  <span className="text-base font-bold text-phosphor-ink">
                     {fmtMoney(c.amount_cents)}
                   </span>
                   <ChargePayButton chargeId={c.id} />

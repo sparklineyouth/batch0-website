@@ -19,7 +19,7 @@ type Message = {
 const KIND_BADGE: Record<string, string> = {
   member: "bg-white/10 text-white/60",
   mentor: "bg-emerald-400/15 text-emerald-300",
-  investor: "bg-spark/15 text-spark",
+  investor: "bg-phosphor/15 text-phosphor",
   admin: "bg-blue-400/15 text-blue-300",
 };
 

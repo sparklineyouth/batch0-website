@@ -6,7 +6,7 @@ import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { LocalTime } from "@/components/ui/local-time";
 
-export const metadata = { title: "Investor intros · Sparkline Youth" };
+export const metadata = { title: "Investor intros · batch0" };
 
 const PRETTY_STATUS: Record<string, string> = {
   requested: "Requested",
@@ -21,7 +21,7 @@ const STATUS_TONE: Record<string, string> = {
   requested: "border-line bg-wash text-ink-soft",
   intro_made: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
   meeting_held: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  committed: "border-spark/40 bg-spark/10 text-spark-ink",
+  committed: "border-phosphor/40 bg-phosphor/10 text-phosphor-ink",
   wired: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   passed: "border-line bg-wash text-ink-soft",
 };
@@ -55,7 +55,7 @@ export default async function StudentIntrosPage() {
   if (teamIds.length === 0) {
     return (
       <div className="mx-auto max-w-2xl">
-        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
           Investor intros
         </p>
         <h1 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.02em]">
@@ -67,7 +67,7 @@ export default async function StudentIntrosPage() {
         </p>
         <Link
           href="/dashboard/team"
-          className="press mt-7 inline-flex items-center gap-2 rounded-md bg-spark px-4 py-2.5 text-sm font-semibold text-on-spark hover:bg-spark-200"
+          className="press mt-7 inline-flex items-center gap-2 rounded-md bg-phosphor px-4 py-2.5 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200"
         >
           Open team
           <ArrowRight className="h-4 w-4" />
@@ -95,7 +95,7 @@ export default async function StudentIntrosPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+      <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
         Investor intros
       </p>
       <h1 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.02em]">

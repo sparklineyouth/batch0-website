@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Terms of Service · Sparkline Youth",
-  description: "The terms that govern Sparkline Youth, the live online startup accelerator for U.S. high schoolers.",
+  title: "Terms of Service · batch0",
+  description: "The terms that govern batch0, the live online startup accelerator for U.S. high schoolers.",
   alternates: { canonical: "/terms" },
 };
 
@@ -13,14 +13,16 @@ export default function TermsPage() {
       </p>
 
       <p>
-        These Terms of Service govern your use of Sparkline Youth
-        (sparklineyouth.org), operated by Sparkline Youth. By creating an account
-        or using the platform, you agree to these terms.
+        These Terms of Service govern your use of batch0 (batch0.org),
+        operated by Sparkline Youth LLC. batch0 was formerly known as
+        Sparkline Youth; the name changed, the operating entity did not.
+        By creating an account or using the platform, you agree to these
+        terms.
       </p>
 
       <h2>Eligibility</h2>
       <p>
-        Sparkline Youth is intended for U.S. high schoolers, generally ages 13–18.
+        batch0 is intended for U.S. high schoolers, generally ages 13–18.
         If you are under 18, you must have permission from a parent or legal
         guardian to use the platform.
       </p>
@@ -34,14 +36,14 @@ export default function TermsPage() {
 
       <h2>Payments</h2>
       <p>
-        Sparkline Youth charges a one-time enrollment fee per cohort. All payments
+        batch0 charges a one-time enrollment fee per cohort. All payments
         are processed by Stripe. Prices are listed in USD. See our{" "}
         <a href="/refund-policy">refund policy</a> for refund terms.
       </p>
 
       <h2>Acceptable use</h2>
       <p>
-        Don't use Sparkline Youth to harass other users, infringe intellectual
+        Don't use batch0 to harass other users, infringe intellectual
         property, distribute malware, or attempt to compromise the
         platform's security.
       </p>
@@ -49,14 +51,14 @@ export default function TermsPage() {
       <h2>Content you upload</h2>
       <p>
         You retain ownership of anything you upload (drafts, files, pitch
-        decks, submissions). You grant Sparkline Youth a limited license to host
+        decks, submissions). You grant batch0 a limited license to host
         and display your content for the purpose of running the program.
       </p>
 
       <h2>Your ideas, your IP, your company</h2>
       <p>
         You own 100% of your idea, your intellectual property, and any
-        company you build during or after the program. Sparkline Youth does
+        company you build during or after the program. batch0 does
         <strong> not</strong> take equity, royalties, revenue share, or
         any ownership interest in your business as a condition of
         participating. We don't claim your IP, we don't license your work
@@ -66,13 +68,13 @@ export default function TermsPage() {
       <p>
         The only thing we ask: permission to attribute. We may publicly
         mention that a project, founder, or company "was built at
-        Sparkline Youth" or "started in a Sparkline Youth cohort" — for example, in
+        batch0" or "started in a batch0 cohort" — for example, in
         case studies, alumni lists, social posts, and our website. This
         is attribution only and creates no ownership, partnership, or
-        agency relationship between Sparkline Youth and your business. If you'd
+        agency relationship between batch0 and your business. If you'd
         prefer not to be named publicly, email{" "}
-        <a href="mailto:hello@sparklineyouth.org">
-          hello@sparklineyouth.org
+        <a href="mailto:hello@batch0.org">
+          hello@batch0.org
         </a>{" "}
         and we'll honor that.
       </p>
@@ -80,13 +82,13 @@ export default function TermsPage() {
       <h2>Termination</h2>
       <p>
         You can delete your account at any time from your settings page.
-        Sparkline Youth may suspend or terminate accounts that violate these
+        batch0 may suspend or terminate accounts that violate these
         terms.
       </p>
 
       <h2>Disclaimer</h2>
       <p>
-        Sparkline Youth is provided "as is" without warranties. We don't
+        batch0 is provided "as is" without warranties. We don't
         guarantee investment outcomes — Demo Day connects students with
         real investors, but funding is at the investors' discretion.
       </p>
@@ -94,8 +96,8 @@ export default function TermsPage() {
       <h2>Contact</h2>
       <p>
         Questions about these terms?{" "}
-        <a href="mailto:hello@sparklineyouth.org">
-          hello@sparklineyouth.org
+        <a href="mailto:hello@batch0.org">
+          hello@batch0.org
         </a>
       </p>
     </>

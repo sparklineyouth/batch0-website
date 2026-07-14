@@ -140,7 +140,7 @@ export default async function AdminDiscordPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Discord</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Wire Sparkline Youth into your Discord server. Account linking, role sync,
+        Wire batch0 into your Discord server. Account linking, role sync,
         cross-posts, and slash commands run off of this configuration.
       </p>
 
@@ -268,7 +268,7 @@ export default async function AdminDiscordPage() {
         </h2>
         <p className="mt-1 text-xs text-ink-faint">
           First-time setup: wipe every existing channel + role and rebuild the
-          canonical Sparkline Youth layout in one click. New IDs are saved to
+          canonical batch0 layout in one click. New IDs are saved to
           the config above automatically.
         </p>
         <div className="mt-4">
@@ -283,7 +283,7 @@ export default async function AdminDiscordPage() {
         <p className="mt-2 text-sm text-ink-soft">
           Set the interactions endpoint URL in your Discord application to:
         </p>
-        <pre className="mt-2 overflow-x-auto rounded-lg bg-wash p-3 text-xs text-spark-ink">
+        <pre className="mt-2 overflow-x-auto rounded-lg bg-wash p-3 text-xs text-phosphor-ink">
           {env.siteUrl}/api/discord/interactions
         </pre>
         <p className="mt-3 text-sm text-ink-soft">Built-in commands:</p>
@@ -297,7 +297,7 @@ export default async function AdminDiscordPage() {
                 key={c.name}
                 className="rounded-lg border border-line bg-wash px-3 py-2"
               >
-                <code className="text-spark-ink">
+                <code className="text-phosphor-ink">
                   {isContextMenu ? "≡ " : "/"}{c.name}
                 </code>
                 <p className="mt-0.5 text-xs text-ink-faint">
@@ -326,7 +326,7 @@ export default async function AdminDiscordPage() {
           <ul className="mt-3 divide-y divide-line text-sm">
             {recentActivity.map((a) => (
               <li key={a.id} className="flex items-baseline justify-between gap-4 py-2">
-                <span className="font-mono text-xs text-spark-ink">
+                <span className="font-mono text-xs text-phosphor-ink">
                   {a.action.replace(/^discord\./, "")}
                 </span>
                 <span className="truncate text-xs text-ink-faint">

@@ -69,7 +69,7 @@ The truth helps you here: you can start for very little. Validating an idea cost
 
 If you're worried they'll ask about paperwork and taxes, get ahead of it. In most cases, [you don't need an LLC as a teen](/blog/do-you-need-an-llc-as-a-teen) until you're actually making money or signing contracts. Knowing that answer before they ask makes you look prepared, which is the whole game.
 
-One honest note on structured programs. Some cost thousands of dollars and are a real financial decision for a family. Others, like Sparkline Youth, keep it low: applying is free, and tuition is $130 charged only if you're accepted. Whatever you're considering, bring the exact cost to the table. Don't make your parents dig for it. If a program is what you're pushing for, [how to convince skeptical parents to let you join a startup program](/blog/how-to-convince-parents-to-let-you-do-a-startup-program) walks through their real objections and the exact answers that get a yes.
+One honest note on structured programs. Some cost thousands of dollars and are a real financial decision for a family. Others, like batch0, keep it low: applying is free, and tuition is $130 charged only if you're accepted. Whatever you're considering, bring the exact cost to the table. Don't make your parents dig for it. If a program is what you're pushing for, [how to convince skeptical parents to let you join a startup program](/blog/how-to-convince-parents-to-let-you-do-a-startup-program) walks through their real objections and the exact answers that get a yes.
 
 ## What this conversation is not
 

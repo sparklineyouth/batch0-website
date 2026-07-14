@@ -62,7 +62,7 @@ The mistake is deleting the slide because you feel like you have nothing. An emp
 The nine-slide sequence is your default. But the room can shift the emphasis:
 
 - **A school or local competition** wants a clear, believable story. Lead with a problem judges recognize from their own lives. Keep market simple and honest — no fake billion-dollar numbers. If you want to avoid the classic market-slide trap, see [how to size your market without faking a huge number](/blog/pitch-deck-market-size-slide).
-- **A live demo day**, like the one that closes every [Sparkline sprint](/program), rewards the demo slide most. Judges want to see the thing work. Give the demo more airtime and make sure it can't break on stage.
+- **A live demo day**, like the one that closes every [batch0 sprint](/program), rewards the demo slide most. Judges want to see the thing work. Give the demo more airtime and make sure it can't break on stage.
 - **An investor-style pitch** cares more about the business model and market. You still keep the order — you just spend an extra beat on how this makes money and how big it gets.
 
 Notice what doesn't change: the sequence. You adjust how long you linger on a slide, not where it sits in the chain.
@@ -82,4 +82,4 @@ A few more moves that make the order land:
 
 Once the order is locked, the rest of your prep is about delivery. When you're ready for that stage, [how to prepare for demo day](/blog/demo-day-preparation-guide) covers rehearsal, timing, and handling nerves so the story you ordered so carefully actually lands in the room.
 
-Get the sequence right first. A great story in the wrong order confuses people. An okay story in the right order convinces them. Start there, and everything else you polish will actually count. If you want a team of mentors walking you through this slide by slide before a real demo day, that's exactly what happens when you [apply to Sparkline](/apply).
+Get the sequence right first. A great story in the wrong order confuses people. An okay story in the right order convinces them. Start there, and everything else you polish will actually count. If you want a team of mentors walking you through this slide by slide before a real demo day, that's exactly what happens when you [apply to batch0](/apply).

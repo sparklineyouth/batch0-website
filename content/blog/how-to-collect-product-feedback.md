@@ -77,10 +77,10 @@ Feedback only improves your product if it changes what you ship. Letting it sit 
 - **Keep it small.** Change one meaningful thing between rounds. Change ten at once and usage improves, and you'll have no idea which change did it.
 - **Feedback is fuel, not orders.** You listen hard, then *you* decide. Users are experts on their problem, not on your solution.
 
-If this collect-decide-ship rhythm sounds like the whole job of building a company, that's because it is. It's exactly what you'd practice in the Build sprint at [Sparkline](/program), shipping to real users every week instead of guessing alone in your room.
+If this collect-decide-ship rhythm sounds like the whole job of building a company, that's because it is. It's exactly what you'd practice in the Build sprint at [batch0](/program), shipping to real users every week instead of guessing alone in your room.
 
 ## Start with five people this week
 
 You don't need a system, a dashboard, or a hundred users to start. Pick five people who genuinely match your target user. Watch two use your product without helping. Ask the other three what they were trying to do the last time they hit the problem you solve. Write down every word and every drop-off. By week's end, one clear pattern shows up — the same complaint, the same confused face, the same abandoned screen — and that pattern is your next thing to build.
 
-That's the whole game: talk to the right people, watch more than you ask, find the repeat, ship the fix, come back. If you want a structured place to do exactly this alongside other teen founders and mentors who'll push you, [apply to Sparkline](/apply). It's free to apply, and you only pay tuition if you get in.
+That's the whole game: talk to the right people, watch more than you ask, find the repeat, ship the fix, come back. If you want a structured place to do exactly this alongside other teen founders and mentors who'll push you, [apply to batch0](/apply). It's free to apply, and you only pay tuition if you get in.

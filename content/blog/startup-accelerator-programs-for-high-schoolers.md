@@ -66,11 +66,11 @@ Here's the honest framing: a program's price should be visible before you apply,
 
 For a full breakdown of what a startup actually costs to start as a teenager (spoiler: less than most programs charge), see [how much money you need to start a business in high school](/blog/how-much-money-to-start-a-business-in-high-school).
 
-## Where does Sparkline fit in?
+## Where does batch0 fit in?
 
-To be transparent about our own program: [Sparkline Youth](/program) is a live, fully online accelerator for U.S. high schoolers ages 13 to 18. It runs as four one-week build sprints — Validate, Build, Market, then Pitch — and ends with a live demo day. Everything happens on Zoom, so you join from anywhere in the country.
+To be transparent about our own program: [batch0](/program) is a live, fully online accelerator for U.S. high schoolers ages 13 to 18. It runs as four one-week build sprints — Validate, Build, Market, then Pitch — and ends with a live demo day. Everything happens on Zoom, so you join from anywhere in the country.
 
-On the terms that matter for the filter above: applying is free, and tuition is $130 charged only if you're accepted. Reduced regional pricing applies automatically in select countries. Sparkline takes no equity, ever — you keep 100% of your company, your work, and your IP. At demo day, standout students may be offered a non-dilutive Sparkline grant, decided purely on merit; it's never guaranteed, and tuition never buys it.
+On the terms that matter for the filter above: applying is free, and tuition is $130 charged only if you're accepted. Reduced regional pricing applies automatically in select countries. batch0 takes no equity, ever — you keep 100% of your company, your work, and your IP. At demo day, standout students may be offered a non-dilutive batch0 grant, decided purely on merit; it's never guaranteed, and tuition never buys it.
 
 We're one option, not the only one. Apply the same table to us that you'd apply to anyone else. That's the point of the table.
 

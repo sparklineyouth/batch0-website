@@ -115,7 +115,7 @@ export async function POST(req: Request) {
   }
 
   if (!(await isDiscordEnabled())) {
-    return ephemeral("Sparkline Youth's Discord integration is paused right now.");
+    return ephemeral("batch0's Discord integration is paused right now.");
   }
 
   const admin = createAdminClient();
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
         return await handleMe(admin, discordUserId);
       case "link":
         return ephemeral(
-          `🔗 Link your Discord account to Sparkline Youth: ${env.siteUrl}/dashboard/settings`,
+          `🔗 Link your Discord account to batch0: ${env.siteUrl}/dashboard/settings`,
         );
       case "cohort":
         return await handleCohort(admin, discordUserId);
@@ -233,7 +233,7 @@ function handleHelp() {
     const suffix = isCtx ? "" : "`";
     return `${prefix}${c.name}${suffix}${(c as any).description ? " — " + (c as any).description : ""}`;
   });
-  return ephemeral(["**Sparkline Youth commands**", ...lines].join("\n"));
+  return ephemeral(["**batch0 commands**", ...lines].join("\n"));
 }
 
 async function handleSync(
@@ -342,7 +342,7 @@ async function handleWhois(
     .maybeSingle();
   if (!target) {
     const tag = resolvedUser?.global_name ?? resolvedUser?.username ?? "user";
-    return ephemeral(`<@${targetDiscordId}> (\`${tag}\`) hasn't linked a Sparkline Youth account.`);
+    return ephemeral(`<@${targetDiscordId}> (\`${tag}\`) hasn't linked a batch0 account.`);
   }
   const lines = [
     `<@${targetDiscordId}> — **${target.full_name ?? target.email}**`,
@@ -808,7 +808,7 @@ async function runAsk(
       : null;
 
     const systemBits: string[] = [
-      "You are the Sparkline Youth AI co-founder, a no-fluff advisor for high-school startup founders. Be concise and concrete.",
+      "You are the batch0 AI co-founder, a no-fluff advisor for high-school startup founders. Be concise and concrete.",
     ];
     if (team) {
       systemBits.push(

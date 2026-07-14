@@ -20,7 +20,7 @@ export function ThemeToggle({ initial }: { initial?: Theme }) {
 
   const pill = (active: boolean) =>
     `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition ${
-      active ? "bg-spark text-on-spark" : "text-ink-soft hover:text-ink"
+      active ? "bg-phosphor text-on-phosphor" : "text-ink-soft hover:text-ink"
     }`;
 
   return (

@@ -42,7 +42,7 @@ Follow this sequence:
 3. **Apply to national competitions** only when you have traction to show and at least one prior win to name. Now your application isn't "hopeful high schooler." It's "founder who has already competed and won."
 4. **Reuse everything.** Your deck, your one-liner, your traction numbers — they carry from contest to contest. You are not rebuilding each time. You're compounding.
 
-This is the same order Sparkline builds toward across our four sprints — [Validate, Build, Market, Pitch](/program) — because a pitch only lands after you've done the work behind it. If you skip straight to a national stage with no wins and no traction, you're paying the entry fee to lose.
+This is the same order batch0 builds toward across our four sprints — [Validate, Build, Market, Pitch](/program) — because a pitch only lands after you've done the work behind it. If you skip straight to a national stage with no wins and no traction, you're paying the entry fee to lose.
 
 ## Do national competitions actually matter for college?
 
@@ -81,7 +81,7 @@ There are two exceptions. Take them seriously.
 
 **One: the national contest has a huge, category-defining prize you can't get elsewhere** — a large cash grant, real mentorship, or media exposure that would genuinely change your company's trajectory. If the upside is that big, apply even as a long shot. You lose an application weekend; you don't lose anything else.
 
-**Two: your local scene is thin.** If your town has zero pitch competitions and your school has no entrepreneurship club, don't manufacture local wins that don't exist. Go where the contests are — and that increasingly means online national and virtual competitions open to any U.S. student. In that case, a structured program that ends in a real demo day, like [Sparkline's](/apply), can be your "local" scene when your zip code doesn't have one. (Not sure a program is worth it? [Here's how to tell.](/blog/how-to-choose-a-teen-startup-program))
+**Two: your local scene is thin.** If your town has zero pitch competitions and your school has no entrepreneurship club, don't manufacture local wins that don't exist. Go where the contests are — and that increasingly means online national and virtual competitions open to any U.S. student. In that case, a structured program that ends in a real demo day, like [batch0's](/apply), can be your "local" scene when your zip code doesn't have one. (Not sure a program is worth it? [Here's how to tell.](/blog/how-to-choose-a-teen-startup-program))
 
 For a fuller map of what's out there, our roundup of the [best startup competitions for high school students](/blog/best-startup-competitions-for-high-school-students) lists real options across both tiers, and [how to actually win the prize money](/blog/how-to-win-a-pitch-competition-money) covers what to do once you're in the room.
 

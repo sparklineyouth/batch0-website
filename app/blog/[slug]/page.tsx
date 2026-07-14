@@ -13,7 +13,7 @@ import {
   formatPostDate,
 } from "@/lib/blog";
 
-const SITE = "https://www.sparklineyouth.org";
+const SITE = "https://batch0.org";
 
 // Every post is a file on disk, so the whole set can be pre-rendered at
 // build time — static HTML is the fastest thing to serve and the cleanest
@@ -32,7 +32,7 @@ export async function generateMetadata({
   const { meta } = post;
   const url = `${SITE}/blog/${meta.slug}`;
   return {
-    title: `${meta.title} — Sparkline Youth`,
+    title: `${meta.title} — batch0`,
     description: meta.description,
     keywords: meta.tags,
     alternates: { canonical: `/blog/${meta.slug}` },
@@ -42,7 +42,7 @@ export async function generateMetadata({
       title: meta.title,
       description: meta.description,
       url,
-      siteName: "Sparkline Youth",
+      siteName: "batch0",
       publishedTime: meta.date,
       modifiedTime: meta.updated,
       authors: [meta.author.name],
@@ -95,14 +95,14 @@ export default async function BlogPostPage({
     },
     publisher: {
       "@type": "Organization",
-      name: "Sparkline Youth",
+      name: "batch0",
       url: SITE,
-      logo: { "@type": "ImageObject", url: `${SITE}/logo.svg` },
+      logo: { "@type": "ImageObject", url: `${SITE}/icon-512.png` },
     },
     isPartOf: {
       "@type": "Blog",
       "@id": `${SITE}/blog`,
-      name: "Sparkline Youth Blog",
+      name: "batch0 Blog",
     },
   };
 
@@ -164,7 +164,7 @@ export default async function BlogPostPage({
               Stop reading. Start building.
             </p>
             <p className="mt-3 max-w-[40rem] text-[15px] leading-[1.65] text-ink-soft">
-              Sparkline Youth is a live, online accelerator for U.S. high
+              batch0 is a live, online accelerator for U.S. high
               schoolers. You&apos;ll build a real company across four sprints
               and pitch it at demo day. Free to apply, {config.derived.priceLabel}{" "}
               only if accepted, no equity taken.
@@ -193,7 +193,7 @@ export default async function BlogPostPage({
                     <p className="font-mono text-[12px] text-ink-faint">
                       {r.category} · {r.readingTime} min
                     </p>
-                    <p className="mt-1 font-display text-[1.125rem] font-bold leading-snug tracking-tight text-ink underline decoration-transparent decoration-2 underline-offset-4 group-hover:decoration-spark">
+                    <p className="mt-1 font-display text-[1.125rem] font-bold leading-snug tracking-tight text-ink underline decoration-transparent decoration-2 underline-offset-4 group-hover:decoration-phosphor">
                       {r.title}
                     </p>
                     <p className="mt-1 max-w-[44rem] text-[14px] leading-[1.55] text-ink-soft">

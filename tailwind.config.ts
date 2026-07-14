@@ -9,14 +9,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        spark: {
-          DEFAULT: "#FACC15",
-          50: "#FEF9C3",
-          100: "#FEF08A",
-          200: "#FDE047",
-          300: "#FACC15",
-          400: "#EAB308",
-          500: "#CA8A04",
+        // The one accent: amber CRT phosphor, sampled straight from the
+        // batch0 wordmark (#FFBB00). The ramp is built around 300 = DEFAULT;
+        // 200 is the hover lift, 400/500 are pressed//muted states.
+        phosphor: {
+          DEFAULT: "#FFBB00",
+          50: "#FFF7DB",
+          100: "#FFEBAD",
+          200: "#FFD75C",
+          300: "#FFBB00",
+          400: "#E5A800",
+          500: "#B38300",
         },
         ink: {
           // Light-surface ink ramp (DESIGN.md). DEFAULT/soft/faint are
@@ -39,30 +42,34 @@ const config: Config = {
         wash: "rgb(var(--wash) / <alpha-value>)",
         line: "rgb(var(--line) / <alpha-value>)",
         // The accent as *text* (AA on both surfaces). Same hue family as
-        // spark, darkened on light / brightened on dark — not a second accent.
-        "spark-ink": "rgb(var(--spark-ink) / <alpha-value>)",
-        // Text/icons that sit ON the constant yellow `spark` fill (buttons,
+        // phosphor, darkened on light / brightened on dark — not a second accent.
+        "phosphor-ink": "rgb(var(--phosphor-ink) / <alpha-value>)",
+        // Text/icons that sit ON the constant yellow `phosphor` fill (buttons,
         // highlight, badges). The fill never changes with the theme, so this
         // MUST stay dark in both light and dark mode — never use the reactive
-        // `text-ink` on a spark background or it turns white-on-yellow.
-        "on-spark": "#141414",
+        // `text-ink` on a phosphor background or it turns white-on-yellow.
+        "on-phosphor": "#141414",
       },
       fontFamily: {
+        // `sans` is the body role, not a sans face — the whole site reads as
+        // a terminal, so it resolves to IBM Plex Mono. Kept under the `sans`
+        // key so every existing font-sans/default-body usage inherits it
+        // without touching hundreds of call sites.
         sans: [
-          "var(--font-sans)",
-          "ui-sans-serif",
-          "system-ui",
-          "-apple-system",
-          "Segoe UI",
-          "Roboto",
-          "sans-serif",
+          "var(--font-mono)",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "monospace",
         ],
+        // VT323 falls back to the mono stack, never to a proportional face —
+        // a pixel headline degrading into system-ui would break the whole
+        // look on a font failure.
         display: [
           "var(--font-display)",
-          "var(--font-sans)",
-          "ui-sans-serif",
-          "system-ui",
-          "sans-serif",
+          "var(--font-mono)",
+          "ui-monospace",
+          "monospace",
         ],
         mono: [
           "var(--font-mono)",

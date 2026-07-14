@@ -9,9 +9,9 @@ import { getCountryFromHeaders } from "@/lib/pricing";
 import { getProfile, roleHome } from "@/lib/auth";
 
 export const metadata = {
-  title: "Program: Four Sprints to Demo Day — Sparkline Youth",
+  title: "Program: Four Sprints to Demo Day — batch0",
   description:
-    "What actually happens inside Sparkline Youth, week by week: four build sprints, live sessions on Zoom, one deliverable per week, and a live demo day at the end.",
+    "What actually happens inside batch0, week by week: four build sprints, live sessions on Zoom, one deliverable per week, and a live demo day at the end.",
   alternates: { canonical: "/program" },
 };
 
@@ -35,7 +35,7 @@ const DETAIL: Record<string, string[]> = {
   ],
   Pitch: [
     "Write the deck: problem, product, traction, model, ask",
-    "Rehearse with the Sparkline team until the delivery holds",
+    "Rehearse with the batch0 team until the delivery holds",
     "Pitch live at demo day",
   ],
 };
@@ -103,7 +103,7 @@ export default async function ProgramPage() {
                   <ul className="mt-4 max-w-[40rem] space-y-2">
                     {(DETAIL[w.title] ?? []).map((d) => (
                       <li key={d} className="flex gap-3 text-[15px] leading-[1.6] text-ink-soft">
-                        <span aria-hidden className="mt-[0.72em] h-[3px] w-[14px] shrink-0 bg-spark" />
+                        <span aria-hidden className="mt-[0.72em] h-[3px] w-[14px] shrink-0 bg-phosphor" />
                         {d}
                       </li>
                     ))}
@@ -125,8 +125,8 @@ export default async function ProgramPage() {
           <div className="md:col-span-8">
             <p className="max-w-[40rem] text-[1.0625rem] leading-[1.65] text-ink-soft">
               The cohort ends with a live demo day: you pitch the
-              company you built to the Sparkline team and invited guests.
-              Cohort standouts may be offered Sparkline sponsorship: a
+              company you built to the batch0 team and invited guests.
+              Cohort standouts may be offered batch0 sponsorship: a
               non-dilutive grant funded by our organization, decided purely on
               merit. Funding is never guaranteed, tuition never buys a
               sponsorship, and every student keeps 100% of their company

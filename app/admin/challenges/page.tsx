@@ -72,7 +72,7 @@ export default async function AdminChallengesPage({
               href={href}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
-                  ? "border-spark/30 bg-spark/10 text-spark-ink"
+                  ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
@@ -86,7 +86,7 @@ export default async function AdminChallengesPage({
         <Card className="mt-6">
           <p className="text-sm text-ink-soft">
             No challenges yet.{" "}
-            <Link href="/admin/challenges/new" className="text-spark-ink hover:underline">
+            <Link href="/admin/challenges/new" className="text-phosphor-ink hover:underline">
               Create your first one
             </Link>
             .

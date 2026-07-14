@@ -105,4 +105,4 @@ Set the whole thing up in an afternoon. Then spend your real energy on the part 
 
 You can stand up a landing page and a form in a single afternoon. A simple app in a weekend. The building is the fast part now, which is exactly why the thinking around it matters more.
 
-The pattern at Sparkline is deliberate: validate the idea before you build it, because a beautiful product for a problem nobody has is still a dead product. So the smartest next move isn't opening a tool. It's making sure you're building the right thing at all, which is what [how to test a business idea before you build it](/blog/how-to-test-business-idea-before-building) is for. Get that right, and the tools become the easy part.
+The pattern at batch0 is deliberate: validate the idea before you build it, because a beautiful product for a problem nobody has is still a dead product. So the smartest next move isn't opening a tool. It's making sure you're building the right thing at all, which is what [how to test a business idea before you build it](/blog/how-to-test-business-idea-before-building) is for. Get that right, and the tools become the easy part.

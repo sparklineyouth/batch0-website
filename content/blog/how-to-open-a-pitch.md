@@ -89,6 +89,6 @@ You don't need funding, a polished deck, or a co-founder to nail your opening. Y
 
 That's a real, usable pitch opening, built for free, in the time it takes to microwave leftovers. It's the highest-leverage ten minutes you'll spend on your whole pitch.
 
-At [Sparkline](/program), the founders who win demo day are almost never the ones with the fanciest product. They're the ones who make the room care in the first 15 seconds and never let go. If you want to build a real company and pitch it live to judges who'll push you to be that sharp, [apply to Sparkline](/apply) — it's free to apply, and you only pay tuition if you get in.
+At [batch0](/program), the founders who win demo day are almost never the ones with the fanciest product. They're the ones who make the room care in the first 15 seconds and never let go. If you want to build a real company and pitch it live to judges who'll push you to be that sharp, [apply to batch0](/apply) — it's free to apply, and you only pay tuition if you get in.
 
 Your product might be brilliant. But nobody hears a brilliant product if they stopped listening in the first sentence. Open like you mean it.

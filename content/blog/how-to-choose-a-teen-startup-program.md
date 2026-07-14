@@ -65,7 +65,7 @@ There's no single right number, but the shape of a fair price is knowable. Free 
 
 Cost alone doesn't tell you quality. A $5,000 program can be prestige theater; a modest one can be genuinely rigorous. What matters is the ratio of price to what you build and learn, and whether the price is honest from the start.
 
-For reference on the transparent end: Sparkline Youth charges $130, and only if you're accepted — applying is free, and reduced regional pricing kicks in automatically in select countries. No equity, ever. That's the kind of clarity to demand from anyone asking for your money, whatever the number is. If you're mapping the landscape, this [2026 guide to accelerator programs for high schoolers](/blog/startup-accelerator-programs-for-high-schoolers) compares formats and price ranges.
+For reference on the transparent end: batch0 charges $130, and only if you're accepted — applying is free, and reduced regional pricing kicks in automatically in select countries. No equity, ever. That's the kind of clarity to demand from anyone asking for your money, whatever the number is. If you're mapping the landscape, this [2026 guide to accelerator programs for high schoolers](/blog/startup-accelerator-programs-for-high-schoolers) compares formats and price ranges.
 
 ## What a good program is not
 

@@ -88,7 +88,7 @@ export default async function LessonPage({
         <ArrowLeft className="h-4 w-4" /> Back to course
       </Link>
       <div className="mt-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-spark-ink">
+        <p className="text-xs font-medium uppercase tracking-wider text-phosphor-ink">
           Week {lesson.module?.week} · {lesson.module?.title}
         </p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">
@@ -119,7 +119,7 @@ export default async function LessonPage({
                   href={m.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-sm text-spark-ink hover:underline"
+                  className="inline-flex items-center gap-2 text-sm text-phosphor-ink hover:underline"
                 >
                   <FileText className="h-4 w-4" />
                   {m.title}

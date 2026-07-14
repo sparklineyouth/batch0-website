@@ -65,7 +65,7 @@ export default async function AdminAnnouncementsPage() {
         <Card className="mt-3">
           <p className="text-sm text-ink-soft">
             Announcements aren't enabled yet — apply migration{" "}
-            <code className="font-mono text-spark-ink">
+            <code className="font-mono text-phosphor-ink">
               0027_announcements_and_reactions.sql
             </code>
             .

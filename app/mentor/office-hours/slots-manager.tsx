@@ -154,7 +154,7 @@ export function SlotsManager({ slots }: { slots: any[] }) {
                         href={s.zoom_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-0.5 inline-flex items-center gap-1 text-xs text-spark-ink hover:underline"
+                        className="mt-0.5 inline-flex items-center gap-1 text-xs text-phosphor-ink hover:underline"
                       >
                         <Video className="h-3 w-3" /> Join
                       </a>

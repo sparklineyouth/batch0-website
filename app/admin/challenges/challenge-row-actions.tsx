@@ -49,7 +49,7 @@ export function ChallengeRowActions({
           type="button"
           disabled={pending || status === "archived"}
           onClick={() => run(() => setChallengeStatus(id, "active"))}
-          className={`${btn} border-spark/40 bg-spark/10 text-spark-ink hover:bg-spark/20`}
+          className={`${btn} border-phosphor/40 bg-phosphor/10 text-phosphor-ink hover:bg-phosphor/20`}
         >
           Set live
         </button>

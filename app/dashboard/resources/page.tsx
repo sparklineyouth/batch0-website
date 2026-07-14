@@ -8,7 +8,7 @@ import { FileText, ExternalLink, Download } from "lucide-react";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
-export const metadata = { title: "Resources · Sparkline Youth" };
+export const metadata = { title: "Resources · batch0" };
 
 function fmtBytes(n: number | null) {
   if (!n) return null;
@@ -69,7 +69,7 @@ export default async function DashboardResourcesPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Resources</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Templates, decks, guides, and tools curated by the Sparkline Youth team.
+        Templates, decks, guides, and tools curated by the batch0 team.
       </p>
 
       {(resources?.length ?? 0) === 0 ? (
@@ -82,7 +82,7 @@ export default async function DashboardResourcesPage() {
         <div className="mt-8 space-y-8">
           {categories.map((cat) => (
             <div key={cat}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-spark-ink">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
                 {cat}
               </h2>
               <ul className="space-y-3">
@@ -124,7 +124,7 @@ export default async function DashboardResourcesPage() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-spark px-3 py-2 text-xs font-semibold text-on-spark hover:bg-spark-200"
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-phosphor px-3 py-2 text-xs font-semibold text-on-phosphor hover:bg-phosphor-200"
                             >
                               {r.storage_path ? (
                                 <>

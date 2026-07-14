@@ -88,6 +88,6 @@ You will get ignored sometimes. Busy people miss messages; that's normal and not
 
 Everything above is the manual path, and it works. The faster path is to join something that hands you mentors on purpose. A good program removes the hardest part of this — the cold outreach and the "why would they talk to me?" doubt — because the mentors are already there expecting to help students exactly like you.
 
-That's a core reason we built [Sparkline Youth](/program) the way we did. You build a real company across four one-week sprints, get feedback from people who've done it, and pitch at a live demo day. Applying is free, and tuition ($130) only applies if you're accepted — no equity, ever. If the DIY route feels slow, [applying](/apply) is the shortcut to a room full of people who signed up to be your mentor.
+That's a core reason we built [batch0](/program) the way we did. You build a real company across four one-week sprints, get feedback from people who've done it, and pitch at a live demo day. Applying is free, and tuition ($130) only applies if you're accepted — no equity, ever. If the DIY route feels slow, [applying](/apply) is the shortcut to a room full of people who signed up to be your mentor.
 
 Either way, the core skill is the same one you'll use for the rest of your life: figure out who knows the thing you need to know, ask them well, and make them glad they helped. Pick one name and send one message before you close this tab.

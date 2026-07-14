@@ -146,7 +146,7 @@ create table if not exists public.team_blockers (
   discord_message_id text,
   discord_thread_id text,
   -- The flagged author's Discord ID + display name at flag time. We may
-  -- not have a Sparkline Youth account for them, hence text not FK.
+  -- not have a batch0 account for them, hence text not FK.
   flagged_discord_user_id text,
   flagged_display_name text,
   content text,

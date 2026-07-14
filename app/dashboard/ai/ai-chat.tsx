@@ -91,7 +91,7 @@ export function AiChat({
   return (
     <div className="flex h-[calc(100vh-9rem)] min-h-[480px] flex-col rounded-2xl border border-line bg-wash">
       <div className="flex items-center gap-2 border-b border-line px-5 py-3">
-        <Sparkles className="h-4 w-4 text-spark-ink" />
+        <Sparkles className="h-4 w-4 text-phosphor-ink" />
         <span className="text-sm font-semibold text-ink">
           AI co-founder
         </span>
@@ -154,7 +154,7 @@ function Bubble({ message }: { message: Msg }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl rounded-br-md bg-spark/15 px-4 py-2.5 text-sm text-ink">
+        <div className="max-w-[80%] rounded-2xl rounded-br-md bg-phosphor/15 px-4 py-2.5 text-sm text-ink">
           {message.content}
         </div>
       </div>
@@ -162,7 +162,7 @@ function Bubble({ message }: { message: Msg }) {
   }
   return (
     <div className="flex items-start gap-3">
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-spark/15 text-spark-ink">
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-phosphor/15 text-phosphor-ink">
         <Sparkles className="h-3.5 w-3.5" />
       </div>
       <div className="max-w-[80%] whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-2xl rounded-tl-md border border-line bg-paper px-4 py-2.5 text-sm text-ink-soft">
@@ -175,7 +175,7 @@ function Bubble({ message }: { message: Msg }) {
 function Welcome() {
   return (
     <div className="rounded-xl border border-line bg-paper p-5 text-sm text-ink-soft">
-      <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-spark/10 px-2.5 py-0.5 text-xs font-semibold text-spark-ink">
+      <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-phosphor/10 px-2.5 py-0.5 text-xs font-semibold text-phosphor-ink">
         <Sparkles className="h-3.5 w-3.5" />
         Your AI co-founder
       </div>

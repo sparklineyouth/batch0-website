@@ -17,7 +17,7 @@ create extension if not exists "pg_trgm";
 create table if not exists public.cap_table_holders (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references public.teams(id) on delete cascade,
-  -- Optional link to a Sparkline profile (founders); otherwise external.
+  -- Optional link to a batch0 profile (founders); otherwise external.
   profile_id uuid references public.profiles(id) on delete set null,
   display_name text not null,
   kind text not null check (kind in ('founder', 'option', 'safe', 'investor', 'advisor')),

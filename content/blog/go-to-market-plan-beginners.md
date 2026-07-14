@@ -98,6 +98,6 @@ Watch for these. They sink more first launches than bad products do.
 
 Writing the plan takes an afternoon. Running the first loop takes about a week: post, watch, and check your number. You'll know within that week whether your channel and message have any life in them, and you'll almost always change something after the first pass. That's normal. A GTM plan is a hypothesis you test, not a prediction you're graded on.
 
-At Sparkline Youth, the Market sprint is built around exactly this: pick one channel, ship one message, and get real humans reacting before demo day. But you don't need a program to start. You need one audience, one channel, one sentence, and one action you'll take before the week is out.
+At batch0, the Market sprint is built around exactly this: pick one channel, ship one message, and get real humans reacting before demo day. But you don't need a program to start. You need one audience, one channel, one sentence, and one action you'll take before the week is out.
 
 When you're ready to turn those first users into steady growth, the natural next read is [how to get your first 10 customers as a student founder](/blog/how-to-get-first-10-customers-student-founder). Get those ten, and you've proven the thing that most first products never do: that a real person, in a real place, actually wanted it.

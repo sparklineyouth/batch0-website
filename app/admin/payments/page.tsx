@@ -147,7 +147,7 @@ export default async function AdminPaymentsPage({
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-wash">
                     <div
-                      className="h-full bg-spark"
+                      className="h-full bg-phosphor"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -175,7 +175,7 @@ export default async function AdminPaymentsPage({
               href={href}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
-                  ? "border-spark bg-spark/10 text-spark"
+                  ? "border-phosphor bg-phosphor/10 text-phosphor"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
@@ -277,7 +277,7 @@ function Stat({
       </div>
       <div
         className={`mt-2 text-3xl font-bold tracking-tight ${
-          accent ? "text-spark-ink" : warn ? "text-amber-700 dark:text-amber-300" : "text-ink"
+          accent ? "text-phosphor-ink" : warn ? "text-amber-700 dark:text-amber-300" : "text-ink"
         }`}
       >
         {value}
@@ -313,7 +313,7 @@ function CohortFilter({
             href={hrefFor(c.id)}
             className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
               active
-                ? "border-spark bg-spark/10 text-spark"
+                ? "border-phosphor bg-phosphor/10 text-phosphor"
                 : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
             }`}
           >

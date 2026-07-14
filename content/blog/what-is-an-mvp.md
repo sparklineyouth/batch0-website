@@ -79,7 +79,7 @@ The thread through all of these: an MVP exists to answer a question. If you can'
 
 You have less time and less money than a funded company, and that's an advantage here. It forces you to cut. A high schooler who ships a scrappy landing page and talks to twenty real users will out-learn someone who spent a summer coding a product nobody asked for.
 
-This is the whole idea behind the first week of the [Sparkline Youth](/program) program: validate before you build. You test the idea with the smallest thing possible, then earn the right to build the next piece. It keeps you from falling in love with a product before you know anyone wants it.
+This is the whole idea behind the first week of the [batch0](/program) program: validate before you build. You test the idea with the smallest thing possible, then earn the right to build the next piece. It keeps you from falling in love with a product before you know anyone wants it.
 
 Before you build anything, it helps to be sure you're solving a real problem. Our guides on [how to validate a startup idea in high school](/blog/how-to-validate-startup-idea-high-school) and [how to test a business idea before you build it](/blog/how-to-test-business-idea-before-building) walk through exactly how to do that without writing code.
 

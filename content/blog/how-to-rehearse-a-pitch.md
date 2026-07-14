@@ -59,7 +59,7 @@ Your bedroom is a lie. It's quiet, familiar, no one's watching, no clock. The re
 - **Time every full rep.** If you have 90 seconds, know exactly where you are at 45. Going over time is the fastest way to look unprepared, and you can only fix pace against a clock.
 - **Stand and use your real slides.** Practicing sitting down with your notes open builds the wrong muscle memory. Advance your actual deck as you talk so the clicks become part of the rhythm.
 - **Rehearse the Q&A.** Have a friend ask one hard question at the end — "how do you make money?" or "why won't a bigger company just copy this?" You can't script answers, but you can rehearse staying calm and thinking out loud. [How to answer hard questions in a pitch](/blog/how-to-answer-investor-questions) has a method.
-- **If it's a live online demo day, rehearse in the actual setup.** Check your camera and mic and do one full out-loud run in the exact tool you'll present in. A live demo day is how programs like Sparkline end, and founders who practice in the real setup an hour before never get caught by a frozen screen. [How to prepare for demo day](/blog/demo-day-preparation-guide) is your checklist.
+- **If it's a live online demo day, rehearse in the actual setup.** Check your camera and mic and do one full out-loud run in the exact tool you'll present in. A live demo day is how programs like batch0 end, and founders who practice in the real setup an hour before never get caught by a frozen screen. [How to prepare for demo day](/blog/demo-day-preparation-guide) is your checklist.
 - **Get to the room early and stand where you'll pitch.** Familiar rooms feel less dangerous, and half the fight with nerves is convincing your body it's safe.
 
 ## What do you do when you blank mid-pitch?
@@ -72,6 +72,6 @@ The recovery is simple. Stop, take one breath, and look at your slide — that's
 
 Natural isn't the opposite of practiced. Natural *is* practiced. The effortless-sounding pitch is the most-rehearsed one in the room, not the least. When you know your open and ask cold and your middle as ideas you can say fresh, your attention is free for the human stuff — eye contact, reacting to the room, a real smile — instead of digging through memory for the next word.
 
-So do the reps: ten to fifteen times, out loud, on your feet, on video, in the real setup, with a hard question at the end. Get to where the pitch bores you a little — that boredom is confidence wearing a disguise. If you want to run those reps with mentors watching and a real demo day to pitch a company you built, that's what a program like [Sparkline](/program) is built for. You can [apply for free](/apply) and only pay if you get in.
+So do the reps: ten to fifteen times, out loud, on your feet, on video, in the real setup, with a hard question at the end. Get to where the pitch bores you a little — that boredom is confidence wearing a disguise. If you want to run those reps with mentors watching and a real demo day to pitch a company you built, that's what a program like [batch0](/program) is built for. You can [apply for free](/apply) and only pay if you get in.
 
 Rehearsal is the least glamorous part of pitching and the one that decides everything. Do it quietly this week, and next week you'll be the founder who "just seems like a natural." Now go say your first two lines out loud — again.

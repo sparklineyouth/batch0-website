@@ -132,7 +132,7 @@ export default async function AuditLogPage({
               name="actor"
               defaultValue={actor ?? ""}
               placeholder="anything@…"
-              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-spark focus:outline-none"
+              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none"
             />
           </label>
           <label className="block text-sm">
@@ -143,7 +143,7 @@ export default async function AuditLogPage({
               type="date"
               name="from"
               defaultValue={fromDate ?? ""}
-              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-spark focus:outline-none"
+              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-phosphor focus:outline-none"
             />
           </label>
           <label className="block text-sm">
@@ -154,7 +154,7 @@ export default async function AuditLogPage({
               type="date"
               name="to"
               defaultValue={toDate ?? ""}
-              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-spark focus:outline-none"
+              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-phosphor focus:outline-none"
             />
           </label>
           {/* Keep action filter alive across submissions of the text form. */}
@@ -162,7 +162,7 @@ export default async function AuditLogPage({
           <div className="flex items-end gap-2">
             <button
               type="submit"
-              className="rounded-md bg-spark px-4 py-2 text-sm font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+              className="rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
             >
               Apply
             </button>
@@ -189,7 +189,7 @@ export default async function AuditLogPage({
             href={buildQuery(searchParams, { action: undefined, page: undefined })}
             className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
               !action
-                ? "border-spark bg-spark/10 text-spark"
+                ? "border-phosphor bg-phosphor/10 text-phosphor"
                 : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
             }`}
           >
@@ -201,7 +201,7 @@ export default async function AuditLogPage({
               href={buildQuery(searchParams, { action: a, page: undefined })}
               className={`rounded-full border px-3 py-1 text-xs lowercase tracking-wider transition ${
                 action === a
-                  ? "border-spark bg-spark/10 text-spark"
+                  ? "border-phosphor bg-phosphor/10 text-phosphor"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
@@ -243,7 +243,7 @@ export default async function AuditLogPage({
                           actor: r.actor_email,
                           page: undefined,
                         })}
-                        className="hover:text-spark-ink hover:underline"
+                        className="hover:text-phosphor-ink hover:underline"
                       >
                         {r.actor_email}
                       </Link>
@@ -270,7 +270,7 @@ export default async function AuditLogPage({
                     {r.target_type && r.target_id ? (
                       <Link
                         href={`/admin/audit/target?type=${encodeURIComponent(r.target_type)}&id=${encodeURIComponent(r.target_id)}`}
-                        className="hover:text-spark-ink hover:underline"
+                        className="hover:text-phosphor-ink hover:underline"
                       >
                         {r.target_type}:{r.target_id.slice(0, 8)}
                       </Link>

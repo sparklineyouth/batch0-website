@@ -80,6 +80,6 @@ Two honest warnings. First, most of your videos will flop, and that's normal —
 
 The founders who win on TikTok aren't the best on camera. They're the ones who treat every video as a cheap experiment and keep going after the flops. You're not trying to go viral — viral is nice but unreliable. You're trying to consistently reach the specific people who have the problem you solve, and give a few of them a reason to click.
 
-That's a skill you can build in a few weeks with a phone and some nerve. It's also exactly the kind of thing we push you through during the Market sprint at [Sparkline Youth](/program) — you pick a channel, ship real content, and get real strangers to sign up while mentors help you read the signals. If you want a structured month to actually do this instead of just planning it, [apply here](/apply); it's free to apply, and you only pay if you get in.
+That's a skill you can build in a few weeks with a phone and some nerve. It's also exactly the kind of thing we push you through during the Market sprint at [batch0](/program) — you pick a channel, ship real content, and get real strangers to sign up while mentors help you read the signals. If you want a structured month to actually do this instead of just planning it, [apply here](/apply); it's free to apply, and you only pay if you get in.
 
 Open your camera. Film the problem you can't stop thinking about. Post it before you talk yourself out of it. Your first user is probably scrolling right now.

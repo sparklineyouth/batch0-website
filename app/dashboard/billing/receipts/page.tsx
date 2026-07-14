@@ -5,7 +5,7 @@ import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { ArrowLeft, Download, FileText, Receipt } from "lucide-react";
 
-export const metadata = { title: "Receipts · Sparkline Youth" };
+export const metadata = { title: "Receipts · batch0" };
 
 function fmtMoney(cents: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -159,7 +159,7 @@ export default async function ReceiptsPage({
             href="/dashboard/billing/receipts"
             className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
               !selectedYear
-                ? "border-spark bg-spark/10 text-spark-ink"
+                ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
                 : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
             }`}
           >
@@ -171,7 +171,7 @@ export default async function ReceiptsPage({
               href={`/dashboard/billing/receipts?year=${y}`}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 selectedYear === y
-                  ? "border-spark bg-spark/10 text-spark-ink"
+                  ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
@@ -247,8 +247,8 @@ export default async function ReceiptsPage({
         Receipts are hosted by Stripe. Older charges from before the receipt
         archive was rolled out may not have a downloadable link — request one
         from{" "}
-        <a href="mailto:hello@sparklineyouth.org" className="text-spark-ink hover:underline">
-          hello@sparklineyouth.org
+        <a href="mailto:hello@batch0.org" className="text-phosphor-ink hover:underline">
+          hello@batch0.org
         </a>{" "}
         if you need it for taxes.
       </p>
@@ -258,7 +258,7 @@ export default async function ReceiptsPage({
 
 function SourceBadge({ source }: { source: "payment" | "fee" | "fine" }) {
   const config = {
-    payment: { label: "Enrollment", cls: "bg-spark/15 text-spark-ink" },
+    payment: { label: "Enrollment", cls: "bg-phosphor/15 text-phosphor-ink" },
     fee: { label: "Fee", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
     fine: { label: "Fine", cls: "bg-red-500/10 text-red-700 dark:text-red-300" },
   } as const;

@@ -38,7 +38,7 @@ export default async function AdminReferralsPage() {
         </div>
         <Link
           href="/admin/settings"
-          className="text-xs text-spark-ink hover:underline"
+          className="text-xs text-phosphor-ink hover:underline"
         >
           Toggle referrals globally →
         </Link>
@@ -67,7 +67,7 @@ export default async function AdminReferralsPage() {
       <section className="mt-6 grid gap-3 md:grid-cols-3">
         <Tile label="Referred applications" value={totals.applied} icon={TrendingUp} />
         <Tile label="Referred accepted" value={totals.accepted} icon={Award} />
-        <Tile label="Referred paid" value={totals.paid} icon={Crown} tone="spark" />
+        <Tile label="Referred paid" value={totals.paid} icon={Crown} tone="phosphor" />
       </section>
 
       <Card className="mt-6 !p-0 overflow-hidden">
@@ -100,7 +100,7 @@ export default async function AdminReferralsPage() {
                     {r.userId ? (
                       <Link
                         href={`/admin/students/${r.userId}`}
-                        className="text-ink hover:text-spark-ink"
+                        className="text-ink hover:text-phosphor-ink"
                       >
                         {r.fullName ?? r.email ?? r.referralCode}
                       </Link>
@@ -126,7 +126,7 @@ export default async function AdminReferralsPage() {
                       <span className="text-ink-faint">0</span>
                     )}
                   </td>
-                  <td className="px-5 py-3 text-right tabular-nums text-spark-ink">
+                  <td className="px-5 py-3 text-right tabular-nums text-phosphor-ink">
                     {r.counts.paidOrEnrolled || (
                       <span className="text-ink-faint">0</span>
                     )}
@@ -150,17 +150,17 @@ function Tile({
   label: string;
   value: number;
   icon: any;
-  tone?: "default" | "spark";
+  tone?: "default" | "phosphor";
 }) {
   return (
     <div className="rounded-xl border border-line bg-wash px-4 py-4">
       <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
-        <Icon className={`h-3.5 w-3.5 ${tone === "spark" ? "text-spark-ink" : ""}`} />
+        <Icon className={`h-3.5 w-3.5 ${tone === "phosphor" ? "text-phosphor-ink" : ""}`} />
         {label}
       </div>
       <div
         className={`mt-2 text-2xl font-semibold tracking-tight ${
-          tone === "spark" ? "text-spark-ink" : "text-ink"
+          tone === "phosphor" ? "text-phosphor-ink" : "text-ink"
         }`}
       >
         {value}

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 
-export const metadata = { title: "Mentor · Sparkline Youth" };
+export const metadata = { title: "Mentor · batch0" };
 
 export default async function MentorOverview() {
   const admin = createAdminClient();
@@ -58,7 +58,7 @@ export default async function MentorOverview() {
           <h2 className="font-display text-lg font-semibold tracking-[-0.02em] text-ink">Cohorts</h2>
           <Link
             href="/mentor/students"
-            className="text-sm text-spark-ink hover:underline"
+            className="text-sm text-phosphor-ink hover:underline"
           >
             View students →
           </Link>

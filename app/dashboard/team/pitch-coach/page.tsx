@@ -65,7 +65,7 @@ export default async function PitchCoachPage() {
                 </p>
               </div>
               {typeof h.overall_score === "number" && (
-                <p className="mt-1 text-2xl font-bold tracking-tight text-spark-ink">
+                <p className="mt-1 text-2xl font-bold tracking-tight text-phosphor-ink">
                   {Number(h.overall_score).toFixed(1)}
                   <span className="ml-1 text-xs font-normal text-ink-faint">
                     / 100
@@ -84,7 +84,7 @@ export default async function PitchCoachPage() {
                           <span className="font-medium text-ink">
                             {label}
                           </span>
-                          <span className="text-spark-ink">
+                          <span className="text-phosphor-ink">
                             {val?.score ?? "—"}
                           </span>
                         </div>

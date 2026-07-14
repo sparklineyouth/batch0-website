@@ -98,4 +98,4 @@ Run those five steps and average copy becomes good copy. It's editing, not talen
 
 Clear beats clever, specific beats vague, and human beats impressive. The moment you stop trying to sound like a big company and start writing the way you'd explain your product to a friend, your copy gets better and strangers start understanding what you built. Write the draft badly, edit it honestly, then read it out loud one more time.
 
-If you want to practice this on a real product with people who'll edit your words alongside you, that's exactly what you'd do in the Build week of [the Sparkline program](/program): write the copy, put it in front of real users, and rewrite based on what actually lands.
+If you want to practice this on a real product with people who'll edit your words alongside you, that's exactly what you'd do in the Build week of [the batch0 program](/program): write the copy, put it in front of real users, and rewrite based on what actually lands.

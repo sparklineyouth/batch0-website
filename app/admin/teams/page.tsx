@@ -39,7 +39,7 @@ export default async function AdminTeamsPage({
         </div>
         <Link
           href="/admin/teams/new"
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-spark px-4 text-sm font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-phosphor px-4 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           <Plus className="h-4 w-4" /> New team
         </Link>
@@ -71,7 +71,7 @@ export default async function AdminTeamsPage({
           const members = t.team_members?.[0]?.count ?? 0;
           return (
             <Link key={t.id} href={`/admin/teams/${t.id}`} className="block">
-              <Card className="hover:border-spark/40">
+              <Card className="hover:border-phosphor/40">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ function Filter({
       href={href}
       className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
         active
-          ? "border-spark/30 bg-spark/10 text-spark-ink"
+          ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
           : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
       }`}
     >

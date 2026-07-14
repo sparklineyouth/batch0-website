@@ -91,7 +91,7 @@ Small errors quietly sink good applications:
 - **Fabricating numbers.** Never invent traction or make up a quote. Readers ask follow-ups, and a fake stat is an instant no.
 - **Missing the free part.** When applying is free, there's no reason to skip it because you feel "not ready." You never will. Apply with what you have.
 
-That last point matters here. At Sparkline, applying is free and you only pay tuition if you're accepted, so applying with a rough idea costs nothing but time. Read what happens inside the [program](/program) so your answers speak to the real work, then submit through [apply](/apply) once your draft passes the checklist below.
+That last point matters here. At batch0, applying is free and you only pay tuition if you're accepted, so applying with a rough idea costs nothing but time. Read what happens inside the [program](/program) so your answers speak to the real work, then submit through [apply](/apply) once your draft passes the checklist below.
 
 ## A five-minute pre-submit checklist
 

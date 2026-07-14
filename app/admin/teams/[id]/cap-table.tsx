@@ -259,7 +259,7 @@ function HolderEditor({
           </Select>
         </div>
         <div>
-          <Label>Linked Sparkline Youth profile (optional)</Label>
+          <Label>Linked batch0 profile (optional)</Label>
           <Select
             value={h.profile_id ?? ""}
             onChange={(e) =>

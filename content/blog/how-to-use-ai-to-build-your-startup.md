@@ -70,10 +70,10 @@ You've got school, maybe a job, maybe a sport. You don't have unlimited hours. H
 - **Thursday:** Have AI draft the copy and a launch message. Rewrite both in your voice.
 - **Friday:** Put it in front of one real user. Bring their feedback back on Monday.
 
-That loop — decide, build, ship, learn — is the entire job of a founder. AI just makes each step faster. This is exactly the rhythm you'll run inside [Sparkline's four one-week sprints](/program), where you build a real company from Validate to Pitch with people who've done it before.
+That loop — decide, build, ship, learn — is the entire job of a founder. AI just makes each step faster. This is exactly the rhythm you'll run inside [batch0's four one-week sprints](/program), where you build a real company from Validate to Pitch with people who've done it before.
 
 ## The one rule that keeps you from shipping slop
 
 **Never ship anything AI made that you haven't read, understood, and would defend to a judge's face.** If a mentor asks "why did you build it this way?" and your honest answer is "the AI did it, I'm not sure," you don't have a product — you have a demo you don't own. Use AI to move fast on the *how*. Keep the *what* and the *why* firmly in your own hands. That's the line between a founder with an edge and someone who typed a prompt.
 
-You have the tools now. The only thing missing is a real deadline and real users — which is the whole point of an accelerator. If you're ready to build something you actually own, [apply to Sparkline](/apply). It's free to apply, and you only pay tuition if you get in.
+You have the tools now. The only thing missing is a real deadline and real users — which is the whole point of an accelerator. If you're ready to build something you actually own, [apply to batch0](/apply). It's free to apply, and you only pay tuition if you get in.

@@ -11,7 +11,7 @@ const DIMS: { key: keyof ScoreState; label: string; hint: string }[] = [
   { key: "founder", label: "Founder", hint: "Agency, follow-through, founder/market fit." },
   { key: "motivation", label: "Motivation", hint: "Why this, why now, why them." },
   { key: "feasibility", label: "Feasibility", hint: "Can they actually ship in 4 weeks?" },
-  { key: "fit", label: "Fit", hint: "Will Sparkline Youth help them more than other paths?" },
+  { key: "fit", label: "Fit", hint: "Will batch0 help them more than other paths?" },
 ];
 
 const DECISIONS = [
@@ -101,7 +101,7 @@ export function ReviewScorecard({
                   }
                   className={`h-9 w-9 rounded-lg border text-sm font-medium tabular-nums transition ${
                     active
-                      ? "border-spark/30 bg-spark/15 text-spark-ink"
+                      ? "border-phosphor/30 bg-phosphor/15 text-phosphor-ink"
                       : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
                   }`}
                 >

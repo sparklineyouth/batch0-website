@@ -22,9 +22,9 @@ export function ApplyCta({
   className?: string;
 }) {
   const base =
-    "press inline-flex items-center justify-center gap-2 rounded-md text-[15px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
+    "press inline-flex items-center justify-center gap-2 rounded-md text-[15px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
   const variants = {
-    primary: "bg-spark px-5 py-3.5 text-on-spark shadow-cta hover:bg-spark-200",
+    primary: "bg-phosphor px-5 py-3.5 text-on-phosphor shadow-cta hover:bg-phosphor-200",
     secondary:
       "border border-line bg-paper px-5 py-3.5 font-medium text-ink hover:border-ink/30",
   } as const;

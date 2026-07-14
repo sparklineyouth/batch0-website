@@ -7,7 +7,7 @@ import { Megaphone } from "lucide-react";
 import { Reactions } from "./reactions";
 import { EMOJIS, type Emoji } from "./emoji";
 
-export const metadata = { title: "Announcements · Sparkline Youth" };
+export const metadata = { title: "Announcements · batch0" };
 export const dynamic = "force-dynamic";
 
 export default async function AnnouncementsPage() {
@@ -35,7 +35,7 @@ export default async function AnnouncementsPage() {
         <Card className="mt-6">
           <p className="text-sm text-ink-soft">
             Announcements aren't enabled yet — apply migration{" "}
-            <code className="font-mono text-spark-ink">
+            <code className="font-mono text-phosphor-ink">
               0027_announcements_and_reactions.sql
             </code>
             .
@@ -77,14 +77,14 @@ export default async function AnnouncementsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Announcements</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Updates from the Sparkline Youth team. React to let us know they
+            Updates from the batch0 team. React to let us know they
             landed.
           </p>
         </div>
         {profile?.role === "admin" && (
           <a
             href="/admin/announcements"
-            className="text-xs text-spark-ink hover:underline"
+            className="text-xs text-phosphor-ink hover:underline"
           >
             Send announcement →
           </a>

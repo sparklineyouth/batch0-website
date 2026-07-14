@@ -81,4 +81,4 @@ Don't overthink it. Grants reward the people who actually apply, and most people
 3. Apply to the two closest deadlines this week — even a rough draft beats no submission.
 4. Reuse the same core answers (problem, traction, budget) across applications so each new one takes 30 minutes, not three hours.
 
-One more thing: grants are fuel, not the mission. The point is to build something real. If you want structure while you do it — one week each to validate, build, market, and pitch a company you actually launch — that's what [Sparkline's accelerator](/program) is built for. Applying is free; you can [apply here](/apply) whenever you're ready. But join us or not, go find that free money. It's sitting there waiting for someone to ask.
+One more thing: grants are fuel, not the mission. The point is to build something real. If you want structure while you do it — one week each to validate, build, market, and pitch a company you actually launch — that's what [batch0's accelerator](/program) is built for. Applying is free; you can [apply here](/apply) whenever you're ready. But join us or not, go find that free money. It's sitting there waiting for someone to ask.

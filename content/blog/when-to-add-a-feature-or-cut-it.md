@@ -65,7 +65,7 @@ Cutting a feature feels like killing it, which is why founders resist. So don't 
 
 When you finish your current priority, open the list and re-score the top ideas. Half of them won't feel important anymore, which tells you they were never worth building. The ones that still matter, and that real users keep asking about, rise to the top on their own. Your roadmap basically writes itself if you're honest in the scoring and patient enough to wait.
 
-This is the exact muscle we drill in the Build sprint at [Sparkline](/program). You've got one week to turn a validated idea into something real, and one week is brutally clarifying. There's no time to build the study-buddy chat. You build the one thing that makes the product work, ship it, and everything else goes on the "not now" list where it belongs. If that kind of forced focus sounds like what you need, [applying is free](/apply) and you only pay if you get in.
+This is the exact muscle we drill in the Build sprint at [batch0](/program). You've got one week to turn a validated idea into something real, and one week is brutally clarifying. There's no time to build the study-buddy chat. You build the one thing that makes the product work, ship it, and everything else goes on the "not now" list where it belongs. If that kind of forced focus sounds like what you need, [applying is free](/apply) and you only pay if you get in.
 
 ## The takeaway
 

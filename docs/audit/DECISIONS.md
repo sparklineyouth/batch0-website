@@ -1,14 +1,14 @@
-# DECISIONS.md — Sparkline Youth overhaul
+# DECISIONS.md — batch0 overhaul
 
 Decisions made where the brief, the codebase, or the facts pulled in different
 directions. Each entry: what was decided, why, and what it overrode.
 
-## D1 — Marketing surface goes light (white), keeping spark yellow
+## D1 — Marketing surface goes light (white), keeping phosphor yellow
 The codebase is dark-only on marketing (`bg-black`, glow effects). The brief
 pins "YC-plain confidence": white background, near-black ink, one accent.
-The existing brand hue `#FACC15` is not a purple-blue gradient, so per the
+The existing brand hue `#FFBB00` is not a purple-blue gradient, so per the
 brief it stays — as the single accent. Yellow text on white fails WCAG AA
-(≈1.6:1), so the accent system is: **#FACC15 fills with near-black text**
+(≈1.6:1), so the accent system is: **#FFBB00 fills with near-black text**
 (buttons, highlight marks — ≈11:1) and **#8A6A00 (dark amber)** where the
 accent must be text on white (links) at AA. The authenticated product app
 (dashboard/admin/mentor/investor) keeps its existing dark theme — out of
@@ -54,9 +54,9 @@ page. The form the brief asks to verify end-to-end is the real one.
 
 ## D6 — Comparison table and "Problem" section folded into Pricing
 The comparison table asserted competitor facts we can't stand behind
-("LeanGap: investors — partial virtual"; "Sparkline: year-round" — false
+("LeanGap: investors — partial virtual"; "batch0: year-round" — false
 with one cohort a year so far). The one persuasive, defensible fact —
-serious programs cost $3,000–$8,000+ while Sparkline is $130 — moves into
+serious programs cost $3,000–$8,000+ while batch0 is $130 — moves into
 the pricing section as one line (with a TODO to re-verify competitor
 prices). The table and the generic "Youth entrepreneurship is broken"
 essay section are cut.
@@ -67,7 +67,7 @@ VCs." The system has zero investor accounts and nothing verifiable behind
 the phrase. Demo day is real (it's the program's design and the platform
 has investor/demo-day features built). Rewritten copy promises what the
 program controls: a live demo day where students pitch, sponsorship
-decided by Sparkline (real, funded by Impetus AI), and intros **if and
+decided by batch0 (real, funded by Impetus AI), and intros **if and
 when** investors are in the room — with named investors logged in
 NEEDED_FACTS as the unlock for stronger copy. The existing "funding is
 never guaranteed" hedge survives everywhere it appeared; it's the most
@@ -83,11 +83,11 @@ anywhere.
 The brief's "live site refuses automated access" finding did not
 reproduce: robots.txt allows `*` and GPTBot/ClaudeBot/PerplexityBot all
 receive HTTP 200 (tested 2026-07-10). Likely cause of the external report:
-**sparklineyouth.com does not resolve at all** (the brief's own URL). The
+**batch0youth.com does not resolve at all** (the brief's own URL). The
 .org robots stays permissive, now with explicit AI-crawler allowance
 documented; `/apply` stays disallowed (it's an auth redirect, not
 content — the crawlable Apply story lives on / and /program).
-sparklineyouth.com registration/redirect is a NEEDED_FACTS item for Rish.
+batch0youth.com registration/redirect is a NEEDED_FACTS item for Rish.
 
 ## D10 — Price displays as "$130"
 The charge is $129.99; `site-config` rounds display to "$130". Rounding

@@ -88,4 +88,4 @@ Confidence is not a prerequisite. It's a side effect. Nobody's first customer co
 
 You will be awkward on the first call. You'll be fine on the fifth. By the tenth you'll catch yourself enjoying it, which is a strange and specific feeling worth chasing.
 
-This is exactly the muscle you build in the Validate sprint at [Sparkline's accelerator](/program) — with a script, a cohort doing it alongside you, and a coach who's watched a hundred nervous founders make their first call. If you want a structured push to actually do the scary thing instead of researching it forever, [applying is free](/apply) and you only pay if you get in. But you don't need us to start. Open your messages and send one today.
+This is exactly the muscle you build in the Validate sprint at [batch0's accelerator](/program) — with a script, a cohort doing it alongside you, and a coach who's watched a hundred nervous founders make their first call. If you want a structured push to actually do the scary thing instead of researching it forever, [applying is free](/apply) and you only pay if you get in. But you don't need us to start. Open your messages and send one today.

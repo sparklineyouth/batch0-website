@@ -34,7 +34,7 @@ export default async function EditChallengePage({
           <StatusBadge status={challenge.status} />
           <Link
             href={`/admin/challenges/${challenge.id}/submissions`}
-            className="text-sm text-spark-ink hover:underline"
+            className="text-sm text-phosphor-ink hover:underline"
           >
             View submissions →
           </Link>

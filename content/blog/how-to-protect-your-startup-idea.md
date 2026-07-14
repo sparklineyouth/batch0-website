@@ -91,6 +91,6 @@ So here's the move. Instead of protecting your idea, spend that same energy maki
 3. **Build in public.** Sharing your progress openly gets you attention, feedback, and support, all of which compound. The exposure is a feature, not a risk.
 4. **Move fast.** Speed is the only "moat" that's fully in your control at this stage. The person who ships and iterates fastest wins, and that person can be you.
 
-This is exactly the mindset Sparkline is built around. In our four one-week sprints, you don't sit on an idea; you validate it, build it, market it, and pitch it live, out loud, in front of real people. If you want structure and a group of founders doing the same thing at the same time, take a look at [the program](/program) or just [apply](/apply). Applying is free, and you only pay tuition if you get in.
+This is exactly the mindset batch0 is built around. In our four one-week sprints, you don't sit on an idea; you validate it, build it, market it, and pitch it live, out loud, in front of real people. If you want structure and a group of founders doing the same thing at the same time, take a look at [the program](/program) or just [apply](/apply). Applying is free, and you only pay tuition if you get in.
 
 The founders who make it aren't the ones with the best-guarded secret. They're the ones who told everyone, listened, and outworked the fear.

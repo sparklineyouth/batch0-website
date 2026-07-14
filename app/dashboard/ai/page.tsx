@@ -15,7 +15,7 @@ import {
 import { env } from "@/lib/env";
 import { Lock, Sparkles } from "lucide-react";
 
-export const metadata = { title: "AI co-founder · Sparkline Youth" };
+export const metadata = { title: "AI co-founder · batch0" };
 
 export default async function AiPage({
   searchParams,
@@ -134,7 +134,7 @@ function LockedView() {
       <h1 className="text-3xl font-bold tracking-tight">AI co-founder</h1>
       <Card className="mt-6">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-spark/10 text-spark-ink">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-phosphor/10 text-phosphor-ink">
             <Lock className="h-4 w-4" />
           </div>
           <div>
@@ -142,14 +142,14 @@ function LockedView() {
               Locked until you're accepted
             </h2>
             <p className="mt-1 text-sm text-ink-soft">
-              The AI co-founder is part of the Sparkline Youth program. It unlocks
+              The AI co-founder is part of the batch0 program. It unlocks
               the moment your application is accepted — submit your
               application and we'll review it on a rolling basis.
             </p>
             <div className="mt-4 flex flex-wrap gap-2 text-sm">
               <Link
                 href="/apply"
-                className="inline-flex items-center gap-1.5 rounded-full bg-spark px-3 py-1.5 font-semibold text-on-spark hover:bg-spark-200"
+                className="inline-flex items-center gap-1.5 rounded-full bg-phosphor px-3 py-1.5 font-semibold text-on-phosphor hover:bg-phosphor-200"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Apply now

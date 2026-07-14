@@ -109,7 +109,7 @@ function CommentItem({
           {comment.author?.full_name || comment.author?.email || "—"}
         </span>
         {comment.author?.role && comment.author.role !== "student" && (
-          <span className="rounded-full bg-spark/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-spark-ink">
+          <span className="rounded-full bg-phosphor/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-phosphor-ink">
             {comment.author.role}
           </span>
         )}

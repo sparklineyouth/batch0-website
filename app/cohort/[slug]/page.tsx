@@ -15,17 +15,17 @@ export async function generateMetadata({
     .select("name, landing_headline, landing_subhead")
     .eq("slug", params.slug)
     .maybeSingle();
-  if (!cohort) return { title: "Cohort · Sparkline Youth" };
+  if (!cohort) return { title: "Cohort · batch0" };
   return {
-    title: `${cohort.name} · Sparkline Youth`,
+    title: `${cohort.name} · batch0`,
     description:
       (cohort as any).landing_subhead ||
-      `Projects built in ${cohort.name} at Sparkline Youth.`,
+      `Projects built in ${cohort.name} at batch0.`,
     openGraph: {
       title: (cohort as any).landing_headline ?? cohort.name,
       description:
         (cohort as any).landing_subhead ||
-        `Projects built in ${cohort.name} at Sparkline Youth.`,
+        `Projects built in ${cohort.name} at batch0.`,
     },
   };
 }
@@ -53,7 +53,7 @@ export default async function CohortPage({
     .order("name");
 
   const c = cohort as any;
-  const accent = isValidHex(c.accent_hex) ? c.accent_hex : "#facc15";
+  const accent = isValidHex(c.accent_hex) ? c.accent_hex : "#ffbb00";
   // CSS var so we can theme accents per-cohort without compiling a new
   // Tailwind palette. Used on the eyebrow + hero badge below.
   const accentStyle = {
@@ -74,7 +74,7 @@ export default async function CohortPage({
           {cohort.name}
         </p>
         <h1 className="mt-3 text-4xl font-bold tracking-tight md:text-6xl">
-          {c.landing_headline || "Projects built at Sparkline Youth"}
+          {c.landing_headline || "Projects built at batch0"}
         </h1>
         <p className="mt-5 max-w-2xl text-lg text-white/60">
           {c.landing_subhead ||
@@ -92,7 +92,7 @@ export default async function CohortPage({
             href="/"
             className="inline-flex items-center rounded-full border border-white/20 px-5 py-2.5 text-sm font-medium text-white/85 transition hover:border-white/40"
           >
-            About Sparkline Youth
+            About batch0
           </Link>
         </div>
 

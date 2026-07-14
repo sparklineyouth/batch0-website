@@ -39,7 +39,7 @@ export async function GET(req: Request) {
   const admin = createAdminClient();
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
 
-  // Pull every profile with a Stripe customer ID. For Sparkline-sized
+  // Pull every profile with a Stripe customer ID. For batch0-sized
   // cohorts (low hundreds) this is trivial; if it grows to thousands,
   // batch by 1000 rows at a time via .range().
   const { data: profiles } = await admin

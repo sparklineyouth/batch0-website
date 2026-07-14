@@ -31,7 +31,7 @@ You also have less to waste. You don't have months of runway or a paycheck to bu
 
 ## The 5-step validation process
 
-Here's the process we run with founders in the [Sparkline Youth](/program) cohort. It takes about a week if you push.
+Here's the process we run with founders in the [batch0](/program) cohort. It takes about a week if you push.
 
 ### Step 1: Write your idea as a testable guess
 
@@ -84,4 +84,4 @@ Less time than you think. A focused student can go from idea to a clear yes/no i
 
 If the idea validates, you've earned the right to build — start small with an [MVP](/blog/what-is-an-mvp) and get it in front of the same people who said yes. If it doesn't, you haven't lost; you've saved months and learned how to find a [problem worth solving](/blog/how-to-find-a-startup-problem-worth-solving). Kill it, keep the muscle, and run the process again on the next idea. Founders who ship real companies aren't the ones with the best first idea. They're the ones who validate fastest.
 
-Validation is the first sprint of the Sparkline Youth accelerator for exactly this reason: everything else you build stands on whether a real person wants it. Get that right, and the rest is work you can actually do.
+Validation is the first sprint of the batch0 accelerator for exactly this reason: everything else you build stands on whether a real person wants it. Get that right, and the rest is work you can actually do.

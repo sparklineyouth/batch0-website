@@ -10,7 +10,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 
-export const metadata = { title: "Admin · Sparkline Youth" };
+export const metadata = { title: "Admin · batch0" };
 
 function fmtMoney(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -74,14 +74,14 @@ export default async function AdminOverview() {
       label: "Pending review",
       count: pendingApps ?? 0,
       href: "/admin/applications?status=submitted",
-      tone: (pendingApps ?? 0) > 0 ? "spark" : "muted",
+      tone: (pendingApps ?? 0) > 0 ? "phosphor" : "muted",
     },
     {
       icon: CreditCard,
       label: "Awaiting payment",
       count: acceptedApps ?? 0,
       href: "/admin/applications?status=accepted",
-      tone: (acceptedApps ?? 0) > 0 ? "spark" : "muted",
+      tone: (acceptedApps ?? 0) > 0 ? "phosphor" : "muted",
     },
   ];
 
@@ -89,7 +89,7 @@ export default async function AdminOverview() {
     <div className="mx-auto max-w-6xl">
       {/* Hero row */}
       <div className="border-b border-line pb-8">
-        <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-spark-ink">
+        <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-phosphor-ink">
           Admin overview
         </p>
         <h1 className="mt-3 font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-ink">
@@ -111,7 +111,7 @@ export default async function AdminOverview() {
           >
             <it.icon
               className={`h-5 w-5 shrink-0 ${
-                it.tone === "spark" ? "text-spark-ink" : "text-ink-faint"
+                it.tone === "phosphor" ? "text-phosphor-ink" : "text-ink-faint"
               }`}
             />
             <div className="min-w-0 flex-1">
@@ -120,7 +120,7 @@ export default async function AdminOverview() {
               </p>
               <p
                 className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums ${
-                  it.tone === "spark" ? "text-spark-ink" : "text-ink"
+                  it.tone === "phosphor" ? "text-phosphor-ink" : "text-ink"
                 }`}
               >
                 {it.count}
@@ -163,7 +163,7 @@ export default async function AdminOverview() {
           </h2>
           <Link
             href="/admin/applications"
-            className="press text-sm text-spark-ink hover:underline"
+            className="press text-sm text-phosphor-ink hover:underline"
           >
             View all →
           </Link>

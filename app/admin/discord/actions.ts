@@ -128,7 +128,7 @@ export async function registerCommands(): Promise<{ names: string[] }> {
 
 /**
  * Re-apply each linked user's Discord roles based on their current
- * Sparkline Youth role. Useful after re-mapping role IDs, after a server
+ * batch0 role. Useful after re-mapping role IDs, after a server
  * restore, or once a year as cohort cleanup.
  *
  * Throttled: at most ~5 mutations/second to stay clear of Discord's
@@ -201,7 +201,7 @@ export async function refreshLinkedIdentities(): Promise<{
 
 /**
  * Wipe every channel + every non-managed role in the guild, then create
- * the canonical Sparkline Youth layout (4 roles, 5 categories, ~14
+ * the canonical batch0 layout (4 roles, 5 categories, ~14
  * channels) and persist the new channel/role IDs into site_settings so
  * the rest of the integration just works.
  *

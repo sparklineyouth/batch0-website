@@ -109,7 +109,7 @@ export default async function InvestorTeamDetailPage({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={team.logo_url} alt="" className="h-full w-full object-cover" />
           ) : (
-            <span className="text-2xl font-bold text-spark-ink">
+            <span className="text-2xl font-bold text-phosphor-ink">
               {team.name.slice(0, 1).toUpperCase()}
             </span>
           )}
@@ -198,7 +198,7 @@ export default async function InvestorTeamDetailPage({
                 href={(pitch as any).video_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-spark-ink hover:underline"
+                className="text-phosphor-ink hover:underline"
               >
                 Watch video →
               </a>
@@ -301,7 +301,7 @@ function CapTableBlock({
     <Card className="mt-6">
       <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Cap-table snapshot</h2>
       <p className="mt-1 text-[11px] text-ink-faint">
-        Self-reported by the team. Not audited by Sparkline Youth.
+        Self-reported by the team. Not audited by batch0.
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-4">
         {roundKind && (
@@ -311,7 +311,7 @@ function CapTableBlock({
           />
         )}
         {raisedCents != null && (
-          <CapField label="Raised" value={fmtUsd(raisedCents)} tone="spark" />
+          <CapField label="Raised" value={fmtUsd(raisedCents)} tone="phosphor" />
         )}
         {postMoneyCents != null && (
           <CapField label="Post-money" value={fmtUsd(postMoneyCents)} />
@@ -345,7 +345,7 @@ function CapField({
 }: {
   label: string;
   value: string;
-  tone?: "default" | "spark";
+  tone?: "default" | "phosphor";
 }) {
   return (
     <div>
@@ -354,7 +354,7 @@ function CapField({
       </div>
       <div
         className={`mt-1 font-display text-lg font-semibold tracking-[-0.02em] tabular-nums ${
-          tone === "spark" ? "text-spark-ink" : "text-ink"
+          tone === "phosphor" ? "text-phosphor-ink" : "text-ink"
         }`}
       >
         {value}

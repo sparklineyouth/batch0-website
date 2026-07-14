@@ -1,4 +1,4 @@
-# REPORT.md — Sparkline Youth overhaul, 2026-07-10
+# REPORT.md — batch0 overhaul, 2026-07-10
 
 A stranger's audit map: what was found, what shipped, what remains for Rish.
 Companion docs: [SLOP_REPORT.md](SLOP_REPORT.md) (73 before-findings),
@@ -33,7 +33,7 @@ Phase 1 found **73** (15 CRITICAL / 35 MAJOR / 23 MINOR). Resolution by class:
   number on the site renders from the cohorts/settings tables or is
   marked `TODO(RISH)`.
 - **Visual tells** — Aceternity container-scroll, marquee, glow/pulse
-  keyframes, spark-radial/grid backgrounds, glassmorphism, 12+ uppercase
+  keyframes, phosphor-radial/grid backgrounds, glassmorphism, 12+ uppercase
   eyebrow kickers, icon-card grids, gradient logo: all deleted. The
   design system now has one accent, one shadow, radius ≤ 8px, one
   orchestrated animation (hero rise, reduced-motion aware).
@@ -49,7 +49,7 @@ Three independent reviewers re-ran the checklist against the redesign:
 
 - **impetusai.net has no DNS — hello@impetusai.net bounces.** Every
   reference (legal pages, billing, sponsor form mailto, Resend reply-to
-  default, JSON-LD) now uses the verified `sparklineyouth@gmail.com`;
+  default, JSON-LD) now uses the verified `batch0youth@gmail.com`;
   dead links removed. This also retro-explains the old site's silent
   "email us" black holes. (NEEDED_FACTS #6.)
 - Invisible white-on-white "Last updated" lines on all three legal pages;
@@ -57,7 +57,7 @@ Three independent reviewers re-ran the checklist against the redesign:
 - Banned word "journey" in the login subhead.
 - Em-dash density (~1/50 words) cut to ≤1 per section; nine "X, not Y"
   aphorisms culled to one ("Grants, not swag").
-- Over-implication of a "Sparkline team" → sessions attributed to Rish by
+- Over-implication of a "batch0 team" → sessions attributed to Rish by
   name, with a name-before-you-pay promise.
 - Competitor price figures removed from machine-readable FAQ JSON-LD
   (kept in pricing prose with a re-verify TODO).
@@ -94,7 +94,7 @@ Target ≥ 95 everywhere: met.
   `href="#"`.
 - **Crawlers:** robots allows search + AI crawlers explicitly (D9);
   GPTBot/ClaudeBot/PerplexityBot verified 200 on production. The brief's
-  "blocked crawler" report traced to **sparklineyouth.com not resolving**
+  "blocked crawler" report traced to **batch0youth.com not resolving**
   (NEEDED_FACTS #12), not robots.txt.
 
 ## Definition of done — checklist
@@ -102,7 +102,7 @@ Target ≥ 95 everywhere: met.
 - [x] Zero swap-test failures (two TODO-gated answers noted)
 - [x] Zero fabricated facts — all numbers from DB or TODO(RISH)
 - [x] Zero CRITICAL/MAJOR slop findings surviving adversarial re-audit
-- [x] One accent (spark yellow + its dark-amber text variant)
+- [x] One accent (phosphor yellow + its dark-amber text variant)
 - [x] One typeface pairing with written rationale (DESIGN.md)
 - [x] Working Apply flow with tracking, verified by real submission
 - [x] robots / sitemap / canonicals / meta / OG / favicon complete

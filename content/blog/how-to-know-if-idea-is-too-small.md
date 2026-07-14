@@ -48,7 +48,7 @@ Compare two teen ideas:
 - **Sealed box:** an app that helps left-handed clarinet players at your school hold their instrument. Real problem, real users, and almost nobody else on Earth. Winning it completely still leaves you with a dozen customers and nowhere to go.
 - **Beachhead:** a study-group scheduler for your AP Bio class. Also tiny at first, but the door out is every AP class, then every club, then other schools. Same small start, totally different ceiling.
 
-A beachhead niche is a feature, not a bug. You want to start narrow enough to win. You just want the walls to have doors. If you're not sure yet which kind you have, that's exactly the muscle we drill during the Validate sprint at Sparkline Youth, and [our program](/program) is built to answer it before you sink months into building.
+A beachhead niche is a feature, not a bug. You want to start narrow enough to win. You just want the walls to have doors. If you're not sure yet which kind you have, that's exactly the muscle we drill during the Validate sprint at batch0, and [our program](/program) is built to answer it before you sink months into building.
 
 ## Signs your idea is too small
 
@@ -77,6 +77,6 @@ The common thread: you're looking for the same real problem, held by more people
 
 You have less time and no money, so a small idea costs you more, not less. An adult with funding can grind a small market for a year and pivot. You have maybe ten focused hours a week around school and a budget of basically zero. A month spent building something that tops out at nine hundred dollars a year is a month you can't get back, and it's the same month you could've spent on something with real room to grow.
 
-Here's the encouraging part. Sizing an idea is free and fast. It's a ten-minute back-of-envelope calculation, not a research project. Do it before you write a line of code or design a single screen, and you'll dodge the most common quiet failure a teen founder hits: building the right product for a market that was never big enough to matter. If you want a structured, mentor-guided version of exactly this, [applying to Sparkline is free](/apply), and our first sprint exists to catch small ideas before they eat your semester.
+Here's the encouraging part. Sizing an idea is free and fast. It's a ten-minute back-of-envelope calculation, not a research project. Do it before you write a line of code or design a single screen, and you'll dodge the most common quiet failure a teen founder hits: building the right product for a market that was never big enough to matter. If you want a structured, mentor-guided version of exactly this, [applying to batch0 is free](/apply), and our first sprint exists to catch small ideas before they eat your semester.
 
 So run the numbers on your idea today. Multiply the three honest numbers, look at the ceiling, and ask whether the pond has doors out of it. If it's too small, don't quit, widen it. The best founders don't abandon small ideas. They find the bigger problem hiding right next to the small one, and build that instead.

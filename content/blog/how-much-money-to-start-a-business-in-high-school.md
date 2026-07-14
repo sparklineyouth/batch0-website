@@ -55,7 +55,7 @@ The biggest waste is spending on the *appearance* of a business before you've pr
 
 The fix is to spend on learning, not on looking legit. Every early dollar should answer a question: *Will someone pay? How much? Through what channel?* If a purchase doesn't answer one of those, it can wait.
 
-This is why the order matters so much. Validate the idea, then build a rough version, then figure out pricing, then think about scaling costs. That sequence — validate, build, market, pitch — is the exact spine of what a good [startup accelerator](/blog/what-happens-in-a-startup-accelerator) walks you through, and it's the structure Sparkline Youth uses across its four build sprints.
+This is why the order matters so much. Validate the idea, then build a rough version, then figure out pricing, then think about scaling costs. That sequence — validate, build, market, pitch — is the exact spine of what a good [startup accelerator](/blog/what-happens-in-a-startup-accelerator) walks you through, and it's the structure batch0 uses across its four build sprints.
 
 ## A realistic cost breakdown for three common teen businesses
 

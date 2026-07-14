@@ -1,8 +1,8 @@
-# Sparkline — Production Readiness
+# batch0 — Production Readiness
 
-A living checklist of what was wrong, what got fixed, and what's still left before Sparkline is ready for real users. This document is the source of truth for "is the platform launch-grade?"
+A living checklist of what was wrong, what got fixed, and what's still left before batch0 is ready for real users. This document is the source of truth for "is the platform launch-grade?"
 
-The goal: Sparkline should be **safe, fast, predictable, and friendly to high-school founders**. That means (1) no security gaps an attacker could exploit, (2) no UX dead ends, (3) predictable cost (no AI runaway bills), (4) easy to operate (admins can recover from failure modes), and (5) clean on every device + theme.
+The goal: batch0 should be **safe, fast, predictable, and friendly to high-school founders**. That means (1) no security gaps an attacker could exploit, (2) no UX dead ends, (3) predictable cost (no AI runaway bills), (4) easy to operate (admins can recover from failure modes), and (5) clean on every device + theme.
 
 This file is the result of two audit passes. Pass 1 surfaced 30+ issues; this document captures every one of them, what was done, and the residual risks still on the board. Re-run a full audit before each major release and append a new section here.
 
@@ -27,7 +27,7 @@ All P0 / P1 / P2 work from the original audit is **landed and type-checks clean*
 Run these in the Supabase SQL editor in order. Each is idempotent.
 
 1. `0012_hardening.sql` — adds `notifications.dedupe_key` + partial unique index, splits Stripe webhook dedupe into claim/complete.
-2. `0013_drop_school_features.sql` — drops `assignments`, `assignment_submissions`, `quizzes`, `quiz_questions`, `quiz_attempts` and the `submissions` storage bucket (Sparkline is an accelerator, not a school).
+2. `0013_drop_school_features.sql` — drops `assignments`, `assignment_submissions`, `quizzes`, `quiz_questions`, `quiz_attempts` and the `submissions` storage bucket (batch0 is an accelerator, not a school).
 3. `0014_file_feedback.sql` — adds `file_feedback` so mentors can leave threaded feedback on student or team file uploads.
 4. `0015_ai_usage.sql` — adds `ai_usage` rollup table + `ai_messages` token columns + `ai_conversations.team_id` for per-team AI scoping.
 5. `0030_drop_mfa.sql` — drops `mfa_verifications` and its policies. Two-factor auth has been removed from the product.
@@ -203,7 +203,7 @@ Vercel cron config (`vercel.json`) was reduced to a single weekly digest job; th
 
 ### 27. School-style features removed
 
-Sparkline is a startup accelerator — not a school. Removed:
+batch0 is a startup accelerator — not a school. Removed:
 - `/dashboard/assignments`, `/mentor/assignments`, `/admin/course/quiz`
 - `assignments`, `assignment_submissions`, `quizzes`, `quiz_questions`, `quiz_attempts` tables (migration `0013`)
 - Lesson page quiz block

@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Privacy Policy · Sparkline Youth",
-  description: "How Sparkline Youth collects, uses, and protects student and parent data.",
+  title: "Privacy Policy · batch0",
+  description: "How batch0 collects, uses, and protects student and parent data.",
   alternates: { canonical: "/privacy" },
 };
 
@@ -14,7 +14,9 @@ export default function PrivacyPage() {
 
       <p>
         We collect the minimum personal information needed to run the
-        Sparkline Youth program, and we never sell your data.
+        batch0 program, and we never sell your data. batch0 is operated by
+        Sparkline Youth LLC and was formerly known as Sparkline Youth — the
+        name changed, but the entity holding your data did not.
       </p>
 
       <h2>What we collect</h2>
@@ -67,8 +69,8 @@ export default function PrivacyPage() {
         You can update your profile or delete your account from{" "}
         <a href="/dashboard/settings">settings</a>. You can email us to
         request a copy of your data or full deletion at{" "}
-        <a href="mailto:hello@sparklineyouth.org">
-          hello@sparklineyouth.org
+        <a href="mailto:hello@batch0.org">
+          hello@batch0.org
         </a>
         .
       </p>
@@ -82,19 +84,19 @@ export default function PrivacyPage() {
       <h2>Your ideas and IP</h2>
       <p>
         Anything you upload — pitch decks, business plans, customer
-        research, code, drafts — belongs to you. Sparkline Youth will never
+        research, code, drafts — belongs to you. batch0 will never
         sell, license, or share the substance of your idea with third
         parties for their own use. We don't take equity in your company
         and we don't claim ownership of your IP. The only public
-        reference we may make is attribution (e.g. "built at Sparkline Youth").
+        reference we may make is attribution (e.g. "built at batch0").
         Full terms are in our <a href="/terms">Terms of Service</a>.
       </p>
 
       <h2>Contact</h2>
       <p>
         Questions:{" "}
-        <a href="mailto:hello@sparklineyouth.org">
-          hello@sparklineyouth.org
+        <a href="mailto:hello@batch0.org">
+          hello@batch0.org
         </a>
       </p>
     </>

@@ -6,9 +6,9 @@ import { getSiteConfig } from "@/lib/site-config";
 import { getProfile, roleHome } from "@/lib/auth";
 
 export const metadata = {
-  title: "Fund Grants for High-School Founders — Sparkline Youth",
+  title: "Fund Grants for High-School Founders — batch0",
   description:
-    "Fund non-dilutive grants for high-school founders in Sparkline Youth's founding cohort. Three tiers, every dollar disclosed.",
+    "Fund non-dilutive grants for high-school founders in batch0's founding cohort. Three tiers, every dollar disclosed.",
   alternates: { canonical: "/sponsors" },
 };
 
@@ -45,7 +45,7 @@ export default async function SponsorsPage() {
             Fund a high schooler&apos;s <span className="hl">first company</span>.
           </h1>
           <p className="mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
-            Sparkline Youth is a live, online accelerator for U.S. high
+            batch0 is a live, online accelerator for U.S. high
             schoolers. Sponsorship pays for
             non-dilutive founder grants and keeps tuition at{" "}
             {config.derived.priceLabel} instead of the $3,000+ other programs
@@ -55,7 +55,7 @@ export default async function SponsorsPage() {
           <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
             <a
               href="#tiers"
-              className="press inline-flex items-center justify-center rounded-md bg-spark px-5 py-3.5 text-[15px] font-semibold text-on-spark shadow-cta hover:bg-spark-200"
+              className="press inline-flex items-center justify-center rounded-md bg-phosphor px-5 py-3.5 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
             >
               See sponsor tiers
             </a>
@@ -77,7 +77,7 @@ export default async function SponsorsPage() {
           </h2>
           <ul className="mt-10 grid gap-x-10 gap-y-8 md:grid-cols-3">
             {WHY.map((w) => (
-              <li key={w.title} className="border-t-2 border-spark pt-4">
+              <li key={w.title} className="border-t-2 border-phosphor pt-4">
                 <h3 className="text-[1.0625rem] font-semibold tracking-tight text-ink">
                   {w.title}
                 </h3>
@@ -114,7 +114,7 @@ export default async function SponsorsPage() {
                 <ul className="mt-5 space-y-2.5 text-[14px] leading-[1.55] text-ink-soft">
                   {t.perks.map((p) => (
                     <li key={p} className="flex items-start gap-2.5">
-                      <span aria-hidden className="mt-[0.62em] h-[3px] w-[12px] shrink-0 bg-spark" />
+                      <span aria-hidden className="mt-[0.62em] h-[3px] w-[12px] shrink-0 bg-phosphor" />
                       <span>{p}</span>
                     </li>
                   ))}

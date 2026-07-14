@@ -54,7 +54,7 @@ The mistake I see most is deciding based on how busy you feel *right now*. This 
 
 Instead, look at your calendar across the whole year. Sports have seasons. Clubs have crunch weeks and dead weeks. If your sport is only in-season for ten weeks, maybe you don't quit it, you just accept the startup moves slowly for those ten weeks and speeds up after. A season ending is not the same as a startup dying.
 
-This matters even more if you're eyeing something structured. A program like [Sparkline's four-week accelerator](/program) runs in defined sprints, so you can line it up with a gap in your schedule (summer, or a quiet stretch of the semester) instead of trying to cram it on top of your busiest month.
+This matters even more if you're eyeing something structured. A program like [batch0's four-week accelerator](/program) runs in defined sprints, so you can line it up with a gap in your schedule (summer, or a quiet stretch of the semester) instead of trying to cram it on top of your busiest month.
 
 ## Do this before you quit anything
 
@@ -81,4 +81,4 @@ Quitting is a tool, not a personality. You are not more serious because you burn
 
 So: start building in the cracks, find the one activity that's genuinely in the way, drop that one, and put the recovered time to work the same day. Keep the sport you love. Quit the club you forgot you joined.
 
-If you want a structure that forces you to actually use your freed-up time (real deadlines, a live demo day, and people expecting you to show up), that's the whole point of [applying to Sparkline](/apply). It's free to apply, and you'll find out fast whether this thing is worth clearing space for.
+If you want a structure that forces you to actually use your freed-up time (real deadlines, a live demo day, and people expecting you to show up), that's the whole point of [applying to batch0](/apply). It's free to apply, and you'll find out fast whether this thing is worth clearing space for.

@@ -8,9 +8,9 @@ import { getActiveChallenge, getPublicWinners } from "@/lib/challenges";
 import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = {
-  title: "Weekly Challenges · Sparkline Youth",
+  title: "Weekly Challenges · batch0",
   description:
-    "Every week Sparkline posts a build challenge for high schoolers. Apply free — if we love your idea, we fund it.",
+    "Every week batch0 posts a build challenge for high schoolers. Apply free — if we love your idea, we fund it.",
   alternates: { canonical: "/challenges" },
 };
 
@@ -32,7 +32,7 @@ export default async function ChallengesIndexPage() {
 
       <section className="px-5 pb-8 pt-16 sm:px-6 md:pt-24">
         <div className="mx-auto max-w-[1100px]">
-          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
             Weekly Challenges
           </p>
           <h1 className="mt-3 max-w-3xl font-display text-[clamp(2rem,5vw,3.25rem)] font-bold leading-[1.05] tracking-[-0.025em] text-ink">
@@ -46,7 +46,7 @@ export default async function ChallengesIndexPage() {
 
           {active ? (
             <div className="mt-10 rounded-2xl border border-line bg-wash p-6 sm:p-8">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
                 This week
               </p>
               <h2 className="mt-2 font-display text-2xl font-bold tracking-[-0.02em] text-ink sm:text-3xl">
@@ -76,7 +76,7 @@ export default async function ChallengesIndexPage() {
               <div className="mt-6">
                 <a
                   href={`/challenges/${active.slug}`}
-                  className="press inline-flex items-center justify-center gap-2 rounded-md bg-spark px-5 py-3 text-[15px] font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                  className="press inline-flex items-center justify-center gap-2 rounded-md bg-phosphor px-5 py-3 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                 >
                   Apply to this challenge →
                 </a>

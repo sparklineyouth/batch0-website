@@ -174,7 +174,7 @@ export function ReviewActions({
           </Button>
         )}
         {feeWaived && (
-          <span className="inline-flex items-center rounded-full border border-spark/30 bg-spark/10 px-2.5 py-1 text-xs font-medium text-spark-ink">
+          <span className="inline-flex items-center rounded-full border border-phosphor/30 bg-phosphor/10 px-2.5 py-1 text-xs font-medium text-phosphor-ink">
             Fee waived
           </span>
         )}

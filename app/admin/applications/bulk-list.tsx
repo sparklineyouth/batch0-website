@@ -148,7 +148,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
           <div
             key={a.id}
             className={`group grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-line px-5 py-3 last:border-0 hover:bg-wash ${
-              checked ? "bg-spark/5" : ""
+              checked ? "bg-phosphor/5" : ""
             }`}
           >
             <button
@@ -165,14 +165,14 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
               className="-ml-1 -my-1 rounded p-1 text-ink-faint enabled:hover:text-ink disabled:opacity-30"
             >
               {checked ? (
-                <CheckSquare className="h-4 w-4 text-spark-ink" />
+                <CheckSquare className="h-4 w-4 text-phosphor-ink" />
               ) : (
                 <Square className="h-4 w-4" />
               )}
             </button>
             <Link
               href={`/admin/applications/${a.id}`}
-              className="truncate text-ink group-hover:text-spark-ink"
+              className="truncate text-ink group-hover:text-phosphor-ink"
             >
               {a.full_name || "—"}
             </Link>

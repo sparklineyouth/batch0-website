@@ -67,4 +67,4 @@ The worst place to live is the in-between, where you tweak the logo for the thir
 
 If you are in a structured program with weekly sprints, this deadline is built in for you — that pressure is a feature, not a bug, and it is one reason a [real accelerator](/blog/what-happens-in-a-startup-accelerator) beats grinding alone. Either way, the rule is the same: decide on evidence, decide on time, and then commit hard to whichever path you chose. A confident pivot beats a nervous "keep going," and a committed "keep going" beats a scared pivot. What loses every time is staying frozen in the middle.
 
-If you are staring at mixed signals right now and want people in the room while you make this call, that is exactly what the Validate sprint is for. [Apply to Sparkline](/apply) — it is free to apply, and you only pay if you get in.
+If you are staring at mixed signals right now and want people in the room while you make this call, that is exactly what the Validate sprint is for. [Apply to batch0](/apply) — it is free to apply, and you only pay if you get in.

@@ -1,18 +1,18 @@
-# Sparkline — sparklineyouth.org
+# batch0 — batch0.org
 
-The marketing site for Sparkline, the 4-week virtual startup accelerator for high schoolers.
+The marketing site for batch0, the 4-week virtual startup accelerator for high schoolers.
 
 ## Stack
 
 - Next.js 14 (App Router) + React 18 + TypeScript
-- Tailwind CSS (custom `spark` yellow palette to match the lightning-bolt logo)
+- Tailwind CSS (custom `phosphor` amber palette, sampled from the batch0 wordmark)
 - framer-motion (scroll + entrance animations, including the 21st.dev-style ContainerScroll)
 - lucide-react (icons)
 
 ## Getting started
 
 ```bash
-cd sparkline-website
+cd batch0-website
 npm install
 npm run dev
 ```
@@ -21,13 +21,13 @@ Open http://localhost:3000.
 
 ## Deploy
 
-Site is built to deploy to Vercel and point at `sparklineyouth.org`.
+Site is built to deploy to Vercel and point at `batch0.org`.
 
 ```bash
 npm run build
 ```
 
-Then connect the repo to Vercel and add `sparklineyouth.org` (and `www.sparklineyouth.org`) as production domains.
+Then connect the repo to Vercel and add `batch0.org` (and `batch0.org`) as production domains.
 
 ## Sections
 

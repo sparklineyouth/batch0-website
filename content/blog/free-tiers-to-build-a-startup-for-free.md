@@ -59,7 +59,7 @@ Two rules keep you safe. First: **don't put a credit card on file until you have
 
 ## The one thing worth paying for
 
-Spend the $12 on a domain name. A domain is your web address, like `sparklineyouth.org`. You *can* launch on a free subdomain like `yourthing.vercel.app`, and that's genuinely fine for testing an idea. But the moment you want people to take you seriously — in a pitch, on a college app, in a DM to a potential customer — `yourthing.com` reads like a real company and `yourthing-final-v2.netlify.app` reads like a school project.
+Spend the $12 on a domain name. A domain is your web address, like `batch0.org`. You *can* launch on a free subdomain like `yourthing.vercel.app`, and that's genuinely fine for testing an idea. But the moment you want people to take you seriously — in a pitch, on a college app, in a DM to a potential customer — `yourthing.com` reads like a real company and `yourthing-final-v2.netlify.app` reads like a school project.
 
 Buy it from Cloudflare or Namecheap (they sell at cost; some registrars lure you with a cheap first year, then triple the price at renewal — read the renewal price, not the intro price). Twelve dollars a year is one dollar a month. If you want a walkthrough, see [how to pick and buy a domain](/blog/how-to-buy-and-set-up-a-domain). Everything else on this page can stay free.
 
@@ -88,4 +88,4 @@ Building for $0 isn't about being broke. It's about being fast and honest. When 
 
 The tools will never be the reason you didn't start. Money won't be the reason. The only thing between you and a live product this weekend is deciding to do it.
 
-If you want people around you while you do it — deadlines, mentors, and a live demo day at the end — that's exactly what Sparkline is built for. You build a real company across four one-week sprints, and [applying is free](/apply). Or read more about how the [program](/program) works first.
+If you want people around you while you do it — deadlines, mentors, and a live demo day at the end — that's exactly what batch0 is built for. You build a real company across four one-week sprints, and [applying is free](/apply). Or read more about how the [program](/program) works first.

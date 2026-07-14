@@ -83,4 +83,4 @@ Say you have $40 in savings, a school schedule, and no funding. Here's a real se
 
 Do that and you've funded an entire startup on $15 of your own money plus whatever you win and earn — with zero investors and 100% ownership intact.
 
-If you want this structure with deadlines, mentors, and a demo day pushing you through it, that's exactly what [Sparkline](/program) is built for: four one-week sprints — Validate, Build, Market, Pitch — where you build a real company and pitch it live. Applying is free, and you only pay tuition if you're accepted. [Apply here](/apply) when you're ready to stop planning and start building.
+If you want this structure with deadlines, mentors, and a demo day pushing you through it, that's exactly what [batch0](/program) is built for: four one-week sprints — Validate, Build, Market, Pitch — where you build a real company and pitch it live. Applying is free, and you only pay tuition if you're accepted. [Apply here](/apply) when you're ready to stop planning and start building.

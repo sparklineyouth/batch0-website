@@ -75,7 +75,7 @@ export default async function AdminStudentsPage({
               href={f === "all" ? "/admin/students" : `/admin/students?role=${f}`}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
-                  ? "border-spark/30 bg-spark/10 text-spark-ink"
+                  ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >

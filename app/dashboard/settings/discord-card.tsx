@@ -72,7 +72,7 @@ export function DiscordCard({
             </div>
           </div>
           <p className="mt-4 text-xs text-ink-soft">
-            We auto-assign your Sparkline Youth role in the Discord server. Use{" "}
+            We auto-assign your batch0 role in the Discord server. Use{" "}
             <code className="rounded border border-line bg-paper px-1 py-0.5 text-[11px] text-ink-soft">
               /me
             </code>{" "}
@@ -96,7 +96,7 @@ export function DiscordCard({
       ) : (
         <>
           <p className="mt-4 text-sm text-ink-soft">
-            Link your Discord account to join the Sparkline Youth community server.
+            Link your Discord account to join the batch0 community server.
             We'll auto-assign you a role, drop you into the right channels, and
             keep your role in sync with your status on the website.
           </p>

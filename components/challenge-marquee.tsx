@@ -13,7 +13,7 @@ export type MarqueeChallenge = {
 
 /**
  * The one moving element on the homepage. A seamless horizontal ticker on a
- * spark bar while a challenge is active. Pauses on hover/focus; falls back to
+ * phosphor bar while a challenge is active. Pauses on hover/focus; falls back to
  * a static single line when the visitor prefers reduced motion.
  */
 export function ChallengeMarquee({ challenge }: { challenge: MarqueeChallenge }) {
@@ -45,7 +45,7 @@ export function ChallengeMarquee({ challenge }: { challenge: MarqueeChallenge })
         ⚡ Weekly Challenge
       </span>
       <span className="text-[13px]">{message}</span>
-      <span className="text-on-spark/40">•</span>
+      <span className="text-on-phosphor/40">•</span>
     </span>
   );
   const half = Array.from({ length: 6 }, (_, i) => <Unit key={i} />);
@@ -53,7 +53,7 @@ export function ChallengeMarquee({ challenge }: { challenge: MarqueeChallenge })
   return (
     <section
       aria-label="Weekly challenge"
-      className="bg-spark text-on-spark"
+      className="bg-phosphor text-on-phosphor"
     >
       <div className="mx-auto flex max-w-[1100px] items-stretch">
         <div className="challenge-marquee-viewport min-w-0 flex-1 overflow-hidden">
@@ -76,7 +76,7 @@ export function ChallengeMarquee({ challenge }: { challenge: MarqueeChallenge })
         </div>
         <Link
           href={href}
-          className="press flex shrink-0 items-center gap-1 border-l border-on-spark/20 px-4 text-[13px] font-semibold text-on-spark underline decoration-on-spark/40 underline-offset-2 hover:decoration-on-spark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-spark/50"
+          className="press flex shrink-0 items-center gap-1 border-l border-on-phosphor/20 px-4 text-[13px] font-semibold text-on-phosphor underline decoration-on-phosphor/40 underline-offset-2 hover:decoration-on-phosphor focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-phosphor/50"
         >
           {ctaLabel} →
         </Link>

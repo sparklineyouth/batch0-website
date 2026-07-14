@@ -80,12 +80,12 @@ A lot of imposter syndrome isn't about you at all. It's about the highlight reel
 
 Mute or unfollow accounts that make you feel small instead of motivated; that's basic hygiene, not weakness. And when you're comparing yourself constantly, [how to stop comparing your startup to everyone else's](/blog/how-to-stop-comparing-your-startup-to-others) is worth a read.
 
-The best cure for comparison is a room of other builders at your level. When you see other teens sweating the same doubts, shipping the same rough MVPs, and stumbling through the same first interviews, the fraud story falls apart. That's a big part of why a cohort-based program like [Sparkline Youth](/program) works: you build a real company across four one-week sprints alongside people who feel exactly like you do, which makes it obvious that feeling unqualified is just the entry fee, not a verdict.
+The best cure for comparison is a room of other builders at your level. When you see other teens sweating the same doubts, shipping the same rough MVPs, and stumbling through the same first interviews, the fraud story falls apart. That's a big part of why a cohort-based program like [batch0](/program) works: you build a real company across four one-week sprints alongside people who feel exactly like you do, which makes it obvious that feeling unqualified is just the entry fee, not a verdict.
 
 ## Keep going before you feel ready
 
 Waiting to feel like a "real founder" before you act is a trap, because that feeling arrives *after* the work, not before it. You will never feel fully ready. The founders who make it are the ones who took the next small action anyway, collected the evidence, and let confidence catch up.
 
-So pick the one scary thing you've been avoiding because you feel unqualified. The email, the interview, the launch. Do the small version of it this week. The voice will still be there. Let it talk. You'll be too busy building to take it seriously. If you want a structured place to do that alongside other young founders, you can [apply to Sparkline Youth](/apply) for free and only pay if you get in.
+So pick the one scary thing you've been avoiding because you feel unqualified. The email, the interview, the launch. Do the small version of it this week. The voice will still be there. Let it talk. You'll be too busy building to take it seriously. If you want a structured place to do that alongside other young founders, you can [apply to batch0](/apply) for free and only pay if you get in.
 
 Feeling like a fraud isn't a stop sign. For a teen founder, it's just what the starting line feels like.

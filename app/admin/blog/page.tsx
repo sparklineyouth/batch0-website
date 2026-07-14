@@ -74,7 +74,7 @@ export default async function AdminBlogPage() {
         </div>
         <Link
           href="/admin/blog/new"
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-spark px-4 text-sm font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-phosphor px-4 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           <Plus className="h-4 w-4" /> New post
         </Link>
@@ -107,7 +107,7 @@ export default async function AdminBlogPage() {
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-2 text-ink">
                     {r.featured && (
-                      <Star className="h-3.5 w-3.5 shrink-0 fill-spark text-spark" />
+                      <Star className="h-3.5 w-3.5 shrink-0 fill-phosphor text-phosphor" />
                     )}
                     <span className="line-clamp-1">{r.title}</span>
                   </div>
@@ -135,7 +135,7 @@ export default async function AdminBlogPage() {
                   {r.href ? (
                     <Link
                       href={r.href}
-                      className="text-xs text-spark-ink hover:underline"
+                      className="text-xs text-phosphor-ink hover:underline"
                     >
                       Edit →
                     </Link>

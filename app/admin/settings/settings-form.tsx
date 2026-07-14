@@ -64,7 +64,7 @@ export function SettingsForm({
             type="email"
             value={values.contact_email}
             onChange={(e) => set("contact_email", e.target.value)}
-            placeholder="hello@sparklineyouth.org"
+            placeholder="hello@batch0.org"
           />
           <Hint>Shown in the footer and CTA. Where applicants can reach you.</Hint>
         </Field>
@@ -169,7 +169,7 @@ function Section({
 }) {
   return (
     <section>
-      <h3 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-spark-ink">
+      <h3 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
         {title}
       </h3>
       <div className="space-y-5">{children}</div>

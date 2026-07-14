@@ -60,15 +60,15 @@ export default async function AdminEmailMetricsPage() {
         <Card className="mt-6">
           <p className="text-sm text-ink-soft">
             Run migration{" "}
-            <code className="font-mono text-spark-ink">
+            <code className="font-mono text-phosphor-ink">
               0024_email_events.sql
             </code>{" "}
             in your Supabase SQL editor, then set{" "}
-            <code className="font-mono text-spark-ink">
+            <code className="font-mono text-phosphor-ink">
               RESEND_WEBHOOK_SECRET
             </code>{" "}
             and add a webhook in the Resend dashboard pointing at{" "}
-            <code className="font-mono text-spark-ink">
+            <code className="font-mono text-phosphor-ink">
               /api/resend/webhook
             </code>
             . Subscribe to <em>delivered, opened, clicked, bounced,
@@ -201,7 +201,7 @@ export default async function AdminEmailMetricsPage() {
           </p>
           <a
             href="/admin/email/blast"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-spark px-3 py-1.5 text-xs font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-phosphor px-3 py-1.5 text-xs font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             Compose blast
           </a>
@@ -258,7 +258,7 @@ export default async function AdminEmailMetricsPage() {
               <div className="flex h-full items-end gap-[2px]">
                 <div
                   title={`${d.key} · ${d.sent} sent`}
-                  className="flex-1 rounded-t bg-spark/50"
+                  className="flex-1 rounded-t bg-phosphor/50"
                   style={{
                     height: `${Math.max(2, Math.round((d.sent / maxDay) * 100))}%`,
                   }}
@@ -279,7 +279,7 @@ export default async function AdminEmailMetricsPage() {
         </div>
         <div className="mt-2 flex gap-4 text-[10px] text-ink-soft">
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded bg-spark/50" /> Sent
+            <span className="inline-block h-2 w-2 rounded bg-phosphor/50" /> Sent
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-2 w-2 rounded bg-emerald-400/70" />{" "}

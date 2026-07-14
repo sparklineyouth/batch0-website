@@ -84,6 +84,6 @@ Storytelling is the layer that makes structure land, so it's worth studying [the
 
 A clean two-minute pitch takes most people a few focused days to write and a couple of weeks of practice to deliver well. Not months. The writing is fast once your idea has real proof behind it; the delivery is just reps.
 
-If you want reps in front of real judges instead of your bedroom mirror, Sparkline Youth's four-week accelerator ends with a live demo day where you pitch what you built. When you're ready to prepare for that moment specifically, [how to prepare for demo day](/blog/demo-day-preparation-guide) is the next thing to read.
+If you want reps in front of real judges instead of your bedroom mirror, batch0's four-week accelerator ends with a live demo day where you pitch what you built. When you're ready to prepare for that moment specifically, [how to prepare for demo day](/blog/demo-day-preparation-guide) is the next thing to read.
 
 The version of you that has pitched ten times is unrecognizable from the one who's never done it. So the real answer to "how do I get good at pitching" is boring and true: pitch, get feedback, fix one thing, pitch again.

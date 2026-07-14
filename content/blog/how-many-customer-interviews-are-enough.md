@@ -82,4 +82,4 @@ If you can answer all four with real quotes and stories behind them, stop interv
 
 The goal was never a magic number. It's reaching the moment where you can predict what the next person will say and you're itching to build the fix. When you get there, you're done.
 
-Getting to that clean "stop" point is a lot faster with people asking you sharp questions each week. That's the whole first week of [the Sparkline program](/program): you pick a customer, run real interviews, and don't move to building until your idea actually holds up. If you want structure and a live cohort to keep you honest, [apply for free](/apply) — you only pay if you get in.
+Getting to that clean "stop" point is a lot faster with people asking you sharp questions each week. That's the whole first week of [the batch0 program](/program): you pick a customer, run real interviews, and don't move to building until your idea actually holds up. If you want structure and a live cohort to keep you honest, [apply for free](/apply) — you only pay if you get in.

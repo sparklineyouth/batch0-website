@@ -77,4 +77,4 @@ So the rule is simple: a competition or demo day usually wants both, a slide dec
 
 The deck is the visual. The pitch is the performance. Judges score the performance, and the deck keeps everyone following along. So build a clean, low-text deck in an afternoon, then spend the rest of your week rehearsing until the talk sounds like you, not like you're reading. Get both tight and you'll walk in ready.
 
-At [Sparkline](/program), the final sprint is Pitch: you build the deck, write the talk, rehearse it with feedback, and deliver it live at demo day. If you want a structured deadline that forces you to actually finish both, [applying is free](/apply) and tuition only comes if you're accepted.
+At [batch0](/program), the final sprint is Pitch: you build the deck, write the talk, rehearse it with feedback, and deliver it live at demo day. If you want a structured deadline that forces you to actually finish both, [applying is free](/apply) and tuition only comes if you're accepted.

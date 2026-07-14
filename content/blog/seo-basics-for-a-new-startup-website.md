@@ -97,4 +97,4 @@ SEO is a long-game distribution channel, and it's just one of several. If you're
 
 The honest truth: SEO rewards founders who show up consistently and quit no one else's business but their own. It won't spike overnight. But a year from now, the pages you write this month can be quietly sending you customers while you sleep, at a cost of exactly zero. That's the kind of leverage a student founder with no budget should be greedy about.
 
-If you want to build these Market-sprint skills with a team, deadlines, and people who've done it before, that's exactly what we do at Sparkline Youth. Take a look at [the program](/program) or [apply for free](/apply) and put your website in front of real customers.
+If you want to build these Market-sprint skills with a team, deadlines, and people who've done it before, that's exactly what we do at batch0. Take a look at [the program](/program) or [apply for free](/apply) and put your website in front of real customers.

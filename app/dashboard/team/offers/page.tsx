@@ -8,11 +8,11 @@ import { LocalTime } from "@/components/ui/local-time";
 export const metadata = { title: "SAFE offers · Team" };
 
 const STATUS_TONE: Record<string, string> = {
-  sent: "bg-spark/10 text-spark-ink border-spark/30",
+  sent: "bg-phosphor/10 text-phosphor-ink border-phosphor/30",
   accepted: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
   declined: "bg-wash text-ink-soft border-line",
   withdrawn: "bg-wash text-ink-faint border-line",
-  countersigned: "bg-spark/10 text-spark-ink border-spark/30",
+  countersigned: "bg-phosphor/10 text-phosphor-ink border-phosphor/30",
   draft: "bg-wash text-ink-soft border-line",
 };
 
@@ -46,7 +46,7 @@ export default async function TeamOffersPage() {
       </Link>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">SAFE offers</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Every investor offer routed through Sparkline Youth. Review carefully — these
+        Every investor offer routed through batch0. Review carefully — these
         are real legal commitments once counter-signed.
       </p>
 

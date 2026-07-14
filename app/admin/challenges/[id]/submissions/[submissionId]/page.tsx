@@ -56,7 +56,7 @@ export default async function SubmissionDetailPage({
       </p>
 
       <Card className="mt-6">
-        <h2 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-spark-ink">
+        <h2 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
           Answers
         </h2>
         <dl className="space-y-5">
@@ -79,7 +79,7 @@ export default async function SubmissionDetailPage({
                         href={raw}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-spark-ink underline decoration-spark-ink/30 underline-offset-2 hover:decoration-spark-ink"
+                        className="text-phosphor-ink underline decoration-phosphor-ink/30 underline-offset-2 hover:decoration-phosphor-ink"
                       >
                         {raw}
                       </a>
@@ -97,7 +97,7 @@ export default async function SubmissionDetailPage({
       </Card>
 
       <Card className="mt-6">
-        <h2 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-spark-ink">
+        <h2 className="mb-4 text-xs font-mono font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
           Review
         </h2>
         <SubmissionReview

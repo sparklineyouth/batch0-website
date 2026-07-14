@@ -65,7 +65,7 @@ export default function robots(): MetadataRoute.Robots {
 
   return {
     rules: agents.map((userAgent) => ({ userAgent, allow: "/", disallow })),
-    sitemap: "https://www.sparklineyouth.org/sitemap.xml",
-    host: "https://www.sparklineyouth.org",
+    sitemap: "https://batch0.org/sitemap.xml",
+    host: "https://batch0.org",
   };
 }

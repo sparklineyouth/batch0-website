@@ -65,7 +65,7 @@ Paying makes sense when the money buys something you can't easily fake for free.
 
 The trap is paying for prestige instead of that compression. A famous campus, a rented university building, a logo you recognize — none of it teaches you to talk to a customer or ship a prototype. If a program is selling a backdrop, you're overpaying no matter the number.
 
-Here's a concrete example of "priced fairly." Sparkline Youth's [accelerator program](/program) is free to apply to. Tuition is $130, charged only if you're accepted, with reduced pricing in select regions. No equity — your company stays 100% yours. Over four one-week sprints (Validate, Build, Market, Pitch) you build a real company and pitch it at a live demo day. The point isn't that $130 is magic. It's that the value lives in forced shipping and live feedback, and the price is stated plainly before you [apply](/apply). Hold any paid program to that bar.
+Here's a concrete example of "priced fairly." batch0's [accelerator program](/program) is free to apply to. Tuition is $130, charged only if you're accepted, with reduced pricing in select regions. No equity — your company stays 100% yours. Over four one-week sprints (Validate, Build, Market, Pitch) you build a real company and pitch it at a live demo day. The point isn't that $130 is magic. It's that the value lives in forced shipping and live feedback, and the price is stated plainly before you [apply](/apply). Hold any paid program to that bar.
 
 ## How to decide in one sitting
 

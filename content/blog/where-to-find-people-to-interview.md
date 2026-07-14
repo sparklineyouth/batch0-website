@@ -95,4 +95,4 @@ That's enough to know whether you're onto something real or talking yourself int
 
 Finding people to interview is the unglamorous engine behind every good startup. Founders who win aren't smarter, they've just talked to more of the right people, earlier. This is the entire point of the Validate week in our [program](/program): you get a target customer, a script, and a deadline, so "I'll find people to interview" turns into actual booked conversations before you build anything.
 
-So pick your one-sentence customer, drain your warm circle this week, then send ten cold messages. You'll have your first real interviews before you've finished overthinking it. When you're ready to do this with a cohort and a coach instead of alone, [apply to Sparkline](/apply) — it's free to apply, and you only pay if you get in.
+So pick your one-sentence customer, drain your warm circle this week, then send ten cold messages. You'll have your first real interviews before you've finished overthinking it. When you're ready to do this with a cohort and a coach instead of alone, [apply to batch0](/apply) — it's free to apply, and you only pay if you get in.

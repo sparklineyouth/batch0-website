@@ -1,4 +1,4 @@
-// Regional pricing for Sparkline Youth tuition.
+// Regional pricing for batch0 tuition.
 //
 // All amounts are billed in USD. We adjust the USD price by detected
 // country so that purchasing-power differences don't price out applicants

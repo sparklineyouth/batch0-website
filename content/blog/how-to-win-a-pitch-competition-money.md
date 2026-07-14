@@ -51,7 +51,7 @@ Here's the mistake that sinks smart students: they spend every week building fea
 
 Flip it. Spend less time building and more time getting the thing in front of real users. A rough product with ten actual users beats a polished one with zero every time, because it lets you say "here's what happened when people tried it." Real usage also feeds your other slides: quotes for your problem, numbers for your business model.
 
-Short on time? Ship the smallest version that works, or even fake the product manually to get real signals. The point isn't the code, it's the evidence. That's exactly what a program like [Sparkline Youth](/program) pushes you to gather, because it structures the work into sprints that end with real users before you ever pitch.
+Short on time? Ship the smallest version that works, or even fake the product manually to get real signals. The point isn't the code, it's the evidence. That's exactly what a program like [batch0](/program) pushes you to gather, because it structures the work into sprints that end with real users before you ever pitch.
 
 ## Play the format: time, clarity, and one clear story
 
@@ -82,4 +82,4 @@ The founders who win don't do anything magic in the last week. They just execute
 5. Rehearse the full pitch out loud, on a timer, in front of a person who'll tell you where they got lost. Do it at least five times.
 6. Show up early, test your setup, and walk in knowing exactly what number you want on every judge's sheet.
 
-Winning prize money isn't about being the flashiest team. It's about quietly building the proof the rubric rewards, telling one clean story inside the clock, and refusing to lose points you could have controlled. Do that and you'll beat teams with better ideas who never read the scoring sheet. When you're ready to build a company worth pitching, [apply to Sparkline Youth](/apply) and put in the reps before the money's on the line.
+Winning prize money isn't about being the flashiest team. It's about quietly building the proof the rubric rewards, telling one clean story inside the clock, and refusing to lose points you could have controlled. Do that and you'll beat teams with better ideas who never read the scoring sheet. When you're ready to build a company worth pitching, [apply to batch0](/apply) and put in the reps before the money's on the line.

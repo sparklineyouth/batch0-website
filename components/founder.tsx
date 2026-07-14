@@ -6,7 +6,7 @@ import React from "react";
  * links (NEEDED_FACTS); no invented credentials in the meantime.
  */
 export default function Founder({
-  contactEmail = "hello@sparklineyouth.org",
+  contactEmail = "hello@batch0.org",
 }: {
   /** Admin-set contact from site_settings — the one real inbox. */
   contactEmail?: string;
@@ -21,9 +21,9 @@ export default function Founder({
         </div>
         <div className="md:col-span-8">
           <p className="max-w-[40rem] text-[1.0625rem] leading-[1.65] text-ink-soft">
-            Sparkline Youth is built and run by{" "}
+            batch0 is built and run by{" "}
             <strong className="font-semibold text-ink">Rishabh Dagli and Taran Bethi</strong>, two
-            17-year-old serial founders. We built Sparkline Youth to give high schoolers the same chance
+            17-year-old serial founders. We built batch0 to give high schoolers the same chance
             that we wish we had: to build a REAL company with mentorship and support, and even the chance
             of funding!
             {/* TODO(RISH): 2–3 public receipts (links) — shipped products,

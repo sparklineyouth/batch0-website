@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   }
 
   const basePriceCents = app.cohort?.price_cents ?? 13000;
-  const cohortName = app.cohort?.name ?? "Sparkline Youth cohort";
+  const cohortName = app.cohort?.name ?? "batch0 cohort";
   const stripePriceId: string | null = app.cohort?.stripe_price_id ?? null;
 
   // Regional pricing — keep the displayed marketing price in sync with
@@ -105,9 +105,9 @@ export async function POST(req: Request) {
                 currency: "usd",
                 unit_amount: priceCents,
                 product_data: {
-                  name: `Sparkline Youth — ${cohortName}`,
+                  name: `batch0 — ${cohortName}`,
                   description:
-                    "One-time enrollment fee for the Sparkline Youth accelerator.",
+                    "One-time enrollment fee for the batch0 accelerator.",
                 },
               },
             },

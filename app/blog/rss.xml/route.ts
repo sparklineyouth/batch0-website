@@ -6,7 +6,7 @@ import { getAllPostsMeta, formatPostDate } from "@/lib/blog";
 // frontmatter the pages use, so it can't drift.
 export const dynamic = "force-static";
 
-const SITE = "https://www.sparklineyouth.org";
+const SITE = "https://batch0.org";
 const FEED_URL = `${SITE}/blog/rss.xml`;
 
 function escapeXml(s: string): string {
@@ -44,7 +44,7 @@ export async function GET() {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
-    <title>Sparkline Youth Blog</title>
+    <title>batch0 Blog</title>
     <link>${SITE}/blog</link>
     <description>Guides and essays on building a startup as a high schooler — from idea validation to demo day.</description>
     <language>en-us</language>

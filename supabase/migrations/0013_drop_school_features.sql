@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 0013 — Drop school-style features.
 --
--- Sparkline is a startup accelerator, not a school. We're dropping
+-- batch0 is a startup accelerator, not a school. We're dropping
 -- assignments, submissions, quizzes, and the "submissions" storage
 -- bucket. Mentor feedback now lives on team threads (Phase 2) and
 -- check-in feedback (0010). Student / team work lives in their team

@@ -109,4 +109,4 @@ And they are not a substitute for talking to customers. The idea matters far les
 
 Pick one idea. Write down the first five people you'll offer it to by name. Message or talk to all five in the next seven days and ask for a real commitment, money, a deposit, or a booked time.
 
-If two or three say yes, you have something worth building on. If nobody does, you learned that in a week for free, which is the whole point. That loop, pick, offer, listen, adjust, is exactly what the four one-week build sprints at [Sparkline Youth](/program) are designed to run you through with feedback at every step. But you don't need permission or a program to start it. You need one idea and five names, and you have both right now.
+If two or three say yes, you have something worth building on. If nobody does, you learned that in a week for free, which is the whole point. That loop, pick, offer, listen, adjust, is exactly what the four one-week build sprints at [batch0](/program) are designed to run you through with feedback at every step. But you don't need permission or a program to start it. You need one idea and five names, and you have both right now.

@@ -190,7 +190,7 @@ export default async function AdminStudentDetail({
                   <td className="px-5 py-3 text-right">
                     <Link
                       href={`/admin/applications/${a.id}`}
-                      className="text-xs text-spark-ink hover:underline"
+                      className="text-xs text-phosphor-ink hover:underline"
                     >
                       Open →
                     </Link>
@@ -250,7 +250,7 @@ export default async function AdminStudentDetail({
           </div>
           <Link
             href={`/admin/charges?user=${profile.id}`}
-            className="text-xs text-spark-ink hover:underline"
+            className="text-xs text-phosphor-ink hover:underline"
           >
             Issue a charge →
           </Link>

@@ -29,8 +29,8 @@ export function Toggle({
         aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
-          checked ? "bg-spark" : "bg-ink-faint"
+        className={`relative h-6 w-11 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
+          checked ? "bg-phosphor" : "bg-ink-faint"
         } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
       >
         <span

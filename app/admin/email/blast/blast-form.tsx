@@ -39,8 +39,8 @@ function templates(siteUrl: string) {
     {
       key: "announcement",
       label: "Announcement",
-      subject: "An update from Sparkline Youth",
-      body: "Hi {{name}},\n\nWe've got news to share:\n\n[Write your announcement here.]\n\n— The Sparkline Youth team",
+      subject: "An update from batch0",
+      body: "Hi {{name}},\n\nWe've got news to share:\n\n[Write your announcement here.]\n\n— The batch0 team",
       ctaLabel: "Open dashboard",
       ctaUrl: `${siteUrl}/dashboard`,
     },
@@ -48,15 +48,15 @@ function templates(siteUrl: string) {
       key: "event",
       label: "Event reminder",
       subject: "Coming up: [event name]",
-      body: "Hi {{name}},\n\nQuick reminder — [event name] is happening [day/time]. Don't miss it.\n\nSee you there,\nThe Sparkline Youth team",
+      body: "Hi {{name}},\n\nQuick reminder — [event name] is happening [day/time]. Don't miss it.\n\nSee you there,\nThe batch0 team",
       ctaLabel: "View events",
       ctaUrl: `${siteUrl}/dashboard/events`,
     },
     {
       key: "nudge",
       label: "Application nudge",
-      subject: "Finish your Sparkline Youth application",
-      body: "Hi {{name}},\n\nYou started an application but haven't submitted it yet. Seats are limited and reviews are rolling — a few minutes now keeps your spot in the running.\n\n— The Sparkline Youth team",
+      subject: "Finish your batch0 application",
+      body: "Hi {{name}},\n\nYou started an application but haven't submitted it yet. Seats are limited and reviews are rolling — a few minutes now keeps your spot in the running.\n\n— The batch0 team",
       ctaLabel: "Continue application",
       ctaUrl: `${siteUrl}/apply`,
     },
@@ -193,7 +193,7 @@ export function BlastForm({
           <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink-soft">
             <Users className="h-4 w-4" /> Recipients
           </h2>
-          <span className="rounded-full border border-spark/40 bg-spark/10 px-2.5 py-0.5 text-xs font-medium tabular-nums text-spark-ink">
+          <span className="rounded-full border border-phosphor/40 bg-phosphor/10 px-2.5 py-0.5 text-xs font-medium tabular-nums text-phosphor-ink">
             {selected.size} selected
           </span>
         </div>
@@ -206,7 +206,7 @@ export function BlastForm({
               onClick={() => setAudience(a.key)}
               className={`rounded-full border px-3 py-1 text-xs transition ${
                 audience === a.key
-                  ? "border-spark bg-spark/10 text-spark-ink"
+                  ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >
@@ -225,7 +225,7 @@ export function BlastForm({
             <select
               value={cohort}
               onChange={(e) => setCohort(e.target.value)}
-              className="h-10 rounded-md border border-line bg-paper px-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-spark/60"
+              className="h-10 rounded-md border border-line bg-paper px-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-phosphor/60"
             >
               <option value="">Any cohort</option>
               {cohortNames.map((c) => (
@@ -271,7 +271,7 @@ export function BlastForm({
                   type="checkbox"
                   checked={selected.has(r.id)}
                   onChange={() => toggle(r.id)}
-                  className="h-4 w-4 accent-[#facc15]"
+                  className="h-4 w-4 accent-[#ffbb00]"
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-ink">
@@ -306,7 +306,7 @@ export function BlastForm({
                 key={t.key}
                 type="button"
                 onClick={() => applyTemplate(t.key)}
-                className="rounded-full border border-line px-3 py-1 text-xs text-ink-soft transition hover:border-spark/50 hover:text-spark-ink"
+                className="rounded-full border border-line px-3 py-1 text-xs text-ink-soft transition hover:border-phosphor/50 hover:text-phosphor-ink"
               >
                 {t.label}
               </button>
@@ -466,7 +466,7 @@ export function BlastForm({
             </div>
           )}
           <p className="mt-2 text-center text-xs text-ink-faint">
-            Emails send from your Resend account with the Sparkline template.
+            Emails send from your Resend account with the batch0 template.
             There&apos;s no undo — send a test first.
           </p>
         </Card>

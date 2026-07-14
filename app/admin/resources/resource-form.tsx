@@ -158,7 +158,7 @@ export function ResourceForm({
         {v.storage_path ? (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-line bg-paper p-2">
             <div className="flex min-w-0 items-center gap-2 text-sm text-ink-soft">
-              <FileText className="h-4 w-4 shrink-0 text-spark-ink" />
+              <FileText className="h-4 w-4 shrink-0 text-phosphor-ink" />
               <span className="truncate">{v.storage_path}</span>
             </div>
             <button

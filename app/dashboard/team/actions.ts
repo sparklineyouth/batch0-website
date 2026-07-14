@@ -583,7 +583,7 @@ export async function inviteStudentByEmail(input: {
 
   if (!profile) {
     throw new Error(
-      "No Sparkline Youth account found for that email. Ask them to sign up first, then send the invite.",
+      "No batch0 account found for that email. Ask them to sign up first, then send the invite.",
     );
   }
   if (profile.id === userId) {

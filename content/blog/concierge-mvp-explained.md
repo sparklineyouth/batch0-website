@@ -80,6 +80,6 @@ You automate when, and only when, two things are true: people keep paying, and t
 
 If demand never showed up, do not build the app to "give it a fair shot." That is sunk-cost talking. Change the idea or change the customer, and run the concierge test again on the new version. You will have lost a week, not a semester.
 
-This do-it-by-hand-first mindset is the backbone of the Validate sprint in [the Sparkline program](/program), where you test your idea with real people before you write a single line of code. If you would rather run this with a cohort, deadlines, and mentors pushing you, [applying is free](/apply) and you only pay if you get in.
+This do-it-by-hand-first mindset is the backbone of the Validate sprint in [the batch0 program](/program), where you test your idea with real people before you write a single line of code. If you would rather run this with a cohort, deadlines, and mentors pushing you, [applying is free](/apply) and you only pay if you get in.
 
 Start with a spreadsheet and one customer. If they pay you twice, you are onto something. If they do not, you just saved yourself three months.

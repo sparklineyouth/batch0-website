@@ -73,7 +73,7 @@ export default async function AuditTargetPage({
               <li key={r.id}>
                 <Card>
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="font-mono text-sm font-semibold text-spark-ink">
+                    <p className="font-mono text-sm font-semibold text-phosphor-ink">
                       {r.action}
                     </p>
                     <p className="text-xs text-ink-faint">

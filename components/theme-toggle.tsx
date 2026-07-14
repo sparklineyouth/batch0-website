@@ -32,7 +32,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
           : "Toggle theme"
       }
       title={mounted ? (isDark ? "Light mode" : "Dark mode") : "Toggle theme"}
-      className={`press flex h-9 w-9 items-center justify-center rounded-md border border-line text-ink-soft transition-colors duration-200 hover:bg-wash hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${className}`}
+      className={`press flex h-9 w-9 items-center justify-center rounded-md border border-line text-ink-soft transition-colors duration-200 hover:bg-wash hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${className}`}
     >
       {/* Before mount, show a fixed icon so SSR and the first client render
           agree. suppressHydrationWarning covers the post-mount icon swap. */}

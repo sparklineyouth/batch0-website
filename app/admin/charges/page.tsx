@@ -85,7 +85,7 @@ export default async function AdminChargesPage({
               href={href}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
-                  ? "border-spark bg-spark/10 text-spark"
+                  ? "border-phosphor bg-phosphor/10 text-phosphor"
                   : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
               }`}
             >

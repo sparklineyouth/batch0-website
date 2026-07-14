@@ -42,7 +42,7 @@ export default async function MentorTeamsPage() {
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <span className="text-lg font-bold text-spark-ink">
+                      <span className="text-lg font-bold text-phosphor-ink">
                         {t.name?.slice(0, 1).toUpperCase()}
                       </span>
                     )}

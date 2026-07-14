@@ -288,7 +288,7 @@ export default async function CohortHealthPage({
                 <td className="px-5 py-3">
                   <Link
                     href={`/admin/students/${r.userId}`}
-                    className="text-ink hover:text-spark-ink"
+                    className="text-ink hover:text-phosphor-ink"
                   >
                     {r.name}
                   </Link>
@@ -319,7 +319,7 @@ export default async function CohortHealthPage({
                     <>
                       {fmtTokens(r.ai.tokens)}
                       {r.ai.billed > 0 && (
-                        <span className="ml-1 text-[10px] text-spark-ink">
+                        <span className="ml-1 text-[10px] text-phosphor-ink">
                           ${(r.ai.billed / 100).toFixed(2)}
                         </span>
                       )}
@@ -364,7 +364,7 @@ function Header({
       </Link>
       <div className="mt-3 flex items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-spark-ink">
+          <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-phosphor-ink">
             Cohort health
           </p>
           <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
@@ -378,7 +378,7 @@ function Header({
         <div className="text-right">
           <Link
             href={`/admin/cohorts`}
-            className="text-xs text-spark-ink hover:underline"
+            className="text-xs text-phosphor-ink hover:underline"
           >
             Edit cohort →
           </Link>

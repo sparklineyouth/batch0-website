@@ -76,7 +76,7 @@ Read your draft out loud. If it sounds like a college-application robot, rewrite
 
 ## Free vs. paid, and how money should factor in
 
-Some programs are free; some charge tuition. Cost is not a proxy for quality in either direction, so judge the program, not the price tag. The green flag for a paid program is that applying is free and you only pay if you're accepted — that means they select for fit, not for whoever can pay upfront. Sparkline works that way: applying is free, and the $130 tuition is only charged if you get in, with no equity taken. You can see the format on the [program page](/program).
+Some programs are free; some charge tuition. Cost is not a proxy for quality in either direction, so judge the program, not the price tag. The green flag for a paid program is that applying is free and you only pay if you're accepted — that means they select for fit, not for whoever can pay upfront. batch0 works that way: applying is free, and the $130 tuition is only charged if you get in, with no equity taken. You can see the format on the [program page](/program).
 
 If money is a real constraint, say so — good programs have scholarships or plans, and none of that affects your admission decision. For a wider view of what's out there, [Startup Accelerator Programs for High Schoolers: A 2026 Guide](/blog/startup-accelerator-programs-for-high-schoolers) and [Free vs. Paid Startup Programs: Which Is Worth Your Time?](/blog/free-vs-paid-startup-programs-teens) both help you compare without getting sold to.
 

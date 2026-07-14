@@ -10,7 +10,7 @@ export function ChallengeWinners({ winners }: { winners: PublicWinner[] }) {
   return (
     <section className="px-5 py-24 sm:px-6 md:py-32">
       <div className="mx-auto max-w-[1100px]">
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-spark-ink">
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
           Recently funded
         </p>
         <h2 className="mt-3 max-w-2xl font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
@@ -34,14 +34,14 @@ export function ChallengeWinners({ winners }: { winners: PublicWinner[] }) {
                     href={w.publicProjectUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="ml-2 whitespace-nowrap text-xs text-spark-ink underline decoration-spark-ink/30 underline-offset-2 hover:decoration-spark-ink"
+                    className="ml-2 whitespace-nowrap text-xs text-phosphor-ink underline decoration-phosphor-ink/30 underline-offset-2 hover:decoration-phosphor-ink"
                   >
                     View →
                   </a>
                 )}
               </div>
               {w.payoutAmountCents != null && (
-                <span className="shrink-0 font-mono text-sm text-spark-ink">
+                <span className="shrink-0 font-mono text-sm text-phosphor-ink">
                   {formatCents(w.payoutAmountCents)}
                 </span>
               )}

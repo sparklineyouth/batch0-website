@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import Image from "next/image";
+import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { track } from "@vercel/analytics";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -46,10 +46,7 @@ export default function Navbar({
         className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-4 px-5 sm:px-6"
       >
         <Link href="/" className="flex shrink-0 items-center gap-2">
-          <Image src="/logo.svg" alt="" width={22} height={22} priority />
-          <span className="font-display text-[15px] font-bold tracking-tight text-ink">
-            Sparkline Youth
-          </span>
+          <Wordmark className="h-[18px] text-ink" />
         </Link>
 
         <div className="hidden items-center gap-7 md:flex">
@@ -74,7 +71,7 @@ export default function Navbar({
           <Link
             href={applyHref}
             onClick={() => !isAuthed && track("apply_click", { location: "navbar" })}
-            className="press rounded-md bg-spark px-4 py-2 text-sm font-semibold text-on-spark shadow-cta hover:bg-spark-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spark focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="press rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             {applyLabel}
           </Link>
@@ -131,7 +128,7 @@ export default function Navbar({
                   setOpen(false);
                   if (!isAuthed) track("apply_click", { location: "navbar-mobile" });
                 }}
-                className="press rounded-md bg-spark px-4 py-3 text-center text-[15px] font-semibold text-on-spark shadow-cta"
+                className="press rounded-md bg-phosphor px-4 py-3 text-center text-[15px] font-semibold text-on-phosphor shadow-cta"
               >
                 {applyLabel}
               </Link>

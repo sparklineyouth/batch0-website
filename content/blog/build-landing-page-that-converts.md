@@ -66,7 +66,7 @@ This is the "smoke test." You're testing demand, not the product. A few things m
 - **A real ask.** An email or a small deposit means more than a "like." Make people do something that costs them a little.
 - **Traffic you can name.** Send 50 people from one source, like a relevant subreddit or your DMs, so you know who the 8% who converted actually are.
 
-A waitlist page is faster to ship than an actual product, and you can build one for free. When you're ready to make the product itself, you can [build an MVP with no code](/blog/how-to-build-mvp-no-code-student) and point your waitlist at it. In one of the Sparkline sprints, students ship a landing page exactly this way, as a demand test before they build, so the thing they build already has people waiting.
+A waitlist page is faster to ship than an actual product, and you can build one for free. When you're ready to make the product itself, you can [build an MVP with no code](/blog/how-to-build-mvp-no-code-student) and point your waitlist at it. In one of the batch0 sprints, students ship a landing page exactly this way, as a demand test before they build, so the thing they build already has people waiting.
 
 ## What a converting landing page is not
 

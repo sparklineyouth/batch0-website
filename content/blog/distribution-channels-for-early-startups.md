@@ -88,6 +88,6 @@ A few things that feel like distribution and aren't:
 
 Finding your first working channel usually takes a few weeks of focused testing, not months, if you commit to one at a time. The mistake isn't picking the wrong channel first. It's picking six and never learning which one works.
 
-Start with one action this week: name where your users already gather, then show up there and help. That's it. Inside a program like Sparkline Youth, this is the whole Market sprint, where you take the product you built and prove you can put it in front of real people.
+Start with one action this week: name where your users already gather, then show up there and help. That's it. Inside a program like batch0, this is the whole Market sprint, where you take the product you built and prove you can put it in front of real people.
 
 Once you've picked a wedge, pair it with a plan so you're not just posting into the void. Read [how to write a go-to-market plan](/blog/go-to-market-plan-beginners) to turn your channel choice into a week-by-week playbook, then go get [your first 10 customers](/blog/how-to-get-first-10-customers-student-founder). Distribution isn't a talent. It's a habit of showing up in one place, consistently, until it works.

@@ -4,9 +4,9 @@
  */
 export const env = {
   siteUrl:
-    process.env.NEXT_PUBLIC_SITE_URL ?? "https://sparklineyouth.org",
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://batch0.org",
   contactEmail:
-    process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "hello@sparklineyouth.org",
+    process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "hello@batch0.org",
 
   // Supabase (required)
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,11 +28,11 @@ export const env = {
   // when these aren't set, so local dev keeps working without a key.
   resendApiKey: process.env.RESEND_API_KEY,
   // The verified `From:` address Resend sends as. Must be on a domain
-  // you've verified in the Resend dashboard (e.g. "Sparkline Youth
-  // <hello@sparklineyouth.org>"). Falls back to onboarding@resend.dev
+  // you've verified in the Resend dashboard (e.g. "batch0
+  // <hello@batch0.org>"). Falls back to onboarding@resend.dev
   // for first-run testing only.
   resendFrom:
-    process.env.RESEND_FROM ?? "Sparkline Youth <onboarding@resend.dev>",
+    process.env.RESEND_FROM ?? "batch0 <onboarding@resend.dev>",
   // Svix signing secret from the Resend webhooks dashboard. Looks like
   // "whsec_xxx". When unset, /api/resend/webhook returns 400 — we
   // refuse to ingest unsigned events because the table is service-role

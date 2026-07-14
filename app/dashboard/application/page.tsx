@@ -8,7 +8,7 @@ import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { PayButton } from "./pay-button";
 import { TrackSubmitted } from "./track-submitted";
 
-export const metadata = { title: "Application · Sparkline Youth" };
+export const metadata = { title: "Application · batch0" };
 
 export default async function ApplicationPage({
   searchParams,
@@ -50,9 +50,9 @@ export default async function ApplicationPage({
       </div>
 
       {searchParams.submitted && (
-        <div className="mt-5 rounded-lg border border-spark/30 bg-spark/5 p-4 text-sm">
+        <div className="mt-5 rounded-lg border border-phosphor/30 bg-phosphor/5 p-4 text-sm">
           <TrackSubmitted />
-          <p className="font-medium text-spark-ink">Application submitted</p>
+          <p className="font-medium text-phosphor-ink">Application submitted</p>
           <p className="mt-1 text-ink-soft">
             We'll review and get back to you by email. You can check status here anytime.
           </p>
@@ -65,10 +65,10 @@ export default async function ApplicationPage({
       )}
 
       {app.status === "accepted" && (
-        <Card className="mt-6 border-spark/40 bg-spark/5">
-          <h3 className="text-lg font-semibold text-spark-ink">You're in.</h3>
+        <Card className="mt-6 border-phosphor/40 bg-phosphor/5">
+          <h3 className="text-lg font-semibold text-phosphor-ink">You're in.</h3>
           <p className="mt-1 text-sm text-ink-soft">
-            Welcome to {app.cohort?.name ?? "Sparkline Youth"}. Pay your one-time ${(priceCents / 100).toFixed(0)} to lock in your seat. Course access unlocks immediately after.
+            Welcome to {app.cohort?.name ?? "batch0"}. Pay your one-time ${(priceCents / 100).toFixed(0)} to lock in your seat. Course access unlocks immediately after.
           </p>
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
           <div className="mt-5">
@@ -137,7 +137,7 @@ export default async function ApplicationPage({
           <Row label="LinkedIn" value={app.linkedin_url} />
           <Row label="Resume" value={app.resume_url} />
           <Row label="Portfolio" value={app.portfolio_url} />
-          <Row label="Why Sparkline Youth" value={app.why_join} multiline />
+          <Row label="Why batch0" value={app.why_join} multiline />
           <Row label="Startup idea" value={app.startup_idea} multiline />
           <Row label="Experience" value={app.experience} multiline />
         </div>

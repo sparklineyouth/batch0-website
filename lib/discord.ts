@@ -64,7 +64,7 @@ export async function postDiscordWebhook(args: {
       body: JSON.stringify({
         content: args.content,
         embeds: args.embeds,
-        username: args.username ?? "Sparkline Youth",
+        username: args.username ?? "batch0",
         allowed_mentions: args.allowedMentions ?? { parse: [] },
       }),
     });
@@ -391,9 +391,9 @@ export async function removeRoleFromMember(
 }
 
 /**
- * Make a member's Discord roles match the user's Sparkline Youth role.
- * Adds the role mapped to their current Sparkline Youth role, removes any
- * other Sparkline-managed roles they had. Safe to call repeatedly.
+ * Make a member's Discord roles match the user's batch0 role.
+ * Adds the role mapped to their current batch0 role, removes any
+ * other batch0-managed roles they had. Safe to call repeatedly.
  */
 export async function syncMemberRoles(
   discordUserId: string,
@@ -494,7 +494,7 @@ export async function postChannelMessageWithId(
   }
 }
 
-const BRAND_COLOR = 0xfacc15; // tailwind yellow-400, matches the spark token
+const BRAND_COLOR = 0xffbb00; // tailwind yellow-400, matches the phosphor token
 
 export function announcementEmbed(args: {
   title: string;
@@ -509,8 +509,8 @@ export function announcementEmbed(args: {
     url: args.link ?? undefined,
     footer: {
       text: args.cohortName
-        ? `Sparkline Youth · ${args.cohortName}`
-        : "Sparkline Youth",
+        ? `batch0 · ${args.cohortName}`
+        : "batch0",
     },
     timestamp: new Date().toISOString(),
   };
@@ -563,7 +563,7 @@ export function applicationEmbed(args: {
     description: lines.join("\n") || undefined,
     color: BRAND_COLOR,
     url: args.link,
-    footer: { text: "Sparkline Youth · applications" },
+    footer: { text: "batch0 · applications" },
     timestamp: new Date().toISOString(),
   };
 }
@@ -583,7 +583,7 @@ export function refundEmbed(args: {
     title: `↩️ Refund — ${args.name ?? "user"}`,
     description: lines.join("\n"),
     color: BRAND_COLOR,
-    footer: { text: `Sparkline Youth · ${args.kind}` },
+    footer: { text: `batch0 · ${args.kind}` },
     timestamp: new Date().toISOString(),
   };
 }
@@ -610,7 +610,7 @@ export function eventEmbed(args: {
     description: desc.join("\n"),
     color: BRAND_COLOR,
     footer: {
-      text: args.cohortName ? `Sparkline Youth · ${args.cohortName}` : "Sparkline Youth",
+      text: args.cohortName ? `batch0 · ${args.cohortName}` : "batch0",
     },
     timestamp: new Date().toISOString(),
   };
@@ -1162,7 +1162,7 @@ export function discordAvatarUrl(
 export const SLASH_COMMANDS = [
   {
     name: "me",
-    description: "Show your Sparkline Youth status (private).",
+    description: "Show your batch0 status (private).",
   },
   {
     name: "link",
@@ -1174,19 +1174,19 @@ export const SLASH_COMMANDS = [
   },
   {
     name: "events",
-    description: "Show the next few upcoming Sparkline Youth events.",
+    description: "Show the next few upcoming batch0 events.",
   },
   {
     name: "sync",
-    description: "Re-sync your Discord roles with your Sparkline Youth status.",
+    description: "Re-sync your Discord roles with your batch0 status.",
   },
   {
     name: "help",
-    description: "List every Sparkline Youth slash command.",
+    description: "List every batch0 slash command.",
   },
   {
     name: "whois",
-    description: "Admins only — look up a Discord user's Sparkline Youth profile.",
+    description: "Admins only — look up a Discord user's batch0 profile.",
     options: [
       {
         name: "user",
@@ -1215,7 +1215,7 @@ export const SLASH_COMMANDS = [
   },
   {
     name: "ask",
-    description: "Ask the Sparkline Youth AI co-founder a question.",
+    description: "Ask the batch0 AI co-founder a question.",
     options: [
       {
         name: "question",
@@ -1364,7 +1364,7 @@ export async function listRegisteredCommands(): Promise<
 
 // ---------------------------------------------------------------------------
 // Server bootstrap: wipe + rebuild a guild's roles and channels to the
-// canonical Sparkline Youth layout. Designed for the very first setup so
+// canonical batch0 layout. Designed for the very first setup so
 // staff don't have to hand-craft 15 channels + 4 roles + permission
 // overwrites in the Discord UI. Destructive — call site must confirm.
 // ---------------------------------------------------------------------------
@@ -1524,7 +1524,7 @@ export type BootstrapResult = {
 
 /**
  * Nuke the guild's existing channels + roles (except @everyone and
- * managed bot roles) and rebuild the Sparkline Youth canonical layout in
+ * managed bot roles) and rebuild the batch0 canonical layout in
  * one shot. Caller must persist the returned IDs into site_settings.
  *
  * Throttled at ~3 ops/sec to stay clear of Discord rate limits. Expect
@@ -1575,7 +1575,7 @@ export async function bootstrapGuildFromScratch(): Promise<BootstrapResult> {
     await sleep(350);
   }
 
-  // Step 4: create the four Sparkline Youth roles. Discord defaults new
+  // Step 4: create the four batch0 roles. Discord defaults new
   // roles to the bottom of the hierarchy, just above @everyone, so the
   // bot's own (managed) role stays above them and can assign them.
   // Hoisting puts them in their own section in the member list.
@@ -1643,7 +1643,7 @@ export async function bootstrapGuildFromScratch(): Promise<BootstrapResult> {
     name: "welcome",
     type: CHANNEL_TYPE_TEXT,
     parent_id: startCat.id,
-    topic: "Welcome to Sparkline Youth! Link your account at /dashboard/settings.",
+    topic: "Welcome to batch0! Link your account at /dashboard/settings.",
     // Read-only for students: deny SEND_MESSAGES on @everyone.
     permission_overwrites: [
       {
@@ -1782,7 +1782,7 @@ export async function bootstrapGuildFromScratch(): Promise<BootstrapResult> {
     name: "events",
     type: CHANNEL_TYPE_TEXT,
     parent_id: eventsCat.id,
-    topic: "Upcoming Sparkline Youth events. Run /events in any channel.",
+    topic: "Upcoming batch0 events. Run /events in any channel.",
     permission_overwrites: [
       {
         id: everyoneId,

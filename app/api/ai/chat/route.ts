@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     return new Response(
       JSON.stringify({
         error:
-          "You've hit the AI usage hard cap for this month. Contact Sparkline Youth if you need more.",
+          "You've hit the AI usage hard cap for this month. Contact batch0 if you need more.",
       }),
       { status: 402 },
     );
@@ -280,7 +280,7 @@ export async function POST(req: Request) {
         .eq("cohort_id", cohortId)
         .order("week", { ascending: true });
       if (mods && mods.length > 0) {
-        const lines: string[] = ["# Sparkline Youth curriculum"];
+        const lines: string[] = ["# batch0 curriculum"];
         for (const m of mods as any[]) {
           lines.push(`\n## Week ${m.week}: ${m.title}`);
           if (m.summary) lines.push(m.summary);

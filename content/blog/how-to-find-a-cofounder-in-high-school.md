@@ -63,7 +63,7 @@ You're already surrounded by candidates. You just have to look where builders co
 
 Hackathons are the single best filter. In one weekend you watch how someone works under pressure, whether they finish what they start, and how they handle a bug at midnight. That's more signal than a month of coffee chats.
 
-Online communities widen the pool past your school, which matters if you go somewhere small. A co-founder two time zones away can absolutely work if you both show up. Sparkline Youth runs entirely online for exactly this reason: your best teammate might not sit next to you in homeroom.
+Online communities widen the pool past your school, which matters if you go somewhere small. A co-founder two time zones away can absolutely work if you both show up. batch0 runs entirely online for exactly this reason: your best teammate might not sit next to you in homeroom.
 
 If you want more places where driven students gather, look at [the best startup competitions for high school students](/blog/best-startup-competitions-for-high-school-students). Competitions and their prep sessions are full of people who've already chosen to build.
 

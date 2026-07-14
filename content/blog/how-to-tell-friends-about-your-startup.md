@@ -89,6 +89,6 @@ You don't need a strategy. You need a sentence you're not embarrassed to say.
 
 Pick your plain-language one-liner, say it out loud once so it doesn't sound rehearsed, and use it the next time someone asks. Something like: "I've been building a little tool that does X. It's fun, and I'm trying to get real people to try it. Know anyone?" That sentence is honest, it's not cringe, it invites help instead of applause, and it ends with a question so the other person gets to talk.
 
-Everything else, the eye-rolls, the doubters, the awkwardness, gets smaller the longer you keep building. The friends who matter come around when they see it's real. And if you want a place where "I'm building a startup" is the normal thing to say, a room full of other high schoolers doing the same is exactly what Sparkline's [four-week accelerator](/program) gives you. It's free to [apply](/apply), and being surrounded by people who get it makes the whole social part disappear.
+Everything else, the eye-rolls, the doubters, the awkwardness, gets smaller the longer you keep building. The friends who matter come around when they see it's real. And if you want a place where "I'm building a startup" is the normal thing to say, a room full of other high schoolers doing the same is exactly what batch0's [four-week accelerator](/program) gives you. It's free to [apply](/apply), and being surrounded by people who get it makes the whole social part disappear.
 
 You're not doing anything you need to apologize for. You're building something. Say it plainly, and get back to work.

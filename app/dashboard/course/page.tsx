@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, PlayCircle, Lock } from "lucide-react";
 
-export const metadata = { title: "Course · Sparkline Youth" };
+export const metadata = { title: "Course · batch0" };
 
 export default async function CoursePage() {
   const user = await requireUser();
@@ -29,7 +29,7 @@ export default async function CoursePage() {
           </div>
           <Link
             href="/dashboard/application"
-            className="mt-4 inline-block text-sm text-spark-ink hover:underline"
+            className="mt-4 inline-block text-sm text-phosphor-ink hover:underline"
           >
             View application →
           </Link>
@@ -73,12 +73,12 @@ export default async function CoursePage() {
         </div>
         <div className="text-right">
           <div className="text-sm text-ink-faint">Progress</div>
-          <div className="text-2xl font-semibold text-spark-ink">{pct}%</div>
+          <div className="text-2xl font-semibold text-phosphor-ink">{pct}%</div>
         </div>
       </div>
 
       <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-wash">
-        <div className="h-full bg-spark transition-all" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-phosphor transition-all" style={{ width: `${pct}%` }} />
       </div>
 
       <div className="mt-10 space-y-6">
@@ -89,7 +89,7 @@ export default async function CoursePage() {
           return (
             <Card key={m.id} className="!p-0 overflow-hidden">
               <div className="border-b border-line bg-paper px-6 py-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-spark-ink">
+                <p className="text-xs font-medium uppercase tracking-wider text-phosphor-ink">
                   Week {m.week}
                 </p>
                 <h3 className="mt-1 text-lg font-semibold">{m.title}</h3>

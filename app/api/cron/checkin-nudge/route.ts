@@ -100,12 +100,12 @@ export async function GET(req: Request) {
         {
           title: "Quick check-in?",
           description: [
-            `Hey${c.full_name ? `, ${c.full_name}` : ""} — your weekly Sparkline Youth check-in for the week of **${week}** is empty.`,
+            `Hey${c.full_name ? `, ${c.full_name}` : ""} — your weekly batch0 check-in for the week of **${week}** is empty.`,
             "",
             "Run `/checkin` right here to post it in 30 seconds, or open the dashboard:",
             `${env.siteUrl}/dashboard/checkin`,
           ].join("\n"),
-          color: 0xfacc15,
+          color: 0xffbb00,
         },
       ],
     });

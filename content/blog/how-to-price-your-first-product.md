@@ -98,4 +98,4 @@ Setting your first price should take an afternoon, not a month. You're not tryin
 
 Do this: find the alternative your customer already pays for, price clearly below the value you add but above what feels comfortable, and then charge one real person this week. What you learn from that single transaction beats weeks of guessing.
 
-At Sparkline Youth, students set and test a real price during the Build and Market sprints, because a price nobody will pay isn't really a price. Once you have a number that holds up, the next question is how you reach the people who'll pay it — start with [how to get your first 10 customers](/blog/how-to-get-first-10-customers-student-founder).
+At batch0, students set and test a real price during the Build and Market sprints, because a price nobody will pay isn't really a price. Once you have a number that holds up, the next question is how you reach the people who'll pay it — start with [how to get your first 10 customers](/blog/how-to-get-first-10-customers-student-founder).

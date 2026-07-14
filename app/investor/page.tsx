@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 
-export const metadata = { title: "Investor · Sparkline Youth" };
+export const metadata = { title: "Investor · batch0" };
 
 export default async function InvestorOverview() {
   const profile = await requireInvestor();
@@ -43,7 +43,7 @@ export default async function InvestorOverview() {
 
       <Card className="mt-10">
         <p className="text-sm text-ink-soft">
-          Head to <Link href="/investor/teams" className="text-spark-ink hover:underline">Teams</Link> to browse all the
+          Head to <Link href="/investor/teams" className="text-phosphor-ink hover:underline">Teams</Link> to browse all the
           startups in this cohort, see their pitch decks, and mark your level
           of interest.
         </p>

@@ -82,4 +82,4 @@ And if the real problem is that the partnership itself is shaky, read [How to Br
 - **Forgetting the tiebreaker.** Perfect equality with no way to break a deadlock means you freeze the first time you truly disagree.
 - **Trading equity for a favor.** Giving your friend who designed one logo 10% is a mistake you'll pay for for years. Pay them, thank them, or give them a tiny sliver that vests — don't hand over real ownership for a one-off.
 
-Get the split done early, keep it near-equal, add vesting, and write it down. Then get back to the actual work — that's where the value is, and it's what we help teams build sprint by sprint inside the [Sparkline program](/program). If you've got a co-founder and something worth building, [apply here](/apply) — it's free to apply, and you only pay if you get in.
+Get the split done early, keep it near-equal, add vesting, and write it down. Then get back to the actual work — that's where the value is, and it's what we help teams build sprint by sprint inside the [batch0 program](/program). If you've got a co-founder and something worth building, [apply here](/apply) — it's free to apply, and you only pay if you get in.

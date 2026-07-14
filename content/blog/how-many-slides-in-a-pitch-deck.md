@@ -19,7 +19,7 @@ For almost every situation a teen founder will hit, aim for 10 slides, and never
 | Where you're pitching | How long you get | Slides to aim for |
 |---|---|---|
 | School or club competition | 3 min | 8-10 |
-| Live demo day (like Sparkline's) | 3-5 min | 9-11 |
+| Live demo day (like batch0's) | 3-5 min | 9-11 |
 | Regional or national pitch comp | 5 min | 10-12 |
 | Investor-style meeting | 10+ min | 10-12 |
 
@@ -86,4 +86,4 @@ If that reads like a story a stranger could follow, you're done. If you hit a ti
 
 Then rehearse the whole thing out loud against a timer. If you consistently run over, the problem is almost never that you talk too slow. It's that you have too many slides. Cut one, run it again. A deck that fits the clock with 15 seconds to spare beats one you have to race through every single time. [How to rehearse a pitch so it sounds natural](/blog/how-to-rehearse-a-pitch) covers exactly how to run those timed reps.
 
-Ten slides, one clear story, delivered inside the time limit with room to breathe. That's the target. If you want a room full of mentors helping you cut, rebuild, and rehearse your deck against a real demo day, that's what happens across the four sprints when you [apply to Sparkline](/apply) — you can see how the whole [program](/program) works first. Build the tight version. It's always the one that wins.
+Ten slides, one clear story, delivered inside the time limit with room to breathe. That's the target. If you want a room full of mentors helping you cut, rebuild, and rehearse your deck against a real demo day, that's what happens across the four sprints when you [apply to batch0](/apply) — you can see how the whole [program](/program) works first. Build the tight version. It's always the one that wins.
