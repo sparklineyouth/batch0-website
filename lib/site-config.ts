@@ -89,18 +89,24 @@ const FALLBACK_SETTINGS: SiteSettings = {
   referralsEnabled: true,
 };
 
-// Kept in sync with the real Cohort 1 row so a Supabase outage can't make
-// the marketing site display stale facts.
+// Mirrors the real Cohort 1 row so a Supabase outage can't make the marketing
+// site display stale facts.
+//
+// This only helps if it actually matches the row — it had drifted to the
+// cohort's original Jul 30 → Sep 13 dates while the real row moved to
+// Aug 17 → Oct 18, so an outage would have shown dates 5 weeks out of date.
+// Re-check these against /admin/cohorts whenever the cohort row changes.
+// Last verified against the DB: 2026-07-14.
 const FALLBACK_COHORT: ActiveCohort = {
   id: "",
   name: "Summer 2026",
   cohortNumber: 1,
-  startsOn: "2026-07-30",
-  endsOn: "2026-09-13",
+  startsOn: "2026-08-17",
+  endsOn: "2026-10-18",
   capacity: 100,
   priceCents: 12999,
   status: "upcoming",
-  applicationsCloseAt: null,
+  applicationsCloseAt: "2026-08-10T23:59:00+00:00",
 };
 
 function formatDateRange(startsOn: string | null, endsOn: string | null) {

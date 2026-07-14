@@ -18,6 +18,31 @@ import { NotificationBell } from "@/components/notification-bell";
 
 export type MobileNavKind = "student" | "admin" | "mentor" | "investor";
 
+/** Boundary-aware match — see components/sidebar-nav.tsx for the rationale. */
+function isMatch(pathname: string, item: { href: string; exact?: boolean }) {
+  if (item.exact) return pathname === item.href;
+  return pathname === item.href || pathname.startsWith(item.href + "/");
+}
+
+/** Longest matching href wins, so only the most specific link is current.
+ *  Mirrors resolveActiveHref in components/sidebar-nav.tsx — the drawer had
+ *  the same double-highlight bug as the desktop sidebar. */
+function resolveActiveHref(
+  pathname: string | null,
+  groups: NavGroup[],
+): string | null {
+  if (!pathname) return null;
+  let best: string | null = null;
+  for (const g of groups) {
+    for (const it of g.items) {
+      if (isMatch(pathname, it) && (!best || it.href.length > best.length)) {
+        best = it.href;
+      }
+    }
+  }
+  return best;
+}
+
 const GROUPS_BY_KIND: Record<MobileNavKind, NavGroup[]> = {
   student: STUDENT_NAV_GROUPS,
   admin: ADMIN_NAV_GROUPS,
@@ -159,6 +184,12 @@ export function MobileNav({
   ]);
 
   const label = LABEL_BY_KIND[kind];
+  // Resolved against the unfiltered groups so search can't change what's
+  // current.
+  const activeHref = useMemo(
+    () => resolveActiveHref(pathname, rawGroups),
+    [pathname, rawGroups],
+  );
 
   const extras: { href: string; label: string; icon: any }[] = [];
   if (role === "admin" && kind !== "admin") extras.push(STAFF_LINKS.admin);
@@ -274,9 +305,7 @@ export function MobileNav({
                     {isOpen && (
                       <div className="space-y-0.5">
                         {g.items.map((it) => {
-                          const active = it.exact
-                            ? pathname === it.href
-                            : pathname?.startsWith(it.href);
+                          const active = it.href === activeHref;
                           const Icon = it.icon;
                           return (
                             <Link

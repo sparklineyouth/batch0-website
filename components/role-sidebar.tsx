@@ -6,7 +6,7 @@ import type { Role } from "@/lib/types";
 import { INVESTOR_NAV_GROUPS } from "@/lib/nav-config";
 import type { NavGroup } from "@/lib/nav-config";
 import { NotificationBell } from "@/components/notification-bell";
-import { SidebarNav } from "@/components/sidebar-nav";
+import { SidebarNav, SIDEBAR_ROW } from "@/components/sidebar-nav";
 
 export type RoleSidebarKind = "investor";
 
@@ -46,21 +46,15 @@ export function RoleSidebar({
       </p>
       <SidebarNav storageKey={`role-${kind}`} groups={groups} />
       {role === "admin" && (
-        <div className="mt-4 space-y-1 border-t border-line pt-4">
-          <Link
-            href="/admin"
-            className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-phosphor-ink hover:bg-phosphor/10"
-          >
+        <div className="mt-4 space-y-0.5 border-t border-line pt-4">
+          <Link href="/admin" className={SIDEBAR_ROW}>
             <ShieldCheck className="h-4 w-4" />
             Admin panel
           </Link>
         </div>
       )}
       <form action="/auth/signout" method="post" className="mt-4">
-        <button
-          type="submit"
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-soft hover:bg-paper hover:text-ink"
-        >
+        <button type="submit" className={SIDEBAR_ROW}>
           <LogOut className="h-4 w-4" />
           Sign out
         </button>
