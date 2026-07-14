@@ -9,6 +9,8 @@ import { ReviewThread } from "./review-thread";
 import { ReviewScorecard } from "./review-scorecard";
 import { getSiteConfig } from "@/lib/site-config";
 import { requireAdmin } from "@/lib/auth";
+import { resolveReferrersByCode } from "@/lib/referrals";
+import { Share2 } from "lucide-react";
 
 export const metadata = { title: "Review application · Admin" };
 
@@ -45,6 +47,14 @@ export default async function AdminApplicationDetail({
     ]);
 
   if (!app) notFound();
+
+  // Name the referrer rather than showing a bare code — "a3f9k2" tells a
+  // reviewer nothing about who vouched for this applicant.
+  const referrer = app.referral_code
+    ? (
+        await resolveReferrersByCode(admin, [app.referral_code as string])
+      ).get(String(app.referral_code).toLowerCase()) ?? null
+    : null;
 
   const myReview =
     (reviews ?? []).find((r: any) => r.reviewer_id === viewer.id) ?? null;
@@ -147,10 +157,30 @@ export default async function AdminApplicationDetail({
           <Row label="Team size" value={teamSizeAdminLabel(app.team_size)} />
           <Row label="Heard about us" value={app.referral_source} />
           <Row
-            label="Referred by (code)"
+            label="Referred by"
             value={
               app.referral_code ? (
-                <span className="font-mono text-xs">{app.referral_code}</span>
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-phosphor/30 bg-phosphor/10 px-2 py-0.5 text-[11px] font-medium text-phosphor-ink">
+                    <Share2 className="h-3 w-3" />
+                    Fast-tracked
+                  </span>
+                  {referrer ? (
+                    <Link
+                      href={`/admin/students/${referrer.userId}`}
+                      className="text-ink underline decoration-phosphor decoration-2 underline-offset-2 hover:text-phosphor-ink"
+                    >
+                      {referrer.fullName ?? referrer.email ?? "Unknown"}
+                    </Link>
+                  ) : (
+                    <span className="text-ink-faint">
+                      referrer&apos;s account no longer exists
+                    </span>
+                  )}
+                  <span className="font-mono text-xs text-ink-faint">
+                    {app.referral_code}
+                  </span>
+                </span>
               ) : undefined
             }
           />

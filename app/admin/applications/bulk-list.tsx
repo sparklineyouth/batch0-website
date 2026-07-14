@@ -9,7 +9,7 @@ import { Textarea, Label } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { bulkDecideApplications } from "./[id]/actions";
 import { getActionError } from "@/lib/action-error";
-import { CheckSquare, Square } from "lucide-react";
+import { CheckSquare, Square, Share2 } from "lucide-react";
 
 // Statuses where bulk-decide makes sense. Decided / paid / enrolled rows
 // don't get a usable checkbox — clicking them just navigates.
@@ -53,7 +53,24 @@ type AppRow = {
   ai_score: number | null;
   ai_reviewed_at: string | null;
   profile: { email: string | null } | null;
+  /** Lowercased code, or null when the applicant arrived unreferred. */
+  referralCode: string | null;
+  /** Referrer's name/email, or null when the code has no matching profile. */
+  referrerName: string | null;
+  /** How many applications THIS applicant has brought in (all statuses). */
+  referralsSent: number;
+  /** Of those, how many reached paid/enrolled. */
+  referralsPaid: number;
 };
+
+/** Columns. Shared by the header and every row so they can't drift apart.
+ *
+ *  Widths are budgeted against the header LABELS, not just the cell contents —
+ *  "Referred by" and "Referrals" are long words in tracked-out uppercase mono,
+ *  and an under-budgeted column overflows into its neighbour (Referrals ran
+ *  straight into Status at 0.6fr). */
+const COLS =
+  "grid grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,0.35fr)_minmax(0,0.5fr)_minmax(0,1.15fr)_minmax(0,0.9fr)_minmax(0,0.75fr)_minmax(0,0.8fr)] items-center gap-3";
 
 export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
   const router = useRouter();
@@ -120,7 +137,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
 
   return (
     <div className="text-sm">
-      <div className="grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-line bg-wash px-5 py-3 text-xs font-mono uppercase tracking-wider text-ink-faint">
+      <div className={`${COLS} border-b border-line bg-wash px-5 py-3 text-xs font-mono uppercase tracking-wider text-ink-faint`}>
         <button
           type="button"
           onClick={toggleAll}
@@ -137,6 +154,8 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
         <div>Email</div>
         <div>Age</div>
         <div>AI</div>
+        <div>Referred by</div>
+        <div title="Applications this student has brought in">Referrals</div>
         <div>Status</div>
         <div>Submitted</div>
       </div>
@@ -147,7 +166,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
         return (
           <div
             key={a.id}
-            className={`group grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,0.5fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-line px-5 py-3 last:border-0 hover:bg-wash ${
+            className={`group ${COLS} border-b border-line px-5 py-3 last:border-0 hover:bg-wash ${
               checked ? "bg-phosphor/5" : ""
             }`}
           >
@@ -194,6 +213,51 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
                 </span>
               ) : (
                 <span className="text-ink-faint">—</span>
+              )}
+            </div>
+            <div className="min-w-0">
+              {a.referralCode ? (
+                <span
+                  title={
+                    a.referrerName
+                      ? `Referred by ${a.referrerName} (${a.referralCode}) — fast-tracked`
+                      : `Referred with code ${a.referralCode} — referrer's account no longer exists`
+                  }
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-phosphor/30 bg-phosphor/10 px-2 py-0.5 text-[11px] font-medium text-phosphor-ink"
+                >
+                  <Share2 className="h-3 w-3 shrink-0" />
+                  {/* min-w-0 is what actually lets `truncate` shrink inside a
+                      flex parent — without it the name overflows the column. */}
+                  <span className="min-w-0 truncate">
+                    {a.referrerName ?? a.referralCode}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-ink-faint">—</span>
+              )}
+            </div>
+            <div className="tabular-nums">
+              {a.referralsSent > 0 ? (
+                <span
+                  title={
+                    `${a.referralsSent} application${a.referralsSent === 1 ? "" : "s"} came in through this student's link` +
+                    (a.referralsPaid > 0
+                      ? ` · ${a.referralsPaid} paid/enrolled`
+                      : "")
+                  }
+                  className="inline-flex items-baseline gap-1"
+                >
+                  <span className="font-medium text-ink">
+                    {a.referralsSent}
+                  </span>
+                  {a.referralsPaid > 0 && (
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                      ✓{a.referralsPaid}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-ink-faint">0</span>
               )}
             </div>
             <div>

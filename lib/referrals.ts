@@ -13,27 +13,81 @@ export type ReferrerRow = {
   };
 };
 
+/** The person behind a referral code. */
+export type Referrer = {
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+};
+
 /**
- * Aggregates applications by referral_code into a leaderboard.
+ * Resolve referral codes to the students who own them.
  *
- * Joins are JS-side rather than SQL because Supabase PostgREST can't
- * express "group by + aggregate by status" without an RPC. For cohort
- * sizes in the hundreds-of-applications range this is fine; if it
- * grows past that, swap to a materialized view or a database function.
+ * Codes are stored lowercase on `applications.referral_code` (see
+ * app/apply/actions.ts) and on `profiles.referral_code`, so both sides are
+ * compared lowercase here rather than trusting the caller.
+ *
+ * Returns a Map keyed by code. Codes with no matching profile are simply
+ * absent — a referral code can outlive the account that created it, and the
+ * caller should treat "referred by someone we can't name" as still referred.
+ */
+export async function resolveReferrersByCode(
+  client: SupabaseClient,
+  codes: string[],
+): Promise<Map<string, Referrer>> {
+  const unique = Array.from(
+    new Set(codes.filter(Boolean).map((c) => c.toLowerCase())),
+  );
+  if (unique.length === 0) return new Map();
+
+  const { data } = await client
+    .from("profiles")
+    .select("id, full_name, email, referral_code")
+    .in("referral_code", unique);
+
+  const out = new Map<string, Referrer>();
+  for (const p of (data ?? []) as Array<{
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    referral_code: string | null;
+  }>) {
+    if (!p.referral_code) continue;
+    out.set(p.referral_code.toLowerCase(), {
+      userId: p.id,
+      fullName: p.full_name,
+      email: p.email,
+    });
+  }
+  return out;
+}
+
+export type ReferralCounts = ReferrerRow["counts"];
+
+/**
+ * Tally every application by the referral code that brought it in.
+ *
+ * Aggregation is JS-side rather than SQL because Supabase PostgREST can't
+ * express "group by + aggregate by status" without an RPC. For cohort sizes in
+ * the hundreds-of-applications range this is fine; if it grows past that, swap
+ * to a materialized view or a database function.
+ *
+ * Deliberately unfiltered by status/cohort: this is "how many people has this
+ * student brought in, ever". Callers showing it next to a status-filtered list
+ * still want the person's true total, not the total within the current filter.
  *
  * Anonymous applications (no referral_code) are excluded entirely.
  */
-export async function computeReferralLeaderboard(
+export async function tallyApplicationsByReferralCode(
   client: SupabaseClient,
-  limit = 25,
-): Promise<ReferrerRow[]> {
+): Promise<Map<string, ReferralCounts>> {
   const { data: apps, error } = await client
     .from("applications")
     .select("referral_code, status")
     .not("referral_code", "is", null);
   if (error) throw new Error(error.message);
 
-  const buckets = new Map<string, ReferrerRow["counts"]>();
+  const buckets = new Map<string, ReferralCounts>();
   for (const a of (apps ?? []) as Array<{
     referral_code: string;
     status: string;
@@ -51,24 +105,29 @@ export async function computeReferralLeaderboard(
     if (a.status === "rejected") b.rejected++;
     buckets.set(code, b);
   }
+  return buckets;
+}
+
+/**
+ * Aggregates applications by referral_code into a leaderboard.
+ */
+export async function computeReferralLeaderboard(
+  client: SupabaseClient,
+  limit = 25,
+): Promise<ReferrerRow[]> {
+  const buckets = await tallyApplicationsByReferralCode(client);
 
   const codes = Array.from(buckets.keys());
   if (codes.length === 0) return [];
 
-  const { data: referrers } = await client
-    .from("profiles")
-    .select("id, full_name, email, referral_code")
-    .in("referral_code", codes);
-  const referrerByCode = new Map(
-    (referrers ?? []).map((p: any) => [p.referral_code as string, p]),
-  );
+  const referrerByCode = await resolveReferrersByCode(client, codes);
 
   const rows: ReferrerRow[] = codes.map((code) => {
     const profile = referrerByCode.get(code);
     return {
-      userId: profile?.id ?? null,
+      userId: profile?.userId ?? null,
       referralCode: code,
-      fullName: profile?.full_name ?? null,
+      fullName: profile?.fullName ?? null,
       email: profile?.email ?? null,
       counts: buckets.get(code)!,
     };
