@@ -4,35 +4,29 @@ import { useEffect, useRef } from "react";
 import { LocalTime } from "@/components/ui/local-time";
 
 /**
- * The claimed founder pass, rendered as the physical object it stands for —
- * a ticket, in the spirit of YC's Startup School ticket, but in batch0's
- * voice: the phosphor fill with ink text (the system's one sanctioned
- * pairing, constant across themes like `.hl`), VT323 for the holder's name,
- * and a CRT treatment — scanlines, screen bloom, grain — where YC airbrushes
- * orange.
+ * The claimed founder pass, rendered as the thing the brand is drawn from:
+ * a lit amber-phosphor CRT. Dark glass, glowing VT323 name with a blinking
+ * block cursor, and the site's signature Cohort-Ledger dotted rows carrying
+ * the card's true facts — code, cohort, claim date. No ticket stub, no
+ * punched notches, no ADMIT ONE cosplay: the object is batch0's own.
  *
- * On DESIGN.md's "no gradients, no glow": those rules govern page chrome.
- * This is imagery — a depiction of the card in your wallet — the same
- * carve-out the doc gives product screenshots and real receipts. The page
- * around it stays flat.
+ * The card is constant-dark in both themes, the same way the phosphor fill
+ * is constant-yellow elsewhere — it's a depiction of a physical object, and
+ * objects don't recolour with the OS theme. (DESIGN.md's no-gradients rule
+ * governs page chrome; this is imagery, same carve-out as screenshots.)
  *
- * Behaviour also follows the YC ticket: it tilts toward the pointer with a
- * specular glare, gated to fine pointers and off under
- * prefers-reduced-motion. On touch it is simply a handsome static object.
+ * Behaviour: tilts toward a fine pointer with a specular sheen, gated off
+ * under prefers-reduced-motion; static on touch. The cursor blink is frozen
+ * by the global reduced-motion rule in globals.css.
  *
- * The stub says FAST TRACK, not the traditional ADMIT ONE: a pass fast-tracks
- * your application to the top of the queue, it does not admit you — and this
- * site does not print promises it can't keep (see the PERKS note in
- * ./page.tsx).
- *
- * Client component (it tracks the pointer), which is why it takes the
- * preformatted `serialLabel` instead of calling formatSerial itself:
- * lib/founder-pass-code.ts imports node:crypto and can never enter the
- * client bundle.
+ * Shows the CODE embossed on the card (captured at redemption — migration
+ * 0040) as the hero identity line; passes redeemed before that migration
+ * have no stored code and fall back to the serial. Client component, which
+ * is why it takes the preformatted `serialLabel`: lib/founder-pass-code.ts
+ * imports node:crypto and can never enter the client bundle.
  */
 
-// Film grain: feTurbulence noise tiled at 180px, laid over the phosphor fill
-// with soft-light so the card reads as printed material rather than a div.
+// Film grain so the screen reads as glass, not a div.
 const GRAIN =
   `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E` +
   `%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E` +
@@ -43,9 +37,15 @@ const GRAIN =
 const MAX_TILT_X = 7;
 const MAX_TILT_Y = 10;
 
+// Phosphor glow, in three intensities. Real CRT glyphs bloom; the name gets
+// the strongest halo, the ledger a hint.
+const GLOW_STRONG = "0 0 14px rgba(255,187,0,0.55), 0 0 2px rgba(255,187,0,0.9)";
+const GLOW_SOFT = "0 0 8px rgba(255,187,0,0.35)";
+
 export function FounderPassTicket({
   name,
   serialLabel,
+  code,
   batch,
   cohortHeadline,
   redeemedAt,
@@ -55,6 +55,8 @@ export function FounderPassTicket({
   name: string | null;
   /** Preformatted "#007" — see the client-bundle note above. */
   serialLabel: string;
+  /** Plaintext card code (redeemed_code), or null for pre-0040 redemptions. */
+  code: string | null;
   batch: string;
   cohortHeadline: string;
   redeemedAt: string | null;
@@ -93,7 +95,6 @@ export function FounderPassTicket({
   }
 
   const displayName = (name ?? "").trim() || "Founder";
-  const serialDigits = serialLabel.replace(/^#/, "");
 
   return (
     <div
@@ -103,22 +104,21 @@ export function FounderPassTicket({
     >
       <div
         ref={cardRef}
-        className="relative aspect-[1.85/1] overflow-hidden rounded-xl bg-phosphor ring-1 ring-inset ring-black/10 transition-transform duration-150 ease-out will-change-transform"
+        className="relative aspect-[1.7/1] overflow-hidden rounded-2xl bg-[#0d0d0b] ring-1 ring-phosphor/20 transition-transform duration-150 ease-out will-change-transform"
         style={{
           transform: "rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg))",
+          // The light a lit screen spills onto the desk. Part of the object,
+          // so it doesn't flip with the theme.
+          boxShadow: "0 0 48px rgba(255,187,0,0.13)",
         }}
       >
-        {/* Screen bloom — the light a lit phosphor tube throws. Two stacked
-            radials: a pale glow with the base yellow painted back over its
-            core, leaving a crescent of light right of centre (the same move
-            as the YC ticket's airbrushed arc). */}
+        {/* Phosphor wash — the tube is on. */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(52% 68% at 46% 52%, #FFBB00 30%, rgba(255,187,0,0) 72%), " +
-              "radial-gradient(62% 88% at 60% 32%, rgba(255,243,200,0.95), rgba(255,243,200,0) 68%)",
+              "radial-gradient(85% 95% at 50% 42%, rgba(255,187,0,0.17), rgba(255,187,0,0) 72%)",
           }}
         />
         {/* Scanlines. */}
@@ -127,99 +127,122 @@ export function FounderPassTicket({
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "repeating-linear-gradient(0deg, rgba(20,20,20,0.04) 0px, rgba(20,20,20,0.04) 1px, transparent 1px, transparent 3px)",
+              "repeating-linear-gradient(0deg, rgba(255,187,0,0.035) 0px, rgba(255,187,0,0.035) 1px, transparent 1px, transparent 3px)",
           }}
         />
         {/* Grain. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-50 mix-blend-soft-light"
+          className="pointer-events-none absolute inset-0 opacity-40 mix-blend-soft-light"
           style={{ backgroundImage: GRAIN }}
         />
-        {/* Edge vignette, so the flat fill turns over like a surface. */}
+        {/* Tube-edge falloff. */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(120% 130% at 50% 40%, transparent 60%, rgba(20,20,20,0.08) 100%)",
+              "radial-gradient(115% 125% at 50% 45%, transparent 60%, rgba(0,0,0,0.35) 100%)",
           }}
         />
 
-        {/* Main body — everything on the yellow is on-phosphor (constant ink):
-            the fill never changes with the theme, so neither may the text. */}
-        <div className="absolute inset-y-0 left-0 right-[27%] flex flex-col justify-between p-5 sm:p-7">
-          <p className="font-mono text-[10px] font-semibold uppercase leading-relaxed tracking-[0.28em] text-on-phosphor sm:text-[11px]">
-            batch0 presents
-            <br />
-            founder pass
-          </p>
+        {/* Screen contents. Everything phosphor-on-dark; constant across
+            themes like the card itself. */}
+        <div className="absolute inset-0 flex flex-col justify-between p-5 sm:p-7">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p
+                className="font-display text-2xl leading-none text-phosphor sm:text-3xl"
+                style={{ textShadow: GLOW_SOFT }}
+              >
+                batch0
+              </p>
+              <p className="mt-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-phosphor/75 sm:text-[10px]">
+                founder pass
+              </p>
+            </div>
+            <div className="text-right">
+              <p
+                className="font-mono text-sm font-semibold tabular-nums text-phosphor sm:text-base"
+                style={{ textShadow: GLOW_SOFT }}
+              >
+                {serialLabel}
+              </p>
+              <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-phosphor/60">
+                {batch}
+              </p>
+            </div>
+          </div>
+
           <p
-            // Long names step down a size instead of crowding the meta line.
-            className={`font-display uppercase text-on-phosphor [overflow-wrap:anywhere] ${
+            // Long names step down a size instead of crowding the ledger.
+            className={`font-display uppercase text-phosphor-200 [overflow-wrap:anywhere] ${
               displayName.length > 18
                 ? "text-2xl sm:text-4xl"
                 : "text-4xl sm:text-[3.25rem]"
             }`}
+            style={{ textShadow: GLOW_STRONG }}
           >
             {displayName}
+            <span
+              aria-hidden
+              className="pass-cursor ml-2 inline-block h-[0.72em] w-[0.45em] translate-y-[0.08em] bg-phosphor"
+              style={{ boxShadow: GLOW_SOFT }}
+            />
           </p>
-          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-on-phosphor/80 sm:text-[11px]">
-            {serialLabel} · {cohortHeadline}
+
+          {/* The card's facts as Cohort-Ledger rows — the site's signature
+              element, in the screen's own light. */}
+          <div
+            className="space-y-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-phosphor sm:text-[11px]"
+            style={{ textShadow: GLOW_SOFT }}
+          >
+            <LedgerRow label="code">
+              {code ? (
+                <span className="tracking-[0.3em]">{code.toUpperCase()}</span>
+              ) : (
+                // Pre-0040 redemption: the plaintext was never stored.
+                <span>pass {serialLabel}</span>
+              )}
+            </LedgerRow>
+            <LedgerRow label="cohort">{cohortHeadline}</LedgerRow>
             {redeemedAt && (
-              <>
-                <br />
-                <span className="text-on-phosphor/60">
-                  claimed <LocalTime value={redeemedAt} mode="date" />
-                </span>
-              </>
+              <LedgerRow label="claimed">
+                <LocalTime value={redeemedAt} mode="date" />
+              </LedgerRow>
             )}
-          </p>
+          </div>
         </div>
 
-        {/* Stub, past the perforation. */}
-        <div className="absolute inset-y-0 right-0 w-[27%] border-l border-dashed border-black/25">
-          {/* Ghost serial — the YC ticket's watermark year, ours is the number
-              that makes the pass yours. Decorative duplicate of serialLabel. */}
-          <div aria-hidden className="absolute inset-0 flex items-center justify-center">
-            <span className="rotate-90 select-none font-display text-[7rem] text-black/[0.13] sm:text-[8.5rem]">
-              {serialDigits}
-            </span>
-          </div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.35em] text-on-phosphor [writing-mode:vertical-rl] sm:text-xs">
-              fast track
-            </span>
-          </div>
-          {/* Print-run mark, like a ticket series number. */}
-          <p className="absolute inset-x-0 bottom-2.5 text-center font-mono text-[8px] uppercase tracking-[0.2em] text-on-phosphor/60">
-            {batch}
-          </p>
-        </div>
-
-        {/* Specular glare that follows the pointer. */}
+        {/* Specular sheen on the glass, following the pointer. */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
           style={{
             background:
-              "radial-gradient(340px circle at var(--glare-x, 50%) var(--glare-y, 40%), rgba(255,255,255,0.5), rgba(255,255,255,0) 60%)",
-            mixBlendMode: "soft-light",
+              "radial-gradient(320px circle at var(--glare-x, 50%) var(--glare-y, 40%), rgba(255,255,255,0.14), rgba(255,255,255,0) 60%)",
           }}
         />
-
-        {/* Punched notches: paper-coloured discs clipped by overflow-hidden,
-            so they cut quarter-circles from the corners and semicircles at
-            the perforation ends. bg-paper tracks the page in both themes. */}
-        <div aria-hidden className="pointer-events-none">
-          <span className="absolute -left-3 -top-3 h-6 w-6 rounded-full bg-paper" />
-          <span className="absolute -right-3 -top-3 h-6 w-6 rounded-full bg-paper" />
-          <span className="absolute -bottom-3 -left-3 h-6 w-6 rounded-full bg-paper" />
-          <span className="absolute -bottom-3 -right-3 h-6 w-6 rounded-full bg-paper" />
-          <span className="absolute -top-3 right-[27%] h-6 w-6 translate-x-1/2 rounded-full bg-paper" />
-          <span className="absolute -bottom-3 right-[27%] h-6 w-6 translate-x-1/2 rounded-full bg-paper" />
-        </div>
       </div>
     </div>
+  );
+}
+
+function LedgerRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <p className="flex items-baseline gap-2">
+      <span className="text-phosphor/60">{label}</span>
+      <span
+        aria-hidden
+        className="min-w-6 flex-1 -translate-y-[0.22em] border-b-2 border-dotted border-phosphor/30"
+      />
+      <span>{children}</span>
+    </p>
   );
 }

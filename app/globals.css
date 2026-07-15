@@ -231,6 +231,18 @@ a,
   padding: 0 0.12em;
 }
 
+/* Founder-pass ticket cursor (app/pass/founder-pass-ticket.tsx): the block
+ * cursor of the CRT the type system is drawn from. step-end so it snaps like
+ * a terminal rather than fading like a web page. The global reduced-motion
+ * rule above freezes it. */
+@keyframes pass-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+.pass-cursor {
+  animation: pass-blink 1.1s step-end infinite;
+}
+
 /* Hero load: the one orchestrated moment. Stagger helpers pair with the
  * `animate-rise` utility; prefers-reduced-motion zeroes all animation
  * durations globally above. */

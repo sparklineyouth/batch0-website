@@ -6,6 +6,10 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import {
+  hasFounderPass,
+  FOUNDER_PASS_TUITION_DISCOUNT_CENTS,
+} from "@/lib/founder-pass";
+import {
   getOrCreateStripeCustomer,
   stripeErrorMessage,
 } from "@/lib/stripe-customer";
@@ -67,8 +71,19 @@ export async function POST(req: Request) {
   // object can't carry a different unit_amount.
   const country = getCountryFromHeaders(req.headers);
   const regional = getRegionalPrice(basePriceCents, country);
-  const priceCents = regional.amountCents;
-  const usePriceId = stripePriceId && !regional.isRegional;
+
+  // Founder-pass perk: $30 off tuition, applied server-side so it cannot be
+  // requested — you either hold a live pass or you don't. Checked here, at
+  // charge time, rather than stamped on the application: a pass redeemed
+  // between acceptance and payment still counts, and a revoked one doesn't.
+  const passDiscountCents = (await hasFounderPass(admin, user.id))
+    ? FOUNDER_PASS_TUITION_DISCOUNT_CENTS
+    : 0;
+  const priceCents = Math.max(0, regional.amountCents - passDiscountCents);
+  // A fixed Stripe Price can't carry the discounted amount, so any discount
+  // forces the ad-hoc price_data path (same mechanics as regional pricing).
+  const usePriceId =
+    stripePriceId && !regional.isRegional && !passDiscountCents;
 
   const { data: profile } = await admin
     .from("profiles")
@@ -106,8 +121,9 @@ export async function POST(req: Request) {
                 unit_amount: priceCents,
                 product_data: {
                   name: `batch0 — ${cohortName}`,
-                  description:
-                    "One-time enrollment fee for the batch0 accelerator.",
+                  description: passDiscountCents
+                    ? `One-time enrollment fee for the batch0 accelerator. Includes your $${(passDiscountCents / 100).toFixed(0)} founder pass discount.`
+                    : "One-time enrollment fee for the batch0 accelerator.",
                 },
               },
             },
@@ -118,6 +134,7 @@ export async function POST(req: Request) {
         cohort_id: app.cohort_id ?? "",
         country: country ?? "",
         regional_pricing: regional.isRegional ? "1" : "0",
+        founder_pass_discount_cents: String(passDiscountCents),
       },
       payment_intent_data: {
         metadata: {

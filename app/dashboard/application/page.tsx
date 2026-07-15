@@ -5,6 +5,10 @@ import { requireUser } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
+import {
+  hasFounderPass,
+  FOUNDER_PASS_TUITION_DISCOUNT_CENTS,
+} from "@/lib/founder-pass";
 import { PayButton } from "./pay-button";
 import { TrackSubmitted } from "./track-submitted";
 
@@ -40,7 +44,18 @@ export default async function ApplicationPage({
 
   const basePriceCents = app.cohort?.price_cents ?? 13000;
   const country = getCountryFromHeaders(headers());
-  const priceCents = getRegionalPrice(basePriceCents, country).amountCents;
+  // Mirror the checkout math (app/api/stripe/checkout) exactly — regional
+  // price, then the founder-pass discount — so the number on this card is
+  // the number Stripe charges. founder_passes has a self-select policy, so
+  // the user's own client can answer "do I hold one".
+  const passDiscountCents =
+    app.status === "accepted" && (await hasFounderPass(supabase, user.id))
+      ? FOUNDER_PASS_TUITION_DISCOUNT_CENTS
+      : 0;
+  const priceCents = Math.max(
+    0,
+    getRegionalPrice(basePriceCents, country).amountCents - passDiscountCents,
+  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -70,6 +85,12 @@ export default async function ApplicationPage({
           <p className="mt-1 text-sm text-ink-soft">
             Welcome to {app.cohort?.name ?? "batch0"}. Pay your one-time ${(priceCents / 100).toFixed(0)} to lock in your seat. Course access unlocks immediately after.
           </p>
+          {passDiscountCents > 0 && (
+            <p className="mt-2 text-xs font-medium text-phosphor-ink">
+              Founder pass applied — $
+              {(passDiscountCents / 100).toFixed(0)} off tuition.
+            </p>
+          )}
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
           <div className="mt-5">
             <PayButton applicationId={app.id} />

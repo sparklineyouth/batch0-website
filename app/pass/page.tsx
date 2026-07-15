@@ -15,6 +15,8 @@ import {
   Clock,
   Users,
   Share2,
+  Banknote,
+  PenLine,
 } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -39,14 +41,19 @@ type Perk = {
 // backed by code in this commit.
 const PERKS: Perk[] = [
   {
+    icon: Banknote,
+    title: "$30 off tuition",
+    body: "If you're accepted, your enrollment fee drops $30 at checkout — automatically, in any region. Tuition is still only charged if you get in.",
+  },
+  {
     icon: Zap,
     title: "Your application gets fast-tracked",
     body: "It's badged and sorted to the top of the review queue, so a human reads it first — not sooner-accepted, just sooner-read.",
   },
   {
-    icon: MessageSquare,
-    title: "A founder role in Discord",
-    body: "Link your Discord account and the role lands automatically. Link it later and it still lands.",
+    icon: PenLine,
+    title: "A straight answer if it's a no",
+    body: "Pass holders never get a form-letter rejection: the review tool refuses to decline your application until a human has written you feedback. It lands in your email and on your dashboard.",
   },
   {
     icon: Clock,
@@ -54,19 +61,24 @@ const PERKS: Perk[] = [
     body: "When a cohort isn't public yet, your pass gets you in early.",
   },
   {
-    icon: BadgeCheck,
-    title: "A numbered pass",
-    body: "The serial on your card is yours, and it shows on your dashboard.",
+    icon: MessageSquare,
+    title: "A founder role in Discord",
+    body: "In the Discord server: link your account and the role lands automatically. Link it later and it still lands.",
   },
   {
     icon: Users,
-    title: "Your name wears the badge",
-    body: "Anywhere you show up in the community — team pages, team threads — a founder-pass badge sits next to your name, and mentors and investors see it.",
+    title: "The badge on the site",
+    body: "On batch0 itself — team pages, team threads — a founder-pass badge sits next to your name, where mentors and investors are looking.",
+  },
+  {
+    icon: BadgeCheck,
+    title: "A numbered pass, for good",
+    body: "Your serial is embossed on the card, bound to your account, and doesn't expire — it carries to every future cohort.",
   },
   {
     icon: Share2,
     title: "A ticket page you can share",
-    body: "Your pass gets its own public page with your name on the ticket. Link it from your bio; the unfurl is the ticket itself.",
+    body: "Your pass gets its own public page with your name and card code on the ticket. Link it from your bio; the unfurl is the ticket itself.",
   },
 ];
 
@@ -121,6 +133,7 @@ export default async function PassPage() {
             className="mt-8 sm:-mx-8"
             name={holderName}
             serialLabel={formatSerial(pass.serial)}
+            code={pass.redeemedCode}
             batch={pass.batch}
             cohortHeadline={config.derived.cohortHeadline}
             redeemedAt={pass.redeemedAt}

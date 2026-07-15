@@ -1,6 +1,10 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  hasFounderPass,
+  FOUNDER_PASS_TUITION_DISCOUNT_CENTS,
+} from "@/lib/founder-pass";
 import { assertAdmin } from "@/lib/server-guards";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
@@ -28,6 +32,24 @@ export async function decideApplication(
     .eq("id", applicationId)
     .maybeSingle();
   if (fetchErr || !app) throw new Error(fetchErr?.message ?? "Not found");
+
+  // Founder-pass perk, enforced where it can't be forgotten: a pass promises
+  // "a straight answer if it's a no" (app/pass/page.tsx), and a promise the
+  // admin can skip on a busy day isn't a promise — see the referral card
+  // post-mortem in that file. The notes box already exists in the review UI
+  // and is marked visible to the applicant; rejection mails and the
+  // applicant dashboard both surface it.
+  const applicantHoldsPass = await hasFounderPass(
+    admin,
+    (app as any).user_id,
+  );
+  if (decision === "rejected" && applicantHoldsPass && !notes.trim()) {
+    throw new Error(
+      "This applicant holds a founder pass, which guarantees written feedback " +
+        "with a rejection. Write them a note (it's sent to the applicant) " +
+        "before declining.",
+    );
+  }
 
   const { error } = await admin
     .from("applications")
@@ -63,7 +85,13 @@ export async function decideApplication(
       const t = Templates.applicationAccepted({
         name: a.full_name ?? profile?.full_name ?? null,
         cohortName: cohort?.name ?? "batch0",
-        priceCents: cohort?.price_cents ?? 13000,
+        // Holders pay $30 less (checkout applies it server-side); the
+        // acceptance email must quote the price they'll actually see.
+        priceCents: Math.max(
+          0,
+          (cohort?.price_cents ?? 13000) -
+            (applicantHoldsPass ? FOUNDER_PASS_TUITION_DISCOUNT_CENTS : 0),
+        ),
       });
       if (profile?.email) {
         await sendEmail({

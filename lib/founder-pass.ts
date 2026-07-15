@@ -19,7 +19,23 @@ export type FounderPass = {
   serial: number;
   redeemedAt: string | null;
   batch: string;
+  /**
+   * The plaintext code, captured at redemption (migration 0040). Null for
+   * passes redeemed before that migration — the ticket falls back to the
+   * serial. Safe to show once redeemed: a claimed code is inert, and revoke
+   * (the only admin action) is permanent. See 0040 for the full argument.
+   */
+  redeemedCode: string | null;
 };
+
+/**
+ * Tuition discount for pass holders, in cents. Applied server-side at
+ * checkout (app/api/stripe/checkout) and echoed everywhere a price is shown
+ * to an accepted holder (dashboard, acceptance email) so the number they
+ * read is the number they pay. Flat rather than a percentage so the perk is
+ * one honest sentence: "$30 off tuition."
+ */
+export const FOUNDER_PASS_TUITION_DISCOUNT_CENTS = 3000;
 
 export type RedeemResult =
   | { ok: true; serial: number }
@@ -96,14 +112,39 @@ export async function redeemPass(
 
   const codeHash = hashPassCode(code, requirePepper());
 
-  const { data: claimed, error } = await client
+  // redeemed_code stores the plaintext for the ticket display — safe only
+  // because a claimed code is inert (this UPDATE requires redeemed_by null)
+  // and revocation is permanent. See migration 0040.
+  const claimUpdate = {
+    redeemed_by: userId,
+    redeemed_at: new Date().toISOString(),
+    redeemed_code: code,
+  };
+  let { data: claimed, error } = await client
     .from("founder_passes")
-    .update({ redeemed_by: userId, redeemed_at: new Date().toISOString() })
+    .update(claimUpdate)
     .eq("code_hash", codeHash)
     .is("redeemed_by", null)
     .is("revoked_at", null)
     .select("serial")
     .maybeSingle();
+
+  // Tolerate migration 0040 not being applied yet: a missing display column
+  // must never brick redemption itself — a card that fails to redeem is a
+  // support ticket, a ticket without its code on it is cosmetic.
+  if (error && /redeemed_code/i.test(error.message)) {
+    ({ data: claimed, error } = await client
+      .from("founder_passes")
+      .update({
+        redeemed_by: claimUpdate.redeemed_by,
+        redeemed_at: claimUpdate.redeemed_at,
+      })
+      .eq("code_hash", codeHash)
+      .is("redeemed_by", null)
+      .is("revoked_at", null)
+      .select("serial")
+      .maybeSingle());
+  }
 
   if (claimed) return { ok: true, serial: (claimed as { serial: number }).serial };
 
@@ -138,9 +179,12 @@ export async function getPassForUser(
   client: SupabaseClient,
   userId: string,
 ): Promise<FounderPass | null> {
+  // select("*") rather than naming columns: naming redeemed_code would make
+  // this read ERROR (and every holder's pass silently vanish, since callers
+  // only see null) on a database where migration 0040 hasn't run yet.
   const { data } = await client
     .from("founder_passes")
-    .select("serial, redeemed_at, batch")
+    .select("*")
     .eq("redeemed_by", userId)
     .is("revoked_at", null)
     .maybeSingle();
@@ -149,8 +193,14 @@ export async function getPassForUser(
     serial: number;
     redeemed_at: string | null;
     batch: string;
+    redeemed_code?: string | null;
   };
-  return { serial: row.serial, redeemedAt: row.redeemed_at, batch: row.batch };
+  return {
+    serial: row.serial,
+    redeemedAt: row.redeemed_at,
+    batch: row.batch,
+    redeemedCode: row.redeemed_code ?? null,
+  };
 }
 
 export async function hasFounderPass(

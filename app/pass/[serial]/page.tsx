@@ -25,6 +25,8 @@ type PublicPass = {
   batch: string;
   redeemedAt: string | null;
   name: string | null;
+  /** Inert once redeemed (see migration 0040) — safe on a public page. */
+  code: string | null;
 };
 
 async function getPublicPass(serialParam: string): Promise<PublicPass | null> {
@@ -34,9 +36,11 @@ async function getPublicPass(serialParam: string): Promise<PublicPass | null> {
   const serial = Number.parseInt(serialParam, 10);
 
   const admin = createAdminClient();
+  // select("*") so this page keeps working on a database where migration
+  // 0040 (redeemed_code) hasn't run — same reasoning as getPassForUser.
   const { data } = await admin
     .from("founder_passes")
-    .select("serial, batch, redeemed_at, redeemed_by")
+    .select("*")
     .eq("serial", serial)
     .not("redeemed_by", "is", null)
     .is("revoked_at", null)
@@ -48,6 +52,7 @@ async function getPublicPass(serialParam: string): Promise<PublicPass | null> {
     batch: string;
     redeemed_at: string | null;
     redeemed_by: string;
+    redeemed_code?: string | null;
   };
   const { data: profile } = await admin
     .from("profiles")
@@ -60,6 +65,7 @@ async function getPublicPass(serialParam: string): Promise<PublicPass | null> {
     batch: row.batch,
     redeemedAt: row.redeemed_at,
     name: (profile as { full_name: string | null } | null)?.full_name ?? null,
+    code: row.redeemed_code ?? null,
   };
 }
 
@@ -108,6 +114,7 @@ export default async function PublicPassPage({
         className="mt-8 sm:-mx-8"
         name={pass.name}
         serialLabel={formatSerial(pass.serial)}
+        code={pass.code}
         batch={pass.batch}
         cohortHeadline={config.derived.cohortHeadline}
         redeemedAt={pass.redeemedAt}
