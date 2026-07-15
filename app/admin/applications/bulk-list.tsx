@@ -9,7 +9,7 @@ import { Textarea, Label } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { bulkDecideApplications } from "./[id]/actions";
 import { getActionError } from "@/lib/action-error";
-import { CheckSquare, Square, Share2 } from "lucide-react";
+import { CheckSquare, Square, Share2, Ticket } from "lucide-react";
 
 // Statuses where bulk-decide makes sense. Decided / paid / enrolled rows
 // don't get a usable checkbox — clicking them just navigates.
@@ -61,6 +61,8 @@ type AppRow = {
   referralsSent: number;
   /** Of those, how many reached paid/enrolled. */
   referralsPaid: number;
+  /** Holds a redeemed 3D-printed founder pass card. Outranks a referral. */
+  hasFounderPass: boolean;
 };
 
 /** Columns. Shared by the header and every row so they can't drift apart.
@@ -216,7 +218,24 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
               )}
             </div>
             <div className="min-w-0">
-              {a.referralCode ? (
+              {/* A founder pass outranks a referral and shares this column
+                  rather than claiming a new one — COLS is budgeted tight
+                  (see the note on it), and a pass holder who was ALSO referred
+                  is rare enough that stacking two pills isn't worth the row
+                  height. The referral is kept in the tooltip so it isn't lost. */}
+              {a.hasFounderPass ? (
+                <span
+                  title={
+                    a.referralCode
+                      ? `Founder pass holder — fast-tracked. Also referred with code ${a.referralCode}.`
+                      : "Founder pass holder — redeemed a printed card, fast-tracked"
+                  }
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] font-medium text-amber-200"
+                >
+                  <Ticket className="h-3 w-3 shrink-0" />
+                  <span className="min-w-0 truncate">Founder pass</span>
+                </span>
+              ) : a.referralCode ? (
                 <span
                   title={
                     a.referrerName

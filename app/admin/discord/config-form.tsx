@@ -140,6 +140,23 @@ export function DiscordConfigForm({
         />
       </Section>
 
+      {/* Its own section, not a fifth row above, because the sentence in the
+          "Role IDs" hint is not true of this one. Those four are a one-of-N
+          mapping the sync reconciles: it adds your current role and removes
+          the other three. This one is additive and orthogonal — a holder keeps
+          it alongside whatever role they have — and if it were filed with the
+          others the sync would strip it from every holder. */}
+      <Section
+        title="Founder pass"
+        hint="Granted when someone redeems a printed card at /pass, and kept across role changes. Leave blank to skip the Discord perk entirely — the pass still works."
+      >
+        <Row
+          label="Founder pass role ID"
+          value={values.roleFounderPassId}
+          onChange={(v) => set("roleFounderPassId", v)}
+        />
+      </Section>
+
       {error && <FieldError>{error}</FieldError>}
       {okMsg && <p className="text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</p>}
 

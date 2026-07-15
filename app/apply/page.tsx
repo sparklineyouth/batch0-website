@@ -2,7 +2,9 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth";
+import { canBypassClosedApplications } from "@/lib/founder-pass";
 import { ApplicationForm } from "./application-form";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { getApplicationQuestions } from "@/lib/application-questions";
@@ -79,7 +81,13 @@ export default async function ApplyPage({
     redirect("/dashboard/application");
   }
 
-  const applicationsOpen = settings.applications_open !== false;
+  // A founder pass can carry its holder past a closed gate, but only while the
+  // admin has the early-access window open — see canBypassClosedApplications().
+  // Checked only when the gate is actually shut, so the common path costs no
+  // extra queries.
+  const applicationsOpen =
+    settings.applications_open !== false ||
+    (await canBypassClosedApplications(createAdminClient(), user.id));
   if (!applicationsOpen) {
     return (
       <div className="min-h-screen bg-paper">

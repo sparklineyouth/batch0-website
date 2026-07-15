@@ -58,6 +58,11 @@ export type DiscordConfigInput = {
   roleMentorId: string;
   roleAdminId: string;
   roleInvestorId: string;
+  // NOT one of the four role-mapped roles above, and deliberately listed apart
+  // from them: syncMemberRoles() strips every role in roleIdByRole that isn't
+  // the member's current target, so a founder pass filed alongside them would
+  // be torn off holders on the next sync. See lib/discord.ts.
+  roleFounderPassId: string;
 };
 
 const KEY_BY_FIELD: Record<keyof DiscordConfigInput, string> = {
@@ -73,6 +78,7 @@ const KEY_BY_FIELD: Record<keyof DiscordConfigInput, string> = {
   roleMentorId: "discord_role_mentor_id",
   roleAdminId: "discord_role_admin_id",
   roleInvestorId: "discord_role_investor_id",
+  roleFounderPassId: "discord_role_founder_pass_id",
 };
 
 function sanitizeSnowflake(v: string): string {

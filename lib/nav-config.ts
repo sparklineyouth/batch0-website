@@ -27,6 +27,7 @@ import {
   Send,
   Trophy,
   Newspaper,
+  Ticket,
   Calendar as CalendarIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -176,6 +177,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       { href: "/admin/email", label: "Email metrics", icon: Mail },
       { href: "/admin/email/blast", label: "Email blast", icon: Send },
       { href: "/admin/referrals", label: "Referrals", icon: Star },
+      { href: "/admin/passes", label: "Founder passes", icon: Ticket },
       { href: "/admin/moderation", label: "Moderation", icon: ShieldCheck },
       { href: "/admin/discord", label: "Discord", icon: MessagesSquare },
       { href: "/admin/audit", label: "Audit log", icon: ScrollText },

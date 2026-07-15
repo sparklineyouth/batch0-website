@@ -6,6 +6,7 @@ import {
   resolveReferrersByCode,
   tallyApplicationsByReferralCode,
 } from "@/lib/referrals";
+import { passHolderUserIds } from "@/lib/founder-pass";
 import { Sparkles, Share2 } from "lucide-react";
 
 export const metadata = { title: "Applications · Admin" };
@@ -34,9 +35,14 @@ export default async function AdminApplicationsPage({
       // profile.referral_code is the applicant's OWN code — the one they hand
       // out. Distinct from applications.referral_code, which is the code that
       // brought THEM in.
-      "id, full_name, age, status, created_at, submitted_at, why_join, ai_score, ai_reviewed_at, referral_code, profile:profiles!applications_user_id_fkey(email, referral_code)",
+      // user_id is selected purely to match against founder pass holders —
+      // a pass is bound to an account, not to an application.
+      "id, user_id, full_name, age, status, created_at, submitted_at, why_join, ai_score, ai_reviewed_at, referral_code, profile:profiles!applications_user_id_fkey(email, referral_code)",
     );
-  if (referredOnly) q = q.not("referral_code", "is", null);
+  // NOTE: the "referred" filter is applied in JS below, not here. It used to be
+  // a SQL `.not("referral_code", "is", null)`, but a founder pass is also a
+  // vouch and lives in another table keyed by user_id — filtering in SQL would
+  // silently drop pass holders from a list whose own counter includes them.
   if (sort === "score") {
     // Highest score first, unscored last. Supabase's PostgREST treats
     // NULLs as "less than" by default in descending order, which is what
@@ -57,15 +63,18 @@ export default async function AdminApplicationsPage({
   //  - referrerByCode: who brought each applicant IN (incoming).
   //  - tally: how many applications each applicant has brought in (outgoing),
   //    counted across ALL applications, not just the current filter.
-  const [referrerByCode, tally] = await Promise.all([
+  const [referrerByCode, tally, passHolders] = await Promise.all([
     resolveReferrersByCode(
       admin,
       (apps ?? []).map((a: any) => a.referral_code).filter(Boolean),
     ),
     tallyApplicationsByReferralCode(admin),
+    // One query for the whole set, not one per row — same reason the two
+    // lookups above are batched.
+    passHolderUserIds(admin),
   ]);
 
-  const rows = (apps ?? []).map((a: any) => {
+  const allRows = (apps ?? []).map((a: any) => {
     const code: string | null = a.referral_code
       ? String(a.referral_code).toLowerCase()
       : null;
@@ -89,22 +98,39 @@ export default async function AdminApplicationsPage({
       referrerName: referrer?.fullName ?? referrer?.email ?? null,
       referralsSent: sent?.applied ?? 0,
       referralsPaid: sent?.paidOrEnrolled ?? 0,
+      hasFounderPass: a.user_id ? passHolders.has(a.user_id) : false,
     };
   });
 
-  // Fast-track: referred applications rise to the top of the review queue.
-  // This is what backs the "we'll fast-track their application" promise on the
-  // student referral card — a stable partition, not a re-sort, so within each
-  // half the Newest ordering from the query is preserved.
+  // "Somebody vouched for this applicant" — a forwarded referral link OR a
+  // founder pass. Applied here rather than in the query because the pass lives
+  // in another table keyed by user_id.
+  const isVouched = (r: (typeof allRows)[number]) =>
+    !!r.referralCode || r.hasFounderPass;
+
+  const rows = referredOnly ? allRows.filter(isVouched) : allRows;
+
+  // Fast-track: vouched-for applications rise to the top of the review queue.
+  // This backs both the "we'll fast-track their application" promise on the
+  // student referral card AND the same promise on the founder pass (/pass).
+  //
+  // Three-way partition, pass holders first: someone holding a physical card we
+  // handed out is a stronger signal than a link someone forwarded, and the card
+  // is the scarcer object. Still a partition rather than a comparator .sort(),
+  // so the Newest ordering from the query survives inside each bucket.
   const sorted =
     sort === "referred"
       ? [
-          ...rows.filter((r) => r.referralCode),
-          ...rows.filter((r) => !r.referralCode),
+          ...rows.filter((r) => r.hasFounderPass),
+          ...rows.filter((r) => !r.hasFounderPass && r.referralCode),
+          ...rows.filter((r) => !r.hasFounderPass && !r.referralCode),
         ]
       : rows;
 
-  const referredCount = rows.filter((r) => r.referralCode).length;
+  // Counted off allRows, never the filtered `rows`: this number labels the
+  // pill that turns the filter ON, so counting the already-filtered list would
+  // make it read "12" until you click it and "12 of 12" forever after.
+  const referredCount = allRows.filter(isVouched).length;
 
   const filters = ["all", "submitted", "accepted", "rejected", "paid", "draft"];
 

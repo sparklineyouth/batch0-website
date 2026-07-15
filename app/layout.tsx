@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { VT323, IBM_Plex_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -153,6 +154,10 @@ export default function RootLayout({
             dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
           />
           <Analytics />
+          {/* Real-user Core Web Vitals. Like <Analytics />, the script 404s on
+              localhost by design and resolves on Vercel; data only appears once
+              Speed Insights is enabled for the project in the dashboard. */}
+          <SpeedInsights />
         </ThemeProvider>
       </body>
     </html>

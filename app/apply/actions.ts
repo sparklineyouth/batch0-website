@@ -8,6 +8,7 @@ import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { canBypassClosedApplications } from "@/lib/founder-pass";
 import {
   postChannelMessage,
   applicationEmbed,
@@ -205,10 +206,20 @@ async function upsertApplication(
       .eq("key", "applications_open")
       .maybeSingle();
     if (openSetting?.value === false) {
-      return {
-        ok: false,
-        error: "Applications are currently closed.",
-      };
+      // Founder pass holders can submit during the early-access window. This
+      // has to be re-checked server-side even though app/apply/page.tsx
+      // already gated the render: the page check only decides what to draw,
+      // and a client can post here directly.
+      const early = await canBypassClosedApplications(
+        createAdminClient(),
+        user.id,
+      );
+      if (!early) {
+        return {
+          ok: false,
+          error: "Applications are currently closed.",
+        };
+      }
     }
   }
 

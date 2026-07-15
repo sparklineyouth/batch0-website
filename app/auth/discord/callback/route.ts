@@ -11,7 +11,9 @@ import {
   revokeOauthToken,
   postChannelMessage,
   announcementEmbed,
+  grantFounderPassRole,
 } from "@/lib/discord";
+import { hasFounderPass } from "@/lib/founder-pass";
 import { sendOnboardingDM } from "@/lib/discord-helpers";
 import { env } from "@/lib/env";
 import { logAudit } from "@/lib/audit";
@@ -117,6 +119,19 @@ export async function GET(req: Request) {
   });
   // Reconcile in case they were already a member with stale roles.
   await syncMemberRoles(discordUser.id, role);
+
+  // Founder pass role, granted AFTER syncMemberRoles rather than passed to
+  // addMemberToGuild above. Order matters: syncMemberRoles removes every role
+  // in roleIdByRole that isn't `role`, and while the pass role is deliberately
+  // not in that map, granting afterwards keeps this correct even if someone
+  // later adds it there by mistake. It also covers the common ordering — pass
+  // redeemed first, Discord linked days later.
+  //
+  // Best-effort, like everything else in this block: a pass holder who can't
+  // get the role must still finish linking.
+  if (await hasFounderPass(admin, user.id)) {
+    await grantFounderPassRole(discordUser.id);
+  }
 
   await logAudit({
     action: "discord.linked",

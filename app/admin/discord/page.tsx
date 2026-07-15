@@ -36,6 +36,7 @@ const KEYS_TO_FIELD = {
   discord_role_mentor_id: "roleMentorId",
   discord_role_admin_id: "roleAdminId",
   discord_role_investor_id: "roleInvestorId",
+  discord_role_founder_pass_id: "roleFounderPassId",
 } as const;
 
 export default async function AdminDiscordPage() {
@@ -70,6 +71,7 @@ export default async function AdminDiscordPage() {
     roleMentorId: "",
     roleAdminId: "",
     roleInvestorId: "",
+    roleFounderPassId: "",
   };
   for (const r of rows ?? []) {
     const field = (KEYS_TO_FIELD as any)[r.key] as keyof DiscordConfigInput;

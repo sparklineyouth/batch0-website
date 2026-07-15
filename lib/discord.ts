@@ -102,6 +102,18 @@ export type DiscordSettings = {
   introductionsChannelId: string;
   oncallMessageId: string;
   roleIdByRole: Partial<Record<Role, string>>;
+
+  // Founder pass role, granted to holders of a redeemed 3D-printed card.
+  //
+  // A SIBLING of roleIdByRole, never a member of it, and the distinction is
+  // load-bearing: syncMemberRoles() treats every value in roleIdByRole as
+  // batch0-managed and strips any that isn't the member's current target
+  // role. Filing the founder role in there would tear it off every holder on
+  // the next sync — a Stripe webhook, an application accept, an admin
+  // resync-all, or anyone running /sync in Discord. It is also orthogonal by
+  // nature: a pass holder is a student OR mentor OR investor *and* a pass
+  // holder, whereas roleIdByRole is a one-of-N mapping keyed by Role.
+  founderPassRoleId: string;
 };
 
 const SETTING_KEYS = [
@@ -119,6 +131,7 @@ const SETTING_KEYS = [
   "discord_role_mentor_id",
   "discord_role_admin_id",
   "discord_role_investor_id",
+  "discord_role_founder_pass_id",
 ] as const;
 
 export async function getDiscordSettings(): Promise<DiscordSettings> {
@@ -157,6 +170,7 @@ export async function getDiscordSettings(): Promise<DiscordSettings> {
       admin: str("discord_role_admin_id"),
       investor: str("discord_role_investor_id"),
     },
+    founderPassRoleId: str("discord_role_founder_pass_id"),
   };
 }
 
@@ -391,9 +405,38 @@ export async function removeRoleFromMember(
 }
 
 /**
+ * Grant the founder pass role to a linked member.
+ *
+ * Needs only the bot token and profiles.discord_user_id, so it works for
+ * someone who linked Discord months ago — no re-link, no OAuth token. (The
+ * stored OAuth token is revoked right after linking anyway; only
+ * addMemberToGuild's guilds.join needs one, and that is for pulling a
+ * non-member into the server.)
+ *
+ * Returns false when Discord is off, unconfigured, the role ID is unset, or
+ * the member simply hasn't linked. All of those are ordinary states, not
+ * errors: the pass is still redeemed and every other perk still applies. The
+ * caller should never fail a redemption because Discord was unreachable.
+ */
+export async function grantFounderPassRole(
+  discordUserId: string | null | undefined,
+): Promise<boolean> {
+  if (!discordUserId) return false;
+  const settings = await getDiscordSettings();
+  if (!settings.enabled || !settings.founderPassRoleId) return false;
+  return addRoleToMember(discordUserId, settings.founderPassRoleId);
+}
+
+/**
  * Make a member's Discord roles match the user's batch0 role.
  * Adds the role mapped to their current batch0 role, removes any
  * other batch0-managed roles they had. Safe to call repeatedly.
+ *
+ * NOTE the blast radius of `managedRoleIds` below: every value in
+ * roleIdByRole is treated as ours to remove. Any role that is NOT a
+ * one-of-N mapping of a batch0 Role must stay out of that map or it gets
+ * stripped here on the next sync. The founder pass role is the live example —
+ * it is a sibling field (settings.founderPassRoleId) for exactly this reason.
  */
 export async function syncMemberRoles(
   discordUserId: string,

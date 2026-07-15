@@ -26,6 +26,16 @@ export type SiteSettings = {
   demoDayDate: string | null;
   maintenanceMode: boolean;
   referralsEnabled: boolean;
+  /**
+   * Whether a founder pass holder may apply while `applicationsOpen` is false.
+   *
+   * Exists because `applicationsOpen` conflates two different states: "not
+   * open to the public yet" and "closed for good". Early access is only
+   * meaningful in the first, so this is the admin's switch for the pre-launch
+   * window — on before launch, off once the cohort genuinely ends. Without it
+   * the pass would be a permanent way into a finished cohort.
+   */
+  founderPassEarlyAccess: boolean;
 };
 
 export type SiteConfig = {
@@ -87,6 +97,11 @@ const FALLBACK_SETTINGS: SiteSettings = {
   demoDayDate: null,
   maintenanceMode: false,
   referralsEnabled: true,
+  // Fails CLOSED, unlike the other fallbacks here. If Supabase is unreachable
+  // we must not hand pass holders a way past a closed applications gate on the
+  // strength of a guess — "no early access" is the state that can't be wrong
+  // in a damaging direction.
+  founderPassEarlyAccess: false,
 };
 
 // Mirrors the real Cohort 1 row so a Supabase outage can't make the marketing
@@ -256,6 +271,10 @@ export async function getSiteConfig(
       typeof raw.referrals_enabled === "boolean"
         ? raw.referrals_enabled
         : FALLBACK_SETTINGS.referralsEnabled,
+    founderPassEarlyAccess:
+      typeof raw.founder_pass_early_access === "boolean"
+        ? raw.founder_pass_early_access
+        : FALLBACK_SETTINGS.founderPassEarlyAccess,
   };
 
   const pinnedId =

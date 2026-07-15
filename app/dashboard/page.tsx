@@ -6,6 +6,8 @@ import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { Button } from "@/components/ui/button";
 import { ReferralCard } from "./referral-card";
+import { FounderPassCard } from "./founder-pass-card";
+import { getPassForUser } from "@/lib/founder-pass";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { env } from "@/lib/env";
 import {
@@ -65,6 +67,11 @@ export default async function DashboardHome() {
   // the top of the dashboard so the team sees them the moment they
   // happen. Best-effort: missing migration 0019 or no team → empty.
   const adminClient = createAdminClient();
+
+  // Null for everyone without a redeemed card, which is most people — the card
+  // block below simply doesn't render for them.
+  const founderPass = await getPassForUser(adminClient, user.id);
+
   const { data: memberships } = await adminClient
     .from("team_members")
     .select("team_id")
@@ -267,6 +274,15 @@ export default async function DashboardHome() {
           </ul>
         </aside>
       </section>
+
+      {founderPass && (
+        <div className="mt-12">
+          <FounderPassCard
+            serial={founderPass.serial}
+            batch={founderPass.batch}
+          />
+        </div>
+      )}
 
       {siteConfig.settings.referralsEnabled && profile?.referral_code && (
         <div className="mt-12">
