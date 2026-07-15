@@ -1,40 +1,37 @@
 <!doctype html>
 <!-- ==========================================================================
-ROUND 2.1 — THE BROADSHEET (picked system, iterated)
+ROUND 2.2 — THE BROADSHEET (refinement pass)
 
-Changes from round 2:
-1. Status bar restored — full 3-segment live strip, part of the identity.
-2. Lowercase as a system. DECIDED ONCE: chrome, headings, labels, buttons,
-   nav, footer, AND values are lowercase ("aug 10", "us", "$130 if
-   accepted"). The only capitals left on the page are proper nouns inside
-   readable prose (Rishabh Dagli, Taran Bethi, Sparkline Youth LLC) — a
-   terminal prints stored strings; people's names are stored capitalized.
-3. Hero rebuilt twice, stacked for comparison (hero-a, hero-b) — the banned
-   headline-left/card-right skeleton is gone:
-   - hero-a "the bowl": ONE dominant element — the giant pixel 0 — with the
-     cohort readout typeset INSIDE its bowl (unslashed here; the slash would
-     strike through the data). Headline is smaller and tucks under the
-     glyph's left edge, overlapping its column.
-   - hero-b "the collision": the slashed 0 bleeds off the top-right corner;
-     the headline physically crosses the glyph (off-white words over amber
-     pixels); the readout is the poster's plinth — a caption block locked to
-     the glyph's left edge, not a floating corner card.
-4. Micro terminal details, all TRUE data: mtimes on section commands (this
-   file's real authoring date), `total 6` on the manifest (real count),
-   `# 7 questions` on the faq (real count), comment asides carrying real
-   facts, `exited 0` in the footer, dotted leaders, block cursors.
-5. Template tells killed: buttons squared (radius 0), section entrances
-   varied (command+mtime / total-line / bare poster / rulehead spread /
-   prompt close), no eyebrow-headline-body pattern repeated.
-6. Interaction layer (see the INTERACTION INDEX comment above the script,
-   and the hard-rules block there: reduced-motion kills everything,
-   transform/paint only, rAF, never to be ported to /apply or any form).
+Diagnosis addressed: the page was all crescendo. This pass gives it rhythm
+and a spine.
+
+1. HERO DECISION: hero-a ("the bowl") kept; hero-b deleted entirely.
+2. ONE GIANT GLYPH RULE: the hero 0 is the only giant pixel glyph. The 200px
+   "5" is gone (steps are now the first quiet section); the slash bitmap
+   went with hero-b. The wordmark 0 stays. The remaining big-type moments
+   are WORDS: $130 and "be in it."
+3. VOLUME RHYTHM — the page now sequences:
+     loud   hero (the bowl)
+     quiet  how it works — disciplined, dense, small
+     medium ship. — one strong word, manifest beneath
+     loud   $130 poster
+     quiet  the fine print spread
+     loud   be in it.
+   Exactly 3 poster-scale moments: hero 0, $130, be in it.
+4. SHARED SPINE: every section is .sect — same left rail (--padx), same
+   content max-width (--measure), padding from a 2-step scale (--pad-reg /
+   --pad-poster), ALL rules 1px (amber-line between sections, line inside),
+   and the identical `$ command · modified…` head opens every section.
+   Variety happens inside the grid.
+5. Interaction layer unchanged from round 2.1 (see INTERACTION INDEX above
+   the script; reduced-motion kills all of it; never for form surfaces),
+   minus hero-b's targets.
 =========================================================================== -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>batch0 — the broadsheet, round 2.1</title>
+<title>batch0 — the broadsheet, round 2.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -44,7 +41,11 @@ Changes from round 2:
     --amber:#FFBB00; --amber-soft:rgba(255,187,0,.62);
     --amber-dim:rgba(255,187,0,.40); --amber-line:rgba(255,187,0,.25);
     --on-amber:#141414;
-    --padx:clamp(20px,5vw,72px);
+    /* the spine */
+    --padx:clamp(20px,5vw,72px);   /* one left rail for every section */
+    --measure:1100px;              /* one content max-width */
+    --pad-reg:48px;                /* quiet/medium sections */
+    --pad-poster:96px;             /* the 3 loud sections */
   }
   *{box-sizing:border-box; margin:0}
   html{scroll-behavior:smooth}
@@ -55,7 +56,7 @@ Changes from round 2:
   a{color:inherit; text-decoration:none}
   .disp{font-family:"VT323",monospace; font-weight:400; letter-spacing:.01em; line-height:.9}
 
-  /* ---- status bar: the full live strip, restored ---- */
+  /* ---- status bar ---- */
   .statusbar{display:flex; justify-content:space-between; gap:16px;
     padding:6px var(--padx); font-size:12px; letter-spacing:.05em;
     color:var(--amber-soft); border-bottom:1px solid var(--amber-line)}
@@ -63,22 +64,18 @@ Changes from round 2:
   .statusbar .white{color:var(--ink)}
   @media(max-width:680px){.statusbar .hide-sm{display:none}}
 
-  /* nav strip under it */
   .mast{display:flex; justify-content:space-between; align-items:center; gap:16px;
     padding:9px var(--padx); font-size:13px; color:var(--ink-soft);
     border-bottom:1px solid var(--line)}
   .wordmark{font-family:"VT323",monospace; font-size:24px; color:var(--ink); line-height:1}
   .wordmark b{color:var(--amber); font-weight:400}
   .mast .paths{display:flex; gap:18px}
-  /* hover: terminal grammar — a $ surfaces before the path */
   .mast .paths a::before{content:"$ "; color:var(--amber); opacity:0;
-    display:inline-block; width:0; overflow:hidden; vertical-align:bottom;
-    transition:none}
+    display:inline-block; width:0; overflow:hidden; vertical-align:bottom}
   .mast .paths a:hover{color:var(--ink)}
   .mast .paths a:hover::before{opacity:1; width:2ch}
   @media(max-width:680px){.mast .paths{display:none}}
 
-  /* buttons: squared, press like keys */
   .btn{display:inline-block; background:var(--amber); color:var(--on-amber);
     font-weight:600; font-size:14px; padding:10px 18px; border-radius:0}
   .btn:hover{background:#FFD75C}
@@ -93,29 +90,34 @@ Changes from round 2:
   @keyframes blink{50%{opacity:0}}
   @media(prefers-reduced-motion:reduce){.cursor{animation:none}}
 
-  .cmdline{font-size:13px; color:var(--amber-soft)}
+  /* ---- the shared section spine ---- */
+  .sect{border-top:1px solid var(--amber-line); padding:var(--pad-reg) var(--padx)}
+  .sect.loud{padding-top:var(--pad-poster); padding-bottom:var(--pad-poster)}
+  .inner{max-width:var(--measure)}
+  /* the identical section head, everywhere */
+  .cmdline{font-size:13px; color:var(--amber-soft); margin-bottom:16px}
   .cmdline::before{content:"$ "; color:var(--amber)}
   .cmdline b{color:var(--amber); font-weight:500}
   .cmdline .mtime{color:var(--ink-faint)}
+  /* the 2-step voice scale below the posters */
+  .h-quiet{font-size:clamp(22px,2.6vw,30px)}
+  .h-medium{font-size:clamp(40px,6vw,72px)}
+
   .aside{color:var(--ink-faint); font-size:12.5px}
   .aside::before{content:"# "; color:var(--amber-dim)}
   .small{font-size:13px; color:var(--ink-soft)}
   .small b{color:var(--ink); font-weight:600}
   .link{color:var(--ink); text-decoration:underline; text-decoration-color:var(--amber);
     text-decoration-thickness:2px; text-underline-offset:3px}
-  /* hover: the underline gives way to a block cursor */
   .link:hover{text-decoration:none; color:var(--amber)}
   .link:hover::after{content:"▮"; margin-left:1px}
 
-  /* ---- pixel-zero grid (JS builds blocks; noscript gets the pre art) ---- */
+  /* ---- pixel-zero (hero only — the ONE giant glyph) ---- */
   .pxzero{display:grid; user-select:none; pointer-events:none}
   .pxzero .px{background:var(--amber); will-change:transform}
-  .pxzero .px.slash{background:var(--ink)}
   .pxzero .px.lit{background:var(--ink)}
-  .pxzero .px.slash.lit{background:var(--amber)}
   noscript pre{color:var(--amber); font-size:clamp(10px,2.2vw,26px); line-height:1.06}
 
-  /* readout rows (shared) — hover highlights like a selected line */
   .kv{font-size:13.5px; line-height:1.95}
   .kv>div{padding:0 6px; margin:0 -6px}
   .kv>div:hover{background:rgba(255,187,0,.09)}
@@ -124,88 +126,43 @@ Changes from round 2:
   .kv .v{color:var(--ink); font-weight:500}
   .kv .row-hot .v{color:var(--amber); font-weight:600}
 
-  /* ================= HERO A — the bowl ================= */
-  .heroa{position:relative; padding:40px var(--padx) 64px; border-bottom:1px solid var(--line)}
-  .heroa .stage{position:relative; width:fit-content; margin:0 auto}
-  .heroa .bowl-readout{position:absolute; inset:0; display:flex;
+  /* ---- HERO (loud #1) ---- */
+  .hero{padding:40px var(--padx) var(--pad-poster)}
+  .hero .stage{position:relative; width:fit-content; margin:0 auto}
+  .hero .bowl-readout{position:absolute; inset:0; display:flex;
     align-items:center; justify-content:center; z-index:2}
-  .heroa h1{font-size:clamp(36px,4.6vw,58px); max-width:14ch; line-height:1;
+  .hero h1{font-size:clamp(36px,4.6vw,58px); max-width:14ch; line-height:1;
     margin-top:-1.2em; position:relative; z-index:3}
-  .heroa .lede{margin-top:20px; max-width:46ch; color:var(--ink-soft); font-size:15px}
-  .heroa .ctas{margin-top:22px; display:flex; gap:14px; flex-wrap:wrap; align-items:baseline}
+  .hero .lede{margin-top:20px; max-width:46ch; color:var(--ink-soft); font-size:15px}
+  .hero .ctas{margin-top:22px; display:flex; gap:14px; flex-wrap:wrap; align-items:baseline}
   @media(max-width:760px){
-    /* 390 answer: the bowl can't hold the readout at phone block sizes —
-       it steps out and sets beneath the glyph instead of colliding with it */
-    .heroa .stage{margin:0}
-    .heroa .bowl-readout{position:static; margin-top:18px; justify-content:flex-start}
-    .heroa h1{margin-top:22px; max-width:100%}
+    .hero .stage{margin:0}
+    .hero .bowl-readout{position:static; margin-top:18px; justify-content:flex-start}
+    .hero h1{margin-top:22px; max-width:100%}
   }
 
-  /* ================= HERO B — the collision ================= */
-  .herob{position:relative; padding:0 var(--padx) 64px; border-bottom:1px solid var(--line);
-    overflow:visible}
-  .herob .stage{position:absolute; top:calc(-1*clamp(20px,4vw,60px));
-    right:calc(-1*clamp(30px,7vw,110px)); z-index:1}
-  .herob h1{position:relative; z-index:2; font-size:clamp(44px,7vw,98px);
-    max-width:15ch; line-height:1; padding-top:clamp(72px,12vw,170px)}
-  /* the plinth knocks out of the glyph's lower corner — paper behind it,
-     so the collision stays a composition, never illegible text-on-pixels */
-  .herob .plinth{position:relative; z-index:2; margin-top:clamp(28px,5vw,64px);
-    background:var(--paper); border-top:1px solid var(--amber-line);
-    padding-top:14px; padding-right:14px; width:fit-content;
-    display:flex; gap:40px; flex-wrap:wrap; align-items:start}
-  .herob .plinth .kv{columns:2; column-gap:40px}
-  .herob .plinth .kv>div{break-inside:avoid}
-  .herob .ctas{display:flex; flex-direction:column; gap:10px}
-  @media(max-width:900px){
-    .herob .stage{right:calc(-1*30vw)}
-    .herob .plinth .kv{columns:1}
-  }
+  /* ---- how it works (quiet #1): dense, disciplined, small ---- */
+  .steps{margin-top:4px}
+  .step{display:grid; grid-template-columns:6ch 1fr; padding:12px 0; border-top:1px solid var(--line)}
+  .step:last-child{border-bottom:1px solid var(--line)}
+  .step .n{color:var(--amber); font-size:13px}
+  .step h3{font-size:14.5px; font-weight:600}
+  .step p{color:var(--ink-soft); font-size:13.5px; margin-top:3px; max-width:64ch}
 
-  /* variant tags */
-  .vtag{padding:22px var(--padx) 0; font-size:12px; color:var(--ink-faint)}
-  .vtag::before{content:"# "; color:var(--amber-dim)}
-
-  /* poster shell */
-  .poster{border-top:1px solid var(--amber-line); position:relative}
-
-  /* ================= poster: 5 steps ================= */
-  .p2{padding:56px var(--padx) 64px}
-  .p2 .five{position:absolute; left:calc(-1*clamp(20px,4vw,60px)); top:24px;
-    font-size:clamp(200px,34vw,460px); color:var(--amber); line-height:.78;
-    user-select:none; z-index:0}
-  .p2 .body{position:relative; z-index:1; margin-left:clamp(120px,26vw,360px); max-width:66ch}
-  .p2 h2{font-size:clamp(30px,4.2vw,50px)}
-  .p2 .steps{margin-top:20px}
-  .p2 .step{display:grid; grid-template-columns:6ch 1fr; padding:13px 0; border-top:1px solid var(--line)}
-  .p2 .step:last-child{border-bottom:1px solid var(--line)}
-  .p2 .step .n{color:var(--amber); font-size:13px}
-  .p2 .step h3{font-size:15px; font-weight:600}
-  .p2 .step p{color:var(--ink-soft); font-size:13.5px; margin-top:3px}
-  @media(max-width:760px){
-    .p2 .five{position:relative; left:calc(-1*var(--padx) - 4vw); top:auto;
-      font-size:clamp(180px,52vw,260px); display:block}
-    .p2 .body{margin-left:0; margin-top:-.35em}
-  }
-
-  /* ================= poster: ship. ================= */
-  .p3{padding:56px var(--padx) 64px}
-  .p3 .total{font-size:13px; color:var(--amber-soft)}
-  .p3 h2{font-size:clamp(84px,15vw,200px); color:var(--ink)}
-  .p3 h2 .amber{color:var(--amber)}
-  .p3 .cols{margin-top:26px; columns:2; column-gap:56px; max-width:1100px}
+  /* ---- ship. (medium) ---- */
+  .p3 .total{font-size:13px; color:var(--amber-soft); margin-top:2px}
+  .p3 .cols{margin-top:20px; columns:2; column-gap:56px}
   @media(max-width:820px){.p3 .cols{columns:1}}
-  .p3 .item{break-inside:avoid; padding:12px 0; border-top:1px solid var(--line)}
+  .p3 .item{break-inside:avoid; padding:11px 0; border-top:1px solid var(--line)}
   .p3 .item .perm{color:var(--amber-dim); font-size:12.5px}
   .p3 .item .file{color:var(--ink); font-weight:600; font-size:15px; display:block}
   .p3 .item .note{color:var(--ink-soft); font-size:13.5px}
 
-  /* ================= poster: $130 ================= */
-  .p4{padding:48px var(--padx) 64px}
+  /* ---- $130 (loud #2) ---- */
   .p4 .price{font-size:clamp(140px,26vw,360px); color:var(--amber); line-height:.8;
     margin-left:calc(-1*clamp(8px,1.5vw,24px)); user-select:none}
   .p4 .once{font-size:clamp(34px,5vw,64px); margin-top:4px}
-  .p4 .grid{display:grid; gap:36px; grid-template-columns:1fr; max-width:1100px; margin-top:26px}
+  .p4 .grid{display:grid; gap:36px; grid-template-columns:1fr; margin-top:26px}
   @media(min-width:860px){.p4 .grid{grid-template-columns:6fr 6fr}}
   .ledger{font-size:14px}
   .lrow{display:flex; align-items:baseline; gap:10px; padding:9px 0}
@@ -215,15 +172,14 @@ Changes from round 2:
   .lrow .dots{flex:1; border-bottom:2px dotted var(--amber-line); transform:translateY(-4px); min-width:24px}
   .lrow .v{color:var(--ink); font-weight:500; text-align:right}
 
-  /* ================= poster: the fine print spread ================= */
-  .p5{padding:56px var(--padx) 64px}
+  /* ---- fine print spread (quiet #2) ---- */
   .p5 .rulehead{display:flex; align-items:baseline; justify-content:space-between;
-    gap:16px; border-bottom:2px solid var(--amber); padding-bottom:10px}
-  .p5 .rulehead h2{font-size:clamp(28px,3.8vw,42px)}
+    gap:16px; border-bottom:1px solid var(--amber-line); padding-bottom:10px}
+  .p5 .rulehead h2{font-size:clamp(22px,2.6vw,30px)}
   .p5 .rulehead .folio{font-size:12px; color:var(--amber-soft); letter-spacing:.08em}
-  .p5 .cols{margin-top:24px; display:grid; gap:44px; grid-template-columns:1fr}
+  .p5 .cols{margin-top:22px; display:grid; gap:44px; grid-template-columns:1fr}
   @media(min-width:900px){.p5 .cols{grid-template-columns:6fr 6fr}}
-  .p5 h3.colhead{font-family:"VT323",monospace; font-weight:400; font-size:23px; margin-bottom:12px}
+  .p5 h3.colhead{font-size:14px; font-weight:600; color:var(--ink); margin-bottom:10px}
   .p5 .body{color:var(--ink-soft); font-size:14px}
   .p5 .body b{color:var(--ink); font-weight:600}
   .p5 .body p+p{margin-top:12px}
@@ -236,8 +192,7 @@ Changes from round 2:
   .tree .a{padding:2px 0 12px 3ch; color:var(--ink-soft); font-size:13.5px;
     border-left:1px solid var(--amber-line); margin-left:.5ch}
 
-  /* ================= poster: closing ================= */
-  .p6{padding:56px var(--padx) 72px}
+  /* ---- be in it. (loud #3) ---- */
   .p6 h2{font-size:clamp(64px,12vw,168px); max-width:9ch}
   .p6 .fetchline{margin-top:24px; font-size:13px; white-space:nowrap; overflow-x:auto}
   .p6 .fetchline .k{color:var(--amber-soft)}
@@ -245,7 +200,6 @@ Changes from round 2:
   .p6 .fetchline .hot{color:var(--amber); font-weight:600}
   .p6 .ctas{margin-top:24px; display:flex; gap:14px; flex-wrap:wrap; align-items:center}
 
-  /* colophon: a session that exited cleanly */
   .colophon{border-top:1px solid var(--amber-line); padding:26px var(--padx) 40px;
     font-size:12.5px; color:var(--ink-faint)}
   .colophon .exit{color:var(--amber-soft)}
@@ -256,7 +210,7 @@ Changes from round 2:
 </head>
 <body>
 
-<!-- STATUS BAR (restored) ================================================= -->
+<!-- STATUS BAR ============================================================ -->
 <div class="statusbar" role="status">
   <span><b>batch0</b> · cohort <b>001</b><span class="hide-sm"> · summer 2026</span></span>
   <span class="hide-sm">aug 17 – oct 18 · live, online · us</span>
@@ -274,76 +228,54 @@ Changes from round 2:
 </nav>
 
 <main>
-  <!-- HERO VARIANT A — the bowl ========================================== -->
-  <p class="vtag">hero variant a — "the bowl": readout typeset inside the glyph</p>
-  <header class="heroa">
-    <div class="stage">
-      <div class="pxzero" id="zero-a" data-slash="false" aria-hidden="true"></div>
-      <noscript><pre aria-hidden="true">
-    ██████████
-  ██          ██
- ██            ██
- ██            ██
- ██            ██
- ██            ██
- ██            ██
- ██            ██
- ██            ██
- ██            ██
- ██            ██
-  ██          ██
-    ██████████
+  <!-- LOUD — HERO: the bowl ============================================== -->
+  <header class="hero">
+    <div class="inner">
+      <div class="stage">
+        <div class="pxzero" id="zero-a" aria-hidden="true"></div>
+        <noscript><pre aria-hidden="true">
+  ########
+ ##      ##
+##        ##
+##        ##
+##        ##
+##        ##
+##        ##
+##        ##
+##        ##
+##        ##
+##        ##
+##        ##
+ ##      ##
+  ########
 </pre></noscript>
-      <div class="bowl-readout" aria-label="cohort 001 readout">
-        <div class="kv">
-          <div><span class="k">cohort</span> <span class="v" data-retype>001</span></div>
-          <div><span class="k">runs</span> <span class="v" data-retype>aug 17 – oct 18</span></div>
-          <div><span class="k">format</span> <span class="v" data-retype>live · online · us</span></div>
-          <div><span class="k">tuition</span> <span class="v" data-retype>$130 if accepted</span></div>
-          <div><span class="k">equity</span> <span class="v" data-retype>0%</span></div>
-          <div class="row-hot"><span class="k">apply by</span> <span class="v" data-retype>aug 10</span></div>
+        <div class="bowl-readout" aria-label="cohort 001 readout">
+          <div class="kv">
+            <div><span class="k">cohort</span> <span class="v" data-retype>001</span></div>
+            <div><span class="k">runs</span> <span class="v" data-retype>aug 17 – oct 18</span></div>
+            <div><span class="k">format</span> <span class="v" data-retype>live · online · us</span></div>
+            <div><span class="k">tuition</span> <span class="v" data-retype>$130 if accepted</span></div>
+            <div><span class="k">equity</span> <span class="v" data-retype>0%</span></div>
+            <div class="row-hot"><span class="k">apply by</span> <span class="v" data-retype>aug 10</span></div>
+          </div>
         </div>
       </div>
-    </div>
-    <h1 class="disp">don't wait for college to start <span style="white-space:nowrap"><span class="hl" id="hl-a">building</span><span class="cursor" aria-hidden="true"></span></span></h1>
-    <p class="lede">batch0 is a live, online startup accelerator for high
-    schoolers. Seasonal build sprints, mentorship, and a supportive community
-    resulting in a company of your own.</p>
-    <div class="ctas">
-      <a class="btn" href="#apply">apply for cohort 1</a>
-      <span class="aside">$0 to apply · $130 only if accepted · 0% equity</span>
-    </div>
-  </header>
-
-  <!-- HERO VARIANT B — the collision ===================================== -->
-  <p class="vtag">hero variant b — "the collision": headline crosses the glyph; readout is the plinth</p>
-  <header class="herob">
-    <div class="stage">
-      <div class="pxzero" id="zero-b" data-slash="true" aria-hidden="true"></div>
-    </div>
-    <h1 class="disp">don't wait for college to start <span style="white-space:nowrap"><span class="hl" id="hl-b">building</span><span class="cursor" aria-hidden="true"></span></span></h1>
-    <div class="plinth">
-      <div class="kv" aria-label="cohort 001 readout">
-        <div><span class="k">cohort</span> <span class="v" data-retype>001</span></div>
-        <div><span class="k">runs</span> <span class="v" data-retype>aug 17 – oct 18</span></div>
-        <div><span class="k">format</span> <span class="v" data-retype>live · online · us</span></div>
-        <div><span class="k">tuition</span> <span class="v" data-retype>$130 if accepted</span></div>
-        <div><span class="k">equity</span> <span class="v" data-retype>0%</span></div>
-        <div class="row-hot"><span class="k">apply by</span> <span class="v" data-retype>aug 10</span></div>
-      </div>
+      <h1 class="disp">don't wait for college to start <span style="white-space:nowrap"><span class="hl" id="hl-a">building</span><span class="cursor" aria-hidden="true"></span></span></h1>
+      <p class="lede">batch0 is a live, online startup accelerator for high
+      schoolers. Seasonal build sprints, mentorship, and a supportive community
+      resulting in a company of your own.</p>
       <div class="ctas">
         <a class="btn" href="#apply">apply for cohort 1</a>
-        <span class="aside">$0 to apply · $130 only if accepted</span>
+        <span class="aside">$0 to apply · $130 only if accepted · 0% equity</span>
       </div>
     </div>
   </header>
 
-  <!-- POSTER: 5 STEPS ===================================================== -->
-  <section class="poster p2" id="program">
-    <div class="five disp" aria-hidden="true" data-charshift>5</div>
-    <div class="body">
+  <!-- QUIET — how it works: disciplined, dense, small ==================== -->
+  <section class="sect" id="program">
+    <div class="inner">
       <p class="cmdline"><b>cat how-it-works.txt</b> <span class="mtime">· modified 2026-07-14</span></p>
-      <h2 class="disp" data-charshift>steps to a real company</h2>
+      <h2 class="disp h-quiet" data-charshift>how it works — five steps, aug 17 to oct 18</h2>
       <div class="steps">
         <div class="step"><span class="n">01</span><div><h3>apply</h3>
           <p>Free. Come with an idea you want to build, or just a desire to
@@ -366,108 +298,118 @@ Changes from round 2:
     </div>
   </section>
 
-  <!-- POSTER: SHIP. ======================================================= -->
-  <section class="poster p3">
-    <p class="cmdline"><b>ls -la deliverables/</b> <span class="mtime">· by demo day</span></p>
-    <h2 class="disp" data-charshift>ship<span class="amber">.</span></h2>
-    <p class="total">total 6</p>
-    <div class="cols">
-      <div class="item"><span class="perm">-rw-r--r--</span><span class="file">lean-canvas.pdf</span><span class="note">validated in interviews with strangers who owe you nothing</span></div>
-      <div class="item"><span class="perm">-rwxr-xr-x</span><span class="file">shipped-v1.url</span><span class="note">landing page, no-code mvp, or working prototype — live</span></div>
-      <div class="item"><span class="perm">-rw-r--r--</span><span class="file">business-model.xlsx</span><span class="note">revenue, pricing, and unit economics you can defend</span></div>
-      <div class="item"><span class="perm">-rw-r--r--</span><span class="file">go-to-market.md</span><span class="note">a concrete path to your first paying customers</span></div>
-      <div class="item"><span class="perm">-rw-r--r--</span><span class="file">pitch-deck.key</span><span class="note">written, rehearsed, and delivered live at demo day</span></div>
-      <div class="item"><span class="perm">drwx------</span><span class="file">your-company/</span><span class="note">100% yours — no equity, no ip, no royalties taken</span></div>
-    </div>
-  </section>
-
-  <!-- POSTER: $130 ======================================================== -->
-  <section class="poster p4">
-    <div class="price disp" aria-hidden="true">$130</div>
-    <h2 class="disp once" data-charshift>once<span class="hl">.</span></h2>
-    <p class="aside" style="margin-top:10px">cat pricing.txt · comparable programs run $3,000–$8,000+</p>
-    <div class="grid">
-      <p class="small">batch0 is <b>100% free to apply</b>, tuition is charged
-      only if you're accepted. Comparable summer programs list tuition in the
-      <b>$3,000–$8,000+</b> range, even for online programs. Tuition here
-      covers the program itself. Sponsorship and any investor/mentor
-      relationship are merit-based, never paid for, and never guaranteed.</p>
-      <div class="ledger">
-        <div class="lrow"><span class="k">application</span><span class="dots"></span><span class="v">free</span></div>
-        <div class="lrow"><span class="k">tuition</span><span class="dots"></span><span class="v">$130 · only if accepted</span></div>
-        <div class="lrow"><span class="k">hidden fees</span><span class="dots"></span><span class="v">none</span></div>
-        <div class="lrow"><span class="k">equity taken</span><span class="dots"></span><span class="v">none</span></div>
-        <div class="lrow"><span class="k">refunds</span><span class="dots"></span><span class="v"><a class="link" href="#refunds">see refund policy</a></span></div>
+  <!-- MEDIUM — ship. ===================================================== -->
+  <section class="sect p3">
+    <div class="inner">
+      <p class="cmdline"><b>ls -la deliverables/</b> <span class="mtime">· by demo day</span></p>
+      <h2 class="disp h-medium" data-charshift>ship<span style="color:var(--amber)">.</span></h2>
+      <p class="total">total 6</p>
+      <div class="cols">
+        <div class="item"><span class="perm">-rw-r--r--</span><span class="file">lean-canvas.pdf</span><span class="note">validated in interviews with strangers who owe you nothing</span></div>
+        <div class="item"><span class="perm">-rwxr-xr-x</span><span class="file">shipped-v1.url</span><span class="note">landing page, no-code mvp, or working prototype — live</span></div>
+        <div class="item"><span class="perm">-rw-r--r--</span><span class="file">business-model.xlsx</span><span class="note">revenue, pricing, and unit economics you can defend</span></div>
+        <div class="item"><span class="perm">-rw-r--r--</span><span class="file">go-to-market.md</span><span class="note">a concrete path to your first paying customers</span></div>
+        <div class="item"><span class="perm">-rw-r--r--</span><span class="file">pitch-deck.key</span><span class="note">written, rehearsed, and delivered live at demo day</span></div>
+        <div class="item"><span class="perm">drwx------</span><span class="file">your-company/</span><span class="note">100% yours — no equity, no ip, no royalties taken</span></div>
       </div>
     </div>
   </section>
 
-  <!-- POSTER: THE FINE PRINT SPREAD ====================================== -->
-  <section class="poster p5" id="faq">
-    <div class="rulehead">
-      <h2 class="disp" data-charshift>the fine print, up front</h2>
-      <span class="folio">no hype · vol. 001</span>
-    </div>
-    <div class="cols">
-      <div>
-        <h3 class="colhead">$ whoami — who runs this</h3>
-        <div class="body">
-          <p>batch0 is built and run by <b>Rishabh Dagli and Taran Bethi</b>,
-          two 17-year-old serial founders. We built batch0 to give high
-          schoolers the same chance that we wish we had: to build a REAL
-          company with mentorship and support, and even the chance of
-          funding!</p>
-          <p>Cohort 1 is deliberately the first. There are no glossy alumni
-          stats to show you yet, and we won't invent any. What we can promise:
-          Rishabh and Taran run every live session themselves, read every
-          application, and answer every parent question personally within a
-          couple of days.</p>
-          <p><a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></p>
-        </div>
-      </div>
-      <div>
-        <h3 class="colhead">$ man batch0 <span style="color:var(--ink-faint)">· 7 questions parents ask</span></h3>
-        <div class="tree">
-          <details><summary><span class="tick">├─</span> how much does it cost?</summary>
-            <div class="a">$0 to apply. $130 tuition, charged only if your
-            student is accepted. No hidden fees, no equipment to buy, nothing
-            else — ever.</div></details>
-          <details><summary><span class="tick">├─</span> who runs batch0?</summary>
-            <div class="a">Rishabh Dagli and Taran Bethi — the founders run
-            every live session themselves. The legal entity is Sparkline Youth
-            LLC.</div></details>
-          <details><summary><span class="tick">├─</span> who is it for?</summary>
-            <div class="a">U.S. high schoolers, ages 13–18, who want to build
-            something real. No prior experience required.</div></details>
-          <details><summary><span class="tick">├─</span> how much time does it take?</summary>
-            <div class="a">Designed to fit around school: live sessions plus
-            independent build time each week, Aug 17 – Oct 18.</div></details>
-          <details><summary><span class="tick">├─</span> is it really fully online?</summary>
-            <div class="a">Yes — every session is live and online. No travel,
-            nothing to install beyond a browser.</div></details>
-          <details><summary><span class="tick">├─</span> what is demo day?</summary>
-            <div class="a">The final session: students pitch the company they
-            built, live. Standouts may earn merit-based, non-dilutive
-            sponsorship — never guaranteed.</div></details>
-          <details><summary><span class="tick">└─</span> does batch0 take equity or own my idea?</summary>
-            <div class="a">No. 0% equity, no IP claims, no royalties.
-            Everything your student builds is theirs.</div></details>
+  <!-- LOUD — $130 ======================================================== -->
+  <section class="sect loud p4">
+    <div class="inner">
+      <p class="cmdline"><b>cat pricing.txt</b> <span class="mtime">· modified 2026-07-14</span></p>
+      <div class="price disp" aria-hidden="true">$130</div>
+      <h2 class="disp once" data-charshift>once<span class="hl">.</span></h2>
+      <div class="grid">
+        <p class="small">batch0 is <b>100% free to apply</b>, tuition is
+        charged only if you're accepted. Comparable summer programs list
+        tuition in the <b>$3,000–$8,000+</b> range, even for online programs.
+        Tuition here covers the program itself. Sponsorship and any
+        investor/mentor relationship are merit-based, never paid for, and
+        never guaranteed.</p>
+        <div class="ledger">
+          <div class="lrow"><span class="k">application</span><span class="dots"></span><span class="v">free</span></div>
+          <div class="lrow"><span class="k">tuition</span><span class="dots"></span><span class="v">$130 · only if accepted</span></div>
+          <div class="lrow"><span class="k">hidden fees</span><span class="dots"></span><span class="v">none</span></div>
+          <div class="lrow"><span class="k">equity taken</span><span class="dots"></span><span class="v">none</span></div>
+          <div class="lrow"><span class="k">refunds</span><span class="dots"></span><span class="v"><a class="link" href="#refunds">see refund policy</a></span></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- POSTER: CLOSING ===================================================== -->
-  <section class="poster p6" id="apply">
-    <p class="cmdline"><b>apply --cohort 001</b></p>
-    <h2 class="disp">be in <span style="white-space:nowrap"><span class="hl">it.</span><span class="cursor" aria-hidden="true"></span></span></h2>
-    <p class="small" style="margin-top:14px; max-width:44ch">Cohort 1 is the
-    founding cohort. No glossy alumni stats — just the first hundred builders
-    and two founders who read every application.</p>
-    <p class="fetchline"><span class="k">cohort:</span> <b>001</b> · <span class="k">runs:</span> <b>aug 17 – oct 18</b> · <span class="k">tuition:</span> <b>$130 if accepted</b> · <span class="k">equity:</span> <b>0%</b> · <span class="k">apply by:</span> <span class="hot">aug 10</span></p>
-    <div class="ctas">
-      <a class="btn" href="#apply">apply for cohort 1</a>
-      <span class="aside">free to apply · $130 charged only if accepted</span>
+  <!-- QUIET — the fine print spread ====================================== -->
+  <section class="sect p5" id="faq">
+    <div class="inner">
+      <p class="cmdline"><b>cat fine-print.txt</b> <span class="mtime">· modified 2026-07-14</span></p>
+      <div class="rulehead">
+        <h2 class="disp" data-charshift>the fine print, up front</h2>
+        <span class="folio">no hype · vol. 001</span>
+      </div>
+      <div class="cols">
+        <div>
+          <h3 class="colhead">who runs this</h3>
+          <div class="body">
+            <p>batch0 is built and run by <b>Rishabh Dagli and Taran Bethi</b>,
+            two 17-year-old serial founders. We built batch0 to give high
+            schoolers the same chance that we wish we had: to build a REAL
+            company with mentorship and support, and even the chance of
+            funding!</p>
+            <p>Cohort 1 is deliberately the first. There are no glossy alumni
+            stats to show you yet, and we won't invent any. What we can
+            promise: Rishabh and Taran run every live session themselves, read
+            every application, and answer every parent question personally
+            within a couple of days.</p>
+            <p><a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></p>
+          </div>
+        </div>
+        <div>
+          <h3 class="colhead">questions parents ask <span style="color:var(--ink-faint); font-weight:400">· 7</span></h3>
+          <div class="tree">
+            <details><summary><span class="tick">├─</span> how much does it cost?</summary>
+              <div class="a">$0 to apply. $130 tuition, charged only if your
+              student is accepted. No hidden fees, no equipment to buy, nothing
+              else — ever.</div></details>
+            <details><summary><span class="tick">├─</span> who runs batch0?</summary>
+              <div class="a">Rishabh Dagli and Taran Bethi — the founders run
+              every live session themselves. The legal entity is Sparkline
+              Youth LLC.</div></details>
+            <details><summary><span class="tick">├─</span> who is it for?</summary>
+              <div class="a">U.S. high schoolers, ages 13–18, who want to build
+              something real. No prior experience required.</div></details>
+            <details><summary><span class="tick">├─</span> how much time does it take?</summary>
+              <div class="a">Designed to fit around school: live sessions plus
+              independent build time each week, Aug 17 – Oct 18.</div></details>
+            <details><summary><span class="tick">├─</span> is it really fully online?</summary>
+              <div class="a">Yes — every session is live and online. No travel,
+              nothing to install beyond a browser.</div></details>
+            <details><summary><span class="tick">├─</span> what is demo day?</summary>
+              <div class="a">The final session: students pitch the company they
+              built, live. Standouts may earn merit-based, non-dilutive
+              sponsorship — never guaranteed.</div></details>
+            <details><summary><span class="tick">└─</span> does batch0 take equity or own my idea?</summary>
+              <div class="a">No. 0% equity, no IP claims, no royalties.
+              Everything your student builds is theirs.</div></details>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOUD — be in it. =================================================== -->
+  <section class="sect loud p6" id="apply">
+    <div class="inner">
+      <p class="cmdline"><b>apply --cohort 001</b></p>
+      <h2 class="disp">be in <span style="white-space:nowrap"><span class="hl">it.</span><span class="cursor" aria-hidden="true"></span></span></h2>
+      <p class="small" style="margin-top:14px; max-width:44ch">Cohort 1 is the
+      founding cohort. No glossy alumni stats — just the first hundred
+      builders and two founders who read every application.</p>
+      <p class="fetchline"><span class="k">cohort:</span> <b>001</b> · <span class="k">runs:</span> <b>aug 17 – oct 18</b> · <span class="k">tuition:</span> <b>$130 if accepted</b> · <span class="k">equity:</span> <b>0%</b> · <span class="k">apply by:</span> <span class="hot">aug 10</span></p>
+      <div class="ctas">
+        <a class="btn" href="#apply">apply for cohort 1</a>
+        <span class="aside">free to apply · $130 charged only if accepted</span>
+      </div>
     </div>
   </section>
 </main>
@@ -486,37 +428,22 @@ Changes from round 2:
 </footer>
 
 <!-- ===========================================================================
-INTERACTION INDEX (review each in the browser):
-REACTIVE
-  r1. giant pixel 0s (both heroes): blocks within ~90px of the cursor displace
-      up to 6px away and "light" (amber↔off-white flip) inside 55px; settle
-      back on leave. DOM blocks + one rAF loop, transform/class only.
-  r2. nav paths: hover surfaces a `$ ` prefix (chrome grammar).
-  r3. readout + ledger + faq rows: hover = selected-line wash.
-  r4. links: underline gives way to amber text + trailing ▮ block.
-  r5. headline highlight (both heroes): on hover the cursor deletes and
-      retypes the last two characters of "building", once per hover.
-  r6. buttons: 2px key-press shift on :active, squared corners.
-AMBIENT
-  a1. glitch scheduler: every 20–40s exactly ONE of — a readout value
-      re-types itself · one pixel of a hero 0 drops and repairs · a section
-      head shifts 6px and snaps back. 120–200ms, positional/typographic only.
-  a2. status bar: clock ticks every second; t−Nd recomputed live.
-  a3. the wordmark's 0 blinks like a cursor twice, on the same rare schedule.
-HARD RULES (enforced below)
-  - prefers-reduced-motion: reduce → NO reactivity, NO glitches, NO blinks;
-    the pixel 0s still render, statically.
-  - transform + class-paint only; single rAF loop; no layout reads in the
-    move handler beyond cached rects (recached on resize/scroll end).
-  - document.hidden pauses the scheduler.
-  - NEVER port this layer to /apply, checkout, or any form surface.
+INTERACTION INDEX (unchanged from round 2.1, minus hero-b's targets):
+REACTIVE — r1 pixel field on the hero 0 · r2 $-prefix nav hovers ·
+r3 selected-line row hovers · r4 block-cursor link hovers · r5 headline
+type/delete tease · r6 key-press buttons.
+AMBIENT — a1 one glitch every 20–40s (value retype / pixel drop / 6px head
+shift / wordmark-0 blink) · a2 live clock + t−Nd.
+HARD RULES — prefers-reduced-motion disables all of it; transform/paint
+only, single rAF, cached rects; document.hidden pauses the scheduler;
+NEVER port to /apply, checkout, or any form surface.
 ============================================================================ -->
 <script>
 (function(){
   "use strict";
   var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ---------- live status bar (always on; it's data, not motion) -------- */
+  /* live status bar (data, not motion — always on) */
   var close = new Date("2026-08-10T23:59:00-04:00");
   function pad(n){return String(n).padStart(2,"0")}
   function tickClock(){
@@ -528,9 +455,7 @@ HARD RULES (enforced below)
   }
   tickClock(); setInterval(tickClock, 1000);
 
-  /* ---------- pixel-zero grids ------------------------------------------ */
-  // 12x14 bitmap (portrait — a zero is taller than wide).
-  // "#" block · "x" slash block · "." empty
+  /* the ONE giant glyph: 12x14 portrait zero */
   var PLAIN = [
     "..########..",
     ".##......##.",
@@ -547,42 +472,30 @@ HARD RULES (enforced below)
     ".##......##.",
     "..########.."];
   var COLS = 12;
-  var SLASH = PLAIN.map(function(row,r){
-    // single-width diagonal through the bowl, rows 3..10 (top-right → bottom-left)
-    if(r<3||r>10) return row;
-    var c = 9 - (r-3); // col 9 at row3 → col 2 at row10
-    return row.slice(0,c) + "x" + row.slice(c+1);
-  });
   function buildZero(el, blockPx){
-    var map = el.dataset.slash === "true" ? SLASH : PLAIN;
     el.style.gridTemplateColumns = "repeat(" + COLS + "," + blockPx + "px)";
     el.style.gridAutoRows = blockPx + "px";
     var blocks = [];
-    map.forEach(function(row, r){
+    PLAIN.forEach(function(row, r){
       for(var c=0; c<COLS; c++){
-        var ch = row[c];
-        if(ch === ".") continue;
+        if(row[c] === ".") continue;
         var d = document.createElement("div");
-        d.className = "px" + (ch === "x" ? " slash" : "");
+        d.className = "px";
         d.style.gridColumn = c+1; d.style.gridRow = r+1;
         el.appendChild(d); blocks.push(d);
       }
     });
     return blocks;
   }
-  // block size: A is the dominant centered glyph; B is the bleeding corner glyph
-  var bpA = Math.max(20, Math.min(48, innerWidth*0.034));
-  var bpB = Math.max(22, Math.min(60, innerWidth*0.044));
-  var blocksA = buildZero(document.getElementById("zero-a"), Math.round(bpA));
-  var blocksB = buildZero(document.getElementById("zero-b"), Math.round(bpB));
-  var allBlocks = blocksA.concat(blocksB);
+  var bp = Math.max(20, Math.min(48, innerWidth*0.034));
+  var blocks = buildZero(document.getElementById("zero-a"), Math.round(bp));
 
-  if(reduced) return; // static site below this line: no reactivity, no glitches
+  if(reduced) return; // static below this line
 
-  /* ---------- r1: cursor proximity field on the 0s ---------------------- */
+  /* r1: cursor proximity field */
   var rects = [], mx = -1e4, my = -1e4, raf = 0;
   function cacheRects(){
-    rects = allBlocks.map(function(b){
+    rects = blocks.map(function(b){
       var r = b.getBoundingClientRect();
       return {b:b, x:r.left + r.width/2, y:r.top + r.height/2};
     });
@@ -612,40 +525,35 @@ HARD RULES (enforced below)
     if(!raf) raf = requestAnimationFrame(field);
   }, {passive:true});
 
-  /* ---------- r5: highlight hover types/deletes -------------------------- */
-  function typeTease(el){
-    if(el._busy) return; el._busy = true;
-    var full = el.textContent, t = 0;
+  /* r5: highlight hover types/deletes */
+  var hl = document.getElementById("hl-a");
+  hl.addEventListener("mouseenter", function(){
+    if(hl._busy) return; hl._busy = true;
+    var full = hl.textContent, t = 0;
     var frames = [full.slice(0,-1), full.slice(0,-2), full.slice(0,-1), full];
     (function step(){
-      el.textContent = frames[t++];
+      hl.textContent = frames[t++];
       if(t < frames.length) setTimeout(step, 70);
-      else el._busy = false;
+      else hl._busy = false;
     })();
-  }
-  ["hl-a","hl-b"].forEach(function(id){
-    var el = document.getElementById(id);
-    el.addEventListener("mouseenter", function(){typeTease(el)});
   });
 
-  /* ---------- a1+a3: the rare glitch scheduler --------------------------- */
+  /* a1 + a3: the rare glitch scheduler */
   var retypeEls = [].slice.call(document.querySelectorAll("[data-retype]"));
   var shiftEls  = [].slice.call(document.querySelectorAll("[data-charshift]"));
   function gRetype(){
     var el = retypeEls[Math.floor(Math.random()*retypeEls.length)];
-    var full = el.textContent, i = Math.max(0, full.length - 3);
+    var full = el.textContent, i = Math.max(0, full.length - 3), t = i;
     el.textContent = full.slice(0, i);
-    var t = i;
     (function step(){
       el.textContent = full.slice(0, ++t);
       if(t < full.length) setTimeout(step, 45);
     })();
   }
   function gPixelDrop(){
-    var pool = allBlocks;
-    var b = pool[Math.floor(Math.random()*pool.length)];
+    var b = blocks[Math.floor(Math.random()*blocks.length)];
     b.style.transition = "transform 90ms steps(2)";
-    b.style.transform = "translateY(" + Math.round(bpA*0.7) + "px)";
+    b.style.transform = "translateY(" + Math.round(bp*0.7) + "px)";
     setTimeout(function(){
       b.style.transform = "";
       setTimeout(function(){ b.style.transition = ""; }, 120);
@@ -675,7 +583,7 @@ HARD RULES (enforced below)
         glitches[Math.floor(Math.random()*glitches.length)]();
       }
       schedule();
-    }, 20000 + Math.random()*20000); // one glitch every 20–40s, never a loop
+    }, 20000 + Math.random()*20000);
   })();
 })();
 </script>
