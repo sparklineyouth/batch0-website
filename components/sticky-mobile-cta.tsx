@@ -47,12 +47,14 @@ export default function StickyMobileCta({
         <a
           href="/apply"
           onClick={() => track("apply_click", { location: "sticky-mobile" })}
-          className="press flex w-full items-center justify-between gap-3 rounded-md bg-phosphor px-4 py-3.5 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
+          className="press flex w-full items-center justify-between gap-3 bg-phosphor px-4 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-200"
         >
           <span className="flex flex-col items-start leading-tight">
-            <span>Apply for {cohortLabel}</span>
-            <span className="text-[11px] font-normal text-ink/70">
-              Free to apply · {derived.priceLabel} if accepted
+            <span>apply for {cohortLabel}</span>
+            {/* on-phosphor, NOT the reactive ink: the yellow fill is
+                constant, so this must stay dark (was ~1.5:1 white-on-amber). */}
+            <span className="text-[11px] font-normal text-on-phosphor/70">
+              free to apply · {derived.priceLabel} if accepted
             </span>
           </span>
           <span aria-hidden className="text-lg">→</span>

@@ -3,41 +3,53 @@ import type { SiteConfig } from "@/lib/site-config";
 import { Ledger } from "@/components/ledger";
 import { ApplyCta } from "@/components/apply-cta";
 
-/** Final CTA — the deadline restated, then the button. */
+/**
+ * The closing poster — the page's third and final LOUD moment, and CTA #2
+ * of the page's three asks (hero · here · nav chrome). One job: the ask.
+ */
 export default function CTA({ config }: { config: SiteConfig }) {
   const { derived, settings } = config;
   const cohortLabel = derived.cohortLabel || "the next cohort";
 
   return (
-    <section id="apply-cta" className="border-t border-line px-5 py-20 sm:px-6 md:py-28">
+    <section
+      id="apply-cta"
+      className="border-t border-phosphor/25 px-5 py-20 sm:px-6 md:py-32"
+    >
       <div className="mx-auto max-w-[1100px]">
-        <h2 className="max-w-[24ch] font-display text-[clamp(2rem,4.5vw,3.25rem)] font-bold leading-[1.05] tracking-[-0.02em] text-ink">
+        <p className="cmdline font-mono">
+          <b>apply --cohort {String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}</b>
+        </p>
+        <h2 className="mt-5 max-w-[9ch] font-display text-[clamp(4rem,12vw,10.5rem)] leading-[0.85] text-ink">
           {settings.applicationsOpen ? (
             <>
-              {derived.cohortLabel || "Cohort 1"} is the founding cohort.{" "}
-              <span className="hl">Be in it.</span>
+              be in <span className="text-phosphor">it.</span>
+              <span aria-hidden className="cursor-block" />
             </>
           ) : (
-            "Applications are closed for now."
+            <>applications are closed for now.</>
           )}
         </h2>
-        <div className="mt-8 max-w-[30rem]">
-          <Ledger config={config} rows="strip" />
-        </div>
-        <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-          {settings.applicationsOpen ? (
-            <>
-              <ApplyCta label={`Apply for ${cohortLabel}`} location="final-cta" />
-              <p className="text-[13px] text-ink-faint">
-                Free to apply · {derived.priceLabel} charged only if accepted
-              </p>
-            </>
-          ) : (
-            <p className="max-w-[38rem] text-[15px] leading-[1.6] text-ink-soft">
-              {settings.applicationsClosedMessage}
-            </p>
-          )}
-        </div>
+        {settings.applicationsOpen ? (
+          <>
+            <div className="mt-7 max-w-[30rem]">
+              <Ledger config={config} rows="strip" />
+            </div>
+            <div className="mt-7 flex flex-wrap items-center gap-4">
+              <ApplyCta
+                label={`apply for ${cohortLabel.toLowerCase()}`}
+                location="final-cta"
+              />
+              <span className="aside-note">
+                free to apply · {derived.priceLabel} charged only if accepted
+              </span>
+            </div>
+          </>
+        ) : (
+          <p className="mt-7 max-w-[38rem] text-[15px] leading-[1.6] text-ink-soft">
+            {settings.applicationsClosedMessage}
+          </p>
+        )}
       </div>
     </section>
   );

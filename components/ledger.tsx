@@ -44,13 +44,16 @@ export function Ledger({
         ];
 
   return (
-    <dl className={`ledger text-ink-soft ${className}`} aria-label="Cohort facts">
+    // Lowercase as a system: labels AND values render lowercase (dates,
+    // "us", price strings are the data either way); amber-soft labels are
+    // chrome, off-white values are what you read.
+    <dl className={`ledger lowercase text-ink-soft ${className}`} aria-label="Cohort facts">
       {all.map(([k, v], i) => (
         <div
           key={k}
           className={`ledger-row ${animate ? `animate-rise rise-${Math.min(i + 2, 5)}` : ""}`}
         >
-          <dt className="uppercase tracking-[0.08em] text-ink-faint">{k}</dt>
+          <dt className="tracking-[0.06em] text-phosphor/60">{k}</dt>
           <span aria-hidden className="ledger-dots" />
           <dd className="text-right font-medium text-ink">{v}</dd>
         </div>
