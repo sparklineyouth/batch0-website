@@ -38,11 +38,17 @@ export default async function Home() {
         authedHome={authedHome}
         cohortLabel={config.derived.cohortLabel || "the next cohort"}
       />
-      <Hero config={config} authedHome={authedHome} />
-      <HowItWorks config={config} />
-      <FrontPage config={config} />
-      <FinePrint config={config} />
-      <CTA config={config} />
+      {/* ONE OBJECT: a single container + a single continuous left rail
+          (the spine) that every movement hangs off, nav to footer. */}
+      <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
+        <div className="spine">
+          <Hero config={config} authedHome={authedHome} />
+          <HowItWorks config={config} />
+          <FrontPage config={config} />
+          <FinePrint config={config} />
+          <CTA config={config} />
+        </div>
+      </div>
       <Footer config={config} />
       <StickyMobileCta config={config} authedHome={authedHome} />
       <PixelField />

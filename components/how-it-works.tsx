@@ -3,13 +3,10 @@ import Link from "next/link";
 import type { SiteConfig } from "@/lib/site-config";
 
 /**
- * How it works — the page's first QUIET section (volume rhythm: the loud
- * cascade hero needs rest after it). One job: answer "what happens to me".
- * Its one action is the /program link; per the one-ask rule there is no
- * apply CTA here.
- *
- * The real sequence, straight from the application lifecycle the platform
- * enforces (draft → submitted → accepted → paid → enrolled → demo day).
+ * How it works — the page's first QUIET movement. One job: "what happens
+ * to me"; its one action is the /program link (one-ask rule: no apply CTA).
+ * Standard section anatomy: hairline, command+mtime head on the rail,
+ * content on the shared 12-column grid.
  */
 export default function HowItWorks({ config }: { config: SiteConfig }) {
   const { derived } = config;
@@ -38,46 +35,43 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
   ];
 
   return (
-    <section
-      id="how-it-works"
-      className="border-t border-phosphor/25 px-5 py-14 sm:px-6 md:py-20"
-    >
-      <div className="mx-auto max-w-[1100px]">
-        <p className="cmdline font-mono">
-          <b>cat how-it-works.txt</b>{" "}
-          <span className="mtime">· modified 2026-07-14</span>
-        </p>
-        <h2 className="mt-4 font-display text-[clamp(1.375rem,2.6vw,1.875rem)] leading-[1.05] text-ink">
-          how it works: five steps{dates ? `, ${dates}` : ""}
-        </h2>
-        <ol className="mt-6 max-w-[72ch]">
+    <section id="how-it-works" className="border-t border-phosphor/25 py-14 md:py-20">
+      <p className="cmdline rail-head font-mono">
+        <b>cat how-it-works.txt</b>{" "}
+        <span className="mtime">· modified 2026-07-14</span>
+      </p>
+      <h2 className="t-head mt-4 text-ink">
+        how it works: five steps{dates ? `, ${dates}` : ""}
+      </h2>
+      <div className="mt-6 grid grid-cols-12 gap-x-6">
+        <ol className="col-span-12 md:col-span-8">
           {steps.map((s, i) => (
             <li
               key={s.title}
               className="grid grid-cols-[6ch_1fr] border-t border-line py-3.5 last:border-b last:border-line"
             >
-              <span aria-hidden className="font-mono text-[13px] text-phosphor">
+              <span aria-hidden className="t-small font-mono text-phosphor">
                 0{i + 1}
               </span>
               <div>
-                <h3 className="text-[14.5px] font-semibold text-ink">{s.title}</h3>
-                <p className="mt-1 max-w-[64ch] text-[13.5px] leading-[1.6] text-ink-soft">
+                <h3 className="t-body font-semibold text-ink">{s.title}</h3>
+                <p className="t-small mt-1 max-w-[64ch] text-ink-soft">
                   {s.body}
                 </p>
               </div>
             </li>
           ))}
         </ol>
-        {/* this section's one action */}
-        <p className="mt-5 text-[13.5px]">
-          <Link href="/program" className="link-ink">
-            see the full program
-          </Link>{" "}
-          <span aria-hidden className="text-phosphor">
-            →
-          </span>
-        </p>
       </div>
+      {/* this section's one action */}
+      <p className="t-small mt-5">
+        <Link href="/program" className="link-ink">
+          see the full program
+        </Link>{" "}
+        <span aria-hidden className="text-phosphor">
+          →
+        </span>
+      </p>
     </section>
   );
 }

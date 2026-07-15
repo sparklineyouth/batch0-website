@@ -3,14 +3,11 @@ import type { SiteConfig } from "@/lib/site-config";
 import { FoundersIcon, BubbleIcon } from "@/components/icons/pixel-icon";
 
 /**
- * The fine print, up front — the page's second QUIET section and its trust
- * engine. One job: "who runs this, can I trust it". Two newspaper columns:
- * the founders (real names, real entity, the honest no-alumni-stats line)
- * and the parent FAQ. Its one action is hello@ — per the one-ask rule
- * there is no apply CTA here.
- *
- * Absorbs the old Founder and FAQ sections; the FAQ JSON-LD rides along so
- * the structured answers keep matching the visible ones.
+ * The fine print, up front — the page's second QUIET movement and its
+ * trust engine. One job: "who runs this, can I trust it". Two columns of
+ * the shared grid: the founders and the parent FAQ, each led by its glyph
+ * (data-adjacent, one size). One action: hello@. FAQ JSON-LD rides along
+ * so structured answers keep matching visible ones.
  */
 export default function FinePrint({ config }: { config: SiteConfig }) {
   const { derived, settings } = config;
@@ -65,94 +62,83 @@ export default function FinePrint({ config }: { config: SiteConfig }) {
   };
 
   return (
-    <section
-      id="faq"
-      className="border-t border-phosphor/25 px-5 py-14 sm:px-6 md:py-20"
-    >
-      <div className="mx-auto max-w-[1100px]">
-        <p className="cmdline font-mono">
-          <b>cat fine-print.txt</b>{" "}
-          <span className="mtime">· modified 2026-07-14</span>
-        </p>
-        <div className="mt-4 flex flex-wrap items-baseline justify-between gap-3 border-b border-phosphor/25 pb-2.5">
-          <h2 className="font-display text-[clamp(1.375rem,2.6vw,1.875rem)] leading-[1.05] text-ink">
-            the fine print, up front
-          </h2>
-          <span className="font-mono text-xs tracking-[0.05em] text-phosphor/60">
-            no hype · read before applying
-          </span>
+    <section id="faq" className="border-t border-phosphor/25 py-14 md:py-20">
+      <p className="cmdline rail-head font-mono">
+        <b>cat fine-print.txt</b>{" "}
+        <span className="mtime">· modified 2026-07-14</span>
+      </p>
+      <h2 className="t-head mt-4 text-ink">the fine print, up front</h2>
+
+      <div className="mt-6 grid grid-cols-12 gap-x-6 gap-y-10">
+        {/* who runs this */}
+        <div id="who-runs-this" className="col-span-12 md:col-span-6">
+          <div className="flex items-center gap-3.5">
+            <FoundersIcon size={5} />
+            <h3 className="t-body font-semibold text-ink">who runs this</h3>
+          </div>
+          <div className="t-body mt-4 max-w-[58ch] text-ink-soft">
+            <p>
+              batch0 is built and run by{" "}
+              <strong className="font-semibold text-ink">
+                Rishabh Dagli and Taran Bethi
+              </strong>
+              , two 17-year-old serial founders. We built batch0 to give high
+              schoolers the same chance that we wish we had: to build a REAL
+              company with mentorship and support, and even the chance of
+              funding!
+              {/* TODO(RISH): 2–3 public receipts (links) — shipped products,
+                  hardware, repos, press. Logged in NEEDED_FACTS.md. */}
+            </p>
+            <p className="mt-3">
+              Cohort 1 is deliberately the first. There are no glossy alumni
+              stats to show you yet, and we won&apos;t invent any. What we can
+              promise: Rishabh and Taran runs every live session themselves,
+              read every application, and answer every parent question
+              personally within a couple of days.
+            </p>
+            <p className="t-small mt-3 text-ink-faint">
+              the legal entity is Sparkline Youth LLC.
+            </p>
+            {/* this section's one action */}
+            <p className="mt-4">
+              <a
+                href={`mailto:${contactEmail}`}
+                className="link-ink t-body font-medium"
+              >
+                {contactEmail}
+              </a>
+            </p>
+          </div>
         </div>
 
-        <div className="mt-6 grid gap-11 md:grid-cols-2">
-          {/* who runs this */}
-          <div id="who-runs-this">
-            <div className="flex items-center gap-3.5">
-              <FoundersIcon size={5} />
-              <h3 className="text-[14px] font-semibold text-ink">
-                who runs this
-              </h3>
-            </div>
-            <div className="mt-4 max-w-[58ch] text-[14px] leading-[1.65] text-ink-soft">
-              <p>
-                batch0 is built and run by{" "}
-                <strong className="font-semibold text-ink">
-                  Rishabh Dagli and Taran Bethi
-                </strong>
-                , two 17-year-old serial founders. We built batch0 to give high
-                schoolers the same chance that we wish we had: to build a REAL
-                company with mentorship and support, and even the chance of
-                funding!
-                {/* TODO(RISH): 2–3 public receipts (links) — shipped products,
-                    hardware, repos, press. Logged in NEEDED_FACTS.md. */}
-              </p>
-              <p className="mt-3">
-                Cohort 1 is deliberately the first. There are no glossy alumni
-                stats to show you yet, and we won&apos;t invent any. What we
-                can promise: Rishabh and Taran runs every live session
-                themselves, read every application, and answer every parent
-                question personally within a couple of days.
-              </p>
-              <p className="mt-3 text-[13px] text-ink-faint">
-                the legal entity is Sparkline Youth LLC.
-              </p>
-              {/* this section's one action */}
-              <p className="mt-4">
-                <a
-                  href={`mailto:${contactEmail}`}
-                  className="link-ink text-[14px] font-medium"
-                >
-                  {contactEmail}
-                </a>
-              </p>
-            </div>
+        {/* questions parents ask */}
+        <div className="col-span-12 md:col-span-6">
+          <div className="flex items-center gap-3.5">
+            <BubbleIcon size={5} />
+            <h3 className="t-body font-semibold text-ink">
+              questions parents ask{" "}
+              <span className="font-mono font-normal text-ink-faint">
+                · {faqs.length}
+              </span>
+            </h3>
           </div>
-
-          {/* questions parents ask */}
-          <div>
-            <div className="flex items-center gap-3.5">
-              <BubbleIcon size={5} />
-              <h3 className="text-[14px] font-semibold text-ink">
-                questions parents ask{" "}
-                <span className="font-mono font-normal text-ink-faint">
-                  · {faqs.length}
-                </span>
-              </h3>
-            </div>
-            <div className="mt-4">
-              {faqs.map((f, i) => (
-                <details key={f.q} className="group">
-                  <summary className="flex cursor-pointer list-none items-baseline gap-3 py-2.5 text-[14px] font-medium text-ink hover:bg-phosphor/[0.07] [&::-webkit-details-marker]:hidden">
-                    <span aria-hidden className="font-mono text-phosphor/40 group-open:text-phosphor">
-                      {i === faqs.length - 1 ? "└─" : "├─"}
-                    </span>
-                    {f.q}
-                  </summary>
-                  <p className="ml-[0.5ch] max-w-[58ch] border-l border-phosphor/25 pb-3.5 pl-[3ch] pt-0.5 text-[13.5px] leading-[1.6] text-ink-soft">
-                    {f.a}
-                  </p>
-                </details>
-              ))}
-            </div>
+          <div className="mt-4">
+            {faqs.map((f, i) => (
+              <details key={f.q} className="group">
+                <summary className="t-body flex cursor-pointer list-none items-baseline gap-3 py-2.5 font-medium text-ink hover:bg-phosphor/[0.07] [&::-webkit-details-marker]:hidden">
+                  <span
+                    aria-hidden
+                    className="font-mono text-phosphor/40 group-open:text-phosphor"
+                  >
+                    {i === faqs.length - 1 ? "└─" : "├─"}
+                  </span>
+                  {f.q}
+                </summary>
+                <p className="t-small ml-[0.5ch] max-w-[58ch] border-l border-phosphor/25 pb-3.5 pl-[3ch] pt-0.5 text-ink-soft">
+                  {f.a}
+                </p>
+              </details>
+            ))}
           </div>
         </div>
       </div>

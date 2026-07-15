@@ -234,6 +234,26 @@ a,
  * Terminal chrome (the broadsheet system)
  * ============================================================================ */
 
+/* THE type scale — four sizes, no fifth. Every text on the marketing pages
+ * snaps to one of these; the cascade's three volumes are body → poster →
+ * head. Change them here or not at all. */
+.t-small { font-size: 13px; line-height: 1.6; }
+.t-body  { font-size: 15px; line-height: 1.65; }
+.t-head  {
+  font-family: var(--font-display), monospace;
+  font-weight: 400;
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  line-height: 0.95;
+  letter-spacing: 0.01em;
+}
+.t-poster {
+  font-family: var(--font-display), monospace;
+  font-weight: 400;
+  font-size: clamp(3.5rem, 11vw, 10rem);
+  line-height: 0.85;
+  letter-spacing: 0.01em;
+}
+
 /* Blinking block cursor — a living detail, never information. */
 .cursor-block {
   display: inline-block;
@@ -255,8 +275,21 @@ a,
 .cmdline .mtime { color: rgb(var(--ink-faint)); }
 
 /* Comment asides that carry true data: `# $0 to apply` */
-.aside-note { color: rgb(var(--ink-faint)); font-size: 12.5px; }
+.aside-note { color: rgb(var(--ink-faint)); font-size: 13px; }
 .aside-note::before { content: "# "; color: rgba(255, 187, 0, 0.4); }
+
+/* THE SPINE — one continuous vertical hairline at the left margin rail,
+ * running nav → footer. Every section hangs off it: content indents by
+ * --rail-gap; section heads (.rail-head) pull back to sit ON the rail. */
+.spine {
+  --rail-gap: 20px;
+  border-left: 1px solid rgba(255, 187, 0, 0.25);
+  padding-left: var(--rail-gap);
+}
+@media (min-width: 768px) {
+  .spine { --rail-gap: 36px; }
+}
+.rail-head { margin-left: calc(8px - var(--rail-gap)); }
 
 /* Nav paths: hover surfaces the prompt. */
 .path-link::before {
