@@ -7,6 +7,10 @@ import {
   tallyApplicationsByReferralCode,
 } from "@/lib/referrals";
 import { passHolderUserIds } from "@/lib/founder-pass";
+import {
+  pendingRebuildUserIds,
+  decisionTargetStatus,
+} from "@/lib/founder-pass-perks";
 import { Sparkles, Share2 } from "lucide-react";
 
 export const metadata = { title: "Applications · Admin" };
@@ -63,7 +67,7 @@ export default async function AdminApplicationsPage({
   //  - referrerByCode: who brought each applicant IN (incoming).
   //  - tally: how many applications each applicant has brought in (outgoing),
   //    counted across ALL applications, not just the current filter.
-  const [referrerByCode, tally, passHolders] = await Promise.all([
+  const [referrerByCode, tally, passHolders, rebuildUsers] = await Promise.all([
     resolveReferrersByCode(
       admin,
       (apps ?? []).map((a: any) => a.referral_code).filter(Boolean),
@@ -72,6 +76,9 @@ export default async function AdminApplicationsPage({
     // One query for the whole set, not one per row — same reason the two
     // lookups above are batched.
     passHolderUserIds(admin),
+    // Pass holders with a rebuild still awaiting a fresh review — badges the row
+    // so it's re-reviewed rather than lost in the decided pile.
+    pendingRebuildUserIds(admin),
   ]);
 
   const allRows = (apps ?? []).map((a: any) => {
@@ -83,6 +90,7 @@ export default async function AdminApplicationsPage({
       ? String(a.profile.referral_code).toLowerCase()
       : null;
     const sent = ownCode ? tally.get(ownCode) ?? null : null;
+    const isPassHolder = a.user_id ? passHolders.has(a.user_id) : false;
     return {
       id: a.id,
       full_name: a.full_name,
@@ -98,7 +106,14 @@ export default async function AdminApplicationsPage({
       referrerName: referrer?.fullName ?? referrer?.email ?? null,
       referralsSent: sent?.applied ?? 0,
       referralsPaid: sent?.paidOrEnrolled ?? 0,
-      hasFounderPass: a.user_id ? passHolders.has(a.user_id) : false,
+      hasFounderPass: isPassHolder,
+      hasPendingRebuild: a.user_id ? rebuildUsers.has(a.user_id) : false,
+      // Decision-target tracking (perk 2) — only meaningful for a pass app
+      // that's still waiting on a decision.
+      sla:
+        isPassHolder && a.status === "submitted"
+          ? decisionTargetStatus(a.submitted_at)
+          : null,
     };
   });
 

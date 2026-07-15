@@ -178,6 +178,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       { href: "/admin/email/blast", label: "Email blast", icon: Send },
       { href: "/admin/referrals", label: "Referrals", icon: Star },
       { href: "/admin/passes", label: "Founder passes", icon: Ticket },
+      { href: "/admin/pass-requests", label: "Pass requests", icon: Inbox },
       { href: "/admin/moderation", label: "Moderation", icon: ShieldCheck },
       { href: "/admin/discord", label: "Discord", icon: MessagesSquare },
       { href: "/admin/audit", label: "Audit log", icon: ScrollText },

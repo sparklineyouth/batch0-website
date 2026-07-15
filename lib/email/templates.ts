@@ -128,6 +128,26 @@ export const Templates = {
     }),
   }),
 
+  /**
+   * "Your Founder Pass feedback is ready" — sent when the team delivers a
+   * feedback-credit request. The written feedback lives on the pass page (it's
+   * often long and formatted), so this just points the holder to it.
+   */
+  founderPassFeedbackReady: (args: {
+    name?: string | null;
+    topicLabel: string;
+  }) => ({
+    subject: "Your Founder Pass feedback is ready",
+    html: layout({
+      preheader: `Feedback on your ${args.topicLabel.toLowerCase()}.`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#ffbb00">Your feedback is ready</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""}, we've written up feedback on your <strong>${escape(args.topicLabel.toLowerCase())}</strong>. Read it on your pass.</p>
+      `,
+      cta: { url: `${env.siteUrl}/pass`, label: "Read your feedback" },
+    }),
+  }),
+
   paymentReceipt: (args: { name?: string | null; amountCents: number; cohortName: string }) => ({
     subject: "Payment received — you're enrolled",
     html: layout({

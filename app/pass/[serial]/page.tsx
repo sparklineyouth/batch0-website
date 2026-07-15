@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatSerial } from "@/lib/founder-pass-code";
 import { getSiteConfig } from "@/lib/site-config";
+import { mapPassProfile, type PassProfile, type PassRow } from "@/lib/founder-pass";
+import { normalizeUrl } from "@/lib/founder-pass-perks";
 import { FounderPassTicket } from "../founder-pass-ticket";
+import { ExternalLink } from "lucide-react";
 
 /**
  * The public face of a claimed pass — a shareable ticket page, the way the
@@ -27,6 +30,8 @@ type PublicPass = {
   name: string | null;
   /** Inert once redeemed (see migration 0040) — safe on a public page. */
   code: string | null;
+  /** The holder's profile (migration 0041). Only rendered when `public`. */
+  profile: PassProfile;
 };
 
 async function getPublicPass(serialParam: string): Promise<PublicPass | null> {
@@ -47,13 +52,7 @@ async function getPublicPass(serialParam: string): Promise<PublicPass | null> {
     .maybeSingle();
   if (!data) return null;
 
-  const row = data as {
-    serial: number;
-    batch: string;
-    redeemed_at: string | null;
-    redeemed_by: string;
-    redeemed_code?: string | null;
-  };
+  const row = data as PassRow & { redeemed_by: string };
   const { data: profile } = await admin
     .from("profiles")
     .select("full_name")
@@ -66,6 +65,7 @@ async function getPublicPass(serialParam: string): Promise<PublicPass | null> {
     redeemedAt: row.redeemed_at,
     name: (profile as { full_name: string | null } | null)?.full_name ?? null,
     code: row.redeemed_code ?? null,
+    profile: mapPassProfile(row),
   };
 }
 
@@ -120,6 +120,8 @@ export default async function PublicPassPage({
         redeemedAt={pass.redeemedAt}
       />
 
+      {pass.profile.public && <PublicProfile profile={pass.profile} />}
+
       <div className="mt-10 text-center text-sm text-ink-soft">
         <p>
           batch0 is a live, online startup accelerator for U.S. high
@@ -141,5 +143,74 @@ export default async function PublicPassPage({
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * The holder's published profile. Only rendered when profile.public is true,
+ * and every field guards its own presence — a holder who filled in only a
+ * project name gets a page with only a project name, never empty scaffolding.
+ * Links are re-normalized here (defence in depth) so nothing but http(s) ever
+ * reaches an anchor on this public page.
+ */
+function PublicProfile({ profile }: { profile: PassProfile }) {
+  const website = normalizeUrl(profile.websiteUrl);
+  const demo = normalizeUrl(profile.demoUrl);
+  const hasAnything =
+    profile.projectName ||
+    profile.bio ||
+    website ||
+    demo ||
+    profile.milestones.length > 0;
+  if (!hasAnything) return null;
+
+  return (
+    <section className="mt-8 rounded-2xl border border-line bg-wash p-6">
+      {profile.projectName && (
+        <h2 className="font-display text-2xl text-ink">{profile.projectName}</h2>
+      )}
+      {profile.bio && (
+        <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">
+          {profile.bio}
+        </p>
+      )}
+      {(website || demo) && (
+        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+          {website && (
+            <a
+              href={website}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-phosphor-ink underline underline-offset-4"
+            >
+              Website <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+          {demo && (
+            <a
+              href={demo}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-phosphor-ink underline underline-offset-4"
+            >
+              Demo <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+        </div>
+      )}
+      {profile.milestones.length > 0 && (
+        <ul className="mt-5 space-y-2">
+          {profile.milestones.map((m, i) => (
+            <li key={i} className="flex gap-2.5 text-sm text-ink-soft">
+              <span
+                aria-hidden
+                className="mt-2 h-1 w-1 shrink-0 rounded-full bg-phosphor-ink/50"
+              />
+              <span>{m}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

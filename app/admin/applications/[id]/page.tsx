@@ -10,7 +10,9 @@ import { ReviewScorecard } from "./review-scorecard";
 import { getSiteConfig } from "@/lib/site-config";
 import { requireAdmin } from "@/lib/auth";
 import { resolveReferrersByCode } from "@/lib/referrals";
-import { Share2 } from "lucide-react";
+import { hasFounderPass } from "@/lib/founder-pass";
+import { getRebuildForUser } from "@/lib/founder-pass-perks";
+import { Share2, Hammer, ExternalLink } from "lucide-react";
 
 export const metadata = { title: "Review application · Admin" };
 
@@ -47,6 +49,14 @@ export default async function AdminApplicationDetail({
     ]);
 
   if (!app) notFound();
+
+  // Founder-pass context: whether this applicant holds one (gates the
+  // structured-feedback requirement in the review UI) and any seven-day rebuild
+  // they've submitted (which the reviewer should read before re-deciding).
+  const [holdsPass, rebuild] = await Promise.all([
+    hasFounderPass(admin, app.user_id),
+    getRebuildForUser(admin, app.user_id),
+  ]);
 
   // Name the referrer rather than showing a bare code — "a3f9k2" tells a
   // reviewer nothing about who vouched for this applicant.
@@ -230,6 +240,37 @@ export default async function AdminApplicationDetail({
         </p>
       </Card>
 
+      {rebuild && (
+        <Card className="mt-6 border-phosphor/40 bg-phosphor/[0.04]">
+          <div className="flex items-center gap-2">
+            <Hammer className="h-4 w-4 text-phosphor-ink" />
+            <h3 className="text-sm font-semibold text-phosphor-ink">
+              Seven-day rebuild submitted
+            </h3>
+            <span className="ml-auto text-xs text-ink-faint">
+              {rebuild.status === "reviewed" ? "reviewed" : "awaiting review"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-ink-faint">
+            This pass holder was declined and built their way back in. Read it,
+            then re-open and re-decide below to give them their fresh review.
+          </p>
+          <p className="mt-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
+            {rebuild.summary}
+          </p>
+          {rebuild.linkUrl && (
+            <a
+              href={rebuild.linkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-phosphor-ink underline underline-offset-4"
+            >
+              What they built <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+        </Card>
+      )}
+
       <Card className="mt-6">
         <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Decision
@@ -240,6 +281,13 @@ export default async function AdminApplicationDetail({
           feeWaived={Boolean((app as any).fee_waived)}
           initialNotes={app.review_notes ?? ""}
           priceLabel={siteConfig.derived.priceLabel}
+          passHolder={holdsPass}
+          initialFeedback={{
+            strongest: (app as any).feedback_strongest ?? "",
+            missing: (app as any).feedback_missing ?? "",
+            nextStep: (app as any).feedback_next_step ?? "",
+            secondReview: (app as any).feedback_second_review ?? null,
+          }}
         />
       </Card>
 

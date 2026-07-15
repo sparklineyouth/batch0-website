@@ -9,7 +9,7 @@ import { Textarea, Label } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { bulkDecideApplications } from "./[id]/actions";
 import { getActionError } from "@/lib/action-error";
-import { CheckSquare, Square, Share2, Ticket } from "lucide-react";
+import { CheckSquare, Square, Share2, Ticket, Hammer } from "lucide-react";
 
 // Statuses where bulk-decide makes sense. Decided / paid / enrolled rows
 // don't get a usable checkbox — clicking them just navigates.
@@ -63,6 +63,10 @@ type AppRow = {
   referralsPaid: number;
   /** Holds a redeemed 3D-printed founder pass card. Outranks a referral. */
   hasFounderPass: boolean;
+  /** Submitted a seven-day rebuild that's still awaiting a fresh review. */
+  hasPendingRebuild: boolean;
+  /** Business-day age vs the 3-day target — only set for waiting pass apps. */
+  sla: { businessDays: number; overTarget: boolean } | null;
 };
 
 /** Columns. Shared by the header and every row so they can't drift apart.
@@ -193,9 +197,15 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
             </button>
             <Link
               href={`/admin/applications/${a.id}`}
-              className="truncate text-ink group-hover:text-phosphor-ink"
+              className="flex min-w-0 items-center gap-1.5 text-ink group-hover:text-phosphor-ink"
             >
-              {a.full_name || "—"}
+              {a.hasPendingRebuild && (
+                <Hammer
+                  className="h-3.5 w-3.5 shrink-0 text-phosphor-ink"
+                  aria-label="Seven-day rebuild — awaiting fresh review"
+                />
+              )}
+              <span className="truncate">{a.full_name || "—"}</span>
             </Link>
             <div className="truncate text-ink-soft">
               {a.profile?.email ?? "—"}
@@ -282,8 +292,22 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
             <div>
               <StatusBadge status={a.status} />
             </div>
-            <div className="text-ink-faint font-mono tabular-nums">
+            <div className="font-mono tabular-nums text-ink-faint">
               <LocalTime value={a.submitted_at} mode="date" />
+              {a.sla && (
+                <span
+                  title={`Pass application — ${a.sla.businessDays} business day${
+                    a.sla.businessDays === 1 ? "" : "s"
+                  } since submission (3-day target)`}
+                  className={`ml-1.5 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium ${
+                    a.sla.overTarget
+                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                      : "bg-phosphor/10 text-phosphor-ink"
+                  }`}
+                >
+                  {a.sla.businessDays}bd
+                </span>
+              )}
             </div>
           </div>
         );

@@ -14,6 +14,21 @@ import {
 // runs server-side with RLS bypassed, and the checks below ARE the access
 // control. Do not import this into a client component.
 
+/**
+ * The optional public founder profile a holder writes on their pass
+ * (migration 0041). Every field is null/empty until the holder fills it in,
+ * and `public` gates the rich block on /pass/[serial] — the ticket itself is
+ * public the moment a card is claimed, the profile only when published.
+ */
+export type PassProfile = {
+  projectName: string | null;
+  bio: string | null;
+  websiteUrl: string | null;
+  demoUrl: string | null;
+  milestones: string[];
+  public: boolean;
+};
+
 /** A pass as its holder sees it. */
 export type FounderPass = {
   serial: number;
@@ -26,7 +41,54 @@ export type FounderPass = {
    * (the only admin action) is permanent. See 0040 for the full argument.
    */
   redeemedCode: string | null;
+  /**
+   * The holder's editable profile (migration 0041). Fields read as null/[]
+   * /false on a database where 0041 hasn't run — getPassForUser select("*")
+   * simply won't return the columns, and the mapping below defaults them.
+   */
+  profile: PassProfile;
 };
+
+/**
+ * A founder_passes row as read via select("*"). Profile columns are optional so
+ * the shape still matches on a database where migration 0041 hasn't run.
+ */
+export type PassRow = {
+  serial: number;
+  redeemed_at: string | null;
+  batch: string;
+  redeemed_by?: string | null;
+  redeemed_code?: string | null;
+  project_name?: string | null;
+  founder_bio?: string | null;
+  website_url?: string | null;
+  demo_url?: string | null;
+  milestones?: unknown;
+  profile_public?: boolean | null;
+};
+
+/** Map the profile columns off a founder_passes row, tolerating their absence. */
+function mapPassProfile(row: {
+  project_name?: string | null;
+  founder_bio?: string | null;
+  website_url?: string | null;
+  demo_url?: string | null;
+  milestones?: unknown;
+  profile_public?: boolean | null;
+}): PassProfile {
+  return {
+    projectName: row.project_name ?? null,
+    bio: row.founder_bio ?? null,
+    websiteUrl: row.website_url ?? null,
+    demoUrl: row.demo_url ?? null,
+    milestones: Array.isArray(row.milestones)
+      ? (row.milestones as unknown[]).filter(
+          (m): m is string => typeof m === "string",
+        )
+      : [],
+    public: row.profile_public === true,
+  };
+}
 
 /**
  * Tuition discount for pass holders, in cents. Applied server-side at
@@ -189,19 +251,17 @@ export async function getPassForUser(
     .is("revoked_at", null)
     .maybeSingle();
   if (!data) return null;
-  const row = data as {
-    serial: number;
-    redeemed_at: string | null;
-    batch: string;
-    redeemed_code?: string | null;
-  };
+  const row = data as PassRow;
   return {
     serial: row.serial,
     redeemedAt: row.redeemed_at,
     batch: row.batch,
     redeemedCode: row.redeemed_code ?? null,
+    profile: mapPassProfile(row),
   };
 }
+
+export { mapPassProfile };
 
 export async function hasFounderPass(
   client: SupabaseClient,

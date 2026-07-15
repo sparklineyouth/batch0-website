@@ -5,6 +5,7 @@ import {
   hasFounderPass,
   FOUNDER_PASS_TUITION_DISCOUNT_CENTS,
 } from "@/lib/founder-pass";
+import { markRebuildReviewedForUser } from "@/lib/founder-pass-perks";
 import { assertAdmin } from "@/lib/server-guards";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
@@ -12,10 +13,22 @@ import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
 import { syncMemberRoles, postChannelMessage, announcementEmbed, getDiscordSettings } from "@/lib/discord";
 
+export type StructuredFeedback = {
+  strongest?: string;
+  missing?: string;
+  nextStep?: string;
+  secondReview?: boolean | null;
+};
+
 export async function decideApplication(
   applicationId: string,
   decision: "accepted" | "rejected",
   notes: string,
+  // Structured rejection feedback (perk 3). Only meaningful when declining a
+  // pass holder; ignored on accept and for non-holders. The single-app review
+  // UI collects it for pass holders; bulk decisions pass it undefined and fall
+  // back to the free-text notes guarantee below.
+  feedback?: StructuredFeedback,
 ) {
   const { userId: reviewerId } = await assertAdmin();
   const admin = createAdminClient();
@@ -34,33 +47,88 @@ export async function decideApplication(
   if (fetchErr || !app) throw new Error(fetchErr?.message ?? "Not found");
 
   // Founder-pass perk, enforced where it can't be forgotten: a pass promises
-  // "a straight answer if it's a no" (app/pass/page.tsx), and a promise the
-  // admin can skip on a busy day isn't a promise — see the referral card
-  // post-mortem in that file. The notes box already exists in the review UI
-  // and is marked visible to the applicant; rejection mails and the
-  // applicant dashboard both surface it.
-  const applicantHoldsPass = await hasFounderPass(
-    admin,
-    (app as any).user_id,
-  );
-  if (decision === "rejected" && applicantHoldsPass && !notes.trim()) {
-    throw new Error(
-      "This applicant holds a founder pass, which guarantees written feedback " +
-        "with a rejection. Write them a note (it's sent to the applicant) " +
-        "before declining.",
-    );
+  // "a real answer if it's a no" (app/pass/page.tsx), and a promise the admin
+  // can skip on a busy day isn't a promise — see the referral card post-mortem
+  // in that file. For pass holders the single-app UI collects STRUCTURED
+  // feedback (strongest / missing / next step); a bulk decision has none and
+  // must still carry a free-text note. Either way, a form-letter "no" to a pass
+  // holder is impossible.
+  const applicantHoldsPass = await hasFounderPass(admin, (app as any).user_id);
+
+  const f = feedback ?? {};
+  const strongest = (f.strongest ?? "").trim();
+  const missing = (f.missing ?? "").trim();
+  const nextStep = (f.nextStep ?? "").trim();
+  const hasStructured = !!(strongest || missing || nextStep);
+
+  if (decision === "rejected" && applicantHoldsPass) {
+    if (hasStructured) {
+      if (!strongest || !missing || !nextStep) {
+        throw new Error(
+          "This applicant holds a founder pass. Its promise is a decline that " +
+            "explains itself — fill in what was strongest, what was missing, " +
+            "and the most useful next step before declining.",
+        );
+      }
+    } else if (!notes.trim()) {
+      throw new Error(
+        "This applicant holds a founder pass, which guarantees written " +
+          "feedback with a rejection. Write them feedback (it's sent to the " +
+          "applicant) before declining.",
+      );
+    }
   }
 
-  const { error } = await admin
+  // review_notes stays the single source the email + the applicant's existing
+  // surfaces read, so on a rejection with structured feedback we COMPOSE it
+  // from the parts. That keeps the feedback intact even on a database where the
+  // structured columns don't exist yet (the write below tolerates that), and
+  // means the rejection email carries the same words the dashboard shows.
+  const effectiveNotes =
+    decision === "rejected" && hasStructured
+      ? composeStructuredNotes({ strongest, missing, nextStep, notes, secondReview: f.secondReview })
+      : notes;
+
+  const baseUpdate = {
+    status: decision,
+    review_notes: effectiveNotes || null,
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: reviewerId,
+  };
+  const structuredUpdate =
+    decision === "rejected" && hasStructured
+      ? {
+          feedback_strongest: strongest || null,
+          feedback_missing: missing || null,
+          feedback_next_step: nextStep || null,
+          feedback_second_review:
+            typeof f.secondReview === "boolean" ? f.secondReview : null,
+        }
+      : {};
+
+  let { error } = await admin
     .from("applications")
-    .update({
-      status: decision,
-      review_notes: notes || null,
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: reviewerId,
-    })
+    .update({ ...baseUpdate, ...structuredUpdate })
     .eq("id", applicationId);
+  // Tolerate migration 0041 not being applied yet: a missing feedback_* column
+  // must never brick the decision. review_notes already carries the composed
+  // feedback, so retrying without the structured columns loses only the
+  // discrete display, not the words — the same fallback 0040 uses for
+  // redeemed_code.
+  if (error && /feedback_(strongest|missing|next_step|second_review)/i.test(error.message)) {
+    ({ error } = await admin
+      .from("applications")
+      .update(baseUpdate)
+      .eq("id", applicationId));
+  }
   if (error) throw new Error(error.message);
+
+  // A decision on a pass holder closes any outstanding seven-day rebuild — this
+  // decision IS the fresh review the rebuild earned. Best-effort / no-op when
+  // there's no rebuild.
+  if (applicantHoldsPass) {
+    await markRebuildReviewedForUser(admin, (app as any).user_id, reviewerId);
+  }
 
   await logAudit({
     action: `application.${decision}`,
@@ -71,8 +139,8 @@ export async function decideApplication(
         status: (app as any).status,
         review_notes: (app as any).review_notes,
       },
-      after: { status: decision, review_notes: notes || null },
-      notes: notes || null,
+      after: { status: decision, review_notes: effectiveNotes || null },
+      notes: effectiveNotes || null,
     },
   });
 
@@ -110,7 +178,7 @@ export async function decideApplication(
     } else {
       const t = Templates.applicationRejected({
         name: a.full_name ?? profile?.full_name ?? null,
-        notes: notes || null,
+        notes: effectiveNotes || null,
       });
       if (profile?.email) {
         await sendEmail({
@@ -365,6 +433,34 @@ export async function waiveApplicationFee(
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Fold the four structured feedback parts into the single review_notes string
+ * the rejection email and the applicant's dashboard fall back to. The dashboard
+ * renders the discrete columns when they exist; this text is what carries the
+ * feedback everywhere else (and on a pre-0041 database, everywhere).
+ */
+function composeStructuredNotes(args: {
+  strongest: string;
+  missing: string;
+  nextStep: string;
+  notes: string;
+  secondReview?: boolean | null;
+}): string {
+  const parts = [
+    `What was strongest:\n${args.strongest}`,
+    `What was missing:\n${args.missing}`,
+    `Most useful next step:\n${args.nextStep}`,
+  ];
+  if (args.secondReview === true) {
+    parts.push(
+      "You're eligible for another look — complete the seven-day build to earn a fresh review.",
+    );
+  }
+  const extra = args.notes.trim();
+  if (extra) parts.push(extra);
+  return parts.join("\n\n");
 }
 
 /**

@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea, Label } from "@/components/ui/input";
+import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import {
   decideApplication,
@@ -48,15 +49,32 @@ export function ReviewActions({
   feeWaived,
   initialNotes,
   priceLabel = "$130",
+  passHolder = false,
+  initialFeedback,
 }: {
   applicationId: string;
   status: string;
   feeWaived: boolean;
   initialNotes: string;
   priceLabel?: string;
+  /** Whether the applicant holds a founder pass — gates the structured
+   *  feedback fields and the "can't form-letter a decline" requirement. */
+  passHolder?: boolean;
+  initialFeedback?: {
+    strongest: string;
+    missing: string;
+    nextStep: string;
+    secondReview: boolean | null;
+  };
 }) {
   const router = useRouter();
   const [notes, setNotes] = useState(initialNotes);
+  const [strongest, setStrongest] = useState(initialFeedback?.strongest ?? "");
+  const [missing, setMissing] = useState(initialFeedback?.missing ?? "");
+  const [nextStep, setNextStep] = useState(initialFeedback?.nextStep ?? "");
+  const [secondReview, setSecondReview] = useState(
+    initialFeedback?.secondReview ?? false,
+  );
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
   const [confirmWaive, setConfirmWaive] = useState(false);
@@ -73,7 +91,14 @@ export function ReviewActions({
     setError(undefined);
     start(async () => {
       try {
-        await decideApplication(applicationId, decision, notes);
+        await decideApplication(
+          applicationId,
+          decision,
+          notes,
+          passHolder
+            ? { strongest, missing, nextStep, secondReview }
+            : undefined,
+        );
         router.refresh();
       } catch (e: any) {
         setError(getActionError(e));
@@ -143,6 +168,58 @@ export function ReviewActions({
           ))}
         </div>
       </div>
+
+      {passHolder && !decided && (
+        <div className="space-y-3 rounded-lg border border-phosphor/30 bg-phosphor/[0.04] p-4">
+          <div>
+            <p className="text-sm font-semibold text-phosphor-ink">
+              Founder pass — structured feedback
+            </p>
+            <p className="mt-0.5 text-xs text-ink-soft">
+              A pass application can&apos;t be declined with a form letter. Fill
+              these in to Reject; they&apos;re shown to the applicant and emailed.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="fb-strongest">What was strongest</Label>
+            <Textarea
+              id="fb-strongest"
+              rows={2}
+              value={strongest}
+              disabled={pending}
+              onChange={(e) => setStrongest(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="fb-missing">What was missing</Label>
+            <Textarea
+              id="fb-missing"
+              rows={2}
+              value={missing}
+              disabled={pending}
+              onChange={(e) => setMissing(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="fb-next">Most useful next step</Label>
+            <Textarea
+              id="fb-next"
+              rows={2}
+              value={nextStep}
+              disabled={pending}
+              onChange={(e) => setNextStep(e.target.value)}
+            />
+          </div>
+          <Toggle
+            label="Eligible for a second review"
+            description="Shown to the applicant. The seven-day rebuild is offered on any decline regardless."
+            checked={secondReview}
+            disabled={pending}
+            onChange={setSecondReview}
+          />
+        </div>
+      )}
+
       {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
       <div className="flex flex-wrap gap-2">
         {!decided && (

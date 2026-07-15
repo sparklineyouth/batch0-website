@@ -30,15 +30,15 @@ export function FounderPassCard({
             Founder pass
           </div>
           <p className="mt-3 text-sm text-ink-soft">
-            Your card is bound to this account. Your application is fast-tracked
-            to the top of the review queue, and your Discord role lands as soon
-            as you link your account.
+            Bound to this account, for good. A priority review lane, real
+            feedback, a feedback credit, the Founder Toolkit, and a public
+            profile — whether or not you join this cohort.
           </p>
           <Link
             href="/pass"
             className="mt-3 inline-block text-xs font-semibold text-amber-200 underline underline-offset-4"
           >
-            View your pass →
+            Open your pass →
           </Link>
         </div>
         <div className="text-right">
