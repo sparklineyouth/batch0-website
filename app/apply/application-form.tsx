@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
 import {
   saveDraftAction,
@@ -8,7 +7,6 @@ import {
   attachReferralCodeAction,
 } from "./actions";
 import type { Application } from "@/lib/types";
-import { Check, Loader2, AlertCircle } from "lucide-react";
 import { IdeaValidator } from "./idea-validate";
 import {
   QUESTION_FIELDS,
@@ -27,8 +25,19 @@ const STEPS = [
 // Theme-native field styling. The shared Input/Textarea components ship dark
 // literals; we append these tokens so they override to the marketing surface
 // (works in light + dark). Kept in one place so every field stays consistent.
+// `rounded-none` squares the corners per the broadsheet system (it wins over
+// the baked `rounded-md` — Tailwind emits .rounded-none after .rounded-md);
+// the shared components already carry the amber focus ring.
 const FIELD_CLASS =
-  "bg-paper border-line text-ink placeholder:text-ink-faint focus:border-phosphor";
+  "rounded-none bg-paper border-line text-ink placeholder:text-ink-faint focus:border-phosphor";
+
+// Broadsheet-system buttons: squared, key-press shift (.press), amber
+// primary / hairline secondary. Local literals (UI-only) — the shared
+// ui/Button ships rounded corners + scale easing that the system forbids.
+const BTN_BASE =
+  "press inline-flex h-10 select-none items-center justify-center whitespace-nowrap px-4 text-sm font-semibold lowercase leading-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
+const BTN_PRIMARY = `${BTN_BASE} bg-phosphor text-on-phosphor hover:bg-phosphor-200`;
+const BTN_SECONDARY = `${BTN_BASE} border border-line bg-paper font-medium text-ink hover:border-ink/30`;
 
 type FormState = {
   full_name: string;
@@ -418,14 +427,14 @@ export function ApplicationForm({
   const show = (key: string) => isVisible(cfg, key);
 
   return (
-    <div className="rounded-2xl border border-line bg-wash p-5 sm:p-6 md:p-8">
+    <div className="border border-line p-5 sm:p-6 md:p-8">
       {/* Mobile stepper: compact progress + current label only. The full
           4-up stepper wraps awkwardly under 380px. */}
       <div
         className="mb-6 sm:hidden"
         aria-label={`Application progress: step ${step} of ${STEPS.length}`}
       >
-        <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]">
+        <div className="flex items-center justify-between font-mono text-[11px] font-medium lowercase tracking-[0.06em]">
           <span className="text-phosphor-ink">
             Step {step} of {STEPS.length}
           </span>
@@ -435,10 +444,10 @@ export function ApplicationForm({
         </div>
         <div
           aria-hidden
-          className="mt-2 h-1 w-full overflow-hidden rounded-full bg-line"
+          className="mt-2 h-1 w-full overflow-hidden bg-line"
         >
           <div
-            className="h-full bg-phosphor transition-all duration-300"
+            className="h-full bg-phosphor"
             style={{ width: `${(step / STEPS.length) * 100}%` }}
           />
         </div>
@@ -454,7 +463,7 @@ export function ApplicationForm({
                 onClick={() => setStep(s.id)}
                 aria-label={`Jump to step ${s.id}: ${s.title}`}
                 aria-current={isCurrent ? "step" : undefined}
-                className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-medium ${
+                className={`press flex h-8 w-8 items-center justify-center border font-mono text-[11px] font-medium ${
                   isCurrent
                     ? "border-phosphor bg-phosphor text-on-phosphor"
                     : reached
@@ -464,7 +473,7 @@ export function ApplicationForm({
                       : "border-line text-ink-faint"
                 }`}
               >
-                {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
+                {hasErr ? <span aria-hidden>!</span> : s.id}
               </button>
             );
           })}
@@ -487,10 +496,10 @@ export function ApplicationForm({
                 onClick={() => setStep(s.id)}
                 aria-label={`Step ${s.id}: ${s.title}${hasErr ? " (has errors)" : ""}`}
                 aria-current={isCurrent ? "step" : undefined}
-                className="group inline-flex items-center gap-2 rounded-full py-0.5 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60"
+                className="group inline-flex items-center gap-2 py-0.5 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60"
               >
                 <span
-                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
+                  className={`flex h-7 w-7 items-center justify-center border font-mono text-[11px] font-medium ${
                     isCurrent
                       ? "border-phosphor bg-phosphor text-on-phosphor"
                       : reached
@@ -500,14 +509,14 @@ export function ApplicationForm({
                         : "border-line text-ink-faint group-hover:border-ink/30 group-hover:text-ink-soft"
                   }`}
                 >
-                  {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
+                  {hasErr ? <span aria-hidden>!</span> : s.id}
                 </span>
                 <span
-                  className={
+                  className={`lowercase ${
                     isCurrent
                       ? "text-ink"
                       : "text-ink-faint group-hover:text-ink-soft"
-                  }
+                  }`}
                 >
                   {s.title}
                 </span>
@@ -525,7 +534,7 @@ export function ApplicationForm({
       {step === 1 && (
         <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
-            <Label htmlFor="account_email">Account email</Label>
+            <Label className="lowercase" htmlFor="account_email">Account email</Label>
             <Input
               id="account_email"
               className={FIELD_CLASS}
@@ -536,7 +545,7 @@ export function ApplicationForm({
           </div>
           {show("full_name") && (
             <div className="md:col-span-2">
-              <Label htmlFor="full_name" required={isRequired(cfg, "full_name")}>
+              <Label className="lowercase" htmlFor="full_name" required={isRequired(cfg, "full_name")}>
                 {cfg.full_name.label} {reqMark("full_name")}
               </Label>
               <Input
@@ -562,7 +571,7 @@ export function ApplicationForm({
           )}
           {show("age") && (
             <div>
-              <Label htmlFor="age" required={isRequired(cfg, "age")}>
+              <Label className="lowercase" htmlFor="age" required={isRequired(cfg, "age")}>
                 {cfg.age.label} {reqMark("age")}
               </Label>
               <Input
@@ -587,7 +596,7 @@ export function ApplicationForm({
           )}
           {show("grade") && (
             <div>
-              <Label htmlFor="grade" required={isRequired(cfg, "grade")}>
+              <Label className="lowercase" htmlFor="grade" required={isRequired(cfg, "grade")}>
                 {cfg.grade.label} {reqMark("grade")}
               </Label>
               <Input
@@ -606,7 +615,7 @@ export function ApplicationForm({
           )}
           {show("school") && (
             <div className="md:col-span-2">
-              <Label htmlFor="school" required={isRequired(cfg, "school")}>
+              <Label className="lowercase" htmlFor="school" required={isRequired(cfg, "school")}>
                 {cfg.school.label} {reqMark("school")}
               </Label>
               <Input
@@ -626,7 +635,7 @@ export function ApplicationForm({
           )}
           {show("city") && (
             <div>
-              <Label htmlFor="city" required={isRequired(cfg, "city")}>
+              <Label className="lowercase" htmlFor="city" required={isRequired(cfg, "city")}>
                 {cfg.city.label} {reqMark("city")}
               </Label>
               <Input
@@ -646,7 +655,7 @@ export function ApplicationForm({
           )}
           {show("country") && (
             <div>
-              <Label htmlFor="country" required={isRequired(cfg, "country")}>
+              <Label className="lowercase" htmlFor="country" required={isRequired(cfg, "country")}>
                 {cfg.country.label} {reqMark("country")}
               </Label>
               <Input
@@ -666,7 +675,7 @@ export function ApplicationForm({
           )}
           {show("parent_email") && (
             <div className="md:col-span-2">
-              <Label htmlFor="parent_email">
+              <Label className="lowercase" htmlFor="parent_email">
                 {cfg.parent_email.label}{" "}
                 {parentEmailRequired && (
                   <>
@@ -711,6 +720,7 @@ export function ApplicationForm({
           {show("experience") && (
             <div>
               <Label
+                className="lowercase"
                 htmlFor="experience"
                 required={isRequired(cfg, "experience")}
               >
@@ -737,6 +747,7 @@ export function ApplicationForm({
             {show("hours_per_week") && (
               <div>
                 <Label
+                  className="lowercase"
                   htmlFor="hours_per_week"
                   required={isRequired(cfg, "hours_per_week")}
                 >
@@ -767,6 +778,7 @@ export function ApplicationForm({
             {show("referral_source") && (
               <div>
                 <Label
+                  className="lowercase"
                   htmlFor="referral_source"
                   required={isRequired(cfg, "referral_source")}
                 >
@@ -794,8 +806,8 @@ export function ApplicationForm({
           {(show("linkedin_url") ||
             show("resume_url") ||
             show("portfolio_url")) && (
-            <div className="rounded-xl border border-line bg-paper p-4">
-              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
+            <div className="border border-line p-4">
+              <p className="font-mono text-xs font-medium lowercase tracking-[0.06em] text-phosphor-ink">
                 Links (optional)
               </p>
               <p className="mt-1 text-xs text-ink-soft">
@@ -805,6 +817,7 @@ export function ApplicationForm({
                 {show("linkedin_url") && (
                   <div>
                     <Label
+                      className="lowercase"
                       htmlFor="linkedin_url"
                       required={isRequired(cfg, "linkedin_url")}
                     >
@@ -838,6 +851,7 @@ export function ApplicationForm({
                 {show("resume_url") && (
                   <div>
                     <Label
+                      className="lowercase"
                       htmlFor="resume_url"
                       required={isRequired(cfg, "resume_url")}
                     >
@@ -871,6 +885,7 @@ export function ApplicationForm({
                 {show("portfolio_url") && (
                   <div>
                     <Label
+                      className="lowercase"
                       htmlFor="portfolio_url"
                       required={isRequired(cfg, "portfolio_url")}
                     >
@@ -910,7 +925,7 @@ export function ApplicationForm({
       {step === 3 && (
         <div className="space-y-4">
           <div>
-            <Label htmlFor="why_join" required={isRequired(cfg, "why_join")}>
+            <Label className="lowercase" htmlFor="why_join" required={isRequired(cfg, "why_join")}>
               {cfg.why_join.label} {reqMark("why_join")}
             </Label>
             <Textarea
@@ -940,6 +955,7 @@ export function ApplicationForm({
           {show("startup_idea") && (
             <div>
               <Label
+                className="lowercase"
                 htmlFor="startup_idea"
                 required={isRequired(cfg, "startup_idea")}
               >
@@ -964,7 +980,7 @@ export function ApplicationForm({
             </div>
           )}
           <div>
-            <Label required={isRequired(cfg, "team_size")}>
+            <Label className="lowercase" required={isRequired(cfg, "team_size")}>
               {cfg.team_size.label} {reqMark("team_size")}
             </Label>
             {cfg.team_size.help && (
@@ -979,7 +995,7 @@ export function ApplicationForm({
               aria-required="true"
               aria-invalid={fieldErrors.team_size ? true : undefined}
               tabIndex={-1}
-              className={`flex flex-wrap gap-2 rounded-lg ${
+              className={`flex flex-wrap gap-2 ${
                 fieldErrors.team_size
                   ? "ring-1 ring-red-400/40 ring-offset-2 ring-offset-transparent p-2 -m-2"
                   : ""
@@ -994,7 +1010,7 @@ export function ApplicationForm({
                     role="radio"
                     aria-checked={selected}
                     onClick={() => set("team_size", String(opt.value))}
-                    className={`rounded-lg border px-3 py-2 text-sm transition active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60 ${
+                    className={`press border px-3 py-2 text-sm lowercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60 ${
                       selected
                         ? "border-phosphor bg-phosphor/15 text-ink"
                         : "border-line bg-paper text-ink-soft hover:border-ink/30 hover:text-ink"
@@ -1014,8 +1030,8 @@ export function ApplicationForm({
 
       {step === 4 && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-line bg-paper p-5 text-sm">
-            <h4 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
+          <div className="border border-line p-5 text-sm">
+            <h4 className="mb-3 font-mono text-xs font-medium lowercase tracking-[0.06em] text-phosphor-ink">
               Review your answers
             </h4>
             {show("full_name") && (
@@ -1105,7 +1121,7 @@ export function ApplicationForm({
               />
             )}
           </div>
-          <div className="rounded-xl border border-phosphor/30 bg-phosphor/5 p-4 text-sm text-ink-soft">
+          <div className="border border-phosphor/25 p-4 text-sm text-ink-soft">
             Submitting moves your application to{" "}
             <span className="text-ink">review</span>. You won't be charged
             anything yet — payment ({priceLabel}) only happens after we accept
@@ -1117,7 +1133,7 @@ export function ApplicationForm({
       {submitError && (
         <div
           role="alert"
-          className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-500"
+          className="mt-5 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-500"
         >
           {submitError}
         </div>
@@ -1127,17 +1143,18 @@ export function ApplicationForm({
         <SaveStatusIndicator status={save} />
         <div className="flex items-center gap-2">
           {step > 1 && (
-            <Button
-              variant="secondary"
+            <button
+              className={BTN_SECONDARY}
               type="button"
               onClick={() => setStep(step - 1)}
               disabled={submitPending}
             >
               Back
-            </Button>
+            </button>
           )}
           {step < STEPS.length ? (
-            <Button
+            <button
+              className={BTN_PRIMARY}
               type="button"
               onClick={goNext}
               disabled={submitPending || stepHasErrors(step)}
@@ -1148,15 +1165,16 @@ export function ApplicationForm({
               }
             >
               Next
-            </Button>
+            </button>
           ) : (
-            <Button
+            <button
+              className={BTN_PRIMARY}
               type="button"
               onClick={handleSubmit}
               disabled={submitPending}
             >
               {submitPending ? "Submitting…" : "Submit application"}
-            </Button>
+            </button>
           )}
         </div>
       </div>
@@ -1167,22 +1185,21 @@ export function ApplicationForm({
 function SaveStatusIndicator({ status }: { status: SaveStatus }) {
   // Wrap in a polite live region so AT users hear "Saving draft…" /
   // "Draft saved" without us hijacking their focus.
+  // Text-only, mono, no icons and no spinner — the /apply surface is
+  // completely still; live copy in the polite region is the feedback.
   const body =
     status.kind === "saving" ? (
-      <span className="inline-flex items-center gap-1.5 text-xs text-ink-soft">
-        <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Saving draft…
+      <span className="font-mono text-xs lowercase text-ink-soft">
+        Saving draft…
       </span>
     ) : status.kind === "saved" ? (
-      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500">
-        <Check className="h-3 w-3" aria-hidden /> Draft saved at{" "}
-        {status.at.toLocaleTimeString()}
+      <span className="font-mono text-xs lowercase text-ink-soft">
+        Draft saved at {status.at.toLocaleTimeString()}
       </span>
     ) : status.kind === "error" ? (
-      <span className="inline-flex items-center gap-1.5 text-xs text-red-500">
-        <AlertCircle className="h-3 w-3" aria-hidden /> {status.message}
-      </span>
+      <span className="font-mono text-xs text-red-500">{status.message}</span>
     ) : (
-      <span className="text-xs text-ink-faint">
+      <span className="font-mono text-xs lowercase text-ink-faint">
         Drafts autosave as you type.
       </span>
     );
@@ -1206,7 +1223,7 @@ function ReviewRow({
     <div
       className={`flex ${multiline ? "flex-col gap-1" : "items-baseline gap-3"} border-b border-line py-2 last:border-0`}
     >
-      <div className="text-xs uppercase tracking-wider text-ink-faint">
+      <div className="font-mono text-xs lowercase tracking-[0.06em] text-ink-faint">
         {label}
       </div>
       <div

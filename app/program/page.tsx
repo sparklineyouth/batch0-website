@@ -1,6 +1,8 @@
 import { headers } from "next/headers";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
+import { StatusBar } from "@/components/status-bar";
+import { PixelField } from "@/components/pixel-field";
 import { Ledger } from "@/components/ledger";
 import { ApplyCta } from "@/components/apply-cta";
 import { WEEKS } from "@/components/curriculum";
@@ -40,6 +42,13 @@ const DETAIL: Record<string, string[]> = {
   ],
 };
 
+/**
+ * The program page — the broadsheet system's marketing grammar applied to
+ * the syllabus. Standard section anatomy throughout (command head on the
+ * rail, hairline separators, the shared 12-column grid), the curriculum as
+ * the page's quiet/dense movement, and the one-ask rule: "apply" appears
+ * only in the closing section and the nav chrome.
+ */
 export default async function ProgramPage() {
   const countryCode = getCountryFromHeaders(headers());
   const [config, profile] = await Promise.all([
@@ -49,61 +58,79 @@ export default async function ProgramPage() {
   const authedHome = profile ? roleHome(profile.role) : null;
   const { derived } = config;
   const cohortLabel = derived.cohortLabel || "the next cohort";
+  const cohortCode = String(config.cohort?.cohortNumber ?? 1).padStart(3, "0");
 
   return (
     <main className="min-h-screen bg-paper">
+      <StatusBar config={config} />
       <Navbar
         authedHome={authedHome}
         cohortLabel={derived.cohortLabel || "the next cohort"}
       />
 
-      <section className="px-5 pb-16 pt-14 sm:px-6 sm:pt-20 md:pb-20 md:pt-24">
-        <div className="mx-auto grid max-w-[1100px] gap-12 md:grid-cols-12 md:gap-8">
-          <div className="md:col-span-7">
-            <h1 className="font-display text-[clamp(2.25rem,5.5vw,3.5rem)] font-bold leading-[1.03] tracking-[-0.025em] text-ink">
-              Build sessions. One company. <span className="hl">Yours.</span>
-            </h1>
-            <p className="mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
-              This page is the whole program, no mystery: exactly the steps we take to help you take your company from
-              idea to demo day.
-              {/* TODO(RISH): exact weekly live-session schedule + expected
-                  hours/week — logged in NEEDED_FACTS.md. */}
-            </p>
+      {/* ONE OBJECT: the single shared container — every section starts on
+          the same left margin and shares the 12-column grid. */}
+      <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
+        {/* the page head — sentence left, cohort ledger right */}
+        <section className="py-14 md:py-20">
+          <p className="cmdline font-mono">
+            <b>cat program.txt</b>{" "}
+            <span className="mtime">· modified 2026-07-14</span>
+          </p>
+          <div className="mt-6 grid grid-cols-12 gap-x-6 gap-y-10">
+            <div className="col-span-12 md:col-span-7">
+              <h1 className="t-head max-w-[22ch] text-ink">
+                build sessions. one company.{" "}
+                <span className="text-phosphor">yours.</span>
+              </h1>
+              <p className="t-body mt-6 max-w-[58ch] text-ink-soft">
+                This page is the whole program, no mystery: exactly the steps we take to help you take your company from
+                idea to demo day.
+                {/* TODO(RISH): exact weekly live-session schedule + expected
+                    hours/week — logged in NEEDED_FACTS.md. */}
+              </p>
+            </div>
+            <div className="col-span-12 md:col-span-5 md:pl-6 md:pt-2">
+              <Ledger config={config} className="border-t border-line pt-6 md:border-t-0 md:pt-0" />
+            </div>
           </div>
-          <div className="md:col-span-5 md:pl-6 md:pt-2">
-            <Ledger config={config} className="border-t border-line pt-6 md:border-t-0 md:pt-0" />
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="border-t border-line px-5 py-16 sm:px-6 md:py-24">
-        <div className="mx-auto max-w-[1100px]">
-          <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
-            Step by Step
-          </h2>
-          <ol className="mt-10">
+        {/* the curriculum — the page's dense movement */}
+        <section className="border-t border-phosphor/25 py-14 md:py-20">
+          <p className="cmdline font-mono">
+            <b>cat curriculum.txt</b>{" "}
+            <span className="mtime">· modified 2026-07-14</span>
+          </p>
+          <h2 className="t-head mt-4 text-ink">step by step</h2>
+          <ol className="mt-6">
             {WEEKS.map((w) => (
               <li
                 key={w.week}
-                className="grid gap-4 border-b border-line py-8 first:pt-0 last:border-b-0 md:grid-cols-12 md:gap-8"
+                className="grid grid-cols-12 gap-x-6 gap-y-4 border-t border-line py-6 last:border-b last:border-line"
               >
-                <div className="md:col-span-4">
-                  <p className="font-mono text-[13px] text-ink-faint">{w.week}</p>
-                  <h3 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink">
+                <div className="col-span-12 md:col-span-4">
+                  {/* step numbers are NOT deal-zeroes — they stay faint */}
+                  <p className="t-small font-mono lowercase text-ink-faint">
+                    {w.week}
+                  </p>
+                  <h3 className="t-body mt-1 font-semibold lowercase text-ink">
                     {w.title}
                   </h3>
-                  <p className="mt-2 font-mono text-[13px] font-medium text-ink">
-                    ships: {w.deliverable}
+                  <p className="t-small mt-2 font-mono lowercase text-ink">
+                    <span className="text-phosphor/60">ships:</span>{" "}
+                    {w.deliverable}
                   </p>
                 </div>
-                <div className="md:col-span-8">
-                  <p className="max-w-[40rem] text-[15px] leading-[1.65] text-ink-soft">
-                    {w.body}
-                  </p>
-                  <ul className="mt-4 max-w-[40rem] space-y-2">
+                <div className="col-span-12 md:col-span-8">
+                  <p className="t-body max-w-[64ch] text-ink-soft">{w.body}</p>
+                  <ul className="mt-4 max-w-[64ch] space-y-2">
                     {(DETAIL[w.title] ?? []).map((d) => (
-                      <li key={d} className="flex gap-3 text-[15px] leading-[1.6] text-ink-soft">
-                        <span aria-hidden className="mt-[0.72em] h-[3px] w-[14px] shrink-0 bg-phosphor" />
+                      <li key={d} className="t-body flex gap-3 text-ink-soft">
+                        <span
+                          aria-hidden
+                          className="mt-[0.72em] h-[3px] w-[14px] shrink-0 bg-phosphor"
+                        />
                         {d}
                       </li>
                     ))}
@@ -112,50 +139,56 @@ export default async function ProgramPage() {
               </li>
             ))}
           </ol>
-        </div>
-      </section>
+        </section>
 
-      <section className="border-t border-line bg-wash px-5 py-16 sm:px-6 md:py-24">
-        <div className="mx-auto grid max-w-[1100px] gap-10 md:grid-cols-12 md:gap-8">
-          <div className="md:col-span-4">
-            <h2 className="font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
-              Demo day
-            </h2>
+        {/* demo day */}
+        <section className="border-t border-phosphor/25 py-14 md:py-20">
+          <p className="cmdline font-mono">
+            <b>cat demo-day.txt</b>{" "}
+            <span className="mtime">· modified 2026-07-14</span>
+          </p>
+          <h2 className="t-head mt-4 text-ink">demo day</h2>
+          <div className="mt-6 grid grid-cols-12 gap-x-6">
+            <div className="col-span-12 md:col-span-8">
+              <p className="t-body max-w-[64ch] text-ink-soft">
+                The cohort ends with a live demo day: you pitch the
+                company you built to the batch0 team and invited guests.
+                Cohort standouts may be offered batch0 sponsorship: a
+                non-dilutive grant funded by our organization, decided purely on
+                merit. Funding is never guaranteed, tuition never buys a
+                sponsorship, and every student keeps 100% of their company
+                either way.
+                {/* TODO(RISH): demo-day date (settings.demo_day_date is unset)
+                    and the confirmed guest list once it exists — see
+                    NEEDED_FACTS.md. */}
+              </p>
+            </div>
           </div>
-          <div className="md:col-span-8">
-            <p className="max-w-[40rem] text-[1.0625rem] leading-[1.65] text-ink-soft">
-              The cohort ends with a live demo day: you pitch the
-              company you built to the batch0 team and invited guests.
-              Cohort standouts may be offered batch0 sponsorship: a
-              non-dilutive grant funded by our organization, decided purely on
-              merit. Funding is never guaranteed, tuition never buys a
-              sponsorship, and every student keeps 100% of their company
-              either way.
-              {/* TODO(RISH): demo-day date (settings.demo_day_date is unset)
-                  and the confirmed guest list once it exists — see
-                  NEEDED_FACTS.md. */}
-            </p>
-            
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="border-t border-line px-5 py-16 sm:px-6 md:py-24">
-        <div className="mx-auto max-w-[1100px]">
-          <h2 className="max-w-[26ch] font-display text-[clamp(1.75rem,4vw,2.75rem)] font-bold leading-[1.06] tracking-[-0.02em] text-ink">
-            If you read this far, you&apos;re the kind of person who
+        {/* the closing ask — the page's one apply CTA (plus nav chrome) */}
+        <section className="border-t border-phosphor/25 py-14 md:py-20">
+          <p className="cmdline font-mono">
+            <b>apply --cohort {cohortCode}</b>
+          </p>
+          <h2 className="t-head mt-4 max-w-[26ch] text-ink">
+            if you read this far, you&apos;re the kind of person who
             finishes things.
           </h2>
-          <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <ApplyCta label={`Apply for ${cohortLabel}`} location="program-page" />
-            <p className="text-[13px] text-ink-faint">
-              Free to apply · {derived.priceLabel} charged only if accepted
-            </p>
+          <div className="mt-7 flex flex-wrap items-center gap-4">
+            <ApplyCta
+              label={`apply for ${cohortLabel.toLowerCase()}`}
+              location="program-page"
+            />
+            <span className="aside-note lowercase">
+              free to apply · {derived.priceLabel} charged only if accepted
+            </span>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       <Footer config={config} />
+      <PixelField />
     </main>
   );
 }

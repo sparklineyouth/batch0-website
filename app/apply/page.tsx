@@ -6,6 +6,10 @@ import { requireUser } from "@/lib/auth";
 import { ApplicationForm } from "./application-form";
 import { getCountryFromHeaders, getRegionalPrice, DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 import { getApplicationQuestions } from "@/lib/application-questions";
+import { getSiteConfig } from "@/lib/site-config";
+import { StatusBar } from "@/components/status-bar";
+import { ZeroThread } from "@/components/zero-thread";
+import { FlagIcon } from "@/components/icons/pixel-icon";
 
 export const metadata = {
   title: "Apply · batch0",
@@ -28,6 +32,13 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
+/**
+ * The apply surface in the broadsheet system, tuned TRANSACTIONAL: plain,
+ * calm, zero motion, parent-legible. No PixelField, no cursor block, no
+ * glitch targets — the only icon on the page is the flag beside the title
+ * (the apply gate). Same anatomy as the marketing pages (status bar,
+ * command head, shared container + 12-column grid), quieter volume.
+ */
 export default async function ApplyPage({
   searchParams,
 }: {
@@ -35,12 +46,14 @@ export default async function ApplyPage({
 }) {
   const user = await requireUser();
   const supabase = createClient();
+  const country = getCountryFromHeaders(headers());
 
   const [
     { data: existing },
     { data: settingsRows },
     { data: openCohorts },
     questions,
+    siteConfig,
   ] = await Promise.all([
     supabase
       .from("applications")
@@ -64,6 +77,7 @@ export default async function ApplyPage({
       .in("status", ["upcoming", "active"])
       .order("starts_on", { ascending: true }),
     getApplicationQuestions(),
+    getSiteConfig({ countryCode: country }),
   ]);
 
   const settings: Record<string, any> = {};
@@ -83,21 +97,28 @@ export default async function ApplyPage({
   if (!applicationsOpen) {
     return (
       <div className="min-h-screen bg-paper">
-        <div className="relative mx-auto max-w-2xl px-5 sm:px-6 py-24">
+        <StatusBar config={siteConfig} />
+        <div className="mx-auto max-w-[1100px] px-5 py-14 sm:px-6 md:py-20">
           <Link
             href="/dashboard"
-            className="text-sm text-ink-soft hover:text-ink"
+            className="t-small lowercase text-ink-soft hover:text-ink"
           >
             ← Dashboard
           </Link>
-          <div className="mt-8 rounded-2xl border border-amber-400/40 bg-wash p-6">
-            <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-ink">
-              Applications are closed
-            </h1>
-            <p className="mt-3 text-sm text-ink-soft">
-              {settings.applications_closed_message ??
-                "Applications are currently closed. Check back soon for the next cohort."}
-            </p>
+          <div className="mt-8 grid grid-cols-12 gap-x-6">
+            <div className="col-span-12 md:col-span-8">
+              <p className="cmdline font-mono">
+                <b>cat apply.txt</b>{" "}
+                <span className="mtime">· modified 2026-07-14</span>
+              </p>
+              <h1 className="t-head mt-4 text-ink">
+                applications are closed
+              </h1>
+              <p className="t-body mt-3 max-w-[58ch] text-ink-soft">
+                {settings.applications_closed_message ??
+                  "Applications are currently closed. Check back soon for the next cohort."}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -126,120 +147,136 @@ export default async function ApplyPage({
   const cohortName =
     selected?.name ?? settings.active_cohort_name ?? "the next cohort";
   const capacity = selected?.capacity ?? 24;
-  const country = getCountryFromHeaders(headers());
   const regional = getRegionalPrice(selected?.price_cents ?? DEFAULT_PRICE_CENTS, country);
   const priceDollars = (regional.amountCents / 100).toFixed(0);
   const hasMultiple = cohorts.length > 1;
 
   return (
     <div className="min-h-screen bg-paper">
-      <div className="relative mx-auto max-w-3xl px-5 sm:px-6 py-10 sm:py-16">
-        <div className="mb-6 sm:mb-8 flex items-center justify-between">
-          <Link href="/dashboard" className="text-sm text-ink-soft hover:text-ink">
-            ← Dashboard
-          </Link>
-          {existing?.status === "draft" && (
-            <Link
-              href="/dashboard/application"
-              className="text-xs text-ink-faint hover:text-ink"
-            >
-              View draft summary
-            </Link>
-          )}
-        </div>
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
-          {reapplying ? "Reapply" : "Apply"}
-        </p>
-        <h1 className="mt-3 font-display text-[30px] sm:text-4xl font-bold tracking-[-0.02em] text-ink leading-[1.1]">
-          Apply to batch0
-        </h1>
-        <p className="mt-3 max-w-2xl text-[15px] sm:text-base text-ink-soft leading-[1.55]">
-          {cohortName} is capped at {capacity} students. Applications are
-          reviewed on a rolling basis. After your application is accepted,
-          you'll pay ${priceDollars} to lock in your seat.
-        </p>
+      <StatusBar config={siteConfig} />
+      <div className="mx-auto max-w-[1100px] px-5 py-10 sm:px-6 sm:py-14 md:py-20">
+        <div className="grid grid-cols-12 gap-x-6">
+          <div className="col-span-12 md:col-span-8">
+            <div className="mb-6 flex items-center justify-between sm:mb-8">
+              <Link
+                href="/dashboard"
+                className="t-small lowercase text-ink-soft hover:text-ink"
+              >
+                ← Dashboard
+              </Link>
+              {existing?.status === "draft" && (
+                <Link
+                  href="/dashboard/application"
+                  className="t-small lowercase text-ink-faint hover:text-ink"
+                >
+                  View draft summary
+                </Link>
+              )}
+            </div>
 
-        {hasMultiple && (
-          <div className="mt-6 rounded-xl border border-line bg-wash px-4 py-3">
-            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
-              Choose a cohort
+            <p className="cmdline font-mono">
+              <b>cat {reapplying ? "reapply" : "apply"}.txt</b>{" "}
+              <span className="mtime">· modified 2026-07-14</span>
             </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {cohorts.map((c) => {
-                const active = c.id === selectedId;
-                return (
-                  <Link
-                    key={c.id}
-                    href={`/apply?cohort=${c.id}`}
-                    className={`press inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs ${
-                      active
-                        ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
-                        : "border-line text-ink-soft hover:border-ink/30"
-                    }`}
-                  >
-                    {c.name}
-                    {c.starts_on && (
-                      <span
-                        className={active ? "text-phosphor-ink" : "text-ink-faint"}
+            {/* the page's ONE icon: the flag, the apply gate */}
+            <div className="mt-4 flex items-center gap-3.5">
+              <FlagIcon size={5} />
+              <h1 className="t-head text-ink">
+                apply to <ZeroThread>batch0</ZeroThread>
+              </h1>
+            </div>
+            <p className="t-body mt-3 max-w-[58ch] text-ink-soft">
+              {cohortName} is capped at {capacity} students. Applications are
+              reviewed on a rolling basis. After your application is accepted,
+              you&apos;ll pay ${priceDollars} to lock in your seat.
+            </p>
+            <p className="aside-note mt-3">
+              <ZeroThread>$0 to apply</ZeroThread>
+            </p>
+
+            {hasMultiple && (
+              <div className="mt-6 border border-line px-4 py-3">
+                <p className="t-small font-mono lowercase tracking-[0.06em] text-phosphor/60">
+                  Choose a cohort
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {cohorts.map((c) => {
+                    const active = c.id === selectedId;
+                    return (
+                      <Link
+                        key={c.id}
+                        href={`/apply?cohort=${c.id}`}
+                        className={`press inline-flex items-center gap-2 border px-3 py-1.5 text-xs lowercase ${
+                          active
+                            ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
+                            : "border-line text-ink-soft hover:border-ink/30"
+                        }`}
                       >
-                        · {c.starts_on}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-xs text-ink-soft">
-              Your application is tied to the cohort you pick. You can
-              switch at any time before submitting.
-            </p>
-          </div>
-        )}
+                        {c.name}
+                        {c.starts_on && (
+                          <span
+                            className={active ? "text-phosphor-ink" : "text-ink-faint"}
+                          >
+                            · {c.starts_on}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+                <p className="t-small mt-2 text-ink-soft">
+                  Your application is tied to the cohort you pick. You can
+                  switch at any time before submitting.
+                </p>
+              </div>
+            )}
 
-        {reapplying && (
-          <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-400/40 bg-wash p-4 text-sm">
-            <div>
-              <p className="font-medium text-ink">
-                Starting a fresh application
-              </p>
-              <p className="mt-1 text-ink-soft">
-                {existing!.status === "rejected"
-                  ? "Your last application wasn't accepted. You can apply again to a different cohort below."
-                  : "You withdrew from a previous application. You can reapply to the cohort below."}
-              </p>
+            {reapplying && (
+              <div className="t-small mt-6 flex items-start gap-3 border border-phosphor/25 p-4">
+                <div>
+                  <p className="font-medium lowercase text-ink">
+                    Starting a fresh application
+                  </p>
+                  <p className="mt-1 text-ink-soft">
+                    {existing!.status === "rejected"
+                      ? "Your last application wasn't accepted. You can apply again to a different cohort below."
+                      : "You withdrew from a previous application. You can reapply to the cohort below."}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {existing?.status === "draft" && (
+              <div className="t-small mt-6 flex items-start gap-3 border border-phosphor/25 p-4">
+                <div>
+                  <p className="font-medium lowercase text-phosphor-ink">
+                    Picking up where you left off
+                  </p>
+                  <p className="mt-1 text-ink-soft">
+                    We loaded your saved draft. Edits autosave as you type.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-10">
+              <ApplicationForm
+                defaults={reapplying ? null : existing ?? null}
+                email={user.email ?? ""}
+                priceLabel={`$${priceDollars}`}
+                cohortId={selectedId}
+                questions={questions}
+              />
+            </div>
+            <div className="mt-10">
+              <Link
+                href="/dashboard"
+                className="t-small lowercase text-ink-soft hover:text-ink"
+              >
+                Save and return later →
+              </Link>
             </div>
           </div>
-        )}
-
-        {existing?.status === "draft" && (
-          <div className="mt-6 flex items-start gap-3 rounded-xl border border-phosphor/40 bg-phosphor/5 p-4 text-sm">
-            <div>
-              <p className="font-medium text-phosphor-ink">
-                Picking up where you left off
-              </p>
-              <p className="mt-1 text-ink-soft">
-                We loaded your saved draft. Edits autosave as you type.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-10">
-          <ApplicationForm
-            defaults={reapplying ? null : existing ?? null}
-            email={user.email ?? ""}
-            priceLabel={`$${priceDollars}`}
-            cohortId={selectedId}
-            questions={questions}
-          />
-        </div>
-        <div className="mt-10">
-          <Link
-            href="/dashboard"
-            className="text-sm text-ink-soft hover:text-ink"
-          >
-            Save and return later →
-          </Link>
         </div>
       </div>
     </div>

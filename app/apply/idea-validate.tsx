@@ -1,7 +1,5 @@
 "use client";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Sparkles } from "lucide-react";
 
 type Result = {
   similars: { idea: string; status: string; overlap: number }[];
@@ -43,24 +41,24 @@ export function IdeaValidator({ idea }: { idea: string }) {
 
   return (
     <div className="mt-3">
-      <Button
+      {/* squared secondary button, key-press shift, no icon — the /apply
+          surface allows no icons beyond the page-title flag */}
+      <button
         type="button"
-        size="sm"
-        variant="secondary"
         onClick={run}
         disabled={busy}
+        className="press inline-flex h-8 items-center justify-center border border-line bg-paper px-3 text-xs font-medium lowercase text-ink hover:border-ink/30 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
       >
-        <Sparkles className="mr-1 inline h-3.5 w-3.5" />
         {busy ? "Thinking…" : "Pressure-test my idea"}
-      </Button>
+      </button>
       {err && (
-        <p className="mt-2 text-xs text-amber-600">{err}</p>
+        <p className="mt-2 text-xs text-red-500">{err}</p>
       )}
       {result && (
-        <div className="mt-3 rounded-xl border border-line bg-paper p-4 text-sm">
+        <div className="mt-3 border border-line p-4 text-sm">
           {result.similars.length > 0 ? (
             <>
-              <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">
+              <p className="font-mono text-xs font-medium lowercase tracking-[0.06em] text-phosphor-ink">
                 {result.similars.length} similar idea
                 {result.similars.length === 1 ? "" : "s"} have applied
               </p>
@@ -72,9 +70,9 @@ export function IdeaValidator({ idea }: { idea: string }) {
                 {result.similars.map((s, i) => (
                   <li
                     key={i}
-                    className="rounded-lg border border-line bg-wash p-2"
+                    className="border border-line p-2"
                   >
-                    <span className="text-[10px] uppercase tracking-wider text-ink-faint">
+                    <span className="font-mono text-[10px] lowercase tracking-[0.06em] text-ink-faint">
                       {s.status}
                     </span>
                     <p className="mt-1 whitespace-pre-wrap">{s.idea}</p>
@@ -83,11 +81,11 @@ export function IdeaValidator({ idea }: { idea: string }) {
               </ul>
             </>
           ) : (
-            <p className="text-xs text-emerald-600">
+            <p className="text-xs text-ink-soft">
               No close matches in accepted past applications.
             </p>
           )}
-          <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-ink-faint">
+          <p className="mt-4 font-mono text-xs font-medium lowercase tracking-[0.06em] text-ink-faint">
             Tightening suggestions
           </p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
