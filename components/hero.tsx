@@ -2,7 +2,7 @@ import React from "react";
 import type { SiteConfig } from "@/lib/site-config";
 import { ApplyCta } from "@/components/apply-cta";
 import { ZeroThread } from "@/components/zero-thread";
-import { HeroTypeOn } from "@/components/hero-type-on";
+import { HeroEntrance } from "@/components/hero-entrance";
 
 const WEEK_WORDS = [
   "zero", "one", "two", "three", "four", "five", "six",
@@ -10,18 +10,94 @@ const WEEK_WORDS = [
 ];
 
 /**
- * The hero — minimal and big. Five elements total, all flush on the same
- * left edge: the identifier line, the three-beat sentence (proportioned
- * ~1 : 3 : 1.5, the block owning ~70% of the viewport), one facts line,
- * and the apply button with its # comment. Black space is part of the
- * composition. "yours." is the hero's single amber type moment.
+ * The hero — a centered knockout-zero lockup. Five elements on one center
+ * axis: identifier · the sentence ("nine weeks" head / "one c0mpany" at
+ * poster scale with the pixel-0 sitting IN the word as a letter / "yours."
+ * head, amber) · facts line · button + # comment. The pixel-0 is the
+ * hero's only amber besides "yours.", the 0% and the $0.
  *
- * "one company" is sized so the sentence fills the screen without ever
- * wrapping mid-word: VT323 sets ~0.44em per character, so 11 characters
- * fit any container at ≤ ~18.5vw; the clamp stays under that at every
- * viewport. Facts render from site-config; the week count is computed
- * from the cohort's real dates.
+ * Server markup IS the settled state (no-JS / reduced-motion see it
+ * instantly); HeroEntrance assembles it once per visit. Every character
+ * is a pre-rendered span so the entrance can reveal without any layout
+ * shift, and the 0's blocks carry .px-cell so PixelField keeps the glyph
+ * cursor-reactive after it settles — the one living element in the hero.
  */
+
+// The wordmark-family portrait zero, 12×14 — same blockiness as the
+// icon set. Sized in em so it scales with the poster clamp.
+const ZERO_ROWS = [
+  "..########..",
+  ".##......##.",
+  "##........##",
+  "##........##",
+  "##........##",
+  "##........##",
+  "##........##",
+  "##........##",
+  "##........##",
+  "##........##",
+  "##........##",
+  "##........##",
+  ".##......##.",
+  "..########..",
+];
+const ZERO_BLOCK_EM = 0.0451; // 14 rows ≈ 0.63em tall — optically a letter
+
+function HeroZero() {
+  const cells: React.ReactNode[] = [];
+  ZERO_ROWS.forEach((row, r) => {
+    for (let c = 0; c < 12; c++) {
+      if (row[c] !== "#") continue;
+      cells.push(
+        <span
+          key={`${r}-${c}`}
+          data-hz
+          className="px-cell bg-phosphor"
+          data-base="amber"
+          style={{ gridColumn: c + 1, gridRow: r + 1 }}
+        />,
+      );
+    }
+  });
+  return (
+    // The grid is ABSOLUTE inside a fixed-size inline-block. With no
+    // in-flow children the wrapper's baseline is unambiguously its bottom
+    // margin edge, so the glyph's feet sit ON the text baseline like a
+    // letter — any in-flow grid would synthesize a baseline from its first
+    // row and hang the 0 below the word.
+    <span
+      aria-hidden="true"
+      className="relative mx-[0.04em] inline-block select-none align-baseline"
+      style={{ width: `${ZERO_BLOCK_EM * 12}em`, height: `${ZERO_BLOCK_EM * 14}em` }}
+    >
+      <span
+        className="absolute inset-0 grid"
+        style={{
+          gridTemplateColumns: `repeat(12, ${ZERO_BLOCK_EM}em)`,
+          gridAutoRows: `${ZERO_BLOCK_EM}em`,
+        }}
+      >
+        {cells}
+      </span>
+    </span>
+  );
+}
+
+/** Pre-split text into per-character spans so the entrance reveals with
+ *  visibility toggles — zero layout shift, and the settled markup is
+ *  complete for no-JS/reduced-motion/crawlers. */
+function Chars({ text, frag }: { text: string; frag: string }) {
+  return (
+    <span data-frag={frag}>
+      {[...text].map((ch, i) => (
+        <span key={i} data-ch>
+          {ch === " " ? " " : ch}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export default function Hero({
   config,
   authedHome,
@@ -49,46 +125,36 @@ export default function Hero({
     : null;
 
   return (
-    <section className="flex min-h-[calc(100svh-6rem)] flex-col justify-center py-10 md:py-12">
-      {/* 1 · identifier — the zero thread starts at the name */}
-      <p className="t-small text-ink-soft">
-        <b className="font-semibold text-ink">
-          batch<span className="text-phosphor">0</span>
-        </b>{" "}
-        · a startup accelerator for high schoolers
+    <section className="flex min-h-[calc(100svh-6rem)] flex-col items-center justify-center py-10 text-center md:py-12">
+      {/* 1 · identifier (dim; the hero's amber belongs to the 0) */}
+      <p data-entrance-reveal className="t-small text-ink-soft">
+        batch0 · a startup accelerator for high schoolers
       </p>
 
-      {/* 2 · the sentence — one flush-left block, ~1 : 3 : 1.5.
-          Each beat's text sits in a [data-typeon] span so the signature
-          type-on can run without touching layout; the idle cursor is a
-          sibling, safe from textContent writes. */}
-      <h1 className="mt-6 flex grow flex-col justify-center md:mt-4">
-        <span className="block font-display text-[clamp(24px,5.5vw,66px)] leading-[0.95] text-ink-soft">
-          <span data-typeon>{`${weeksWord} weeks`}</span>
+      {/* 2 · the sentence — one centered lockup, the pixel-0 in the word */}
+      <h1 className="my-4 flex grow flex-col items-center justify-center">
+        <span className="t-head block text-ink-soft">
+          <Chars text={`${weeksWord} weeks`} frag="top" />
         </span>
-        <span className="block font-display text-[clamp(58px,16.5vw,200px)] leading-[0.85] text-ink">
-          <span data-typeon>one company</span>
+        <span className="block whitespace-nowrap font-display text-[clamp(52px,15vw,190px)] leading-[1] text-ink">
+          <Chars text="one c" frag="l" />
+          <HeroZero />
+          <Chars text="mpany" frag="r" />
         </span>
-        <span className="block font-display text-[clamp(34px,8.25vw,100px)] leading-[0.95] text-phosphor">
-          <span data-typeon>yours.</span>
+        <span className="t-head mt-2 block text-phosphor">
+          <Chars text="yours." frag="bottom" />
           <span aria-hidden data-typeon-cursor className="cursor-block" />
         </span>
       </h1>
 
-      {/* 3 + 4 + 5 · facts line, button, # comment — revealed together
-          after the sentence finishes; space reserved, no layout shift */}
-      <div data-typeon-reveal>
-        <p className="t-small mt-8 text-ink-soft">
-          {closeLabel && settings.applicationsOpen && (
-            <>
-              apply by <span data-retype>{closeLabel}</span> ·{" "}
-            </>
-          )}
-          <span data-retype>{derived.priceLabel} only if accepted</span> ·{" "}
+      {/* 3+4+5 · facts, button, # comment — fade up last, space reserved */}
+      <div data-entrance-reveal>
+        <p className="t-small text-ink-soft">
+          {closeLabel && settings.applicationsOpen && <>apply by {closeLabel} · </>}
+          {derived.priceLabel} only if accepted ·{" "}
           <ZeroThread>0% equity</ZeroThread>
         </p>
-
-        <div className="mt-5 flex flex-wrap items-center gap-4">
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-4">
           {isAuthed ? (
             <a
               href={authedHome!}
@@ -108,7 +174,7 @@ export default function Hero({
         </div>
       </div>
 
-      <HeroTypeOn />
+      <HeroEntrance />
     </section>
   );
 }
