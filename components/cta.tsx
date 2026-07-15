@@ -14,7 +14,7 @@ export default function CTA({ config }: { config: SiteConfig }) {
 
   return (
     <section id="apply-cta" className="border-t border-phosphor/25 py-14 md:py-20">
-      <p className="cmdline rail-head font-mono">
+      <p className="cmdline font-mono">
         <b>
           apply --cohort {String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}
         </b>

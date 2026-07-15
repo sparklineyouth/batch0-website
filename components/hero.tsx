@@ -8,14 +8,17 @@ const WEEK_WORDS = [
 ];
 
 /**
- * The hero — a PURE TYPE cascade (no icons: the sentence carries it).
- * One sentence at the page's three volumes — body → poster → head — with
- * each beat starting on a line of the shared 12-column grid (beat 2 on
- * column 2, beat 3 on column 4). The identifier line is the quiet opening
- * beat; identity + CTA sit inside the first viewport at 1440 and 390.
+ * The hero — minimal and big. Five elements total, all flush on the same
+ * left edge: the identifier line, the three-beat sentence (proportioned
+ * ~1 : 3 : 1.5, the block owning ~70% of the viewport), one facts line,
+ * and the apply button with its # comment. Black space is part of the
+ * composition. "yours." is the hero's single amber type moment.
  *
- * Every fact renders from site-config; the week count is computed from the
- * cohort's real dates so the sentence can never drift from the calendar.
+ * "one company" is sized so the sentence fills the screen without ever
+ * wrapping mid-word: VT323 sets ~0.44em per character, so 11 characters
+ * fit any container at ≤ ~18.5vw; the clamp stays under that at every
+ * viewport. Facts render from site-config; the week count is computed
+ * from the cohort's real dates.
  */
 export default function Hero({
   config,
@@ -28,7 +31,6 @@ export default function Hero({
   const { derived, settings } = config;
   const isAuthed = !!authedHome;
   const cohortLabel = derived.cohortLabel || "the next cohort";
-  const dates = derived.dateRangeLabel.replace("→", "to").toLowerCase();
 
   const start = config.cohort?.startsOn;
   const end = config.cohort?.endsOn;
@@ -45,45 +47,39 @@ export default function Hero({
     : null;
 
   return (
-    <section className="py-14 md:py-20">
-      {/* the quiet opening beat */}
+    <section className="flex min-h-[calc(100svh-6rem)] flex-col justify-center py-10 md:py-12">
+      {/* 1 · identifier */}
       <p className="t-small text-ink-soft">
         <b className="font-semibold text-ink">batch0</b> · a startup
-        accelerator for high schoolers · {cohortLabel.toLowerCase()} is{" "}
-        {settings.applicationsOpen ? "open" : "closed"}
+        accelerator for high schoolers
       </p>
 
-      {/* the cascade — one sentence, three volumes, on the grid */}
-      <h1 className="mt-10 md:mt-14">
-        <span className="t-body block text-ink-soft">
-          {weeksWord} weeks{" "}
-          <span className="text-ink-faint">· {dates || "dates tba"}</span>
+      {/* 2 · the sentence — one flush-left block, ~1 : 3 : 1.5 */}
+      <h1 className="mt-6 flex grow flex-col justify-center md:mt-4">
+        <span className="block font-display text-[clamp(24px,5.5vw,66px)] leading-[0.95] text-ink-soft">
+          {weeksWord} weeks
         </span>
-        <span className="t-poster mt-2 block text-ink md:ml-[8.333%]">
+        <span className="block font-display text-[clamp(58px,16.5vw,200px)] leading-[0.85] text-ink">
           one company
         </span>
-        <span className="t-head ml-[16.666%] mt-3 block text-phosphor md:ml-[25%]">
+        <span className="block font-display text-[clamp(34px,8.25vw,100px)] leading-[0.95] text-phosphor">
           yours.
-          <span aria-hidden className="cursor-block" />
         </span>
       </h1>
 
-      {/* facts, verbatim true */}
-      <p className="t-small mt-10 text-ink-soft md:ml-[8.333%]">
+      {/* 3 · one facts line */}
+      <p className="t-small mt-8 text-ink-soft">
         {closeLabel && settings.applicationsOpen && (
           <>
-            <span className="text-phosphor/60">apply by:</span>{" "}
-            <span data-retype>{closeLabel}</span> ·{" "}
+            apply by <span data-retype>{closeLabel}</span> ·{" "}
           </>
         )}
-        <span className="text-phosphor/60">tuition:</span>{" "}
         <span data-retype>{derived.priceLabel} only if accepted</span> ·{" "}
-        <span className="text-phosphor/60">equity:</span>{" "}
-        <span data-retype>0%</span>
+        <span data-retype>0% equity</span>
       </p>
 
-      {/* CTA #1 of 3 (hero · closing poster · nav chrome) */}
-      <div className="mt-6 flex flex-wrap items-center gap-4 md:ml-[8.333%]">
+      {/* 4 + 5 · the button and its comment — CTA #1 of 3 */}
+      <div className="mt-5 flex flex-wrap items-center gap-4">
         {isAuthed ? (
           <a
             href={authedHome!}

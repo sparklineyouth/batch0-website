@@ -278,18 +278,9 @@ a,
 .aside-note { color: rgb(var(--ink-faint)); font-size: 13px; }
 .aside-note::before { content: "# "; color: rgba(255, 187, 0, 0.4); }
 
-/* THE SPINE — one continuous vertical hairline at the left margin rail,
- * running nav → footer. Every section hangs off it: content indents by
- * --rail-gap; section heads (.rail-head) pull back to sit ON the rail. */
-.spine {
-  --rail-gap: 20px;
-  border-left: 1px solid rgba(255, 187, 0, 0.25);
-  padding-left: var(--rail-gap);
-}
-@media (min-width: 768px) {
-  .spine { --rail-gap: 36px; }
-}
-.rail-head { margin-left: calc(8px - var(--rail-gap)); }
+/* The spine is INVISIBLE: no drawn rail. Alignment is felt through the
+ * one shared container margin and the 12-column grid — every section
+ * head and every block starts on the same left edge, never a line. */
 
 /* Nav paths: hover surfaces the prompt. */
 .path-link::before {

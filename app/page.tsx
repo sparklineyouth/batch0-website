@@ -38,16 +38,15 @@ export default async function Home() {
         authedHome={authedHome}
         cohortLabel={config.derived.cohortLabel || "the next cohort"}
       />
-      {/* ONE OBJECT: a single container + a single continuous left rail
-          (the spine) that every movement hangs off, nav to footer. */}
+      {/* ONE OBJECT: a single container — every movement starts on the
+          same (invisible) left margin and shares the 12-column grid.
+          Alignment is felt through consistency, never drawn as a line. */}
       <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
-        <div className="spine">
-          <Hero config={config} authedHome={authedHome} />
-          <HowItWorks config={config} />
-          <FrontPage config={config} />
-          <FinePrint config={config} />
-          <CTA config={config} />
-        </div>
+        <Hero config={config} authedHome={authedHome} />
+        <HowItWorks config={config} />
+        <FrontPage config={config} />
+        <FinePrint config={config} />
+        <CTA config={config} />
       </div>
       <Footer config={config} />
       <StickyMobileCta config={config} authedHome={authedHome} />

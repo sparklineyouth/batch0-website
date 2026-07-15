@@ -36,7 +36,7 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
 
   return (
     <section id="how-it-works" className="border-t border-phosphor/25 py-14 md:py-20">
-      <p className="cmdline rail-head font-mono">
+      <p className="cmdline font-mono">
         <b>cat how-it-works.txt</b>{" "}
         <span className="mtime">· modified 2026-07-14</span>
       </p>
