@@ -5,12 +5,12 @@ import Link from "next/link";
 import { track } from "@vercel/analytics";
 
 // Use absolute hrefs (`/#anchor`) so hash links still resolve when the
-// navbar is rendered on subroutes.
+// navbar is rendered on subroutes. Labels are paths — terminal grammar.
 const LINKS = [
-  { href: "/program", label: "Program" },
-  { href: "/blog", label: "Blog" },
-  { href: "/sponsors", label: "Sponsors" },
-  { href: "/#faq", label: "FAQ" },
+  { href: "/program", label: "/program" },
+  { href: "/blog", label: "/blog" },
+  { href: "/sponsors", label: "/sponsors" },
+  { href: "/#faq", label: "/faq" },
 ] as const;
 
 export default function Navbar({
@@ -36,7 +36,11 @@ export default function Navbar({
   }, [open]);
 
   const applyHref = isAuthed ? authedHome! : "/apply";
-  const applyLabel = isAuthed ? "Dashboard" : `Apply for ${cohortLabel}`;
+  // Chrome CTA (#3 of the page's three asks) speaks command grammar.
+  const applyLabel = isAuthed ? "dashboard" : "$ apply";
+  const applyLabelLong = isAuthed
+    ? "dashboard"
+    : `apply for ${cohortLabel.toLowerCase()}`;
 
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-paper pt-safe">
@@ -48,12 +52,12 @@ export default function Navbar({
           <Wordmark className="h-[18px] text-ink" />
         </Link>
 
-        <div className="hidden items-center gap-7 md:flex">
+        <div className="hidden items-center gap-6 md:flex">
           {LINKS.map((l) => (
             <Link
               key={l.href}
               href={l.href}
-              className="text-sm text-ink-soft hover:text-ink"
+              className="path-link text-sm text-ink-soft hover:text-ink"
             >
               {l.label}
             </Link>
@@ -62,14 +66,17 @@ export default function Navbar({
 
         <div className="hidden items-center gap-3 md:flex">
           {!isAuthed && (
-            <Link href="/login" className="text-sm text-ink-soft hover:text-ink">
-              Log in
+            <Link
+              href="/login"
+              className="path-link text-sm text-ink-soft hover:text-ink"
+            >
+              /login
             </Link>
           )}
           <Link
             href={applyHref}
             onClick={() => !isAuthed && track("apply_click", { location: "navbar" })}
-            className="press rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="press bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             {applyLabel}
           </Link>
@@ -125,17 +132,17 @@ export default function Navbar({
                   setOpen(false);
                   if (!isAuthed) track("apply_click", { location: "navbar-mobile" });
                 }}
-                className="press rounded-md bg-phosphor px-4 py-3 text-center text-[15px] font-semibold text-on-phosphor shadow-cta"
+                className="press bg-phosphor px-4 py-3 text-center text-[15px] font-semibold text-on-phosphor"
               >
-                {applyLabel}
+                {applyLabelLong}
               </Link>
               {!isAuthed && (
                 <Link
                   href="/login"
                   onClick={() => setOpen(false)}
-                  className="rounded-md border border-line px-4 py-3 text-center text-[15px] font-medium text-ink"
+                  className="border border-line px-4 py-3 text-center text-[15px] font-medium text-ink"
                 >
-                  Log in
+                  log in
                 </Link>
               )}
             </div>

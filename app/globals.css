@@ -121,16 +121,14 @@ body {
   line-height: 1.1;
 }
 
-/* Tactile press feedback. The previous version animated transform +
- * color + shadow with 80–120ms transitions which gave every click a
- * perceptible delay. Drop the transitions entirely; the only motion
- * left is an instantaneous active-state scale so the press is felt
- * but never lags. */
+/* Tactile press feedback — buttons press like KEYS (the broadsheet
+ * system): an instantaneous 2px downward shift, no scale, no soft
+ * shadow, no transition lag. */
 .press {
   transition: none;
 }
 .press:active {
-  transform: scale(0.98);
+  transform: translateY(2px);
 }
 .press:disabled,
 .press[aria-disabled="true"] {
