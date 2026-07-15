@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- ==========================================================================
+ICONS REFERENCE — the pixel icon family (moved out of hero-lab per the
+kill-the-legend rule: icons get used, not introduced). Design reference only;
+never link this from product pages.
+
+One shared 12-wide pixel grid, same blockiness as the wordmark 0. Flat amber;
+a single off-white cell only where it IS the data (calendar's marked day, the
+block being placed). No outlines, no sub-grid detail. Each must read at 32px
+and hold at 300px.
+=========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>batch0 — icon family reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#0c0c0d; --line:#2a2a2e; --ink:#f5f5f4; --ink-soft:#a1a1aa;
+    --amber:#FFBB00; --amber-soft:rgba(255,187,0,.62); --amber-line:rgba(255,187,0,.25)}
+  *{box-sizing:border-box; margin:0}
+  body{background:var(--paper); color:var(--ink);
+    font:400 14px/1.6 "IBM Plex Mono",ui-monospace,monospace;
+    padding:32px clamp(20px,5vw,72px) 64px}
+  h1{font-size:13px; color:var(--amber-soft); margin-bottom:26px; font-weight:400}
+  h1::before{content:"$ "; color:var(--amber)}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:40px}
+  figure{border:1px solid var(--line); padding:22px}
+  .sizes{display:flex; align-items:flex-end; gap:22px; min-height:320px}
+  figcaption{margin-top:16px; font-size:12.5px; color:var(--ink-soft);
+    border-top:1px solid var(--line); padding-top:10px}
+  figcaption b{color:var(--ink); font-weight:600; display:block}
+  .pxi{display:grid; user-select:none}
+  .pxi .px{background:var(--amber)}
+  .pxi .px.o{background:var(--ink)}
+</style>
+</head>
+<body>
+<h1>ls icons/ · one 12-wide pixel grid · 32px and 300px-class scale per glyph</h1>
+<div class="grid">
+  <figure><div class="sizes"><div class="pxi" data-icon="calendar" data-block="3"></div><div class="pxi" data-icon="calendar" data-block="24"></div></div><figcaption><b>calendar</b>dates · the aug 10 deadline · appears beside date data only</figcaption></figure>
+  <figure><div class="sizes"><div class="pxi" data-icon="receipt" data-block="3"></div><div class="pxi" data-icon="receipt" data-block="24"></div></div><figcaption><b>receipt</b>pricing · $130 once · beside tuition data only</figcaption></figure>
+  <figure><div class="sizes"><div class="pxi" data-icon="flag" data-block="3"></div><div class="pxi" data-icon="flag" data-block="24"></div></div><figcaption><b>flag</b>apply · the gate · beside the apply action only</figcaption></figure>
+  <figure><div class="sizes"><div class="pxi" data-icon="blocks" data-block="3"></div><div class="pxi" data-icon="blocks" data-block="24"></div></div><figcaption><b>blocks</b>build season · beside the build-phase content only</figcaption></figure>
+  <figure><div class="sizes"><div class="pxi" data-icon="envelope" data-block="3"></div><div class="pxi" data-icon="envelope" data-block="24"></div></div><figcaption><b>envelope</b>decision by email · beside review/decision content only</figcaption></figure>
+  <figure><div class="sizes"><div class="pxi" data-icon="folder" data-block="3"></div><div class="pxi" data-icon="folder" data-block="24"></div></div><figcaption><b>folder</b>your-company/ · deliverables · ownership and artifacts only</figcaption></figure>
+  <figure><div class="sizes"><div class="pxi" data-icon="founders" data-block="3"></div><div class="pxi" data-icon="founders" data-block="24"></div></div><figcaption><b>founders</b>who runs this · beside founder content only</figcaption></figure>
+  <figure><div class="sizes"><div class="pxi" data-icon="bubble" data-block="3"></div><div class="pxi" data-icon="bubble" data-block="24"></div></div><figcaption><b>bubble</b>faq · parent questions · beside q&amp;a content only</figcaption></figure>
+</div>
+<script>
+  var ICONS = {
+    calendar:["..##....##..","############","############","#..........#","#..........#","#......oo..#","#......oo..#","#..........#","#..........#","############"],
+    receipt:["############","#..........#","#..######..#","#..........#","#..######..#","#..........#","#..####....#","#..........#","#.....####.#","#..........#","##..##..##.."],
+    flag:["..##........","..##########","..##########","..########..","..##........","..##........","..##........","..##........","..##........","..##........"],
+    blocks:["....oo......","....oo......","............","...#####....","...#####....","...#####....","#####.#####.","#####.#####.","#####.#####."],
+    envelope:["############","##........##","#.#......#.#","#..#....#..#","#...#..#...#","#....##....#","#..........#","############"],
+    folder:[".#####......","############","#..........#","#..........#","#..........#","#..........#","#..........#","############"],
+    founders:["..##....##..","..##....##..","............",".####..####.",".####..####.",".####..####.",".####..####."],
+    bubble:["############","#..........#","#..#.#.#...#","#..........#","############","...##.......","...#........"]
+  };
+  document.querySelectorAll(".pxi").forEach(function(el){
+    var map = ICONS[el.dataset.icon], bp = parseInt(el.dataset.block,10)||4;
+    el.style.gridTemplateColumns = "repeat(12,"+bp+"px)";
+    el.style.gridAutoRows = bp+"px";
+    el.setAttribute("aria-hidden","true");
+    map.forEach(function(row,r){
+      for(var c=0;c<12;c++){
+        var ch=row[c]; if(!ch||ch===".")continue;
+        var d=document.createElement("div");
+        d.className="px"+(ch==="o"?" o":"");
+        d.style.gridColumn=c+1; d.style.gridRow=r+1;
+        el.appendChild(d);
+      }
+    });
+  });
+</script>
+</body>
+</html>

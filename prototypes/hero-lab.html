@@ -3,18 +3,25 @@
 HERO LAB — the broadsheet direction, creative reset
 
 PART 1 — PIXEL ICON LANGUAGE
-Eight glyphs on ONE shared 12x12 grid, same blockiness as the wordmark 0,
-built by the same block-builder the 0 uses (so they inherit its cursor
-behavior). Flat amber; a single off-white cell only where it IS the data
-(the marked day on the calendar, the block being placed on the stack).
-No outlines, no sub-grid detail. Legend below renders every glyph at 32px
-and 120px. Icons are information anchors: they appear beside the fact they
-mean, never as decoration.
+Eight glyphs on ONE shared 12-wide grid, same blockiness as the wordmark 0,
+built by the same block-builder (so they inherit the cursor field). Flat
+amber; a single off-white cell only where it IS the data. The legend lives
+in prototypes/icons-reference.html — it is NOT page content. Icons get
+used, not introduced: every appearance is structural and paired with the
+data it means. If a glyph needed a legend to read in context, the glyph
+failed.
 
-  calendar  dates / the aug 10 deadline      envelope  decision by email
-  receipt   pricing / $130                   folder    your-company/, deliverables
-  flag      apply / the gate                 founders  who runs this
-  blocks    build season                     bubble    faq / parent questions
+STANDING RULE — ONE ASK PER SECTION (lab + every full-page build after):
+"apply for cohort 1" appears in exactly THREE places on any page — hero,
+closing poster, status-bar/nav chrome. Every other section has ONE job and
+its OWN action if it needs one:
+  how it works   → "what happens to me"        → link: see the full program
+  deliverables   → "what do I walk away with"  → no action; the manifest is it
+  pricing        → "what does it cost / catch" → link: refund policy
+  fine print     → "who runs this / trust"     → action: hello@batch0.org
+  faq            → the seven parent questions  → action: email us
+A section that can't state its job in a sentence gets cut or merged.
+(Each lab comp is a HERO, so its single apply CTA is the hero's ask.)
 
 PART 2 — SIX HERO COMPS (stacked, one viewport each)
 The old headline is retired from this lab entirely. New headline options
@@ -85,16 +92,6 @@ reduced-motion kills all of it; never for /apply or forms.
   .pxi .px.lit{background:var(--ink)}
   .pxi .px.o.lit{background:var(--amber)}
 
-  /* ---- legend ---- */
-  .legend{padding:28px var(--padx) 36px; border-bottom:1px solid var(--amber-line)}
-  .legend h1{font-size:13px; color:var(--amber-soft); margin-bottom:18px}
-  .legend h1::before{content:"$ "; color:var(--amber)}
-  .legend .row{display:flex; flex-wrap:wrap; gap:28px 40px; align-items:flex-end}
-  .legend figure{display:flex; flex-direction:column; gap:10px; align-items:flex-start}
-  .legend .pair{display:flex; align-items:flex-end; gap:14px}
-  .legend figcaption{font-size:12px; color:var(--ink-soft)}
-  .legend figcaption b{color:var(--ink); font-weight:500; display:block}
-
   /* ---- comp shells ---- */
   .comp{min-height:100svh; border-top:1px solid var(--amber-line);
     padding:20px var(--padx) 48px; position:relative; display:flex;
@@ -107,7 +104,7 @@ reduced-motion kills all of it; never for /apply or forms.
   .c1 .kick{font-size:14px; color:var(--ink-soft); margin-bottom:26px}
   .c1 .kick b{color:var(--ink); font-weight:600}
   .c1 .rows{display:grid; gap:0; max-width:1100px}
-  .c1 .drow{display:grid; grid-template-columns:72px 1fr; gap:0 28px;
+  .c1 .drow{display:grid; grid-template-columns:110px 1fr; gap:0 28px;
     align-items:center; padding:16px 0; border-top:1px solid var(--line)}
   .c1 .drow:last-child{border-bottom:1px solid var(--line)}
   .c1 .drow .lbl{font-size:12.5px; color:var(--amber-soft)}
@@ -116,7 +113,7 @@ reduced-motion kills all of it; never for /apply or forms.
   .c1 .drow .val .amber{color:var(--amber)}
   .c1 .drow.cta-row .val{font-size:clamp(28px,4vw,52px)}
   @media(max-width:640px){
-    .c1 .drow{grid-template-columns:48px 1fr; gap:0 16px}
+    .c1 .drow{grid-template-columns:76px 1fr; gap:0 16px}
   }
 
   /* ---- comp 2: icon index ---- */
@@ -132,16 +129,26 @@ reduced-motion kills all of it; never for /apply or forms.
   .c2 .cell:hover .fact,.c2 .cell:focus-within .fact{opacity:1}
   .c2 .cell .fact b{color:var(--ink); font-weight:600; display:block}
   @media(prefers-reduced-motion:reduce){.c2 .cell .fact{opacity:1}}
-  @media(max-width:820px){.c2 .grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:820px){
+    .c2 .grid{grid-template-columns:repeat(2,1fr)}
+    /* 390 answer: the ask rides above the grid so it never leaves the fold */
+    .c2 .body{display:flex; flex-direction:column}
+    .c2 .lead{order:0}
+    .c2 .ctap{order:1; margin:16px 0 4px}
+    .c2 .grid{order:2}
+  }
 
   /* ---- comp 3: countdown-dominant ---- */
   .c3 .body{display:flex; flex-direction:column; align-items:flex-start}
+  /* the calendar is the countdown's base: same baseline, structural scale —
+     remove it and the composition collapses to a bare number */
+  .c3 .trow{display:flex; align-items:flex-end; gap:clamp(20px,4vw,56px); flex-wrap:wrap}
   .c3 .t{font-family:"VT323",monospace; line-height:.78;
-    font-size:clamp(120px,24vw,330px); color:var(--amber)}
-  .c3 .base{margin-top:10px}
+    font-size:clamp(110px,22vw,300px); color:var(--amber)}
   .c3 .line{margin-top:26px; font-size:16px; color:var(--ink)}
   .c3 .tick{font-size:12.5px; color:var(--ink-faint); margin-top:8px}
   .c3 .ctas{margin-top:24px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap}
+  @media(max-width:640px){.c3 .trow .pxi{display:none}} /* number carries mobile */
 
   /* ---- comp 4: typographic cascade ---- */
   .c4 .body{max-width:1100px}
@@ -204,21 +211,6 @@ reduced-motion kills all of it; never for /apply or forms.
   <span>apply by aug 10 · <span class="white" id="tminus">t−28d</span> · <span id="clock">--:--:--</span></span>
 </div>
 
-<!-- LEGEND ================================================================ -->
-<section class="legend">
-  <h1><b>ls icons/</b> · the pixel icon family · one 12x12 grid, 32px and 120px</h1>
-  <div class="row">
-    <figure><div class="pair"><div class="pxi" data-icon="calendar" data-block="3"></div><div class="pxi" data-icon="calendar" data-block="10"></div></div><figcaption><b>calendar</b>dates · the aug 10 deadline</figcaption></figure>
-    <figure><div class="pair"><div class="pxi" data-icon="receipt" data-block="3"></div><div class="pxi" data-icon="receipt" data-block="10"></div></div><figcaption><b>receipt</b>pricing · $130 once</figcaption></figure>
-    <figure><div class="pair"><div class="pxi" data-icon="flag" data-block="3"></div><div class="pxi" data-icon="flag" data-block="10"></div></div><figcaption><b>flag</b>apply · the gate</figcaption></figure>
-    <figure><div class="pair"><div class="pxi" data-icon="blocks" data-block="3"></div><div class="pxi" data-icon="blocks" data-block="10"></div></div><figcaption><b>blocks</b>build season</figcaption></figure>
-    <figure><div class="pair"><div class="pxi" data-icon="envelope" data-block="3"></div><div class="pxi" data-icon="envelope" data-block="10"></div></div><figcaption><b>envelope</b>decision by email</figcaption></figure>
-    <figure><div class="pair"><div class="pxi" data-icon="folder" data-block="3"></div><div class="pxi" data-icon="folder" data-block="10"></div></div><figcaption><b>folder</b>your-company/ · deliverables</figcaption></figure>
-    <figure><div class="pair"><div class="pxi" data-icon="founders" data-block="3"></div><div class="pxi" data-icon="founders" data-block="10"></div></div><figcaption><b>founders</b>who runs this</figcaption></figure>
-    <figure><div class="pair"><div class="pxi" data-icon="bubble" data-block="3"></div><div class="pxi" data-icon="bubble" data-block="10"></div></div><figcaption><b>bubble</b>faq · parent questions</figcaption></figure>
-  </div>
-</section>
-
 <main>
   <!-- COMP 1 — data-dominant ============================================= -->
   <section class="comp c1">
@@ -227,19 +219,19 @@ reduced-motion kills all of it; never for /apply or forms.
       <p class="kick"><b>batch0</b> · a live, online startup accelerator for us high schoolers · cohort 001 is open</p>
       <div class="rows">
         <div class="drow">
-          <div class="pxi" data-icon="calendar" data-block="6"></div>
+          <div class="pxi" data-icon="calendar" data-block="8"></div>
           <div><div class="lbl">runs</div><div class="val" data-retype>aug 17 – oct 18</div></div>
         </div>
         <div class="drow">
-          <div class="pxi" data-icon="receipt" data-block="6"></div>
+          <div class="pxi" data-icon="receipt" data-block="8"></div>
           <div><div class="lbl">tuition</div><div class="val">$130 <span class="amber">only if accepted</span></div></div>
         </div>
         <div class="drow">
-          <div class="pxi" data-icon="folder" data-block="6"></div>
+          <div class="pxi" data-icon="folder" data-block="8"></div>
           <div><div class="lbl">equity taken</div><div class="val" data-retype>0% · it stays yours</div></div>
         </div>
         <div class="drow cta-row">
-          <div class="pxi" data-icon="flag" data-block="6"></div>
+          <div class="pxi" data-icon="flag" data-block="8"></div>
           <div><div class="lbl">applications close aug 10</div>
             <div class="val"><a class="btn" href="#apply">apply for cohort 1</a>
             <span class="aside" style="font-family:'IBM Plex Mono',monospace">$0 to apply</span></div></div>
@@ -264,7 +256,7 @@ reduced-motion kills all of it; never for /apply or forms.
         <div class="cell" tabindex="0"><div class="pxi" data-icon="founders" data-block="9"></div><p class="fact"><b>run by two founders</b>who read every application</p></div>
         <div class="cell" tabindex="0"><div class="pxi" data-icon="bubble" data-block="9"></div><p class="fact"><b>parents ask, we answer</b>hello@batch0.org</p></div>
       </div>
-      <p style="margin-top:24px"><a class="btn" href="#apply">apply for cohort 1</a></p>
+      <p class="ctap" style="margin-top:24px"><a class="btn" href="#apply">apply for cohort 1</a></p>
     </div>
   </section>
 
@@ -272,9 +264,12 @@ reduced-motion kills all of it; never for /apply or forms.
   <section class="comp c3">
     <p class="tag">comp 3 · countdown-dominant: the deadline is the composition</p>
     <div class="body">
-      <div class="t" id="bigt" aria-label="days until applications close">t−28d</div>
-      <div class="base pxi" data-icon="calendar" data-block="10"></div>
-      <p class="line">applications for cohort 001 close aug 10.</p>
+      <div class="trow">
+        <div class="pxi" data-icon="calendar" data-block="18"></div>
+        <div class="t" id="bigt" aria-label="days until applications close">t−28d</div>
+      </div>
+      <p class="line">batch0 is a startup accelerator for high schoolers.
+      applications for cohort 001 close aug 10.</p>
       <p class="tick">runs aug 17 – oct 18 · $130 only if accepted · 0% equity · <span id="bigtick">--:--:--</span></p>
       <div class="ctas">
         <a class="btn" href="#apply">apply for cohort 1</a>
@@ -290,7 +285,7 @@ reduced-motion kills all of it; never for /apply or forms.
       <p class="l1">nine weeks <span class="pxi" data-icon="calendar" data-block="2"></span> aug 17 to oct 18</p>
       <h1 class="l2">one company <span class="pxi" data-icon="blocks" data-block="8"></span></h1>
       <p class="l3">yours. <span class="pxi" data-icon="folder" data-block="4"></span><span class="cursor" aria-hidden="true"></span></p>
-      <p class="facts"><span class="k">apply by:</span> aug 10 · <span class="k">tuition:</span> $130 only if accepted · <span class="k">equity:</span> 0%</p>
+      <p class="facts">a startup accelerator for us high schoolers · <span class="k">apply by:</span> aug 10 · <span class="k">tuition:</span> $130 only if accepted · <span class="k">equity:</span> 0%</p>
       <p class="ctarow"><a class="btn" href="#apply">apply for cohort 1</a></p>
     </div>
   </section>
@@ -352,7 +347,7 @@ reduced-motion kills all of it; never for /apply or forms.
     <div class="body">
       <div class="pxi" data-icon="flag" data-block="11"></div>
       <p class="line">applications for cohort 001 close <span class="amber">aug 10</span>.</p>
-      <p class="sub">$130 only if accepted · 0% equity · aug 17 – oct 18</p>
+      <p class="sub">a startup accelerator for high schoolers · $130 only if accepted · 0% equity · aug 17 – oct 18</p>
       <a class="btn" href="#apply">$ apply</a>
     </div>
   </section>
