@@ -1,0 +1,415 @@
+<!doctype html>
+<!-- ==========================================================================
+ROUND 2 — CONCEPT 1: THE SESSION
+
+The homepage IS one continuous terminal session. Single column, generous tty
+left margin, prompts hanging into the gutter. The hero is a boot sequence:
+`$ batch0 --init` prints its output line by line (instant steps, no fade —
+the one animated moment, reduced-motion-safe), then the manifesto prints as
+output, then each section is a command: `$ cat how-it-works.txt`,
+`$ ls -la deliverables/`, `$ whoami`, `$ cat pricing.txt`, `$ man batch0`.
+Nav is a fixed tmux-style bar pinned to the bottom: windows are the pages
+(0:home* 1:program 2:blog…), the right segment carries the T-minus + clock.
+The apply CTA is a prompt waiting for input at natural break points.
+
+390px: the tty margin collapses to 20px but prompts KEEP their gutter hang
+(2ch), so the command column stays visibly left of output; the tmux bar's
+window list scrolls horizontally, T-minus segment pinned right.
+
+WHERE IT STRAINS (honest):
+- Scanability/SEO: real h2s exist, but visually they're subordinate to the
+  command lines — a skimmer can't jump sections at a glance the way board
+  rows or posters allow. Long single column = the most scroll of the three.
+- The conceit is a commitment: /program and blog must keep speaking in
+  session grammar or the illusion collapses; a `cat post.md` blog article
+  needs a deliberate prose escape (off-white long-form under a thin session
+  chrome) or it gets old fast.
+- Density reads text-heavy to a 14-year-old skimming on a phone; the tmux
+  bar eats ~34px of every mobile viewport.
+=========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>batch0 — Round 2 / Concept 1: THE SESSION</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#0c0c0d; --line:#2a2a2e;
+    --ink:#f5f5f4; --ink-soft:#a1a1aa; --ink-faint:#87878f;
+    --amber:#FFBB00; --amber-soft:rgba(255,187,0,.62);
+    --amber-dim:rgba(255,187,0,.40); --amber-line:rgba(255,187,0,.25);
+    --on-amber:#141414;
+    --gutter:clamp(20px,9vw,150px); /* the tty margin */
+  }
+  *{box-sizing:border-box; margin:0}
+  html{scroll-behavior:smooth}
+  html,body{background:var(--paper); color:var(--ink);
+    font:400 15.5px/1.7 "IBM Plex Mono",ui-monospace,monospace}
+  ::selection{background:var(--amber); color:var(--on-amber)}
+  a{color:inherit; text-decoration:none}
+  .disp{font-family:"VT323",monospace; font-weight:400; letter-spacing:.01em; line-height:1.06}
+
+  /* ---- the session column: left-anchored, never centered ---- */
+  main{padding:40px 20px 96px var(--gutter); max-width:calc(var(--gutter) + 78ch)}
+
+  /* prompts hang into the gutter by 2ch — command column left of output */
+  .cmd{color:var(--ink); font-weight:500; margin:52px 0 0 -2ch; font-size:14px}
+  .cmd::before{content:"$ "; color:var(--amber)}
+  .cmd .comment{color:var(--ink-faint); font-weight:400}
+  .out{margin-top:14px} /* command output block */
+
+  /* ---- boot sequence: lines print instantly, staggered once ---- */
+  .boot{animation:print 0s steps(1) both; animation-delay:calc(var(--i)*.14s)}
+  @keyframes print{from{opacity:0}to{opacity:1}}
+  @media(prefers-reduced-motion:reduce){.boot{animation:none}}
+  /* boot lines: label + flex dotted leader + status, so every status lands
+     on the same right column — the alignment IS the craft */
+  .bootline{font-size:14px; color:var(--ink-soft); display:flex;
+    align-items:baseline; gap:8px; max-width:72ch}
+  .bootline .bdots{flex:1; min-width:2ch; border-bottom:2px dotted var(--line);
+    transform:translateY(-5px)}
+  .bootline .ok{color:var(--amber); white-space:nowrap}
+  .bootline .zero-pc{color:var(--ink); font-weight:600; white-space:nowrap}
+
+  /* neofetch readout printed as output */
+  .fetch{display:grid; grid-template-columns:auto 1fr; gap:0 26px; margin-top:18px}
+  @media(max-width:460px){.fetch{grid-template-columns:1fr; gap:14px}}
+  .zero{font-size:11px; line-height:1.15; color:var(--amber); user-select:none}
+  .zero i{font-style:normal; color:var(--ink)}
+  .kv{font-size:13.5px; line-height:1.95; align-self:center}
+  .kv .k{display:inline-block; width:10ch; white-space:nowrap; color:var(--amber-soft)}
+  .kv .k::after{content:":"}
+  .kv .v{color:var(--ink); font-weight:500}
+  .kv .row-hot .v{color:var(--amber); font-weight:600}
+
+  /* the manifesto prints big */
+  h1.disp{font-size:clamp(44px,6.4vw,72px); max-width:16ch; margin-top:26px}
+  .hl{background:var(--amber); color:var(--on-amber); padding:0 .1em;
+    box-decoration-break:clone; -webkit-box-decoration-break:clone}
+  .cursor{display:inline-block; width:.55ch; background:var(--amber);
+    animation:blink 1.06s steps(1) infinite; margin-left:2px}
+  .cursor::after{content:"\00a0"}
+  @keyframes blink{50%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){.cursor{animation:none}}
+  .lede{margin-top:18px; max-width:52ch; color:var(--ink-soft)}
+  .fine{font-size:12.5px; color:var(--ink-faint)}
+
+  /* ---- the apply prompt: a command waiting for input ---- */
+  .prompt-cta{display:block; margin:30px 0 0 -2ch; padding:10px 12px 10px 2ch;
+    border:1px solid var(--amber-line); max-width:52ch; font-size:15px}
+  .prompt-cta::before{content:"$ "; color:var(--amber)}
+  .prompt-cta b{color:var(--amber); font-weight:600}
+  .prompt-cta .hint{color:var(--ink-faint); font-size:12.5px; float:right}
+  .prompt-cta:hover{background:var(--amber); color:var(--on-amber)}
+  .prompt-cta:hover b,.prompt-cta:hover::before,.prompt-cta:hover .hint{color:var(--on-amber)}
+  .prompt-cta:hover .cursor{background:var(--on-amber)}
+  .prompt-cta:focus-visible{outline:2px solid var(--amber); outline-offset:2px}
+
+  /* section output titles: real h2s, printed as output */
+  h2.disp{font-size:clamp(26px,3.4vw,38px); margin-bottom:6px}
+  .sub{color:var(--ink-soft); max-width:52ch}
+
+  /* steps as session output */
+  .steps{margin-top:22px}
+  .step{display:grid; grid-template-columns:6ch 1fr; padding:13px 0;
+    border-top:1px solid var(--line); max-width:72ch}
+  .step:last-child{border-bottom:1px solid var(--line)}
+  .step .n{color:var(--amber); font-size:13.5px}
+  .step h3{font-size:15.5px; font-weight:600}
+  .step p{color:var(--ink-soft); font-size:14px; margin-top:4px}
+
+  /* ls output: a real column grid, so wrapped notes stay in their column
+     instead of spilling under the perm bits */
+  .ls{margin-top:18px; font-size:14px; line-height:1.8}
+  .ls ul{list-style:none; padding:0}
+  .ls li{display:grid; grid-template-columns:11ch 21ch 1fr; gap:0 14px; padding:5px 0}
+  .ls .perm{color:var(--amber-dim)}
+  .ls .file{color:var(--ink); font-weight:500}
+  .ls .note{color:var(--ink-soft)}
+  @media(max-width:640px){
+    .ls li{grid-template-columns:1fr; margin-bottom:12px; padding:0}
+    .ls .perm{display:none} /* the perm bits are flavor; drop them at 390 */
+  }
+
+  .body{color:var(--ink-soft); max-width:60ch}
+  .body b{color:var(--ink); font-weight:600}
+  .link{color:var(--ink); text-decoration:underline; text-decoration-color:var(--amber);
+    text-decoration-thickness:2px; text-underline-offset:3px}
+  .link:hover{background:var(--amber); color:var(--on-amber)}
+
+  .ledger{margin-top:20px; max-width:54ch; font-size:14px}
+  .lrow{display:flex; align-items:baseline; gap:10px; padding:8px 0}
+  .lrow+.lrow{border-top:1px solid var(--line)}
+  .lrow .k{color:var(--amber-soft); text-transform:uppercase; font-size:12.5px; letter-spacing:.08em}
+  .lrow .dots{flex:1; border-bottom:2px dotted var(--amber-line); transform:translateY(-4px); min-width:24px}
+  .lrow .v{color:var(--ink); font-weight:500; text-align:right}
+
+  .tree{margin-top:20px; max-width:70ch}
+  .tree summary{cursor:pointer; list-style:none; padding:10px 0; font-weight:500;
+    font-size:15px; display:flex; gap:12px; align-items:baseline}
+  .tree summary::-webkit-details-marker{display:none}
+  .tree summary .tick{color:var(--amber-dim)}
+  .tree details[open] summary .tick{color:var(--amber)}
+  .tree .a{padding:2px 0 14px 3.2ch; color:var(--ink-soft); font-size:14px;
+    border-left:1px solid var(--amber-line); margin-left:.55ch; max-width:58ch}
+
+  .fetchline{margin-top:18px; font-size:13px; white-space:nowrap; overflow-x:auto}
+  .fetchline .k{color:var(--amber-soft)}
+  .fetchline b{color:var(--ink); font-weight:500}
+  .fetchline .hot{color:var(--amber); font-weight:600}
+
+  /* session footer */
+  .exit{margin-top:64px; color:var(--ink-faint); font-size:13px}
+  .exit .cmd{margin-top:0}
+  .exit .paths{margin-top:12px; display:flex; flex-wrap:wrap; gap:6px 20px}
+  .exit a:hover{color:var(--ink)}
+
+  /* ---- tmux bar: fixed bottom nav ---- */
+  .tmux{position:fixed; bottom:0; left:0; right:0; z-index:50;
+    background:var(--paper); border-top:1px solid var(--amber-line);
+    font-size:12.5px; display:flex; align-items:stretch; gap:0;
+    white-space:nowrap}
+  .tmux .sess{background:var(--amber); color:var(--on-amber); font-weight:600;
+    padding:7px 12px; flex:none}
+  .tmux .wins{display:flex; overflow-x:auto; scrollbar-width:none}
+  .tmux .wins::-webkit-scrollbar{display:none}
+  .tmux .win{padding:7px 11px; color:var(--amber-soft); flex:none}
+  .tmux .win.active{color:var(--on-amber); background:var(--amber-soft)}
+  .tmux .win:hover{color:var(--ink)}
+  .tmux .right{margin-left:auto; padding:7px 12px; color:var(--amber); flex:none;
+    border-left:1px solid var(--amber-line)}
+  .tmux .right .white{color:var(--ink)}
+  @media(max-width:640px){.tmux .right .hide-sm{display:none}}
+  body{padding-bottom:38px} /* room for the tmux bar */
+</style>
+</head>
+<body>
+
+<main>
+  <!-- BOOT SEQUENCE ======================================================= -->
+  <section aria-label="Boot">
+    <p class="cmd boot" style="--i:0; margin-top:0"><b>batch0 --init</b> <span class="comment">&nbsp;# formerly sparkline youth</span></p>
+    <div class="out">
+      <p class="bootline boot" style="--i:1"><span>&gt; locating cohort 001</span><span class="bdots"></span><span class="ok">ok</span></p>
+      <p class="bootline boot" style="--i:2"><span>&gt; loading mentors</span><span class="bdots"></span><span class="ok">ok</span></p>
+      <p class="bootline boot" style="--i:3"><span>&gt; checking equity module</span><span class="bdots"></span><span class="zero-pc">0% taken</span></p>
+      <p class="bootline boot" style="--i:4"><span>&gt; applications</span><span class="bdots"></span><span class="ok">open until aug 10</span></p>
+
+      <div class="fetch boot" style="--i:5">
+<pre class="zero" aria-hidden="true">
+  ██████
+ ██    ██
+ ██   <i>█</i>██
+ ██  <i>█</i> ██
+ ██<i>█</i>   ██
+ ██    ██
+  ██████
+</pre>
+        <div class="kv">
+          <div><span class="k">COHORT</span> <span class="v">001</span></div>
+          <div><span class="k">RUNS</span> <span class="v">AUG 17 – OCT 18</span></div>
+          <div><span class="k">FORMAT</span> <span class="v">live · online · US</span></div>
+          <div><span class="k">TUITION</span> <span class="v">$130 if accepted</span></div>
+          <div><span class="k">EQUITY</span> <span class="v">0%</span></div>
+          <div class="row-hot"><span class="k">APPLY BY</span> <span class="v">AUG 10</span></div>
+        </div>
+      </div>
+
+      <h1 class="disp boot" style="--i:6">Don't wait for college to start <span style="white-space:nowrap"><span class="hl">building</span><span class="cursor" aria-hidden="true"></span></span></h1>
+      <p class="lede boot" style="--i:7">batch0 is a live, online startup accelerator for high
+      schoolers. Seasonal build sprints, mentorship, and a supportive community
+      resulting in a company of your own.</p>
+      <a class="prompt-cta boot" style="--i:8" href="#apply"><b>apply --cohort 001</b><span class="cursor" aria-hidden="true"></span><span class="hint">↵ free · $130 only if accepted</span></a>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS ======================================================== -->
+  <section id="program" aria-label="How it works">
+    <p class="cmd"><b>cat how-it-works.txt</b></p>
+    <div class="out">
+      <h2 class="disp">How it works</h2>
+      <p class="sub">Five steps to building a real company at batch0. The dates
+      are set by the Cohort 1 calendar (Aug 17 – Oct 18).</p>
+      <div class="steps">
+        <div class="step"><span class="n">[1/5]</span><div>
+          <h3>Apply</h3><p>Free. Come with an idea you want to build, or just a
+          desire to learn. We admit students who show they'll actually do the
+          work, not just ideas.</p></div></div>
+        <div class="step"><span class="n">[2/5]</span><div>
+          <h3>Get a decision by email</h3><p>Applications are reviewed on a
+          rolling basis. Each application is read and thoughtfully reviewed by
+          our team.</p></div></div>
+        <div class="step"><span class="n">[3/5]</span><div>
+          <h3>Enroll</h3><p>$130 tuition, charged only if you're accepted.
+          That's it. Nothing more. Refund terms are published on the refund
+          policy page.</p></div></div>
+        <div class="step"><span class="n">[4/5]</span><div>
+          <h3>Build season</h3><p>Validate, build, market, pitch and most
+          importantly, transform your idea into a company.</p></div></div>
+        <div class="step"><span class="n">[5/5]</span><div>
+          <h3>Pitch at demo day</h3><p>The cohort closes with a live demo day
+          where you present the company you built. Standouts may be offered
+          batch0 sponsorship, a non-dilutive grant, decided on merit, never
+          guaranteed.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DELIVERABLES ======================================================== -->
+  <section aria-label="What you leave with">
+    <p class="cmd"><b>ls -la deliverables/</b></p>
+    <div class="out">
+      <h2 class="disp">What you leave with</h2>
+      <p class="sub">By demo day your idea will look like this:</p>
+      <div class="ls"><ul>
+        <li><span class="perm">-rw-r--r--</span> <span class="file">lean-canvas.pdf</span> <span class="note">validated in interviews with strangers who owe you nothing</span></li>
+        <li><span class="perm">-rwxr-xr-x</span> <span class="file">shipped-v1.url</span> <span class="note">landing page, no-code MVP, or working prototype — live</span></li>
+        <li><span class="perm">-rw-r--r--</span> <span class="file">business-model.xlsx</span> <span class="note">revenue, pricing, and unit economics you can defend</span></li>
+        <li><span class="perm">-rw-r--r--</span> <span class="file">go-to-market.md</span> <span class="note">a concrete path to your first paying customers</span></li>
+        <li><span class="perm">-rw-r--r--</span> <span class="file">pitch-deck.key</span> <span class="note">written, rehearsed, and delivered live at demo day</span></li>
+        <li><span class="perm">drwx------</span> <span class="file">your-company/</span> <span class="note">100% yours — no equity, no IP, no royalties taken</span></li>
+      </ul></div>
+      <a class="prompt-cta" href="#apply"><b>apply</b><span class="cursor" aria-hidden="true"></span><span class="hint">↵ start yours</span></a>
+    </div>
+  </section>
+
+  <!-- WHO RUNS THIS ======================================================= -->
+  <section aria-label="Who runs this">
+    <p class="cmd"><b>whoami</b></p>
+    <div class="out">
+      <h2 class="disp">Who runs this</h2>
+      <div class="body" style="margin-top:14px">
+        <p>batch0 is built and run by <b>Rishabh Dagli and Taran Bethi</b>, two
+        17-year-old serial founders. We built batch0 to give high schoolers the
+        same chance that we wish we had: to build a REAL company with mentorship
+        and support, and even the chance of funding!</p>
+        <p style="margin-top:14px">Cohort 1 is deliberately the first. There
+        are no glossy alumni stats to show you yet, and we won't invent any.
+        What we can promise: Rishabh and Taran run every live session
+        themselves, read every application, and answer every parent question
+        personally within a couple of days.</p>
+        <p style="margin-top:14px"><a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING ============================================================= -->
+  <section aria-label="Pricing">
+    <p class="cmd"><b>cat pricing.txt</b></p>
+    <div class="out">
+      <h2 class="disp">$130, once</h2>
+      <p class="body sub" style="margin-top:10px">batch0 is 100% free to apply,
+      tuition is charged only if you're accepted. Comparable summer programs
+      list tuition in the $3,000–$8,000+ range, even for online programs.
+      Tuition here covers the program itself. Sponsorship and any
+      investor/mentor relationship are merit-based, never paid for, and never
+      guaranteed.</p>
+      <div class="ledger">
+        <div class="lrow"><span class="k">application</span><span class="dots"></span><span class="v">free</span></div>
+        <div class="lrow"><span class="k">tuition</span><span class="dots"></span><span class="v">$130 · only if accepted</span></div>
+        <div class="lrow"><span class="k">hidden fees</span><span class="dots"></span><span class="v">none</span></div>
+        <div class="lrow"><span class="k">equity taken</span><span class="dots"></span><span class="v">none</span></div>
+        <div class="lrow"><span class="k">refunds</span><span class="dots"></span><span class="v"><a class="link" href="#refunds">see refund policy</a></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ ================================================================= -->
+  <section id="faq" aria-label="Questions parents ask">
+    <p class="cmd"><b>man batch0</b> <span class="comment">&nbsp;# questions parents ask</span></p>
+    <div class="out">
+      <h2 class="disp">Questions parents ask</h2>
+      <p class="sub">The short versions. Anything else:
+      <a class="link" href="mailto:hello@batch0.org">email a human</a>.</p>
+      <div class="tree">
+        <details><summary><span class="tick">├─</span> How much does it cost?</summary>
+          <div class="a">$0 to apply. $130 tuition, charged only if your student
+          is accepted. No hidden fees, no equipment to buy, nothing else —
+          ever.</div></details>
+        <details><summary><span class="tick">├─</span> Who runs batch0?</summary>
+          <div class="a">Rishabh Dagli and Taran Bethi — the founders run every
+          live session themselves. The legal entity is Sparkline Youth
+          LLC.</div></details>
+        <details><summary><span class="tick">├─</span> Who is it for?</summary>
+          <div class="a">U.S. high schoolers, ages 13–18, who want to build
+          something real. No prior startup or coding experience
+          required.</div></details>
+        <details><summary><span class="tick">├─</span> How much time does it take?</summary>
+          <div class="a">Designed to fit around school: live sessions plus
+          independent build time each week across the Aug 17 – Oct 18
+          season.</div></details>
+        <details><summary><span class="tick">├─</span> Is it really fully online?</summary>
+          <div class="a">Yes — every session is live and online. No travel,
+          nothing to install beyond a browser.</div></details>
+        <details><summary><span class="tick">├─</span> What is demo day?</summary>
+          <div class="a">The final session: students pitch the company they
+          built, live. Standouts may earn merit-based, non-dilutive
+          sponsorship — never guaranteed.</div></details>
+        <details><summary><span class="tick">└─</span> Does batch0 take equity or own my idea?</summary>
+          <div class="a">No. 0% equity, no IP claims, no royalties. Everything
+          your student builds is theirs.</div></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL PROMPT ======================================================== -->
+  <section id="apply" aria-label="Apply">
+    <p class="cmd"><b>apply --cohort 001</b></p>
+    <div class="out">
+      <h2 class="disp" style="max-width:18ch">Cohort 1 is the founding cohort. <span class="hl">Be in it.</span></h2>
+      <p class="fetchline"><span class="k">COHORT:</span> <b>001</b> · <span class="k">RUNS:</span> <b>AUG 17 – OCT 18</b> · <span class="k">TUITION:</span> <b>$130 if accepted</b> · <span class="k">EQUITY:</span> <b>0%</b> · <span class="k">APPLY BY:</span> <span class="hot">AUG 10</span></p>
+      <a class="prompt-cta" href="#apply" style="border-color:var(--amber)"><b>apply --now</b><span class="cursor" aria-hidden="true"></span><span class="hint">↵ free to apply</span></a>
+    </div>
+  </section>
+
+  <!-- SESSION END ========================================================= -->
+  <div class="exit">
+    <p class="cmd" style="font-weight:400"><b style="color:var(--ink-soft)">logout</b></p>
+    <div class="out">
+      <p>connection to batch0 closed · © 2026 Sparkline Youth LLC. All rights
+      reserved. · A live, online startup accelerator for U.S. high schoolers.
+      No equity taken; funding is never guaranteed. ·
+      <a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></p>
+      <div class="paths">
+        <a href="#program">/program</a><a href="#blog">/blog</a>
+        <a href="#sponsors">/sponsors</a><a href="#faq">/faq</a>
+        <a href="#apply">/apply</a><a href="#login">/login</a>
+        <a href="#terms">/terms</a><a href="#privacy">/privacy</a>
+        <a href="#refunds">/refund-policy</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- TMUX BAR =============================================================== -->
+<nav class="tmux" aria-label="Site">
+  <span class="sess">batch0</span>
+  <div class="wins">
+    <a class="win active" href="#" aria-current="page">0:home*</a>
+    <a class="win" href="#program">1:program</a>
+    <a class="win" href="#blog">2:blog</a>
+    <a class="win" href="#sponsors">3:sponsors</a>
+    <a class="win" href="#faq">4:faq</a>
+    <a class="win" href="#login">5:login</a>
+  </div>
+  <span class="right"><span class="hide-sm">apply by aug 10 · </span><span class="white" id="tminus">T−27d</span> · <span id="clock">--:--</span></span>
+</nav>
+
+<script>
+  (function(){
+    var close = new Date("2026-08-10T23:59:00-04:00");
+    function pad(n){return String(n).padStart(2,"0")}
+    function tick(){
+      var now = new Date();
+      var d = Math.max(0, Math.ceil((close - now)/864e5));
+      document.getElementById("tminus").textContent = "T−" + d + "d";
+      document.getElementById("clock").textContent =
+        pad(now.getHours())+":"+pad(now.getMinutes());
+    }
+    tick(); setInterval(tick, 15000);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,413 @@
+<!doctype html>
+<!-- ==========================================================================
+ROUND 2 — CONCEPT 3: THE BROADSHEET
+
+Pixel-type poster composition. Every scroll-stop is a poster built on massive
+asymmetric scale contrast: one enormous anchor (the slashed pixel 0, a $130,
+a closing BE IN IT.) with dense mono smallprint packed into its counterspace.
+The hero's readout is EMBEDDED — knocked out of the giant 0's lower edge with
+paper behind it, not floating in a card. Anchors crop off the page edge on
+purpose (the 0 bleeds right, the 5 bleeds left); the grid is broken
+deliberately, but the smallprint inside each poster stays strictly
+colon-aligned — poster confidence outside, terminal craft inside. Amber is
+chrome and anchor; everything you read at length is off-white.
+
+390px (designed, not squished): anchors keep bleeding off-edge (the 0 crops
+at ~118vw — a poster crop, not a squish), smallprint columns collapse to one,
+the embedded readout slides out from under the 0 to sit flush beneath it,
+and the masthead strip condenses. Scale contrast survives because the anchors
+are vw-sized while smallprint has a floor.
+
+WHERE IT STRAINS (honest):
+- It does not template. Every page needs art direction — /program and /apply
+  each need their own poster anchor decided by a human, or the system decays
+  into Round 1's generic column. Strongest homepage, most expensive system.
+- Overlap is risk: the embedded readout and cropped anchors need careful
+  z-index and spacing discipline at every breakpoint; sloppy execution reads
+  as bugs, not posters.
+- Long-form (blog articles, legal) must drop the poster grammar entirely and
+  fall back to plain off-white reading columns under a thin masthead — the
+  broadsheet is a cover format, not a body format.
+- Accessibility: the giant anchors are aria-hidden decoration; all facts they
+  carry must ALSO exist in real text (done here — the readout and smallprint
+  carry everything).
+=========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>batch0 — Round 2 / Concept 3: THE BROADSHEET</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#0c0c0d; --line:#2a2a2e;
+    --ink:#f5f5f4; --ink-soft:#a1a1aa; --ink-faint:#87878f;
+    --amber:#FFBB00; --amber-soft:rgba(255,187,0,.62);
+    --amber-dim:rgba(255,187,0,.40); --amber-line:rgba(255,187,0,.25);
+    --on-amber:#141414;
+    --padx:clamp(20px,5vw,72px);
+  }
+  *{box-sizing:border-box; margin:0}
+  html{scroll-behavior:smooth}
+  html,body{background:var(--paper); color:var(--ink);
+    font:400 15px/1.65 "IBM Plex Mono",ui-monospace,monospace}
+  /* the anchors bleed off-page; clip (not hidden) so no scroll container is
+     created and the bleed can never widen the page's scrollable area */
+  html,body{overflow-x:clip}
+  ::selection{background:var(--amber); color:var(--on-amber)}
+  a{color:inherit; text-decoration:none}
+  .disp{font-family:"VT323",monospace; font-weight:400; letter-spacing:.01em; line-height:.9}
+
+  /* ---- masthead strip ---- */
+  .mast{display:flex; justify-content:space-between; gap:16px; padding:7px var(--padx);
+    font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--amber-soft); border-bottom:1px solid var(--amber-line)}
+  .mast b{color:var(--amber); font-weight:500}
+  .mast .white{color:var(--ink)}
+  .mast a:hover{color:var(--ink)}
+  @media(max-width:640px){.mast .hide-sm{display:none}}
+  .mast .paths{display:flex; gap:14px}
+
+  .btn{display:inline-block; background:var(--amber); color:var(--on-amber);
+    font-weight:600; font-size:14px; padding:10px 18px; border-radius:2px}
+  .btn:hover{background:#FFD75C}
+  .btn:focus-visible,a:focus-visible{outline:2px solid var(--amber); outline-offset:2px}
+
+  .hl{background:var(--amber); color:var(--on-amber); padding:0 .1em;
+    box-decoration-break:clone; -webkit-box-decoration-break:clone}
+  .cursor{display:inline-block; width:.55ch; background:var(--amber);
+    animation:blink 1.06s steps(1) infinite; margin-left:2px}
+  .cursor::after{content:"\00a0"}
+  @keyframes blink{50%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){.cursor{animation:none}}
+
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber)}
+  .kicker::before{content:"$ "; color:var(--amber-dim)}
+  .small{font-size:13px; color:var(--ink-soft)}
+  .small b{color:var(--ink); font-weight:600}
+  .link{color:var(--ink); text-decoration:underline; text-decoration-color:var(--amber);
+    text-decoration-thickness:2px; text-underline-offset:3px}
+  .link:hover{background:var(--amber); color:var(--on-amber)}
+
+  /* ================= POSTER 1 — the giant slashed 0 ================= */
+  .p1{position:relative; padding:56px var(--padx) 72px; min-height:92vh}
+  .p1 .zero{position:absolute; top:34px; right:calc(-1*clamp(30px,6vw,90px));
+    color:var(--amber); font-size:clamp(15px,3.9vw,54px); line-height:1.06;
+    user-select:none; z-index:0}
+  .p1 .zero i{font-style:normal; color:var(--ink)}
+  .p1 h1{position:relative; z-index:2; font-size:clamp(50px,7.6vw,104px);
+    max-width:14ch; margin-top:6vh}
+  .p1 .lede{position:relative; z-index:2; margin-top:26px; max-width:44ch;
+    color:var(--ink-soft); font-size:15.5px}
+  .p1 .ctas{position:relative; z-index:2; margin-top:26px; display:flex;
+    gap:14px; flex-wrap:wrap; align-items:center}
+  .p1 .fine{font-size:12.5px; color:var(--ink-faint)}
+  /* the readout knocked out of the 0 — paper behind, no border, no card */
+  .p1 .readout{position:absolute; z-index:2; right:clamp(16px,7vw,120px);
+    bottom:48px; background:var(--paper); padding:18px 22px}
+  .kv{font-size:13.5px; line-height:1.95}
+  .kv .k{display:inline-block; width:10ch; white-space:nowrap; color:var(--amber-soft)}
+  .kv .k::after{content:":"}
+  .kv .v{color:var(--ink); font-weight:500}
+  .kv .row-hot .v{color:var(--amber); font-weight:600}
+  @media(max-width:900px){
+    .p1{min-height:0; padding-bottom:40px}
+    .p1 .zero{position:relative; inset:auto; right:auto; margin:0 calc(-1*var(--padx)) 0 auto;
+      width:max-content; transform:translateX(12vw); display:block} /* poster crop off the right */
+    .p1 h1{margin-top:18px}
+    .p1 .readout{position:static; padding:18px 0 0; background:none}
+  }
+
+  /* poster section shell */
+  .poster{border-top:1px solid var(--amber-line); padding:64px var(--padx) 72px; position:relative}
+
+  /* ================= POSTER 2 — 5 steps, giant 5 bleeding left ============ */
+  .p2 .five{position:absolute; left:calc(-1*clamp(20px,4vw,60px)); top:24px;
+    font-size:clamp(200px,34vw,460px); color:var(--amber); line-height:.78;
+    user-select:none; z-index:0}
+  .p2 .body{position:relative; z-index:1; margin-left:clamp(120px,26vw,360px); max-width:66ch}
+  .p2 h2{font-size:clamp(34px,4.6vw,54px)}
+  .p2 .steps{margin-top:24px}
+  .p2 .step{display:grid; grid-template-columns:6ch 1fr; padding:13px 0; border-top:1px solid var(--line)}
+  .p2 .step:last-child{border-bottom:1px solid var(--line)}
+  .p2 .step .n{color:var(--amber); font-size:13px}
+  .p2 .step h3{font-size:15px; font-weight:600}
+  .p2 .step p{color:var(--ink-soft); font-size:13.5px; margin-top:3px}
+  @media(max-width:760px){
+    .p2 .five{position:relative; left:calc(-1*var(--padx) - 4vw); top:auto;
+      font-size:clamp(180px,52vw,260px); display:block}
+    .p2 .body{margin-left:0; margin-top:-.35em}
+  }
+
+  /* ================= POSTER 3 — SHIP. manifest ======================== */
+  .p3 h2{font-size:clamp(84px,15vw,200px); color:var(--ink)}
+  .p3 h2 .amber{color:var(--amber)}
+  .p3 .cols{margin-top:30px; columns:2; column-gap:56px; max-width:1100px}
+  @media(max-width:820px){.p3 .cols{columns:1}}
+  .p3 .item{break-inside:avoid; padding:12px 0; border-top:1px solid var(--line)}
+  .p3 .item .perm{color:var(--amber-dim); font-size:12.5px}
+  .p3 .item .file{color:var(--ink); font-weight:600; font-size:15px; display:block}
+  .p3 .item .note{color:var(--ink-soft); font-size:13.5px}
+
+  /* ================= POSTER 4 — $130 ================================== */
+  .p4{overflow:hidden}
+  .p4 .price{font-size:clamp(140px,26vw,360px); color:var(--amber); line-height:.8;
+    margin-left:calc(-1*clamp(8px,1.5vw,24px)); user-select:none}
+  .p4 .once{font-size:clamp(34px,5vw,64px); margin-top:4px}
+  .p4 .grid{display:grid; gap:36px; grid-template-columns:1fr; max-width:1100px; margin-top:30px}
+  @media(min-width:860px){.p4 .grid{grid-template-columns:6fr 6fr}}
+  .ledger{font-size:14px}
+  .lrow{display:flex; align-items:baseline; gap:10px; padding:9px 0}
+  .lrow+.lrow{border-top:1px solid var(--line)}
+  .lrow .k{color:var(--amber-soft); text-transform:uppercase; font-size:12.5px; letter-spacing:.08em}
+  .lrow .dots{flex:1; border-bottom:2px dotted var(--amber-line); transform:translateY(-4px); min-width:24px}
+  .lrow .v{color:var(--ink); font-weight:500; text-align:right}
+
+  /* ================= POSTER 5 — the broadsheet page =================== */
+  .p5 .rulehead{display:flex; align-items:baseline; justify-content:space-between;
+    gap:16px; border-bottom:2px solid var(--amber); padding-bottom:10px}
+  .p5 .rulehead h2{font-size:clamp(30px,4vw,44px)}
+  .p5 .rulehead .folio{font-size:12px; color:var(--amber-soft); letter-spacing:.1em;
+    text-transform:uppercase}
+  .p5 .cols{margin-top:26px; display:grid; gap:44px; grid-template-columns:1fr}
+  @media(min-width:900px){.p5 .cols{grid-template-columns:6fr 6fr}}
+  .p5 h3.colhead{font-family:"VT323",monospace; font-weight:400; font-size:24px; margin-bottom:12px}
+  .p5 .body{color:var(--ink-soft); font-size:14px}
+  .p5 .body b{color:var(--ink); font-weight:600}
+  .p5 .body p+p{margin-top:12px}
+  .tree summary{cursor:pointer; list-style:none; padding:9px 0; font-weight:500;
+    font-size:14px; display:flex; gap:10px; align-items:baseline}
+  .tree summary::-webkit-details-marker{display:none}
+  .tree summary .tick{color:var(--amber-dim)}
+  .tree details[open] summary .tick{color:var(--amber)}
+  .tree .a{padding:2px 0 12px 3ch; color:var(--ink-soft); font-size:13.5px;
+    border-left:1px solid var(--amber-line); margin-left:.5ch}
+
+  /* ================= POSTER 6 — closing =============================== */
+  .p6{text-align:left}
+  .p6 h2{font-size:clamp(64px,12vw,168px); max-width:9ch}
+  .p6 .fetchline{margin-top:26px; font-size:13px; white-space:nowrap; overflow-x:auto}
+  .p6 .fetchline .k{color:var(--amber-soft)}
+  .p6 .fetchline b{color:var(--ink); font-weight:500}
+  .p6 .fetchline .hot{color:var(--amber); font-weight:600}
+  .p6 .ctas{margin-top:26px; display:flex; gap:14px; flex-wrap:wrap; align-items:center}
+
+  /* colophon */
+  .colophon{border-top:1px solid var(--amber-line); padding:30px var(--padx) 44px;
+    font-size:12.5px; color:var(--ink-faint); display:flex; flex-wrap:wrap;
+    gap:8px 26px; justify-content:space-between}
+  .colophon .paths{display:flex; flex-wrap:wrap; gap:6px 18px}
+  .colophon a:hover{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<!-- MASTHEAD =============================================================== -->
+<div class="mast" role="status">
+  <span><b>batch0</b> · cohort 001<span class="hide-sm"> · summer 2026</span></span>
+  <span class="paths hide-sm"><a href="#program">/program</a><a href="#blog">/blog</a><a href="#sponsors">/sponsors</a><a href="#faq">/faq</a><a href="#login">/login</a></span>
+  <span>apply by aug 10 · <span class="white" id="tminus">T−27d</span> · <span id="clock">--:--</span></span>
+</div>
+
+<main>
+  <!-- POSTER 1: HERO ====================================================== -->
+  <header class="p1">
+<pre class="zero disp" aria-hidden="true">
+    ██████████
+  ██          ██
+ ██            ██
+ ██          <i>█</i> ██
+ ██         <i>█</i>  ██
+ ██        <i>█</i>   ██
+ ██       <i>█</i>    ██
+ ██      <i>█</i>     ██
+ ██     <i>█</i>      ██
+ ██    <i>█</i>       ██
+ ██   <i>█</i>        ██
+  ██          ██
+    ██████████
+</pre>
+    <p class="kicker">startup accelerator for high schoolers</p>
+    <h1 class="disp">Don't wait for college to start <span style="white-space:nowrap"><span class="hl">building</span><span class="cursor" aria-hidden="true"></span></span></h1>
+    <p class="lede">batch0 is a live, online startup accelerator for high
+    schoolers. Seasonal build sprints, mentorship, and a supportive community
+    resulting in a company of your own.</p>
+    <div class="ctas">
+      <a class="btn" href="#apply">Apply for Cohort 1</a>
+      <span class="fine">free to apply · $130 only if accepted · 0% equity</span>
+    </div>
+    <div class="readout" aria-label="Cohort 1 readout">
+      <div class="kv">
+        <div><span class="k">COHORT</span> <span class="v">001</span></div>
+        <div><span class="k">RUNS</span> <span class="v">AUG 17 – OCT 18</span></div>
+        <div><span class="k">FORMAT</span> <span class="v">live · online · US</span></div>
+        <div><span class="k">TUITION</span> <span class="v">$130 if accepted</span></div>
+        <div><span class="k">EQUITY</span> <span class="v">0%</span></div>
+        <div class="row-hot"><span class="k">APPLY BY</span> <span class="v">AUG 10</span></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- POSTER 2: HOW IT WORKS ============================================= -->
+  <section class="poster p2" id="program">
+    <div class="five disp" aria-hidden="true">5</div>
+    <div class="body">
+      <p class="kicker">cat how-it-works.txt</p>
+      <h2 class="disp">steps to a real company</h2>
+      <div class="steps">
+        <div class="step"><span class="n">01</span><div><h3>Apply</h3>
+          <p>Free. Come with an idea you want to build, or just a desire to
+          learn. We admit students who show they'll actually do the work, not
+          just ideas.</p></div></div>
+        <div class="step"><span class="n">02</span><div><h3>Get a decision by email</h3>
+          <p>Applications are reviewed on a rolling basis. Each application is
+          read and thoughtfully reviewed by our team.</p></div></div>
+        <div class="step"><span class="n">03</span><div><h3>Enroll</h3>
+          <p>$130 tuition, charged only if you're accepted. That's it. Nothing
+          more. Refund terms are published on the refund policy page.</p></div></div>
+        <div class="step"><span class="n">04</span><div><h3>Build season</h3>
+          <p>Validate, build, market, pitch and most importantly, transform
+          your idea into a company.</p></div></div>
+        <div class="step"><span class="n">05</span><div><h3>Pitch at demo day</h3>
+          <p>The cohort closes with a live demo day where you present the
+          company you built. Standouts may be offered batch0 sponsorship, a
+          non-dilutive grant, decided on merit, never guaranteed.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POSTER 3: SHIP. ===================================================== -->
+  <section class="poster p3">
+    <p class="kicker">ls -la deliverables/</p>
+    <h2 class="disp">SHIP<span class="amber">.</span></h2>
+    <p class="small" style="margin-top:8px">By demo day your idea will look like this:</p>
+    <div class="cols">
+      <div class="item"><span class="perm">-rw-r--r--</span><span class="file">lean-canvas.pdf</span><span class="note">validated in interviews with strangers who owe you nothing</span></div>
+      <div class="item"><span class="perm">-rwxr-xr-x</span><span class="file">shipped-v1.url</span><span class="note">landing page, no-code MVP, or working prototype — live</span></div>
+      <div class="item"><span class="perm">-rw-r--r--</span><span class="file">business-model.xlsx</span><span class="note">revenue, pricing, and unit economics you can defend</span></div>
+      <div class="item"><span class="perm">-rw-r--r--</span><span class="file">go-to-market.md</span><span class="note">a concrete path to your first paying customers</span></div>
+      <div class="item"><span class="perm">-rw-r--r--</span><span class="file">pitch-deck.key</span><span class="note">written, rehearsed, and delivered live at demo day</span></div>
+      <div class="item"><span class="perm">drwx------</span><span class="file">your-company/</span><span class="note">100% yours — no equity, no IP, no royalties taken</span></div>
+    </div>
+  </section>
+
+  <!-- POSTER 4: $130 ====================================================== -->
+  <section class="poster p4">
+    <p class="kicker">cat pricing.txt</p>
+    <div class="price disp" aria-hidden="true">$130</div>
+    <h2 class="disp once">once<span class="hl">.</span></h2>
+    <div class="grid">
+      <p class="small">batch0 is <b>100% free to apply</b>, tuition is charged
+      only if you're accepted. Comparable summer programs list tuition in the
+      <b>$3,000–$8,000+</b> range, even for online programs. Tuition here
+      covers the program itself. Sponsorship and any investor/mentor
+      relationship are merit-based, never paid for, and never guaranteed.</p>
+      <div class="ledger">
+        <div class="lrow"><span class="k">application</span><span class="dots"></span><span class="v">free</span></div>
+        <div class="lrow"><span class="k">tuition</span><span class="dots"></span><span class="v">$130 · only if accepted</span></div>
+        <div class="lrow"><span class="k">hidden fees</span><span class="dots"></span><span class="v">none</span></div>
+        <div class="lrow"><span class="k">equity taken</span><span class="dots"></span><span class="v">none</span></div>
+        <div class="lrow"><span class="k">refunds</span><span class="dots"></span><span class="v"><a class="link" href="#refunds">see refund policy</a></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POSTER 5: THE BROADSHEET PAGE ====================================== -->
+  <section class="poster p5" id="faq">
+    <div class="rulehead">
+      <h2 class="disp">The fine print, up front</h2>
+      <span class="folio">no hype · vol. 001</span>
+    </div>
+    <div class="cols">
+      <div>
+        <h3 class="colhead">$ whoami — who runs this</h3>
+        <div class="body">
+          <p>batch0 is built and run by <b>Rishabh Dagli and Taran Bethi</b>,
+          two 17-year-old serial founders. We built batch0 to give high
+          schoolers the same chance that we wish we had: to build a REAL
+          company with mentorship and support, and even the chance of
+          funding!</p>
+          <p>Cohort 1 is deliberately the first. There are no glossy alumni
+          stats to show you yet, and we won't invent any. What we can promise:
+          Rishabh and Taran run every live session themselves, read every
+          application, and answer every parent question personally within a
+          couple of days.</p>
+          <p><a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></p>
+        </div>
+      </div>
+      <div>
+        <h3 class="colhead">$ man batch0 — questions parents ask</h3>
+        <div class="tree">
+          <details><summary><span class="tick">├─</span> How much does it cost?</summary>
+            <div class="a">$0 to apply. $130 tuition, charged only if your
+            student is accepted. No hidden fees, no equipment to buy, nothing
+            else — ever.</div></details>
+          <details><summary><span class="tick">├─</span> Who runs batch0?</summary>
+            <div class="a">Rishabh Dagli and Taran Bethi — the founders run
+            every live session themselves. The legal entity is Sparkline Youth
+            LLC.</div></details>
+          <details><summary><span class="tick">├─</span> Who is it for?</summary>
+            <div class="a">U.S. high schoolers, ages 13–18, who want to build
+            something real. No prior experience required.</div></details>
+          <details><summary><span class="tick">├─</span> How much time does it take?</summary>
+            <div class="a">Designed to fit around school: live sessions plus
+            independent build time each week, Aug 17 – Oct 18.</div></details>
+          <details><summary><span class="tick">├─</span> Is it really fully online?</summary>
+            <div class="a">Yes — every session is live and online. No travel,
+            nothing to install beyond a browser.</div></details>
+          <details><summary><span class="tick">├─</span> What is demo day?</summary>
+            <div class="a">The final session: students pitch the company they
+            built, live. Standouts may earn merit-based, non-dilutive
+            sponsorship — never guaranteed.</div></details>
+          <details><summary><span class="tick">└─</span> Does batch0 take equity or own my idea?</summary>
+            <div class="a">No. 0% equity, no IP claims, no royalties.
+            Everything your student builds is theirs.</div></details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POSTER 6: CLOSING =================================================== -->
+  <section class="poster p6" id="apply">
+    <p class="kicker">apply --cohort 001</p>
+    <h2 class="disp">Be in <span style="white-space:nowrap"><span class="hl">it.</span><span class="cursor" aria-hidden="true"></span></span></h2>
+    <p class="small" style="margin-top:14px; max-width:44ch">Cohort 1 is the
+    founding cohort. No glossy alumni stats — just the first hundred builders
+    and two founders who read every application.</p>
+    <p class="fetchline"><span class="k">COHORT:</span> <b>001</b> · <span class="k">RUNS:</span> <b>AUG 17 – OCT 18</b> · <span class="k">TUITION:</span> <b>$130 if accepted</b> · <span class="k">EQUITY:</span> <b>0%</b> · <span class="k">APPLY BY:</span> <span class="hot">AUG 10</span></p>
+    <div class="ctas">
+      <a class="btn" href="#apply">Apply for Cohort 1</a>
+      <span class="small" style="color:var(--ink-faint); font-size:12.5px">free to apply · $130 charged only if accepted</span>
+    </div>
+  </section>
+</main>
+
+<!-- COLOPHON =============================================================== -->
+<footer class="colophon">
+  <span>$ logout · © 2026 Sparkline Youth LLC · no equity taken; funding never
+  guaranteed · <a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></span>
+  <span class="paths">
+    <a href="#program">/program</a><a href="#blog">/blog</a>
+    <a href="#sponsors">/sponsors</a><a href="#apply">/apply</a>
+    <a href="#login">/login</a><a href="#terms">/terms</a>
+    <a href="#privacy">/privacy</a><a href="#refunds">/refund-policy</a>
+  </span>
+</footer>
+
+<script>
+  (function(){
+    var close = new Date("2026-08-10T23:59:00-04:00");
+    function pad(n){return String(n).padStart(2,"0")}
+    function tick(){
+      var now = new Date();
+      var d = Math.max(0, Math.ceil((close - now)/864e5));
+      document.getElementById("tminus").textContent = "T−" + d + "d";
+      document.getElementById("clock").textContent =
+        pad(now.getHours())+":"+pad(now.getMinutes());
+    }
+    tick(); setInterval(tick, 15000);
+  })();
+</script>
+</body>
+</html>

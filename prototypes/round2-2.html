@@ -1,0 +1,269 @@
+<!doctype html>
+<!-- ==========================================================================
+ROUND 2 — CONCEPT 2: THE BOARD
+
+Departure-board / ledger composition. The whole page is full-width data rows,
+edge to edge, hairline-separated, on one fixed column grid: CODE | ENTRY |
+REMARKS. The hero is one giant row — COHORT 001 / STARTUP ACCELERATOR FOR
+HIGH SCHOOLERS / BOARDING · T−27D. Every section (how it works, deliverables,
+pricing, FAQ, even the footer) is more rows in the same manifest; section
+breaks are amber divider rows, not headers-above-cards. The eye scans DOWN a
+single continuous board. Amber marks exactly the rows you can act on (→ APPLY
+rows, links); statuses live in the REMARKS column; a sticky column-header row
+carries the live clock. Density is the aesthetic — every line is information.
+
+390px (designed, not squished): the three-column grid re-forms into a
+two-line cell — CODE and REMARKS share the top line (code left, status
+right), ENTRY takes the full second line, detail text wraps beneath. The
+hairline rhythm and the amber actionable rows survive intact; the sticky
+header row condenses to CODE/REMARKS only.
+
+WHERE IT STRAINS (honest):
+- Content pages: the board grammar is built for LISTS. The founder story and
+  any blog article are paragraphs — they either ride in full-width "prose
+  rows" (as done here for `whoami`, a deliberate escape hatch) or the
+  metaphor breaks. /program's week-by-week fits beautifully; long-form does
+  not.
+- Hierarchy risk: when everything is a row, nothing is a hero except scale —
+  the giant 001 row has to carry the whole first impression alone.
+- The REMARKS column invites flavor ("BOARDING", "ON TIME") that must stay
+  truthful — flavor drift would violate the no-hype voice rule.
+=========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>batch0 — Round 2 / Concept 2: THE BOARD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#0c0c0d; --line:#2a2a2e;
+    --ink:#f5f5f4; --ink-soft:#a1a1aa; --ink-faint:#87878f;
+    --amber:#FFBB00; --amber-soft:rgba(255,187,0,.62);
+    --amber-dim:rgba(255,187,0,.40); --amber-line:rgba(255,187,0,.25);
+    --on-amber:#141414;
+    --padx:clamp(16px,3vw,40px);   /* edge padding inside full-width rows */
+    --colcode:11ch; --colremarks:24ch;
+  }
+  *{box-sizing:border-box; margin:0}
+  html{scroll-behavior:smooth}
+  html,body{background:var(--paper); color:var(--ink);
+    font:400 15px/1.6 "IBM Plex Mono",ui-monospace,monospace}
+  ::selection{background:var(--amber); color:var(--on-amber)}
+  a{color:inherit; text-decoration:none}
+  .disp{font-family:"VT323",monospace; font-weight:400; letter-spacing:.01em; line-height:1}
+
+  /* ---- masthead strip ---- */
+  .mast{display:flex; justify-content:space-between; gap:16px; padding:7px var(--padx);
+    font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--amber-soft); border-bottom:1px solid var(--amber-line)}
+  .mast b{color:var(--amber); font-weight:500}
+  .mast .white{color:var(--ink)}
+  @media(max-width:640px){.mast .hide-sm{display:none}}
+
+  /* ---- the shared row grid ---- */
+  .row{display:grid; grid-template-columns:var(--colcode) 1fr var(--colremarks);
+    gap:0 24px; align-items:baseline; padding:12px var(--padx);
+    border-bottom:1px solid var(--line)}
+  .row .code{color:var(--amber); font-size:13px; letter-spacing:.06em}
+  .row .entry{min-width:0}
+  .row .entry .t{font-weight:600; color:var(--ink); font-size:15px}
+  .row .entry .d{color:var(--ink-soft); font-size:13.5px; margin-top:3px; max-width:70ch}
+  .row .remarks{color:var(--amber-soft); font-size:12.5px; letter-spacing:.08em;
+    text-transform:uppercase; text-align:right; white-space:nowrap}
+  .row .remarks .white{color:var(--ink)}
+
+  /* sticky column header row */
+  .row.head{position:sticky; top:0; z-index:40; background:var(--paper);
+    padding-top:8px; padding-bottom:8px; border-bottom:1px solid var(--amber-line);
+    font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber)}
+  .row.head .clock{color:var(--ink)}
+
+  /* amber section divider rows */
+  .row.div{padding-top:26px; padding-bottom:8px; border-bottom:1px solid var(--amber-line);
+    align-items:end}
+  .row.div .code{color:var(--amber-dim)}
+  .row.div .entry .t{font-family:"VT323",monospace; font-weight:400; color:var(--amber);
+    font-size:clamp(22px,2.6vw,30px); letter-spacing:.02em}
+  .row.div .remarks{color:var(--amber-dim)}
+
+  /* actionable rows */
+  .row.act{border-bottom-color:var(--amber-line)}
+  .row.act .entry .t{color:var(--amber)}
+  .row.act .entry .t::before{content:"→ "; color:var(--amber)}
+  .row.act:hover{background:var(--amber)}
+  .row.act:hover *{color:var(--on-amber)!important}
+  .row.act:focus-visible{outline:2px solid var(--amber); outline-offset:-2px}
+
+  /* prose escape rows (the deliberate exception for paragraphs) */
+  .row.prose .entry{color:var(--ink-soft); font-size:14px; max-width:72ch}
+  .row.prose .entry b{color:var(--ink); font-weight:600}
+
+  /* ---- HERO: one giant row ---- */
+  .row.hero{grid-template-columns:auto 1fr auto; align-items:center;
+    padding-top:34px; padding-bottom:34px; gap:0 clamp(20px,4vw,56px)}
+  .hero .big{font-size:clamp(96px,17vw,230px); color:var(--amber); line-height:.82}
+  .hero .mid .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--amber-soft)}
+  .hero .mid h1{font-family:"VT323",monospace; font-weight:400; line-height:1.04;
+    font-size:clamp(30px,4.6vw,54px); max-width:18ch; margin-top:8px}
+  .hl{background:var(--amber); color:var(--on-amber); padding:0 .1em;
+    box-decoration-break:clone; -webkit-box-decoration-break:clone}
+  .cursor{display:inline-block; width:.55ch; background:var(--amber);
+    animation:blink 1.06s steps(1) infinite; margin-left:2px}
+  .cursor::after{content:"\00a0"}
+  @keyframes blink{50%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){.cursor{animation:none}}
+  .hero .mid .sub{margin-top:12px; color:var(--ink-soft); font-size:14px; max-width:52ch}
+  .hero .stat{text-align:right; font-size:13px; line-height:2}
+  .hero .stat .lbl{color:var(--amber-soft); text-transform:uppercase; letter-spacing:.1em; font-size:11.5px}
+  .hero .stat .val{color:var(--ink); font-weight:600}
+  .hero .stat .boarding{color:var(--amber); font-weight:600; font-size:16px}
+  @media(max-width:860px){
+    .row.hero{grid-template-columns:1fr auto}
+    .hero .big{grid-column:1; font-size:clamp(96px,24vw,160px)}
+    .hero .stat{grid-column:2; align-self:start}
+    .hero .mid{grid-column:1/-1; margin-top:10px}
+  }
+
+  /* link + fine */
+  .link{color:var(--ink); text-decoration:underline; text-decoration-color:var(--amber);
+    text-decoration-thickness:2px; text-underline-offset:3px}
+  .link:hover{background:var(--amber); color:var(--on-amber)}
+
+  /* FAQ rows */
+  details.row{display:block; padding:0}
+  details.row summary{display:grid; grid-template-columns:var(--colcode) 1fr var(--colremarks);
+    gap:0 24px; align-items:baseline; padding:12px var(--padx); cursor:pointer; list-style:none}
+  details.row summary::-webkit-details-marker{display:none}
+  details.row .q{font-weight:500; color:var(--ink); font-size:14.5px}
+  details.row .mark{color:var(--amber); text-align:right; font-size:13px}
+  details.row .a{padding:0 var(--padx) 16px; color:var(--ink-soft); font-size:13.5px}
+  details.row .a p{max-width:64ch; margin-left:calc(var(--colcode) + 24px)}
+  details.row[open]{background:rgba(255,187,0,.04)}
+
+  /* ---- 390px: two-line cells ---- */
+  @media(max-width:680px){
+    :root{--colremarks:auto}
+    .row{grid-template-columns:1fr auto; row-gap:2px}
+    .row .code{grid-column:1; grid-row:1}
+    .row .remarks{grid-column:2; grid-row:1}
+    .row .entry{grid-column:1/-1; grid-row:2}
+    .row.head{grid-template-columns:1fr auto}
+    .row.head .h-entry{display:none}
+    .row.div{grid-template-columns:1fr auto}
+    .row.div .entry{grid-column:1; grid-row:2}
+    details.row summary{grid-template-columns:1fr auto; row-gap:2px}
+    details.row summary .code{grid-column:1; grid-row:1}
+    details.row summary .mark{grid-column:2; grid-row:1}
+    details.row summary .q{grid-column:1/-1; grid-row:2}
+    details.row .a p{margin-left:0}
+  }
+</style>
+</head>
+<body>
+
+<!-- MASTHEAD =============================================================== -->
+<div class="mast" role="status">
+  <span><b>batch0</b> · departures<span class="hide-sm"> · summer 2026</span></span>
+  <span class="hide-sm">live, online · US high schoolers</span>
+  <span>apply by aug 10 · <span class="white" id="tminus">T−27d</span></span>
+</div>
+
+<!-- COLUMN HEADER (sticky) ================================================ -->
+<div class="row head" aria-hidden="true">
+  <span>code</span>
+  <span class="h-entry">entry</span>
+  <span class="remarks"><span class="clock" id="clock">--:--:--</span> · remarks</span>
+</div>
+
+<main>
+  <!-- HERO ROW ============================================================ -->
+  <header class="row hero">
+    <div class="big disp">001</div>
+    <div class="mid">
+      <p class="kicker">cohort 001 — startup accelerator for high schoolers</p>
+      <h1>Don't wait for college to start <span style="white-space:nowrap"><span class="hl">building</span><span class="cursor" aria-hidden="true"></span></span></h1>
+      <p class="sub">Live, online build sprints, mentorship, and a supportive
+      community resulting in a company of your own.</p>
+    </div>
+    <div class="stat">
+      <div><span class="lbl">status</span><br><span class="boarding">BOARDING</span></div>
+      <div style="margin-top:8px"><span class="lbl">runs</span><br><span class="val">AUG 17 – OCT 18</span></div>
+      <div style="margin-top:8px"><span class="lbl">apply by</span><br><span class="val">AUG 10 · <span id="tminus2">T−27d</span></span></div>
+    </div>
+  </header>
+
+  <!-- QUICK FACT ROWS ===================================================== -->
+  <div class="row"><span class="code">FARE</span><div class="entry"><span class="t">$130 tuition — charged only if accepted</span></div><span class="remarks">$0 to apply</span></div>
+  <div class="row"><span class="code">EQUITY</span><div class="entry"><span class="t">batch0 takes none — your company stays 100% yours</span></div><span class="remarks"><span class="white">0%</span> · no ip taken</span></div>
+  <a class="row act" href="#apply"><span class="code">GATE 1</span><div class="entry"><span class="t">Apply for Cohort 1</span></div><span class="remarks">now boarding</span></a>
+
+  <!-- HOW IT WORKS ======================================================== -->
+  <div class="row div" id="program"><span class="code">SEC 01</span><div class="entry"><span class="t">How it works</span></div><span class="remarks">5 steps · aug 17 – oct 18</span></div>
+  <div class="row"><span class="code">STEP 01</span><div class="entry"><span class="t">Apply</span><p class="d">Come with an idea you want to build, or just a desire to learn. We admit students who show they'll actually do the work, not just ideas.</p></div><span class="remarks">free</span></div>
+  <div class="row"><span class="code">STEP 02</span><div class="entry"><span class="t">Get a decision by email</span><p class="d">Applications are reviewed on a rolling basis. Each application is read and thoughtfully reviewed by our team.</p></div><span class="remarks">rolling</span></div>
+  <div class="row"><span class="code">STEP 03</span><div class="entry"><span class="t">Enroll</span><p class="d">$130 tuition, charged only if you're accepted. That's it. Nothing more. Refund terms are published on the refund policy page.</p></div><span class="remarks">$130 if accepted</span></div>
+  <div class="row"><span class="code">STEP 04</span><div class="entry"><span class="t">Build season</span><p class="d">Validate, build, market, pitch and most importantly, transform your idea into a company.</p></div><span class="remarks">9 weeks</span></div>
+  <div class="row"><span class="code">STEP 05</span><div class="entry"><span class="t">Pitch at demo day</span><p class="d">The cohort closes with a live demo day where you present the company you built. Standouts may be offered batch0 sponsorship, a non-dilutive grant, decided on merit, never guaranteed.</p></div><span class="remarks">live</span></div>
+
+  <!-- DELIVERABLES ======================================================== -->
+  <div class="row div"><span class="code">SEC 02</span><div class="entry"><span class="t">What you leave with</span></div><span class="remarks">by demo day</span></div>
+  <div class="row"><span class="code">-rw-</span><div class="entry"><span class="t">lean-canvas.pdf</span><p class="d">Validated in interviews with strangers who owe you nothing.</p></div><span class="remarks">validated</span></div>
+  <div class="row"><span class="code">-rwx</span><div class="entry"><span class="t">shipped-v1.url</span><p class="d">Landing page, no-code MVP, or working prototype — live and ready for the world to see.</p></div><span class="remarks">live</span></div>
+  <div class="row"><span class="code">-rw-</span><div class="entry"><span class="t">business-model.xlsx</span><p class="d">Revenue, pricing, and unit economics you can defend on demo day.</p></div><span class="remarks">defensible</span></div>
+  <div class="row"><span class="code">-rw-</span><div class="entry"><span class="t">go-to-market.md</span><p class="d">A concrete path to your first paying customers, completing with a funnel and marketing plan.</p></div><span class="remarks">concrete</span></div>
+  <div class="row"><span class="code">-rw-</span><div class="entry"><span class="t">pitch-deck.key</span><p class="d">Written, rehearsed, and delivered live at demo day.</p></div><span class="remarks">rehearsed</span></div>
+  <div class="row"><span class="code">drwx</span><div class="entry"><span class="t">your-company/</span><p class="d">batch0 takes no equity, no IP, and no royalties. Everything you build is yours.</p></div><span class="remarks"><span class="white">100% yours</span></span></div>
+
+  <!-- WHO RUNS THIS (prose escape rows) =================================== -->
+  <div class="row div"><span class="code">SEC 03</span><div class="entry"><span class="t">Who runs this</span></div><span class="remarks">founders on deck</span></div>
+  <div class="row prose"><span class="code">CREW</span><div class="entry"><p>batch0 is built and run by <b>Rishabh Dagli and Taran Bethi</b>, two 17-year-old serial founders. We built batch0 to give high schoolers the same chance that we wish we had: to build a REAL company with mentorship and support, and even the chance of funding!</p></div><span class="remarks">2 founders</span></div>
+  <div class="row prose"><span class="code">NOTE</span><div class="entry"><p>Cohort 1 is deliberately the first. There are no glossy alumni stats to show you yet, and we won't invent any. What we can promise: Rishabh and Taran run every live session themselves, read every application, and answer every parent question personally within a couple of days — <a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a>.</p></div><span class="remarks">no invented stats</span></div>
+
+  <!-- PRICING ============================================================= -->
+  <div class="row div"><span class="code">SEC 04</span><div class="entry"><span class="t">$130, once</span></div><span class="remarks">no hidden fees</span></div>
+  <div class="row"><span class="code">FARE 01</span><div class="entry"><span class="t">Application</span></div><span class="remarks"><span class="white">free</span></span></div>
+  <div class="row"><span class="code">FARE 02</span><div class="entry"><span class="t">Tuition</span><p class="d">Comparable summer programs list tuition in the $3,000–$8,000+ range, even for online programs.</p></div><span class="remarks"><span class="white">$130</span> · only if accepted</span></div>
+  <div class="row"><span class="code">FARE 03</span><div class="entry"><span class="t">Hidden fees</span></div><span class="remarks">none</span></div>
+  <div class="row"><span class="code">FARE 04</span><div class="entry"><span class="t">Equity taken</span></div><span class="remarks">none</span></div>
+  <div class="row"><span class="code">FARE 05</span><div class="entry"><span class="t">Refunds</span></div><span class="remarks"><a class="link" href="#refunds">see refund policy</a></span></div>
+
+  <!-- FAQ ================================================================= -->
+  <div class="row div" id="faq"><span class="code">SEC 05</span><div class="entry"><span class="t">Questions parents ask</span></div><span class="remarks"><a class="link" href="mailto:hello@batch0.org">email a human</a></span></div>
+  <details class="row"><summary><span class="code">FAQ 01</span><span class="q">How much does it cost?</span><span class="mark">[+]</span></summary><div class="a"><p>$0 to apply. $130 tuition, charged only if your student is accepted. No hidden fees, no equipment to buy, nothing else — ever.</p></div></details>
+  <details class="row"><summary><span class="code">FAQ 02</span><span class="q">Who runs batch0?</span><span class="mark">[+]</span></summary><div class="a"><p>Rishabh Dagli and Taran Bethi — the founders run every live session themselves. The legal entity is Sparkline Youth LLC.</p></div></details>
+  <details class="row"><summary><span class="code">FAQ 03</span><span class="q">Who is it for?</span><span class="mark">[+]</span></summary><div class="a"><p>U.S. high schoolers, ages 13–18, who want to build something real. No prior startup or coding experience required.</p></div></details>
+  <details class="row"><summary><span class="code">FAQ 04</span><span class="q">How much time does it take?</span><span class="mark">[+]</span></summary><div class="a"><p>Designed to fit around school: live sessions plus independent build time each week across the Aug 17 – Oct 18 season.</p></div></details>
+  <details class="row"><summary><span class="code">FAQ 05</span><span class="q">Is it really fully online?</span><span class="mark">[+]</span></summary><div class="a"><p>Yes — every session is live and online. No travel, nothing to install beyond a browser.</p></div></details>
+  <details class="row"><summary><span class="code">FAQ 06</span><span class="q">What is demo day?</span><span class="mark">[+]</span></summary><div class="a"><p>The final session: students pitch the company they built, live. Standouts may earn merit-based, non-dilutive sponsorship — never guaranteed.</p></div></details>
+  <details class="row"><summary><span class="code">FAQ 07</span><span class="q">Does batch0 take equity or own my idea?</span><span class="mark">[+]</span></summary><div class="a"><p>No. 0% equity, no IP claims, no royalties. Everything your student builds is theirs.</p></div></details>
+
+  <!-- FINAL BOARDING CALL ================================================= -->
+  <div class="row div" id="apply"><span class="code">SEC 06</span><div class="entry"><span class="t">Cohort 1 is the founding cohort. <span class="hl">Be in it.</span></span></div><span class="remarks">final call aug 10</span></div>
+  <a class="row act" href="#apply"><span class="code">GATE 1</span><div class="entry"><span class="t">Apply for Cohort 1</span><p class="d" style="color:inherit">Free to apply · $130 charged only if accepted · 0% equity.</p></div><span class="remarks">now boarding · T−27d</span></a>
+
+  <!-- FOOTER ROWS ========================================================= -->
+  <div class="row"><span class="code">INFO</span><div class="entry"><p class="d" style="margin-top:0">A live, online startup accelerator for U.S. high schoolers. No equity taken; funding is never guaranteed. · <a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></p></div><span class="remarks">© 2026 sparkline youth llc</span></div>
+  <div class="row"><span class="code">PATHS</span><div class="entry"><p class="d" style="margin-top:0; display:flex; flex-wrap:wrap; gap:4px 18px"><a href="#program">/program</a><a href="#blog">/blog</a><a href="#sponsors">/sponsors</a><a href="#faq">/faq</a><a href="#apply">/apply</a><a href="#login">/login</a><a href="#terms">/terms</a><a href="#privacy">/privacy</a><a href="#refunds">/refund-policy</a></p></div><span class="remarks">end of board</span></div>
+</main>
+
+<script>
+  (function(){
+    var close = new Date("2026-08-10T23:59:00-04:00");
+    function pad(n){return String(n).padStart(2,"0")}
+    function tick(){
+      var now = new Date();
+      var d = Math.max(0, Math.ceil((close - now)/864e5));
+      var t = "T−" + d + "d";
+      document.getElementById("tminus").textContent = t;
+      document.getElementById("tminus2").textContent = t;
+      document.getElementById("clock").textContent =
+        pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
+    }
+    tick(); setInterval(tick, 1000);
+  })();
+</script>
+</body>
+</html>

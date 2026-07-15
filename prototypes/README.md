@@ -1,4 +1,36 @@
-# Section 3 — Creative direction prototypes
+# Round 2 — Composition prototypes (current)
+
+Color system fixed per Round 1 pick: **amber-chrome** (frames/labels/prompts
+amber, readable content off-white). Round 2 diverges the BONES — no
+headline-left/card-right hero, no centered-headline-plus-buttons anywhere.
+
+- **round2-1.html — THE SESSION**: the homepage is one continuous terminal
+  session. Boot-sequence hero (`$ batch0 --init` prints its output with
+  aligned dotted-leader statuses), sections are command outputs in a single
+  tty column with the prompts hanging into the gutter, apply CTAs are
+  prompts waiting for input, nav is a fixed bottom tmux bar
+  (`batch0 | 0:home* 1:program … | T−Nd · HH:MM`). Strains: scanability/
+  scroll length, and the conceit must extend to every page or it collapses.
+- **round2-2.html — THE BOARD**: departure-board manifest. Every section is
+  full-width hairline rows on one fixed CODE | ENTRY | REMARKS grid; the hero
+  is one giant row (001 / headline / BOARDING · T−Nd); amber marks divider
+  and actionable (→ GATE) rows; sticky column header carries the live clock.
+  390px re-forms each row into a designed two-line cell. Strains: long-form
+  prose needs escape-hatch rows; the giant 001 carries the whole first
+  impression.
+- **round2-3.html — THE BROADSHEET**: poster composition. Enormous anchors
+  (slashed pixel 0 bleeding off the right edge with the readout knocked out
+  of its base, a giant $130, closing BE IN IT.) with dense colon-aligned
+  smallprint packed in the counterspace. `overflow-x: clip` keeps the bleeds
+  from creating sideways scroll. Strains: doesn't template — every new page
+  needs art direction; long-form must fall back to plain reading columns.
+
+Full theses + honest strain notes in each file's header comment. Renders:
+`docs/design-audit/shots/r2-*` (gitignored, regenerable).
+
+---
+
+# Round 1 — Color-direction prototypes (superseded)
 
 Three fully-styled static homepages exploring the amber-phosphor-terminal
 reference (Ampex/IBM amber CRTs, neofetch). Open each file directly in a
