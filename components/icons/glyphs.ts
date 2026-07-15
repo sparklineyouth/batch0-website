@@ -1,0 +1,109 @@
+/**
+ * The pixel icon family — eight glyphs on one shared 12-wide grid, the same
+ * blockiness as the wordmark 0. Flat amber; a single off-white cell only
+ * where it IS the data (the calendar's marked day, the block being placed).
+ *
+ * Icons are information anchors: each appears ONLY beside the fact it means
+ * (see prototypes/icons-reference.html for the reference sheet). "#" renders
+ * an amber block, "o" an off-white block, "." nothing.
+ */
+export const GLYPHS = {
+  /** dates · the aug 10 deadline */
+  calendar: [
+    "..##....##..",
+    "############",
+    "############",
+    "#..........#",
+    "#..........#",
+    "#......oo..#",
+    "#......oo..#",
+    "#..........#",
+    "#..........#",
+    "############",
+  ],
+  /** pricing · $130 once */
+  receipt: [
+    "############",
+    "#..........#",
+    "#..######..#",
+    "#..........#",
+    "#..######..#",
+    "#..........#",
+    "#..####....#",
+    "#..........#",
+    "#.....####.#",
+    "#..........#",
+    "##..##..##..",
+  ],
+  /** apply · the gate */
+  flag: [
+    "..##........",
+    "..##########",
+    "..##########",
+    "..########..",
+    "..##........",
+    "..##........",
+    "..##........",
+    "..##........",
+    "..##........",
+    "..##........",
+  ],
+  /** build season */
+  blocks: [
+    "....oo......",
+    "....oo......",
+    "............",
+    "...#####....",
+    "...#####....",
+    "...#####....",
+    "#####.#####.",
+    "#####.#####.",
+    "#####.#####.",
+  ],
+  /** decision by email */
+  envelope: [
+    "############",
+    "##........##",
+    "#.#......#.#",
+    "#..#....#..#",
+    "#...#..#...#",
+    "#....##....#",
+    "#..........#",
+    "############",
+  ],
+  /** your-company/ · deliverables */
+  folder: [
+    ".#####......",
+    "############",
+    "#..........#",
+    "#..........#",
+    "#..........#",
+    "#..........#",
+    "#..........#",
+    "############",
+  ],
+  /** who runs this */
+  founders: [
+    "..##....##..",
+    "..##....##..",
+    "............",
+    ".####..####.",
+    ".####..####.",
+    ".####..####.",
+    ".####..####.",
+  ],
+  /** faq · parent questions */
+  bubble: [
+    "############",
+    "#..........#",
+    "#..#.#.#...#",
+    "#..........#",
+    "############",
+    "...##.......",
+    "...#........",
+  ],
+} as const;
+
+export type GlyphName = keyof typeof GLYPHS;
+
+export const GLYPH_COLS = 12;

@@ -232,6 +232,46 @@ a,
   }
 }
 
+/* ============================================================================
+ * Terminal chrome (the broadsheet system)
+ * ============================================================================ */
+
+/* Blinking block cursor — a living detail, never information. */
+.cursor-block {
+  display: inline-block;
+  width: 0.55ch;
+  background: #ffbb00;
+  margin-left: 2px;
+  animation: cursor-blink 1.06s steps(1) infinite;
+}
+.cursor-block::after { content: "\00a0"; }
+@keyframes cursor-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cursor-block { animation: none; }
+}
+
+/* The identical section head, everywhere: `$ command · modified …` */
+.cmdline { font-size: 13px; color: rgba(255, 187, 0, 0.62); }
+.cmdline::before { content: "$ "; color: #ffbb00; }
+.cmdline b { color: #ffbb00; font-weight: 500; }
+.cmdline .mtime { color: rgb(var(--ink-faint)); }
+
+/* Comment asides that carry true data: `# $0 to apply` */
+.aside-note { color: rgb(var(--ink-faint)); font-size: 12.5px; }
+.aside-note::before { content: "# "; color: rgba(255, 187, 0, 0.4); }
+
+/* Nav paths: hover surfaces the prompt. */
+.path-link::before {
+  content: "$ ";
+  color: #ffbb00;
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  vertical-align: bottom;
+}
+.path-link:hover::before { opacity: 1; width: 2ch; }
+
 /* Marketing body links: ink text, phosphor underline. */
 .link-ink {
   color: rgb(var(--ink));
