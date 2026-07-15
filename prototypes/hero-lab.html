@@ -1,0 +1,554 @@
+<!doctype html>
+<!-- ==========================================================================
+HERO LAB — the broadsheet direction, creative reset
+
+PART 1 — PIXEL ICON LANGUAGE
+Eight glyphs on ONE shared 12x12 grid, same blockiness as the wordmark 0,
+built by the same block-builder the 0 uses (so they inherit its cursor
+behavior). Flat amber; a single off-white cell only where it IS the data
+(the marked day on the calendar, the block being placed on the stack).
+No outlines, no sub-grid detail. Legend below renders every glyph at 32px
+and 120px. Icons are information anchors: they appear beside the fact they
+mean, never as decoration.
+
+  calendar  dates / the aug 10 deadline      envelope  decision by email
+  receipt   pricing / $130                   folder    your-company/, deliverables
+  flag      apply / the gate                 founders  who runs this
+  blocks    build season                     bubble    faq / parent questions
+
+PART 2 — SIX HERO COMPS (stacked, one viewport each)
+The old headline is retired from this lab entirely. New headline options
+written for it (no-hype: direct, factual, a little dry):
+  h-1  "nine weeks. one company. yours."
+  h-2  "start a company this fall. keep all of it."
+  h-3  "high school is enough time to start a company."
+  h-4  "applications for cohort 001 close aug 10."
+Banned patterns honored: no left-stacked-headline/readout-right, no amber
+block on a final word (none anywhere), no CTA-under-paragraph-under-headline
+stack, old copy used zero times.
+
+STANDING RULES: amber chrome + off-white reading ink on #0c0c0d; VT323 +
+IBM Plex Mono; lowercase system (caps only where caps are data); live
+status bar; facts verbatim in every comp; micro details only where they
+carry true data; interaction layer transform/paint only, single rAF,
+reduced-motion kills all of it; never for /apply or forms.
+=========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>batch0 — hero lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#0c0c0d; --line:#2a2a2e;
+    --ink:#f5f5f4; --ink-soft:#a1a1aa; --ink-faint:#87878f;
+    --amber:#FFBB00; --amber-soft:rgba(255,187,0,.62);
+    --amber-dim:rgba(255,187,0,.40); --amber-line:rgba(255,187,0,.25);
+    --on-amber:#141414;
+    --padx:clamp(20px,5vw,72px);
+  }
+  *{box-sizing:border-box; margin:0}
+  html,body{overflow-x:clip}
+  body{background:var(--paper); color:var(--ink);
+    font:400 15px/1.65 "IBM Plex Mono",ui-monospace,monospace}
+  ::selection{background:var(--amber); color:var(--on-amber)}
+  a{color:inherit; text-decoration:none}
+  .disp{font-family:"VT323",monospace; font-weight:400; letter-spacing:.01em; line-height:.9}
+
+  .statusbar{display:flex; justify-content:space-between; gap:16px;
+    padding:6px var(--padx); font-size:12px; letter-spacing:.05em;
+    color:var(--amber-soft); border-bottom:1px solid var(--amber-line);
+    position:sticky; top:0; background:var(--paper); z-index:60}
+  .statusbar b{color:var(--amber); font-weight:500}
+  .statusbar .white{color:var(--ink)}
+  @media(max-width:680px){.statusbar .hide-sm{display:none}}
+
+  .btn{display:inline-block; background:var(--amber); color:var(--on-amber);
+    font-weight:600; font-size:14px; padding:10px 18px; border-radius:0}
+  .btn:hover{background:#FFD75C}
+  .btn:active{transform:translateY(2px)}
+  .btn:focus-visible,a:focus-visible{outline:2px solid var(--amber); outline-offset:2px}
+  .cursor{display:inline-block; width:.55ch; background:var(--amber);
+    animation:blink 1.06s steps(1) infinite; margin-left:2px}
+  .cursor::after{content:"\00a0"}
+  @keyframes blink{50%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){.cursor{animation:none}}
+  .aside{color:var(--ink-faint); font-size:12.5px}
+  .aside::before{content:"# "; color:var(--amber-dim)}
+
+  /* pixel glyphs: JS fills grids from bitmaps; every block joins the field */
+  .pxi{display:grid; user-select:none; pointer-events:none}
+  .pxi .px{background:var(--amber); will-change:transform}
+  .pxi .px.o{background:var(--ink)}
+  .pxi .px.lit{background:var(--ink)}
+  .pxi .px.o.lit{background:var(--amber)}
+
+  /* ---- legend ---- */
+  .legend{padding:28px var(--padx) 36px; border-bottom:1px solid var(--amber-line)}
+  .legend h1{font-size:13px; color:var(--amber-soft); margin-bottom:18px}
+  .legend h1::before{content:"$ "; color:var(--amber)}
+  .legend .row{display:flex; flex-wrap:wrap; gap:28px 40px; align-items:flex-end}
+  .legend figure{display:flex; flex-direction:column; gap:10px; align-items:flex-start}
+  .legend .pair{display:flex; align-items:flex-end; gap:14px}
+  .legend figcaption{font-size:12px; color:var(--ink-soft)}
+  .legend figcaption b{color:var(--ink); font-weight:500; display:block}
+
+  /* ---- comp shells ---- */
+  .comp{min-height:100svh; border-top:1px solid var(--amber-line);
+    padding:20px var(--padx) 48px; position:relative; display:flex;
+    flex-direction:column}
+  .comp .tag{font-size:12px; color:var(--ink-faint); margin-bottom:auto}
+  .comp .tag::before{content:"# "; color:var(--amber-dim)}
+  .comp .body{margin:auto 0}
+
+  /* ---- comp 1: data-dominant ---- */
+  .c1 .kick{font-size:14px; color:var(--ink-soft); margin-bottom:26px}
+  .c1 .kick b{color:var(--ink); font-weight:600}
+  .c1 .rows{display:grid; gap:0; max-width:1100px}
+  .c1 .drow{display:grid; grid-template-columns:72px 1fr; gap:0 28px;
+    align-items:center; padding:16px 0; border-top:1px solid var(--line)}
+  .c1 .drow:last-child{border-bottom:1px solid var(--line)}
+  .c1 .drow .lbl{font-size:12.5px; color:var(--amber-soft)}
+  .c1 .drow .val{font-family:"VT323",monospace; line-height:.95;
+    font-size:clamp(34px,5.6vw,72px); color:var(--ink)}
+  .c1 .drow .val .amber{color:var(--amber)}
+  .c1 .drow.cta-row .val{font-size:clamp(28px,4vw,52px)}
+  @media(max-width:640px){
+    .c1 .drow{grid-template-columns:48px 1fr; gap:0 16px}
+  }
+
+  /* ---- comp 2: icon index ---- */
+  .c2 .lead{max-width:46ch; font-size:15px; color:var(--ink-soft); margin-bottom:8px}
+  .c2 .lead b{color:var(--ink); font-weight:600}
+  .c2 .grid{display:grid; grid-template-columns:repeat(4,1fr); gap:2vw 2vw;
+    max-width:1100px; margin-top:26px}
+  .c2 .cell{border:1px solid var(--line); padding:22px 18px 16px;
+    display:flex; flex-direction:column; gap:14px; align-items:flex-start}
+  .c2 .cell:hover{border-color:var(--amber-line)}
+  .c2 .cell .fact{font-size:12.5px; line-height:1.5; color:var(--ink-soft);
+    opacity:.45}
+  .c2 .cell:hover .fact,.c2 .cell:focus-within .fact{opacity:1}
+  .c2 .cell .fact b{color:var(--ink); font-weight:600; display:block}
+  @media(prefers-reduced-motion:reduce){.c2 .cell .fact{opacity:1}}
+  @media(max-width:820px){.c2 .grid{grid-template-columns:repeat(2,1fr)}}
+
+  /* ---- comp 3: countdown-dominant ---- */
+  .c3 .body{display:flex; flex-direction:column; align-items:flex-start}
+  .c3 .t{font-family:"VT323",monospace; line-height:.78;
+    font-size:clamp(120px,24vw,330px); color:var(--amber)}
+  .c3 .base{margin-top:10px}
+  .c3 .line{margin-top:26px; font-size:16px; color:var(--ink)}
+  .c3 .tick{font-size:12.5px; color:var(--ink-faint); margin-top:8px}
+  .c3 .ctas{margin-top:24px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap}
+
+  /* ---- comp 4: typographic cascade ---- */
+  .c4 .body{max-width:1100px}
+  .c4 .l1{font-size:clamp(18px,2.2vw,26px); color:var(--ink-soft);
+    display:flex; align-items:center; gap:14px}
+  .c4 .l2{font-family:"VT323",monospace; line-height:.85; margin:6px 0 0 8vw;
+    font-size:clamp(72px,13vw,190px); color:var(--ink);
+    display:flex; align-items:center; gap:3vw; flex-wrap:wrap}
+  .c4 .l3{font-family:"VT323",monospace; margin:14px 0 0 26vw;
+    font-size:clamp(40px,6vw,84px); color:var(--amber);
+    display:flex; align-items:center; gap:20px}
+  .c4 .facts{margin:40px 0 0 8vw; font-size:13px; color:var(--ink-soft)}
+  .c4 .facts .k{color:var(--amber-soft)}
+  .c4 .ctarow{margin:20px 0 0 8vw}
+  @media(max-width:640px){
+    .c4 .l2{margin-left:6vw} .c4 .l3{margin-left:16vw}
+    .c4 .facts,.c4 .ctarow{margin-left:0}
+  }
+
+  /* ---- comp 5: broadsheet front page ---- */
+  .c5 .masthead{display:flex; justify-content:space-between; align-items:baseline;
+    gap:16px; border-bottom:1px solid var(--amber); padding-bottom:8px}
+  .c5 .masthead .name{font-family:"VT323",monospace; font-size:clamp(38px,5vw,64px);
+    line-height:.9}
+  .c5 .masthead .name b{color:var(--amber); font-weight:400}
+  .c5 .masthead .vol{font-size:12px; color:var(--amber-soft)}
+  .c5 .cols{display:grid; grid-template-columns:2fr 1fr 1fr; gap:0;
+    margin-top:0}
+  .c5 .story{padding:20px 22px 24px; border-right:1px solid var(--line)}
+  .c5 .story:last-child{border-right:0}
+  .c5 .story.lead{padding-left:0}
+  .c5 .story .icon{margin-bottom:14px}
+  .c5 .story h3{font-family:"VT323",monospace; font-weight:400; line-height:.95;
+    font-size:clamp(26px,3vw,40px); margin-bottom:8px}
+  .c5 .story.lead h3{font-size:clamp(40px,5.4vw,72px); max-width:12ch}
+  .c5 .story p{font-size:13px; color:var(--ink-soft); max-width:38ch}
+  .c5 .story p b{color:var(--ink); font-weight:600}
+  .c5 .story .more{margin-top:10px; font-size:12.5px; color:var(--amber)}
+  @media(max-width:860px){
+    .c5 .cols{grid-template-columns:1fr}
+    .c5 .story{border-right:0; border-bottom:1px solid var(--line); padding-left:0}
+    .c5 .story:last-child{border-bottom:0}
+  }
+
+  /* ---- comp 6: nearly empty ---- */
+  .c6{justify-content:center}
+  .c6 .body{display:flex; flex-direction:column; align-items:center;
+    text-align:center; gap:30px; margin:auto}
+  .c6 .line{font-size:16px; color:var(--ink)}
+  .c6 .line .amber{color:var(--amber)}
+  .c6 .sub{font-size:12.5px; color:var(--ink-faint); margin-top:-18px}
+</style>
+</head>
+<body>
+
+<!-- STATUS BAR ============================================================ -->
+<div class="statusbar" role="status">
+  <span><b>batch0</b> · cohort <b>001</b><span class="hide-sm"> · summer 2026</span></span>
+  <span class="hide-sm">aug 17 – oct 18 · live, online · us</span>
+  <span>apply by aug 10 · <span class="white" id="tminus">t−28d</span> · <span id="clock">--:--:--</span></span>
+</div>
+
+<!-- LEGEND ================================================================ -->
+<section class="legend">
+  <h1><b>ls icons/</b> · the pixel icon family · one 12x12 grid, 32px and 120px</h1>
+  <div class="row">
+    <figure><div class="pair"><div class="pxi" data-icon="calendar" data-block="3"></div><div class="pxi" data-icon="calendar" data-block="10"></div></div><figcaption><b>calendar</b>dates · the aug 10 deadline</figcaption></figure>
+    <figure><div class="pair"><div class="pxi" data-icon="receipt" data-block="3"></div><div class="pxi" data-icon="receipt" data-block="10"></div></div><figcaption><b>receipt</b>pricing · $130 once</figcaption></figure>
+    <figure><div class="pair"><div class="pxi" data-icon="flag" data-block="3"></div><div class="pxi" data-icon="flag" data-block="10"></div></div><figcaption><b>flag</b>apply · the gate</figcaption></figure>
+    <figure><div class="pair"><div class="pxi" data-icon="blocks" data-block="3"></div><div class="pxi" data-icon="blocks" data-block="10"></div></div><figcaption><b>blocks</b>build season</figcaption></figure>
+    <figure><div class="pair"><div class="pxi" data-icon="envelope" data-block="3"></div><div class="pxi" data-icon="envelope" data-block="10"></div></div><figcaption><b>envelope</b>decision by email</figcaption></figure>
+    <figure><div class="pair"><div class="pxi" data-icon="folder" data-block="3"></div><div class="pxi" data-icon="folder" data-block="10"></div></div><figcaption><b>folder</b>your-company/ · deliverables</figcaption></figure>
+    <figure><div class="pair"><div class="pxi" data-icon="founders" data-block="3"></div><div class="pxi" data-icon="founders" data-block="10"></div></div><figcaption><b>founders</b>who runs this</figcaption></figure>
+    <figure><div class="pair"><div class="pxi" data-icon="bubble" data-block="3"></div><div class="pxi" data-icon="bubble" data-block="10"></div></div><figcaption><b>bubble</b>faq · parent questions</figcaption></figure>
+  </div>
+</section>
+
+<main>
+  <!-- COMP 1 — data-dominant ============================================= -->
+  <section class="comp c1">
+    <p class="tag">comp 1 · data-dominant: the readout IS the hero, each row led by its icon</p>
+    <div class="body">
+      <p class="kick"><b>batch0</b> · a live, online startup accelerator for us high schoolers · cohort 001 is open</p>
+      <div class="rows">
+        <div class="drow">
+          <div class="pxi" data-icon="calendar" data-block="6"></div>
+          <div><div class="lbl">runs</div><div class="val" data-retype>aug 17 – oct 18</div></div>
+        </div>
+        <div class="drow">
+          <div class="pxi" data-icon="receipt" data-block="6"></div>
+          <div><div class="lbl">tuition</div><div class="val">$130 <span class="amber">only if accepted</span></div></div>
+        </div>
+        <div class="drow">
+          <div class="pxi" data-icon="folder" data-block="6"></div>
+          <div><div class="lbl">equity taken</div><div class="val" data-retype>0% · it stays yours</div></div>
+        </div>
+        <div class="drow cta-row">
+          <div class="pxi" data-icon="flag" data-block="6"></div>
+          <div><div class="lbl">applications close aug 10</div>
+            <div class="val"><a class="btn" href="#apply">apply for cohort 1</a>
+            <span class="aside" style="font-family:'IBM Plex Mono',monospace">$0 to apply</span></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMP 2 — icon index ================================================ -->
+  <section class="comp c2">
+    <p class="tag">comp 2 · icon index: the page is the icon system; each glyph carries its fact</p>
+    <div class="body">
+      <p class="lead"><b>batch0</b> is a startup accelerator for us high
+      schoolers. eight facts, one per glyph:</p>
+      <div class="grid">
+        <div class="cell" tabindex="0"><div class="pxi" data-icon="calendar" data-block="9"></div><p class="fact"><b>runs aug 17 – oct 18</b>nine weeks, live and online</p></div>
+        <div class="cell" tabindex="0"><div class="pxi" data-icon="flag" data-block="9"></div><p class="fact"><b>apply by aug 10</b>$0 to apply, rolling review</p></div>
+        <div class="cell" tabindex="0"><div class="pxi" data-icon="receipt" data-block="9"></div><p class="fact"><b>$130, once</b>charged only if accepted</p></div>
+        <div class="cell" tabindex="0"><div class="pxi" data-icon="folder" data-block="9"></div><p class="fact"><b>0% equity</b>your company stays yours</p></div>
+        <div class="cell" tabindex="0"><div class="pxi" data-icon="envelope" data-block="9"></div><p class="fact"><b>decision by email</b>every application is read</p></div>
+        <div class="cell" tabindex="0"><div class="pxi" data-icon="blocks" data-block="9"></div><p class="fact"><b>build season</b>validate, build, market, pitch</p></div>
+        <div class="cell" tabindex="0"><div class="pxi" data-icon="founders" data-block="9"></div><p class="fact"><b>run by two founders</b>who read every application</p></div>
+        <div class="cell" tabindex="0"><div class="pxi" data-icon="bubble" data-block="9"></div><p class="fact"><b>parents ask, we answer</b>hello@batch0.org</p></div>
+      </div>
+      <p style="margin-top:24px"><a class="btn" href="#apply">apply for cohort 1</a></p>
+    </div>
+  </section>
+
+  <!-- COMP 3 — countdown-dominant ======================================== -->
+  <section class="comp c3">
+    <p class="tag">comp 3 · countdown-dominant: the deadline is the composition</p>
+    <div class="body">
+      <div class="t" id="bigt" aria-label="days until applications close">t−28d</div>
+      <div class="base pxi" data-icon="calendar" data-block="10"></div>
+      <p class="line">applications for cohort 001 close aug 10.</p>
+      <p class="tick">runs aug 17 – oct 18 · $130 only if accepted · 0% equity · <span id="bigtick">--:--:--</span></p>
+      <div class="ctas">
+        <a class="btn" href="#apply">apply for cohort 1</a>
+        <span class="aside">$0 to apply</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMP 4 — typographic cascade ======================================= -->
+  <section class="comp c4">
+    <p class="tag">comp 4 · typographic cascade: one sentence, three volumes, icons punctuate the path</p>
+    <div class="body">
+      <p class="l1">nine weeks <span class="pxi" data-icon="calendar" data-block="2"></span> aug 17 to oct 18</p>
+      <h1 class="l2">one company <span class="pxi" data-icon="blocks" data-block="8"></span></h1>
+      <p class="l3">yours. <span class="pxi" data-icon="folder" data-block="4"></span><span class="cursor" aria-hidden="true"></span></p>
+      <p class="facts"><span class="k">apply by:</span> aug 10 · <span class="k">tuition:</span> $130 only if accepted · <span class="k">equity:</span> 0%</p>
+      <p class="ctarow"><a class="btn" href="#apply">apply for cohort 1</a></p>
+    </div>
+  </section>
+
+  <!-- COMP 5 — broadsheet front page ===================================== -->
+  <section class="comp c5">
+    <p class="tag">comp 5 · front page: masthead and columns, every story led by its glyph</p>
+    <div class="body">
+      <div class="masthead">
+        <span class="name disp">batch<b>0</b></span>
+        <span class="vol">vol. 001 · summer 2026 · live, online · us</span>
+      </div>
+      <div class="cols">
+        <div class="story lead">
+          <div class="icon pxi" data-icon="flag" data-block="7"></div>
+          <h3 class="disp">applications for cohort 001 close aug 10</h3>
+          <p>a startup accelerator for high schoolers. nine weeks, aug 17
+          to oct 18, ending in a live demo day. <b>$0 to apply.</b></p>
+          <p class="more"><a href="#apply">$ apply →</a></p>
+        </div>
+        <div class="story">
+          <div class="icon pxi" data-icon="receipt" data-block="5"></div>
+          <h3 class="disp">$130, once</h3>
+          <p>charged <b>only if accepted</b>. no hidden fees. comparable
+          programs run $3,000 and up.</p>
+        </div>
+        <div class="story">
+          <div class="icon pxi" data-icon="folder" data-block="5"></div>
+          <h3 class="disp">0% equity</h3>
+          <p>no equity, no ip, no royalties. <b>your company stays
+          yours.</b></p>
+        </div>
+      </div>
+      <div class="cols" style="border-top:1px solid var(--line)">
+        <div class="story lead">
+          <div class="icon pxi" data-icon="founders" data-block="5"></div>
+          <h3 class="disp">run by two 17-year-old founders</h3>
+          <p>Rishabh Dagli and Taran Bethi run every live session and read
+          every application. no glossy alumni stats yet, and none invented.</p>
+        </div>
+        <div class="story">
+          <div class="icon pxi" data-icon="envelope" data-block="5"></div>
+          <h3 class="disp">decisions by email</h3>
+          <p>rolling review. every application is read by the founders.</p>
+        </div>
+        <div class="story">
+          <div class="icon pxi" data-icon="bubble" data-block="5"></div>
+          <h3 class="disp">parents ask</h3>
+          <p>seven questions, answered plainly. anything else:
+          hello@batch0.org.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMP 6 — nearly empty ============================================== -->
+  <section class="comp c6">
+    <p class="tag">comp 6 · nearly empty: one icon, one line, one gate</p>
+    <div class="body">
+      <div class="pxi" data-icon="flag" data-block="11"></div>
+      <p class="line">applications for cohort 001 close <span class="amber">aug 10</span>.</p>
+      <p class="sub">$130 only if accepted · 0% equity · aug 17 – oct 18</p>
+      <a class="btn" href="#apply">$ apply</a>
+    </div>
+  </section>
+</main>
+
+<footer style="border-top:1px solid var(--amber-line); padding:20px var(--padx) 32px; font-size:12.5px; color:var(--ink-faint)">
+  $ hero-lab --comps 6 → exited 0 · pick one, or a mix of two
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* live status bar + comp-3 countdown (data, always on) */
+  var close = new Date("2026-08-10T23:59:00-04:00");
+  function pad(n){return String(n).padStart(2,"0")}
+  function tick(){
+    var now = new Date();
+    var d = Math.max(0, Math.ceil((close - now)/864e5));
+    var hh = pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
+    document.getElementById("tminus").textContent = "t−" + d + "d";
+    document.getElementById("clock").textContent = hh;
+    document.getElementById("bigt").textContent = "t−" + d + "d";
+    document.getElementById("bigtick").textContent = hh;
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* ---- the icon family: one shared 12x12 grid ("#" amber, "o" off-white) */
+  var ICONS = {
+    calendar: [
+      "..##....##..",
+      "############",
+      "############",
+      "#..........#",
+      "#..........#",
+      "#......oo..#",
+      "#......oo..#",
+      "#..........#",
+      "#..........#",
+      "############"],
+    receipt: [
+      "############",
+      "#..........#",
+      "#..######..#",
+      "#..........#",
+      "#..######..#",
+      "#..........#",
+      "#..####....#",
+      "#..........#",
+      "#.....####.#",
+      "#..........#",
+      "##..##..##.."],
+    flag: [
+      "..##........",
+      "..##########",
+      "..##########",
+      "..########..",
+      "..##........",
+      "..##........",
+      "..##........",
+      "..##........",
+      "..##........",
+      "..##........"],
+    blocks: [
+      "....oo......",
+      "....oo......",
+      "............",
+      "...#####....",
+      "...#####....",
+      "...#####....",
+      "#####.#####.",
+      "#####.#####.",
+      "#####.#####."],
+    envelope: [
+      "############",
+      "##........##",
+      "#.#......#.#",
+      "#..#....#..#",
+      "#...#..#...#",
+      "#....##....#",
+      "#..........#",
+      "############"],
+    folder: [
+      ".#####......",
+      "############",
+      "#..........#",
+      "#..........#",
+      "#..........#",
+      "#..........#",
+      "#..........#",
+      "############"],
+    founders: [
+      "..##....##..",
+      "..##....##..",
+      "............",
+      ".####..####.",
+      ".####..####.",
+      ".####..####.",
+      ".####..####."],
+    bubble: [
+      "############",
+      "#..........#",
+      "#..#.#.#...#",
+      "#..........#",
+      "############",
+      "...##.......",
+      "...#........"]
+  };
+  var allBlocks = [];
+  document.querySelectorAll(".pxi").forEach(function(el){
+    var map = ICONS[el.dataset.icon]; if(!map) return;
+    var bp = parseInt(el.dataset.block, 10) || 4;
+    el.style.gridTemplateColumns = "repeat(12," + bp + "px)";
+    el.style.gridAutoRows = bp + "px";
+    el.setAttribute("aria-hidden", "true");
+    map.forEach(function(row, r){
+      for(var c=0; c<12; c++){
+        var ch = row[c];
+        if(!ch || ch === ".") continue;
+        var d = document.createElement("div");
+        d.className = "px" + (ch === "o" ? " o" : "");
+        d.style.gridColumn = c+1; d.style.gridRow = r+1;
+        el.appendChild(d);
+        if(bp >= 5) allBlocks.push(d); // legend minis stay out of the field
+      }
+    });
+  });
+
+  if(reduced) return; // static below: no field, no glitches, facts all visible
+
+  /* cursor proximity field on structural-scale glyphs */
+  var rects = [], mx = -1e4, my = -1e4, raf = 0;
+  function cacheRects(){
+    rects = allBlocks.map(function(b){
+      var r = b.getBoundingClientRect();
+      return {b:b, x:r.left + r.width/2, y:r.top + r.height/2};
+    });
+  }
+  cacheRects();
+  addEventListener("resize", function(){requestAnimationFrame(cacheRects)});
+  var scrollT; addEventListener("scroll", function(){
+    clearTimeout(scrollT); scrollT = setTimeout(cacheRects, 120);
+  }, {passive:true});
+  var R = 70, LIT = 40;
+  function field(){
+    raf = 0;
+    for(var i=0; i<rects.length; i++){
+      var p = rects[i], dx = p.x - mx, dy = p.y - my;
+      if(Math.abs(dx) > R || Math.abs(dy) > R){
+        if(p.b.style.transform){p.b.style.transform=""; p.b.classList.remove("lit")}
+        continue;
+      }
+      var d = Math.hypot(dx, dy);
+      if(d < R){
+        var f = (R - d)/R * 4, n = d || 1;
+        p.b.style.transform = "translate(" + (dx/n*f).toFixed(1) + "px," + (dy/n*f).toFixed(1) + "px)";
+        p.b.classList.toggle("lit", d < LIT);
+      }
+    }
+  }
+  addEventListener("mousemove", function(e){
+    mx = e.clientX; my = e.clientY;
+    if(!raf) raf = requestAnimationFrame(field);
+  }, {passive:true});
+
+  /* rare single-element glitches, one every 20-40s */
+  var retypeEls = [].slice.call(document.querySelectorAll("[data-retype]"));
+  function gRetype(){
+    if(!retypeEls.length) return;
+    var el = retypeEls[Math.floor(Math.random()*retypeEls.length)];
+    var full = el.textContent, i = Math.max(0, full.length - 3), t = i;
+    el.textContent = full.slice(0, i);
+    (function step(){
+      el.textContent = full.slice(0, ++t);
+      if(t < full.length) setTimeout(step, 45);
+    })();
+  }
+  function gPixelDrop(){
+    if(!allBlocks.length) return;
+    var b = allBlocks[Math.floor(Math.random()*allBlocks.length)];
+    b.style.transition = "transform 90ms steps(2)";
+    b.style.transform = "translateY(8px)";
+    setTimeout(function(){
+      b.style.transform = "";
+      setTimeout(function(){ b.style.transition = ""; }, 120);
+    }, 140);
+  }
+  var glitches = [gRetype, gPixelDrop];
+  (function schedule(){
+    setTimeout(function(){
+      if(!document.hidden) glitches[Math.floor(Math.random()*glitches.length)]();
+      schedule();
+    }, 20000 + Math.random()*20000);
+  })();
+})();
+</script>
+</body>
+</html>
