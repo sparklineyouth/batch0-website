@@ -79,6 +79,17 @@ body {
  * locked to whatever colour is baked in the file. Height drives the size;
  * the aspect ratio derives the width from the traced mark's 900x219 box.
  * ========================================================================= */
+.wordmark-lockup {
+  position: relative;
+  display: inline-block;
+  aspect-ratio: 900 / 219;
+}
+.wordmark-lockup > .wordmark {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+}
 .wordmark {
   display: inline-block;
   aspect-ratio: 900 / 219;

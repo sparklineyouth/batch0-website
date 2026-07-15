@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { SiteConfig } from "@/lib/site-config";
+import { ZeroThread } from "@/components/zero-thread";
 
 /**
  * The live status bar — part of the brand identity, present on every
@@ -52,7 +53,7 @@ export function StatusBar({ config }: { config: SiteConfig }) {
     >
       <span>
         <b className="font-medium text-phosphor">batch0</b> · cohort{" "}
-        <b className="font-medium text-phosphor">{cohortCode}</b>
+        <ZeroThread className="font-medium text-ink">{cohortCode}</ZeroThread>
         <span className="hidden sm:inline">
           {" "}
           · {derived.cohortName.toLowerCase()}

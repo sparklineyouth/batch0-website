@@ -1,6 +1,8 @@
 import React from "react";
 import type { SiteConfig } from "@/lib/site-config";
 import { ApplyCta } from "@/components/apply-cta";
+import { ZeroThread } from "@/components/zero-thread";
+import { HeroTypeOn } from "@/components/hero-type-on";
 
 const WEEK_WORDS = [
   "zero", "one", "two", "three", "four", "five", "six",
@@ -48,53 +50,65 @@ export default function Hero({
 
   return (
     <section className="flex min-h-[calc(100svh-6rem)] flex-col justify-center py-10 md:py-12">
-      {/* 1 · identifier */}
+      {/* 1 · identifier — the zero thread starts at the name */}
       <p className="t-small text-ink-soft">
-        <b className="font-semibold text-ink">batch0</b> · a startup
-        accelerator for high schoolers
+        <b className="font-semibold text-ink">
+          batch<span className="text-phosphor">0</span>
+        </b>{" "}
+        · a startup accelerator for high schoolers
       </p>
 
-      {/* 2 · the sentence — one flush-left block, ~1 : 3 : 1.5 */}
+      {/* 2 · the sentence — one flush-left block, ~1 : 3 : 1.5.
+          Each beat's text sits in a [data-typeon] span so the signature
+          type-on can run without touching layout; the idle cursor is a
+          sibling, safe from textContent writes. */}
       <h1 className="mt-6 flex grow flex-col justify-center md:mt-4">
         <span className="block font-display text-[clamp(24px,5.5vw,66px)] leading-[0.95] text-ink-soft">
-          {weeksWord} weeks
+          <span data-typeon>{`${weeksWord} weeks`}</span>
         </span>
         <span className="block font-display text-[clamp(58px,16.5vw,200px)] leading-[0.85] text-ink">
-          one company
+          <span data-typeon>one company</span>
         </span>
         <span className="block font-display text-[clamp(34px,8.25vw,100px)] leading-[0.95] text-phosphor">
-          yours.
+          <span data-typeon>yours.</span>
+          <span aria-hidden data-typeon-cursor className="cursor-block" />
         </span>
       </h1>
 
-      {/* 3 · one facts line */}
-      <p className="t-small mt-8 text-ink-soft">
-        {closeLabel && settings.applicationsOpen && (
-          <>
-            apply by <span data-retype>{closeLabel}</span> ·{" "}
-          </>
-        )}
-        <span data-retype>{derived.priceLabel} only if accepted</span> ·{" "}
-        <span data-retype>0% equity</span>
-      </p>
+      {/* 3 + 4 + 5 · facts line, button, # comment — revealed together
+          after the sentence finishes; space reserved, no layout shift */}
+      <div data-typeon-reveal>
+        <p className="t-small mt-8 text-ink-soft">
+          {closeLabel && settings.applicationsOpen && (
+            <>
+              apply by <span data-retype>{closeLabel}</span> ·{" "}
+            </>
+          )}
+          <span data-retype>{derived.priceLabel} only if accepted</span> ·{" "}
+          <ZeroThread>0% equity</ZeroThread>
+        </p>
 
-      {/* 4 + 5 · the button and its comment — CTA #1 of 3 */}
-      <div className="mt-5 flex flex-wrap items-center gap-4">
-        {isAuthed ? (
-          <a
-            href={authedHome!}
-            className="press inline-flex items-center justify-center bg-phosphor px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-          >
-            go to dashboard
-          </a>
-        ) : (
-          <ApplyCta
-            label={`apply for ${cohortLabel.toLowerCase()}`}
-            location="hero"
-          />
-        )}
-        <span className="aside-note">$0 to apply</span>
+        <div className="mt-5 flex flex-wrap items-center gap-4">
+          {isAuthed ? (
+            <a
+              href={authedHome!}
+              className="press inline-flex items-center justify-center bg-phosphor px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            >
+              go to dashboard
+            </a>
+          ) : (
+            <ApplyCta
+              label={`apply for ${cohortLabel.toLowerCase()}`}
+              location="hero"
+            />
+          )}
+          <span className="aside-note">
+            <ZeroThread>$0 to apply</ZeroThread>
+          </span>
+        </div>
       </div>
+
+      <HeroTypeOn />
     </section>
   );
 }

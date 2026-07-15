@@ -50,7 +50,7 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
               key={s.title}
               className="grid grid-cols-[6ch_1fr] border-t border-line py-3.5 last:border-b last:border-line"
             >
-              <span aria-hidden className="t-small font-mono text-phosphor">
+              <span aria-hidden className="t-small font-mono text-ink-faint">
                 0{i + 1}
               </span>
               <div>

@@ -7,6 +7,7 @@ import {
   FlagIcon,
   FolderIcon,
 } from "@/components/icons/pixel-icon";
+import { ZeroThread } from "@/components/zero-thread";
 
 /**
  * The front page — the homepage's DENSE movement and information workhorse.
@@ -56,20 +57,20 @@ export default function FrontPage({ config }: { config: SiteConfig }) {
           <h3 className="t-head mt-4 max-w-[16ch] text-ink">
             {settings.applicationsOpen && closeLabel ? (
               <>
-                applications for cohort {cohortCode} close{" "}
-                <span className="text-phosphor" data-retype>
-                  {closeLabel}
-                </span>
+                applications for cohort <ZeroThread>{cohortCode}</ZeroThread>{" "}
+                close <span data-retype>{closeLabel}</span>
               </>
             ) : settings.applicationsOpen ? (
-              <>applications for cohort {cohortCode} are open</>
+              <>
+                applications for cohort <ZeroThread>{cohortCode}</ZeroThread>{" "}
+                are open
+              </>
             ) : (
               <>applications are closed for now</>
             )}
           </h3>
           <p className="t-small mt-3 max-w-[42ch] text-ink-soft">
-            reviewed on a rolling basis, read by the founders.{" "}
-            <b className="font-semibold text-ink">$0 to apply.</b>
+            reviewed on a rolling basis, read by the founders.
           </p>
         </article>
 
@@ -119,7 +120,7 @@ export default function FrontPage({ config }: { config: SiteConfig }) {
           <FolderIcon size={ICON_SIZE} />
           <h3 className="t-body font-semibold text-ink">what you leave with</h3>
           <span className="t-small font-mono text-phosphor/60">
-            · total 6 · by demo day
+            · total 6
           </span>
         </div>
         <ul className="mt-4 grid grid-cols-12 gap-x-6">
