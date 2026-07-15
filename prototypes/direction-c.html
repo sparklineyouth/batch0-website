@@ -1,0 +1,448 @@
+<!doctype html>
+<!-- ==========================================================================
+DIRECTION C — "AMBER CHROME" (hybrid — recommended)
+
+THESIS: Split the roles the way a real terminal session does: the CHROME is
+phosphor, the CONTENT is readable. Everything that frames the session — the
+status bar, command prompts, nav paths, box-drawing rules, ledger labels,
+step numbers, all structural glyphs — renders in amber, so the machine hums
+amber from every edge of the screen. Everything you actually read — headlines,
+body copy, data values — stays off-white for long-read comfort. Amber stops
+being "an accent used sparingly" and becomes the system's voice, without ever
+carrying a paragraph. You get B's unmistakable phosphor identity with A's
+reading ergonomics — and the one-amber-highlight hero rule still holds,
+because chrome is chrome, not highlight.
+
+CONTRAST: chrome amber #FFBB00 on #0c0c0d ≈ 11.5:1 (AAA); dim-amber
+decorative glyphs never carry running text; body text is off-white as today.
+
+EXTENDS TO:
+- /program: amber week-prompts (`$ week 03 — build`) frame off-white
+  deliverable copy; the whole syllabus reads as one annotated session log.
+- /apply: amber field labels + prompts, off-white input text, block cursor
+  in the focused field; the deadline readout (APPLY BY: AUG 10) pinned in
+  the status bar on every step of the form.
+- blog: amber `$ ls notes/` chrome + date rail, off-white titles and body;
+  article pages keep today's long-form comfort with amber heading prompts.
+=========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>batch0 — Direction C: AMBER CHROME</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#0c0c0d;
+    --ink:#f5f5f4; --ink-soft:#a1a1aa; --ink-faint:#87878f;
+    --amber:#FFBB00;                   /* chrome ink — 11.5:1 AAA */
+    --amber-soft:rgba(255,187,0,.62);  /* secondary chrome — 4.9:1 AA */
+    --amber-dim:rgba(255,187,0,.40);   /* decorative glyphs only */
+    --amber-line:rgba(255,187,0,.25);  /* hairlines */
+    --line:#2a2a2e;                    /* neutral hairline where chrome would shout */
+    --on-amber:#141414;
+  }
+  *{box-sizing:border-box; margin:0}
+  html,body{background:var(--paper); color:var(--ink);
+    font:400 15.5px/1.7 "IBM Plex Mono",ui-monospace,monospace;}
+  ::selection{background:var(--amber); color:var(--on-amber)}
+  a{color:inherit; text-decoration:none}
+  .container{max-width:1080px; margin:0 auto; padding:0 20px}
+  @media(min-width:640px){.container{padding:0 24px}}
+  .disp{font-family:"VT323",monospace; font-weight:400; letter-spacing:.01em; line-height:1.04}
+
+  /* ---- status bar: amber chrome ---- */
+  .statusbar{font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--amber-soft); border-bottom:1px solid var(--amber-line)}
+  .statusbar .container{display:flex; justify-content:space-between; gap:16px;
+    padding-top:6px; padding-bottom:6px; white-space:nowrap; overflow:hidden}
+  .statusbar b{color:var(--amber); font-weight:500}
+  .statusbar .white{color:var(--ink)}
+  @media(max-width:640px){.statusbar .hide-sm{display:none}}
+
+  nav{border-bottom:1px solid var(--line)}
+  nav .container{display:flex; align-items:center; justify-content:space-between; height:52px; gap:16px}
+  .wordmark{font-family:"VT323",monospace; font-size:26px; color:var(--ink)}
+  .wordmark span{color:var(--amber)}
+  .paths{display:flex; gap:20px; font-size:13.5px; color:var(--ink-soft)}
+  .paths a::before{content:"/"; color:var(--amber-dim)}
+  .paths a:hover{color:var(--ink)}
+  .btn{display:inline-block; background:var(--amber); color:var(--on-amber);
+    font-weight:600; font-size:14px; padding:9px 16px; border-radius:2px}
+  .btn:hover{background:#FFD75C}
+  .ghost{display:inline-block; border:1px solid var(--line); color:var(--ink);
+    font-size:14px; padding:9px 16px; border-radius:2px}
+  .ghost:hover{border-color:var(--amber-soft)}
+  .btn:focus-visible,.ghost:focus-visible,a:focus-visible{outline:2px solid var(--amber); outline-offset:2px}
+  @media(max-width:820px){.paths{display:none}}
+
+  /* command prompts: amber chrome */
+  .cmd{font-size:13px; color:var(--amber-soft); margin-bottom:14px}
+  .cmd b{color:var(--amber); font-weight:500}
+  .cmd::before{content:"$ "; color:var(--amber)}
+
+  /* ---- hero ---- */
+  .hero{padding:60px 0 70px}
+  .hero .container{display:grid; gap:44px; grid-template-columns:1fr}
+  @media(min-width:900px){.hero .container{grid-template-columns:7fr 5fr; gap:36px}}
+  .hero h1{font-size:clamp(46px,7vw,74px); max-width:16ch; color:var(--ink)}
+  .hl{background:var(--amber); color:var(--on-amber); padding:0 .1em;
+    box-decoration-break:clone; -webkit-box-decoration-break:clone}
+  .cursor{display:inline-block; width:.55ch; background:var(--amber);
+    animation:blink 1.06s steps(1) infinite; margin-left:2px}
+  .cursor::after{content:"\00a0"}
+  @keyframes blink{50%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){.cursor{animation:none}}
+  .hero p.lede{margin-top:22px; max-width:47ch; color:var(--ink-soft); font-size:16.5px}
+  .hero .ctas{margin-top:30px; display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+  .fine{font-size:12.5px; color:var(--ink-faint)}
+
+  /* neofetch readout: amber chrome, off-white values */
+  .fetch{position:relative; padding:20px 20px; align-self:start}
+  .fetch .bd{position:absolute; inset:0; color:var(--amber-line); font-size:14px;
+    user-select:none; pointer-events:none; overflow:hidden; white-space:nowrap; line-height:1}
+  .fetch .bd .t{position:absolute; top:0; left:0; right:0; overflow:hidden}
+  .fetch .bd .b{position:absolute; bottom:0; left:0; right:0; overflow:hidden}
+  .fetch .cap{font-size:12px; letter-spacing:.1em; color:var(--amber); margin-bottom:12px}
+  .fetch-grid{display:grid; grid-template-columns:auto 1fr; gap:0 22px}
+  @media(max-width:420px){.fetch-grid{grid-template-columns:1fr}}
+  .zero{font-size:11px; line-height:1.15; color:var(--amber); user-select:none}
+  .zero i{font-style:normal; color:var(--ink)}
+  .kv{font-size:13.5px; line-height:1.95; align-self:center}
+  .kv .k{display:inline-block; width:10ch; white-space:nowrap; color:var(--amber-soft)}
+  .kv .k::after{content:":"}
+  .kv .v{color:var(--ink); font-weight:500}
+  .kv .row-hot .v{color:var(--amber); font-weight:600}
+  .swatches{margin-top:12px; letter-spacing:2px; font-size:13px; user-select:none}
+  .swatches i{font-style:normal}
+
+  section{padding:60px 0; border-top:1px solid var(--line)}
+  h2.disp{font-size:clamp(28px,4vw,42px); margin-bottom:8px; color:var(--ink)}
+  .sub{color:var(--ink-soft); max-width:52ch}
+
+  .steps{margin-top:32px}
+  .step{display:grid; grid-template-columns:6ch 1fr; padding:15px 0; border-top:1px solid var(--line)}
+  .step:last-child{border-bottom:1px solid var(--line)}
+  .step .n{color:var(--amber); font-size:13.5px}
+  .step h3{font-size:15.5px; font-weight:600; color:var(--ink)}
+  .step p{color:var(--ink-soft); font-size:14px; margin-top:4px; max-width:64ch}
+
+  .ls{margin-top:28px; font-size:14px; line-height:2.15; overflow-x:auto}
+  .ls ul{list-style:none; padding:0}
+  .ls .perm{color:var(--amber-dim)}
+  .ls .file{color:var(--ink); font-weight:500; display:inline-block; min-width:22ch}
+  .ls .note{color:var(--ink-soft)}
+  @media(max-width:640px){.ls .file{min-width:0; display:block} .ls li{margin-bottom:10px}}
+
+  .two{display:grid; gap:28px; grid-template-columns:1fr}
+  @media(min-width:820px){.two{grid-template-columns:4fr 8fr}}
+  .two .body{color:var(--ink-soft); max-width:58ch}
+  .two .body b{color:var(--ink); font-weight:600}
+  .link{color:var(--ink); text-decoration:underline; text-decoration-color:var(--amber);
+    text-decoration-thickness:2px; text-underline-offset:3px}
+  .link:hover{background:var(--amber); color:var(--on-amber)}
+
+  .ledger{margin-top:28px; max-width:560px; font-size:14px}
+  .lrow{display:flex; align-items:baseline; gap:10px; padding:9px 0}
+  .lrow+.lrow{border-top:1px solid var(--line)}
+  .lrow .k{color:var(--amber-soft); text-transform:uppercase; font-size:12.5px; letter-spacing:.08em}
+  .lrow .dots{flex:1; border-bottom:2px dotted var(--amber-line); transform:translateY(-4px); min-width:24px}
+  .lrow .v{color:var(--ink); font-weight:500; text-align:right}
+
+  .tree{margin-top:28px; max-width:760px}
+  .tree summary{cursor:pointer; list-style:none; padding:11px 0; font-weight:500;
+    font-size:15px; display:flex; gap:12px; align-items:baseline; color:var(--ink)}
+  .tree summary::-webkit-details-marker{display:none}
+  .tree summary .tick{color:var(--amber-dim)}
+  .tree details[open] summary .tick{color:var(--amber)}
+  .tree .a{padding:2px 0 16px 3.2ch; color:var(--ink-soft); font-size:14px;
+    border-left:1px solid var(--amber-line); margin-left:.55ch; max-width:60ch}
+
+  .final .fetchline{margin-top:26px; font-size:13.5px; white-space:nowrap; overflow-x:auto}
+  .final .fetchline .k{color:var(--amber-soft)}
+  .final .fetchline b{color:var(--ink); font-weight:500}
+  .final .fetchline .hot{color:var(--amber); font-weight:600}
+
+  footer{border-top:1px solid var(--line); padding:44px 0 56px; font-size:13.5px; color:var(--ink-faint)}
+  footer .grid{display:grid; gap:28px; grid-template-columns:1fr}
+  @media(min-width:720px){footer .grid{grid-template-columns:2fr 1fr 1fr}}
+  footer h4{font-size:12px; letter-spacing:.1em; color:var(--amber-soft);
+    text-transform:uppercase; margin-bottom:10px; font-weight:500}
+  footer li{list-style:none; line-height:2}
+  footer ul{padding:0}
+  footer a:hover{color:var(--ink)}
+  footer .logout{margin-top:34px; padding-top:18px; border-top:1px solid var(--line);
+    display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  footer .logout .prompt{color:var(--amber-soft)}
+</style>
+</head>
+<body>
+
+<!-- STATUS BAR ============================================================ -->
+<div class="statusbar" role="status">
+  <div class="container">
+    <span><b>batch0</b>&nbsp;·&nbsp;cohort&nbsp;<b>001</b><span class="hide-sm">&nbsp;·&nbsp;summer&nbsp;2026</span></span>
+    <span class="hide-sm">aug 17 – oct 18 · live, online · US</span>
+    <span>apply&nbsp;by&nbsp;aug&nbsp;10&nbsp;·&nbsp;<b id="tminus">T−27d</b>&nbsp;·&nbsp;<span id="clock">--:--:--</span></span>
+  </div>
+</div>
+
+<!-- NAV =================================================================== -->
+<nav aria-label="Site">
+  <div class="container">
+    <a href="#" class="wordmark">batch<span>0</span></a>
+    <div class="paths">
+      <a href="#program">program</a>
+      <a href="#blog">blog</a>
+      <a href="#sponsors">sponsors</a>
+      <a href="#faq">faq</a>
+      <a href="#login">login</a>
+    </div>
+    <a class="btn" href="#apply">$ apply</a>
+  </div>
+</nav>
+
+<!-- HERO ================================================================== -->
+<header class="hero">
+  <div class="container">
+    <div>
+      <p class="cmd"><b>batch0 --init</b> &nbsp;<span style="color:var(--ink-faint)"># formerly sparkline youth</span></p>
+      <h1 class="disp">Don't wait for college to start <span style="white-space:nowrap"><span class="hl">building</span><span class="cursor" aria-hidden="true"></span></span></h1>
+      <p class="lede">batch0 is a live, online startup accelerator for high schoolers.
+      Seasonal build sprints, mentorship, and a supportive community resulting
+      in a company of your own.</p>
+      <div class="ctas">
+        <a class="btn" href="#apply">Apply for Cohort 1</a>
+        <a class="ghost" href="#program">See the program</a>
+      </div>
+      <p class="fine" style="margin-top:12px">free to apply · $130 charged only if accepted · 0% equity</p>
+    </div>
+
+    <aside class="fetch" aria-label="Cohort 1 readout">
+      <div class="bd" aria-hidden="true">
+        <div class="t">┌────────────────────────────────────────────────────────────┐</div>
+        <div class="b">└────────────────────────────────────────────────────────────┘</div>
+      </div>
+      <div class="cap">cohort@batch0 — readout</div>
+      <div class="fetch-grid">
+<pre class="zero" aria-hidden="true">
+  ██████
+ ██    ██
+ ██   <i>█</i>██
+ ██  <i>█</i> ██
+ ██<i>█</i>   ██
+ ██    ██
+  ██████
+</pre>
+        <div class="kv">
+          <div><span class="k">COHORT</span> <span class="v">001</span></div>
+          <div><span class="k">RUNS</span> <span class="v">AUG 17 – OCT 18</span></div>
+          <div><span class="k">FORMAT</span> <span class="v">live · online · US</span></div>
+          <div><span class="k">TUITION</span> <span class="v">$130 if accepted</span></div>
+          <div><span class="k">EQUITY</span> <span class="v">0%</span></div>
+          <div class="row-hot"><span class="k">APPLY BY</span> <span class="v">AUG 10</span></div>
+        </div>
+      </div>
+      <p class="swatches" aria-hidden="true">
+        <i style="color:#FFBB00">██</i><i style="color:rgba(255,187,0,.62)">██</i><i style="color:#f5f5f4">██</i><i style="color:#a1a1aa">██</i><i style="color:#2a2a2e">██</i>
+      </p>
+    </aside>
+  </div>
+</header>
+
+<!-- HOW IT WORKS ========================================================== -->
+<section id="program">
+  <div class="container">
+    <p class="cmd"><b>cat how-it-works.txt</b></p>
+    <h2 class="disp">How it works</h2>
+    <p class="sub">Five steps to building a real company at batch0. The dates are
+    set by the Cohort 1 calendar (Aug 17 – Oct 18).</p>
+    <div class="steps">
+      <div class="step"><span class="n">[1/5]</span><div>
+        <h3>Apply</h3><p>Free. Come with an idea you want to build, or just a
+        desire to learn. We admit students who show they'll actually do the
+        work, not just ideas.</p></div></div>
+      <div class="step"><span class="n">[2/5]</span><div>
+        <h3>Get a decision by email</h3><p>Applications are reviewed on a rolling
+        basis. Each application is read and thoughtfully reviewed by our
+        team.</p></div></div>
+      <div class="step"><span class="n">[3/5]</span><div>
+        <h3>Enroll</h3><p>$130 tuition, charged only if you're accepted. That's
+        it. Nothing more. Refund terms are published on the refund policy
+        page.</p></div></div>
+      <div class="step"><span class="n">[4/5]</span><div>
+        <h3>Build season</h3><p>Validate, build, market, pitch and most
+        importantly, transform your idea into a company.</p></div></div>
+      <div class="step"><span class="n">[5/5]</span><div>
+        <h3>Pitch at demo day</h3><p>The cohort closes with a live demo day where
+        you present the company you built. Standouts may be offered batch0
+        sponsorship, a non-dilutive grant, decided on merit, never
+        guaranteed.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT YOU LEAVE WITH =================================================== -->
+<section>
+  <div class="container">
+    <p class="cmd"><b>ls -la ~/artifacts</b></p>
+    <h2 class="disp">What you leave with</h2>
+    <p class="sub">By demo day your idea will look like this:</p>
+    <div class="ls"><ul>
+      <li><span class="perm">-rw-r--r--</span> <span class="file">lean-canvas.pdf</span> <span class="note">validated in interviews with strangers who owe you nothing</span></li>
+      <li><span class="perm">-rwxr-xr-x</span> <span class="file">shipped-v1.url</span> <span class="note">landing page, no-code MVP, or working prototype — live</span></li>
+      <li><span class="perm">-rw-r--r--</span> <span class="file">business-model.xlsx</span> <span class="note">revenue, pricing, and unit economics you can defend</span></li>
+      <li><span class="perm">-rw-r--r--</span> <span class="file">go-to-market.md</span> <span class="note">a concrete path to your first paying customers</span></li>
+      <li><span class="perm">-rw-r--r--</span> <span class="file">pitch-deck.key</span> <span class="note">written, rehearsed, and delivered live at demo day</span></li>
+      <li><span class="perm">drwx------</span> <span class="file">your-company/</span> <span class="note">100% yours — no equity, no IP, no royalties taken</span></li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- WHO RUNS THIS ========================================================= -->
+<section>
+  <div class="container two">
+    <div>
+      <p class="cmd"><b>whoami</b></p>
+      <h2 class="disp">Who runs this</h2>
+    </div>
+    <div class="body">
+      <p>batch0 is built and run by <b>Rishabh Dagli and Taran Bethi</b>, two
+      17-year-old serial founders. We built batch0 to give high schoolers the
+      same chance that we wish we had: to build a REAL company with mentorship
+      and support, and even the chance of funding!</p>
+      <p style="margin-top:14px">Cohort 1 is deliberately the first. There are
+      no glossy alumni stats to show you yet, and we won't invent any. What we
+      can promise: Rishabh and Taran run every live session themselves, read
+      every application, and answer every parent question personally within a
+      couple of days.</p>
+      <p style="margin-top:14px"><a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING =============================================================== -->
+<section>
+  <div class="container two">
+    <div>
+      <p class="cmd"><b>cat pricing.txt</b></p>
+      <h2 class="disp">$130, once</h2>
+    </div>
+    <div>
+      <p class="body sub">batch0 is 100% free to apply, tuition is charged only
+      if you're accepted. Comparable summer programs list tuition in the
+      $3,000–$8,000+ range, even for online programs. Tuition here covers the
+      program itself. Sponsorship and any investor/mentor relationship are
+      merit-based, never paid for, and never guaranteed.</p>
+      <div class="ledger">
+        <div class="lrow"><span class="k">application</span><span class="dots"></span><span class="v">free</span></div>
+        <div class="lrow"><span class="k">tuition</span><span class="dots"></span><span class="v">$130 · only if accepted</span></div>
+        <div class="lrow"><span class="k">hidden fees</span><span class="dots"></span><span class="v">none</span></div>
+        <div class="lrow"><span class="k">equity taken</span><span class="dots"></span><span class="v">none</span></div>
+        <div class="lrow"><span class="k">refunds</span><span class="dots"></span><span class="v"><a class="link" href="#refunds">see refund policy</a></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ =================================================================== -->
+<section id="faq">
+  <div class="container">
+    <p class="cmd"><b>man batch0</b> &nbsp;<span style="color:var(--ink-faint)"># questions parents ask</span></p>
+    <h2 class="disp">Questions parents ask</h2>
+    <p class="sub">The short versions. Anything else: <a class="link" href="mailto:hello@batch0.org">email a human</a>.</p>
+    <div class="tree">
+      <details><summary><span class="tick">├─</span> How much does it cost?</summary>
+        <div class="a">$0 to apply. $130 tuition, charged only if your student is
+        accepted. No hidden fees, no equipment to buy, nothing else — ever.</div></details>
+      <details><summary><span class="tick">├─</span> Who runs batch0?</summary>
+        <div class="a">Rishabh Dagli and Taran Bethi — the founders run every live
+        session themselves. The legal entity is Sparkline Youth LLC.</div></details>
+      <details><summary><span class="tick">├─</span> Who is it for?</summary>
+        <div class="a">U.S. high schoolers, ages 13–18, who want to build something
+        real. No prior startup or coding experience required.</div></details>
+      <details><summary><span class="tick">├─</span> How much time does it take?</summary>
+        <div class="a">Designed to fit around school: live sessions plus independent
+        build time each week across the Aug 17 – Oct 18 season.</div></details>
+      <details><summary><span class="tick">├─</span> Is it really fully online?</summary>
+        <div class="a">Yes — every session is live and online. No travel, nothing to
+        install beyond a browser.</div></details>
+      <details><summary><span class="tick">├─</span> What is demo day?</summary>
+        <div class="a">The final session: students pitch the company they built,
+        live. Standouts may earn merit-based, non-dilutive sponsorship — never
+        guaranteed.</div></details>
+      <details><summary><span class="tick">└─</span> Does batch0 take equity or own my idea?</summary>
+        <div class="a">No. 0% equity, no IP claims, no royalties. Everything your
+        student builds is theirs.</div></details>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA ============================================================= -->
+<section class="final" id="apply">
+  <div class="container">
+    <p class="cmd"><b>apply --cohort 001</b></p>
+    <h2 class="disp" style="max-width:16ch">Cohort 1 is the founding cohort. <span class="hl">Be in it.</span></h2>
+    <p class="fetchline"><span class="k">COHORT:</span> <b>001</b> · <span class="k">RUNS:</span> <b>AUG 17 – OCT 18</b> · <span class="k">TUITION:</span> <b>$130 if accepted</b> · <span class="k">EQUITY:</span> <b>0%</b> · <span class="k">APPLY BY:</span> <span class="hot">AUG 10</span></p>
+    <div style="margin-top:24px; display:flex; gap:12px; flex-wrap:wrap; align-items:center">
+      <a class="btn" href="#apply">Apply for Cohort 1</a>
+      <span class="fine">free to apply · $130 charged only if accepted</span>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER ================================================================ -->
+<footer>
+  <div class="container">
+    <div class="grid">
+      <div>
+        <a href="#" class="wordmark" style="font-size:22px">batch<span>0</span></a>
+        <p style="margin-top:10px; max-width:38ch">A live, online startup
+        accelerator for U.S. high schoolers. No equity taken; funding is never
+        guaranteed.</p>
+        <p style="margin-top:10px"><a class="link" href="mailto:hello@batch0.org">hello@batch0.org</a></p>
+      </div>
+      <div>
+        <h4>paths</h4>
+        <ul>
+          <li><a href="#program">/program</a></li>
+          <li><a href="#blog">/blog</a></li>
+          <li><a href="#sponsors">/sponsors</a></li>
+          <li><a href="#faq">/faq</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>session</h4>
+        <ul>
+          <li><a href="#apply">/apply</a></li>
+          <li><a href="#login">/login</a></li>
+          <li><a href="#terms">/terms</a></li>
+          <li><a href="#privacy">/privacy</a></li>
+          <li><a href="#refunds">/refund-policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="logout">
+      <span><span class="prompt">$ logout</span> · © 2026 Sparkline Youth LLC. All rights reserved.</span>
+      <span>connection to batch0 closed<span class="cursor" aria-hidden="true" style="background:var(--amber-soft)"></span></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function(){
+    var close = new Date("2026-08-10T23:59:00-04:00");
+    function pad(n){return String(n).padStart(2,"0")}
+    function tick(){
+      var now = new Date();
+      var d = Math.max(0, Math.ceil((close - now)/864e5));
+      document.getElementById("tminus").textContent = "T−" + d + "d";
+      document.getElementById("clock").textContent =
+        pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
+    }
+    tick(); setInterval(tick, 1000);
+  })();
+</script>
+</body>
+</html>
