@@ -7,12 +7,14 @@ import { Textarea, FieldError } from "@/components/ui/input";
 import { postTeamMessage } from "./actions";
 import { formatRelativeTime } from "@/lib/format-time";
 import { getActionError } from "@/lib/action-error";
+import { FounderPassBadge } from "@/components/founder-pass-badge";
 
 type Message = {
   id: string;
   body: string;
   kind: "member" | "mentor" | "investor" | "admin";
   created_at: string;
+  author_id: string;
   author: { full_name: string | null; email: string; role: string };
 };
 
@@ -26,10 +28,15 @@ const KIND_BADGE: Record<string, string> = {
 export function TeamThreadTab({
   teamId,
   messages,
+  passHolderIds = [],
 }: {
   teamId: string;
   messages: Message[];
+  /** User ids holding a live founder pass — array, not Set, so it can cross
+   *  the server/client boundary. */
+  passHolderIds?: string[];
 }) {
+  const passHolders = new Set(passHolderIds);
   const router = useRouter();
   const [body, setBody] = useState("");
   const [err, setErr] = useState<string | undefined>();
@@ -77,6 +84,7 @@ export function TeamThreadTab({
                   <span className="text-sm font-medium text-ink">
                     {author?.full_name ?? author?.email ?? "Someone"}
                   </span>
+                  {passHolders.has(m.author_id) && <FounderPassBadge />}
                   <span
                     className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                       KIND_BADGE[m.kind] ?? KIND_BADGE.member

@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { passHolderUserIds } from "@/lib/founder-pass";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FounderPassBadge } from "@/components/founder-pass-badge";
 
 type Props = { params: { slug: string } };
 
@@ -41,11 +43,11 @@ export default async function PublicTeamPage({ params }: Props) {
     .maybeSingle();
   if (!team || !team.is_public) notFound();
 
-  const [{ data: members }, { count: backers }] = await Promise.all([
+  const [{ data: members }, { count: backers }, passHolders] = await Promise.all([
     admin
       .from("team_members")
       .select(
-        "role, profile:profiles(full_name, mentor_bio)",
+        "role, user_id, profile:profiles(full_name, mentor_bio)",
       )
       .eq("team_id", team.id),
     admin
@@ -53,6 +55,7 @@ export default async function PublicTeamPage({ params }: Props) {
       .select("id", { count: "exact", head: true })
       .eq("team_id", team.id)
       .in("level", ["interested", "committed"]),
+    passHolderUserIds(admin),
   ]);
 
   const cohort = Array.isArray(team.cohort) ? team.cohort[0] : team.cohort;
@@ -149,8 +152,9 @@ export default async function PublicTeamPage({ params }: Props) {
             const p = Array.isArray(m.profile) ? m.profile[0] : m.profile;
             return (
               <li key={i}>
-                <p className="text-sm font-medium text-white">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-white">
                   {p?.full_name ?? "Founder"}
+                  {passHolders.has(m.user_id) && <FounderPassBadge />}
                 </p>
                 {p?.mentor_bio && (
                   <p className="mt-0.5 text-xs text-white/60">

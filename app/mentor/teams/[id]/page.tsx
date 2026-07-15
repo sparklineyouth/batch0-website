@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { passHolderUserIds } from "@/lib/founder-pass";
 import { requireMentor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { TeamThread } from "@/components/team-thread";
+import { FounderPassBadge } from "@/components/founder-pass-badge";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata = { title: "Team · Mentor" };
@@ -31,6 +33,7 @@ export default async function MentorTeamDetailPage({
     { data: messages },
     { data: files },
     { data: pitch },
+    passHolders,
   ] = await Promise.all([
     admin
       .from("team_members")
@@ -38,7 +41,9 @@ export default async function MentorTeamDetailPage({
       .eq("team_id", params.id),
     admin
       .from("team_messages")
-      .select("id, body, kind, created_at, author:profiles(full_name, email)")
+      .select(
+        "id, body, kind, created_at, author_id, author:profiles(full_name, email)",
+      )
       .eq("team_id", params.id)
       .order("created_at", { ascending: true })
       .limit(200),
@@ -52,6 +57,7 @@ export default async function MentorTeamDetailPage({
       .select("*")
       .eq("team_id", params.id)
       .maybeSingle(),
+    passHolderUserIds(admin),
   ]);
 
   const cohort = Array.isArray(team.cohort) ? team.cohort[0] : team.cohort;
@@ -101,9 +107,10 @@ export default async function MentorTeamDetailPage({
           {(members ?? []).map((m: any) => {
             const p = Array.isArray(m.profile) ? m.profile[0] : m.profile;
             return (
-              <li key={m.user_id} className="flex justify-between py-2">
-                <span className="text-sm text-ink">
+              <li key={m.user_id} className="flex justify-between gap-3 py-2">
+                <span className="flex flex-wrap items-center gap-2 text-sm text-ink">
                   {p?.full_name ?? p?.email}
+                  {passHolders.has(m.user_id) && <FounderPassBadge />}
                 </span>
                 <span className="text-xs text-ink-faint">{m.role}</span>
               </li>
@@ -151,7 +158,11 @@ export default async function MentorTeamDetailPage({
       </Card>
 
       <div className="mt-6">
-        <TeamThread teamId={params.id} messages={(messages ?? []) as any[]} />
+        <TeamThread
+          teamId={params.id}
+          messages={(messages ?? []) as any[]}
+          passHolderIds={[...passHolders]}
+        />
       </div>
     </div>
   );

@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { passHolderUserIds } from "@/lib/founder-pass";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
+import { FounderPassBadge } from "@/components/founder-pass-badge";
 import { ExternalLink } from "lucide-react";
 
 export async function generateMetadata({
@@ -45,10 +47,13 @@ export default async function TeamProfile({
     .maybeSingle();
   if (!team) notFound();
 
-  const { data: members } = await admin
-    .from("team_members")
-    .select("role, user:profiles(full_name)")
-    .eq("team_id", team.id);
+  const [{ data: members }, passHolders] = await Promise.all([
+    admin
+      .from("team_members")
+      .select("role, user_id, user:profiles(full_name)")
+      .eq("team_id", team.id),
+    passHolderUserIds(admin),
+  ]);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-white">
@@ -133,10 +138,14 @@ export default async function TeamProfile({
               {(members ?? []).map((m: any, i: number) => {
                 const u = Array.isArray(m.user) ? m.user[0] : m.user;
                 return (
-                  <li key={i} className="text-sm text-white/80">
+                  <li
+                    key={i}
+                    className="flex flex-wrap items-center gap-2 text-sm text-white/80"
+                  >
                     <span className="text-white">
                       {u?.full_name ?? "Member"}
-                    </span>{" "}
+                    </span>
+                    {passHolders.has(m.user_id) && <FounderPassBadge />}
                     <span className="text-white/45">— {m.role}</span>
                   </li>
                 );

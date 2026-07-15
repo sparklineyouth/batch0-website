@@ -7,7 +7,15 @@ import { getPassForUser } from "@/lib/founder-pass";
 import { formatSerial } from "@/lib/founder-pass-code";
 import { getSiteConfig } from "@/lib/site-config";
 import { PassForm } from "./pass-form";
-import { Zap, MessageSquare, BadgeCheck, Clock } from "lucide-react";
+import { FounderPassTicket } from "./founder-pass-ticket";
+import {
+  Zap,
+  MessageSquare,
+  BadgeCheck,
+  Clock,
+  Users,
+  Share2,
+} from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Founder Pass — batch0",
@@ -50,6 +58,16 @@ const PERKS: Perk[] = [
     title: "A numbered pass",
     body: "The serial on your card is yours, and it shows on your dashboard.",
   },
+  {
+    icon: Users,
+    title: "Your name wears the badge",
+    body: "Anywhere you show up in the community — team pages, team threads — a founder-pass badge sits next to your name, and mentors and investors see it.",
+  },
+  {
+    icon: Share2,
+    title: "A ticket page you can share",
+    body: "Your pass gets its own public page with your name on the ticket. Link it from your bio; the unfurl is the ticket itself.",
+  },
 ];
 
 export default async function PassPage() {
@@ -65,6 +83,19 @@ export default async function PassPage() {
   const pass = user ? await getPassForUser(createAdminClient(), user.id) : null;
   const config = await getSiteConfig();
   const earlyAccess = config.settings.founderPassEarlyAccess;
+
+  // The ticket prints the holder's name like a boarding pass. profiles has a
+  // self-select policy, so the user's own client can read it.
+  let holderName: string | null = null;
+  if (user && pass) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    holderName =
+      (profile as { full_name: string | null } | null)?.full_name ?? null;
+  }
 
   return (
     <main className="mx-auto max-w-lg px-5 py-16 md:py-24">
@@ -83,14 +114,28 @@ export default async function PassPage() {
       </div>
 
       {pass ? (
-        <Card className="mt-8 text-center">
-          <div className="font-mono text-5xl font-semibold tabular-nums text-phosphor-ink">
-            {formatSerial(pass.serial)}
-          </div>
-          <p className="mt-2 text-xs uppercase tracking-wider text-ink-faint">
-            Founder pass · {pass.batch}
+        // Breaks out of the column a little at sm+ — a ticket wants to be
+        // wider than a form.
+        <>
+          <FounderPassTicket
+            className="mt-8 sm:-mx-8"
+            name={holderName}
+            serialLabel={formatSerial(pass.serial)}
+            batch={pass.batch}
+            cohortHeadline={config.derived.cohortHeadline}
+            redeemedAt={pass.redeemedAt}
+          />
+          <p className="mt-4 text-center text-xs text-ink-faint">
+            Your ticket has a public page —{" "}
+            <Link
+              href={`/pass/${pass.serial}`}
+              className="font-medium text-phosphor-ink underline underline-offset-4"
+            >
+              batch0.org/pass/{pass.serial}
+            </Link>
+            . Share it anywhere.
           </p>
-        </Card>
+        </>
       ) : (
         <Card className="mt-8">
           <PassForm signedIn={!!user} />
