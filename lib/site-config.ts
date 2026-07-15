@@ -319,7 +319,13 @@ export async function getSiteConfig(
   }
 
   return {
-    cohort,
+    // Expose the same cohort `derive()` uses: when the DB can't resolve one
+    // (outage, missing row), callers get FALLBACK_COHORT rather than null.
+    // Otherwise `cohort` and `derived` disagree during an outage and every
+    // raw-cohort consumer (status bar t-minus, hero facts, the front-page
+    // lead story's deadline) silently drops the application close date —
+    // the exact drift the fallback exists to prevent.
+    cohort: cohort ?? FALLBACK_COHORT,
     settings,
     derived: derive(
       cohort,
