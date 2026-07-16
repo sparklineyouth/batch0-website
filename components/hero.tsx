@@ -3,6 +3,7 @@ import type { SiteConfig } from "@/lib/site-config";
 import { ApplyCta } from "@/components/apply-cta";
 import { ZeroThread } from "@/components/zero-thread";
 import { HeroEntrance } from "@/components/hero-entrance";
+import { SMOLDER_RAMP, smolderShade } from "@/components/smolder";
 
 const WEEK_WORDS = [
   "zero", "one", "two", "three", "four", "five", "six",
@@ -41,20 +42,29 @@ const ZERO_ROWS = [
   ".##......##.",
   "..########..",
 ];
-const ZERO_BLOCK_EM = 0.0451; // 14 rows ≈ 0.63em tall — optically a letter
+// VT323's cap height is ~0.7em; 14 rows at 0.05em puts the glyph exactly at
+// cap height (spec allows up to ~1.15× for presence), feet on the baseline.
+const ZERO_BLOCK_EM = 0.05;
 
 function HeroZero() {
   const cells: React.ReactNode[] = [];
   ZERO_ROWS.forEach((row, r) => {
     for (let c = 0; c < 12; c++) {
       if (row[c] !== "#") continue;
+      const si = smolderShade(r, c, ZERO_ROWS.length, 12);
       cells.push(
         <span
           key={`${r}-${c}`}
           data-hz
+          data-si={si}
+          data-shade={SMOLDER_RAMP[si]}
           className="px-cell bg-phosphor"
           data-base="amber"
-          style={{ gridColumn: c + 1, gridRow: r + 1 }}
+          style={{
+            gridColumn: c + 1,
+            gridRow: r + 1,
+            background: SMOLDER_RAMP[si],
+          }}
         />,
       );
     }
@@ -67,7 +77,7 @@ function HeroZero() {
     // row and hang the 0 below the word.
     <span
       aria-hidden="true"
-      className="relative mx-[0.04em] inline-block select-none align-baseline"
+      className="relative mx-[0.015em] inline-block select-none align-baseline"
       style={{ width: `${ZERO_BLOCK_EM * 12}em`, height: `${ZERO_BLOCK_EM * 14}em` }}
     >
       <span

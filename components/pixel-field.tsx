@@ -55,10 +55,12 @@ export function PixelField() {
       for (const p of rects) {
         const dx = p.x - mx,
           dy = p.y - my;
+        // blocks with a smolder shade (the hero 0) fall back to it, not to
+        // the class color — the dither must survive the cursor passing
         if (Math.abs(dx) > R || Math.abs(dy) > R) {
           if (p.b.style.transform) {
             p.b.style.transform = "";
-            p.b.style.background = "";
+            p.b.style.background = p.b.dataset.shade ?? "";
           }
           continue;
         }
@@ -68,7 +70,11 @@ export function PixelField() {
           const n = d || 1;
           p.b.style.transform = `translate(${((dx / n) * f).toFixed(1)}px,${((dy / n) * f).toFixed(1)}px)`;
           p.b.style.background =
-            d < LIT ? (p.base === AMBER ? INK : AMBER) : "";
+            d < LIT
+              ? p.base === AMBER
+                ? INK
+                : AMBER
+              : p.b.dataset.shade ?? "";
         }
       }
     };

@@ -1,5 +1,6 @@
 "use client";
-import { useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
+import { SMOLDER_RAMP } from "@/components/smolder";
 
 /**
  * THE SIGNATURE SEQUENCE — the hero assembles once per visit, total
@@ -21,6 +22,47 @@ import { useLayoutEffect } from "react";
  * after settling, the pixel-0 stays cursor-reactive via PixelField.
  */
 export function HeroEntrance() {
+  /* THE SMOLDER — the hero 0 slowly swaps block shades along the amber
+   * ramp (each block moves to a NEIGHBORING shade roughly every 2–4s,
+   * staggered; flat color to flat color, background only). Runs on every
+   * visit (unlike the one-time entrance), starts after the entrance has
+   * settled, and does nothing under reduced motion — those visitors keep
+   * the static server-rendered ramp. The current shade also lives in
+   * data-shade so PixelField's proximity flip can restore it. */
+  useEffect(() => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const blocks = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-hz]"),
+    );
+    if (!blocks.length) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let iv: ReturnType<typeof setInterval> | undefined;
+    const startT = setTimeout(() => {
+      iv = setInterval(() => {
+        // swap ~1/10th of the blocks per tick → each block shifts every ~3s
+        const n = Math.max(1, Math.floor(blocks.length / 10));
+        for (let k = 0; k < n; k++) {
+          const b = blocks[Math.floor(Math.random() * blocks.length)];
+          let si = parseInt(b.dataset.si ?? "2", 10);
+          si = Math.max(0, Math.min(4, si + (Math.random() < 0.5 ? -1 : 1)));
+          b.dataset.si = String(si);
+          b.dataset.shade = SMOLDER_RAMP[si];
+          b.style.transition = "background-color 600ms linear";
+          b.style.background = SMOLDER_RAMP[si];
+          // drop the transition after the swap so PixelField's proximity
+          // flips stay instant, never mushy
+          timers.push(setTimeout(() => (b.style.transition = ""), 650));
+        }
+      }, 300);
+    }, 2000); // let the assembly finish first
+    return () => {
+      clearTimeout(startT);
+      if (iv) clearInterval(iv);
+      timers.forEach(clearTimeout);
+      blocks.forEach((b) => (b.style.transition = ""));
+    };
+  }, []);
+
   useLayoutEffect(() => {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     try {
