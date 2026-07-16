@@ -13,6 +13,9 @@ import { PixelIcon } from "@/components/icons/pixel-icon";
  * component only needs to read it after mount (rendering nothing until
  * then avoids a hydration mismatch).
  */
+// "text" shows [phosphor]/[paper] beside the glyph; "glyph" is symbol-only.
+const TOGGLE_STYLE: "text" | "glyph" = "text";
+
 export function ThemeToggle({ className = "" }: { className?: string }) {
   const [mode, setMode] = useState<"phosphor" | "paper" | null>(null);
 
@@ -54,10 +57,11 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       type="button"
       onClick={flip}
       aria-label={`switch to ${mode === "paper" ? "phosphor (dark)" : "paper (light)"} theme`}
+      title={`theme: ${mode}`}
       className={`path-link t-small inline-flex items-center gap-1.5 font-mono lowercase text-ink-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor ${className}`}
     >
-      <PixelIcon name={mode === "paper" ? "sun" : "moon"} size={1} />
-      [{mode}]
+      <PixelIcon name={mode === "paper" ? "sun" : "moon"} size={TOGGLE_STYLE === "glyph" ? 1.5 : 1} />
+      {TOGGLE_STYLE === "text" && <>[{mode}]</>}
     </button>
   );
 }

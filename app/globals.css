@@ -644,3 +644,24 @@ a,
   line-height: 1.6;
   color: rgb(var(--ink));
 }
+
+/* THE SIGNATURE CTA — a rectangle drawn on the pixel grid: stair-stepped
+ * corners via clip-path (two steps per corner, step size --pxs). The CLEAR
+ * variant nests a paper-clipped inner layer to leave a pixel-block border. */
+.px-shape {
+  --pxs: 6px;
+  clip-path: polygon(
+    0 calc(2 * var(--pxs)), var(--pxs) calc(2 * var(--pxs)), var(--pxs) var(--pxs),
+    calc(2 * var(--pxs)) var(--pxs), calc(2 * var(--pxs)) 0,
+    calc(100% - 2 * var(--pxs)) 0, calc(100% - 2 * var(--pxs)) var(--pxs),
+    calc(100% - var(--pxs)) var(--pxs), calc(100% - var(--pxs)) calc(2 * var(--pxs)),
+    100% calc(2 * var(--pxs)),
+    100% calc(100% - 2 * var(--pxs)), calc(100% - var(--pxs)) calc(100% - 2 * var(--pxs)),
+    calc(100% - var(--pxs)) calc(100% - var(--pxs)), calc(100% - 2 * var(--pxs)) calc(100% - var(--pxs)),
+    calc(100% - 2 * var(--pxs)) 100%,
+    calc(2 * var(--pxs)) 100%, calc(2 * var(--pxs)) calc(100% - var(--pxs)),
+    var(--pxs) calc(100% - var(--pxs)), var(--pxs) calc(100% - 2 * var(--pxs)),
+    0 calc(100% - 2 * var(--pxs))
+  );
+}
+.px-shape-sm { --pxs: 4px; }

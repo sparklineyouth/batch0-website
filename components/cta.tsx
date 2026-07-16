@@ -36,7 +36,7 @@ export default function CTA({ config }: { config: SiteConfig }) {
           </div>
           <div className="mt-7 flex flex-wrap items-center gap-4">
             <ApplyCta
-              label={`apply for ${cohortLabel.toLowerCase()}`}
+              label={`apply for cohort ${String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}`}
               location="final-cta"
             />
             <span className="aside-note">

@@ -84,7 +84,7 @@ export default function Navbar({
               dashboard
             </Link>
           ) : (
-            <ApplyCta label="apply for cohort 1" command="apply" size="sm" location="navbar" />
+            <ApplyCta label="apply" size="sm" location="navbar" />
           )}
         </div>
 

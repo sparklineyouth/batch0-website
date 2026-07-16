@@ -175,7 +175,7 @@ export default function Hero({
             </a>
           ) : (
             <ApplyCta
-              label={`apply for ${cohortLabel.toLowerCase()}`}
+              label={`apply for cohort ${String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}`}
               location="hero"
             />
           )}

@@ -22,8 +22,11 @@ export function PixelField() {
   useEffect(() => {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-    const AMBER = "#FFBB00";
-    const INK = "#f5f5f4";
+    // Flip targets are theme vars: amber-base blocks flip to the theme INK
+    // (off-white on phosphor, black on paper - visible in both), ink-base
+    // accent cells flip to the theme chrome amber.
+    const INK_FLIP = "rgb(var(--ink))";
+    const AMBER_FLIP = "rgb(var(--phosphor-rgb))";
     const blocks = Array.from(
       document.querySelectorAll<HTMLElement>(".px-cell"),
     );
@@ -39,7 +42,7 @@ export function PixelField() {
           b,
           x: r.left + r.width / 2,
           y: r.top + r.height / 2,
-          base: b.dataset.base === "ink" ? INK : AMBER,
+          base: b.dataset.base ?? "amber",
         };
       });
     };
@@ -71,9 +74,9 @@ export function PixelField() {
           p.b.style.transform = `translate(${((dx / n) * f).toFixed(1)}px,${((dy / n) * f).toFixed(1)}px)`;
           p.b.style.background =
             d < LIT
-              ? p.base === AMBER
-                ? INK
-                : AMBER
+              ? p.base === "amber"
+                ? INK_FLIP
+                : AMBER_FLIP
               : p.b.dataset.shade ?? "";
         }
       }
