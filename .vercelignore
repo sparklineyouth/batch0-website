@@ -1,0 +1,8 @@
+# Not needed by `next build` — keeps the deploy upload small (the audit
+# docs alone are ~10MB, and large uploads have flaked on this network).
+# Patterns are root-anchored: a bare "supabase" would also exclude
+# lib/supabase/ (gitignore semantics) and break the build.
+/docs
+/out
+/supabase
+/scripts
