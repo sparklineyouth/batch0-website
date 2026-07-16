@@ -139,11 +139,12 @@ function validateStep(
     }
   }
   if (step === 3) {
-    if (form.why_join.trim().length < 40) {
+    const whyLen = form.why_join.trim().length;
+    if (whyLen < 40) {
       errs.why_join =
-        form.why_join.trim().length === 0
-          ? "Required"
-          : "Tell us at least a couple sentences";
+        whyLen === 0
+          ? "Required — at least 40 characters"
+          : `Needs at least 40 characters — you're at ${whyLen}`;
     }
     const sizeNum = parseInt(form.team_size, 10);
     if (!form.team_size) {
@@ -194,6 +195,13 @@ export function ApplicationForm({
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [save, setSave] = useState<SaveStatus>({ kind: "idle" });
+  // Steps where the user has already tried to continue. From that moment the
+  // step validates LIVE: errors appear on the click, then update keystroke by
+  // keystroke until everything's fixed — no dead buttons, no silent refusals.
+  const [attempted, setAttempted] = useState<Record<number, boolean>>({});
+  // Brief shake on Next when the click is refused, so the "no" is felt even
+  // before the error summary is read.
+  const [shakeNext, setShakeNext] = useState(false);
 
   const [form, setForm] = useState<FormState>({
     full_name: defaults?.full_name ?? "",
@@ -348,9 +356,12 @@ export function ApplicationForm({
 
   function goNext() {
     const errs = validateStep(step, form, cfg);
+    setAttempted((a) => ({ ...a, [step]: true }));
     if (Object.keys(errs).length > 0) {
       setFieldErrors((prev) => ({ ...prev, ...errs }));
       focusFirstError(errs);
+      setShakeNext(true);
+      window.setTimeout(() => setShakeNext(false), 450);
       return;
     }
     setStep(step + 1);
@@ -364,6 +375,7 @@ export function ApplicationForm({
     }
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
+      setAttempted({ 1: true, 2: true, 3: true, 4: true });
       // Jump to the first step with an error.
       let firstErrorStep = step;
       for (const s of [1, 2, 3] as const) {
@@ -397,6 +409,27 @@ export function ApplicationForm({
 
   const stepHasErrors = (s: number) =>
     Object.keys(validateStep(s, form, cfg)).length > 0;
+
+  // Live validation for the current step — only once the user has tried to
+  // continue. Merged with server-reported errors per field, so a message
+  // vanishes the moment the fix lands and reappears if they re-break it.
+  const liveErrs = attempted[step] ? validateStep(step, form, cfg) : {};
+  const liveErrKeys = Object.keys(liveErrs);
+  const errFor = (key: string) => fieldErrors[key] || liveErrs[key] || "";
+
+  // Human label for the error summary list.
+  const labelFor = (key: string) =>
+    cfg[key]?.label ?? key.replace(/_/g, " ");
+
+  function jumpToField(key: string) {
+    focusFirstError({ [key]: "jump" });
+  }
+
+  // Long-answer progress: mirrors validateStep's 40-char minimum on why_join
+  // so the counter, the bar, and the rule can never disagree.
+  const WHY_MIN = 40;
+  const whyLen = form.why_join.trim().length;
+  const whyMet = whyLen >= WHY_MIN;
 
   // Derive parent-email requirement from the current age value. Used
   // both to enforce HTML-level required + aria-required and to swap the
@@ -545,13 +578,13 @@ export function ApplicationForm({
                 autoComplete="name"
                 required={isRequired(cfg, "full_name")}
                 aria-required={isRequired(cfg, "full_name") || undefined}
-                error={fieldErrors.full_name}
+                error={errFor("full_name")}
                 value={form.full_name}
                 onChange={(e) => set("full_name", e.target.value)}
                 placeholder={cfg.full_name.placeholder || undefined}
               />
               <FieldError id="full_name-error">
-                {fieldErrors.full_name}
+                {errFor("full_name")}
               </FieldError>
               {cfg.full_name.help && (
                 <p className="mt-1 text-xs text-ink-soft">
@@ -574,12 +607,12 @@ export function ApplicationForm({
                 max={25}
                 required={isRequired(cfg, "age")}
                 aria-required={isRequired(cfg, "age") || undefined}
-                error={fieldErrors.age}
+                error={errFor("age")}
                 value={form.age}
                 onChange={(e) => set("age", e.target.value)}
                 placeholder={cfg.age.placeholder || undefined}
               />
-              <FieldError id="age-error">{fieldErrors.age}</FieldError>
+              <FieldError id="age-error">{errFor("age")}</FieldError>
               {cfg.age.help && (
                 <p className="mt-1 text-xs text-ink-soft">{cfg.age.help}</p>
               )}
@@ -684,7 +717,7 @@ export function ApplicationForm({
                 autoComplete="email"
                 required={parentEmailRequired}
                 aria-required={parentEmailRequired || undefined}
-                error={fieldErrors.parent_email}
+                error={errFor("parent_email")}
                 value={form.parent_email}
                 onChange={(e) => set("parent_email", e.target.value)}
                 placeholder={
@@ -694,7 +727,7 @@ export function ApplicationForm({
                 }
               />
               <FieldError id="parent_email-error">
-                {fieldErrors.parent_email}
+                {errFor("parent_email")}
               </FieldError>
               {cfg.parent_email.help && (
                 <p className="mt-1 text-xs text-ink-soft">
@@ -817,7 +850,7 @@ export function ApplicationForm({
                       inputMode="url"
                       autoComplete="url"
                       placeholder={cfg.linkedin_url.placeholder || undefined}
-                      error={fieldErrors.linkedin_url}
+                      error={errFor("linkedin_url")}
                       value={form.linkedin_url}
                       onChange={(e) => set("linkedin_url", e.target.value)}
                       required={isRequired(cfg, "linkedin_url")}
@@ -826,7 +859,7 @@ export function ApplicationForm({
                       }
                     />
                     <FieldError id="linkedin_url-error">
-                      {fieldErrors.linkedin_url}
+                      {errFor("linkedin_url")}
                     </FieldError>
                     {cfg.linkedin_url.help && (
                       <p className="mt-1 text-xs text-ink-soft">
@@ -850,7 +883,7 @@ export function ApplicationForm({
                       inputMode="url"
                       autoComplete="url"
                       placeholder={cfg.resume_url.placeholder || undefined}
-                      error={fieldErrors.resume_url}
+                      error={errFor("resume_url")}
                       value={form.resume_url}
                       onChange={(e) => set("resume_url", e.target.value)}
                       required={isRequired(cfg, "resume_url")}
@@ -859,7 +892,7 @@ export function ApplicationForm({
                       }
                     />
                     <FieldError id="resume_url-error">
-                      {fieldErrors.resume_url}
+                      {errFor("resume_url")}
                     </FieldError>
                     {cfg.resume_url.help && (
                       <p className="mt-1 text-xs text-ink-soft">
@@ -883,7 +916,7 @@ export function ApplicationForm({
                       inputMode="url"
                       autoComplete="url"
                       placeholder={cfg.portfolio_url.placeholder || undefined}
-                      error={fieldErrors.portfolio_url}
+                      error={errFor("portfolio_url")}
                       value={form.portfolio_url}
                       onChange={(e) => set("portfolio_url", e.target.value)}
                       required={isRequired(cfg, "portfolio_url")}
@@ -892,7 +925,7 @@ export function ApplicationForm({
                       }
                     />
                     <FieldError id="portfolio_url-error">
-                      {fieldErrors.portfolio_url}
+                      {errFor("portfolio_url")}
                     </FieldError>
                     {cfg.portfolio_url.help && (
                       <p className="mt-1 text-xs text-ink-soft">
@@ -919,18 +952,53 @@ export function ApplicationForm({
               rows={6}
               required={isRequired(cfg, "why_join")}
               aria-required={isRequired(cfg, "why_join") || undefined}
-              error={fieldErrors.why_join}
+              error={errFor("why_join")}
               aria-describedby="why_join-counter"
               value={form.why_join}
               onChange={(e) => set("why_join", e.target.value)}
               placeholder={cfg.why_join.placeholder || undefined}
             />
-            <div className="mt-1 flex items-center justify-between text-xs">
+            {/* Live progress toward the 40-char minimum: bar + counter shift
+                amber → green the moment the requirement is met, so nobody
+                discovers the rule only by being refused at Next. */}
+            <div
+              aria-hidden
+              className="mt-1.5 h-[3px] w-full overflow-hidden rounded-full bg-line"
+            >
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  whyMet ? "bg-emerald-500" : "bg-amber-500"
+                }`}
+                style={{
+                  width: `${Math.min(100, (whyLen / WHY_MIN) * 100)}%`,
+                }}
+              />
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-3 text-xs">
               <FieldError id="why_join-error">
-                {fieldErrors.why_join}
+                {errFor("why_join")}
               </FieldError>
-              <span id="why_join-counter" className="text-ink-faint">
-                {form.why_join.trim().length} / 40+ chars
+              <span
+                id="why_join-counter"
+                aria-live="polite"
+                className={
+                  whyMet
+                    ? "inline-flex shrink-0 items-center gap-1 text-emerald-600 dark:text-emerald-400"
+                    : whyLen > 0
+                      ? "shrink-0 text-amber-600 dark:text-amber-400"
+                      : "shrink-0 text-ink-faint"
+                }
+              >
+                {whyMet ? (
+                  <>
+                    <Check className="h-3 w-3" aria-hidden />
+                    {whyLen} characters — good to go
+                  </>
+                ) : whyLen > 0 ? (
+                  `${WHY_MIN - whyLen} more character${WHY_MIN - whyLen === 1 ? "" : "s"} to go`
+                ) : (
+                  `${WHY_MIN} characters minimum`
+                )}
               </span>
             </div>
             {cfg.why_join.help && (
@@ -977,10 +1045,10 @@ export function ApplicationForm({
               role="radiogroup"
               aria-label={cfg.team_size.label}
               aria-required="true"
-              aria-invalid={fieldErrors.team_size ? true : undefined}
+              aria-invalid={errFor("team_size") ? true : undefined}
               tabIndex={-1}
               className={`flex flex-wrap gap-2 rounded-lg ${
-                fieldErrors.team_size
+                errFor("team_size")
                   ? "ring-1 ring-red-400/40 ring-offset-2 ring-offset-transparent p-2 -m-2"
                   : ""
               }`}
@@ -1006,7 +1074,7 @@ export function ApplicationForm({
               })}
             </div>
             <FieldError id="team_size-error">
-              {fieldErrors.team_size}
+              {errFor("team_size")}
             </FieldError>
           </div>
         </div>
@@ -1123,6 +1191,47 @@ export function ApplicationForm({
         </div>
       )}
 
+      {/* Live step feedback, armed by the first refused Next click: a
+          checklist of what's blocking, each entry jumping to its field, that
+          updates as they type and flips to a green all-clear at zero. */}
+      {attempted[step] && liveErrKeys.length > 0 && (
+        <div
+          role="alert"
+          className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm"
+        >
+          <p className="flex items-center gap-1.5 font-medium text-red-600 dark:text-red-400">
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
+            {liveErrKeys.length === 1
+              ? "One thing needs fixing before you continue:"
+              : `${liveErrKeys.length} things need fixing before you continue:`}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {liveErrKeys.map((key) => (
+              <li key={key}>
+                <button
+                  type="button"
+                  onClick={() => jumpToField(key)}
+                  className="text-left text-red-600 underline decoration-red-400/50 underline-offset-2 hover:decoration-red-500 dark:text-red-400"
+                >
+                  {labelFor(key)}
+                </button>{" "}
+                <span className="text-ink-soft">— {liveErrs[key]}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {attempted[step] && liveErrKeys.length === 0 && step < STEPS.length && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-5 inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400"
+        >
+          <Check className="h-4 w-4" aria-hidden /> All set — hit Next to
+          continue.
+        </p>
+      )}
+
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
         <SaveStatusIndicator status={save} />
         <div className="flex items-center gap-2">
@@ -1137,15 +1246,15 @@ export function ApplicationForm({
             </Button>
           )}
           {step < STEPS.length ? (
+            // Deliberately NOT disabled when the step is invalid: a dead
+            // button explains nothing (and its hover tooltip never existed
+            // on mobile). Clicking runs validation, surfaces the checklist
+            // above, focuses the first problem, and shakes to say "no".
             <Button
               type="button"
               onClick={goNext}
-              disabled={submitPending || stepHasErrors(step)}
-              title={
-                stepHasErrors(step)
-                  ? "Complete required fields to continue"
-                  : undefined
-              }
+              disabled={submitPending}
+              className={shakeNext ? "animate-shake" : ""}
             >
               Next
             </Button>
