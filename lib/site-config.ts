@@ -45,9 +45,9 @@ export type SiteConfig = {
   derived: {
     /** "Cohort 1" — falls back to "" if no number is set. */
     cohortLabel: string;
-    /** "Summer 2026" — the cohort's name (season label). */
+    /** "Fall 2026" — the cohort's name (season label). */
     cohortName: string;
-    /** "Cohort 1 · Summer 2026" — combined label with separator. */
+    /** "Cohort 1 · Fall 2026" — combined label with separator. */
     cohortHeadline: string;
     /** "Jun 15 → Jul 13" — date range, or "" if dates are missing. */
     dateRangeLabel: string;
@@ -111,14 +111,14 @@ const FALLBACK_SETTINGS: SiteSettings = {
 // cohort's original Jul 30 → Sep 13 dates while the real row moved to
 // Aug 17 → Oct 18, so an outage would have shown dates 5 weeks out of date.
 // Re-check these against /admin/cohorts whenever the cohort row changes.
-// Last verified against the DB: 2026-07-14.
+// Last verified against the DB: 2026-07-16.
 const FALLBACK_COHORT: ActiveCohort = {
   id: "",
-  name: "Summer 2026",
+  name: "Fall 2026",
   cohortNumber: 1,
   startsOn: "2026-08-17",
   endsOn: "2026-10-18",
-  capacity: 100,
+  capacity: 50,
   priceCents: 12999,
   status: "upcoming",
   applicationsCloseAt: "2026-08-10T23:59:00+00:00",

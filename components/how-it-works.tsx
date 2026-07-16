@@ -15,7 +15,7 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
     },
     {
       title: "Get a decision by email",
-      body: "Applications are reviewed on a rolling basis. Each application and thoughtfully and thouroughly reviewed by our team.",
+      body: "Applications are reviewed on a rolling basis. Each application is read thoughtfully and thoroughly by our team.",
     },
     {
       title: "Enroll",

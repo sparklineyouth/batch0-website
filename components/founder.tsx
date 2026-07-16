@@ -33,9 +33,9 @@ export default function Founder({
           <p className="mt-5 max-w-[40rem] text-[15px] leading-[1.65] text-ink-soft">
             Cohort 1 is deliberately the first. There are no glossy alumni
             stats to show you yet, and we won&apos;t invent any. What we can
-            promise: Rishabh and Taran runs every live session themselves, read every
+            promise: Rishabh and Taran run every live session themselves, read every
             application, and answer every parent question personally within
-            a couple of days. 
+            a couple of days.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
             <a href={`mailto:${contactEmail}`} className="link-ink text-[15px] font-medium">

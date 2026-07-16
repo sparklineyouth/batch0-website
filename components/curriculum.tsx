@@ -1,8 +1,9 @@
 import React from "react";
 import Link from "next/link";
 
-// The real syllabus — four one-week sprints. The full week-by-week detail
-// lives on /program; this is the home-page summary.
+// The real syllabus — four sprints (each a taught week + a build week),
+// bookended by kickoff and demo day: nine weeks total. The full
+// week-by-week detail lives on /program; this is the home-page summary.
 export const WEEKS = [
   {
     week: "Step 1",
@@ -40,8 +41,10 @@ export default function Curriculum() {
               Four sprints, four artifacts
             </h2>
             <p className="mt-4 max-w-[38rem] text-[15px] leading-[1.65] text-ink-soft">
-              Each sprint is one startup skill applied to your own company,
-              closed out by a deliverable you shipped yourself.
+              Each sprint is one startup skill applied to your own company:
+              a taught week, then a build week to apply it, closed out by a
+              deliverable you shipped yourself. With kickoff and demo day,
+              that's the full nine weeks.
             </p>
           </div>
           <Link href="/program" className="link-ink text-[15px] font-medium">

@@ -12,14 +12,16 @@ export const metadata = {
   alternates: { canonical: "/sponsors" },
 };
 
-const WHY = [
+// Capacity is interpolated from the cohort record so this page can never
+// disagree with the homepage ledger about seat count.
+const why = (capacityLabel: string) => [
   {
     title: "Grants, not swag",
     body: "Sponsorship funds the non-dilutive grant pool awarded to standout students at demo day. You can name the grant you fund.",
   },
   {
     title: "Early talent",
-    body: "Cohort 1 seats up to 100 U.S. high schoolers, each building a real company. Meet them before recruiters do, as builders with work you can inspect.",
+    body: `Cohort 1 seats up to ${capacityLabel} high schoolers, each building a real company. Meet them before recruiters do, as builders with work you can inspect.`,
   },
   {
     title: "A straight ledger",
@@ -45,8 +47,8 @@ export default async function SponsorsPage() {
             Fund a high schooler&apos;s <span className="hl">first company</span>.
           </h1>
           <p className="mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
-            batch0 is a live, online accelerator for U.S. high
-            schoolers. Sponsorship pays for
+            batch0 is a live, online accelerator for high schoolers ages
+            13–18. Sponsorship pays for
             non-dilutive founder grants and keeps tuition at{" "}
             {config.derived.priceLabel} instead of the $3,000+ other programs
             charge. Cohort 1 runs{" "}
@@ -76,7 +78,7 @@ export default async function SponsorsPage() {
             What sponsorship buys
           </h2>
           <ul className="mt-10 grid gap-x-10 gap-y-8 md:grid-cols-3">
-            {WHY.map((w) => (
+            {why(config.derived.capacityLabel).map((w) => (
               <li key={w.title} className="border-t-2 border-phosphor pt-4">
                 <h3 className="text-[1.0625rem] font-semibold tracking-tight text-ink">
                   {w.title}

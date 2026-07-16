@@ -17,23 +17,31 @@ export default function FAQ({ config }: { config: SiteConfig }) {
   const faqs: { q: string; a: string }[] = [
     {
       q: "How much does it cost?",
-      a: `${price}, once, and only if you're accepted; applying is free. There are no hidden fees, no upsells, and no materials costs. Comparable summer accelerators list tuition in the thousands. Reduced regional pricing applies automatically in select countries, and refund terms are published on the refund policy page.`,
+      a: `${price}, once, and only if you're accepted; applying is free. There are no hidden fees, no upsells, and no materials costs. Comparable accelerators list tuition in the thousands. Reduced regional pricing applies automatically in select countries, and refund terms are published on the refund policy page.`,
     },
     {
       q: "Who runs batch0?",
-      a: `Rishabh Dagli and Taran Bethi, two serial founders building real companies that have changed the world. Rishabh and Taran personally review applications, run live sessions, and coordinate mentor and investor relationships for students.`,
+      a: `Rishabh Dagli and Taran Bethi — two 17-year-old founders who build and ship their own projects, including batch0 itself. They personally review every application, run every live session, and coordinate mentor and investor relationships for students. This is the founding cohort: no borrowed credentials, no invented track record.`,
     },
     {
       q: "Who is it for?",
-      a: "U.S. high schoolers, ages 13–18. Bring a real idea, a half-formed hunch, or nothing at all. The first sessions EXIST to help you refine your idea, just come with a desire to learn and build. No startup experience required.",
+      a: "High schoolers, ages 13–18. It's fully online, so you can join from anywhere you can make the live sessions (they're scheduled on U.S. Eastern time). Bring a real idea, a half-formed hunch, or nothing at all — the first sessions exist to help you find and refine your idea. No startup experience required.",
     },
     {
       q: "How much time does it take?",
-      a: "Each sessions helps students set individual and personalized deliverables. The amount of time a student spends per week varies for everyone, so plan for it the way you would a serious extracurricular." /* TODO(RISH): exact hours/week + live-session schedule — logged in NEEDED_FACTS.md */,
+      a: "Plan for 5–10 focused hours a week, the way you would a serious extracurricular. Each week has one live cohort session plus mentor office hours — scheduled on U.S. Eastern time and recorded if you have to miss one — and the rest is you building toward that week's deliverable. The exact weekly calendar is published before kickoff.",
     },
     {
       q: "Is it really fully online?",
-      a: `Yes. Sessions, feedback, and demo day all happen live on Zoom${dates ? `. ${cohort} runs ${dates}` : ""}. You can join from anywhere in the U.S.`,
+      a: `Yes. Sessions, feedback, and demo day all happen live on Zoom${dates ? `. ${cohort} runs ${dates}` : ""}. You can join from anywhere; sessions are scheduled on U.S. Eastern time.`,
+    },
+    {
+      q: "Who are the mentors?",
+      a: `Cohort 1 is taught end-to-end by Rishabh and Taran — every person involved is named on this site before you pay, and we won't pad the roster. Guest mentors and investors join around demo day; admitted students get their names before the cohort starts, and nobody interacts with students outside moderated program spaces.`,
+    },
+    {
+      q: "How is the community moderated?",
+      a: `Every program space — community feed, Discord, session chat — is staff-moderated with published community guidelines. Students are 13–18, so there are no unmonitored private channels between students and adults, sessions may be recorded, and anything concerning goes straight to ${contactEmail}, where a human (a parent can be that human) gets a reply within a couple of days.`,
     },
     {
       q: "What is demo day?",

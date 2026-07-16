@@ -20,7 +20,7 @@ const DELIVERABLES: { title: string; body: string }[] = [
   },
   {
     title: "A go-to-market plan",
-    body: "A concrete path to your first paying customers, completeing with a funnel and marketing plan.",
+    body: "A concrete path to your first paying customers, complete with a funnel and marketing plan.",
   },
   {
     title: "An investor-grade pitch deck",

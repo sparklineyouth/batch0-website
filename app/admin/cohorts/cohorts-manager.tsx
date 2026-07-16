@@ -226,12 +226,13 @@ function CohortForm({
           <Input
             id="name"
             required
-            placeholder="Summer 2026"
+            placeholder="Fall 2026"
             value={c.name}
             onChange={(e) => setC({ ...c, name: e.target.value })}
           />
           <p className="mt-1 text-xs text-ink-faint">
-            Season label shown across the site (e.g. "Summer 2026").
+            Season label shown across the site (e.g. "Fall 2026") — match
+            the actual dates, or the whole site mislabels the cohort.
           </p>
         </div>
         <div>

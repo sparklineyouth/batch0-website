@@ -11,7 +11,7 @@ import { getProfile, roleHome } from "@/lib/auth";
 export const metadata = {
   title: "Program: Four Sprints to Demo Day — batch0",
   description:
-    "What actually happens inside batch0, week by week: four build sprints, live sessions on Zoom, one deliverable per week, and a live demo day at the end.",
+    "What actually happens inside batch0, week by week: kickoff, four build sprints each followed by a build week, live sessions on Zoom, and a live demo day at the end.",
   alternates: { canonical: "/program" },
 };
 
@@ -66,8 +66,15 @@ export default async function ProgramPage() {
             <p className="mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
               This page is the whole program, no mystery: exactly the steps we take to help you take your company from
               idea to demo day.
-              {/* TODO(RISH): exact weekly live-session schedule + expected
-                  hours/week — logged in NEEDED_FACTS.md. */}
+            </p>
+            <p className="mt-4 max-w-[38rem] text-[15px] leading-[1.65] text-ink-soft">
+              How the nine weeks map out: kickoff opens the cohort, then four
+              sprints — Validate, Build, Market, Pitch. Each sprint is one
+              taught week followed by a build week where you apply it to your
+              own company with feedback, and the cohort closes with demo day.
+              Plan for 5–10 focused hours a week; live sessions run on Zoom
+              (U.S. Eastern time, recorded if you miss one), and the exact
+              weekly calendar is published before kickoff.
             </p>
           </div>
           <div className="md:col-span-5 md:pl-6 md:pt-2">
