@@ -35,7 +35,8 @@ export default async function AdminResourcesPage() {
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Resources</h1>
           <p className="mt-1 text-sm text-ink-soft">
             Shared decks, templates, guides — visible to enrolled students in
-            the chosen cohort (or everyone, if left global).
+            the chosen cohort (or everyone, if left global). Mark a resource
+            pre-cohort to show it to accepted students before kickoff.
           </p>
         </div>
         <Link
@@ -75,7 +76,14 @@ export default async function AdminResourcesPage() {
                     key={r.id}
                     className="border-b border-line last:border-0 hover:bg-wash"
                   >
-                    <td className="px-5 py-3 text-ink">{r.title}</td>
+                    <td className="px-5 py-3 text-ink">
+                      {r.title}
+                      {r.pre_cohort && (
+                        <span className="ml-2 rounded-full bg-phosphor/15 px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider text-phosphor-ink">
+                          Pre-cohort
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-ink-soft capitalize">
                       {r.category}
                     </td>

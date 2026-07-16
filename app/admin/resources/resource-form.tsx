@@ -149,6 +149,25 @@ export function ResourceForm({
         </div>
       </div>
 
+      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-wash p-4">
+        <input
+          type="checkbox"
+          checked={v.pre_cohort}
+          onChange={(e) => set("pre_cohort", e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-[#ffbb00]"
+        />
+        <span>
+          <span className="block text-sm font-medium text-ink">
+            Pre-cohort resource
+          </span>
+          <span className="mt-0.5 block text-xs text-ink-faint">
+            Shows in the "Pre-cohort resources" section for accepted students
+            before their cohort starts — the only resources they can see until
+            kickoff. Everything else unlocks when the cohort begins.
+          </span>
+        </span>
+      </label>
+
       <div className="rounded-xl border border-line bg-wash p-4">
         <Label>File</Label>
         <p className="text-xs text-ink-faint">

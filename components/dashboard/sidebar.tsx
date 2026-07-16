@@ -6,7 +6,7 @@ import type { Role } from "@/lib/types";
 import {
   STUDENT_NAV_GROUPS,
   STAFF_LINKS,
-  ENROLLED_ONLY_HREFS,
+  filterStudentNavItem,
 } from "@/lib/nav-config";
 import { NotificationBell } from "@/components/notification-bell";
 import { SidebarNav, SIDEBAR_ROW } from "@/components/sidebar-nav";
@@ -17,12 +17,14 @@ export function StudentSidebar({
   discordEnabled,
   enrolled,
   referralsEnabled,
+  preCohort,
 }: {
   role: Role;
   aiAccess: boolean;
   discordEnabled: boolean;
   enrolled: boolean;
   referralsEnabled: boolean;
+  preCohort: boolean;
 }) {
   const showAdminBack = role === "admin";
 
@@ -37,13 +39,15 @@ export function StudentSidebar({
       <SidebarNav
         storageKey="student"
         groups={STUDENT_NAV_GROUPS}
-        filterItem={(it) => {
-          if (it.href === "/dashboard/ai") return aiAccess;
-          if (it.href === "/dashboard/community") return discordEnabled;
-          if (it.href === "/dashboard/referrals") return referralsEnabled;
-          if (!enrolled && ENROLLED_ONLY_HREFS.has(it.href)) return false;
-          return true;
-        }}
+        filterItem={(it) =>
+          filterStudentNavItem(it, {
+            aiAccess,
+            discordEnabled,
+            referralsEnabled,
+            enrolled,
+            preCohort,
+          })
+        }
       />
       {showAdminBack && (
         <div className="mt-4 space-y-0.5 border-t border-line pt-4">

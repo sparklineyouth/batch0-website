@@ -10,7 +10,7 @@ import {
   MENTOR_NAV_GROUPS,
   INVESTOR_NAV_GROUPS,
   STAFF_LINKS,
-  ENROLLED_ONLY_HREFS,
+  filterStudentNavItem,
   type NavGroup,
 } from "@/lib/nav-config";
 import type { Role } from "@/lib/types";
@@ -68,6 +68,7 @@ export function MobileNav({
   discordEnabled,
   enrolled = true,
   referralsEnabled = true,
+  preCohort = false,
 }: {
   kind: MobileNavKind;
   role?: Role;
@@ -75,6 +76,7 @@ export function MobileNav({
   discordEnabled?: boolean;
   enrolled?: boolean;
   referralsEnabled?: boolean;
+  preCohort?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -143,22 +145,19 @@ export function MobileNav({
         const items = g.items
           .filter((it) => {
             if (kind === "student") {
-              if (it.href === "/dashboard/ai" && aiAccess === false) {
-                return false;
-              }
+              // Same predicate as the desktop sidebar — undefined flags
+              // mean "not restricted" for the optional props.
               if (
-                it.href === "/dashboard/community" &&
-                discordEnabled === false
+                !filterStudentNavItem(it, {
+                  aiAccess: aiAccess !== false,
+                  discordEnabled: discordEnabled !== false,
+                  referralsEnabled: referralsEnabled !== false,
+                  enrolled,
+                  preCohort,
+                })
               ) {
                 return false;
               }
-              if (
-                it.href === "/dashboard/referrals" &&
-                referralsEnabled === false
-              ) {
-                return false;
-              }
-              if (!enrolled && ENROLLED_ONLY_HREFS.has(it.href)) return false;
             }
             if (kind === "admin") {
               // Admins keep the link visible when referrals are paused so
@@ -180,6 +179,7 @@ export function MobileNav({
     discordEnabled,
     enrolled,
     referralsEnabled,
+    preCohort,
     query,
   ]);
 

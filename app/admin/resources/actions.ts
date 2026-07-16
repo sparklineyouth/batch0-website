@@ -14,6 +14,8 @@ export type ResourceInput = {
   external_url: string | null;
   size_bytes: number | null;
   mime_type: string | null;
+  /** Visible to accepted students before their cohort starts. */
+  pre_cohort: boolean;
 };
 
 function validate(input: ResourceInput) {
@@ -43,6 +45,7 @@ export async function saveResource(input: ResourceInput): Promise<string> {
     external_url: input.external_url?.trim() || null,
     size_bytes: input.size_bytes,
     mime_type: input.mime_type,
+    pre_cohort: !!input.pre_cohort,
   };
   let id = input.id;
   if (id) {

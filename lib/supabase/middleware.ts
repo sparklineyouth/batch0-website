@@ -1,5 +1,11 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  isPreCohortAllowedPath,
+  computePreCohort,
+  isAcceptedStatus,
+  type PreCohortCohort,
+} from "@/lib/pre-cohort";
 
 type CookiesToSet = {
   name: string;
@@ -204,6 +210,56 @@ export async function updateSession(request: NextRequest) {
       role !== "investor"
     ) {
       return redirectTo(roleHome(role));
+    }
+
+    // Pre-cohort lockdown: an accepted (or already-enrolled) student whose
+    // cohort hasn't started yet can only load the personal pages — home,
+    // application, resources, billing, referrals, settings (+ pay-fine).
+    // Every other /dashboard route bounces home. The sidebar hides the
+    // links too; this is the hard server-side gate, so a typed URL, a
+    // stale link, or a prefetch can't reach past the designated pages.
+    // Decision logic is shared with lib/access.ts via lib/pre-cohort.ts.
+    if (
+      path.startsWith("/dashboard") &&
+      role !== "admin" &&
+      !isPreCohortAllowedPath(path)
+    ) {
+      // Two parallel queries; the cohort rows ride along as embeds. On any
+      // query error, fail open — a transient DB blip must not lock a
+      // mid-cohort student out of the course (the page-level guards still
+      // hold the enrollment line).
+      const [appsRes, enrollsRes] = await Promise.all([
+        supabase
+          .from("applications")
+          .select("status, cohort_id, cohort:cohorts(starts_on, status)")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1),
+        supabase
+          .from("enrollments")
+          .select("cohort_id, cohort:cohorts(starts_on, status)")
+          .eq("user_id", user.id),
+      ]);
+      if (!appsRes.error && !enrollsRes.error) {
+        const app = appsRes.data?.[0] ?? null;
+        const accepted = !!app && isAcceptedStatus(app.status);
+        const enrollRows = enrollsRes.data ?? [];
+        if (accepted || enrollRows.length > 0) {
+          const seen = new Set<string>();
+          const cohorts: PreCohortCohort[] = [];
+          const rows = accepted && app ? [...enrollRows, app] : enrollRows;
+          for (const row of rows) {
+            const c = Array.isArray(row.cohort) ? row.cohort[0] : row.cohort;
+            if (row.cohort_id && c && !seen.has(row.cohort_id)) {
+              seen.add(row.cohort_id);
+              cohorts.push(c);
+            }
+          }
+          if (computePreCohort(true, cohorts)) {
+            return redirectTo("/dashboard");
+          }
+        }
+      }
     }
   }
 

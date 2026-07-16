@@ -9,6 +9,9 @@ import { ReferralCard } from "./referral-card";
 import { FounderPassCard } from "./founder-pass-card";
 import { getPassForUser } from "@/lib/founder-pass";
 import { ChargePayButton } from "@/components/charge-pay-button";
+import { getStudentAccess, type StudentAccess } from "@/lib/access";
+import { fmtDateOnly, PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
+import type { Role } from "@/lib/types";
 import { env } from "@/lib/env";
 import {
   AlertCircle,
@@ -63,6 +66,13 @@ export default async function DashboardHome() {
       .maybeSingle(),
   ]);
 
+  // Pre-cohort lockdown state: accepted/enrolled but the cohort hasn't
+  // started. The whole page reflects it — hero copy, locked rows, and
+  // quick links only point at pages the middleware actually allows.
+  const access = await getStudentAccess((profile?.role as Role) ?? "student");
+  const preCohort = access.preCohort;
+  const startDate = fmtDateOnly(access.cohortStartsOn);
+
   // Active intros for the user's teams. We surface "wired" deals at
   // the top of the dashboard so the team sees them the moment they
   // happen. Best-effort: missing migration 0019 or no team → empty.
@@ -81,7 +91,9 @@ export default async function DashboardHome() {
     .filter(Boolean);
   let wiredIntros: any[] = [];
   let liveIntroCount = 0;
-  if (teamIds.length > 0) {
+  // Intros are a cohort feature — don't surface (or link to) them during
+  // pre-cohort lockdown; the route would just bounce back home anyway.
+  if (!preCohort && teamIds.length > 0) {
     const { data: rows } = await adminClient
       .from("intro_requests")
       .select(
@@ -99,7 +111,8 @@ export default async function DashboardHome() {
 
   // Status copy + primary action are derived together so the hero feels
   // intentional — no double-card with redundant labels.
-  const status = appStatus(app?.status);
+  const status = appStatus(app?.status, access, startDate);
+  const cohortOpen = !!enrollment && !preCohort;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -215,20 +228,32 @@ export default async function DashboardHome() {
             <Row
               icon={PlayCircle}
               label="Course"
-              value={enrollment ? "Open" : "Locked"}
-              sub={enrollment ? "Weekly modules + assignments" : "Unlocks at enrollment"}
-              href={enrollment ? "/dashboard/course" : undefined}
-              muted={!enrollment}
+              value={cohortOpen ? "Open" : "Locked"}
+              sub={
+                cohortOpen
+                  ? "Weekly modules + assignments"
+                  : enrollment && preCohort
+                    ? `Unlocks when the cohort starts${startDate ? ` on ${startDate}` : ""}`
+                    : "Unlocks at enrollment"
+              }
+              href={cohortOpen ? "/dashboard/course" : undefined}
+              muted={!cohortOpen}
             />
             <Row
               icon={CalendarDays}
               label="Events"
-              value={enrollment ? "View schedule" : "Locked"}
-              sub={enrollment ? "Office hours + Demo Day" : "Unlocks at enrollment"}
-              href={enrollment ? "/dashboard/events" : undefined}
-              muted={!enrollment}
+              value={cohortOpen ? "View schedule" : "Locked"}
+              sub={
+                cohortOpen
+                  ? "Office hours + Demo Day"
+                  : enrollment && preCohort
+                    ? `Unlocks when the cohort starts${startDate ? ` on ${startDate}` : ""}`
+                    : "Unlocks at enrollment"
+              }
+              href={cohortOpen ? "/dashboard/events" : undefined}
+              muted={!cohortOpen}
             />
-            {enrollment && teamIds.length > 0 && (
+            {cohortOpen && teamIds.length > 0 && (
               <Row
                 icon={Handshake}
                 label="Investor intros"
@@ -260,7 +285,11 @@ export default async function DashboardHome() {
               { href: "/dashboard/checkin", label: "Check-in" },
               { href: "/dashboard/resources", label: "Resources" },
               { href: "/dashboard/settings", label: "Settings" },
-            ].map((l) => (
+            ]
+              // Pre-cohort: only link to pages the middleware allows —
+              // same source of truth as the sidebar and the hard gate.
+              .filter((l) => !preCohort || PRE_COHORT_ALLOWED_HREFS.has(l.href))
+              .map((l) => (
               <li key={l.href}>
                 <Link
                   href={l.href}
@@ -322,7 +351,43 @@ type StatusBucket = {
   cta: { href: string; label: (price: string) => string } | null;
 };
 
-function appStatus(s?: string | null): StatusBucket {
+function appStatus(
+  s: string | null | undefined,
+  access: StudentAccess,
+  startDate: string | null,
+): StatusBucket {
+  // Pre-cohort lockdown: the hero must reflect it no matter which
+  // application row happens to be newest (an admin-enrolled student may
+  // have no application at all, or a fresh draft for the next cycle).
+  if (access.preCohort) {
+    // Accepted but not yet enrolled → the pay CTA still leads.
+    if (!access.enrolled && s === "accepted") {
+      return {
+        label: "Application · Accepted",
+        lede: (price) =>
+          `You're in. Lock in your seat with the one-time ${price} tuition` +
+          `${startDate ? ` — the cohort starts ${startDate}` : ""}. ` +
+          "Pre-cohort resources are already open for you.",
+        cta: {
+          href: "/dashboard/application",
+          label: (price) => `Pay ${price} to enroll`,
+        },
+      };
+    }
+    // Enrolled (or paid) — the course isn't open yet, so the hero points
+    // at what IS open: the pre-cohort resources.
+    return {
+      label: "Enrolled",
+      lede: () =>
+        `You're enrolled${access.cohortName ? ` in ${access.cohortName}` : ""}. ` +
+        `The cohort kicks off${startDate ? ` on ${startDate}` : " soon"} — ` +
+        "pre-cohort resources are open for you now.",
+      cta: {
+        href: "/dashboard/resources",
+        label: () => "Browse pre-cohort resources",
+      },
+    };
+  }
   switch (s) {
     case "draft":
       return {

@@ -105,6 +105,8 @@ export type Resource = {
   external_url: string | null;
   size_bytes: number | null;
   mime_type: string | null;
+  /** Visible to accepted students before their cohort starts (migration 0042). */
+  pre_cohort: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;

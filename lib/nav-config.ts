@@ -31,6 +31,7 @@ import {
   Calendar as CalendarIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
 
 export type NavItem = {
   href: string;
@@ -115,6 +116,35 @@ export const ENROLLED_ONLY_HREFS = new Set<string>([
   "/dashboard/files",
   "/dashboard/intros",
 ]);
+
+export type StudentNavContext = {
+  aiAccess: boolean;
+  discordEnabled: boolean;
+  referralsEnabled: boolean;
+  enrolled: boolean;
+  preCohort: boolean;
+};
+
+/**
+ * The one visibility predicate for student nav items — desktop sidebar and
+ * mobile drawer both call this so the two can never drift. Pre-cohort
+ * lockdown wins first (only the personal pages survive, including
+ * Resources, which is otherwise enrolled-only); then per-feature flags;
+ * then the pre-enrollment hiding of cohort-only routes.
+ */
+export function filterStudentNavItem(
+  item: NavItem,
+  ctx: StudentNavContext,
+): boolean {
+  if (ctx.preCohort && !PRE_COHORT_ALLOWED_HREFS.has(item.href)) return false;
+  if (item.href === "/dashboard/ai") return ctx.aiAccess;
+  if (item.href === "/dashboard/community") return ctx.discordEnabled;
+  if (item.href === "/dashboard/referrals") return ctx.referralsEnabled;
+  if (!ctx.enrolled && !ctx.preCohort && ENROLLED_ONLY_HREFS.has(item.href)) {
+    return false;
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // Admin

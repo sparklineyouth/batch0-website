@@ -2,7 +2,8 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireUser } from "@/lib/auth";
+import { requireUser, getProfile } from "@/lib/auth";
+import { getStudentAccess } from "@/lib/access";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
@@ -18,6 +19,7 @@ import {
 import { PayButton } from "./pay-button";
 import { TrackSubmitted } from "./track-submitted";
 import { RebuildForm } from "./rebuild-form";
+import { fmtDateOnly } from "@/lib/pre-cohort";
 import { Zap } from "lucide-react";
 
 export const metadata = { title: "Application · batch0" };
@@ -77,6 +79,16 @@ export default async function ApplicationPage({
       ? await getRebuildForUser(createAdminClient(), user.id)
       : null;
 
+  // Whether the student is past pre-cohort lockdown — the SAME decision
+  // the middleware and sidebar make (via getStudentAccess), so the copy
+  // and CTAs here can never contradict what the routes actually allow.
+  const profile = await getProfile();
+  const access = await getStudentAccess(profile?.role ?? "student");
+  const started = !access.preCohort;
+  const startLabel = fmtDateOnly(
+    app.cohort?.starts_on ?? access.cohortStartsOn,
+  );
+
   return (
     <div className="mx-auto max-w-3xl">
       <div className="flex items-center justify-between">
@@ -103,7 +115,13 @@ export default async function ApplicationPage({
         <Card className="mt-6 border-phosphor/40 bg-phosphor/5">
           <h3 className="text-lg font-semibold text-phosphor-ink">You're in.</h3>
           <p className="mt-1 text-sm text-ink-soft">
-            Welcome to {app.cohort?.name ?? "batch0"}. Pay your one-time ${(priceCents / 100).toFixed(0)} to lock in your seat. Course access unlocks immediately after.
+            Welcome to {app.cohort?.name ?? "batch0"}. Pay your one-time $
+            {(priceCents / 100).toFixed(0)} to lock in your seat.{" "}
+            {started
+              ? "Course access unlocks immediately after."
+              : `Pre-cohort resources unlock right away; the full program opens${
+                  startLabel ? ` on ${startLabel}` : " at kickoff"
+                }.`}
           </p>
           {passDiscountCents > 0 && (
             <p className="mt-2 text-xs font-medium text-phosphor-ink">
@@ -146,11 +164,20 @@ export default async function ApplicationPage({
         <Card className="mt-6 border-emerald-500/30 bg-emerald-500/10">
           <h3 className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">Enrolled</h3>
           <p className="mt-1 text-sm text-ink-soft">
-            Payment received. You're all set.
+            {started
+              ? "Payment received. You're all set."
+              : `Payment received. You're all set — ${
+                  app.cohort?.name ?? "your cohort"
+                } kicks off${startLabel ? ` on ${startLabel}` : " soon"}.`}
           </p>
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
-          <Link href="/dashboard/course" className="mt-4 inline-block">
-            <Button>Open course</Button>
+          <Link
+            href={started ? "/dashboard/course" : "/dashboard/resources"}
+            className="mt-4 inline-block"
+          >
+            <Button>
+              {started ? "Open course" : "Browse pre-cohort resources"}
+            </Button>
           </Link>
         </Card>
       )}
