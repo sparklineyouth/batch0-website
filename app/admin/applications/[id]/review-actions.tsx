@@ -87,7 +87,7 @@ export function ReviewActions({
     setNotes((prev) => (prev.trim() ? `${prev.trim()}\n\n${body}` : body));
   }
 
-  function decide(decision: "accepted" | "rejected") {
+  function decide(decision: "accepted" | "rejected" | "waitlisted") {
     setError(undefined);
     start(async () => {
       try {
@@ -227,6 +227,17 @@ export function ReviewActions({
             <Button onClick={() => decide("accepted")} disabled={pending}>
               {pending ? "…" : "Accept"}
             </Button>
+            {/* Waitlist is a middle decision, not a final one — the app
+                stays decidable, so Accept/Reject remain available after. */}
+            {status !== "waitlisted" && (
+              <Button
+                variant="secondary"
+                onClick={() => decide("waitlisted")}
+                disabled={pending}
+              >
+                Waitlist
+              </Button>
+            )}
             <Button
               variant="danger"
               onClick={() => decide("rejected")}
@@ -236,7 +247,9 @@ export function ReviewActions({
             </Button>
           </>
         )}
-        {(status === "accepted" || status === "rejected") && (
+        {(status === "accepted" ||
+          status === "rejected" ||
+          status === "waitlisted") && (
           <Button variant="secondary" onClick={reopen} disabled={pending}>
             Re-open for review
           </Button>

@@ -149,6 +149,22 @@ export default async function ApplicationPage({
         </div>
       )}
 
+      {app.status === "waitlisted" && (
+        <Card className="mt-6 border-amber-500/30 bg-amber-500/[0.06]">
+          <h3 className="text-lg font-semibold text-amber-700 dark:text-amber-300">
+            You're on the waitlist
+          </h3>
+          <p className="mt-1 text-sm text-ink-soft">
+            Not a no. Seats in {app.cohort?.name ?? "this cohort"} open when
+            admitted applicants don't enroll, and waitlisted applications are
+            the first we return to. If a seat opens you'll get an acceptance
+            email with payment instructions; if the cohort fills, we'll tell
+            you that too. Nothing you need to do in the meantime.
+          </p>
+          {app.review_notes && <ReviewerNote text={app.review_notes} />}
+        </Card>
+      )}
+
       {app.status === "rejected" && (
         <Card className="mt-6">
           <h3 className="text-lg font-semibold">Decision: not this cohort</h3>

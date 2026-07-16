@@ -12,8 +12,10 @@ import { getActionError } from "@/lib/action-error";
 import { CheckSquare, Square, Share2, Ticket, Hammer } from "lucide-react";
 
 // Statuses where bulk-decide makes sense. Decided / paid / enrolled rows
-// don't get a usable checkbox — clicking them just navigates.
-const DECIDABLE = new Set(["submitted", "draft"]);
+// don't get a usable checkbox — clicking them just navigates. Waitlisted
+// rows stay decidable: bulk-accept when seats open, bulk-reject when the
+// cohort fills.
+const DECIDABLE = new Set(["submitted", "draft", "waitlisted"]);
 
 // Score tone duplicated from page.tsx — keeping it local rather than
 // hoisting to a shared file because the list is the only consumer and a

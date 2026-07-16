@@ -23,9 +23,10 @@ export type BlastRecipient = {
 // Application lifecycle rank — used to collapse a user's multiple
 // applications down to their furthest-along status for filtering.
 const STATUS_RANK: Record<string, number> = {
-  enrolled: 5,
-  paid: 4,
-  accepted: 3,
+  enrolled: 6,
+  paid: 5,
+  accepted: 4,
+  waitlisted: 3,
   submitted: 2,
   rejected: 1,
   draft: 0,

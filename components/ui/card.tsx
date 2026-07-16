@@ -45,6 +45,7 @@ export function StatusBadge({ status }: { status: string }) {
     draft: "bg-wash text-ink-soft",
     submitted: "bg-blue-400/15 text-blue-300",
     accepted: "bg-emerald-400/15 text-emerald-300",
+    waitlisted: "bg-amber-400/15 text-amber-300",
     rejected: "bg-red-400/15 text-red-300",
     paid: "bg-phosphor/15 text-phosphor-ink",
     enrolled: "bg-phosphor/15 text-phosphor-ink",

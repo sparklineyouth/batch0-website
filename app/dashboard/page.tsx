@@ -421,6 +421,13 @@ function appStatus(
           "We're reading your application. You'll get an email when there's a decision.",
         cta: null,
       };
+    case "waitlisted":
+      return {
+        label: "Application · Waitlisted",
+        lede: () =>
+          "You're on the waitlist — not a no. If a seat opens, you're first in line and we'll email you right away.",
+        cta: null,
+      };
     case "accepted":
       return {
         label: "Application · Accepted",

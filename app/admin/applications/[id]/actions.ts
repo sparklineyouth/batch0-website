@@ -22,7 +22,7 @@ export type StructuredFeedback = {
 
 export async function decideApplication(
   applicationId: string,
-  decision: "accepted" | "rejected",
+  decision: "accepted" | "rejected" | "waitlisted",
   notes: string,
   // Structured rejection feedback (perk 3). Only meaningful when declining a
   // pass holder; ignored on accept and for non-holders. The single-app review
@@ -175,6 +175,26 @@ export async function decideApplication(
         body: `Welcome to ${cohort?.name ?? "batch0"}. Pay to lock in your seat.`,
         link: "/dashboard/application",
       });
+    } else if (decision === "waitlisted") {
+      const t = Templates.applicationWaitlisted({
+        name: a.full_name ?? profile?.full_name ?? null,
+        cohortName: cohort?.name ?? "batch0",
+        notes: effectiveNotes || null,
+      });
+      if (profile?.email) {
+        await sendEmail({
+          to: profile.email,
+          subject: t.subject,
+          html: t.html,
+        });
+      }
+      await notify({
+        userId: a.user_id,
+        type: "application_waitlisted",
+        title: "You're on the waitlist",
+        body: "Not a no — if a seat opens, you're first in line.",
+        link: "/dashboard/application",
+      });
     } else {
       const t = Templates.applicationRejected({
         name: a.full_name ?? profile?.full_name ?? null,
@@ -244,13 +264,15 @@ export async function decideApplication(
  * UI can surface "X succeeded, Y failed" without inventing its own
  * accounting.
  *
- * Skips applications that aren't in a decidable state ("submitted" or
- * "draft"). Already-decided rows are returned in `skipped` so the
- * reviewer knows they weren't silently no-op'd.
+ * Skips applications that aren't in a decidable state ("submitted",
+ * "draft", or "waitlisted" — waitlisted rows can be bulk-accepted when
+ * seats open, or bulk-rejected when the cohort fills). Already-decided
+ * rows are returned in `skipped` so the reviewer knows they weren't
+ * silently no-op'd.
  */
 export async function bulkDecideApplications(input: {
   applicationIds: string[];
-  decision: "accepted" | "rejected";
+  decision: "accepted" | "rejected" | "waitlisted";
   notes: string;
 }): Promise<{ succeeded: number; failed: number; skipped: number }> {
   await assertAdmin();
@@ -273,7 +295,12 @@ export async function bulkDecideApplications(input: {
 
   const decidable = new Set(
     (existing ?? [])
-      .filter((a: any) => a.status === "submitted" || a.status === "draft")
+      .filter(
+        (a: any) =>
+          a.status === "submitted" ||
+          a.status === "draft" ||
+          a.status === "waitlisted",
+      )
       .map((a: any) => a.id as string),
   );
   const skipped = input.applicationIds.length - decidable.size;

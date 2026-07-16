@@ -116,6 +116,25 @@ export const Templates = {
     }),
   }),
 
+  applicationWaitlisted: (args: {
+    name?: string | null;
+    cohortName: string;
+    notes?: string | null;
+  }) => ({
+    subject: "You're on the batch0 waitlist",
+    html: layout({
+      preheader: "Not a no — a seat may still open up.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">You're on the waitlist</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""},</p>
+        <p>Your application to <strong>${escape(args.cohortName)}</strong> made the cut for the waitlist. That's not a no — seats open when admitted applicants don't enroll, and waitlisted applications are the first we return to.</p>
+        <p>There's nothing you need to do. If a seat opens, you'll get an acceptance email with payment instructions; if the cohort fills, we'll tell you that too.</p>
+        ${args.notes ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,255,255,0.2);color:#bbb">${escape(args.notes)}</p>` : ""}
+      `,
+      cta: { url: `${env.siteUrl}/dashboard/application`, label: "View your application" },
+    }),
+  }),
+
   applicationRejected: (args: { name?: string | null; notes?: string | null }) => ({
     subject: "Update on your batch0 application",
     html: layout({

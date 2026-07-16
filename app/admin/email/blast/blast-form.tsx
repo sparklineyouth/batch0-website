@@ -19,6 +19,7 @@ const AUDIENCES = [
   { key: "students", label: "Students" },
   { key: "enrolled", label: "Enrolled" },
   { key: "accepted", label: "Accepted (unpaid)" },
+  { key: "waitlisted", label: "Waitlisted" },
   { key: "applied", label: "Applied" },
   { key: "everyone", label: "Everyone" },
 ] as const;
@@ -88,6 +89,7 @@ export function BlastForm({
       if (audience === "students" && r.role !== "student") return false;
       if (audience === "enrolled" && r.cohorts.length === 0) return false;
       if (audience === "accepted" && r.appStatus !== "accepted") return false;
+      if (audience === "waitlisted" && r.appStatus !== "waitlisted") return false;
       if (audience === "applied" && r.appStatus !== "submitted") return false;
       if (cohort && !r.cohorts.includes(cohort)) return false;
       if (

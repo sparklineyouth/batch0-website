@@ -8,6 +8,7 @@ export type ApplicationStatus =
   | "draft"
   | "submitted"
   | "accepted"
+  | "waitlisted"
   | "rejected"
   | "paid"
   | "enrolled"

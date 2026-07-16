@@ -82,6 +82,12 @@ function copyFor(status: ApplicationStatus | null) {
           "You're accepted — lock in your seat with the one-time tuition and the cohort features come online immediately.",
         cta: { href: "/dashboard/application", label: "Pay to enroll" },
       };
+    case "waitlisted":
+      return {
+        lede:
+          "You're on the waitlist. If a seat opens you're first in line — cohort features unlock at acceptance.",
+        cta: null,
+      };
     case "rejected":
       return {
         lede:

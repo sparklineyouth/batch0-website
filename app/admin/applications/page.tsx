@@ -147,7 +147,15 @@ export default async function AdminApplicationsPage({
   // make it read "12" until you click it and "12 of 12" forever after.
   const referredCount = allRows.filter(isVouched).length;
 
-  const filters = ["all", "submitted", "accepted", "rejected", "paid", "draft"];
+  const filters = [
+    "all",
+    "submitted",
+    "waitlisted",
+    "accepted",
+    "rejected",
+    "paid",
+    "draft",
+  ];
 
   // One builder for every pill, so status / sort / referred always survive each
   // other. Three separate builders drifted apart the moment a third param
