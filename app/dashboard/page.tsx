@@ -10,7 +10,11 @@ import { FounderPassCard } from "./founder-pass-card";
 import { getPassForUser } from "@/lib/founder-pass";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { getStudentAccess, type StudentAccess } from "@/lib/access";
-import { fmtDateOnly, PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
+import {
+  fmtDateOnly,
+  isAcceptedStatus,
+  PRE_COHORT_ALLOWED_HREFS,
+} from "@/lib/pre-cohort";
 import type { Role } from "@/lib/types";
 import { env } from "@/lib/env";
 import {
@@ -280,15 +284,29 @@ export default async function DashboardHome() {
           <ul className="mt-4 grid grid-cols-2 gap-2">
             {[
               { href: "/dashboard/application", label: "Application" },
+              { href: "/dashboard/kickoff", label: "Kickoff" },
               { href: "/dashboard/billing", label: "Billing" },
               { href: "/dashboard/team", label: "Team" },
               { href: "/dashboard/checkin", label: "Check-in" },
               { href: "/dashboard/resources", label: "Resources" },
               { href: "/dashboard/settings", label: "Settings" },
             ]
-              // Pre-cohort: only link to pages the middleware allows —
-              // same source of truth as the sidebar and the hard gate.
-              .filter((l) => !preCohort || PRE_COHORT_ALLOWED_HREFS.has(l.href))
+              .filter((l) => {
+                // Kickoff only exists during the pre-cohort window.
+                if (l.href === "/dashboard/kickoff") return preCohort;
+                // Resources stay locked until the application passes
+                // review — don't dangle a dead-end link before that.
+                if (
+                  l.href === "/dashboard/resources" &&
+                  !access.enrolled &&
+                  !isAcceptedStatus(access.applicationStatus)
+                ) {
+                  return false;
+                }
+                // Pre-cohort: only link to pages the middleware allows —
+                // same source of truth as the sidebar and the hard gate.
+                return !preCohort || PRE_COHORT_ALLOWED_HREFS.has(l.href);
+              })
               .map((l) => (
               <li key={l.href}>
                 <Link
@@ -375,16 +393,16 @@ function appStatus(
       };
     }
     // Enrolled (or paid) — the course isn't open yet, so the hero points
-    // at what IS open: the pre-cohort resources.
+    // at what IS open: the kickoff page and pre-cohort resources.
     return {
       label: "Enrolled",
       lede: () =>
         `You're enrolled${access.cohortName ? ` in ${access.cohortName}` : ""}. ` +
         `The cohort kicks off${startDate ? ` on ${startDate}` : " soon"} — ` +
-        "pre-cohort resources are open for you now.",
+        "kickoff details and pre-cohort resources are open for you now.",
       cta: {
-        href: "/dashboard/resources",
-        label: () => "Browse pre-cohort resources",
+        href: "/dashboard/kickoff",
+        label: () => "See kickoff details",
       },
     };
   }

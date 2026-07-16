@@ -2,9 +2,9 @@
 // Pre-cohort lockdown — shared, pure logic.
 //
 // An accepted (or already-enrolled) student whose cohort hasn't started yet
-// only gets the personal pages: home, application, resources (pre-cohort
-// section), billing, referrals, settings. Everything else under /dashboard
-// is off-limits until kickoff.
+// only gets the personal pages: home, application, kickoff, resources
+// (pre-cohort section), billing, referrals, settings. Everything else under
+// /dashboard is off-limits until kickoff.
 //
 // This module is imported by the Edge middleware, server components, AND
 // client components (sidebar / mobile nav) — keep it dependency-free and
@@ -38,6 +38,7 @@ export function isAcceptedStatus(
 export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
   "/dashboard",
   "/dashboard/application",
+  "/dashboard/kickoff",
   "/dashboard/resources",
   "/dashboard/billing",
   "/dashboard/referrals",
@@ -49,6 +50,7 @@ export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
 // but must stay reachable — the fine middleware forces users there.
 const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/application",
+  "/dashboard/kickoff",
   "/dashboard/resources",
   "/dashboard/billing",
   "/dashboard/referrals",

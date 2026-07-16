@@ -28,6 +28,7 @@ import {
   Trophy,
   Newspaper,
   Ticket,
+  Flag,
   Calendar as CalendarIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -60,6 +61,7 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard", label: "Home", icon: Home, exact: true },
       { href: "/dashboard/application", label: "Application", icon: FileText },
+      { href: "/dashboard/kickoff", label: "Kickoff", icon: Flag },
     ],
   },
   {
@@ -137,6 +139,9 @@ export function filterStudentNavItem(
   ctx: StudentNavContext,
 ): boolean {
   if (ctx.preCohort && !PRE_COHORT_ALLOWED_HREFS.has(item.href)) return false;
+  // Kickoff only exists during the pre-cohort window — once the cohort
+  // starts (or before acceptance) the page redirects home, so hide it.
+  if (item.href === "/dashboard/kickoff") return ctx.preCohort;
   if (item.href === "/dashboard/ai") return ctx.aiAccess;
   if (item.href === "/dashboard/community") return ctx.discordEnabled;
   if (item.href === "/dashboard/referrals") return ctx.referralsEnabled;
