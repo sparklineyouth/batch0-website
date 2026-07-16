@@ -96,7 +96,7 @@ export default async function TeamProfile({
                 href={team.website_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200"
+                className="inline-flex items-center gap-1.5 rounded-full bg-phosphor-fill px-4 py-2 text-sm font-semibold text-on-phosphor hover:bg-phosphor-fill-hover"
               >
                 Visit website <ExternalLink className="h-3.5 w-3.5" />
               </a>

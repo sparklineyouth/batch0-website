@@ -77,7 +77,7 @@ export function NotificationItem({ n }: { n: N }) {
         {isUnread && (
           <span
             aria-hidden
-            className="absolute left-0 top-0 h-full w-[2px] bg-phosphor"
+            className="absolute left-0 top-0 h-full w-[2px] bg-phosphor-fill"
           />
         )}
         <div

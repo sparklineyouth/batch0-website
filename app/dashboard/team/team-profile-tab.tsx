@@ -135,7 +135,7 @@ export function TeamProfileTab({ team }: { team: Team }) {
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-phosphor px-3 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200">
+            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-phosphor-fill px-3 text-sm font-semibold text-on-phosphor hover:bg-phosphor-fill-hover">
               <Upload className="h-4 w-4" />
               {uploading ? "Uploading…" : "Upload logo"}
               <input

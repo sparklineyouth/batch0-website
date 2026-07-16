@@ -67,7 +67,7 @@ export default async function StudentIntrosPage() {
         </p>
         <Link
           href="/dashboard/team"
-          className="press mt-7 inline-flex items-center gap-2 rounded-md bg-phosphor px-4 py-2.5 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200"
+          className="press mt-7 inline-flex items-center gap-2 rounded-md bg-phosphor-fill px-4 py-2.5 text-sm font-semibold text-on-phosphor hover:bg-phosphor-fill-hover"
         >
           Open team
           <ArrowRight className="h-4 w-4" />

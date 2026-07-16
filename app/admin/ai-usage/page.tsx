@@ -223,7 +223,7 @@ export default async function AdminAiUsagePage() {
                   {m.billed > 0 ? fmtMoney(m.billed) : "—"}
                 </div>
                 <div
-                  className={`w-full rounded-t ${isCurrent ? "bg-phosphor" : "bg-phosphor/40"}`}
+                  className={`w-full rounded-t ${isCurrent ? "bg-phosphor-fill" : "bg-phosphor/40"}`}
                   style={{ height: `${h}%` }}
                 />
                 <div className="text-[10px] uppercase tracking-wider text-ink-faint">
@@ -249,7 +249,7 @@ export default async function AdminAiUsagePage() {
               <div
                 key={d.key}
                 title={`${d.key} · ${fmtTokens(d.total)} tokens`}
-                className="flex-1 rounded-t bg-phosphor/60 hover:bg-phosphor transition-colors"
+                className="flex-1 rounded-t bg-phosphor/60 hover:bg-phosphor-fill transition-colors"
                 style={{ height: `${h}%` }}
               />
             );

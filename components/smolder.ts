@@ -11,6 +11,9 @@
  *
  * The navbar wordmark 0 stays solid amber — the smolder is the hero's.
  */
+// Runtime colors live in CSS vars --smolder-0..4 (globals.css) so the ramp
+// flips with the theme (paper gets the darker ember set). This array is the
+// phosphor reference.
 export const SMOLDER_RAMP = [
   "#7A4A00", // deep ember
   "#B87A00",

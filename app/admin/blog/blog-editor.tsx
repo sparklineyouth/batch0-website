@@ -280,14 +280,14 @@ export function BlogEditor({ initial }: { initial: BlogPostInput }) {
               <button
                 type="button"
                 onClick={() => setTab("write")}
-                className={`px-2.5 py-1 ${tab === "write" ? "bg-phosphor text-on-phosphor" : "text-ink-soft"}`}
+                className={`px-2.5 py-1 ${tab === "write" ? "bg-phosphor-fill text-on-phosphor" : "text-ink-soft"}`}
               >
                 Write
               </button>
               <button
                 type="button"
                 onClick={() => setTab("preview")}
-                className={`px-2.5 py-1 ${tab === "preview" ? "bg-phosphor text-on-phosphor" : "text-ink-soft"}`}
+                className={`px-2.5 py-1 ${tab === "preview" ? "bg-phosphor-fill text-on-phosphor" : "text-ink-soft"}`}
               >
                 Preview
               </button>

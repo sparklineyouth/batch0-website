@@ -149,7 +149,7 @@ function LockedView() {
             <div className="mt-4 flex flex-wrap gap-2 text-sm">
               <Link
                 href="/apply"
-                className="inline-flex items-center gap-1.5 rounded-full bg-phosphor px-3 py-1.5 font-semibold text-on-phosphor hover:bg-phosphor-200"
+                className="inline-flex items-center gap-1.5 rounded-full bg-phosphor-fill px-3 py-1.5 font-semibold text-on-phosphor hover:bg-phosphor-fill-hover"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Apply now

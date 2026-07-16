@@ -63,7 +63,7 @@ export function EnableToggle({ initial }: { initial: boolean }) {
           disabled={pending}
           onClick={() => flip(!enabled)}
           className={`relative h-6 w-11 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60 ${
-            enabled ? "bg-phosphor" : "bg-ink/20"
+            enabled ? "bg-phosphor-fill" : "bg-ink/20"
           } ${pending ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
         >
           <span

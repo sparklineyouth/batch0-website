@@ -113,7 +113,7 @@ export function SponsorContactForm({
         </p>
         <button
           type="submit"
-          className="press inline-flex items-center justify-center gap-2 rounded-md bg-phosphor px-5 py-3 text-[14px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
+          className="press inline-flex items-center justify-center gap-2 rounded-md bg-phosphor-fill px-5 py-3 text-[14px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-fill-hover"
         >
           Send inquiry
         </button>

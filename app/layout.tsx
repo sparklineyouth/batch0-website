@@ -121,20 +121,29 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // The whole site — marketing, auth, and product app — is flat-black dark-only.
-  // The design tokens (globals.css :root) are the dark palette. The `dark` class
-  // is pinned here permanently (not via a theme provider): it no longer switches
-  // anything, but the product app's ~200 `dark:` utility variants still key off
-  // it, so it must stay present for them to render.
+  // Two designed themes: "phosphor" (dark, default) and "paper" (light).
+  // Homegrown class+localStorage — no theme library. The inline script runs
+  // before paint: stored choice wins, otherwise the system preference; the
+  // html class flips between `dark` (which the product app's ~200 `dark:`
+  // variants key off) and `paper` (the light token set). Hard cut on switch,
+  // no fade — terminals don't fade.
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`dark ${display.variable} ${mono.variable}`}
     >
       <body className="bg-paper font-sans text-ink antialiased">
+        <script
+          // Fixed literal, runs before first paint — no user input.
+          dangerouslySetInnerHTML={{
+            __html:
+              '(function(){try{var t=localStorage.getItem("b0-theme");if(!t)t=matchMedia("(prefers-color-scheme: light)").matches?"paper":"phosphor";var c=document.documentElement.classList;if(t==="paper"){c.add("paper");c.remove("dark")}else{c.add("dark");c.remove("paper")}}catch(e){}})();',
+          }}
+        />
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-phosphor focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-phosphor"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-phosphor-fill focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-phosphor"
         >
           Skip to content
         </a>

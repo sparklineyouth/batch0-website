@@ -147,7 +147,7 @@ export default async function AdminPaymentsPage({
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-wash">
                     <div
-                      className="h-full bg-phosphor"
+                      className="h-full bg-phosphor-fill"
                       style={{ width: `${pct}%` }}
                     />
                   </div>

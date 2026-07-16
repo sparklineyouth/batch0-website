@@ -30,7 +30,7 @@ export function PixelIcon({
       cells.push(
         <div
           key={`${r}-${c}`}
-          className={`px-cell ${ch === "o" ? "bg-ink" : "bg-phosphor"}`}
+          className={`px-cell ${ch === "o" ? "bg-ink" : "bg-phosphor-fill"}`}
           data-base={ch === "o" ? "ink" : "amber"}
           style={{ gridColumn: c + 1, gridRow: r + 1 }}
         />,

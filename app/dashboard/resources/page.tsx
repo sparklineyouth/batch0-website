@@ -124,7 +124,7 @@ export default async function DashboardResourcesPage() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-phosphor px-3 py-2 text-xs font-semibold text-on-phosphor hover:bg-phosphor-200"
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-phosphor-fill px-3 py-2 text-xs font-semibold text-on-phosphor hover:bg-phosphor-fill-hover"
                             >
                               {r.storage_path ? (
                                 <>

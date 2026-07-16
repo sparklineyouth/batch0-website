@@ -76,7 +76,7 @@ export default async function ChallengesIndexPage() {
               <div className="mt-6">
                 <a
                   href={`/challenges/${active.slug}`}
-                  className="press inline-flex items-center justify-center gap-2 rounded-md bg-phosphor px-5 py-3 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                  className="press inline-flex items-center justify-center gap-2 rounded-md bg-phosphor-fill px-5 py-3 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                 >
                   Apply to this challenge →
                 </a>

@@ -3,6 +3,8 @@ import React, { useEffect, useState } from "react";
 import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { track } from "@vercel/analytics";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { ApplyCta } from "@/components/apply-cta";
 
 // Use absolute hrefs (`/#anchor`) so hash links still resolve when the
 // navbar is rendered on subroutes. Labels are paths — terminal grammar.
@@ -65,6 +67,7 @@ export default function Navbar({
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
+          <ThemeToggle />
           {!isAuthed && (
             <Link
               href="/login"
@@ -73,13 +76,16 @@ export default function Navbar({
               /login
             </Link>
           )}
-          <Link
-            href={applyHref}
-            onClick={() => !isAuthed && track("apply_click", { location: "navbar" })}
-            className="press bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-          >
-            {applyLabel}
-          </Link>
+          {isAuthed ? (
+            <Link
+              href={applyHref}
+              className="press bg-phosphor-fill px-4 py-2 text-sm font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            >
+              dashboard
+            </Link>
+          ) : (
+            <ApplyCta label="apply for cohort 1" command="apply" size="sm" location="navbar" />
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 md:hidden">
@@ -125,6 +131,7 @@ export default function Navbar({
                 {l.label}
               </Link>
             ))}
+            <div className="px-2 py-2.5"><ThemeToggle /></div>
             <div className="flex flex-col gap-2 pt-3">
               <Link
                 href={applyHref}
@@ -132,7 +139,7 @@ export default function Navbar({
                   setOpen(false);
                   if (!isAuthed) track("apply_click", { location: "navbar-mobile" });
                 }}
-                className="press bg-phosphor px-4 py-3 text-center text-[15px] font-semibold text-on-phosphor"
+                className="press bg-phosphor-fill px-4 py-3 text-center text-[15px] font-semibold text-on-phosphor"
               >
                 {applyLabelLong}
               </Link>

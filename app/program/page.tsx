@@ -129,7 +129,7 @@ export default async function ProgramPage() {
                       <li key={d} className="t-body flex gap-3 text-ink-soft">
                         <span
                           aria-hidden
-                          className="mt-[0.72em] h-[3px] w-[14px] shrink-0 bg-phosphor"
+                          className="mt-[0.72em] h-[3px] w-[14px] shrink-0 bg-phosphor-fill"
                         />
                         {d}
                       </li>

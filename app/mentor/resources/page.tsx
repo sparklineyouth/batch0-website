@@ -115,7 +115,7 @@ export default async function MentorResourcesPage() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="press inline-flex shrink-0 items-center gap-1.5 rounded-md bg-phosphor px-3 py-2 text-xs font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                              className="press inline-flex shrink-0 items-center gap-1.5 rounded-md bg-phosphor-fill px-3 py-2 text-xs font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                             >
                               {r.storage_path ? (
                                 <>

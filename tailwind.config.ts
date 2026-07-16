@@ -13,7 +13,13 @@ const config: Config = {
         // batch0 wordmark (#FFBB00). The ramp is built around 300 = DEFAULT;
         // 200 is the hover lift, 400/500 are pressed//muted states.
         phosphor: {
-          DEFAULT: "#FFBB00",
+          // CHROME amber — theme-reactive: #FFBB00 on phosphor (dark),
+          // burnt #8A5A00 on paper (light) so amber-as-text stays AA.
+          DEFAULT: "rgb(var(--phosphor-rgb) / <alpha-value>)",
+          // FILL amber — constant in both themes; always pairs with
+          // text-on-phosphor (#141414). Buttons, highlight blocks, cursor.
+          fill: "#FFBB00",
+          "fill-hover": "#FFD75C",
           50: "#FFF7DB",
           100: "#FFEBAD",
           200: "#FFD75C",

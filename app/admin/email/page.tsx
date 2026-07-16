@@ -201,7 +201,7 @@ export default async function AdminEmailMetricsPage() {
           </p>
           <a
             href="/admin/email/blast"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-phosphor px-3 py-1.5 text-xs font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-phosphor-fill px-3 py-1.5 text-xs font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             Compose blast
           </a>

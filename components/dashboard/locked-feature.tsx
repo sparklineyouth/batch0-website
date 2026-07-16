@@ -30,7 +30,7 @@ export function LockedFeature({
         {cta && (
           <Link
             href={cta.href}
-            className="press inline-flex items-center gap-2 rounded-md bg-phosphor px-4 py-2.5 text-sm font-semibold text-on-phosphor hover:bg-phosphor-200"
+            className="press inline-flex items-center gap-2 rounded-md bg-phosphor-fill px-4 py-2.5 text-sm font-semibold text-on-phosphor hover:bg-phosphor-fill-hover"
           >
             {cta.label}
             <ArrowRight className="h-4 w-4" />

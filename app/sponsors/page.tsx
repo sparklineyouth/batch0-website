@@ -55,7 +55,7 @@ export default async function SponsorsPage() {
           <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
             <a
               href="#tiers"
-              className="press inline-flex items-center justify-center rounded-md bg-phosphor px-5 py-3.5 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
+              className="press inline-flex items-center justify-center rounded-md bg-phosphor-fill px-5 py-3.5 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-fill-hover"
             >
               See sponsor tiers
             </a>
@@ -114,7 +114,7 @@ export default async function SponsorsPage() {
                 <ul className="mt-5 space-y-2.5 text-[14px] leading-[1.55] text-ink-soft">
                   {t.perks.map((p) => (
                     <li key={p} className="flex items-start gap-2.5">
-                      <span aria-hidden className="mt-[0.62em] h-[3px] w-[12px] shrink-0 bg-phosphor" />
+                      <span aria-hidden className="mt-[0.62em] h-[3px] w-[12px] shrink-0 bg-phosphor-fill" />
                       <span>{p}</span>
                     </li>
                   ))}

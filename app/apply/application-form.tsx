@@ -36,7 +36,7 @@ const FIELD_CLASS =
 // ui/Button ships rounded corners + scale easing that the system forbids.
 const BTN_BASE =
   "press inline-flex h-10 select-none items-center justify-center whitespace-nowrap px-4 text-sm font-semibold lowercase leading-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
-const BTN_PRIMARY = `${BTN_BASE} bg-phosphor text-on-phosphor hover:bg-phosphor-200`;
+const BTN_PRIMARY = `${BTN_BASE} bg-phosphor-fill text-on-phosphor hover:bg-phosphor-fill-hover`;
 const BTN_SECONDARY = `${BTN_BASE} border border-line bg-paper font-medium text-ink hover:border-ink/30`;
 
 type FormState = {
@@ -447,7 +447,7 @@ export function ApplicationForm({
           className="mt-2 h-1 w-full overflow-hidden bg-line"
         >
           <div
-            className="h-full bg-phosphor"
+            className="h-full bg-phosphor-fill"
             style={{ width: `${(step / STEPS.length) * 100}%` }}
           />
         </div>
@@ -465,7 +465,7 @@ export function ApplicationForm({
                 aria-current={isCurrent ? "step" : undefined}
                 className={`press flex h-8 w-8 items-center justify-center border font-mono text-[11px] font-medium ${
                   isCurrent
-                    ? "border-phosphor bg-phosphor text-on-phosphor"
+                    ? "border-phosphor bg-phosphor-fill text-on-phosphor"
                     : reached
                       ? hasErr
                         ? "border-red-400/60 bg-red-400/10 text-red-500"
@@ -501,7 +501,7 @@ export function ApplicationForm({
                 <span
                   className={`flex h-7 w-7 items-center justify-center border font-mono text-[11px] font-medium ${
                     isCurrent
-                      ? "border-phosphor bg-phosphor text-on-phosphor"
+                      ? "border-phosphor bg-phosphor-fill text-on-phosphor"
                       : reached
                         ? hasErr
                           ? "border-red-400/60 bg-red-400/10 text-red-500"

@@ -162,7 +162,7 @@ export default async function AuditLogPage({
           <div className="flex items-end gap-2">
             <button
               type="submit"
-              className="rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+              className="rounded-md bg-phosphor-fill px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
             >
               Apply
             </button>

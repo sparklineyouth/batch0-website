@@ -308,7 +308,7 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
                   {isUnread && (
                     <span
                       aria-hidden
-                      className="absolute left-0 top-0 h-full w-[2px] bg-phosphor"
+                      className="absolute left-0 top-0 h-full w-[2px] bg-phosphor-fill"
                     />
                   )}
                   <button
@@ -374,7 +374,7 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
       >
         <Bell className="h-4 w-4" />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-phosphor px-1 text-[10px] font-bold leading-none text-on-phosphor">
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-phosphor-fill px-1 text-[10px] font-bold leading-none text-on-phosphor">
             {unread > 9 ? "9+" : unread}
           </span>
         )}

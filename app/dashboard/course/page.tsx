@@ -78,7 +78,7 @@ export default async function CoursePage() {
       </div>
 
       <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-wash">
-        <div className="h-full bg-phosphor transition-all" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-phosphor-fill transition-all" style={{ width: `${pct}%` }} />
       </div>
 
       <div className="mt-10 space-y-6">

@@ -53,7 +53,7 @@ export function ChallengeMarquee({ challenge }: { challenge: MarqueeChallenge })
   return (
     <section
       aria-label="Weekly challenge"
-      className="bg-phosphor text-on-phosphor"
+      className="bg-phosphor-fill text-on-phosphor"
     >
       <div className="mx-auto flex max-w-[1100px] items-stretch">
         <div className="challenge-marquee-viewport min-w-0 flex-1 overflow-hidden">

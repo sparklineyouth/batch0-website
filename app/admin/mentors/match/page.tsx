@@ -121,7 +121,7 @@ export default async function MentorMatchmakerPage({
           </select>
           <button
             type="submit"
-            className="rounded-lg bg-phosphor px-4 text-sm font-semibold text-on-phosphor shadow-cta transition hover:bg-phosphor-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="rounded-lg bg-phosphor-fill px-4 text-sm font-semibold text-on-phosphor shadow-cta transition hover:bg-phosphor-fill-hover active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             Match
           </button>

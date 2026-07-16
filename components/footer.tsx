@@ -67,7 +67,11 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
           </nav>
         </div>
 
-        <div className="mt-9 flex flex-col items-start justify-between gap-3 border-t border-line pt-5 text-[13px] text-ink-faint md:flex-row md:items-center">
+        <p className="t-small mt-8 font-mono text-ink-faint">
+          <span className="text-phosphor/60">$</span> mv sparkline-youth batch0{" "}
+          <span className="text-phosphor/60">→ done</span>
+        </p>
+        <div className="mt-3 flex flex-col items-start justify-between gap-3 border-t border-line pt-5 text-[13px] text-ink-faint md:flex-row md:items-center">
           <span>
             © {new Date().getFullYear()} Sparkline Youth LLC. all rights
             reserved.

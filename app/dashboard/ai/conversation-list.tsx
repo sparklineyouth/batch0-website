@@ -39,7 +39,7 @@ export function ConversationList({
         type="button"
         onClick={newChat}
         disabled={pending}
-        className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-phosphor px-3 py-2 text-xs font-semibold text-on-phosphor hover:bg-phosphor-200 disabled:opacity-50"
+        className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-phosphor-fill px-3 py-2 text-xs font-semibold text-on-phosphor hover:bg-phosphor-fill-hover disabled:opacity-50"
       >
         <Plus className="h-3.5 w-3.5" /> New chat
       </button>

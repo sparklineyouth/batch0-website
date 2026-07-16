@@ -231,7 +231,7 @@ function Stat({
       {typeof accent === "number" && accent > 0 && (
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line">
           <div
-            className="h-full rounded-full bg-phosphor"
+            className="h-full rounded-full bg-phosphor-fill"
             style={{ width: `${Math.min(100, accent)}%` }}
           />
         </div>

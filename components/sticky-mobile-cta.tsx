@@ -47,7 +47,7 @@ export default function StickyMobileCta({
         <a
           href="/apply"
           onClick={() => track("apply_click", { location: "sticky-mobile" })}
-          className="press flex w-full items-center justify-between gap-3 bg-phosphor px-4 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-200"
+          className="press flex w-full items-center justify-between gap-3 bg-phosphor-fill px-4 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover"
         >
           <span className="flex flex-col items-start leading-tight">
             <span>apply for {cohortLabel}</span>

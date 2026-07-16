@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useLayoutEffect } from "react";
-import { SMOLDER_RAMP } from "@/components/smolder";
 
 /**
  * THE SIGNATURE SEQUENCE — the hero assembles once per visit, total
@@ -46,9 +45,9 @@ export function HeroEntrance() {
           let si = parseInt(b.dataset.si ?? "2", 10);
           si = Math.max(0, Math.min(4, si + (Math.random() < 0.5 ? -1 : 1)));
           b.dataset.si = String(si);
-          b.dataset.shade = SMOLDER_RAMP[si];
+          b.dataset.shade = `var(--smolder-${si})`;
           b.style.transition = "background-color 600ms linear";
-          b.style.background = SMOLDER_RAMP[si];
+          b.style.background = `var(--smolder-${si})`;
           // drop the transition after the swap so PixelField's proximity
           // flips stay instant, never mushy
           timers.push(setTimeout(() => (b.style.transition = ""), 650));

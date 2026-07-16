@@ -3,7 +3,7 @@ import type { SiteConfig } from "@/lib/site-config";
 import { ApplyCta } from "@/components/apply-cta";
 import { ZeroThread } from "@/components/zero-thread";
 import { HeroEntrance } from "@/components/hero-entrance";
-import { SMOLDER_RAMP, smolderShade } from "@/components/smolder";
+import { smolderShade } from "@/components/smolder";
 
 const WEEK_WORDS = [
   "zero", "one", "two", "three", "four", "five", "six",
@@ -57,13 +57,13 @@ function HeroZero() {
           key={`${r}-${c}`}
           data-hz
           data-si={si}
-          data-shade={SMOLDER_RAMP[si]}
-          className="px-cell bg-phosphor"
+          data-shade={`var(--smolder-${si})`}
+          className="px-cell bg-phosphor-fill"
           data-base="amber"
           style={{
             gridColumn: c + 1,
             gridRow: r + 1,
-            background: SMOLDER_RAMP[si],
+            background: `var(--smolder-${si})`,
           }}
         />,
       );
@@ -138,7 +138,8 @@ export default function Hero({
     <section className="flex min-h-[calc(100svh-6rem)] flex-col items-center justify-center py-10 text-center md:py-12">
       {/* 1 · identifier (dim; the hero's amber belongs to the 0) */}
       <p data-entrance-reveal className="t-small text-ink-soft">
-        batch0 · a startup accelerator for high schoolers
+        batch0 · a startup accelerator for high schoolers{" "}
+        <span className="aside-note ml-2">previously sparkline youth</span>
       </p>
 
       {/* 2 · the sentence — one centered lockup, the pixel-0 in the word */}
@@ -168,7 +169,7 @@ export default function Hero({
           {isAuthed ? (
             <a
               href={authedHome!}
-              className="press inline-flex items-center justify-center bg-phosphor px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+              className="press inline-flex items-center justify-center bg-phosphor-fill px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
             >
               go to dashboard
             </a>

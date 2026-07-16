@@ -208,7 +208,7 @@ export function ChallengeEditor({
         </div>
         {/* Live preview of the yellow bar. */}
         <div className="overflow-hidden rounded-md border border-on-phosphor/15">
-          <div className="flex items-center gap-3 bg-phosphor px-4 py-2 text-on-phosphor">
+          <div className="flex items-center gap-3 bg-phosphor-fill px-4 py-2 text-on-phosphor">
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em]">
               ⚡ Weekly Challenge
             </span>
