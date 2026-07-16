@@ -192,6 +192,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
       { href: "/admin/course", label: "Course", icon: BookOpen },
       { href: "/admin/events", label: "Events", icon: CalendarDays },
       { href: "/admin/resources", label: "Resources", icon: FolderArchive },
+      { href: "/admin/flows", label: "Pre-cohort flows", icon: Flag },
       { href: "/admin/announcements", label: "Announcements", icon: Megaphone },
     ],
   },

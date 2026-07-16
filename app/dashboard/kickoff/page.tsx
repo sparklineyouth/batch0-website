@@ -113,7 +113,7 @@ export default async function KickoffPage() {
             <ChecklistLink
               href="/dashboard/resources"
               icon={FolderArchive}
-              label="Work through the pre-cohort resources"
+              label="Work through Before One — your pre-cohort flows"
             />
             <ChecklistLink
               href="/dashboard/settings"
