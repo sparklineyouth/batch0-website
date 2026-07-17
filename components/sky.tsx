@@ -2,50 +2,45 @@
 import { useEffect, useRef } from "react";
 
 /**
- * THE SKY — ambient pixel weather for the marketing poster zones (hero and
- * closing poster only), refined:
+ * THE SKY — space-grade pixel weather for the marketing poster zones.
  *
- * DISTRIBUTION: density-gradient seeding — dense at the top of each zone,
- * thinning toward the bottom, with the last few elements tapering PAST the
- * zone boundary (~150px into the next section) at low presence: weather
- * fades at the horizon, no hard line. Poisson-ish rejection sampling with
- * a min-distance (no clumps, no grid), seeded per PAGE LOAD (deterministic
- * within a visit, different between visits). A center exclusion box keeps
- * stars out of the text/CTA area.
+ * PHOSPHOR PALETTE (sky-layer-bounded exception, like the retune's RGB):
+ * stars in SILVER (dim desaturated off-white steps) and DIM BLUE
+ * (desaturated steel range #5B7A9E → #2E4257), ~50/40, plus 2-3 rare amber
+ * heroes per zone (~10%) — amber stays special. These colors never appear
+ * outside the sky layer. Paper mode unchanged (ink-tinted clouds, birds).
  *
- * STARS (phosphor): three sprites for depth — 1-block dust (most), 5-block
- * diamonds (some), 9-block four-pointed heroes with single-block ray tips
- * (rare, brightest, amber). GLIMMER: each star runs its own randomized
- * 4–8s cycle, stepped dim→mid→bright→hold→dim frames (~90ms), bright frame
- * at full presence — the sky visibly shimmers in any 5s glance.
+ * THE NEBULA: one per zone — a large flat-block dithered mass in 3 shades
+ * of blue-tinted near-black barely above #0c0c0d, behind the stars,
+ * static. Felt more than seen: the black has depth; the dither IS the
+ * gradient. No CSS gradients anywhere.
  *
- * CLOUDS (paper): ink-tinted fill (~10% ink over paper) with a 1-block
- * darker bottom edge so the mass reads as a cloud, not a smudge.
+ * DISTRIBUTION: blue-noise-ish — a coarse cell grid (max 1 star/cell,
+ * shuffled) spreads ~25 stars/zone evenly across the full width and
+ * height; presence fades only near the content edge, and a few stars
+ * bleed past the zone boundary (the horizon taper). Seeded per page load.
  *
- * BIRDS (paper): enter one edge, cross the whole sky in ~25–40s with a
- * 2-frame flap and gentle height drift; ~1 in 3 crossings is a loose group
- * of 2–3. METEORS (phosphor): stepped streaks. ALL event timing rerolls
- * uniform-random each cycle (meteors 30–90s, birds 25–80s, first events
- * arrive sooner so they're discoverable) — nothing loops.
+ * HARD TEXT EXCLUSION: at mount and on resize, the actual bounding boxes
+ * of every text block/CTA in the zone are measured, padded 60px, and no
+ * star or nebula may seed inside them — nothing twinkles near a word.
  *
- * THE RETUNE (unchanged contract): user-initiated theme switches only —
- * hard cut empties the sky, 3.5–4s of genuine emptiness, then the new set
- * materializes staggered, each element converging from three signal-RGB
- * PIXEL-BLOCK copies in choppy 75ms steps. RGB exists only inside that
- * sub-second window. Rapid toggles cancel + restart; the clock pauses
- * while hidden; prefers-reduced-motion gets instant static swaps and no
- * ambient motion at all.
+ * Everything else holds: sprite depth mix, per-star randomized glimmer,
+ * meteors 30-90s / birds 25-80s rerolled, the RETUNE (user switches only:
+ * hard cut → 3.5-4s genuine emptiness → staggered materialization via
+ * three signal-RGB pixel-block copies converging in 75ms steps, settling
+ * into this palette), reduced-motion instant-static, flat blocks only.
  */
 
+type Rect = { l: number; t: number; r: number; b: number };
 type El = {
   x: number;
-  y: number; // % of zone height; may exceed 100 (the taper)
+  y: number;
   rows: string[];
-  base: string; // '#' fill at rest
-  edge?: string; // 'e' cells (cloud bottom edge)
+  base: string;
+  edge?: string;
   px: number;
-  presence: number; // resting opacity
-  kind: "dust" | "mid" | "hero" | "cloud";
+  presence: number;
+  kind: "dust" | "mid" | "hero" | "cloud" | "nebula";
 };
 
 const SPRITES = {
@@ -55,6 +50,10 @@ const SPRITES = {
   cloudA: ["..####..", "########", "eeeeeeee"],
   cloudB: [".###.", "#####", "eeeee"],
 };
+// sky-only star inks (never in chrome/text/icons)
+const SILVER = ["#c7c7c2", "#96968f"];
+const BLUE = ["#5B7A9E", "#41586F", "#2E4257"];
+const NEBULA = ["#0e1014", "#101318", "#131822"]; // barely above #0c0c0d
 const RGB = ["#ff0000", "#00ff00", "#0000ff"];
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -62,59 +61,113 @@ function prng(seed: number) {
   let s = seed % 2147483647 || 7;
   return () => ((s = (s * 16807) % 2147483647) & 0x7fffffff) / 2147483647;
 }
+const inRect = (x: number, y: number, rc: Rect, m = 2) =>
+  x > rc.l - m && x < rc.r + m && y > rc.t - m && y < rc.b + m;
 
-/** density-gradient, min-distance, exclusion-box seeding */
-function buildSet(theme: "phosphor" | "paper", seed: number): El[] {
+function buildSet(
+  theme: "phosphor" | "paper",
+  seed: number,
+  ex: Rect[],
+): El[] {
   const r = prng(seed);
   const els: El[] = [];
-  const place = (count: number, minDist: number, taper: number) => {
-    const pts: { x: number; y: number }[] = [];
-    let guard = 0;
-    while (pts.length < count && guard++ < count * 30) {
-      const x = 2 + r() * 96;
-      const y = Math.pow(r(), 2.1) * taper; // top-dense, tapering down + past
-      // text/CTA exclusion box (centered lockup)
-      if (x > 22 && x < 78 && y > 26 && y < 88) continue;
-      if (pts.some((p) => Math.abs(p.x - x) < minDist && Math.abs(p.y - y) < minDist * 2))
-        continue;
-      pts.push({ x, y });
-    }
-    return pts;
-  };
 
   if (theme === "phosphor") {
-    // 26 per zone: ~18 dust, ~6 mid, ~2 heroes; taper reaches ~118% of zone
-    const pts = place(26, 5, 118);
-    pts.forEach((p, i) => {
-      const kind = i % 13 === 0 ? "hero" : i % 4 === 0 ? "mid" : "dust";
-      const past = p.y > 100; // horizon taper: barely-there
+    // NEBULA first (behind): try candidate centers that clear the text rects
+    const spots = [
+      { x: 8, y: 8 }, { x: 60, y: 6 }, { x: 30, y: 70 }, { x: 68, y: 78 },
+      { x: 4, y: 46 }, { x: 78, y: 40 },
+    ];
+    const W = 30, H = 26; // % footprint
+    const spot = spots.find(
+      (s) => !ex.some((rc) => !(s.x + W < rc.l || s.x > rc.r || s.y + H < rc.t || s.y > rc.b)),
+    );
+    if (spot) {
+      // dithered mass: 16x9 cells, density falls off from center, 3 shades
+      const rows: string[] = [];
+      const shadeRows: string[] = [];
+      for (let ri = 0; ri < 9; ri++) {
+        let row = "", srow = "";
+        for (let c = 0; c < 16; c++) {
+          const d = Math.hypot((c - 7.5) / 8, (ri - 4) / 4.5);
+          const p = Math.max(0, 0.85 - d);
+          if (r() < p) { row += "#"; srow += String(Math.min(2, Math.floor(r() * 3))); }
+          else { row += "."; srow += "."; }
+        }
+        rows.push(row); shadeRows.push(srow);
+      }
+      // encode shades via three separate elements (one per shade, flat)
+      for (let sh = 0; sh < 3; sh++) {
+        const shRows = rows.map((row, ri) =>
+          row.split("").map((ch, c) => (ch === "#" && shadeRows[ri][c] === String(sh) ? "#" : ".")).join(""),
+        );
+        els.push({ x: spot.x, y: spot.y, rows: shRows, base: NEBULA[sh], px: 14, presence: 1, kind: "nebula" });
+      }
+    }
+
+    // STARS: coarse grid, max 1/cell, even coverage + horizon bleed
+    const COLS = 11, ROWS = 8; // rows 0-6 cover 0-100%, row 7 = the bleed band
+    const cells: { cx: number; cy: number; bleed: boolean }[] = [];
+    for (let ri = 0; ri < ROWS; ri++)
+      for (let c = 0; c < COLS; c++)
+        cells.push({ cx: c, cy: ri, bleed: ri === ROWS - 1 });
+    // shuffle deterministically
+    for (let i = cells.length - 1; i > 0; i--) {
+      const j = Math.floor(r() * (i + 1));
+      [cells[i], cells[j]] = [cells[j], cells[i]];
+    }
+    let placed = 0, heroes = 0, bleeds = 0;
+    for (const cell of cells) {
+      if (placed >= 25) break;
+      if (cell.bleed && bleeds >= 4) continue;
+      let x = 0, y = 0, ok = false;
+      for (let attempt = 0; attempt < 6 && !ok; attempt++) {
+        x = (cell.cx + 0.15 + r() * 0.7) * (100 / COLS);
+        y = cell.bleed
+          ? 100 + r() * 18
+          : (cell.cy + 0.15 + r() * 0.7) * (100 / (ROWS - 1));
+        ok = !ex.some((rc) => inRect(x, y, rc));
+      }
+      if (!ok) continue;
+      const roll = placed % 10;
+      const isHero = roll === 9 && heroes < 3;
+      const kind = isHero ? "hero" : placed % 4 === 0 ? "mid" : "dust";
+      const base = isHero
+        ? "rgb(var(--phosphor-rgb))"
+        : roll < 5
+          ? SILVER[placed % 2]
+          : BLUE[placed % 3];
+      const nearContent = y > 80 && y <= 100; // the last ~150px
       els.push({
-        x: p.x,
-        y: p.y,
+        x, y,
         rows: SPRITES[kind === "hero" ? "hero" : kind === "mid" ? "mid" : "dust"],
-        base:
-          kind === "hero"
-            ? "rgb(var(--phosphor-rgb))"
-            : "rgb(var(--ink))",
+        base,
         px: 3,
-        presence: past ? 0.12 : kind === "hero" ? 0.55 : kind === "mid" ? 0.42 : 0.34,
-        kind,
+        presence: cell.bleed ? 0.12 : nearContent ? 0.22 : isHero ? 0.85 : 0.6,
+        kind: kind as El["kind"],
       });
-    });
+      if (isHero) heroes++;
+      if (cell.bleed) bleeds++;
+      placed++;
+    }
   } else {
-    const pts = place(6, 16, 112);
-    pts.forEach((p, i) => {
+    // paper unchanged: clouds with measured exclusion
+    let guard = 0, made = 0;
+    while (made < 6 && guard++ < 80) {
+      const x = 2 + r() * 78;
+      const y = Math.pow(r(), 1.6) * 105 * 0.7;
+      if (ex.some((rc) => inRect(x, y, rc, 4))) continue;
       els.push({
-        x: Math.min(p.x, 80),
-        y: p.y * 0.7,
-        rows: i % 2 ? SPRITES.cloudB : SPRITES.cloudA,
+        x, y,
+        rows: made % 2 ? SPRITES.cloudB : SPRITES.cloudA,
         base: "rgb(var(--ink) / 0.10)",
         edge: "rgb(var(--ink) / 0.22)",
         px: 6,
-        presence: p.y > 100 ? 0.4 : 1,
+        presence: y > 70 ? 0.4 : 1,
         kind: "cloud",
       });
-    });
+      made++;
+    }
   }
   return els;
 }
@@ -146,7 +199,6 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       document.documentElement.classList.contains("paper")
         ? ("paper" as const)
         : ("phosphor" as const);
-    // per-load seed: deterministic within the visit, fresh each load
     const loadSeed = (Date.now() % 100000) + (zone === "hero" ? 41 : 97);
 
     let timers: ReturnType<typeof setTimeout>[] = [];
@@ -162,17 +214,41 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       live.splice(0).forEach((e) => e.d.remove());
     };
 
-    /* ---- ambient: glimmer, meteors, birds — all rerolled intervals ---- */
+    /* measured text/CTA exclusion: real rects, padded 60px, in zone % */
+    const exRects = (): Rect[] => {
+      const hr = host.getBoundingClientRect();
+      if (!hr.width || !hr.height) return [];
+      // tight leaf boxes: the h1 is a flex-grow container that spans the
+      // zone - measuring it would exclude everything. Its beat spans are
+      // the real text.
+      const els = host.parentElement!.querySelectorAll(
+        "h1 > span, h2, h3, p, a, button, dl",
+      );
+      const out: Rect[] = [];
+      els.forEach((e) => {
+        if (host.contains(e)) return;
+        const r = e.getBoundingClientRect();
+        if (!r.width) return;
+        out.push({
+          l: ((r.left - 60 - hr.left) / hr.width) * 100,
+          t: ((r.top - 60 - hr.top) / hr.height) * 100,
+          r: ((r.right + 60 - hr.left) / hr.width) * 100,
+          b: ((r.bottom + 60 - hr.top) / hr.height) * 100,
+        });
+      });
+      return out.filter((rc) => rc.r > 0 && rc.l < 100 && rc.b > 0);
+    };
+
+    /* ---- ambient (unchanged behaviors) ---- */
     const startAmbient = () => {
       if (reduced) return;
       clearAll(ambient);
-      // GLIMMER: per-star randomized period 4–8s, stepped 5-frame cycle
       live.forEach(({ d, el }) => {
-        if (el.kind === "cloud") return;
+        if (el.kind === "cloud" || el.kind === "nebula") return;
         const cycle = () => {
           ambient.push(
             setTimeout(() => {
-              const steps = [0.6, 0.85, 1, 1, el.presence]; // dim→mid→bright→hold→rest
+              const steps = [0.6, 0.85, 1, 1, el.presence];
               steps.forEach((o, i) =>
                 ambient.push(setTimeout(() => (d.style.opacity = String(o)), i * 90)),
               );
@@ -180,15 +256,14 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
             }, rnd(4000, 8000)),
           );
         };
-        ambient.push(setTimeout(cycle, rnd(0, 4000))); // random phase
+        ambient.push(setTimeout(cycle, rnd(0, 4000)));
       });
-      // METEOR (phosphor): first 8–20s, then reroll 30–90s
       const meteor = (first: boolean) => {
         ambient.push(
           setTimeout(() => {
             if (!document.hidden && theme() === "phosphor") {
               const s = renderEl(
-                { x: rnd(8, 60), y: rnd(4, 26), rows: ["##", ".##"], base: "rgb(var(--ink) / 0.75)", px: 3, presence: 1, kind: "dust" },
+                { x: rnd(8, 60), y: rnd(4, 26), rows: ["##", ".##"], base: SILVER[0], px: 3, presence: 1, kind: "dust" },
                 host,
               );
               let f = 0;
@@ -205,7 +280,6 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
           }, first ? rnd(8000, 20000) : rnd(30000, 90000)),
         );
       };
-      // BIRDS (paper): cross the whole sky, 2-frame flap, drift; groups 1/3
       const bird = (first: boolean) => {
         ambient.push(
           setTimeout(() => {
@@ -227,7 +301,6 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
                   f++;
                   const flap = Math.floor(f / 3) % 2;
                   s.style.transform = `translate(${(f / total) * (W * 1.12)}px, ${Math.sin(f / 9) * 8 * wob}px)`;
-                  // 2-frame flap: swap wing row visibility
                   (s.children[0] as HTMLElement).style.opacity = flap ? "0" : "1";
                   (s.children[1] as HTMLElement).style.opacity = flap ? "0" : "1";
                   (s.children[2] as HTMLElement).style.opacity = flap ? "1" : "0";
@@ -246,9 +319,9 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       bird(true);
     };
 
-    /* ---- materialize (instant or misconvergence) ---- */
+    /* ---- materialize ---- */
     const appear = (instant: boolean) => {
-      const set = buildSet(theme(), loadSeed);
+      const set = buildSet(theme(), loadSeed, exRects());
       if (instant) {
         live = set.map((el) => ({ d: renderEl(el, host), el }));
         startAmbient();
@@ -260,6 +333,12 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
         timers.push(
           setTimeout(() => {
             const el = set[idx];
+            if (el.kind === "nebula") {
+              // the nebula fades no signal: it simply is, once the sky returns
+              live.push({ d: renderEl(el, host), el });
+              if (++done === set.length) startAmbient();
+              return;
+            }
             const copies = RGB.map((c) => renderEl(el, host, c));
             copies.forEach((cp) => (cp.style.opacity = "1"));
             let f = 0;
@@ -285,7 +364,7 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       });
     };
 
-    /* ---- the retune clock (pausable) ---- */
+    /* ---- retune clock ---- */
     const schedule = () => {
       if (pendingT) clearTimeout(pendingT);
       if (!retuneAt || document.hidden) return;
@@ -309,14 +388,27 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
         retuneAt = Date.now() + Math.max(0, retuneAt - Date.now());
       } else if (!document.hidden) schedule();
     };
+    // measured exclusion must track layout: rebuild statically on resize
+    let rz: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(rz);
+      rz = setTimeout(() => {
+        if (retuneAt) return; // don't fight a pending retune
+        wipe();
+        appear(true);
+      }, 300);
+    };
 
     appear(true);
     addEventListener("b0-theme-switch", onSwitch);
+    addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", onVis);
     return () => {
       removeEventListener("b0-theme-switch", onSwitch);
+      removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVis);
       if (pendingT) clearTimeout(pendingT);
+      clearTimeout(rz);
       wipe();
     };
   }, [zone]);
