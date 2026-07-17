@@ -136,7 +136,7 @@ export default function Hero({
     : null;
 
   return (
-    <section className="relative flex min-h-[calc(100svh-6rem)] flex-col items-center justify-center py-10 text-center md:py-12">
+    <section className="relative flex min-h-[calc(100svh-9.5rem)] flex-col items-center justify-center py-10 text-center md:py-12">
       <Sky zone="hero" />
       {/* 1 · identifier (dim; the hero's amber belongs to the 0) */}
       <p data-entrance-reveal className="t-small relative text-ink-soft">

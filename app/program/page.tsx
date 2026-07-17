@@ -1,5 +1,7 @@
 import { headers } from "next/headers";
 import Navbar from "@/components/navbar";
+import { ChallengePennant } from "@/components/challenge-pennant";
+import { getActiveChallenge } from "@/lib/challenges";
 import Footer from "@/components/footer";
 import { StatusBar } from "@/components/status-bar";
 import { PixelField } from "@/components/pixel-field";
@@ -51,9 +53,10 @@ const DETAIL: Record<string, string[]> = {
  */
 export default async function ProgramPage() {
   const countryCode = getCountryFromHeaders(headers());
-  const [config, profile] = await Promise.all([
+  const [config, profile, challenge] = await Promise.all([
     getSiteConfig({ countryCode }),
     getProfile(),
+    getActiveChallenge(),
   ]);
   const authedHome = profile ? roleHome(profile.role) : null;
   const { derived } = config;
@@ -67,6 +70,13 @@ export default async function ProgramPage() {
         authedHome={authedHome}
         cohortLabel={derived.cohortLabel || "the next cohort"}
       />
+      {challenge && (
+        <ChallengePennant
+          title={challenge.title}
+          prizeLabel={challenge.prizeLabel}
+          closesAt={challenge.closesAt}
+        />
+      )}
 
       {/* ONE OBJECT: the single shared container — every section starts on
           the same left margin and shares the 12-column grid. */}

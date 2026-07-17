@@ -10,6 +10,8 @@ import StickyMobileCta from "@/components/sticky-mobile-cta";
 import { StatusBar } from "@/components/status-bar";
 import { PixelField } from "@/components/pixel-field";
 import { getSiteConfig } from "@/lib/site-config";
+import { getActiveChallenge } from "@/lib/challenges";
+import { ChallengePennant } from "@/components/challenge-pennant";
 import { getCountryFromHeaders } from "@/lib/pricing";
 import { getProfile, roleHome } from "@/lib/auth";
 
@@ -26,10 +28,12 @@ export const metadata = { alternates: { canonical: "/" } };
  */
 export default async function Home() {
   const countryCode = getCountryFromHeaders(headers());
-  const [config, profile] = await Promise.all([
+  const [config, profile, challenge] = await Promise.all([
     getSiteConfig({ countryCode }),
     getProfile(),
+    getActiveChallenge(),
   ]);
+  const demoChallenge = { title: "build a landing page in 72 hours", prizeLabel: "$250 grant", closesAt: "2026-07-21" } as any; const shown = challenge ?? demoChallenge;
   const authedHome = profile ? roleHome(profile.role) : null;
   return (
     <main className="min-h-screen bg-paper">
@@ -38,6 +42,13 @@ export default async function Home() {
         authedHome={authedHome}
         cohortLabel={config.derived.cohortLabel || "the next cohort"}
       />
+      {challenge && (
+        <ChallengePennant
+          title={challenge.title}
+          prizeLabel={challenge.prizeLabel}
+          closesAt={challenge.closesAt}
+        />
+      )}
       {/* ONE OBJECT: a single container — every movement starts on the
           same (invisible) left margin and shares the 12-column grid.
           Alignment is felt through consistency, never drawn as a line. */}

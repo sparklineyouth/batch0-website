@@ -40,13 +40,34 @@ type El = {
   edge?: string;
   px: number;
   presence: number;
-  kind: "dust" | "mid" | "hero" | "cloud" | "nebula";
+  kind: "dust" | "dot2" | "mid" | "hero" | "big" | "cloud" | "nebula";
 };
 
 const SPRITES = {
   dust: ["#"],
+  dot2: ["##"],
   mid: [".#.", "###", ".#."],
-  hero: ["..#..", "..#..", "#####", "..#..", "..#.."],
+  // four-pointed, with 't' = ray-extension tips shown on the bright frame
+  hero: [
+    "...t...",
+    "...#...",
+    "..###..",
+    "t#####t",
+    "..###..",
+    "...#...",
+    "...t...",
+  ],
+  big: [
+    "....t....",
+    "....#....",
+    "....#....",
+    "...###...",
+    "t#######t",
+    "...###...",
+    "....#....",
+    "....#....",
+    "....t....",
+  ],
   cloudA: ["..####..", "########", "eeeeeeee"],
   cloudB: [".###.", "#####", "eeeee"],
 };
@@ -129,24 +150,32 @@ function buildSet(
         ok = !ex.some((rc) => inRect(x, y, rc));
       }
       if (!ok) continue;
-      const roll = placed % 10;
-      const isHero = roll === 9 && heroes < 3;
-      const kind = isHero ? "hero" : placed % 4 === 0 ? "mid" : "dust";
-      const base = isHero
+      // pyramid tiers: 1 big · 2 four-pointed · 4 diamonds · 6 dot2 · rest dust
+      const kind: El["kind"] =
+        placed === 0 ? "big"
+        : placed <= 2 ? "hero"
+        : placed <= 6 ? "mid"
+        : placed <= 12 ? "dot2"
+        : "dust";
+      // amber stays special: the big one + one four-pointed (≤3/zone)
+      const isAmber = (kind === "big" || (kind === "hero" && heroes < 1)) && placed % 1 === 0;
+      const base = isAmber
         ? "rgb(var(--phosphor-rgb))"
-        : roll < 5
+        : placed % 10 < 5
           ? SILVER[placed % 2]
           : BLUE[placed % 3];
       const nearContent = y > 80 && y <= 100; // the last ~150px
+      const tierPresence =
+        kind === "big" ? 0.95 : kind === "hero" ? 0.85 : kind === "mid" ? 0.65 : kind === "dot2" ? 0.52 : 0.42;
       els.push({
         x, y,
-        rows: SPRITES[kind === "hero" ? "hero" : kind === "mid" ? "mid" : "dust"],
+        rows: SPRITES[kind as "dust" | "dot2" | "mid" | "hero" | "big"],
         base,
         px: 3,
-        presence: cell.bleed ? 0.12 : nearContent ? 0.22 : isHero ? 0.85 : 0.6,
-        kind: kind as El["kind"],
+        presence: cell.bleed ? 0.12 : nearContent ? 0.22 : tierPresence,
+        kind,
       });
-      if (isHero) heroes++;
+      if (isAmber) heroes++;
       if (cell.bleed) bleeds++;
       placed++;
     }
@@ -180,7 +209,8 @@ function renderEl(el: El, host: HTMLElement, color?: string): HTMLElement {
       const ch = row[c];
       if (ch === ".") continue;
       const b = document.createElement("span");
-      b.style.cssText = `grid-column:${c + 1};grid-row:${ri + 1};background:${color ?? (ch === "e" ? el.edge ?? el.base : el.base)};`;
+      b.style.cssText = `grid-column:${c + 1};grid-row:${ri + 1};background:${color ?? (ch === "e" ? el.edge ?? el.base : el.base)};${ch === "t" && !color ? "visibility:hidden;" : ""}`;
+      if (ch === "t") b.dataset.tip = "1";
       d.appendChild(b);
     }
   });
@@ -245,12 +275,21 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       clearAll(ambient);
       live.forEach(({ d, el }) => {
         if (el.kind === "cloud" || el.kind === "nebula") return;
+        const bigTier = el.kind === "hero" || el.kind === "big";
+        const brightCap = bigTier ? 1 : el.kind === "mid" ? 0.85 : 0.7;
+        const tips = [...d.querySelectorAll<HTMLElement>("[data-tip]")];
         const cycle = () => {
           ambient.push(
             setTimeout(() => {
-              const steps = [0.6, 0.85, 1, 1, el.presence];
+              const steps = [0.6, 0.85, brightCap, brightCap, el.presence];
               steps.forEach((o, i) =>
-                ambient.push(setTimeout(() => (d.style.opacity = String(o)), i * 90)),
+                ambient.push(setTimeout(() => {
+                  d.style.opacity = String(o);
+                  // classic pixel sparkle: tips extend on the two bright
+                  // frames, then retract
+                  if (bigTier && tips.length)
+                    tips.forEach((t) => (t.style.visibility = i === 2 || i === 3 ? "visible" : "hidden"));
+                }, i * 90)),
               );
               cycle();
             }, rnd(4000, 8000)),
