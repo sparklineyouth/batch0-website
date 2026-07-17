@@ -40,6 +40,8 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     try {
       localStorage.setItem("b0-theme", next);
     } catch {}
+    // the sky retunes ONLY on user-initiated switches - never first load
+    dispatchEvent(new CustomEvent("b0-theme-switch", { detail: next }));
     setMode(next);
   };
 

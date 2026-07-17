@@ -2,6 +2,7 @@ import React from "react";
 import type { SiteConfig } from "@/lib/site-config";
 import { Ledger } from "@/components/ledger";
 import { ApplyCta } from "@/components/apply-cta";
+import { Sky } from "@/components/sky";
 
 /**
  * The closing poster — the page's final LOUD movement, and CTA #2 of the
@@ -13,13 +14,14 @@ export default function CTA({ config }: { config: SiteConfig }) {
   const cohortLabel = derived.cohortLabel || "the next cohort";
 
   return (
-    <section id="apply-cta" className="border-t border-phosphor/25 py-14 md:py-20">
-      <p className="cmdline font-mono">
+    <section id="apply-cta" className="relative border-t border-phosphor/25 py-14 md:py-20">
+      <Sky zone="close" />
+      <p className="cmdline relative font-mono">
         <b>
           apply --cohort {String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}
         </b>
       </p>
-      <h2 className="t-poster mt-5 max-w-[9ch] text-ink">
+      <h2 className="t-poster relative mt-5 max-w-[9ch] text-ink">
         {settings.applicationsOpen ? (
           <>
             be in <span className="text-phosphor">it.</span>

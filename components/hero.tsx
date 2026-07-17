@@ -3,6 +3,7 @@ import type { SiteConfig } from "@/lib/site-config";
 import { ApplyCta } from "@/components/apply-cta";
 import { ZeroThread } from "@/components/zero-thread";
 import { HeroEntrance } from "@/components/hero-entrance";
+import { Sky } from "@/components/sky";
 import { smolderShade } from "@/components/smolder";
 
 const WEEK_WORDS = [
@@ -135,15 +136,16 @@ export default function Hero({
     : null;
 
   return (
-    <section className="flex min-h-[calc(100svh-6rem)] flex-col items-center justify-center py-10 text-center md:py-12">
+    <section className="relative flex min-h-[calc(100svh-6rem)] flex-col items-center justify-center py-10 text-center md:py-12">
+      <Sky zone="hero" />
       {/* 1 · identifier (dim; the hero's amber belongs to the 0) */}
-      <p data-entrance-reveal className="t-small text-ink-soft">
+      <p data-entrance-reveal className="t-small relative text-ink-soft">
         batch0 · a startup accelerator for high schoolers{" "}
         <span className="aside-note ml-2">previously sparkline youth</span>
       </p>
 
       {/* 2 · the sentence — one centered lockup, the pixel-0 in the word */}
-      <h1 className="my-4 flex grow flex-col items-center justify-center">
+      <h1 className="relative my-4 flex grow flex-col items-center justify-center">
         <span className="t-head block text-ink-soft">
           <Chars text={`${weeksWord} weeks`} frag="top" />
         </span>
@@ -159,7 +161,7 @@ export default function Hero({
       </h1>
 
       {/* 3+4+5 · facts, button, # comment — fade up last, space reserved */}
-      <div data-entrance-reveal>
+      <div data-entrance-reveal className="relative">
         <p className="t-small text-ink-soft">
           {closeLabel && settings.applicationsOpen && <>apply by {closeLabel} · </>}
           {derived.priceLabel} only if accepted ·{" "}
