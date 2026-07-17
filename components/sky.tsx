@@ -72,8 +72,8 @@ const SPRITES = {
   cloudB: [".###.", "#####", "eeeee"],
 };
 // sky-only star inks (never in chrome/text/icons)
-const SILVER = ["#c7c7c2", "#96968f"];
-const BLUE = ["#5B7A9E", "#41586F", "#2E4257"];
+const SILVER = ["#d9d9d3", "#b8b8b0"];
+const BLUE = ["#7C9BC0", "#5B7A9E", "#48607A"];
 const NEBULA = ["#0e1014", "#101318", "#131822"]; // barely above #0c0c0d
 const RGB = ["#ff0000", "#00ff00", "#0000ff"];
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -139,8 +139,8 @@ function buildSet(
     }
     let placed = 0, heroes = 0, bleeds = 0;
     for (const cell of cells) {
-      if (placed >= 25) break;
-      if (cell.bleed && bleeds >= 4) continue;
+      if (placed >= 38) break;
+      if (cell.bleed && bleeds >= 6) continue;
       let x = 0, y = 0, ok = false;
       for (let attempt = 0; attempt < 6 && !ok; attempt++) {
         x = (cell.cx + 0.15 + r() * 0.7) * (100 / COLS);
@@ -153,9 +153,9 @@ function buildSet(
       // pyramid tiers: 1 big · 2 four-pointed · 4 diamonds · 6 dot2 · rest dust
       const kind: El["kind"] =
         placed === 0 ? "big"
-        : placed <= 2 ? "hero"
-        : placed <= 6 ? "mid"
-        : placed <= 12 ? "dot2"
+        : placed <= 3 ? "hero"
+        : placed <= 9 ? "mid"
+        : placed <= 18 ? "dot2"
         : "dust";
       // amber stays special: the big one + one four-pointed (≤3/zone)
       const isAmber = (kind === "big" || (kind === "hero" && heroes < 1)) && placed % 1 === 0;
@@ -166,13 +166,13 @@ function buildSet(
           : BLUE[placed % 3];
       const nearContent = y > 80 && y <= 100; // the last ~150px
       const tierPresence =
-        kind === "big" ? 0.95 : kind === "hero" ? 0.85 : kind === "mid" ? 0.65 : kind === "dot2" ? 0.52 : 0.42;
+        kind === "big" ? 1 : kind === "hero" ? 0.95 : kind === "mid" ? 0.8 : kind === "dot2" ? 0.68 : 0.55;
       els.push({
         x, y,
         rows: SPRITES[kind as "dust" | "dot2" | "mid" | "hero" | "big"],
         base,
         px: 3,
-        presence: cell.bleed ? 0.12 : nearContent ? 0.22 : tierPresence,
+        presence: cell.bleed ? 0.15 : nearContent ? 0.3 : tierPresence,
         kind,
       });
       if (isAmber) heroes++;
@@ -234,14 +234,33 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
     let timers: ReturnType<typeof setTimeout>[] = [];
     let ambient: ReturnType<typeof setTimeout>[] = [];
     let live: { d: HTMLElement; el: El }[] = [];
+    // ROOT CAUSE of stuck RGB: convergence copies were appended to the host
+    // but never tracked, so wipe() (rapid toggle / cancel) cleared their
+    // finishing timers and left the R/G/B divs orphaned on screen. Track
+    // every copy so cancellation removes them with everything else.
+    let copiesLive: HTMLElement[] = [];
     let retuneAt = 0;
     let pendingT: ReturnType<typeof setTimeout> | undefined;
     const clearAll = (arr: ReturnType<typeof setTimeout>[]) =>
       arr.splice(0).forEach(clearTimeout);
+    const watchdogs: ReturnType<typeof setTimeout>[] = [];
+    const timersSafe = (t: ReturnType<typeof setTimeout>) => watchdogs.push(t);
+    const sweepStrays = () => {
+      // HARD GUARANTEE (settle watchdog): force-remove anything still
+      // wearing signal RGB, unconditionally.
+      copiesLive.splice(0).forEach((c) => c.remove());
+      host.querySelectorAll("div").forEach((d) => {
+        const bg = (d.firstElementChild as HTMLElement | null)?.style.background ?? "";
+        if (/rgb\(255, 0, 0\)|rgb\(0, 255, 0\)|rgb\(0, 0, 255\)/.test(bg)) d.remove();
+      });
+    };
     const wipe = () => {
       clearAll(timers);
       clearAll(ambient);
       live.splice(0).forEach((e) => e.d.remove());
+      sweepStrays();
+      // watchdog: even after a clean-looking cancel, re-sweep 1s later
+      setTimeout(sweepStrays, 1000);
     };
 
     /* measured text/CTA exclusion: real rects, padded 60px, in zone % */
@@ -379,7 +398,10 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
               return;
             }
             const copies = RGB.map((c) => renderEl(el, host, c));
-            copies.forEach((cp) => (cp.style.opacity = "1"));
+            copies.forEach((cp) => {
+              cp.style.opacity = "1";
+              copiesLive.push(cp);
+            });
             let f = 0;
             const FRAMES = 6;
             const conv = () => {
@@ -392,9 +414,17 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
               });
               if (f < FRAMES) timers.push(setTimeout(conv, 75));
               else {
-                copies.forEach((cp) => cp.remove());
+                copies.forEach((cp) => {
+                  cp.remove();
+                  const i = copiesLive.indexOf(cp);
+                  if (i >= 0) copiesLive.splice(i, 1);
+                });
                 live.push({ d: renderEl(el, host), el });
-                if (++done === set.length) startAmbient();
+                if (++done === set.length) {
+                  startAmbient();
+                  // watchdog: 1s after the retune completes, assert-clean
+                  timersSafe(setTimeout(sweepStrays, 1000));
+                }
               }
             };
             conv();
@@ -448,6 +478,7 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       document.removeEventListener("visibilitychange", onVis);
       if (pendingT) clearTimeout(pendingT);
       clearTimeout(rz);
+      watchdogs.forEach(clearTimeout);
       wipe();
     };
   }, [zone]);
