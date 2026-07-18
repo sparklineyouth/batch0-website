@@ -35,9 +35,13 @@ import { useEffect, useRef } from "react";
  * PAPER: ~7 ink clouds/zone (obvious at a glance: ~15% ink fill, ~20%
  * interior second shade, ~30% bottom edge) + birds crossing the full sky.
  *
- * HARD TEXT EXCLUSION: at mount and on resize, the actual bounding boxes
- * of every text block/CTA in the zone are measured, padded 60px, and no
- * star or nebula may seed inside them — nothing twinkles near a word.
+ * HARD TEXT EXCLUSION, PER LINE: at mount and on resize, the actual
+ * bounding box of every text line/CTA in the zone is measured separately
+ * (24px pad for text, 40px for CTAs) — never merged — so the sky flows
+ * through the composition: between the lockup's lines, beside short
+ * lines, close to the words without ever touching them. After seeding, a
+ * 3x3 COVERAGE CHECK reseeds until every region that isn't mostly text
+ * holds at least one element — no four-corners look.
  *
  * Everything else holds: per-star randomized glimmer, meteors 30-90s /
  * birds 25-80s rerolled, the RETUNE (user switches only: hard cut →
@@ -104,11 +108,77 @@ function prng(seed: number) {
 const inRect = (x: number, y: number, rc: Rect, m = 2) =>
   x > rc.l - m && x < rc.r + m && y > rc.t - m && y < rc.b + m;
 
+/** 3x3 coverage: every region gets at least one element, unless the
+ *  region is >70% swallowed by the exclusion rects (sampled 5x5). */
+function coverageOk(set: El[], ex: Rect[]): boolean {
+  return emptyRegions(set, ex).length === 0;
+}
+
+/** viable (not >70% text-covered) 3x3 regions holding zero elements */
+function emptyRegions(set: El[], ex: Rect[]): { l: number; t: number }[] {
+  const out: { l: number; t: number }[] = [];
+  const W = 100 / 3;
+  for (let ry = 0; ry < 3; ry++)
+    for (let rx = 0; rx < 3; rx++) {
+      const l = rx * W, t = ry * W;
+      let inEx = 0;
+      for (let i = 0; i < 5; i++)
+        for (let j = 0; j < 5; j++)
+          if (ex.some((rc) => inRect(l + (i + 0.5) * (W / 5), t + (j + 0.5) * (W / 5), rc, 0)))
+            inEx++;
+      if (inEx / 25 > 0.7) continue;
+      if (!set.some((e) => e.kind !== "nebula" && e.x >= l && e.x < l + W && e.y >= t && e.y < t + W))
+        out.push({ l, t });
+    }
+  return out;
+}
+
+/** coverage REPAIR: reseeding is luck; this is a guarantee. Each empty
+ *  viable region gets one element placed directly into it, against the
+ *  same exclusion rects (dust star on phosphor, small cloud on paper). */
+function repairCoverage(
+  set: El[],
+  ex: Rect[],
+  theme: "phosphor" | "paper",
+  seed: number,
+  hostW: number,
+  hostH: number,
+): void {
+  const r = prng(seed + 13);
+  const W = 100 / 3;
+  emptyRegions(set, ex).forEach(({ l, t }) => {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const x = l + r() * W;
+      const y = t + r() * W;
+      if (theme === "phosphor") {
+        if (ex.some((rc) => inRect(x, y, rc, 0))) continue;
+        set.push({
+          x, y, rows: SPRITES.dust, base: SILVER[attempt % 2], px: 3,
+          presence: y > 80 ? 0.5 : 0.85, kind: "dust",
+        });
+      } else {
+        const px = 6;
+        const wp = ((SPRITES.cloudB[0].length * px) / hostW) * 100;
+        const hp = ((SPRITES.cloudB.length * px) / hostH) * 100;
+        if (ex.some((rc) => !(x + wp < rc.l || x > rc.r || y + hp < rc.t || y > rc.b))) continue;
+        set.push({
+          x, y, rows: SPRITES.cloudB,
+          base: "rgb(var(--ink) / 0.16)", inner: "rgb(var(--ink) / 0.22)",
+          edge: "rgb(var(--ink) / 0.32)", px,
+          presence: y > 78 ? 0.7 : 1, kind: "cloud",
+        });
+      }
+      return;
+    }
+  });
+}
+
 function buildSet(
   theme: "phosphor" | "paper",
   seed: number,
   ex: Rect[],
-  exSoft: Rect[] = ex,
+  hostW: number,
+  hostH: number,
 ): El[] {
   const r = prng(seed);
   const els: El[] = [];
@@ -212,7 +282,7 @@ function buildSet(
           y = cell.bleed
             ? 100 + r() * 18
             : (cell.cy + r()) * (100 / (ROWS - 1));
-          ok = !ex.some((rc) => inRect(x, y, rc));
+          ok = !ex.some((rc) => inRect(x, y, rc, 0));
         }
         if (!ok) continue;
         const kind = putStar(x, y, cell.bleed);
@@ -223,52 +293,46 @@ function buildSet(
             const mx = x + (r() < 0.5 ? -1 : 1) * (1.2 + r() * 2.6);
             const my = y + (r() < 0.5 ? -1 : 1) * (1.8 + r() * 3.6);
             if (mx < 0 || mx > 99 || my < 0 || my > 100) continue;
-            if (ex.some((rc) => inRect(mx, my, rc))) continue;
+            if (ex.some((rc) => inRect(mx, my, rc, 0))) continue;
             putStar(mx, my, false);
           }
         }
       }
     }
   } else {
-    // paper: obvious ink clouds (fill + interior shade + bottom edge),
-    // spread on an even column grid — one cloud per slot, never clumped
-    const SLOTS = 7;
-    const slots = Array.from({ length: SLOTS }, (_, i) => i);
-    for (let i = slots.length - 1; i > 0; i--) {
-      const j = Math.floor(r() * (i + 1));
-      [slots[i], slots[j]] = [slots[j], slots[i]];
+    // paper: a POPULATED sky — 9-11 ink clouds in three sizes, spread over
+    // the whole zone including the gaps between text lines. Placement is
+    // box-checked against the per-line exclusion rects (a cloud's full
+    // sprite box may never enter a padded line), and empty draws reroll
+    // until the target is met — minimum 7 guaranteed by the retry budget.
+    const CLOUD_SIZES = [
+      { rows: SPRITES.cloudB, px: 6 }, // small
+      { rows: SPRITES.cloudA, px: 7 }, // medium
+      { rows: SPRITES.cloudC, px: 8 }, // large
+    ];
+    const target = 9 + Math.floor(r() * 3);
+    let made = 0, guard = 0;
+    while (made < target && guard++ < 400) {
+      const size = CLOUD_SIZES[Math.floor(r() * 3)];
+      const wp = ((size.rows[0].length * size.px) / hostW) * 100;
+      const hp = ((size.rows.length * size.px) / hostH) * 100;
+      const x = r() * Math.max(1, 100 - wp);
+      const y = r() * Math.max(1, 100 - hp);
+      if (ex.some((rc) => !(x + wp < rc.l || x > rc.r || y + hp < rc.t || y > rc.b))) continue;
+      // breathing room: never stack straight onto an existing cloud
+      if (els.some((e) => e.kind === "cloud" && Math.abs(e.x - x) < wp * 0.8 && Math.abs(e.y - y) < hp * 1.4)) continue;
+      els.push({
+        x, y,
+        rows: size.rows,
+        base: "rgb(var(--ink) / 0.16)",
+        inner: "rgb(var(--ink) / 0.22)",
+        edge: "rgb(var(--ink) / 0.32)",
+        px: size.px,
+        presence: y > 78 ? 0.7 : 1,
+        kind: "cloud",
+      });
+      made++;
     }
-    const shapes = [SPRITES.cloudA, SPRITES.cloudB, SPRITES.cloudC];
-    // probabilistic occupancy like the stars: some slots empty, most 1,
-    // occasional 2 — sparse stretches and denser stretches, no rhythm
-    let made = 0;
-    slots.forEach((slot, i) => {
-      if (made >= 8) return;
-      const roll = r();
-      const n = roll < 0.22 ? 0 : roll < 0.78 ? 1 : 2;
-      for (let k = 0; k < n && made < 8; k++) {
-        // clouds are soft ink washes, not twinkling pixels: they use the
-        // gentler exclusion pad and may sit anywhere in the zone's height
-        let x = 0, y = 0, ok = false;
-        for (let attempt = 0; attempt < 24 && !ok; attempt++) {
-          x = (slot + r()) * (88 / SLOTS); // full-slot jitter
-          y = r() * 100;
-          ok = !exSoft.some((rc) => inRect(x, y, rc, 2));
-        }
-        if (!ok) continue;
-        els.push({
-          x, y,
-          rows: shapes[(i + k) % 3],
-          base: "rgb(var(--ink) / 0.16)",
-          inner: "rgb(var(--ink) / 0.22)",
-          edge: "rgb(var(--ink) / 0.32)",
-          px: 7,
-          presence: y > 78 ? 0.7 : 1,
-          kind: "cloud",
-        });
-        made++;
-      }
-    });
   }
   return els;
 }
@@ -364,8 +428,9 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
     };
     const watchdog = setInterval(sweep, 1000);
 
-    /* measured text/CTA exclusion: real rects, padded, in zone % */
-    const exRects = (pad: number): Rect[] => {
+    /* measured text/CTA exclusion: PER LINE, never merged — text gets a
+       24px pad, CTAs 40px, so the sky flows through the line gaps */
+    const exRects = (): Rect[] => {
       const hr = host.getBoundingClientRect();
       if (!hr.width || !hr.height) return [];
       // tight leaf boxes: the h1 is a flex-grow container that spans the
@@ -379,6 +444,7 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
         if (host.contains(e)) return;
         const r = e.getBoundingClientRect();
         if (!r.width) return;
+        const pad = e.matches("a, button") ? 40 : 24;
         out.push({
           l: ((r.left - pad - hr.left) / hr.width) * 100,
           t: ((r.top - pad - hr.top) / hr.height) * 100,
@@ -476,7 +542,14 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       // materialization ALWAYS starts from a wiped registry — a stray extra
       // call (whatever schedules it) can double nothing
       wipeAll();
-      const set = buildSet(theme(), loadSeed, exRects(60), exRects(40));
+      const hr = host.getBoundingClientRect();
+      const ex = exRects();
+      let set = buildSet(theme(), loadSeed, ex, hr.width || 1, hr.height || 1);
+      // 3x3 coverage: a few reseeds, then deterministic repair — no
+      // viable region may end up empty
+      for (let t = 1; t < 4 && !coverageOk(set, ex); t++)
+        set = buildSet(theme(), loadSeed + t * 997, ex, hr.width || 1, hr.height || 1);
+      repairCoverage(set, ex, theme(), loadSeed, hr.width || 1, hr.height || 1);
       if (instant) {
         live = set.map((el) => ({ d: spawn(el), el }));
         startAmbient();

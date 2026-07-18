@@ -32,6 +32,11 @@
   --smolder-2: #ffbb00;
   --smolder-3: #ffd24d;
   --smolder-4: #fff3d6;
+  /* Bunting pennants (challenge banner fringe). Phosphor: torchlit —
+   * deep ember / burnt / dim amber on the black page. */
+  --pennant-0: #7a4a00;
+  --pennant-1: #b87a00;
+  --pennant-2: #5a3600;
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
   --safe-left: env(safe-area-inset-left);
@@ -65,6 +70,10 @@
   --smolder-2: #8a5a00;
   --smolder-3: #b87a00;
   --smolder-4: #ffbb00;
+  /* Bunting pennants, festival day: bright amber / warm gold / parchment. */
+  --pennant-0: #ffbb00;
+  --pennant-1: #ffd24d;
+  --pennant-2: #eadfc4;
 }
 /* Tailwind alpha chrome that AA fails when blended on paper — pin the two
  * text-carrying steps to solid burnt values. Hairlines/ticks stay alpha
