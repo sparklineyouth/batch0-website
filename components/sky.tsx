@@ -92,7 +92,7 @@ const SPRITES = {
 // sky-only star inks (never in chrome/text/icons)
 const SILVER = ["#EDEAE3", "#D6D3CA"];
 const BLUE = ["#8FAECC", "#7C9BC0", "#5F82A6"];
-const NEBULA = ["#0e1014", "#101318", "#131822"]; // barely above #0c0c0d
+const NEBULA = ["#0d0e11", "#0e1014", "#0f1218"]; // barely above #0c0c0d
 const RGB = ["#ff0000", "#00ff00", "#0000ff"];
 const RGB_RE = /rgb\(255, 0, 0\)|rgb\(0, 255, 0\)|rgb\(0, 0, 255\)/;
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -124,29 +124,36 @@ function buildSet(
       (s) => !ex.some((rc) => !(s.x + W < rc.l || s.x > rc.r || s.y + H < rc.t || s.y > rc.b)),
     );
     if (spot) {
-      // dithered mass: 16x9 cells, density falls off from center, 3 shades
-      const rows: string[] = [];
-      const shadeRows: string[] = [];
-      for (let ri = 0; ri < 9; ri++) {
-        let row = "", srow = "";
-        for (let c = 0; c < 16; c++) {
-          const d = Math.hypot((c - 7.5) / 8, (ri - 4) / 4.5);
-          const p = Math.max(0, 0.85 - d);
-          if (r() < p) { row += "#"; srow += String(Math.min(2, Math.floor(r() * 3))); }
-          else { row += "."; srow += "."; }
+      // felt-not-seen: the dither is laid down as a few random-walk BLOBS,
+      // each a contiguous irregular cluster in one shade — organic patches
+      // that read as depth, never an alternating-cell checkerboard
+      const GC = 16, GR = 9;
+      const grid: number[][] = Array.from({ length: GR }, () => Array(GC).fill(-1));
+      for (let bi = 0; bi < 7; bi++) {
+        const sh = bi % 3;
+        let cx = Math.floor(2 + r() * (GC - 4));
+        let cy = Math.floor(1 + r() * (GR - 2));
+        const size = 5 + Math.floor(r() * 8);
+        for (let st = 0; st < size; st++) {
+          if (Math.hypot((cx - 7.5) / 8, (cy - 4) / 4.5) < 0.95) grid[cy][cx] = sh;
+          const dir = Math.floor(r() * 4);
+          cx = Math.max(0, Math.min(GC - 1, cx + (dir === 0 ? 1 : dir === 1 ? -1 : 0)));
+          cy = Math.max(0, Math.min(GR - 1, cy + (dir === 2 ? 1 : dir === 3 ? -1 : 0)));
         }
-        rows.push(row); shadeRows.push(srow);
       }
       // encode shades via three separate elements (one per shade, flat)
       for (let sh = 0; sh < 3; sh++) {
-        const shRows = rows.map((row, ri) =>
-          row.split("").map((ch, c) => (ch === "#" && shadeRows[ri][c] === String(sh) ? "#" : ".")).join(""),
+        const shRows = Array.from({ length: GR }, (_, ri) =>
+          Array.from({ length: GC }, (_, c) => (grid[ri][c] === sh ? "#" : ".")).join(""),
         );
         els.push({ x: spot.x, y: spot.y, rows: shRows, base: NEBULA[sh], px: 14, presence: 1, kind: "nebula" });
       }
     }
 
-    // STARS: coarse grid, max 1/cell, even coverage + horizon bleed
+    // STARS: clustered-random — the grid only guards against gross
+    // clumping; per-cell counts are probabilistic (some cells empty, most
+    // 1, occasional 2), jitter spans the whole cell, and dust sometimes
+    // brings close companions. Real skies clump; no detectable rhythm.
     const COLS = 13, ROWS = 9; // rows 0-7 cover 0-100%, row 8 = the bleed band
     const cells: { cx: number; cy: number; bleed: boolean }[] = [];
     for (let ri = 0; ri < ROWS; ri++)
@@ -158,18 +165,7 @@ function buildSet(
       [cells[i], cells[j]] = [cells[j], cells[i]];
     }
     let placed = 0, heroes = 0, bleeds = 0;
-    for (const cell of cells) {
-      if (placed >= 55) break;
-      if (cell.bleed && bleeds >= 8) continue;
-      let x = 0, y = 0, ok = false;
-      for (let attempt = 0; attempt < 6 && !ok; attempt++) {
-        x = (cell.cx + 0.15 + r() * 0.7) * (100 / COLS);
-        y = cell.bleed
-          ? 100 + r() * 18
-          : (cell.cy + 0.15 + r() * 0.7) * (100 / (ROWS - 1));
-        ok = !ex.some((rc) => inRect(x, y, rc));
-      }
-      if (!ok) continue;
+    const putStar = (x: number, y: number, bleed: boolean) => {
       // pyramid tiers: 1 big · 4 four-pointed · 9 diamonds · 14 dot2 · rest dust
       const kind: El["kind"] =
         placed === 0 ? "big"
@@ -194,12 +190,44 @@ function buildSet(
         rows: SPRITES[kind as "dust" | "dot2" | "mid" | "hero" | "big"],
         base,
         px: 3,
-        presence: cell.bleed ? 0.35 : nearContent ? 0.5 : tierPresence,
+        presence: bleed ? 0.35 : nearContent ? 0.5 : tierPresence,
         kind,
       });
       if (isAmber) heroes++;
-      if (cell.bleed) bleeds++;
+      if (bleed) bleeds++;
       placed++;
+      return kind;
+    };
+    for (const cell of cells) {
+      if (placed >= 55) break;
+      // probabilistic occupancy: sparse patches and denser patches
+      const roll = r();
+      const n = roll < 0.34 ? 0 : roll < 0.82 ? 1 : 2;
+      for (let k = 0; k < n && placed < 55; k++) {
+        if (cell.bleed && bleeds >= 8) break;
+        let x = 0, y = 0, ok = false;
+        for (let attempt = 0; attempt < 6 && !ok; attempt++) {
+          // full-cell jitter — no center bias
+          x = (cell.cx + r()) * (100 / COLS);
+          y = cell.bleed
+            ? 100 + r() * 18
+            : (cell.cy + r()) * (100 / (ROWS - 1));
+          ok = !ex.some((rc) => inRect(x, y, rc));
+        }
+        if (!ok) continue;
+        const kind = putStar(x, y, cell.bleed);
+        // loose dust pairs/triples: close but never touching
+        if (kind === "dust" && !cell.bleed && r() < 0.3) {
+          const mates = r() < 0.3 ? 2 : 1;
+          for (let m = 0; m < mates && placed < 55; m++) {
+            const mx = x + (r() < 0.5 ? -1 : 1) * (1.2 + r() * 2.6);
+            const my = y + (r() < 0.5 ? -1 : 1) * (1.8 + r() * 3.6);
+            if (mx < 0 || mx > 99 || my < 0 || my > 100) continue;
+            if (ex.some((rc) => inRect(mx, my, rc))) continue;
+            putStar(mx, my, false);
+          }
+        }
+      }
     }
   } else {
     // paper: obvious ink clouds (fill + interior shade + bottom edge),
@@ -211,26 +239,35 @@ function buildSet(
       [slots[i], slots[j]] = [slots[j], slots[i]];
     }
     const shapes = [SPRITES.cloudA, SPRITES.cloudB, SPRITES.cloudC];
+    // probabilistic occupancy like the stars: some slots empty, most 1,
+    // occasional 2 — sparse stretches and denser stretches, no rhythm
+    let made = 0;
     slots.forEach((slot, i) => {
-      // clouds are soft ink washes, not twinkling pixels: they use the
-      // gentler exclusion pad and may sit anywhere in the zone's height
-      let x = 0, y = 0, ok = false;
-      for (let attempt = 0; attempt < 24 && !ok; attempt++) {
-        x = (slot + 0.1 + r() * 0.6) * (88 / SLOTS);
-        y = r() * 100;
-        ok = !exSoft.some((rc) => inRect(x, y, rc, 2));
+      if (made >= 8) return;
+      const roll = r();
+      const n = roll < 0.22 ? 0 : roll < 0.78 ? 1 : 2;
+      for (let k = 0; k < n && made < 8; k++) {
+        // clouds are soft ink washes, not twinkling pixels: they use the
+        // gentler exclusion pad and may sit anywhere in the zone's height
+        let x = 0, y = 0, ok = false;
+        for (let attempt = 0; attempt < 24 && !ok; attempt++) {
+          x = (slot + r()) * (88 / SLOTS); // full-slot jitter
+          y = r() * 100;
+          ok = !exSoft.some((rc) => inRect(x, y, rc, 2));
+        }
+        if (!ok) continue;
+        els.push({
+          x, y,
+          rows: shapes[(i + k) % 3],
+          base: "rgb(var(--ink) / 0.16)",
+          inner: "rgb(var(--ink) / 0.22)",
+          edge: "rgb(var(--ink) / 0.32)",
+          px: 7,
+          presence: y > 78 ? 0.7 : 1,
+          kind: "cloud",
+        });
+        made++;
       }
-      if (!ok) return;
-      els.push({
-        x, y,
-        rows: shapes[i % 3],
-        base: "rgb(var(--ink) / 0.16)",
-        inner: "rgb(var(--ink) / 0.22)",
-        edge: "rgb(var(--ink) / 0.32)",
-        px: 7,
-        presence: y > 78 ? 0.7 : 1,
-        kind: "cloud",
-      });
     });
   }
   return els;

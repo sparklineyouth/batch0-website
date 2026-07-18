@@ -70,13 +70,11 @@ export default async function ProgramPage() {
         authedHome={authedHome}
         cohortLabel={derived.cohortLabel || "the next cohort"}
       />
-      {challenge && (
-        <ChallengePennant
-          title={challenge.title}
-          prizeLabel={challenge.prizeLabel}
-          closesAt={challenge.closesAt}
-        />
-      )}
+      <ChallengePennant
+        title={challenge?.title}
+        prizeLabel={challenge?.prizeLabel}
+        closesAt={challenge?.closesAt}
+      />
 
       {/* ONE OBJECT: the single shared container — every section starts on
           the same left margin and shares the 12-column grid. */}

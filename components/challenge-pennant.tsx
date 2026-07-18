@@ -11,10 +11,10 @@ import Link from "next/link";
  * snaps between three discrete 4px offsets at ~150ms frames. A pixel flag
  * in wind, not a CSS wave. The text layer stays still (legibility).
  *
- * True data only: title · prizeLabel · ends {closesAt}, linking to
- * /challenges. If no challenge is live the pennant does not render (the
- * "prizes up to $500" fallback is not verifiable from data, so it does
- * not ship). Whole banner is one link; the wave is aria-hidden
+ * Always renders, linking to /challenges. With a live challenge it shows
+ * true data: title · prizeLabel · ends {closesAt}. Without one it shows
+ * the standing fallback "new challenge every week · prizes up to $500"
+ * (founder-confirmed true). Whole banner is one link; the wave is aria-hidden
  * decoration. Amber field + dark text in both themes (phosphor-fill).
  * Reduced motion: static pennant, content intact. Never on /apply, forms,
  * or the product app — mount on marketing pages only.
@@ -24,8 +24,8 @@ export function ChallengePennant({
   prizeLabel,
   closesAt,
 }: {
-  title: string;
-  prizeLabel: string;
+  title?: string | null;
+  prizeLabel?: string | null;
   closesAt?: string | null;
 }) {
   const fieldRef = useRef<HTMLDivElement>(null);
@@ -53,6 +53,10 @@ export function ChallengePennant({
         .toLocaleDateString("en-US", { month: "short", day: "numeric" })
         .toLowerCase()
     : null;
+  // no live challenge → the standing (founder-confirmed) line
+  const label = title
+    ? `this week: ${title} · ${prizeLabel}${ends ? ` · ends ${ends}` : ""}`
+    : "new challenge every week · prizes up to $500";
 
   // stepped swallowtail fork on the right end (pixel steps, no curves)
   const fork =
@@ -61,7 +65,7 @@ export function ChallengePennant({
   return (
     <Link
       href="/challenges"
-      aria-label={`this week's challenge: ${title} · ${prizeLabel}${ends ? ` · ends ${ends}` : ""}`}
+      aria-label={title ? `this week's challenge: ${label}` : `challenges: ${label}`}
       className="relative block overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor"
       style={{ clipPath: fork }}
     >
@@ -72,8 +76,7 @@ export function ChallengePennant({
         ))}
       </div>
       <span className="t-small relative block truncate px-5 py-2 font-mono font-medium lowercase text-on-phosphor sm:px-6">
-        this week: {title} · {prizeLabel}
-        {ends ? ` · ends ${ends}` : ""} <span aria-hidden>→</span>
+        {label} <span aria-hidden>→</span>
       </span>
     </Link>
   );
