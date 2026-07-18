@@ -28,7 +28,7 @@ import { useEffect, useRef } from "react";
  * static. Felt more than seen. No CSS gradients anywhere.
  *
  * DISTRIBUTION: blue-noise-ish — a coarse cell grid (max 1 star/cell,
- * shuffled) spreads ~55 stars/zone evenly across the full width and
+ * shuffled) spreads ~66 stars/zone evenly across the full width and
  * height; presence fades only near the content edge, and a few stars
  * bleed past the zone boundary (the horizon taper). Seeded per page load.
  *
@@ -40,8 +40,9 @@ import { useEffect, useRef } from "react";
  * (24px pad for text, 40px for CTAs) — never merged — so the sky flows
  * through the composition: between the lockup's lines, beside short
  * lines, close to the words without ever touching them. After seeding, a
- * 3x3 COVERAGE CHECK reseeds until every region that isn't mostly text
- * holds at least one element — no four-corners look.
+ * 4x4 COVERAGE CHECK reseeds/repairs until every region that isn't
+ * mostly text holds at least one VISIBLE-tier element (dot2 or larger —
+ * dust alone doesn't read as coverage). No four-corners look.
  *
  * Everything else holds: per-star randomized glimmer, meteors 30-90s /
  * birds 25-80s rerolled, the RETUNE (user switches only: hard cut →
@@ -114,12 +115,14 @@ function coverageOk(set: El[], ex: Rect[]): boolean {
   return emptyRegions(set, ex).length === 0;
 }
 
-/** viable (not >70% text-covered) 3x3 regions holding zero elements */
+/** viable (not >70% text-covered) 4x4 regions with zero VISIBLE
+ *  elements — dust alone doesn't make a region read as "has stars" */
+const isVisible = (e: El) => e.kind !== "nebula" && e.kind !== "dust";
 function emptyRegions(set: El[], ex: Rect[]): { l: number; t: number }[] {
   const out: { l: number; t: number }[] = [];
-  const W = 100 / 3;
-  for (let ry = 0; ry < 3; ry++)
-    for (let rx = 0; rx < 3; rx++) {
+  const W = 100 / 4;
+  for (let ry = 0; ry < 4; ry++)
+    for (let rx = 0; rx < 4; rx++) {
       const l = rx * W, t = ry * W;
       let inEx = 0;
       for (let i = 0; i < 5; i++)
@@ -127,7 +130,7 @@ function emptyRegions(set: El[], ex: Rect[]): { l: number; t: number }[] {
           if (ex.some((rc) => inRect(l + (i + 0.5) * (W / 5), t + (j + 0.5) * (W / 5), rc, 0)))
             inEx++;
       if (inEx / 25 > 0.7) continue;
-      if (!set.some((e) => e.kind !== "nebula" && e.x >= l && e.x < l + W && e.y >= t && e.y < t + W))
+      if (!set.some((e) => isVisible(e) && e.x >= l && e.x < l + W && e.y >= t && e.y < t + W))
         out.push({ l, t });
     }
   return out;
@@ -145,16 +148,17 @@ function repairCoverage(
   hostH: number,
 ): void {
   const r = prng(seed + 13);
-  const W = 100 / 3;
+  const W = 100 / 4;
   emptyRegions(set, ex).forEach(({ l, t }) => {
     for (let attempt = 0; attempt < 40; attempt++) {
       const x = l + r() * W;
       const y = t + r() * W;
       if (theme === "phosphor") {
         if (ex.some((rc) => inRect(x, y, rc, 0))) continue;
+        // repair with a VISIBLE tier — dust wouldn't register as coverage
         set.push({
-          x, y, rows: SPRITES.dust, base: SILVER[attempt % 2], px: 3,
-          presence: y > 80 ? 0.5 : 0.85, kind: "dust",
+          x, y, rows: SPRITES.dot2, base: SILVER[attempt % 2], px: 3,
+          presence: y > 80 ? 0.5 : 0.92, kind: "dot2",
         });
       } else {
         const px = 6;
@@ -236,12 +240,14 @@ function buildSet(
     }
     let placed = 0, heroes = 0, bleeds = 0;
     const putStar = (x: number, y: number, bleed: boolean) => {
-      // pyramid tiers: 1 big · 4 four-pointed · 9 diamonds · 14 dot2 · rest dust
+      // pyramid tiers, weighted toward the VISIBLE ones (they are what
+      // make a region read as "has stars"): 1 big · 6 four-pointed ·
+      // 14 diamonds · 20 dot2 · ~25 dust
       const kind: El["kind"] =
         placed === 0 ? "big"
-        : placed <= 4 ? "hero"
-        : placed <= 13 ? "mid"
-        : placed <= 27 ? "dot2"
+        : placed <= 6 ? "hero"
+        : placed <= 20 ? "mid"
+        : placed <= 40 ? "dot2"
         : "dust";
       // amber stays special: the big one + two four-pointed (≤3/zone)
       const isAmber = kind === "big" || (kind === "hero" && heroes < 2);
@@ -269,11 +275,11 @@ function buildSet(
       return kind;
     };
     for (const cell of cells) {
-      if (placed >= 55) break;
+      if (placed >= 66) break;
       // probabilistic occupancy: sparse patches and denser patches
       const roll = r();
       const n = roll < 0.34 ? 0 : roll < 0.82 ? 1 : 2;
-      for (let k = 0; k < n && placed < 55; k++) {
+      for (let k = 0; k < n && placed < 66; k++) {
         if (cell.bleed && bleeds >= 8) break;
         let x = 0, y = 0, ok = false;
         for (let attempt = 0; attempt < 6 && !ok; attempt++) {
@@ -289,7 +295,7 @@ function buildSet(
         // loose dust pairs/triples: close but never touching
         if (kind === "dust" && !cell.bleed && r() < 0.3) {
           const mates = r() < 0.3 ? 2 : 1;
-          for (let m = 0; m < mates && placed < 55; m++) {
+          for (let m = 0; m < mates && placed < 66; m++) {
             const mx = x + (r() < 0.5 ? -1 : 1) * (1.2 + r() * 2.6);
             const my = y + (r() < 0.5 ? -1 : 1) * (1.8 + r() * 3.6);
             if (mx < 0 || mx > 99 || my < 0 || my > 100) continue;
