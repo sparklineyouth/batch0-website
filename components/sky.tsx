@@ -4,31 +4,46 @@ import { useEffect, useRef } from "react";
 /**
  * THE SKY — space-grade pixel weather for the marketing poster zones.
  *
+ * LIFECYCLE: one registry owns every transient the sky can create — stars,
+ * twinkle frames, ray tips, nebula, clouds, birds (and flap frames),
+ * meteors, RGB convergence copies, taper-bleed elements. Every element is
+ * spawned through one factory that tags it with the theme that created it
+ * (data-sky-theme) and registers it; every timer goes through one
+ * scheduler. A theme switch calls exactly one function, wipeAll(): walk
+ * the registry, remove every element, cancel every timer. No per-type
+ * cleanup paths exist to forget. A settle WATCHDOG sweeps every ~1s and
+ * force-removes any element tagged with a stale theme or wearing signal
+ * RGB outside an active convergence — whatever leaked, however it leaked,
+ * the same net catches it.
+ *
  * PHOSPHOR PALETTE (sky-layer-bounded exception, like the retune's RGB):
- * stars in SILVER (dim desaturated off-white steps) and DIM BLUE
- * (desaturated steel range #5B7A9E → #2E4257), ~50/40, plus 2-3 rare amber
- * heroes per zone (~10%) — amber stays special. These colors never appear
- * outside the sky layer. Paper mode unchanged (ink-tinted clouds, birds).
+ * stars in bright SILVER (#EDEAE3 range) and LIGHT STEEL BLUE (#8FAECC
+ * range), plus ≤3 rare amber heroes per zone — amber stays special. The
+ * field is meant to be UNMISSABLE at a glance: a real night sky, resting
+ * at full brightness, hierarchy carried by sprite size not dimness.
+ * These colors never appear outside the sky layer.
  *
  * THE NEBULA: one per zone — a large flat-block dithered mass in 3 shades
  * of blue-tinted near-black barely above #0c0c0d, behind the stars,
- * static. Felt more than seen: the black has depth; the dither IS the
- * gradient. No CSS gradients anywhere.
+ * static. Felt more than seen. No CSS gradients anywhere.
  *
  * DISTRIBUTION: blue-noise-ish — a coarse cell grid (max 1 star/cell,
- * shuffled) spreads ~25 stars/zone evenly across the full width and
+ * shuffled) spreads ~55 stars/zone evenly across the full width and
  * height; presence fades only near the content edge, and a few stars
  * bleed past the zone boundary (the horizon taper). Seeded per page load.
+ *
+ * PAPER: ~7 ink clouds/zone (obvious at a glance: ~15% ink fill, ~20%
+ * interior second shade, ~30% bottom edge) + birds crossing the full sky.
  *
  * HARD TEXT EXCLUSION: at mount and on resize, the actual bounding boxes
  * of every text block/CTA in the zone are measured, padded 60px, and no
  * star or nebula may seed inside them — nothing twinkles near a word.
  *
- * Everything else holds: sprite depth mix, per-star randomized glimmer,
- * meteors 30-90s / birds 25-80s rerolled, the RETUNE (user switches only:
- * hard cut → 3.5-4s genuine emptiness → staggered materialization via
- * three signal-RGB pixel-block copies converging in 75ms steps, settling
- * into this palette), reduced-motion instant-static, flat blocks only.
+ * Everything else holds: per-star randomized glimmer, meteors 30-90s /
+ * birds 25-80s rerolled, the RETUNE (user switches only: hard cut →
+ * 3.5-4s genuine emptiness → staggered materialization via three
+ * signal-RGB pixel-block copies converging in 75ms steps, settling into
+ * this palette), reduced-motion instant-static, flat blocks only.
  */
 
 type Rect = { l: number; t: number; r: number; b: number };
@@ -37,6 +52,7 @@ type El = {
   y: number;
   rows: string[];
   base: string;
+  inner?: string;
   edge?: string;
   px: number;
   presence: number;
@@ -68,14 +84,17 @@ const SPRITES = {
     "....#....",
     "....t....",
   ],
-  cloudA: ["..####..", "########", "eeeeeeee"],
-  cloudB: [".###.", "#####", "eeeee"],
+  // 'i' = interior second shade, 'e' = darker bottom edge
+  cloudA: ["..####..", ".#iiii#.", "#iiiiii#", "eeeeeeee"],
+  cloudB: [".###.", "#iii#", "eeeee"],
+  cloudC: ["..####..##.", ".#iiii##ii#", "#iiiiiiiii#", ".eeeeeeeee."],
 };
 // sky-only star inks (never in chrome/text/icons)
-const SILVER = ["#d9d9d3", "#b8b8b0"];
-const BLUE = ["#7C9BC0", "#5B7A9E", "#48607A"];
+const SILVER = ["#EDEAE3", "#D6D3CA"];
+const BLUE = ["#8FAECC", "#7C9BC0", "#5F82A6"];
 const NEBULA = ["#0e1014", "#101318", "#131822"]; // barely above #0c0c0d
 const RGB = ["#ff0000", "#00ff00", "#0000ff"];
+const RGB_RE = /rgb\(255, 0, 0\)|rgb\(0, 255, 0\)|rgb\(0, 0, 255\)/;
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
 function prng(seed: number) {
@@ -89,6 +108,7 @@ function buildSet(
   theme: "phosphor" | "paper",
   seed: number,
   ex: Rect[],
+  exSoft: Rect[] = ex,
 ): El[] {
   const r = prng(seed);
   const els: El[] = [];
@@ -127,7 +147,7 @@ function buildSet(
     }
 
     // STARS: coarse grid, max 1/cell, even coverage + horizon bleed
-    const COLS = 11, ROWS = 8; // rows 0-6 cover 0-100%, row 7 = the bleed band
+    const COLS = 13, ROWS = 9; // rows 0-7 cover 0-100%, row 8 = the bleed band
     const cells: { cx: number; cy: number; bleed: boolean }[] = [];
     for (let ri = 0; ri < ROWS; ri++)
       for (let c = 0; c < COLS; c++)
@@ -139,8 +159,8 @@ function buildSet(
     }
     let placed = 0, heroes = 0, bleeds = 0;
     for (const cell of cells) {
-      if (placed >= 38) break;
-      if (cell.bleed && bleeds >= 6) continue;
+      if (placed >= 55) break;
+      if (cell.bleed && bleeds >= 8) continue;
       let x = 0, y = 0, ok = false;
       for (let attempt = 0; attempt < 6 && !ok; attempt++) {
         x = (cell.cx + 0.15 + r() * 0.7) * (100 / COLS);
@@ -150,29 +170,31 @@ function buildSet(
         ok = !ex.some((rc) => inRect(x, y, rc));
       }
       if (!ok) continue;
-      // pyramid tiers: 1 big · 2 four-pointed · 4 diamonds · 6 dot2 · rest dust
+      // pyramid tiers: 1 big · 4 four-pointed · 9 diamonds · 14 dot2 · rest dust
       const kind: El["kind"] =
         placed === 0 ? "big"
-        : placed <= 3 ? "hero"
-        : placed <= 9 ? "mid"
-        : placed <= 18 ? "dot2"
+        : placed <= 4 ? "hero"
+        : placed <= 13 ? "mid"
+        : placed <= 27 ? "dot2"
         : "dust";
-      // amber stays special: the big one + one four-pointed (≤3/zone)
-      const isAmber = (kind === "big" || (kind === "hero" && heroes < 1)) && placed % 1 === 0;
+      // amber stays special: the big one + two four-pointed (≤3/zone)
+      const isAmber = kind === "big" || (kind === "hero" && heroes < 2);
       const base = isAmber
         ? "rgb(var(--phosphor-rgb))"
         : placed % 10 < 5
           ? SILVER[placed % 2]
           : BLUE[placed % 3];
       const nearContent = y > 80 && y <= 100; // the last ~150px
+      // resting brightness is FULL — the sky must read at a glance;
+      // hierarchy comes from sprite size, not from dimming the small tiers
       const tierPresence =
-        kind === "big" ? 1 : kind === "hero" ? 0.95 : kind === "mid" ? 0.8 : kind === "dot2" ? 0.68 : 0.55;
+        kind === "big" || kind === "hero" || kind === "mid" ? 1 : kind === "dot2" ? 0.92 : 0.85;
       els.push({
         x, y,
         rows: SPRITES[kind as "dust" | "dot2" | "mid" | "hero" | "big"],
         base,
         px: 3,
-        presence: cell.bleed ? 0.15 : nearContent ? 0.3 : tierPresence,
+        presence: cell.bleed ? 0.35 : nearContent ? 0.5 : tierPresence,
         kind,
       });
       if (isAmber) heroes++;
@@ -180,23 +202,36 @@ function buildSet(
       placed++;
     }
   } else {
-    // paper unchanged: clouds with measured exclusion
-    let guard = 0, made = 0;
-    while (made < 6 && guard++ < 80) {
-      const x = 2 + r() * 78;
-      const y = Math.pow(r(), 1.6) * 105 * 0.7;
-      if (ex.some((rc) => inRect(x, y, rc, 4))) continue;
+    // paper: obvious ink clouds (fill + interior shade + bottom edge),
+    // spread on an even column grid — one cloud per slot, never clumped
+    const SLOTS = 7;
+    const slots = Array.from({ length: SLOTS }, (_, i) => i);
+    for (let i = slots.length - 1; i > 0; i--) {
+      const j = Math.floor(r() * (i + 1));
+      [slots[i], slots[j]] = [slots[j], slots[i]];
+    }
+    const shapes = [SPRITES.cloudA, SPRITES.cloudB, SPRITES.cloudC];
+    slots.forEach((slot, i) => {
+      // clouds are soft ink washes, not twinkling pixels: they use the
+      // gentler exclusion pad and may sit anywhere in the zone's height
+      let x = 0, y = 0, ok = false;
+      for (let attempt = 0; attempt < 24 && !ok; attempt++) {
+        x = (slot + 0.1 + r() * 0.6) * (88 / SLOTS);
+        y = r() * 100;
+        ok = !exSoft.some((rc) => inRect(x, y, rc, 2));
+      }
+      if (!ok) return;
       els.push({
         x, y,
-        rows: made % 2 ? SPRITES.cloudB : SPRITES.cloudA,
-        base: "rgb(var(--ink) / 0.10)",
-        edge: "rgb(var(--ink) / 0.22)",
-        px: 6,
-        presence: y > 70 ? 0.4 : 1,
+        rows: shapes[i % 3],
+        base: "rgb(var(--ink) / 0.16)",
+        inner: "rgb(var(--ink) / 0.22)",
+        edge: "rgb(var(--ink) / 0.32)",
+        px: 7,
+        presence: y > 78 ? 0.7 : 1,
         kind: "cloud",
       });
-      made++;
-    }
+    });
   }
   return els;
 }
@@ -209,7 +244,9 @@ function renderEl(el: El, host: HTMLElement, color?: string): HTMLElement {
       const ch = row[c];
       if (ch === ".") continue;
       const b = document.createElement("span");
-      b.style.cssText = `grid-column:${c + 1};grid-row:${ri + 1};background:${color ?? (ch === "e" ? el.edge ?? el.base : el.base)};${ch === "t" && !color ? "visibility:hidden;" : ""}`;
+      const shade =
+        ch === "e" ? el.edge ?? el.base : ch === "i" ? el.inner ?? el.base : el.base;
+      b.style.cssText = `grid-column:${c + 1};grid-row:${ri + 1};background:${color ?? shade};${ch === "t" && !color ? "visibility:hidden;" : ""}`;
       if (ch === "t") b.dataset.tip = "1";
       d.appendChild(b);
     }
@@ -231,40 +268,67 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
         : ("phosphor" as const);
     const loadSeed = (Date.now() % 100000) + (zone === "hero" ? 41 : 97);
 
-    let timers: ReturnType<typeof setTimeout>[] = [];
-    let ambient: ReturnType<typeof setTimeout>[] = [];
+    /* ---- THE REGISTRY: every transient element and timer, one place ---- */
+    const reg = {
+      els: new Set<HTMLElement>(),
+      timers: new Set<ReturnType<typeof setTimeout>>(),
+    };
     let live: { d: HTMLElement; el: El }[] = [];
-    // ROOT CAUSE of stuck RGB: convergence copies were appended to the host
-    // but never tracked, so wipe() (rapid toggle / cancel) cleared their
-    // finishing timers and left the R/G/B divs orphaned on screen. Track
-    // every copy so cancellation removes them with everything else.
-    let copiesLive: HTMLElement[] = [];
+    // true only while an RGB convergence is legitimately on screen — the
+    // watchdog spares signal RGB during it and kills it any other time
+    let retuneBusy = false;
     let retuneAt = 0;
     let pendingT: ReturnType<typeof setTimeout> | undefined;
-    const clearAll = (arr: ReturnType<typeof setTimeout>[]) =>
-      arr.splice(0).forEach(clearTimeout);
-    const watchdogs: ReturnType<typeof setTimeout>[] = [];
-    const timersSafe = (t: ReturnType<typeof setTimeout>) => watchdogs.push(t);
-    const sweepStrays = () => {
-      // HARD GUARANTEE (settle watchdog): force-remove anything still
-      // wearing signal RGB, unconditionally.
-      copiesLive.splice(0).forEach((c) => c.remove());
-      host.querySelectorAll("div").forEach((d) => {
-        const bg = (d.firstElementChild as HTMLElement | null)?.style.background ?? "";
-        if (/rgb\(255, 0, 0\)|rgb\(0, 255, 0\)|rgb\(0, 0, 255\)/.test(bg)) d.remove();
+
+    /** the ONLY element factory: theme-tag + register at creation */
+    const spawn = (el: El, opts?: { color?: string; fx?: string }) => {
+      const d = renderEl(el, host, opts?.color);
+      d.dataset.skyTheme = theme();
+      if (opts?.fx) d.dataset.fx = opts.fx;
+      reg.els.add(d);
+      return d;
+    };
+    const kill = (d: HTMLElement) => {
+      d.remove();
+      reg.els.delete(d);
+    };
+    /** the ONLY scheduler: every timer is registered and wipeable */
+    const later = (fn: () => void, ms: number) => {
+      const t = setTimeout(() => {
+        reg.timers.delete(t);
+        fn();
+      }, ms);
+      reg.timers.add(t);
+      return t;
+    };
+    /** THE one teardown — a theme switch calls this and nothing else */
+    const wipeAll = () => {
+      reg.timers.forEach(clearTimeout);
+      reg.timers.clear();
+      reg.els.forEach((d) => d.remove());
+      reg.els.clear();
+      live = [];
+      retuneBusy = false;
+    };
+    /** settle WATCHDOG: every ~1s, remove anything tagged with a stale
+     *  theme or wearing signal RGB outside an active convergence — the
+     *  same net catches every possible leak, regardless of source */
+    const sweep = () => {
+      const cur = theme();
+      host.querySelectorAll<HTMLElement>("[data-sky-theme]").forEach((d) => {
+        const staleTheme = d.dataset.skyTheme !== cur;
+        const rgbStray =
+          !retuneBusy &&
+          RGB_RE.test(
+            (d.firstElementChild as HTMLElement | null)?.style.background ?? "",
+          );
+        if (staleTheme || rgbStray) kill(d);
       });
     };
-    const wipe = () => {
-      clearAll(timers);
-      clearAll(ambient);
-      live.splice(0).forEach((e) => e.d.remove());
-      sweepStrays();
-      // watchdog: even after a clean-looking cancel, re-sweep 1s later
-      setTimeout(sweepStrays, 1000);
-    };
+    const watchdog = setInterval(sweep, 1000);
 
-    /* measured text/CTA exclusion: real rects, padded 60px, in zone % */
-    const exRects = (): Rect[] => {
+    /* measured text/CTA exclusion: real rects, padded, in zone % */
+    const exRects = (pad: number): Rect[] => {
       const hr = host.getBoundingClientRect();
       if (!hr.width || !hr.height) return [];
       // tight leaf boxes: the h1 is a flex-grow container that spans the
@@ -279,99 +343,92 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
         const r = e.getBoundingClientRect();
         if (!r.width) return;
         out.push({
-          l: ((r.left - 60 - hr.left) / hr.width) * 100,
-          t: ((r.top - 60 - hr.top) / hr.height) * 100,
-          r: ((r.right + 60 - hr.left) / hr.width) * 100,
-          b: ((r.bottom + 60 - hr.top) / hr.height) * 100,
+          l: ((r.left - pad - hr.left) / hr.width) * 100,
+          t: ((r.top - pad - hr.top) / hr.height) * 100,
+          r: ((r.right + pad - hr.left) / hr.width) * 100,
+          b: ((r.bottom + pad - hr.top) / hr.height) * 100,
         });
       });
       return out.filter((rc) => rc.r > 0 && rc.l < 100 && rc.b > 0);
     };
 
-    /* ---- ambient (unchanged behaviors) ---- */
+    /* ---- ambient (all through spawn/later — registry-owned) ---- */
     const startAmbient = () => {
       if (reduced) return;
-      clearAll(ambient);
       live.forEach(({ d, el }) => {
         if (el.kind === "cloud" || el.kind === "nebula") return;
         const bigTier = el.kind === "hero" || el.kind === "big";
-        const brightCap = bigTier ? 1 : el.kind === "mid" ? 0.85 : 0.7;
+        const brightCap = bigTier || el.kind === "mid" ? 1 : 0.95;
         const tips = [...d.querySelectorAll<HTMLElement>("[data-tip]")];
         const cycle = () => {
-          ambient.push(
-            setTimeout(() => {
-              const steps = [0.6, 0.85, brightCap, brightCap, el.presence];
-              steps.forEach((o, i) =>
-                ambient.push(setTimeout(() => {
-                  d.style.opacity = String(o);
-                  // classic pixel sparkle: tips extend on the two bright
-                  // frames, then retract
-                  if (bigTier && tips.length)
-                    tips.forEach((t) => (t.style.visibility = i === 2 || i === 3 ? "visible" : "hidden"));
-                }, i * 90)),
-              );
-              cycle();
-            }, rnd(4000, 8000)),
-          );
+          later(() => {
+            const steps = [0.65, 0.85, brightCap, brightCap, el.presence];
+            steps.forEach((o, i) =>
+              later(() => {
+                d.style.opacity = String(o);
+                // classic pixel sparkle: tips extend on the two bright
+                // frames, then retract
+                if (bigTier && tips.length)
+                  tips.forEach((t) => (t.style.visibility = i === 2 || i === 3 ? "visible" : "hidden"));
+              }, i * 90),
+            );
+            cycle();
+          }, rnd(4000, 8000));
         };
-        ambient.push(setTimeout(cycle, rnd(0, 4000)));
+        later(cycle, rnd(0, 4000));
       });
       const meteor = (first: boolean) => {
-        ambient.push(
-          setTimeout(() => {
-            if (!document.hidden && theme() === "phosphor") {
-              const s = renderEl(
-                { x: rnd(8, 60), y: rnd(4, 26), rows: ["##", ".##"], base: SILVER[0], px: 3, presence: 1, kind: "dust" },
-                host,
-              );
-              let f = 0;
-              const step = () => {
-                f++;
-                s.style.transform = `translate(${f * 16}px, ${f * 11}px)`;
-                s.style.opacity = f > 5 ? "0.3" : "1";
-                if (f < 9) ambient.push(setTimeout(step, 70));
-                else s.remove();
-              };
-              step();
-            }
-            meteor(false);
-          }, first ? rnd(8000, 20000) : rnd(30000, 90000)),
-        );
+        later(() => {
+          if (!document.hidden && theme() === "phosphor") {
+            const s = spawn(
+              { x: rnd(8, 60), y: rnd(4, 26), rows: ["##", ".##"], base: SILVER[0], px: 3, presence: 1, kind: "dust" },
+              { fx: "meteor" },
+            );
+            let f = 0;
+            const step = () => {
+              f++;
+              s.style.transform = `translate(${f * 16}px, ${f * 11}px)`;
+              s.style.opacity = f > 5 ? "0.3" : "1";
+              if (f < 9) later(step, 70);
+              else kill(s);
+            };
+            step();
+          }
+          meteor(false);
+        }, first ? rnd(8000, 20000) : rnd(30000, 90000));
       };
       const bird = (first: boolean) => {
-        ambient.push(
-          setTimeout(() => {
-            if (!document.hidden && theme() === "paper") {
-              const n = Math.random() < 1 / 3 ? Math.round(rnd(2, 3)) : 1;
-              const dur = rnd(25000, 40000);
-              const stepMs = 120;
-              const total = Math.round(dur / stepMs);
-              for (let i = 0; i < n; i++) {
-                const y0 = rnd(6, 34);
-                const wob = rnd(0.5, 1.4);
-                const s = renderEl(
-                  { x: -6, y: y0 + i * 4, rows: ["#..#", ".##."], base: "rgb(var(--ink) / 0.55)", px: 3, presence: 1, kind: "dust" },
-                  host,
-                );
-                const W = host.getBoundingClientRect().width;
-                let f = 0;
-                const fly = () => {
-                  f++;
-                  const flap = Math.floor(f / 3) % 2;
-                  s.style.transform = `translate(${(f / total) * (W * 1.12)}px, ${Math.sin(f / 9) * 8 * wob}px)`;
-                  (s.children[0] as HTMLElement).style.opacity = flap ? "0" : "1";
-                  (s.children[1] as HTMLElement).style.opacity = flap ? "0" : "1";
-                  (s.children[2] as HTMLElement).style.opacity = flap ? "1" : "0";
-                  (s.children[3] as HTMLElement).style.opacity = flap ? "1" : "0";
-                  if (f < total && !document.hidden) ambient.push(setTimeout(fly, stepMs));
-                  else s.remove();
-                };
-                ambient.push(setTimeout(fly, i * 900));
-              }
+        later(() => {
+          if (!document.hidden && theme() === "paper") {
+            const n = Math.random() < 1 / 3 ? Math.round(rnd(2, 3)) : 1;
+            const dur = rnd(25000, 40000);
+            const stepMs = 120;
+            const total = Math.round(dur / stepMs);
+            for (let i = 0; i < n; i++) {
+              const y0 = rnd(6, 34);
+              const wob = rnd(0.5, 1.4);
+              const s = spawn(
+                { x: -6, y: y0 + i * 4, rows: ["#..#", ".##."], base: "rgb(var(--ink) / 0.55)", px: 3, presence: 1, kind: "dust" },
+                { fx: "bird" },
+              );
+              const W = host.getBoundingClientRect().width;
+              let f = 0;
+              const fly = () => {
+                f++;
+                const flap = Math.floor(f / 3) % 2;
+                s.style.transform = `translate(${(f / total) * (W * 1.12)}px, ${Math.sin(f / 9) * 8 * wob}px)`;
+                (s.children[0] as HTMLElement).style.opacity = flap ? "0" : "1";
+                (s.children[1] as HTMLElement).style.opacity = flap ? "0" : "1";
+                (s.children[2] as HTMLElement).style.opacity = flap ? "1" : "0";
+                (s.children[3] as HTMLElement).style.opacity = flap ? "1" : "0";
+                if (f < total && !document.hidden) later(fly, stepMs);
+                else kill(s);
+              };
+              later(fly, i * 900);
             }
-            bird(false);
-          }, first ? rnd(6000, 14000) : rnd(25000, 80000)),
-        );
+          }
+          bird(false);
+        }, first ? rnd(6000, 14000) : rnd(25000, 80000));
       };
       meteor(true);
       bird(true);
@@ -379,57 +436,59 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
 
     /* ---- materialize ---- */
     const appear = (instant: boolean) => {
-      const set = buildSet(theme(), loadSeed, exRects());
+      // materialization ALWAYS starts from a wiped registry — a stray extra
+      // call (whatever schedules it) can double nothing
+      wipeAll();
+      const set = buildSet(theme(), loadSeed, exRects(60), exRects(40));
       if (instant) {
-        live = set.map((el) => ({ d: renderEl(el, host), el }));
+        live = set.map((el) => ({ d: spawn(el), el }));
         startAmbient();
         return;
       }
+      retuneBusy = true;
+      // failsafe: whatever happens, the busy window is bounded — after it,
+      // any surviving signal RGB is stray by definition and gets swept
+      later(() => {
+        retuneBusy = false;
+        sweep();
+      }, 6000);
       const order = set.map((_, i) => i).sort(() => 0.5 - Math.random());
       let done = 0;
       order.forEach((idx, k) => {
-        timers.push(
-          setTimeout(() => {
-            const el = set[idx];
-            if (el.kind === "nebula") {
-              // the nebula fades no signal: it simply is, once the sky returns
-              live.push({ d: renderEl(el, host), el });
-              if (++done === set.length) startAmbient();
-              return;
-            }
-            const copies = RGB.map((c) => renderEl(el, host, c));
-            copies.forEach((cp) => {
-              cp.style.opacity = "1";
-              copiesLive.push(cp);
+        later(() => {
+          const el = set[idx];
+          if (el.kind === "nebula") {
+            // the nebula fades no signal: it simply is, once the sky returns
+            live.push({ d: spawn(el), el });
+            if (++done === set.length) startAmbient();
+            return;
+          }
+          const copies = RGB.map((c) => spawn(el, { color: c }));
+          copies.forEach((cp) => (cp.style.opacity = "1"));
+          let f = 0;
+          const FRAMES = 6;
+          const conv = () => {
+            f++;
+            const amp = Math.max(0, (FRAMES - f) * 0.7);
+            copies.forEach((cp, ci) => {
+              const dx = Math.round((Math.random() * 2 - 1) * amp * el.px);
+              const dy = Math.round((Math.random() * 2 - 1) * amp * el.px);
+              cp.style.transform = `translate(${dx + (ci - 1) * amp * 2}px, ${dy}px)`;
             });
-            let f = 0;
-            const FRAMES = 6;
-            const conv = () => {
-              f++;
-              const amp = Math.max(0, (FRAMES - f) * 0.7);
-              copies.forEach((cp, ci) => {
-                const dx = Math.round((Math.random() * 2 - 1) * amp * el.px);
-                const dy = Math.round((Math.random() * 2 - 1) * amp * el.px);
-                cp.style.transform = `translate(${dx + (ci - 1) * amp * 2}px, ${dy}px)`;
-              });
-              if (f < FRAMES) timers.push(setTimeout(conv, 75));
-              else {
-                copies.forEach((cp) => {
-                  cp.remove();
-                  const i = copiesLive.indexOf(cp);
-                  if (i >= 0) copiesLive.splice(i, 1);
-                });
-                live.push({ d: renderEl(el, host), el });
-                if (++done === set.length) {
-                  startAmbient();
-                  // watchdog: 1s after the retune completes, assert-clean
-                  timersSafe(setTimeout(sweepStrays, 1000));
-                }
+            if (f < FRAMES) later(conv, 75);
+            else {
+              copies.forEach(kill);
+              live.push({ d: spawn(el), el });
+              if (++done === set.length) {
+                retuneBusy = false;
+                startAmbient();
+                // settle: assert-clean 1s after the retune completes
+                later(sweep, 1000);
               }
-            };
-            conv();
-          }, Math.round((k / order.length) * 1800)),
-        );
+            }
+          };
+          conv();
+        }, Math.round((k / order.length) * 1800));
       });
     };
 
@@ -438,12 +497,15 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       if (pendingT) clearTimeout(pendingT);
       if (!retuneAt || document.hidden) return;
       pendingT = setTimeout(() => {
+        // the clock is fully consumed BEFORE materializing: a fired retune
+        // leaves nothing behind for onVis to resurrect
+        pendingT = undefined;
         retuneAt = 0;
         appear(false);
       }, Math.max(0, retuneAt - Date.now()));
     };
     const onSwitch = () => {
-      wipe();
+      wipeAll();
       if (reduced) {
         appear(true);
         return;
@@ -452,10 +514,15 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       schedule();
     };
     const onVis = () => {
-      if (document.hidden && pendingT) {
-        clearTimeout(pendingT);
-        retuneAt = Date.now() + Math.max(0, retuneAt - Date.now());
-      } else if (!document.hidden) schedule();
+      if (document.hidden) {
+        if (pendingT) {
+          clearTimeout(pendingT);
+          pendingT = undefined;
+        }
+        // freeze the countdown ONLY while a retune is genuinely pending —
+        // retuneAt=0 must stay 0 or tab-show would conjure a phantom retune
+        if (retuneAt) retuneAt = Date.now() + Math.max(0, retuneAt - Date.now());
+      } else if (retuneAt) schedule();
     };
     // measured exclusion must track layout: rebuild statically on resize
     let rz: ReturnType<typeof setTimeout>;
@@ -463,7 +530,7 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       clearTimeout(rz);
       rz = setTimeout(() => {
         if (retuneAt) return; // don't fight a pending retune
-        wipe();
+        wipeAll();
         appear(true);
       }, 300);
     };
@@ -478,8 +545,8 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       document.removeEventListener("visibilitychange", onVis);
       if (pendingT) clearTimeout(pendingT);
       clearTimeout(rz);
-      watchdogs.forEach(clearTimeout);
-      wipe();
+      clearInterval(watchdog);
+      wipeAll();
     };
   }, [zone]);
 
