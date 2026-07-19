@@ -27,10 +27,16 @@ import { useEffect, useRef } from "react";
  * of blue-tinted near-black barely above #0c0c0d, behind the stars,
  * static. Felt more than seen. No CSS gradients anywhere.
  *
- * DISTRIBUTION: blue-noise-ish — a coarse cell grid (max 1 star/cell,
- * shuffled) spreads ~66 stars/zone evenly across the full width and
- * height; presence fades only near the content edge, and a few stars
- * bleed past the zone boundary (the horizon taper). Seeded per page load.
+ * DISTRIBUTION: DENSITY PER AREA, not a fixed count — the sky host is
+ * FULL-BLEED (screen-edge to screen-edge, JS-fitted width) and the
+ * target scales with its non-excluded pixel area (~1 star / 11,000px²
+ * of free area → ~75 on a 1440x900 hero, 150+ by 2560x1440, ceiling
+ * 180 so ultrawide never becomes noise). A coarse cell grid sized to the
+ * target spreads them; probabilistic occupancy + full-cell jitter +
+ * dust companions keep it clustered-random. The outer 10% band on all
+ * four sides is seeded deliberately (perimeter fill) so the sky reaches
+ * the edges, including below the facts/CTA. Recomputed on resize
+ * (debounced full reseed). Seeded per page load.
  *
  * PAPER: ~7 ink clouds/zone (obvious at a glance: ~15% ink fill, ~20%
  * interior second shade, ~30% bottom edge) + birds crossing the full sky.
@@ -40,9 +46,9 @@ import { useEffect, useRef } from "react";
  * (24px pad for text, 40px for CTAs) — never merged — so the sky flows
  * through the composition: between the lockup's lines, beside short
  * lines, close to the words without ever touching them. After seeding, a
- * 4x4 COVERAGE CHECK reseeds/repairs until every region that isn't
+ * 5x5 COVERAGE CHECK reseeds/repairs until every region that isn't
  * mostly text holds at least one VISIBLE-tier element (dot2 or larger —
- * dust alone doesn't read as coverage). No four-corners look.
+ * dust alone doesn't read as coverage). No region the eye finds empty.
  *
  * Everything else holds: per-star randomized glimmer, meteors 30-90s /
  * birds 25-80s rerolled, the RETUNE (user switches only: hard cut →
@@ -115,14 +121,14 @@ function coverageOk(set: El[], ex: Rect[]): boolean {
   return emptyRegions(set, ex).length === 0;
 }
 
-/** viable (not >70% text-covered) 4x4 regions with zero VISIBLE
+/** viable (not >70% text-covered) 5x5 regions with zero VISIBLE
  *  elements — dust alone doesn't make a region read as "has stars" */
 const isVisible = (e: El) => e.kind !== "nebula" && e.kind !== "dust";
 function emptyRegions(set: El[], ex: Rect[]): { l: number; t: number }[] {
   const out: { l: number; t: number }[] = [];
-  const W = 100 / 4;
-  for (let ry = 0; ry < 4; ry++)
-    for (let rx = 0; rx < 4; rx++) {
+  const W = 100 / 5;
+  for (let ry = 0; ry < 5; ry++)
+    for (let rx = 0; rx < 5; rx++) {
       const l = rx * W, t = ry * W;
       let inEx = 0;
       for (let i = 0; i < 5; i++)
@@ -148,13 +154,13 @@ function repairCoverage(
   hostH: number,
 ): void {
   const r = prng(seed + 13);
-  const W = 100 / 4;
+  const W = 100 / 5;
   emptyRegions(set, ex).forEach(({ l, t }) => {
     for (let attempt = 0; attempt < 40; attempt++) {
       const x = l + r() * W;
       const y = t + r() * W;
       if (theme === "phosphor") {
-        if (ex.some((rc) => inRect(x, y, rc, 0))) continue;
+        if (ex.some((rc) => inRect(x, y, rc, 0.5))) continue;
         // repair with a VISIBLE tier — dust wouldn't register as coverage
         set.push({
           x, y, rows: SPRITES.dot2, base: SILVER[attempt % 2], px: 3,
@@ -224,11 +230,26 @@ function buildSet(
       }
     }
 
-    // STARS: clustered-random — the grid only guards against gross
-    // clumping; per-cell counts are probabilistic (some cells empty, most
-    // 1, occasional 2), jitter spans the whole cell, and dust sometimes
-    // brings close companions. Real skies clump; no detectable rhythm.
-    const COLS = 13, ROWS = 9; // rows 0-7 cover 0-100%, row 8 = the bleed band
+    // STARS: density per AREA, not fixed count. Free area = zone minus
+    // the exclusion rects (sampled); ~1 star / 7,000px² of it, floor 45,
+    // ceiling 180 (ultrawide must never become static noise).
+    let exHits = 0;
+    for (let i = 0; i < 24; i++)
+      for (let j = 0; j < 24; j++)
+        if (ex.some((rc) => inRect((i + 0.5) * (100 / 24), (j + 0.5) * (100 / 24), rc, 0)))
+          exHits++;
+    const freeArea = hostW * hostH * (1 - exHits / 576);
+    const N = Math.min(180, Math.max(45, Math.round(freeArea / 11000)));
+    // pyramid fractions of N — visible tiers dominant
+    const nHero = Math.max(2, Math.round(N * 0.09));
+    const nMid = Math.max(4, Math.round(N * 0.21));
+    const nDot2 = Math.round(N * 0.3);
+    // clustered-random on a grid SIZED TO N — the grid only guards
+    // against gross clumping; probabilistic occupancy, full-cell jitter,
+    // dust companions. Real skies clump; no detectable rhythm.
+    const COLS = Math.max(13, Math.round(hostW / 110));
+    const ROWS = Math.max(9, Math.ceil((N * 1.9) / COLS) + 1); // last row = bleed
+    const bleedCap = Math.max(6, Math.round(N * 0.12));
     const cells: { cx: number; cy: number; bleed: boolean }[] = [];
     for (let ri = 0; ri < ROWS; ri++)
       for (let c = 0; c < COLS; c++)
@@ -240,14 +261,13 @@ function buildSet(
     }
     let placed = 0, heroes = 0, bleeds = 0;
     const putStar = (x: number, y: number, bleed: boolean) => {
-      // pyramid tiers, weighted toward the VISIBLE ones (they are what
-      // make a region read as "has stars"): 1 big · 6 four-pointed ·
-      // 14 diamonds · 20 dot2 · ~25 dust
+      // pyramid tiers as fractions of N, weighted toward the VISIBLE
+      // ones (they are what make a region read as "has stars")
       const kind: El["kind"] =
         placed === 0 ? "big"
-        : placed <= 6 ? "hero"
-        : placed <= 20 ? "mid"
-        : placed <= 40 ? "dot2"
+        : placed <= nHero ? "hero"
+        : placed <= nHero + nMid ? "mid"
+        : placed <= nHero + nMid + nDot2 ? "dot2"
         : "dust";
       // amber stays special: the big one + two four-pointed (≤3/zone)
       const isAmber = kind === "big" || (kind === "hero" && heroes < 2);
@@ -275,12 +295,12 @@ function buildSet(
       return kind;
     };
     for (const cell of cells) {
-      if (placed >= 66) break;
+      if (placed >= N) break;
       // probabilistic occupancy: sparse patches and denser patches
       const roll = r();
       const n = roll < 0.34 ? 0 : roll < 0.82 ? 1 : 2;
-      for (let k = 0; k < n && placed < 66; k++) {
-        if (cell.bleed && bleeds >= 8) break;
+      for (let k = 0; k < n && placed < N; k++) {
+        if (cell.bleed && bleeds >= bleedCap) break;
         let x = 0, y = 0, ok = false;
         for (let attempt = 0; attempt < 6 && !ok; attempt++) {
           // full-cell jitter — no center bias
@@ -288,23 +308,40 @@ function buildSet(
           y = cell.bleed
             ? 100 + r() * 18
             : (cell.cy + r()) * (100 / (ROWS - 1));
-          ok = !ex.some((rc) => inRect(x, y, rc, 0));
+          ok = !ex.some((rc) => inRect(x, y, rc, 0.5));
         }
         if (!ok) continue;
         const kind = putStar(x, y, cell.bleed);
         // loose dust pairs/triples: close but never touching
         if (kind === "dust" && !cell.bleed && r() < 0.3) {
           const mates = r() < 0.3 ? 2 : 1;
-          for (let m = 0; m < mates && placed < 66; m++) {
+          for (let m = 0; m < mates && placed < N; m++) {
             const mx = x + (r() < 0.5 ? -1 : 1) * (1.2 + r() * 2.6);
             const my = y + (r() < 0.5 ? -1 : 1) * (1.8 + r() * 3.6);
             if (mx < 0 || mx > 99 || my < 0 || my > 100) continue;
-            if (ex.some((rc) => inRect(mx, my, rc, 0))) continue;
+            if (ex.some((rc) => inRect(mx, my, rc, 0.5))) continue;
             putStar(mx, my, false);
           }
         }
       }
     }
+    // PERIMETER FILL: the outer 10% band on all four sides carries sky
+    // to the screen edges — including the band below the facts/CTA.
+    // Each empty, non-text segment gets one star placed directly.
+    perimeterSegs().forEach((sg, si) => {
+      if (els.some((e) => e.kind !== "nebula" && e.x >= sg.x0 && e.x < sg.x1 && e.y >= sg.y0 && e.y < sg.y1)) return;
+      for (let a = 0; a < 24; a++) {
+        const x = sg.x0 + r() * (sg.x1 - sg.x0);
+        const y = sg.y0 + r() * (sg.y1 - sg.y0);
+        if (ex.some((rc) => inRect(x, y, rc, 0.5))) continue;
+        const kind = si % 2 ? "dot2" : "dust";
+        els.push({
+          x, y, rows: SPRITES[kind], base: SILVER[si % 2], px: 3,
+          presence: y > 80 ? 0.5 : kind === "dot2" ? 0.92 : 0.85, kind,
+        });
+        break;
+      }
+    });
   } else {
     // paper: a POPULATED sky — 9-11 ink clouds in three sizes, spread over
     // the whole zone including the gaps between text lines. Placement is
@@ -316,9 +353,16 @@ function buildSet(
       { rows: SPRITES.cloudA, px: 7 }, // medium
       { rows: SPRITES.cloudC, px: 8 }, // large
     ];
-    const target = 9 + Math.floor(r() * 3);
+    // density per area: ~1 cloud / 55,000px² of free area, min 9, cap 22
+    let exHitsC = 0;
+    for (let i = 0; i < 24; i++)
+      for (let j = 0; j < 24; j++)
+        if (ex.some((rc) => inRect((i + 0.5) * (100 / 24), (j + 0.5) * (100 / 24), rc, 0)))
+          exHitsC++;
+    const freeAreaC = hostW * hostH * (1 - exHitsC / 576);
+    const target = Math.min(22, Math.max(9, Math.round(freeAreaC / 80000)));
     let made = 0, guard = 0;
-    while (made < target && guard++ < 400) {
+    while (made < target && guard++ < 600) {
       const size = CLOUD_SIZES[Math.floor(r() * 3)];
       const wp = ((size.rows[0].length * size.px) / hostW) * 100;
       const hp = ((size.rows.length * size.px) / hostH) * 100;
@@ -339,8 +383,42 @@ function buildSet(
       });
       made++;
     }
+    // PERIMETER FILL: empty outer-band segments get one small cloud
+    perimeterSegs().forEach((sg) => {
+      if (els.some((e) => e.kind === "cloud" && e.x >= sg.x0 && e.x < sg.x1 && e.y >= sg.y0 && e.y < sg.y1)) return;
+      const px = 6;
+      const wp = ((SPRITES.cloudB[0].length * px) / hostW) * 100;
+      const hp = ((SPRITES.cloudB.length * px) / hostH) * 100;
+      for (let a = 0; a < 40; a++) {
+        const x = sg.x0 + r() * Math.max(1, sg.x1 - sg.x0 - wp);
+        const y = sg.y0 + r() * Math.max(1, sg.y1 - sg.y0 - hp);
+        if (ex.some((rc) => !(x + wp < rc.l || x > rc.r || y + hp < rc.t || y > rc.b))) continue;
+        els.push({
+          x, y, rows: SPRITES.cloudB,
+          base: "rgb(var(--ink) / 0.16)", inner: "rgb(var(--ink) / 0.22)",
+          edge: "rgb(var(--ink) / 0.32)", px,
+          presence: y > 78 ? 0.7 : 1, kind: "cloud",
+        });
+        break;
+      }
+    });
   }
   return els;
+}
+
+/** the outer 10% band, as segments: 5 along top and bottom, 3 each side */
+function perimeterSegs(): { x0: number; y0: number; x1: number; y1: number }[] {
+  const segs: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  for (let i = 0; i < 5; i++) {
+    segs.push({ x0: i * 20, y0: 0, x1: i * 20 + 20, y1: 10 });
+    segs.push({ x0: i * 20, y0: 90, x1: i * 20 + 20, y1: 100 });
+  }
+  for (let i = 0; i < 3; i++) {
+    const h = 80 / 3;
+    segs.push({ x0: 0, y0: 10 + i * h, x1: 10, y1: 10 + (i + 1) * h });
+    segs.push({ x0: 90, y0: 10 + i * h, x1: 100, y1: 10 + (i + 1) * h });
+  }
+  return segs;
 }
 
 function renderEl(el: El, host: HTMLElement, color?: string): HTMLElement {
@@ -368,6 +446,12 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
   useEffect(() => {
     const host = ref.current;
     if (!host) return;
+    const fit = () => {
+      const w = document.documentElement.clientWidth;
+      host.style.width = `${w}px`;
+      host.style.left = `calc(50% - ${w / 2}px)`;
+    };
+    fit();
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const theme = () =>
       document.documentElement.classList.contains("paper")
@@ -484,7 +568,7 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
             cycle();
           }, rnd(4000, 8000));
         };
-        later(cycle, rnd(0, 4000));
+        later(cycle, rnd(0, 8000)); // wide onset stagger: per-star shimmer rate unchanged as N grows
       });
       const meteor = (first: boolean) => {
         later(() => {
@@ -646,6 +730,7 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
       clearTimeout(rz);
       rz = setTimeout(() => {
         if (retuneAt) return; // don't fight a pending retune
+        fit();
         wipeAll();
         appear(true);
       }, 300);
@@ -667,10 +752,13 @@ export function Sky({ zone }: { zone: "hero" | "close" }) {
   }, [zone]);
 
   return (
+    // FULL-BLEED: the zone's text lives in the max-w container, but the
+    // sky reaches the screen edges — width is JS-fitted (clientWidth, not
+    // 100vw) so the scrollbar never causes horizontal overflow.
     <div
       ref={ref}
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 select-none"
+      className="pointer-events-none absolute inset-y-0 select-none"
     />
   );
 }
