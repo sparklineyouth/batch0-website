@@ -22,10 +22,14 @@
   --background: #0c0c0d;
   --foreground: #f5f5f4;
 
-  /* Chrome amber (labels, rules, icons, zero thread). FILLS stay #FFBB00
-   * in both themes via the `phosphor-fill` Tailwind token. */
+  /* Chrome amber (the zero thread). FILLS stay #FFBB00 in both themes via
+   * the `phosphor-fill` Tailwind token, which reads --phosphor-fill below.
+   *
+   * THE ONE AMBER: --phosphor-fill is the single literal in the codebase.
+   * Nothing else may hardcode #FFBB00 — cursor, pennant, and every button
+   * resolve here so the accent can never drift out of sync. */
+  --phosphor-fill: #ffbb00;
   --phosphor-rgb: 255 187 0;
-  --phosphor-soft: #a37905; /* solid equiv of amber@62% on this paper — AA */
   /* The smolder ramp (hero 0), ember → near-white. Flat blocks only. */
   --smolder-0: #7a4a00;
   --smolder-1: #b87a00;
@@ -60,8 +64,9 @@
   --background: #f7f3ea;
   --foreground: #0c0c0d;
 
+  /* --phosphor-fill deliberately does NOT flip: solid amber fills carry
+   * dark on-phosphor text (11.5:1) and must stay #FFBB00 on both surfaces. */
   --phosphor-rgb: 138 90 0; /* burnt amber — 5.3:1 on paper */
-  --phosphor-soft: #6e4a00; /* 7.2:1 — small labels stay AA */
   --smolder-0: #4a2e00;
   --smolder-1: #6e4a00;
   --smolder-2: #8a5a00;
@@ -208,7 +213,7 @@ a,
 }
 
 ::selection {
-  background: #ffbb00;
+  background: var(--phosphor-fill);
   color: #141414;
 }
 
@@ -318,7 +323,7 @@ a,
 .cursor-block {
   display: inline-block;
   width: 0.55ch;
-  background: #ffbb00;
+  background: var(--phosphor-fill);
   margin-left: 2px;
   animation: cursor-blink 1.06s steps(1) infinite;
 }
@@ -543,7 +548,7 @@ a,
   top: 0.72em;
   width: 14px;
   height: 3px;
-  background: #ffbb00;
+  background: var(--phosphor-fill);
 }
 .blog-prose ol {
   counter-reset: blog-ol;
@@ -566,7 +571,7 @@ a,
   margin-top: 0.6rem;
 }
 .blog-prose blockquote {
-  border-left: 3px solid #ffbb00;
+  border-left: 3px solid var(--phosphor-fill);
   padding-left: 1.25rem;
   margin-left: 0;
   color: rgb(var(--ink));

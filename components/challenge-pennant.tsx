@@ -119,7 +119,7 @@ export function ChallengePennant({
             />
             <span
               className="absolute inset-x-0"
-              style={{ top: 0, height: DAG_D, background: "#FFBB00", clipPath: DAG_CLIP }}
+              style={{ top: 0, height: DAG_D, background: "var(--phosphor-fill)", clipPath: DAG_CLIP }}
             />
           </div>
         ))}

@@ -42,7 +42,7 @@ export function SponsorContactForm({
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
             placeholder="Your name"
           />
         }
@@ -56,7 +56,7 @@ export function SponsorContactForm({
             required
             value={company}
             onChange={(e) => setCompany(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
             placeholder="Company or organization"
           />
         }
@@ -71,7 +71,7 @@ export function SponsorContactForm({
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
             placeholder="you@company.com"
           />
         }
@@ -83,7 +83,7 @@ export function SponsorContactForm({
           <select
             value={tier}
             onChange={(e) => setTier(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
           >
             {TIERS.map((t) => (
               <option key={t.name} value={`${t.name} (${t.price})`}>
@@ -102,7 +102,7 @@ export function SponsorContactForm({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={5}
-            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor-400 focus:outline-none focus:ring-1 focus:ring-phosphor"
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
             placeholder="Anything else we should know? Goals, timing, questions."
           />
         }

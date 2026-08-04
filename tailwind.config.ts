@@ -18,14 +18,9 @@ const config: Config = {
           DEFAULT: "rgb(var(--phosphor-rgb) / <alpha-value>)",
           // FILL amber — constant in both themes; always pairs with
           // text-on-phosphor (#141414). Buttons, highlight blocks, cursor.
-          fill: "#FFBB00",
+          // Reads --phosphor-fill (globals.css) so #FFBB00 is written once.
+          fill: "var(--phosphor-fill)",
           "fill-hover": "#FFD75C",
-          50: "#FFF7DB",
-          100: "#FFEBAD",
-          200: "#FFD75C",
-          300: "#FFBB00",
-          400: "#E5A800",
-          500: "#B38300",
         },
         ink: {
           // Light-surface ink ramp (DESIGN.md). DEFAULT/soft/faint are
