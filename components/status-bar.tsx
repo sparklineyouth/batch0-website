@@ -15,7 +15,15 @@ import { ZeroThread } from "@/components/zero-thread";
  * too). Server-rendered markup carries the static values so the bar is
  * complete without JS.
  */
-export function StatusBar({ config }: { config: SiteConfig }) {
+export function StatusBar({
+  config,
+  overHero = false,
+}: {
+  config: SiteConfig;
+  /** Homepage only: floating over the hero image, the bar drops its own
+   *  hairline so no rule is drawn across the artwork. */
+  overHero?: boolean;
+}) {
   const { derived, settings } = config;
   const closeAt = config.cohort?.applicationsCloseAt ?? null;
 
@@ -49,7 +57,10 @@ export function StatusBar({ config }: { config: SiteConfig }) {
   return (
     <div
       role="status"
-      className="flex items-center justify-between gap-4 overflow-hidden whitespace-nowrap border-b border-line px-5 py-1.5 font-mono text-xs tracking-[0.05em] text-ink-faint sm:px-6"
+      className={
+        "flex items-center justify-between gap-4 overflow-hidden whitespace-nowrap px-5 py-1.5 font-mono text-xs tracking-[0.05em] text-ink-faint sm:px-6 " +
+        (overHero ? "" : "border-b border-line")
+      }
     >
       <span>
         <b className="font-medium text-ink">batch0</b> · cohort{" "}

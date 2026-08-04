@@ -13,6 +13,7 @@ import CTA from "@/components/cta";
 import Footer from "@/components/footer";
 import StickyMobileCta from "@/components/sticky-mobile-cta";
 import { StatusBar } from "@/components/status-bar";
+import { OverHeroChrome } from "@/components/over-hero-chrome";
 import { PixelField } from "@/components/pixel-field";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveChallenge } from "@/lib/challenges";
@@ -41,21 +42,31 @@ export default async function Home() {
   const authedHome = profile ? roleHome(profile.role) : null;
   return (
     <main className="min-h-screen bg-paper">
-      <StatusBar config={config} />
-      <Navbar
-        authedHome={authedHome}
-        cohortLabel={config.derived.cohortLabel || "the next cohort"}
-      />
-      <ChallengePennant
-        title={challenge?.title}
-        prizeLabel={challenge?.prizeLabel}
-        closesAt={challenge?.closesAt}
-      />
+      {/* The chrome floats over the hero image rather than sitting on a
+          black band above it; it takes its opaque background back as soon
+          as the visitor scrolls. Fixed, so the hero starts at y=0. */}
+      <OverHeroChrome>
+        <StatusBar config={config} overHero />
+        <Navbar
+          authedHome={authedHome}
+          cohortLabel={config.derived.cohortLabel || "the next cohort"}
+          overHero
+        />
+        <ChallengePennant
+          title={challenge?.title}
+          prizeLabel={challenge?.prizeLabel}
+          closesAt={challenge?.closesAt}
+        />
+      </OverHeroChrome>
+
+      {/* Full-bleed: the hero is the one section outside the shared
+          container, because its image runs edge to edge. */}
+      <Hero config={config} authedHome={authedHome} />
+
       {/* ONE OBJECT: a single container — every movement starts on the
           same (invisible) left margin and shares the 12-column grid.
           Alignment is felt through consistency, never drawn as a line. */}
       <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
-        <Hero config={config} authedHome={authedHome} />
         <VideoPlate />
         <Thesis />
         <TheDeal config={config} />

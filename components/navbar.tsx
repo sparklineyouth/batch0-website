@@ -18,9 +18,15 @@ const LINKS = [
 export default function Navbar({
   authedHome,
   cohortLabel = "the next cohort",
+  overHero = false,
 }: {
   authedHome?: string | null;
   cohortLabel?: string;
+  /** Homepage only: the nav floats over the hero image, so it drops its
+   *  own background and hairline — <OverHeroChrome> owns both, and paints
+   *  them back in once the visitor scrolls. Every other page renders the
+   *  default sticky opaque bar unchanged. */
+  overHero?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const isAuthed = !!authedHome;
@@ -45,7 +51,13 @@ export default function Navbar({
     : `apply for ${cohortLabel.toLowerCase()}`;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-line bg-paper pt-safe">
+    <header
+      className={
+        overHero
+          ? "pt-safe"
+          : "sticky top-0 z-50 border-b border-line bg-paper pt-safe"
+      }
+    >
       <nav
         aria-label="Site"
         className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-4 px-5 sm:px-6"

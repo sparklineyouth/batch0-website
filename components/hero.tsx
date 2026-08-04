@@ -1,9 +1,9 @@
 import React from "react";
+import Image from "next/image";
 import type { SiteConfig } from "@/lib/site-config";
 import { ApplyCta } from "@/components/apply-cta";
 import { ZeroThread } from "@/components/zero-thread";
 import { HeroEntrance } from "@/components/hero-entrance";
-import { Sky } from "@/components/sky";
 import { smolderShade } from "@/components/smolder";
 
 const WEEK_WORDS = [
@@ -136,54 +136,92 @@ export default function Hero({
     : null;
 
   return (
-    <section className="relative flex min-h-[calc(100svh-11.75rem)] flex-col items-center justify-center py-10 text-center md:py-12">
-      <Sky zone="hero" />
-      {/* 1 · identifier (dim; the hero's amber belongs to the 0) */}
-      <p data-entrance-reveal className="t-small relative text-ink-soft">
-        batch0 · a startup accelerator for high schoolers{" "}
-        <span className="aside-note ml-2">previously sparkline youth</span>
-      </p>
+    <section className="relative h-[100svh] min-h-[600px] w-full overflow-hidden">
+      {/* The chrome floats over this section; the sentinel spans the top
+          quarter so <OverHeroChrome> turns opaque as soon as the visitor
+          scrolls, before the lockup travels up under the nav. */}
+      <div
+        id="hero-sentinel"
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[25vh]"
+      />
 
-      {/* 2 · the sentence — one centered lockup, the pixel-0 in the word */}
-      <h1 className="relative my-4 flex grow flex-col items-center justify-center">
-        <span className="t-head block text-ink-soft">
-          <Chars text={`${weeksWord} weeks`} frag="top" />
-        </span>
-        <span className="block whitespace-nowrap font-display text-[clamp(52px,15vw,190px)] leading-[1] text-ink">
-          <Chars text="one c" frag="l" />
-          <HeroZero />
-          <Chars text="mpany" frag="r" />
-        </span>
-        <span className="t-head mt-2 block text-phosphor">
-          <Chars text="yours." frag="bottom" />
-          <span aria-hidden data-typeon-cursor className="cursor-block" />
-        </span>
-      </h1>
+      {/* The image IS the hero background — it replaces the pixel/star
+          scatter that used to run here (<Sky zone="hero" />). The `close`
+          zone in the closing poster is untouched. Decorative, so alt="". */}
+      <Image
+        src="/hero-night-city.png"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-center"
+      />
 
-      {/* 3+4+5 · facts, button, # comment — fade up last, space reserved */}
-      <div data-entrance-reveal className="relative">
-        <p className="t-small text-ink-soft">
-          {closeLabel && settings.applicationsOpen && <>apply by {closeLabel} · </>}
-          {derived.priceLabel} only if accepted ·{" "}
-          <ZeroThread>0% equity</ZeroThread>
+      {/* Legibility scrim for the LOCKUP ONLY — strongest dead centre where
+          the cascade sits, fully transparent by the edges, so the park,
+          the skyline and the lit windows all stay visible. Not a flat dim. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 72% 48% at 50% 50%, rgba(0,0,0,.84) 0%, rgba(0,0,0,.66) 38%, rgba(0,0,0,.30) 64%, rgba(0,0,0,0) 82%)",
+        }}
+      />
+
+      <div className="relative z-10 mx-auto flex h-full max-w-[1100px] flex-col items-center justify-center px-5 pb-10 pt-[7.5rem] text-center sm:px-6">
+        {/* 1 · identifier (dim; the hero's amber belongs to the 0) */}
+        <p data-entrance-reveal className="t-small relative text-ink-soft">
+          batch0 · a startup accelerator for high schoolers{" "}
+          <span className="aside-note ml-2">previously sparkline youth</span>
         </p>
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-4">
-          {isAuthed ? (
-            <a
-              href={authedHome!}
-              className="press inline-flex items-center justify-center bg-phosphor-fill px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-            >
-              go to dashboard
-            </a>
-          ) : (
-            <ApplyCta
-              label={`apply for cohort ${String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}`}
-              location="hero"
-            />
-          )}
-          <span className="aside-note">
-            <ZeroThread>$0 to apply</ZeroThread>
+
+        {/* 2 · the sentence — ONE cascade. The three lines are pulled tight
+            (leading-[0.92], no growth, hairline margins) so they read as a
+            single falling block rather than three stacked headings. */}
+        <h1 className="relative my-5 flex flex-col items-center justify-center leading-[0.92]">
+          <span className="t-head block leading-[0.92] text-ink-soft">
+            <Chars text={`${weeksWord} weeks`} frag="top" />
           </span>
+          <span className="-mt-[0.06em] block whitespace-nowrap font-display text-[clamp(52px,15vw,190px)] leading-[0.94] text-ink">
+            <Chars text="one c" frag="l" />
+            <HeroZero />
+            <Chars text="mpany" frag="r" />
+          </span>
+          <span className="t-head -mt-[0.04em] block leading-[0.92] text-phosphor">
+            <Chars text="yours." frag="bottom" />
+            <span aria-hidden data-typeon-cursor className="cursor-block" />
+          </span>
+        </h1>
+
+        {/* 3+4+5 · facts, button, # comment — fade up last, space reserved */}
+        <div data-entrance-reveal className="relative">
+          <p className="t-small text-ink-soft">
+            {closeLabel && settings.applicationsOpen && (
+              <>apply by {closeLabel} · </>
+            )}
+            {derived.priceLabel} only if accepted ·{" "}
+            <ZeroThread>0% equity</ZeroThread>
+          </p>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-4">
+            {isAuthed ? (
+              <a
+                href={authedHome!}
+                className="press inline-flex items-center justify-center bg-phosphor-fill px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+              >
+                go to dashboard
+              </a>
+            ) : (
+              <ApplyCta
+                label={`apply for cohort ${String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}`}
+                location="hero"
+              />
+            )}
+            <span className="aside-note">
+              <ZeroThread>$0 to apply</ZeroThread>
+            </span>
+          </div>
         </div>
       </div>
 
