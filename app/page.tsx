@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import Navbar from "@/components/navbar";
 import Hero from "@/components/hero";
+import VideoPlate from "@/components/video-plate";
 import Thesis from "@/components/thesis";
 import TheDeal from "@/components/the-deal";
 import HowItWorks from "@/components/how-it-works";
@@ -55,6 +56,7 @@ export default async function Home() {
           Alignment is felt through consistency, never drawn as a line. */}
       <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
         <Hero config={config} authedHome={authedHome} />
+        <VideoPlate />
         <Thesis />
         <TheDeal config={config} />
         <HowItWorks config={config} />
