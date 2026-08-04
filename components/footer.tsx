@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { getSiteConfig, type SiteConfig } from "@/lib/site-config";
@@ -22,8 +23,30 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
     { href: "/login", label: "/login" },
   ];
   return (
-    <footer className="border-t border-line px-5 py-10 pb-safe sm:px-6">
-      <div className="mx-auto max-w-[1100px]">
+    <footer className="relative overflow-hidden border-t border-line px-5 py-10 pb-safe sm:px-6">
+      {/* The blue-hour skyline, full-bleed. object-bottom pins the lit
+          horizon and treeline to the footer's lower edge, which keeps the
+          whole upper band — where every link and the colophon sit — on
+          dark sky rather than on the sunset. Decorative, so alt="". */}
+      <Image
+        src="/footer-skyline.png"
+        alt=""
+        fill
+        sizes="100vw"
+        className="object-cover object-bottom"
+      />
+      {/* Two scrims, both weak: a top wash so the colophon and nav clear
+          AA on the sky, and a bottom lift only under the legal row where
+          the horizon is brightest. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(to bottom, rgba(12,12,13,.86) 0%, rgba(12,12,13,.72) 42%, rgba(12,12,13,.55) 72%, rgba(12,12,13,.78) 100%)",
+        }}
+      />
+      <div className="relative z-10 mx-auto max-w-[1100px]">
         <p className="font-mono text-[12.5px] text-ink-faint">
           $ logout <b className="font-medium text-ink">· exited 0</b> ·
           connection to batch0 closed
