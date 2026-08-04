@@ -21,6 +21,8 @@ export default function CTA({ config }: { config: SiteConfig }) {
           apply --cohort {String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}
         </b>
       </p>
+      {/* No subtitle here: the closing poster is the one place the command
+          stands alone, and the ask is already glossed by the aside-note. */}
       <h2 className="t-poster relative mt-5 max-w-[9ch] text-ink">
         {settings.applicationsOpen ? (
           <>

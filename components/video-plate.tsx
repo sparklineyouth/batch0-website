@@ -15,9 +15,9 @@ export default function VideoPlate() {
     <section id="video" className="border-t border-line py-14 md:py-20">
       <p className="cmdline font-mono">
         <b>./what-is-batch0.mp4</b>{" "}
-        <span className="mtime">· 2 min</span>
+        <span className="mtime">· not yet recorded</span>
       </p>
-      <p className="cmd-sub">the ninety-second version, if you prefer it.</p>
+      <p className="cmd-sub">the short version, once we&apos;ve filmed it.</p>
 
       <figure className="mt-6">
         <div className="relative mx-auto aspect-video w-full max-w-[860px] border border-line bg-wash">

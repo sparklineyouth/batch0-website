@@ -37,9 +37,10 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
   return (
     <section id="how-it-works" className="border-t border-line py-14 md:py-20">
       <p className="cmdline font-mono">
-        <b>cat how-it-works.txt</b>{" "}
+        <b>cat program.txt</b>{" "}
         <span className="mtime">· modified 2026-07-14</span>
       </p>
+      <p className="cmd-sub">how the nine weeks work.</p>
       <h2 className="t-head mt-4 text-ink">
         how it works: five steps{dates ? `, ${dates}` : ""}
       </h2>
