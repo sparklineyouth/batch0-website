@@ -1,9 +1,12 @@
 import { headers } from "next/headers";
 import Navbar from "@/components/navbar";
 import Hero from "@/components/hero";
+import TheDeal from "@/components/the-deal";
 import HowItWorks from "@/components/how-it-works";
-import FrontPage from "@/components/front-page";
-import FinePrint from "@/components/fine-print";
+import Manifest from "@/components/manifest";
+import WhoRunsThis from "@/components/who-runs-this";
+import FoundingCohort from "@/components/founding-cohort";
+import Faq from "@/components/faq";
 import CTA from "@/components/cta";
 import Footer from "@/components/footer";
 import StickyMobileCta from "@/components/sticky-mobile-cta";
@@ -51,9 +54,12 @@ export default async function Home() {
           Alignment is felt through consistency, never drawn as a line. */}
       <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
         <Hero config={config} authedHome={authedHome} />
+        <TheDeal config={config} />
         <HowItWorks config={config} />
-        <FrontPage config={config} />
-        <FinePrint config={config} />
+        <Manifest />
+        <WhoRunsThis config={config} />
+        <FoundingCohort config={config} />
+        <Faq config={config} />
         <CTA config={config} />
       </div>
       <Footer config={config} />
