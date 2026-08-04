@@ -22,15 +22,17 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
     { href: "/login", label: "/login" },
   ];
   return (
-    <footer className="border-t border-phosphor/25 px-5 py-10 pb-safe sm:px-6">
+    <footer className="border-t border-line px-5 py-10 pb-safe sm:px-6">
       <div className="mx-auto max-w-[1100px]">
-        <p className="font-mono text-[12.5px] text-phosphor/60">
-          $ logout <b className="font-medium text-phosphor">· exited 0</b> ·
+        <p className="font-mono text-[12.5px] text-ink-faint">
+          $ logout <b className="font-medium text-ink">· exited 0</b> ·
           connection to batch0 closed
+          {/* The colophon cursor rides the demoted $ logout line, so it is
+              off-white too — amber cursors belong to the poster lockups. */}
           <span
             aria-hidden
             className="cursor-block"
-            style={{ background: "rgba(255,187,0,.62)" }}
+            style={{ background: "rgb(var(--ink-faint))" }}
           />
         </p>
 
@@ -68,8 +70,8 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
         </div>
 
         <p className="t-small mt-8 font-mono text-ink-faint">
-          <span className="text-phosphor/60">$</span> mv sparkline-youth batch0{" "}
-          <span className="text-phosphor/60">→ done</span>
+          <span className="text-ink-faint">$</span> mv sparkline-youth batch0{" "}
+          <span className="text-ink-faint">→ done</span>
         </p>
         <div className="mt-3 flex flex-col items-start justify-between gap-3 border-t border-line pt-5 text-[13px] text-ink-faint md:flex-row md:items-center">
           <span>

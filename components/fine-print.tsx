@@ -62,7 +62,7 @@ export default function FinePrint({ config }: { config: SiteConfig }) {
   };
 
   return (
-    <section id="faq" className="border-t border-phosphor/25 py-14 md:py-20">
+    <section id="faq" className="border-t border-line py-14 md:py-20">
       <p className="cmdline font-mono">
         <b>cat fine-print.txt</b>{" "}
         <span className="mtime">· modified 2026-07-14</span>
@@ -125,16 +125,16 @@ export default function FinePrint({ config }: { config: SiteConfig }) {
           <div className="mt-4">
             {faqs.map((f, i) => (
               <details key={f.q} className="group">
-                <summary className="t-body flex cursor-pointer list-none items-baseline gap-3 py-2.5 font-medium text-ink hover:bg-phosphor/[0.07] [&::-webkit-details-marker]:hidden">
+                <summary className="t-body flex cursor-pointer list-none items-baseline gap-3 py-2.5 font-medium text-ink hover:bg-ink/[0.05] [&::-webkit-details-marker]:hidden">
                   <span
                     aria-hidden
-                    className="font-mono text-phosphor/40 group-open:text-phosphor"
+                    className="font-mono text-ink-faint group-open:text-ink-soft"
                   >
                     {i === faqs.length - 1 ? "└─" : "├─"}
                   </span>
                   {f.q}
                 </summary>
-                <p className="t-small ml-[0.5ch] max-w-[58ch] border-l border-phosphor/25 pb-3.5 pl-[3ch] pt-0.5 text-ink-soft">
+                <p className="t-small ml-[0.5ch] max-w-[58ch] border-l border-line pb-3.5 pl-[3ch] pt-0.5 text-ink-soft">
                   {f.a}
                 </p>
               </details>

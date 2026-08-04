@@ -44,7 +44,7 @@ export default function FrontPage({ config }: { config: SiteConfig }) {
     : null;
 
   return (
-    <section id="front-page" className="border-t border-phosphor/25 py-14 md:py-20">
+    <section id="front-page" className="border-t border-line py-14 md:py-20">
       <p className="cmdline font-mono">
         <b>cat front-page.txt</b>{" "}
         <span className="mtime">· modified 2026-07-14</span>
@@ -96,7 +96,7 @@ export default function FrontPage({ config }: { config: SiteConfig }) {
               ["equity taken", "none"],
             ].map(([k, v]) => (
               <div key={k} className="ledger-row">
-                <dt className="tracking-[0.06em] text-phosphor/60">{k}</dt>
+                <dt className="tracking-[0.06em] text-ink-faint">{k}</dt>
                 <span aria-hidden className="ledger-dots" />
                 <dd className="text-right font-medium text-ink">{v}</dd>
               </div>
@@ -119,7 +119,7 @@ export default function FrontPage({ config }: { config: SiteConfig }) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <FolderIcon size={ICON_SIZE} />
           <h3 className="t-body font-semibold text-ink">what you leave with</h3>
-          <span className="t-small font-mono text-phosphor/60">
+          <span className="t-small font-mono text-ink-faint">
             · total 6
           </span>
         </div>

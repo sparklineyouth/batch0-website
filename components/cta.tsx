@@ -14,7 +14,7 @@ export default function CTA({ config }: { config: SiteConfig }) {
   const cohortLabel = derived.cohortLabel || "the next cohort";
 
   return (
-    <section id="apply-cta" className="relative border-t border-phosphor/25 py-14 md:py-20">
+    <section id="apply-cta" className="relative border-t border-line py-14 md:py-20">
       <Sky zone="close" />
       <p className="cmdline relative font-mono">
         <b>

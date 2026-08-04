@@ -35,7 +35,7 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
   ];
 
   return (
-    <section id="how-it-works" className="border-t border-phosphor/25 py-14 md:py-20">
+    <section id="how-it-works" className="border-t border-line py-14 md:py-20">
       <p className="cmdline font-mono">
         <b>cat how-it-works.txt</b>{" "}
         <span className="mtime">· modified 2026-07-14</span>
@@ -68,7 +68,7 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
         <Link href="/program" className="link-ink">
           see the full program
         </Link>{" "}
-        <span aria-hidden className="text-phosphor">
+        <span aria-hidden className="text-ink-faint">
           →
         </span>
       </p>

@@ -53,7 +53,7 @@ export function Ledger({
           key={k}
           className={`ledger-row ${animate ? `animate-rise rise-${Math.min(i + 2, 5)}` : ""}`}
         >
-          <dt className="tracking-[0.06em] text-phosphor/60">{k}</dt>
+          <dt className="tracking-[0.06em] text-ink-faint">{k}</dt>
           <span aria-hidden className="ledger-dots" />
           <dd className="text-right font-medium text-ink">{v}</dd>
         </div>

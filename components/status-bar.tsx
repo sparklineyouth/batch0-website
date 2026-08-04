@@ -49,10 +49,10 @@ export function StatusBar({ config }: { config: SiteConfig }) {
   return (
     <div
       role="status"
-      className="flex items-center justify-between gap-4 overflow-hidden whitespace-nowrap border-b border-phosphor/25 px-5 py-1.5 font-mono text-xs tracking-[0.05em] text-phosphor/60 sm:px-6"
+      className="flex items-center justify-between gap-4 overflow-hidden whitespace-nowrap border-b border-line px-5 py-1.5 font-mono text-xs tracking-[0.05em] text-ink-faint sm:px-6"
     >
       <span>
-        <b className="font-medium text-phosphor">batch0</b> · cohort{" "}
+        <b className="font-medium text-ink">batch0</b> · cohort{" "}
         <ZeroThread className="font-medium text-ink">{cohortCode}</ZeroThread>
         <span className="hidden sm:inline">
           {" "}
