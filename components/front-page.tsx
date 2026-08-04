@@ -24,7 +24,7 @@ const ARTIFACTS: { file: string; note: string }[] = [
   { file: "lean-canvas.pdf", note: "Tested in interviews with strangers who owe you nothing." },
   { file: "shipped-v1.url", note: "Landing page, no-code MVP, or working prototype. Live and ready for the world to see." },
   { file: "business-model.xlsx", note: "Revenue, pricing, and unit economics you can defend on demo day." },
-  { file: "go-to-market.md", note: "A concrete path to your first paying customers, completeing with a funnel and marketing plan." },
+  { file: "go-to-market.md", note: "A concrete path to your first paying customers, complete with a funnel and marketing plan." },
   { file: "pitch-deck.key", note: "Written, rehearsed, and delivered live at demo day." },
   { file: "your-company/", note: "batch0 takes no equity, no IP, and no royalties. Everything you build is yours." },
 ];

@@ -27,11 +27,11 @@ export default function FinePrint({ config }: { config: SiteConfig }) {
     },
     {
       q: "who is it for?",
-      a: "U.S. high schoolers, ages 13–18. Bring a real idea, a half-formed hunch, or nothing at all. The first sessions EXIST to help you refine your idea, just come with a desire to learn and build. No startup experience required.",
+      a: "U.S. high schoolers, ages 13–18. Bring a real idea, a half-formed hunch, or nothing at all. The first sessions exist to help you refine your idea — just come with a desire to learn and build. No startup experience required.",
     },
     {
       q: "how much time does it take?",
-      a: "Each sessions helps students set individual and personalized deliverables. The amount of time a student spends per week varies for everyone, so plan for it the way you would a serious extracurricular." /* TODO(RISH): exact hours/week + live-session schedule — logged in NEEDED_FACTS.md */,
+      a: "Each session helps students set individual and personalized deliverables. The amount of time a student spends per week varies for everyone, so plan for it the way you would a serious extracurricular." /* TODO(RISH): exact hours/week + live-session schedule — logged in NEEDED_FACTS.md */,
     },
     {
       q: "is it really fully online?",
@@ -83,16 +83,16 @@ export default function FinePrint({ config }: { config: SiteConfig }) {
                 Rishabh Dagli and Taran Bethi
               </strong>
               , two 17-year-old serial founders. We built batch0 to give high
-              schoolers the same chance that we wish we had: to build a REAL
+              schoolers the same chance we wish we had: to build a real
               company with mentorship and support, and even the chance of
-              funding!
+              funding.
               {/* TODO(RISH): 2–3 public receipts (links) — shipped products,
                   hardware, repos, press. Logged in NEEDED_FACTS.md. */}
             </p>
             <p className="mt-3">
               Cohort 1 is deliberately the first. There are no glossy alumni
               stats to show you yet, and we won&apos;t invent any. What we can
-              promise: Rishabh and Taran runs every live session themselves,
+              promise: Rishabh and Taran run every live session themselves,
               read every application, and answer every parent question
               personally within a couple of days.
             </p>
