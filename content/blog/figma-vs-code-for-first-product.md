@@ -1,6 +1,6 @@
 ---
 title: "Should You Design in Figma or Just Start Building?"
-description: "Many student founders get stuck perfecting a Figma mockup. Here's when to design first, when to skip straight to building, and how to avoid the design trap."
+description: "Many student founders get stuck perfecting a Figma mockup. When to design first, when to skip straight to building, and how to avoid the trap."
 date: "2026-02-14"
 updated: "2026-02-14"
 category: "Build"

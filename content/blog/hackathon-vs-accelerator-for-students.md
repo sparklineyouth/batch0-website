@@ -1,5 +1,6 @@
 ---
 title: "Hackathon vs. Accelerator: What's the Difference for Students?"
+seoTitle: "Hackathon vs. Accelerator for Students"
 description: "Hackathons and accelerators sound similar but produce very different results. Here's the difference and which one fits where you are as a student founder."
 date: "2026-02-08"
 updated: "2026-02-08"

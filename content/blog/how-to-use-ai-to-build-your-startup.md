@@ -1,6 +1,6 @@
 ---
 title: "How to Use AI Tools to Build Your Startup Faster"
-description: "AI can write code, copy, and designs for you. Here's how a high school founder should actually use AI tools to build a product without shipping generic slop."
+description: "AI can write code, copy, and designs for you. How a high school founder should actually use AI tools to build a product without shipping slop."
 date: "2026-02-20"
 updated: "2026-02-20"
 category: "Build"

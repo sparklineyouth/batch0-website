@@ -1,6 +1,6 @@
 ---
 title: "How to Balance School and a Startup Without Burning Out"
-description: "You can run a startup and stay on top of school if you protect your time and cut scope, not sleep. Here's how student founders balance both without burning out."
+description: "You can run a startup and stay on top of school if you protect your time and cut scope, not sleep. How student founders balance both without burning out."
 date: "2026-05-26"
 updated: "2026-05-26"
 category: "Founders"

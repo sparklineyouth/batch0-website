@@ -1,6 +1,6 @@
 ---
 title: "How to Validate a Startup Idea in High School"
-description: "Validate a startup idea by talking to 10 potential customers before you build anything. Here's the exact process teen founders use to test an idea in a week."
+description: "Validate a startup idea by talking to 10 potential customers before you build. The exact process teen founders use to test an idea in a week."
 date: "2026-03-06"
 updated: "2026-03-06"
 category: "Validate"

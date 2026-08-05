@@ -1,6 +1,6 @@
 ---
 title: "Should Your MVP Be an App or a Website?"
-description: "An app store submission can waste weeks you don't have. Here's how to decide between a mobile app and a web app for your first product as a student founder."
+description: "An app store submission can waste weeks you don't have. How to decide between a mobile app and a web app for your first product."
 date: "2026-02-16"
 updated: "2026-02-16"
 category: "Build"

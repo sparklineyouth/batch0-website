@@ -1,6 +1,6 @@
 ---
 title: "What to Do When Your First Startup Fails"
-description: "Most first startups fail, and that's not the end. It's the tuition. Here's how to process a failed startup, pull out the real lessons, and start again stronger."
+description: "Most first startups fail, and that's not the end. How to process a failed startup, pull out the real lessons, and start again stronger."
 date: "2026-06-30"
 updated: "2026-06-30"
 category: "Founders"

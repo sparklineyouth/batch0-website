@@ -1,5 +1,6 @@
 ---
 title: "National vs. Local Startup Competitions: Which Should You Enter?"
+seoTitle: "National vs. Local Startup Competitions"
 description: "National startup competitions have bigger prizes but worse odds. Compare national vs. local competitions to decide where your entry has the best shot."
 date: "2026-02-28"
 updated: "2026-02-28"

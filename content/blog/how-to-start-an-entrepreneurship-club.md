@@ -1,6 +1,6 @@
 ---
 title: "How to Start an Entrepreneurship Club at Your School"
-description: "A step-by-step guide to starting an entrepreneurship club at your high school: getting an advisor, recruiting members, and running meetings people show up to."
+description: "A step-by-step guide to starting an entrepreneurship club at your school: getting an advisor, recruiting members, and running real meetings."
 date: "2026-02-04"
 updated: "2026-02-04"
 category: "Playbook"

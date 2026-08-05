@@ -1,5 +1,6 @@
 ---
 title: "How to Cold DM Strangers About Your Startup Without Being Annoying"
+seoTitle: "How to Cold DM Strangers Without Being Annoying"
 description: "A good cold DM gets a reply; a bad one gets ignored or blocked. Here's how to cold DM potential users about your startup without being annoying."
 date: "2026-02-15"
 updated: "2026-02-15"

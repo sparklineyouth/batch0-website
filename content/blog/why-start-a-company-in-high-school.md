@@ -1,6 +1,6 @@
 ---
 title: "Why You Should Start a Company in High School"
-description: "Starting a company in high school teaches you more than any class, and you have less to lose than you ever will again. Here's the honest case for building now."
+description: "Starting a company in high school teaches you more than any class, and you have less to lose than you ever will. The honest case for building now."
 date: "2026-03-03"
 updated: "2026-03-03"
 category: "Founders"

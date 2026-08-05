@@ -1,6 +1,6 @@
 ---
 title: "Feeling Like a Fraud as a Teen Founder"
-description: "Imposter syndrome hits young founders hard when adults take you seriously. Here's why you feel like a fake, and how to keep going without pretending you have it all figured out."
+description: "Imposter syndrome hits young founders hard when adults take you seriously. Why you feel like a fake, and how to keep going anyway."
 date: "2026-02-01"
 updated: "2026-02-01"
 category: "Founders"

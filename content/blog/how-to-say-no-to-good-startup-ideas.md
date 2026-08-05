@@ -1,6 +1,6 @@
 ---
 title: "Why Good Ideas Are Killing Your Startup"
-description: "The hardest founder skill is saying no to good ideas so you can finish one. Here's how young founders beat shiny-object syndrome and actually ship something."
+description: "The hardest founder skill is saying no to good ideas so you can finish one. How young founders beat shiny-object syndrome and actually ship."
 date: "2026-02-07"
 updated: "2026-02-07"
 category: "Founders"

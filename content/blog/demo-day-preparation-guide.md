@@ -1,6 +1,6 @@
 ---
 title: "How to Prepare for Demo Day"
-description: "Demo day rewards preparation, not talent. Here's a week-by-week plan to get your pitch, your demo, and your nerves ready so you deliver when it actually counts."
+description: "Demo day rewards preparation, not talent. A week-by-week plan to get your pitch, your demo, and your nerves ready before it counts."
 date: "2026-06-16"
 updated: "2026-06-16"
 category: "Pitch"

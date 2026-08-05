@@ -1,5 +1,6 @@
 ---
 title: "The Free Resources That Actually Teach You to Build a Startup"
+seoTitle: "Free Resources to Learn How to Build a Startup"
 description: "A curated list of free resources to learn startups as a teenager — courses, books, newsletters, and videos — with what to skip and what order to use them."
 date: "2026-02-10"
 updated: "2026-02-10"

@@ -1,6 +1,6 @@
 ---
 title: "How to Break Up With a Co-Founder"
-description: "Co-founder breakups are brutal, especially in high school. Here's how to leave or part ways with a co-founder cleanly, handle equity, and protect the friendship."
+description: "Co-founder breakups are brutal, especially in high school. How to part ways cleanly, handle equity, and protect the friendship."
 date: "2026-02-19"
 updated: "2026-02-19"
 category: "Founders"

@@ -1,6 +1,6 @@
 ---
 title: "How to Get Into a Competitive Startup Program as a Teen"
-description: "Selective teen startup programs reject most applicants. Here's how to get into a competitive startup program: what admissions actually look for and how to stand out."
+description: "Selective teen startup programs reject most applicants. How to get in: what admissions actually look for, and how to stand out."
 date: "2026-02-14"
 updated: "2026-02-14"
 category: "Playbook"

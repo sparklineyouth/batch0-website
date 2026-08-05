@@ -1,6 +1,6 @@
 ---
 title: "How to Split Equity With a Co-Founder in High School"
-description: "A fair co-founder equity split matters even for a teen startup. Here's how to divide ownership, use vesting, and avoid the handshake deals that blow up later."
+description: "A fair co-founder equity split matters even for a teen startup. How to divide ownership, use vesting, and avoid handshake deals that blow up."
 date: "2026-02-05"
 updated: "2026-02-05"
 category: "Founders"

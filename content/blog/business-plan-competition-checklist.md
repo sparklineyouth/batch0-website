@@ -1,6 +1,6 @@
 ---
 title: "The Business Plan Competition Checklist for High Schoolers"
-description: "A complete business plan competition checklist covering the financials, market section, and formatting judges expect, so nothing costs you points on submission day."
+description: "A business plan competition checklist covering the financials, market section, and formatting judges expect, so nothing costs you points."
 date: "2026-02-16"
 updated: "2026-02-16"
 category: "Playbook"

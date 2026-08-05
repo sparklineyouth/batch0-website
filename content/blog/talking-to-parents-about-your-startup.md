@@ -1,6 +1,6 @@
 ---
 title: "How to Talk to Your Parents About Your Startup"
-description: "Getting your parents on board makes everything easier. Here's how to talk to your parents about your startup by framing it around learning, time, and safety."
+description: "Getting your parents on board makes everything easier. How to talk to them about your startup by framing it around learning, time, and safety."
 date: "2026-07-08"
 updated: "2026-07-08"
 category: "Founders"

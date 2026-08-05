@@ -1,6 +1,6 @@
 ---
 title: "The Best Startup Competitions for High School Students"
-description: "Startup competitions are a low-risk way to test your idea, win money, and build your resume. Here's what to look for in a competition, and how to actually win one."
+description: "Startup competitions are a low-risk way to test your idea and win money. What to look for in a competition, and how to actually win one."
 date: "2026-06-23"
 updated: "2026-06-23"
 category: "Playbook"

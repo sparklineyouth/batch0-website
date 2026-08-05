@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPostsMeta } from "@/lib/blog";
+import { CATEGORIES, categoryPath } from "@/lib/blog-shared";
 
 // Canonical host is www — the apex 307s there, so the sitemap must not
 // hand crawlers redirecting URLs.
@@ -38,5 +39,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  return [...marketing, ...blogPosts];
+  // Category hubs. Each one's freshness tracks the newest post inside it, so
+  // a crawler recrawls a hub when its cluster actually changes rather than on
+  // a fixed guess. Ranked above individual posts: a hub is the URL we want
+  // competing for the broad head term ("startup pitch guide for students"),
+  // with the posts under it competing for the long tail.
+  const categories: MetadataRoute.Sitemap = CATEGORIES.map((category) => {
+    const newest = posts.find((p) => p.category === category);
+    return {
+      url: `${BASE}${categoryPath(category)}`,
+      lastModified: newest ? new Date(`${newest.updated}T12:00:00Z`) : now,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    };
+  });
+
+  return [...marketing, ...categories, ...blogPosts];
 }

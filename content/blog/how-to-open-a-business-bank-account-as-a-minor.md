@@ -1,6 +1,6 @@
 ---
 title: "How to Handle Money When You're Under 18"
-description: "You can't open a business bank account alone as a minor. Here's how teen founders take payments, use a parent's account or a custodial setup, and keep it clean."
+description: "You can't open a business bank account alone as a minor. How teen founders take payments, use a parent's or custodial account, and keep it clean."
 date: "2026-02-17"
 updated: "2026-02-17"
 category: "Founders"
