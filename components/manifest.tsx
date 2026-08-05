@@ -21,19 +21,12 @@ const ICON_SIZE = 5;
 export default function Manifest() {
   return (
     <section id="what-you-leave-with" className="border-t border-line py-14 md:py-20">
-      <p className="cmdline font-mono">
-        <b>ls -la deliverables/</b>{" "}
-        <span className="mtime">· modified 2026-07-14</span>
-      </p>
-      <p className="cmd-sub">the six things you own at the end.</p>
+      <p className="section-intro">the six things you own at the end.</p>
 
       <div className="mt-6">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <FolderIcon size={ICON_SIZE} />
           <h2 className="t-body font-semibold text-ink">what you leave with</h2>
-          <span className="t-small font-mono text-ink-faint">
-            · total {ARTIFACTS.length}
-          </span>
         </div>
         <ul className="mt-4 grid grid-cols-12 gap-x-6">
           {ARTIFACTS.map((a) => (

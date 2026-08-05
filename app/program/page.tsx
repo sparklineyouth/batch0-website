@@ -1,9 +1,6 @@
 import { headers } from "next/headers";
 import Navbar from "@/components/navbar";
-import { ChallengePennant } from "@/components/challenge-pennant";
-import { getActiveChallenge } from "@/lib/challenges";
 import Footer from "@/components/footer";
-import { StatusBar } from "@/components/status-bar";
 import { PixelField } from "@/components/pixel-field";
 import { Ledger } from "@/components/ledger";
 import { ApplyCta } from "@/components/apply-cta";
@@ -53,10 +50,9 @@ const DETAIL: Record<string, string[]> = {
  */
 export default async function ProgramPage() {
   const countryCode = getCountryFromHeaders(headers());
-  const [config, profile, challenge] = await Promise.all([
+  const [config, profile] = await Promise.all([
     getSiteConfig({ countryCode }),
     getProfile(),
-    getActiveChallenge(),
   ]);
   const authedHome = profile ? roleHome(profile.role) : null;
   const { derived } = config;
@@ -65,15 +61,9 @@ export default async function ProgramPage() {
 
   return (
     <main className="min-h-screen bg-paper">
-      <StatusBar config={config} />
       <Navbar
         authedHome={authedHome}
         cohortLabel={derived.cohortLabel || "the next cohort"}
-      />
-      <ChallengePennant
-        title={challenge?.title}
-        prizeLabel={challenge?.prizeLabel}
-        closesAt={challenge?.closesAt}
       />
 
       {/* ONE OBJECT: the single shared container — every section starts on
@@ -81,10 +71,6 @@ export default async function ProgramPage() {
       <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
         {/* the page head — sentence left, cohort ledger right */}
         <section className="py-14 md:py-20">
-          <p className="cmdline font-mono">
-            <b>cat program.txt</b>{" "}
-            <span className="mtime">· modified 2026-07-14</span>
-          </p>
           <div className="mt-6 grid grid-cols-12 gap-x-6 gap-y-10">
             <div className="col-span-12 md:col-span-7">
               <h1 className="t-head max-w-[22ch] text-ink">
@@ -106,10 +92,6 @@ export default async function ProgramPage() {
 
         {/* the curriculum — the page's dense movement */}
         <section className="border-t border-phosphor/25 py-14 md:py-20">
-          <p className="cmdline font-mono">
-            <b>cat curriculum.txt</b>{" "}
-            <span className="mtime">· modified 2026-07-14</span>
-          </p>
           <h2 className="t-head mt-4 text-ink">step by step</h2>
           <ol className="mt-6">
             {WEEKS.map((w) => (
@@ -151,10 +133,6 @@ export default async function ProgramPage() {
 
         {/* demo day */}
         <section className="border-t border-phosphor/25 py-14 md:py-20">
-          <p className="cmdline font-mono">
-            <b>cat demo-day.txt</b>{" "}
-            <span className="mtime">· modified 2026-07-14</span>
-          </p>
           <h2 className="t-head mt-4 text-ink">demo day</h2>
           <div className="mt-6 grid grid-cols-12 gap-x-6">
             <div className="col-span-12 md:col-span-8">
@@ -176,9 +154,6 @@ export default async function ProgramPage() {
 
         {/* the closing ask — the page's one apply CTA (plus nav chrome) */}
         <section className="border-t border-phosphor/25 py-14 md:py-20">
-          <p className="cmdline font-mono">
-            <b>apply --cohort {cohortCode}</b>
-          </p>
           <h2 className="t-head mt-4 max-w-[26ch] text-ink">
             if you read this far, you&apos;re the kind of person who
             finishes things.

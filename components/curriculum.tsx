@@ -37,10 +37,6 @@ export const WEEKS = [
 export default function Curriculum() {
   return (
     <section id="curriculum" className="border-t border-phosphor/25 py-14 md:py-20">
-      <p className="cmdline font-mono">
-        <b>cat curriculum.txt</b>{" "}
-        <span className="mtime">· modified 2026-07-14</span>
-      </p>
       <h2 className="t-head mt-4 text-ink">four sprints, four artifacts</h2>
       <p className="t-body mt-4 max-w-[38rem] text-ink-soft">
         Each sprint is one startup skill applied to your own company,

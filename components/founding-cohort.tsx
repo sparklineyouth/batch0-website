@@ -36,11 +36,7 @@ export default function FoundingCohort({ config }: { config: SiteConfig }) {
 
   return (
     <section id="founding-cohort" className="border-t border-line py-14 md:py-20">
-      <p className="cmdline font-mono">
-        <b>cat cohort-{cohortCode}.txt</b>{" "}
-        <span className="mtime">· modified 2026-07-14</span>
-      </p>
-      <p className="cmd-sub">why going first is the advantage.</p>
+      <p className="section-intro">why going first is the advantage.</p>
 
       <h2 className="t-head mt-4 max-w-[20ch] text-ink">
         cohort <ZeroThread>{cohortCode}</ZeroThread> is the first one.

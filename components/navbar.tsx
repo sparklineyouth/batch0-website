@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { ApplyCta } from "@/components/apply-cta";
 
 // Use absolute hrefs (`/#anchor`) so hash links still resolve when the
-// navbar is rendered on subroutes. Labels are paths — terminal grammar.
+// navbar is rendered on subroutes.
 const LINKS = [
   { href: "/program", label: "/program" },
   { href: "/blog", label: "/blog" },
@@ -44,8 +44,6 @@ export default function Navbar({
   }, [open]);
 
   const applyHref = isAuthed ? authedHome! : "/apply";
-  // Chrome CTA (#3 of the page's three asks) speaks command grammar.
-  const applyLabel = isAuthed ? "dashboard" : "$ apply";
   const applyLabelLong = isAuthed
     ? "dashboard"
     : `apply for ${cohortLabel.toLowerCase()}`;
@@ -71,7 +69,7 @@ export default function Navbar({
             <Link
               key={l.href}
               href={l.href}
-              className="path-link text-sm text-ink-soft hover:text-ink"
+              className="text-sm text-ink-soft transition-colors hover:text-ink"
             >
               {l.label}
             </Link>
@@ -83,7 +81,7 @@ export default function Navbar({
           {!isAuthed && (
             <Link
               href="/login"
-              className="path-link text-sm text-ink-soft hover:text-ink"
+              className="text-sm text-ink-soft transition-colors hover:text-ink"
             >
               /login
             </Link>

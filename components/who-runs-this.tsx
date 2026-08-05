@@ -16,10 +16,7 @@ export default function WhoRunsThis({ config }: { config: SiteConfig }) {
 
   return (
     <section id="who-runs-this" className="border-t border-line py-14 md:py-20">
-      <p className="cmdline font-mono">
-        <b>whoami</b> <span className="mtime">· modified 2026-07-14</span>
-      </p>
-      <p className="cmd-sub">the two founders who run every session.</p>
+      <p className="section-intro">the two founders who run every session.</p>
 
       <div className="mt-6 flex items-center gap-3.5">
         <FoundersIcon size={5} />

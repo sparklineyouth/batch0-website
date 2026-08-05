@@ -30,11 +30,7 @@ export default function TheDeal({ config }: { config: SiteConfig }) {
 
   return (
     <section id="the-deal" className="border-t border-line py-14 md:py-20">
-      <p className="cmdline font-mono">
-        <b>cat terms.txt</b>{" "}
-        <span className="mtime">· modified 2026-07-14</span>
-      </p>
-      <p className="cmd-sub">dates, deadline, and what it costs.</p>
+      <p className="section-intro">dates, deadline, and what it costs.</p>
 
       {/* story columns on the shared grid; the lead is the deadline */}
       <div className="mt-6 grid grid-cols-12 gap-x-6">

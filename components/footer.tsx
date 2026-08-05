@@ -47,19 +47,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
         }}
       />
       <div className="relative z-10 mx-auto max-w-[1100px]">
-        <p className="font-mono text-[12.5px] text-ink-faint">
-          $ logout <b className="font-medium text-ink">· exited 0</b> ·
-          connection to batch0 closed
-          {/* The colophon cursor rides the demoted $ logout line, so it is
-              off-white too — amber cursors belong to the poster lockups. */}
-          <span
-            aria-hidden
-            className="cursor-block"
-            style={{ background: "rgb(var(--ink-faint))" }}
-          />
-        </p>
-
-        <div className="mt-7 flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+        <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
           <div className="max-w-sm">
             <Wordmark className="h-[18px] text-ink" />
             <p className="mt-3 text-sm leading-[1.6] text-ink-soft">
@@ -84,7 +72,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
               <Link
                 key={l.href}
                 href={l.href}
-                className="path-link text-sm text-ink-soft hover:text-ink"
+                className="text-sm text-ink-soft transition-colors hover:text-ink"
               >
                 {l.label}
               </Link>
@@ -92,23 +80,19 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
           </nav>
         </div>
 
-        <p className="t-small mt-8 font-mono text-ink-faint">
-          <span className="text-ink-faint">$</span> mv sparkline-youth batch0{" "}
-          <span className="text-ink-faint">→ done</span>
-        </p>
-        <div className="mt-3 flex flex-col items-start justify-between gap-3 border-t border-line pt-5 text-[13px] text-ink-faint md:flex-row md:items-center">
+        <div className="mt-10 flex flex-col items-start justify-between gap-3 border-t border-line pt-5 text-[13px] text-ink-faint md:flex-row md:items-center">
           <span>
             © {new Date().getFullYear()} Sparkline Youth LLC. all rights
             reserved.
           </span>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-            <Link href="/terms" className="path-link hover:text-ink">
+            <Link href="/terms" className="transition-colors hover:text-ink">
               /terms
             </Link>
-            <Link href="/privacy" className="path-link hover:text-ink">
+            <Link href="/privacy" className="transition-colors hover:text-ink">
               /privacy
             </Link>
-            <Link href="/refund-policy" className="path-link hover:text-ink">
+            <Link href="/refund-policy" className="transition-colors hover:text-ink">
               /refund-policy
             </Link>
           </div>

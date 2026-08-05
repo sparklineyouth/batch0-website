@@ -12,12 +12,9 @@ import Faq from "@/components/faq";
 import CTA from "@/components/cta";
 import Footer from "@/components/footer";
 import StickyMobileCta from "@/components/sticky-mobile-cta";
-import { StatusBar } from "@/components/status-bar";
 import { OverHeroChrome } from "@/components/over-hero-chrome";
 import { PixelField } from "@/components/pixel-field";
 import { getSiteConfig } from "@/lib/site-config";
-import { getActiveChallenge } from "@/lib/challenges";
-import { ChallengePennant } from "@/components/challenge-pennant";
 import { getCountryFromHeaders } from "@/lib/pricing";
 import { getProfile, roleHome } from "@/lib/auth";
 
@@ -34,10 +31,9 @@ export const metadata = { alternates: { canonical: "/" } };
  */
 export default async function Home() {
   const countryCode = getCountryFromHeaders(headers());
-  const [config, profile, challenge] = await Promise.all([
+  const [config, profile] = await Promise.all([
     getSiteConfig({ countryCode }),
     getProfile(),
-    getActiveChallenge(),
   ]);
   const authedHome = profile ? roleHome(profile.role) : null;
   return (
@@ -46,16 +42,10 @@ export default async function Home() {
           black band above it; it takes its opaque background back as soon
           as the visitor scrolls. Fixed, so the hero starts at y=0. */}
       <OverHeroChrome>
-        <StatusBar config={config} overHero />
         <Navbar
           authedHome={authedHome}
           cohortLabel={config.derived.cohortLabel || "the next cohort"}
           overHero
-        />
-        <ChallengePennant
-          title={challenge?.title}
-          prizeLabel={challenge?.prizeLabel}
-          closesAt={challenge?.closesAt}
         />
       </OverHeroChrome>
 

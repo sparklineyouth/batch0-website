@@ -7,7 +7,6 @@ import { ApplicationForm } from "./application-form";
 import { getCountryFromHeaders, getRegionalPrice, DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 import { getApplicationQuestions } from "@/lib/application-questions";
 import { getSiteConfig } from "@/lib/site-config";
-import { StatusBar } from "@/components/status-bar";
 import { ZeroThread } from "@/components/zero-thread";
 import { FlagIcon } from "@/components/icons/pixel-icon";
 
@@ -97,7 +96,6 @@ export default async function ApplyPage({
   if (!applicationsOpen) {
     return (
       <div className="min-h-screen bg-paper">
-        <StatusBar config={siteConfig} />
         <div className="mx-auto max-w-[1100px] px-5 py-14 sm:px-6 md:py-20">
           <Link
             href="/dashboard"
@@ -107,10 +105,6 @@ export default async function ApplyPage({
           </Link>
           <div className="mt-8 grid grid-cols-12 gap-x-6">
             <div className="col-span-12 md:col-span-8">
-              <p className="cmdline font-mono">
-                <b>cat apply.txt</b>{" "}
-                <span className="mtime">· modified 2026-07-14</span>
-              </p>
               <h1 className="t-head mt-4 text-ink">
                 applications are closed
               </h1>
@@ -153,7 +147,6 @@ export default async function ApplyPage({
 
   return (
     <div className="min-h-screen bg-paper">
-      <StatusBar config={siteConfig} />
       <div className="mx-auto max-w-[1100px] px-5 py-10 sm:px-6 sm:py-14 md:py-20">
         <div className="grid grid-cols-12 gap-x-6">
           <div className="col-span-12 md:col-span-8">
@@ -174,10 +167,6 @@ export default async function ApplyPage({
               )}
             </div>
 
-            <p className="cmdline font-mono">
-              <b>cat {reapplying ? "reapply" : "apply"}.txt</b>{" "}
-              <span className="mtime">· modified 2026-07-14</span>
-            </p>
             {/* the page's ONE icon: the flag, the apply gate */}
             <div className="mt-4 flex items-center gap-3.5">
               <FlagIcon size={5} />

@@ -22,11 +22,7 @@ const BEATS: { from: string; to: string }[] = [
 export default function Thesis() {
   return (
     <section id="thesis" className="border-t border-line py-14 md:py-20">
-      <p className="cmdline font-mono">
-        <b>cat thesis.txt</b>{" "}
-        <span className="mtime">· modified 2026-07-14</span>
-      </p>
-      <p className="cmd-sub">what nine weeks actually changes.</p>
+      <p className="section-intro">what nine weeks actually changes.</p>
 
       <div className="mt-6 grid grid-cols-12 items-center gap-x-6 gap-y-8">
         <div className="col-span-12 md:col-span-7">

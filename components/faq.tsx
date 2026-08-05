@@ -61,33 +61,18 @@ export default function Faq({ config }: { config: SiteConfig }) {
 
   return (
     <section id="faq" className="border-t border-line py-14 md:py-20">
-      <p className="cmdline font-mono">
-        <b>man batch0</b>{" "}
-        <span className="mtime">· modified 2026-07-14</span>
-      </p>
-      <p className="cmd-sub">the questions parents ask first.</p>
+      <p className="section-intro">the questions parents ask first.</p>
 
       <div className="mt-6 flex items-center gap-3.5">
         <BubbleIcon size={5} />
-        <h2 className="t-body font-semibold text-ink">
-          questions parents ask{" "}
-          <span className="font-mono font-normal text-ink-faint">
-            · {faqs.length}
-          </span>
-        </h2>
+        <h2 className="t-body font-semibold text-ink">questions parents ask</h2>
       </div>
 
       <div className="mt-4 grid grid-cols-12 gap-x-6">
         <div className="col-span-12 md:col-span-8">
-          {faqs.map((f, i) => (
+          {faqs.map((f) => (
             <details key={f.q} className="group">
               <summary className="t-body flex cursor-pointer list-none items-baseline gap-3 py-2.5 font-medium text-ink hover:bg-ink/[0.05] [&::-webkit-details-marker]:hidden">
-                <span
-                  aria-hidden
-                  className="font-mono text-ink-faint group-open:text-ink-soft"
-                >
-                  {i === faqs.length - 1 ? "└─" : "├─"}
-                </span>
                 {f.q}
               </summary>
               <p className="t-small ml-[0.5ch] max-w-[58ch] border-l border-line pb-3.5 pl-[3ch] pt-0.5 text-ink-soft">

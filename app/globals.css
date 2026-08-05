@@ -36,8 +36,6 @@
   --smolder-2: #ffbb00;
   --smolder-3: #ffd24d;
   --smolder-4: #fff3d6;
-  /* The challenge banner's dagged-edge shadow: ember on the black page. */
-  --dag-shadow: #7a4a00;
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
   --safe-left: env(safe-area-inset-left);
@@ -72,8 +70,6 @@
   --smolder-2: #8a5a00;
   --smolder-3: #b87a00;
   --smolder-4: #ffbb00;
-  /* The dagged edge's shadow: burnt amber on paper. */
-  --dag-shadow: #8a5a00;
 }
 /* Tailwind alpha chrome that AA fails when blended on paper — pin the two
  * text-carrying steps to solid burnt values. Hairlines/ticks stay alpha
@@ -333,42 +329,23 @@ a,
   .cursor-block { animation: none; }
 }
 
-/* The identical section head, everywhere: `$ command · modified …` */
-/* Command headers are TEXTURE, not the accent — off-white throughout, so
- * the page's one amber event stays on CTAs and meaningful zeros. */
-.cmdline { font-size: 13px; color: rgb(var(--ink-faint)); }
-.cmdline::before { content: "$ "; color: rgb(var(--ink-faint)); }
-.cmdline b { color: rgb(var(--ink)); font-weight: 500; }
-.cmdline .mtime { color: rgb(var(--ink-faint)); }
-
-/* The plain-language gloss under each command header: the command is the
- * texture, this is the meaning. Snaps to t-small — no fifth type size. */
-.cmd-sub {
+/* The plain-language line that opens each section. This replaced the old
+ * `$ cat section.txt` command header outright — the command was texture,
+ * this is the meaning, and only the meaning survives. Snaps to t-small so
+ * the four-size scale is unchanged. */
+.section-intro {
   font-size: 13px;
   line-height: 1.6;
   color: rgb(var(--ink-soft));
-  margin-top: 0.375rem;
 }
 
-/* Comment asides that carry true data: `# $0 to apply` */
+/* Small asides that carry true data. Previously prefixed with a shell
+ * comment `# `; the marker is gone, the data is not. */
 .aside-note { color: rgb(var(--ink-faint)); font-size: 13px; }
-.aside-note::before { content: "# "; color: rgb(var(--ink-faint)); }
 
 /* The spine is INVISIBLE: no drawn rail. Alignment is felt through the
  * one shared container margin and the 12-column grid — every section
  * head and every block starts on the same left edge, never a line. */
-
-/* Nav paths: hover surfaces the prompt. */
-.path-link::before {
-  content: "$ ";
-  color: rgb(var(--phosphor-rgb));
-  display: inline-block;
-  width: 0;
-  overflow: hidden;
-  opacity: 0;
-  vertical-align: bottom;
-}
-.path-link:hover::before { opacity: 1; width: 2ch; }
 
 /* Marketing body links: ink text, phosphor underline. */
 .link-ink {

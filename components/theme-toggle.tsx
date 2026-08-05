@@ -60,7 +60,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       onClick={flip}
       aria-label={`switch to ${mode === "paper" ? "phosphor (dark)" : "paper (light)"} theme`}
       title={`theme: ${mode}`}
-      className={`path-link t-small inline-flex items-center gap-1.5 font-mono lowercase text-ink-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor ${className}`}
+      className={`t-small inline-flex items-center gap-1.5 font-mono lowercase text-ink-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor ${className}`}
     >
       <PixelIcon name={mode === "paper" ? "sun" : "moon"} size={TOGGLE_STYLE === "glyph" ? 1.5 : 1} />
       {TOGGLE_STYLE === "text" && <>[{mode}]</>}
