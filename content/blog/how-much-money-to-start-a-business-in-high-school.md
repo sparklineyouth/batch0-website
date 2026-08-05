@@ -1,6 +1,7 @@
 ---
 title: "How Much Money Do You Need to Start a Business in High School?"
-description: "Most high school businesses can start for under $100, sometimes for $0. Here's what actually costs money early, what doesn't, and how to avoid wasting your cash."
+seoTitle: "How Much Money to Start a Business in High School"
+description: "Most high school businesses can start for under $100, sometimes $0. What actually costs money early, what doesn't, and how to avoid wasting cash."
 date: "2026-04-28"
 updated: "2026-04-28"
 category: "Founders"

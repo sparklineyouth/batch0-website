@@ -1,6 +1,6 @@
 ---
 title: "What Is an MVP? A Plain-English Definition"
-description: "An MVP is the smallest version of your product that lets a real user do the one thing that matters. Here's what an MVP is, what it isn't, and how to build one."
+description: "An MVP is the smallest version of your product that lets a real user do the one thing that matters. What an MVP is, isn't, and how to build one."
 date: "2026-03-20"
 updated: "2026-03-20"
 category: "Build"

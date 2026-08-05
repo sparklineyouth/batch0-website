@@ -1,6 +1,6 @@
 ---
 title: "How to Test a Business Idea Before You Build It"
-description: "You can test a business idea in a weekend without building the product, using landing pages, fake doors, pre-sales, and concierge tests. Here's how each one works."
+description: "Test a business idea in a weekend without building the product: landing pages, fake doors, pre-sales, and concierge tests. How each one works."
 date: "2026-03-27"
 updated: "2026-03-27"
 category: "Validate"

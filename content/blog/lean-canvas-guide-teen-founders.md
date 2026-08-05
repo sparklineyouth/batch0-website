@@ -1,6 +1,6 @@
 ---
 title: "The Lean Canvas, Explained for Teen Founders"
-description: "The Lean Canvas is a one-page replacement for the business plan. Here's how to fill out all nine boxes for your startup, with examples a high schooler can follow."
+description: "The Lean Canvas is a one-page replacement for the business plan. How to fill out all nine boxes, with examples a high schooler can follow."
 date: "2026-03-24"
 updated: "2026-03-24"
 category: "Validate"

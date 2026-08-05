@@ -1,6 +1,7 @@
 ---
 title: "The Best Free No-Code Tools to Launch a Startup as a Teenager"
-description: "The best free and low-cost no-code tools for student founders, to build sites, apps, forms, and automations without writing code, plus what each category is best for."
+seoTitle: "The Best Free No-Code Tools for Teen Founders"
+description: "The best free no-code tools for student founders: build sites, apps, forms, and automations without writing code, plus what each one is best for."
 date: "2026-04-03"
 updated: "2026-04-03"
 category: "Build"

@@ -1,6 +1,6 @@
 ---
 title: "How to Do Competitive Analysis Without Overthinking It"
-description: "Competitive analysis isn't a giant spreadsheet. It's finding how customers solve the problem today and where the gap is. Here's a fast, useful way to do it."
+description: "Competitive analysis isn't a giant spreadsheet. It's finding how customers solve the problem today and where the gap is. A fast way to do it."
 date: "2026-05-12"
 updated: "2026-05-12"
 category: "Market"

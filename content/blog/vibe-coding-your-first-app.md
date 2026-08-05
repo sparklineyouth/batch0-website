@@ -1,6 +1,6 @@
 ---
 title: "Vibe Coding: Building an App With AI When You Can't Code"
-description: "AI code tools let non-programmers build real apps by describing them. Here's how vibe coding works, where it breaks, and how to ship something that survives users."
+description: "AI code tools let non-programmers build real apps by describing them. How vibe coding works, where it breaks, and how to ship something usable."
 date: "2026-02-26"
 updated: "2026-02-26"
 category: "Build"

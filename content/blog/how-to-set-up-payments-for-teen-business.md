@@ -1,6 +1,6 @@
 ---
 title: "How to Accept Payments When You're Under 18"
-description: "Stripe, PayPal, and most processors require 18+. Here's how a teen founder can actually collect money for a product using a parent, an LLC, or a workaround."
+description: "Stripe, PayPal, and most processors require 18+. How a teen founder can actually collect money using a parent, an LLC, or a workaround."
 date: "2026-02-08"
 updated: "2026-02-08"
 category: "Build"

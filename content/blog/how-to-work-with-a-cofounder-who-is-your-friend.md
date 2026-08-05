@@ -1,6 +1,6 @@
 ---
 title: "When Your Co-Founder Is Also Your Best Friend"
-description: "Building a startup with a close friend can save the friendship or wreck it. Here's how teen co-founders divide roles, handle conflict, and stay friends after."
+description: "Building a startup with a close friend can save the friendship or wreck it. How teen co-founders divide roles, handle conflict, and stay friends."
 date: "2026-02-13"
 updated: "2026-02-13"
 category: "Founders"

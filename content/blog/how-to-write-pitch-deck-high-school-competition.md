@@ -1,6 +1,6 @@
 ---
 title: "How to Write a Pitch Deck for a High School Competition"
-description: "A winning pitch deck is about 10 slides that tell one clear story. Here's the exact slide-by-slide structure for a high school startup competition, with what goes on each."
+description: "A winning pitch deck is about 10 slides that tell one story. The slide-by-slide structure for a high school startup competition, and what goes where."
 date: "2026-05-29"
 updated: "2026-05-29"
 category: "Pitch"

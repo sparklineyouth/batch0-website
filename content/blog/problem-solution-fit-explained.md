@@ -1,6 +1,6 @@
 ---
 title: "Problem-Solution Fit: Are You Building the Right Thing?"
-description: "Problem-solution fit means you've proven a real problem exists and your solution is one people will actually use. Here's how to know when you have it, and when you don't."
+description: "Problem-solution fit means you've proven a real problem exists and people will use your fix. How to know when you have it, and when you don't."
 date: "2026-04-07"
 updated: "2026-04-07"
 category: "Validate"

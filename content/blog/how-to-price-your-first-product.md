@@ -1,6 +1,6 @@
 ---
 title: "How to Price Your First Product"
-description: "Pricing your first product isn't guessing. It's based on the value you create and what alternatives cost. Here's how to set a price and test it without fear."
+description: "Pricing your first product isn't guessing. It's the value you create and what alternatives cost. How to set a price and test it without fear."
 date: "2026-04-14"
 updated: "2026-04-14"
 category: "Build"

@@ -3,13 +3,16 @@ import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { getSiteConfig } from "@/lib/site-config";
 import { getProfile, roleHome } from "@/lib/auth";
-import { getAllPostsMeta, formatPostDate, type PostMeta } from "@/lib/blog";
+import { PostRow, CategoryNav } from "@/components/post-row";
+import { getAllPostsMeta } from "@/lib/blog";
+import { CATEGORIES, categoryPath } from "@/lib/blog-shared";
 import { SITE, ORG_ID } from "@/lib/schema";
 
 export const metadata = {
-  title: "Startup Guides for High Schoolers — batch0 Blog",
+  title: "Startup Guides for High Schoolers — batch0",
+  // Was 186 characters, so Google cut it at "price your first pro…". Now 152.
   description:
-    "Practical, no-fluff guides and essays for high-school founders: how to validate an idea, run customer interviews, build an MVP with no code, price your first product, and pitch at demo day.",
+    "Practical guides for high-school founders: validate an idea, interview customers, build an MVP with no code, price it, get users, and pitch at demo day.",
   alternates: { canonical: "/blog" },
   openGraph: {
     title: "Startup Guides for High Schoolers — batch0 Blog",
@@ -19,39 +22,6 @@ export const metadata = {
     type: "website",
   },
 };
-
-function PostRow({ post }: { post: PostMeta }) {
-  return (
-    <li className="group border-b border-line py-8 first:pt-0 last:border-b-0">
-      <Link href={`/blog/${post.slug}`} className="block">
-        <div className="grid gap-3 md:grid-cols-12 md:gap-8">
-          <div className="md:col-span-3">
-            <p className="font-mono text-[12px] uppercase tracking-[0.08em] text-ink-faint">
-              {post.category}
-            </p>
-            <p className="mt-1 font-mono text-[13px] text-ink-faint">
-              {formatPostDate(post.date)}
-            </p>
-            <p className="mt-1 font-mono text-[12px] text-ink-faint">
-              {post.readingTime} min read
-            </p>
-          </div>
-          <div className="md:col-span-9">
-            <h2 className="font-display text-[1.5rem] font-bold leading-[1.12] tracking-[-0.02em] text-ink underline decoration-transparent decoration-2 underline-offset-4 group-hover:decoration-phosphor">
-              {post.title}
-            </h2>
-            <p className="mt-2 max-w-[46rem] text-[15px] leading-[1.6] text-ink-soft">
-              {post.excerpt}
-            </p>
-            <p className="mt-3 font-mono text-[12px] text-ink-faint">
-              {post.author.name}
-            </p>
-          </div>
-        </div>
-      </Link>
-    </li>
-  );
-}
 
 export default async function BlogIndexPage() {
   const [config, profile, posts] = await Promise.all([
@@ -112,6 +82,17 @@ export default async function BlogIndexPage() {
             strangers, shipping an MVP with no code, pricing it, and pitching it
             live. Written for people who plan to finish.
           </p>
+
+          {/* Links down into the six topic hubs. Without this the hubs would
+              be orphans that only the sitemap knows about. */}
+          <div className="mt-10">
+            <CategoryNav
+              categories={CATEGORIES.map((c) => ({
+                label: c,
+                href: categoryPath(c),
+              }))}
+            />
+          </div>
         </div>
       </section>
 

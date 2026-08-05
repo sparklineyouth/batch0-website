@@ -1,6 +1,6 @@
 ---
 title: "The Story Structure Behind Every Good Pitch"
-description: "Every memorable pitch is a story: a character with a problem, a change, and a better world. Here's the story structure behind great pitches, and how to use it."
+description: "Every memorable pitch is a story: a character with a problem, a change, a better world. The story structure behind great pitches."
 date: "2026-06-02"
 updated: "2026-06-02"
 category: "Pitch"

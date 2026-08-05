@@ -2,9 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   META_DESCRIPTION_MAX,
+  TITLE_TAG_MAX,
+  blogTitleTag,
   buildMetaDescription,
   formatApplyBy,
   formatDateSentence,
+  pickRelated,
+  relatednessScore,
+  titleTerms,
 } from "./seo-meta.ts";
 
 // Run with `npm test`. No test framework, no transpile step — Node strips the
@@ -222,4 +227,133 @@ test("a long price label degrades gracefully instead of overflowing", () => {
   // candidate when a shorter one fits.
   assert.ok(typeof out === "string" && out.length > 0);
   assert.ok(!out.includes("apply by"));
+});
+
+// ---------- blogTitleTag ----------
+
+test("short titles keep the brand suffix", () => {
+  assert.equal(blogTitleTag("What Is an MVP?"), "What Is an MVP? — batch0");
+});
+
+test("the brand suffix is dropped rather than truncated", () => {
+  // The old behaviour appended unconditionally, pushing 58 of 135 posts past
+  // the budget — and the truncation ate the very suffix it was adding.
+  const long = "How to Actually Win the Prize Money at a Pitch Competition";
+  assert.ok(long.length <= TITLE_TAG_MAX, "fixture should fit unbranded");
+  assert.ok((long + " — batch0").length > TITLE_TAG_MAX, "fixture should not fit branded");
+
+  const out = blogTitleTag(long);
+  assert.equal(out, long);
+  assert.ok(out.length <= TITLE_TAG_MAX);
+});
+
+test("an over-budget headline is returned intact, never mangled", () => {
+  // When even the bare title is too long the answer is a content fix
+  // (`seoTitle`), not a silent truncation that could cut mid-word. The
+  // seo-doctor blog audit is what surfaces these.
+  const tooLong = "Startup Accelerator Programs for High Schoolers: A 2026 Guide";
+  assert.ok(tooLong.length > TITLE_TAG_MAX);
+  assert.equal(blogTitleTag(tooLong), tooLong);
+});
+
+test("seoTitle overrides the headline for the title tag only", () => {
+  const out = blogTitleTag(
+    "How to Convince Skeptical Parents to Let You Join a Startup Program",
+    "How to Get Parents to Say Yes to a Startup Program",
+  );
+  assert.equal(out, "How to Get Parents to Say Yes to a Startup Program — batch0");
+  assert.ok(out.length <= TITLE_TAG_MAX);
+});
+
+test("a blank seoTitle falls back to the title", () => {
+  assert.equal(blogTitleTag("What Is an MVP?", "   "), "What Is an MVP? — batch0");
+  assert.equal(blogTitleTag("What Is an MVP?", null), "What Is an MVP? — batch0");
+});
+
+// ---------- topical relatedness ----------
+
+const post = (
+  slug: string,
+  title: string,
+  category: string,
+  tags: string[] = [],
+) => ({ slug, title, category, tags });
+
+test("titleTerms strips stopwords and short words", () => {
+  const terms = titleTerms("How to Write a Pitch Deck for a Competition");
+  assert.ok(terms.has("write"));
+  assert.ok(terms.has("pitch"));
+  assert.ok(terms.has("deck"));
+  assert.ok(terms.has("competition"));
+  assert.ok(!terms.has("how"));
+  assert.ok(!terms.has("to"));
+  assert.ok(!terms.has("for"));
+});
+
+test("shared tags outweigh a shared category", () => {
+  const current = post("a", "Alpha", "Pitch", ["pitch deck"]);
+  const tagMatch = post("b", "Bravo", "Founders", ["pitch deck"]);
+  const catOnly = post("c", "Charlie", "Pitch", ["taxes"]);
+  assert.ok(
+    relatednessScore(current, tagMatch) > relatednessScore(current, catOnly),
+  );
+});
+
+test("shared title terms rescue posts with no tag overlap", () => {
+  // 45 of 135 posts share no tag with any other post. Tags alone would leave
+  // a third of the catalogue with no meaningful internal links.
+  const current = post("a", "How to Make a Pitch Deck in Canva", "Pitch", ["canva"]);
+  const termMatch = post("b", "The Pitch Deck Slide Order That Works", "Founders", ["slides"]);
+  const unrelated = post("c", "Do You Pay Taxes on Teen Business Income?", "Founders", ["taxes"]);
+  assert.ok(
+    relatednessScore(current, termMatch) > relatednessScore(current, unrelated),
+  );
+});
+
+test("a post is never related to itself", () => {
+  const p = post("a", "Alpha", "Pitch", ["x"]);
+  assert.equal(relatednessScore(p, p), -1);
+  assert.deepEqual(pickRelated(p, [p], 3), []);
+});
+
+test("pickRelated surfaces the topical cluster, not the category", () => {
+  // The regression this replaces: "same category, then most recent" linked
+  // every pitch post to the same three recent siblings, so nine pitch-deck
+  // guides never linked to each other.
+  const current = post("how-to-make-a-pitch-deck-in-canva", "How to Make a Pitch Deck in Canva", "Pitch", ["pitch deck"]);
+  const candidates = [
+    current,
+    post("pitch-deck-slide-order", "The Pitch Deck Slide Order That Works", "Pitch", ["pitch deck"]),
+    post("how-many-slides-in-a-pitch-deck", "How Many Slides Should a Pitch Deck Have?", "Pitch", ["pitch deck"]),
+    post("what-to-wear-to-a-pitch-competition", "What to Wear to a Pitch Competition", "Pitch", ["dress code"]),
+    post("how-to-not-be-nervous-pitching", "How to Not Be Nervous When You Pitch", "Pitch", ["nerves"]),
+  ];
+  const related = pickRelated(current, candidates, 3).map((p) => p.slug);
+  assert.ok(related.includes("pitch-deck-slide-order"));
+  assert.ok(related.includes("how-many-slides-in-a-pitch-deck"));
+  assert.ok(!related.includes("what-to-wear-to-a-pitch-competition"));
+});
+
+test("pickRelated is deterministic and respects the limit", () => {
+  const current = post("a", "Alpha Beta", "Pitch", ["x"]);
+  const candidates = [
+    post("z", "Alpha Gamma", "Pitch", ["x"]),
+    post("y", "Alpha Delta", "Pitch", ["x"]),
+    post("x", "Alpha Epsilon", "Pitch", ["x"]),
+  ];
+  const first = pickRelated(current, candidates, 2).map((p) => p.slug);
+  const second = pickRelated(current, [...candidates].reverse(), 2).map((p) => p.slug);
+  assert.equal(first.length, 2);
+  // Ties break on slug, so input order cannot reshuffle the link graph.
+  assert.deepEqual(first, second);
+});
+
+test("pickRelated still returns something when nothing overlaps", () => {
+  // Every post must get internal links, even a topical orphan.
+  const current = post("a", "Zebra Xylophone", "Pitch", ["nothing"]);
+  const candidates = [
+    post("b", "Quantum Mechanics", "Build", ["other"]),
+    post("c", "Baking Bread", "Market", ["else"]),
+  ];
+  assert.equal(pickRelated(current, candidates, 3).length, 2);
 });

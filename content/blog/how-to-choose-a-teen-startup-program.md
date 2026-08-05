@@ -1,5 +1,6 @@
 ---
 title: "How to Choose a Teen Startup Program That Isn't a Waste of Money"
+seoTitle: "How to Choose a Teen Startup Program"
 description: "Some teen startup programs are worth it; many aren't. Here's a checklist of green flags and red flags to judge any program before you pay a single dollar."
 date: "2026-07-02"
 updated: "2026-07-02"

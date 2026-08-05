@@ -1,6 +1,6 @@
 ---
 title: "How to Know When to Quit Your Startup (and When to Push)"
-description: "Deciding when to quit a startup is harder than starting one. Here are the honest signals that tell a young founder to pivot, keep going, or walk away for good."
+description: "Deciding when to quit a startup is harder than starting one. The honest signals that tell a young founder to pivot, push on, or walk away."
 date: "2026-02-23"
 updated: "2026-02-23"
 category: "Founders"

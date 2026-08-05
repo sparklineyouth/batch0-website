@@ -1,6 +1,6 @@
 ---
 title: "Subscription or One-Time Price: Which Should You Charge?"
-description: "Recurring revenue sounds great, but it's not right for every product. Here's how to choose between a subscription and a one-time price for your first product."
+description: "Recurring revenue sounds great, but it's not right for every product. How to choose between a subscription and a one-time price."
 date: "2026-02-22"
 updated: "2026-02-22"
 category: "Build"

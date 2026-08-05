@@ -1,6 +1,6 @@
 ---
 title: "Distribution: How Early Startups Actually Find Users"
-description: "Great products don't sell themselves; distribution does. Here's a tour of the channels early startups use to find users, and how to pick the one that fits you."
+description: "Great products don't sell themselves; distribution does. A tour of the channels early startups use to find users, and how to pick one."
 date: "2026-05-19"
 updated: "2026-05-19"
 category: "Market"

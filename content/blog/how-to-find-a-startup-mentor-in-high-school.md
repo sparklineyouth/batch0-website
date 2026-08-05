@@ -1,5 +1,6 @@
 ---
 title: "How to Find a Startup Mentor When You're Still in High School"
+seoTitle: "How to Find a Startup Mentor in High School"
 description: "Learn how to find a startup mentor as a high schooler: where to look, how to send a cold message that gets answered, and what to ask for once you connect."
 date: "2026-02-22"
 updated: "2026-02-22"

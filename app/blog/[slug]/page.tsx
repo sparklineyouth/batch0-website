@@ -13,6 +13,8 @@ import {
   formatPostDate,
 } from "@/lib/blog";
 import { SITE, ORG_ID } from "@/lib/schema";
+import { blogTitleTag } from "@/lib/seo-meta";
+import { categoryPath } from "@/lib/blog-shared";
 
 // Every post is a file on disk, so the whole set can be pre-rendered at
 // build time — static HTML is the fastest thing to serve and the cleanest
@@ -31,7 +33,10 @@ export async function generateMetadata({
   const { meta } = post;
   const url = `${SITE}/blog/${meta.slug}`;
   return {
-    title: `${meta.title} — batch0`,
+    // Conditional brand suffix — see `blogTitleTag`. Unconditionally appending
+    // " — batch0" pushed 58 of 135 posts past Google's ~60-character render
+    // budget, and the truncation ate the suffix it was there to add.
+    title: blogTitleTag(meta.title, meta.seoTitle),
     description: meta.description,
     keywords: meta.tags,
     alternates: { canonical: `/blog/${meta.slug}` },
@@ -108,9 +113,18 @@ export default async function BlogPostPage({
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "Home", item: SITE },
       { "@type": "ListItem", position: 2, name: "Blog", item: `${SITE}/blog` },
+      // The category hub sits between the blog and the post. This is the
+      // structural half of the topic cluster: it tells a crawler which of the
+      // six themes this post belongs to, and mirrors the visible breadcrumb.
       {
         "@type": "ListItem",
         position: 3,
+        name: meta.category,
+        item: `${SITE}${categoryPath(meta.category)}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 4,
         name: meta.title,
         item: url,
       },
@@ -131,7 +145,14 @@ export default async function BlogPostPage({
             <span aria-hidden className="px-2">
               /
             </span>
-            <span className="text-ink-soft">{meta.category}</span>
+            {/* Links up to the category hub — every post in a cluster passes
+                authority to its hub, and readers get a way sideways. */}
+            <Link
+              href={categoryPath(meta.category)}
+              className="text-ink-soft hover:text-ink"
+            >
+              {meta.category}
+            </Link>
           </nav>
 
           <header className="mt-6">
@@ -160,9 +181,9 @@ export default async function BlogPostPage({
               Stop reading. Start building.
             </p>
             <p className="mt-3 max-w-[40rem] text-[15px] leading-[1.65] text-ink-soft">
-              batch0 is a live, online accelerator for U.S. high
-              schoolers. You&apos;ll build a real company across four sprints
-              and pitch it at demo day. Free to apply, {config.derived.priceLabel}{" "}
+              batch0 is a live, online accelerator for high schoolers.
+              You&apos;ll build a real company across four sprints and pitch it
+              at demo day. Free to apply, {config.derived.priceLabel}{" "}
               only if accepted, no equity taken.
             </p>
             <div className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">

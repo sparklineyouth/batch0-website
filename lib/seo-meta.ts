@@ -22,6 +22,127 @@
 export const META_DESCRIPTION_MAX = 155;
 
 /**
+ * Google renders roughly 600px of title text, which works out to about 60
+ * characters. Past that it truncates with an ellipsis.
+ */
+export const TITLE_TAG_MAX = 60;
+
+/** Appended to blog titles when there's room for it. */
+export const BRAND_SUFFIX = " — batch0";
+
+/**
+ * The `<title>` for a blog post.
+ *
+ * Blog titles were unconditionally suffixed with " — batch0", which pushed 58
+ * of 135 posts past the 60-character limit. The irony: the truncation ate the
+ * suffix, so the posts that "needed" the branding hardest were exactly the
+ * ones where it never rendered — and several lost words from the headline too.
+ *
+ * So the suffix is now conditional. Dropping it costs nothing: the site ships
+ * a `WebSite` node with `name: "batch0"` in the root layout, and Google
+ * derives the site name for search results from that, not from the title tag.
+ *
+ * `seoTitle` is an optional frontmatter override for the handful of posts
+ * whose headline is over budget on its own. It lets the on-page `<h1>` stay
+ * long and specific while the title tag stays short — they serve different
+ * readers and there's no reason to force them to match.
+ */
+export function blogTitleTag(title: string, seoTitle?: string | null): string {
+  const base = (seoTitle?.trim() || title).trim();
+  const branded = `${base}${BRAND_SUFFIX}`;
+  return branded.length <= TITLE_TAG_MAX ? branded : base;
+}
+
+/**
+ * Score how topically related two posts are, for internal linking.
+ *
+ * Internal links are the one ranking lever entirely inside our control: they
+ * route authority between pages and tell Google which posts form a topic
+ * cluster. The previous implementation — "same category, then most recent" —
+ * threw that away. With 20–24 posts per category it linked the same three
+ * recent posts from all ~23 siblings, so a handful of arbitrary posts absorbed
+ * every internal link and genuinely related posts never connected. Nine posts
+ * about pitch decks sat in the same category without one link between them.
+ *
+ * Signals, in descending weight:
+ *   - shared tags       — the strongest explicit topical signal we have
+ *   - shared title terms — catches clusters the tags missed. 45 of 135 posts
+ *                          have no tag in common with any other post, so tags
+ *                          alone would leave a third of the catalogue orphaned.
+ *   - same category     — a weak tiebreaker, not a primary signal
+ *
+ * Deterministic: no dates, no randomness. The same inputs always produce the
+ * same links, so a rebuild can't silently reshuffle the internal link graph.
+ */
+const TITLE_STOPWORDS = new Set([
+  "a","an","the","and","or","but","if","then","than","that","this","these","those",
+  "to","of","in","on","at","for","from","with","without","by","as","is","are","was",
+  "were","be","been","being","do","does","did","doing","how","what","when","where",
+  "why","who","which","your","you","yours","my","our","it","its","not","no","so",
+  "can","will","should","would","could","actually","really","just","get","got",
+  "make","makes","made","first","one","about","into","out","up","down","over",
+  "more","most","some","any","every","all","own","same","too","very","s","t",
+]);
+
+export function titleTerms(title: string): Set<string> {
+  return new Set(
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .split(/[\s-]+/)
+      .filter((w) => w.length > 2 && !TITLE_STOPWORDS.has(w)),
+  );
+}
+
+export type RelatednessInput = {
+  slug: string;
+  title: string;
+  category: string;
+  tags: string[];
+};
+
+export function relatednessScore(
+  a: RelatednessInput,
+  b: RelatednessInput,
+): number {
+  if (a.slug === b.slug) return -1;
+
+  const aTags = new Set(a.tags.map((t) => t.toLowerCase().trim()));
+  const sharedTags = b.tags.filter((t) => aTags.has(t.toLowerCase().trim())).length;
+
+  const aTerms = titleTerms(a.title);
+  const sharedTerms = [...titleTerms(b.title)].filter((t) => aTerms.has(t)).length;
+
+  const sameCategory = a.category === b.category ? 1 : 0;
+
+  return sharedTags * 10 + sharedTerms * 3 + sameCategory;
+}
+
+/**
+ * Pick the `limit` most related posts.
+ *
+ * Ties break on slug rather than date so the link graph is stable across
+ * builds — a post that publishes today shouldn't quietly rewire the internal
+ * links of fifty older posts.
+ */
+export function pickRelated<T extends RelatednessInput>(
+  current: RelatednessInput,
+  candidates: readonly T[],
+  limit = 3,
+): T[] {
+  return candidates
+    .filter((c) => c.slug !== current.slug)
+    .map((c) => ({ post: c, score: relatednessScore(current, c) }))
+    .sort((x, y) =>
+      y.score !== x.score
+        ? y.score - x.score
+        : x.post.slug.localeCompare(y.post.slug),
+    )
+    .slice(0, limit)
+    .map((x) => x.post);
+}
+
+/**
  * "Sep 14 – Nov 13, 2026".
  *
  * Distinct from the "→" range used in the on-page stat block: an arrow glyph

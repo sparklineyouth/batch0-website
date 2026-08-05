@@ -1,5 +1,6 @@
 ---
 title: "How to Convince Skeptical Parents to Let You Join a Startup Program"
+seoTitle: "How to Get Parents to Say Yes to a Startup Program"
 description: "Parents worry a startup program is a distraction or a scam. Here's how to make the case, answer their real objections, and get a yes on your accelerator."
 date: "2026-02-11"
 updated: "2026-02-11"

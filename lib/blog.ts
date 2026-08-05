@@ -22,6 +22,7 @@ import {
   readingTimeFor,
   formatPostDate,
 } from "@/lib/blog-shared";
+import { pickRelated } from "@/lib/seo-meta";
 
 // Hybrid blog. Posts come from two sources, merged into one namespace:
 //
@@ -98,6 +99,7 @@ function parseMeta(slug: string, raw: string): { meta: PostMeta; body: string } 
   const meta: PostMeta = {
     slug,
     title: String(data.title ?? "").trim(),
+    seoTitle: data.seoTitle ? String(data.seoTitle).trim() : undefined,
     description: String(data.description ?? "").trim(),
     date,
     updated: String(data.updated ?? date),
@@ -287,13 +289,28 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
   return { meta, html: await renderMarkdown(body) };
 }
 
-// Related posts: same category first, then most recent, excluding self.
+/**
+ * Related posts, scored by actual topical overlap.
+ *
+ * This used to be "same category first, then most recent". With 20–24 posts
+ * per category that meant every post in a category linked to the same three
+ * recent siblings: a few arbitrary posts collected every internal link, and
+ * genuinely related posts — nine separate pitch-deck guides, for instance —
+ * never linked to each other at all.
+ *
+ * Scoring lives in lib/seo-meta.ts (pure and unit-tested); see `pickRelated`
+ * for the weights and why ties break on slug rather than date.
+ */
 export async function getRelatedPosts(
   current: PostMeta,
   limit = 3,
 ): Promise<PostMeta[]> {
-  const all = (await getAllPostsMeta()).filter((p) => p.slug !== current.slug);
-  const sameCat = all.filter((p) => p.category === current.category);
-  const rest = all.filter((p) => p.category !== current.category);
-  return [...sameCat, ...rest].slice(0, limit);
+  return pickRelated(current, await getAllPostsMeta(), limit);
+}
+
+/** Every published post in a category, newest first. Powers the hub pages. */
+export async function getPostsByCategory(
+  category: Category,
+): Promise<PostMeta[]> {
+  return (await getAllPostsMeta()).filter((p) => p.category === category);
 }

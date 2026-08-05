@@ -21,14 +21,17 @@
  * Exits non-zero on FAIL so it can be wired into CI or a scheduled job.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
   META_DESCRIPTION_MAX,
+  TITLE_TAG_MAX,
+  blogTitleTag,
   buildMetaDescription,
   formatApplyBy,
   formatDateSentence,
+  pickRelated,
 } from "../lib/seo-meta.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -303,6 +306,168 @@ async function checkCrawlerFiles() {
 }
 
 // ---------------------------------------------------------------------------
+// 4. The blog catalogue.
+//
+// 135 posts is far too many to eyeball, and the two failure modes here are
+// silent: a title or description that's a few characters over budget looks
+// fine in the editor and gets truncated in the only place that matters.
+// ---------------------------------------------------------------------------
+type PostFrontmatter = {
+  slug: string;
+  title: string;
+  seoTitle?: string;
+  description: string;
+  category: string;
+  tags: string[];
+};
+
+function parseFrontmatter(slug: string, raw: string): PostFrontmatter | null {
+  const fm = raw.split("---")[1];
+  if (!fm) return null;
+  const field = (key: string) => {
+    const m = fm.match(new RegExp(`^${key}: *(.*)$`, "m"));
+    return m ? m[1].trim().replace(/^"|"$/g, "") : "";
+  };
+  const tagsRaw = fm.match(/^tags: *\[(.*)\]/m)?.[1] ?? "";
+  return {
+    slug,
+    title: field("title"),
+    seoTitle: field("seoTitle") || undefined,
+    description: field("description"),
+    category: field("category"),
+    tags: tagsRaw
+      .split(",")
+      .map((t) => t.trim().replace(/^"|"$/g, ""))
+      .filter(Boolean),
+  };
+}
+
+async function checkBlog() {
+  section("4. Blog catalogue");
+
+  let files: string[];
+  try {
+    files = (await readdir(path.join(ROOT, "content/blog"))).filter((f) =>
+      f.endsWith(".md"),
+    );
+  } catch {
+    skip("content/blog not found");
+    return;
+  }
+
+  const posts: PostFrontmatter[] = [];
+  for (const file of files) {
+    const slug = file.replace(/\.md$/, "");
+    const raw = await readFile(path.join(ROOT, "content/blog", file), "utf8");
+    const parsed = parseFrontmatter(slug, raw);
+    if (!parsed) {
+      fail(`${slug}: could not parse frontmatter`);
+      continue;
+    }
+    posts.push(parsed);
+  }
+
+  const longTitles = posts.filter(
+    (p) => blogTitleTag(p.title, p.seoTitle).length > TITLE_TAG_MAX,
+  );
+  const longDescs = posts.filter((p) => p.description.length > META_DESCRIPTION_MAX);
+  const noDesc = posts.filter((p) => !p.description);
+
+  if (longTitles.length) {
+    fail(
+      `${longTitles.length} post(s) exceed the ${TITLE_TAG_MAX}-char title budget even unbranded — add a shorter \`seoTitle\` to each:`,
+    );
+    longTitles
+      .slice(0, 10)
+      .forEach((p) =>
+        console.log(
+          `          ${blogTitleTag(p.title, p.seoTitle).length}  ${p.slug}`,
+        ),
+      );
+  } else {
+    pass(`all ${posts.length} post titles fit the ${TITLE_TAG_MAX}-char budget`);
+  }
+
+  if (longDescs.length) {
+    fail(`${longDescs.length} post description(s) exceed ${META_DESCRIPTION_MAX} chars:`);
+    longDescs
+      .slice(0, 10)
+      .forEach((p) => console.log(`          ${p.description.length}  ${p.slug}`));
+  } else {
+    pass(`all ${posts.length} post descriptions fit the budget`);
+  }
+
+  if (noDesc.length) fail(`${noDesc.length} post(s) have no description`);
+
+  // Internal-link orphans. Every post ships three "Keep reading" links, so
+  // there are 3 × N link slots; a post that appears in none of them can only
+  // be reached from the index and its category hub. Under the old
+  // "same category, then most recent" rule that was the overwhelming
+  // majority of the catalogue, because every post linked the same few
+  // recent siblings.
+  const linkedTo = new Set<string>();
+  for (const p of posts) {
+    for (const r of pickRelated(p, posts, 3)) linkedTo.add(r.slug);
+  }
+  const orphans = posts.filter((p) => !linkedTo.has(p.slug));
+  const reach = (((posts.length - orphans.length) / posts.length) * 100).toFixed(0);
+
+  if (orphans.length > posts.length * 0.5) {
+    fail(
+      `${orphans.length}/${posts.length} posts receive no "Keep reading" link (${reach}% reachable)`,
+    );
+  } else if (orphans.length) {
+    warn(
+      `${orphans.length}/${posts.length} posts receive no "Keep reading" link (${reach}% reachable)`,
+    );
+  } else {
+    pass(`every post is linked from at least one other post`);
+  }
+
+  const cats = new Map<string, number>();
+  for (const p of posts) cats.set(p.category, (cats.get(p.category) ?? 0) + 1);
+  pass(
+    `categories: ${[...cats.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([c, n]) => `${c} (${n})`)
+      .join(", ")}`,
+  );
+
+  // The hub pages carry hand-written copy, which is exactly the kind of thing
+  // that drifts a character over budget and nobody notices. Same rule as the
+  // posts, checked from the same place.
+  const shared = await readFile(path.join(ROOT, "lib/blog-shared.ts"), "utf8");
+  const hubDescriptions = [...shared.matchAll(/description:\s*\n?\s*"([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  const overBudgetHubs = hubDescriptions.filter(
+    (d) => d.length > META_DESCRIPTION_MAX,
+  );
+  if (!hubDescriptions.length) {
+    warn("could not read category hub descriptions from lib/blog-shared.ts");
+  } else if (overBudgetHubs.length) {
+    fail(
+      `${overBudgetHubs.length} category hub description(s) exceed ${META_DESCRIPTION_MAX} chars:`,
+    );
+    overBudgetHubs.forEach((d) =>
+      console.log(`          ${d.length}  "${d.slice(0, 60)}…"`),
+    );
+  } else {
+    pass(`all ${hubDescriptions.length} category hub descriptions fit the budget`);
+  }
+
+  // Every category must have copy, or the hub renders with an empty <h1>.
+  const missingCopy = [...cats.keys()].filter(
+    (c) => !new RegExp(`^\\s*${c}:\\s*\\{`, "m").test(shared),
+  );
+  if (missingCopy.length) {
+    fail(`no CATEGORY_COPY entry for: ${missingCopy.join(", ")}`);
+  } else {
+    pass("every category has hub copy");
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 console.log(`\n\x1b[1mbatch0 seo-doctor\x1b[0m  →  ${SITE}`);
 
@@ -315,6 +480,7 @@ if (!fallback) {
 await checkFallbackDrift(fallback);
 await checkLiveMeta(fallback);
 await checkCrawlerFiles();
+await checkBlog();
 
 console.log(
   `\n${failures ? "\x1b[31m" : "\x1b[32m"}${failures} failure(s)\x1b[0m, ${warnings} warning(s)\n`,

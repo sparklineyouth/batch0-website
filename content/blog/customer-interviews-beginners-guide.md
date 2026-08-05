@@ -1,6 +1,6 @@
 ---
 title: "How to Do Customer Interviews as a Beginner"
-description: "Good customer interviews ask about the past, not the future. Here's a beginner's script for talking to strangers and getting the real truth about your idea."
+description: "Good customer interviews ask about the past, not the future. A beginner's script for talking to strangers and getting the truth about your idea."
 date: "2026-03-17"
 updated: "2026-03-17"
 category: "Validate"

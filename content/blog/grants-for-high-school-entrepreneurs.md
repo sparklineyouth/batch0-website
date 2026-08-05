@@ -1,5 +1,6 @@
 ---
 title: "Grants for High School Entrepreneurs: Where to Find Free Money"
+seoTitle: "Grants for High School Entrepreneurs"
 description: "A practical list of grants for high school entrepreneurs, who qualifies, what they fund, and how to write an application that actually gets funded."
 date: "2026-02-06"
 updated: "2026-02-06"
