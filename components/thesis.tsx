@@ -5,7 +5,7 @@ import { ZeroThread } from "@/components/zero-thread";
 /**
  * The thesis — one short escalating beat: come in with an idea, leave
  * with a company. Three lines that each raise the stakes on the last,
- * beside the growth-tree plate.
+ * beside the tree plate.
  *
  * The tree is the ONLY place this motif appears on the site: an amber
  * zero at the root growing into a lit canopy. It illustrates, it does not
@@ -65,7 +65,7 @@ export default function Thesis() {
           {/* Square source (1254²). Sized by max-width, height derived, so
               the plate scales down cleanly to a 390px viewport. */}
           <Image
-            src="/growth-tree.png"
+            src="/tree-night.png"
             alt="A glowing amber zero at the base of a tree, its lit leaves spreading into a full canopy."
             width={1254}
             height={1254}

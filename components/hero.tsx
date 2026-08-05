@@ -150,7 +150,7 @@ export default function Hero({
           scatter that used to run here (<Sky zone="hero" />). The `close`
           zone in the closing poster is untouched. Decorative, so alt="". */}
       <Image
-        src="/hero-night-city.png"
+        src="/hero-night.png"
         alt=""
         fill
         priority

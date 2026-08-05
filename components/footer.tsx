@@ -29,7 +29,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
           whole upper band — where every link and the colophon sit — on
           dark sky rather than on the sunset. Decorative, so alt="". */}
       <Image
-        src="/footer-skyline.png"
+        src="/footer-night.png"
         alt=""
         fill
         sizes="100vw"
