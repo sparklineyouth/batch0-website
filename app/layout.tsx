@@ -88,6 +88,24 @@ export const metadata: Metadata = {
     description:
       "A live, online startup accelerator for U.S. high schoolers. Build a real company across four build sprints, then pitch it at demo day. $130, free to apply, no equity taken.",
   },
+  // Google Search Console ownership. Set GOOGLE_SITE_VERIFICATION in the
+  // Vercel project env to the token Google gives you (the bare token, not the
+  // whole meta tag) and this renders the verification tag on every page.
+  //
+  // Search Console is the only tool that answers "is Google actually indexing
+  // us" — analytics can't, because a page that was never crawled sends no
+  // events. Right now an exact-phrase search for a post title that exists
+  // nowhere else on the internet returns nothing, so most of the 135 guides
+  // are missing from the index and we have no visibility into which ones.
+  //
+  // Omitted entirely when unset, rather than rendering an empty tag.
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? {
+        verification: {
+          google: process.env.GOOGLE_SITE_VERIFICATION,
+        },
+      }
+    : {}),
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "48x48" },

@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: May 12, 2026
+        Last updated: August 5, 2026
       </p>
 
       <p>
@@ -57,14 +57,47 @@ export default function PrivacyPage() {
         <li>
           <strong>Service providers</strong> we use to operate the platform:
           Supabase (database + auth + storage), Stripe (payments), Resend
-          (email), Anthropic (AI co-founder), Vercel (hosting). They process
-          data on our behalf only.
+          (email), Anthropic (AI co-founder), Vercel (hosting + cookieless
+          analytics). They process data on our behalf only.
         </li>
         <li>
           <strong>Mentors and investors</strong> only see what you choose to
           publish (e.g. a public team profile).
         </li>
       </ul>
+
+      <h2>Cookies and analytics</h2>
+      <p>
+        We deliberately chose analytics that don&apos;t track you. Most of our
+        students are minors, so we use tools that measure the site rather than
+        the person.
+      </p>
+      <ul>
+        <li>
+          <strong>Vercel Analytics</strong> counts page visits{" "}
+          <strong>without cookies</strong>. It does not follow you to other
+          websites, does not build a profile of you, and cannot identify you
+          personally.
+        </li>
+        <li>
+          <strong>Vercel Speed Insights</strong> records how quickly pages
+          load so we can fix the slow ones. Timings only.
+        </li>
+      </ul>
+      <p>
+        We do not use Google Analytics, advertising trackers, remarketing
+        pixels, or any third-party advertising cookies. We do not sell or
+        share this data with advertisers, and we never will.
+      </p>
+      <p>
+        The only cookies we set are the ones the site needs to work: keeping
+        you signed in, and remembering whether you chose light or dark mode.
+      </p>
+      <p>
+        We also use <strong>Google Search Console</strong>, which tells us
+        which of our pages show up in Google search results. It reports on our
+        pages, not on you, and puts no tracking code in your browser.
+      </p>
 
       <h2>Your rights</h2>
       <p>
@@ -108,7 +141,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-05-12",
+          dateModified: "2026-08-05",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />
