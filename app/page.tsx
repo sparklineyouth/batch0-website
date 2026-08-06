@@ -51,7 +51,7 @@ export default async function Home() {
 
       {/* Full-bleed: the hero is the one section outside the shared
           container, because its image runs edge to edge. */}
-      <Hero config={config} />
+      <Hero />
 
       {/* ONE OBJECT: a single container — every movement starts on the
           same (invisible) left margin and shares the 12-column grid.

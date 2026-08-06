@@ -1,22 +1,13 @@
 import React from "react";
 import { ThemedImage } from "@/components/themed-image";
-import type { SiteConfig } from "@/lib/site-config";
 import { HeroEntrance } from "@/components/hero-entrance";
-import { PixelDissolve } from "@/components/pixel-dissolve";
 import { smolderShade } from "@/components/smolder";
 
-const WEEK_WORDS = [
-  "zero", "one", "two", "three", "four", "five", "six",
-  "seven", "eight", "nine", "ten", "eleven", "twelve",
-];
-
 /**
- * The hero — full-bleed artwork with a knockout-zero lockup lifted into
- * the open sky above the skyline. Three elements on one centre axis:
- * identifier · the cascade ("nine weeks" / "one c0mpany" at poster scale
- * with the pixel-0 sitting IN the word as a letter / "yours.") · a quiet
- * scroll cue. No CTA and no facts line — the ask moved to "the deal", so
- * the image gets to be the whole first screen.
+ * The hero — a painting taller than the fold, with two lines of type set
+ * into its clear sky: the identifier and "one c0mpany", the pixel-0
+ * sitting in the word as a letter. Nothing else. No CTA, no facts line
+ * (both moved to "the deal"), no scroll cue.
  *
  * Server markup IS the settled state (no-JS / reduced-motion see it
  * instantly); HeroEntrance assembles it once per visit. Every character
@@ -109,17 +100,14 @@ function Chars({ text, frag }: { text: string; frag: string }) {
   );
 }
 
-export default function Hero({ config }: { config: SiteConfig }) {
-  const start = config.cohort?.startsOn;
-  const end = config.cohort?.endsOn;
-  const weeks =
-    start && end
-      ? Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / (7 * 864e5)))
-      : 9;
-  const weeksWord = WEEK_WORDS[weeks] ?? String(weeks);
-
+export default function Hero() {
   return (
-    <section className="relative h-[100svh] min-h-[600px] w-full overflow-hidden">
+    // TALLER THAN THE FOLD. The painting runs ~126svh, so a band of it
+    // lives below the first screen: scrolling reveals more picture before
+    // anything hands off, and that below-fold band is where the fade to
+    // the page happens. The sentinel still measures from the top, so the
+    // nav's transparent→solid switch is unaffected.
+    <section className="relative h-[126svh] min-h-[820px] w-full overflow-hidden">
       {/* The chrome floats over this section; the sentinel spans the top
           quarter so <OverHeroChrome> turns opaque as soon as the visitor
           scrolls, before the lockup travels up under the nav. */}
@@ -132,8 +120,8 @@ export default function Hero({ config }: { config: SiteConfig }) {
       {/* The image IS the hero background — it replaces the pixel/star
           scatter that used to run here (<Sky zone="hero" />). The `close`
           zone in the closing poster is untouched. Decorative, so alt="".
-          First consumer of <ThemedImage/>: night and day frames are both
-          in the markup, CSS picks one before the first paint. */}
+          object-top keeps the sky (and the lockup's clear band) anchored
+          while the extra height spills the foreground below the fold. */}
       <ThemedImage
         night="/hero-night.png"
         day="/hero-day.png"
@@ -141,64 +129,52 @@ export default function Hero({ config }: { config: SiteConfig }) {
         fill
         priority
         sizes="100vw"
-        className="object-cover object-center"
+        className="object-cover object-top"
       />
 
       {/* NO SCRIM. The type carries itself: .hero-ink flips colour with the
           theme and brings a halo in the opposite direction. A wash strong
           enough to do the same job also flattened the painting. */}
 
-      <div className="relative z-10 mx-auto flex h-full max-w-[1100px] flex-col items-center px-5 text-center sm:px-6">
-        {/* The lockup is lifted into the OPEN SKY band. Dead-centre put
-            "mpany" straight through the lit towers in both frames; at this
-            offset the type sits on flat sky and the skyline reads clean
-            underneath it. The clamp keeps that relationship from 390 up. */}
-        <div className="flex flex-col items-center pt-[clamp(6.75rem,17vh,10.5rem)]">
-          {/* 1 · identifier — one line, no parenthetical */}
+      {/* OFF-CENTRE, INTO THE CLEAR SKY.
+          Both paintings share a layout: open sky upper-centre-left, a tall
+          tower cluster down the right third, tree canopy in the top-left
+          corner. Centred at poster scale the headline ran straight through
+          those right-hand towers, so on md+ the lockup shifts left of
+          centre and the type is capped smaller — it lands in flat sky and
+          stops short of the towers in BOTH frames. Below md the towers sit
+          low in the crop and there is no room to shift, so it recentres. */}
+      <div className="relative z-10 mx-auto h-full max-w-[1100px] px-5 sm:px-6">
+        <div className="flex flex-col items-center pt-[clamp(6.5rem,15vh,9.25rem)] text-center md:max-w-[62%] md:items-start md:pt-[clamp(7rem,16vh,10rem)] md:text-left">
+          {/* 1 · identifier */}
           <p data-entrance-reveal className="t-small hero-ink-soft relative">
             a startup accelerator for high schoolers
           </p>
 
-          {/* 2 · the sentence — ONE cascade. Tight leading plus negative
-              margins scaled to EACH line's own font-size (the head lines
-              and the poster line are wildly different sizes, so a single
-              em value would not close both gaps evenly). */}
-          <h1 className="relative mt-4 flex flex-col items-center leading-[0.9]">
-            <span className="t-head hero-ink-soft block leading-[0.9]">
-              <Chars text={`${weeksWord} weeks`} frag="top" />
-            </span>
-            <span className="hero-ink -mt-[0.1em] block whitespace-nowrap font-display text-[clamp(52px,15vw,190px)] leading-[0.9]">
-              <Chars text="one c" frag="l" />
-              <HeroZero />
-              <Chars text="mpany" frag="r" />
-            </span>
-            {/* "yours." keeps the amber — it is the accent's second beat
-                after the pixel-0 — but takes the halo so it separates from
-                the sky in the day frame, where burnt amber is weakest. */}
-            <span className="t-head hero-halo -mt-[0.14em] block leading-[0.9] text-phosphor">
-              <Chars text="yours." frag="bottom" />
-              <span aria-hidden data-typeon-cursor className="cursor-block" />
-            </span>
+          {/* 2 · the one anchor headline. "nine weeks" and "yours." are
+              gone; the pixel-0 sits in the word as a letter and is the
+              hero's only amber. */}
+          <h1 className="hero-ink relative mt-3 block whitespace-nowrap font-display text-[clamp(52px,11vw,132px)] leading-[0.9] md:mt-4">
+            <Chars text="one c" frag="l" />
+            <HeroZero />
+            <Chars text="mpany" frag="r" />
           </h1>
-        </div>
-
-        {/* 3 · the one quiet cue at the foot of the image. No CTA here —
-            the ask lives in "the deal" now, one scroll down. */}
-        <div
-          data-entrance-reveal
-          className="mt-auto pb-[max(8.5rem,calc(env(safe-area-inset-bottom)+8.5rem))]"
-        >
-          <span className="hero-ink-soft t-small inline-flex flex-col items-center gap-1 lowercase tracking-[0.14em]">
-            scroll
-            <span aria-hidden className="hero-scroll-cue">
-              ↓
-            </span>
-          </span>
         </div>
       </div>
 
-      {/* The seam into the page below. */}
-      <PixelDissolve edge="bottom" height={112} seed={7} />
+      {/* SOFT PAINTERLY HANDOFF. The bottom of the taller image dissolves
+          into the page over the below-fold band — a plain gradient to the
+          page colour, no scatter and no band edge. --paper is already
+          theme-reactive, so this is correct in both frames for free.
+          (PixelDissolve is still in the codebase for other seams.) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[42vh]"
+        style={{
+          background:
+            "linear-gradient(to bottom, rgb(var(--paper) / 0) 0%, rgb(var(--paper) / 0.18) 34%, rgb(var(--paper) / 0.55) 62%, rgb(var(--paper) / 0.88) 84%, rgb(var(--paper)) 100%)",
+        }}
+      />
 
       <HeroEntrance />
     </section>
