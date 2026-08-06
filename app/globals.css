@@ -36,6 +36,17 @@
   --smolder-2: #ffbb00;
   --smolder-3: #ffd24d;
   --smolder-4: #fff3d6;
+  /* Hero legibility scrim — strongest where the lockup sits, transparent
+   * by the edges. It has to follow the artwork, not the palette: the night
+   * frame needs a dark wash under light text, the day frame a light wash
+   * under dark text. Same geometry in both. */
+  --hero-scrim: radial-gradient(
+    ellipse 72% 48% at 50% 50%,
+    rgba(0, 0, 0, 0.84) 0%,
+    rgba(0, 0, 0, 0.66) 38%,
+    rgba(0, 0, 0, 0.3) 64%,
+    rgba(0, 0, 0, 0) 82%
+  );
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
   --safe-left: env(safe-area-inset-left);
@@ -65,6 +76,14 @@
   /* --phosphor-fill deliberately does NOT flip: solid amber fills carry
    * dark on-phosphor text (11.5:1) and must stay #FFBB00 on both surfaces. */
   --phosphor-rgb: 138 90 0; /* burnt amber — 5.3:1 on paper */
+  /* Light wash for the day frame — dark ink reads over it. */
+  --hero-scrim: radial-gradient(
+    ellipse 72% 48% at 50% 50%,
+    rgba(247, 243, 234, 0.92) 0%,
+    rgba(247, 243, 234, 0.78) 38%,
+    rgba(247, 243, 234, 0.36) 64%,
+    rgba(247, 243, 234, 0) 82%
+  );
   --smolder-0: #4a2e00;
   --smolder-1: #6e4a00;
   --smolder-2: #8a5a00;
@@ -76,6 +95,20 @@
  * (decorative). */
 .paper .text-phosphor\/60 { color: #6e4a00; }
 .paper .text-phosphor\/40 { color: #8a5a00; }
+
+/* ============================================================================
+ * THEMED IMAGERY — night/day pairs (components/themed-image.tsx)
+ *
+ * Both frames are in the markup; this picks one. The selector keys off the
+ * `paper` class that the pre-paint inline script in app/layout.tsx puts on
+ * <html>, so the choice resolves in the first style pass and the correct
+ * frame is the first thing painted — no flash on load, none on toggle.
+ * Never swap these with JS: that is what reintroduces the wrong first frame.
+ * ========================================================================= */
+.themed-night { display: block; }
+.themed-day { display: none; }
+.paper .themed-night { display: none; }
+.paper .themed-day { display: block; }
 
 * {
   box-sizing: border-box;

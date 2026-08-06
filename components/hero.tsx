@@ -1,5 +1,5 @@
 import React from "react";
-import Image from "next/image";
+import { ThemedImage } from "@/components/themed-image";
 import type { SiteConfig } from "@/lib/site-config";
 import { ApplyCta } from "@/components/apply-cta";
 import { ZeroThread } from "@/components/zero-thread";
@@ -148,9 +148,12 @@ export default function Hero({
 
       {/* The image IS the hero background — it replaces the pixel/star
           scatter that used to run here (<Sky zone="hero" />). The `close`
-          zone in the closing poster is untouched. Decorative, so alt="". */}
-      <Image
-        src="/hero-night.png"
+          zone in the closing poster is untouched. Decorative, so alt="".
+          First consumer of <ThemedImage/>: night and day frames are both
+          in the markup, CSS picks one before the first paint. */}
+      <ThemedImage
+        night="/hero-night.png"
+        day="/hero-day.png"
         alt=""
         fill
         priority
@@ -160,14 +163,13 @@ export default function Hero({
 
       {/* Legibility scrim for the LOCKUP ONLY — strongest dead centre where
           the cascade sits, fully transparent by the edges, so the park,
-          the skyline and the lit windows all stay visible. Not a flat dim. */}
+          the skyline and the lit windows all stay visible. Not a flat dim.
+          Follows the artwork via --hero-scrim: dark wash on the night
+          frame, light wash on the day frame. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 72% 48% at 50% 50%, rgba(0,0,0,.84) 0%, rgba(0,0,0,.66) 38%, rgba(0,0,0,.30) 64%, rgba(0,0,0,0) 82%)",
-        }}
+        style={{ background: "var(--hero-scrim)" }}
       />
 
       <div className="relative z-10 mx-auto flex h-full max-w-[1100px] flex-col items-center justify-center px-5 pb-10 pt-[7.5rem] text-center sm:px-6">
