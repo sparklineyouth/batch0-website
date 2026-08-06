@@ -294,6 +294,25 @@ async function checkLiveMeta(fallback: FallbackFields) {
       } else {
         pass(`homepage links to ${hubLinks.size} category hubs`);
       }
+
+      // GA4 loads client-side, so the measurement ID should appear in the
+      // shipped HTML. If it doesn't, the tag silently isn't collecting.
+      const gaId = "G-C51DMRB6YE";
+      if (html.includes(gaId)) pass(`Google Analytics tag present (${gaId})`);
+      else warn(`Google Analytics tag (${gaId}) not found in the homepage HTML`);
+
+      // Analytics on a site used by 13–18 year olds has to be disclosed.
+      try {
+        const privacy = await (await fetch(`${SITE}/privacy`)).text();
+        if (/google analytics/i.test(privacy))
+          pass("/privacy discloses Google Analytics");
+        else
+          fail(
+            "/privacy does not mention Google Analytics — required disclosure for a site collecting data from minors",
+          );
+      } catch {
+        warn("could not fetch /privacy to check the analytics disclosure");
+      }
     }
   }
 }

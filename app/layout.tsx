@@ -3,6 +3,7 @@ import { VT323, IBM_Plex_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/components/theme-provider";
+import { GoogleAnalytics } from "@/components/google-analytics";
 import {
   SITE,
   ORG_ID,
@@ -218,6 +219,10 @@ export default function RootLayout({
               localhost by design and resolves on Vercel; data only appears once
               Speed Insights is enabled for the project in the dashboard. */}
           <SpeedInsights />
+          {/* GA4. Mounted here, not per-page: the root layout wraps every
+              route, so one mount covers the whole site. Excludes /admin —
+              see components/google-analytics.tsx. Disclosed in /privacy. */}
+          <GoogleAnalytics />
         </ThemeProvider>
       </body>
     </html>
