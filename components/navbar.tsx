@@ -60,7 +60,7 @@ export default function Navbar({
         aria-label="Site"
         className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-4 px-5 sm:px-6"
       >
-        <Link href="/" className="flex shrink-0 items-center gap-2">
+        <Link href="/" className="hero-nav-wordmark flex shrink-0 items-center gap-2">
           <Wordmark className="hero-chrome-type h-[18px] text-ink" />
         </Link>
 

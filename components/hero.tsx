@@ -4,10 +4,9 @@ import { HeroEntrance } from "@/components/hero-entrance";
 import { smolderShade } from "@/components/smolder";
 
 /**
- * The hero — a painting taller than the fold, with two lines of type set
- * into its clear sky: the identifier and "one c0mpany", the pixel-0
- * sitting in the word as a letter. Nothing else. No CTA, no facts line
- * (both moved to "the deal"), no scroll cue.
+ * The hero — the whole painting in the fold, with the NAME floating in
+ * its pocket of open sky and the tagline as a quiet caption over the
+ * park. Nothing else: no CTA, no facts line (both live in "the deal").
  *
  * Server markup IS the settled state (no-JS / reduced-motion see it
  * instantly); HeroEntrance assembles it once per visit. Every character
@@ -100,14 +99,37 @@ function Chars({ text, frag }: { text: string; frag: string }) {
   );
 }
 
+/** The name in the sky: VT323 "batch" with the pixel-0 as its last
+ *  letter, so the amber lands on the zero exactly as it does in the
+ *  wordmark. Rendered as type rather than the masked logo.svg because
+ *  that mask is a single colour and could not hold the amber 0. */
+function SkyName() {
+  return (
+    <span className="hero-ink block whitespace-nowrap font-display leading-[0.8] text-[clamp(58px,11.5vw,160px)]">
+      <Chars text="batch" frag="l" />
+      <HeroZero />
+    </span>
+  );
+}
+
 export default function Hero() {
   return (
-    // TALLER THAN THE FOLD. The painting runs ~126svh, so a band of it
-    // lives below the first screen: scrolling reveals more picture before
-    // anything hands off, and that below-fold band is where the fade to
-    // the page happens. The sentinel still measures from the top, so the
-    // nav's transparent→solid switch is unaffected.
-    <section className="relative h-[126svh] min-h-[820px] w-full overflow-hidden">
+    // THE WHOLE SCENE IN THE FOLD. The section takes the painting's own
+    // 1672:941 aspect, so at desktop widths the image renders edge to edge
+    // with NO crop at all — sky, skyline and the park foreground all read
+    // without scrolling. (The previous object-top crop pushed the park
+    // below the fold; that was the bug.) A min-height floor keeps the
+    // hero from collapsing to a 219px letterbox on phones, where the
+    // trade is a horizontal crop — vertical stays complete at any box
+    // narrower than 1.777:1, so the foreground never gets cut.
+    <section
+      className="relative w-full overflow-hidden"
+      style={{
+        aspectRatio: "1672 / 941",
+        minHeight: "clamp(560px, 74svh, 680px)",
+        maxHeight: "100svh",
+      }}
+    >
       {/* The chrome floats over this section; the sentinel spans the top
           quarter so <OverHeroChrome> turns opaque as soon as the visitor
           scrolls, before the lockup travels up under the nav. */}
@@ -117,11 +139,11 @@ export default function Hero() {
         className="pointer-events-none absolute inset-x-0 top-0 h-[25vh]"
       />
 
-      {/* The image IS the hero background — it replaces the pixel/star
-          scatter that used to run here (<Sky zone="hero" />). The `close`
-          zone in the closing poster is untouched. Decorative, so alt="".
-          object-top keeps the sky (and the lockup's clear band) anchored
-          while the extra height spills the foreground below the fold. */}
+      {/* object-CENTER, not object-top: with a box narrower than the
+          painting's 1.777:1 the scale is driven by height, so the full
+          vertical scene — sky, skyline, park, path, water, flowers — is
+          always present and only the left/right margins ever crop.
+          Decorative, so alt="". */}
       <ThemedImage
         night="/hero-night.png"
         day="/hero-day.png"
@@ -129,50 +151,55 @@ export default function Hero() {
         fill
         priority
         sizes="100vw"
-        className="object-cover object-top"
+        className="object-cover object-center"
       />
 
       {/* NO SCRIM. The type carries itself: .hero-ink flips colour with the
           theme and brings a halo in the opposite direction. A wash strong
           enough to do the same job also flattened the painting. */}
 
-      {/* OFF-CENTRE, INTO THE CLEAR SKY.
-          Both paintings share a layout: open sky upper-centre-left, a tall
-          tower cluster down the right third, tree canopy in the top-left
-          corner. Centred at poster scale the headline ran straight through
-          those right-hand towers, so on md+ the lockup shifts left of
-          centre and the type is capped smaller — it lands in flat sky and
-          stops short of the towers in BOTH frames. Below md the towers sit
-          low in the crop and there is no room to shift, so it recentres. */}
-      <div className="relative z-10 mx-auto h-full max-w-[1100px] px-5 sm:px-6">
-        <div className="flex flex-col items-center pt-[clamp(6.5rem,15vh,9.25rem)] text-center md:max-w-[62%] md:items-start md:pt-[clamp(7rem,16vh,10rem)] md:text-left">
-          {/* 1 · identifier */}
-          <p data-entrance-reveal className="t-small hero-ink-soft relative">
+      {/* THE NAME IN THE SKY.
+          Both frames share one composition: tree canopy top-left, tall
+          tower cluster right, horizon skyline below, and a clear pocket of
+          sky between them running roughly x 27–75% / y 4–31% of the
+          painting. The name is centred in that pocket — horizontally it
+          lands at ~51% of the image, which is close enough to dead centre
+          to just centre it, and vertically at 23% it breathes evenly
+          between the nav above and the skyline below in BOTH frames. */}
+      <h1
+        data-entrance-reveal
+        className="absolute left-1/2 top-[23%] z-10 -translate-x-1/2 -translate-y-1/2 md:left-[45.5%]"
+      >
+        <SkyName />
+      </h1>
+
+      {/* The tagline stays OUT of the sky pocket: bottom-left, over the
+          park, where it reads as a caption to the scene rather than a
+          second headline. Sits above the fade's strong end. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-[13%] z-10">
+        <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
+          <p
+            data-entrance-reveal
+            className="t-small hero-ink-soft max-w-[22ch] sm:max-w-none"
+          >
             a startup accelerator for high schoolers
           </p>
-
-          {/* 2 · the one anchor headline. "nine weeks" and "yours." are
-              gone; the pixel-0 sits in the word as a letter and is the
-              hero's only amber. */}
-          <h1 className="hero-ink relative mt-3 block whitespace-nowrap font-display text-[clamp(52px,11vw,132px)] leading-[0.9] md:mt-4">
-            <Chars text="one c" frag="l" />
-            <HeroZero />
-            <Chars text="mpany" frag="r" />
-          </h1>
         </div>
       </div>
 
-      {/* SOFT PAINTERLY HANDOFF. The bottom of the taller image dissolves
-          into the page over the below-fold band — a plain gradient to the
+      {/* SOFT PAINTERLY HANDOFF into the page — a plain gradient to the
           page colour, no scatter and no band edge. --paper is already
           theme-reactive, so this is correct in both frames for free.
+          Sized as a PERCENTAGE of the hero, not vh: the hero is now the
+          painting's own height, and the old 42vh band would have eaten
+          the park the whole composition is built around.
           (PixelDissolve is still in the codebase for other seams.) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[42vh]"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[26%]"
         style={{
           background:
-            "linear-gradient(to bottom, rgb(var(--paper) / 0) 0%, rgb(var(--paper) / 0.18) 34%, rgb(var(--paper) / 0.55) 62%, rgb(var(--paper) / 0.88) 84%, rgb(var(--paper)) 100%)",
+            "linear-gradient(to bottom, rgb(var(--paper) / 0) 0%, rgb(var(--paper) / 0.10) 30%, rgb(var(--paper) / 0.42) 58%, rgb(var(--paper) / 0.84) 82%, rgb(var(--paper)) 100%)",
         }}
       />
 

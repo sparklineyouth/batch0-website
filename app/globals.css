@@ -164,6 +164,25 @@
 }
 .over-hero[data-solid]::before { opacity: 0; }
 
+/* THE NAME IS IN THE SKY, so the nav must not say it twice. While the
+ * chrome floats over the hero the nav wordmark is withdrawn entirely
+ * (and made unfocusable — a hidden-but-tabbable home link is worse than
+ * no link, and on the homepage it points at the page you are on). It
+ * fades back the moment the chrome goes solid, which is also the moment
+ * the sky name scrolls out of view, so the mark is never absent from the
+ * screen and never doubled on it. */
+.over-hero:not([data-solid]) .hero-nav-wordmark {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+.hero-nav-wordmark {
+  transition: opacity 150ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-nav-wordmark { transition: none; }
+}
+
 /* While the chrome floats over the artwork it is hero type too, so the
  * wordmark and nav take the same flip + halo. Once <OverHeroChrome> goes
  * solid the halo is dropped — on the flat paper background it would be a
