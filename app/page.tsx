@@ -51,7 +51,7 @@ export default async function Home() {
 
       {/* Full-bleed: the hero is the one section outside the shared
           container, because its image runs edge to edge. */}
-      <Hero config={config} authedHome={authedHome} />
+      <Hero config={config} />
 
       {/* ONE OBJECT: a single container — every movement starts on the
           same (invisible) left margin and shares the 12-column grid.
@@ -59,7 +59,7 @@ export default async function Home() {
       <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
         <VideoPlate />
         <Thesis />
-        <TheDeal config={config} />
+        <TheDeal config={config} authedHome={authedHome} />
         <HowItWorks config={config} />
         <Manifest />
         <WhoRunsThis config={config} />

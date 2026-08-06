@@ -1,9 +1,8 @@
 import React from "react";
 import { ThemedImage } from "@/components/themed-image";
 import type { SiteConfig } from "@/lib/site-config";
-import { ApplyCta } from "@/components/apply-cta";
-import { ZeroThread } from "@/components/zero-thread";
 import { HeroEntrance } from "@/components/hero-entrance";
+import { PixelDissolve } from "@/components/pixel-dissolve";
 import { smolderShade } from "@/components/smolder";
 
 const WEEK_WORDS = [
@@ -12,11 +11,12 @@ const WEEK_WORDS = [
 ];
 
 /**
- * The hero — a centered knockout-zero lockup. Five elements on one center
- * axis: identifier · the sentence ("nine weeks" head / "one c0mpany" at
- * poster scale with the pixel-0 sitting IN the word as a letter / "yours."
- * head, amber) · facts line · button + # comment. The pixel-0 is the
- * hero's only amber besides "yours.", the 0% and the $0.
+ * The hero — full-bleed artwork with a knockout-zero lockup lifted into
+ * the open sky above the skyline. Three elements on one centre axis:
+ * identifier · the cascade ("nine weeks" / "one c0mpany" at poster scale
+ * with the pixel-0 sitting IN the word as a letter / "yours.") · a quiet
+ * scroll cue. No CTA and no facts line — the ask moved to "the deal", so
+ * the image gets to be the whole first screen.
  *
  * Server markup IS the settled state (no-JS / reduced-motion see it
  * instantly); HeroEntrance assembles it once per visit. Every character
@@ -109,18 +109,7 @@ function Chars({ text, frag }: { text: string; frag: string }) {
   );
 }
 
-export default function Hero({
-  config,
-  authedHome,
-}: {
-  config: SiteConfig;
-  /** Signed-in visitors get their role home instead of the apply pitch. */
-  authedHome?: string | null;
-}) {
-  const { derived, settings } = config;
-  const isAuthed = !!authedHome;
-  const cohortLabel = derived.cohortLabel || "the next cohort";
-
+export default function Hero({ config }: { config: SiteConfig }) {
   const start = config.cohort?.startsOn;
   const end = config.cohort?.endsOn;
   const weeks =
@@ -128,12 +117,6 @@ export default function Hero({
       ? Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / (7 * 864e5)))
       : 9;
   const weeksWord = WEEK_WORDS[weeks] ?? String(weeks);
-
-  const closeLabel = config.cohort?.applicationsCloseAt
-    ? new Date(config.cohort.applicationsCloseAt)
-        .toLocaleDateString("en-US", { month: "short", day: "numeric" })
-        .toLowerCase()
-    : null;
 
   return (
     <section className="relative h-[100svh] min-h-[600px] w-full overflow-hidden">
@@ -161,71 +144,61 @@ export default function Hero({
         className="object-cover object-center"
       />
 
-      {/* Legibility scrim for the LOCKUP ONLY — strongest dead centre where
-          the cascade sits, fully transparent by the edges, so the park,
-          the skyline and the lit windows all stay visible. Not a flat dim.
-          Follows the artwork via --hero-scrim: dark wash on the night
-          frame, light wash on the day frame. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{ background: "var(--hero-scrim)" }}
-      />
+      {/* NO SCRIM. The type carries itself: .hero-ink flips colour with the
+          theme and brings a halo in the opposite direction. A wash strong
+          enough to do the same job also flattened the painting. */}
 
-      <div className="relative z-10 mx-auto flex h-full max-w-[1100px] flex-col items-center justify-center px-5 pb-10 pt-[7.5rem] text-center sm:px-6">
-        {/* 1 · identifier (dim; the hero's amber belongs to the 0) */}
-        <p data-entrance-reveal className="t-small relative text-ink-soft">
-          batch0 · a startup accelerator for high schoolers{" "}
-          <span className="aside-note ml-2">previously sparkline youth</span>
-        </p>
-
-        {/* 2 · the sentence — ONE cascade. The three lines are pulled tight
-            (leading-[0.92], no growth, hairline margins) so they read as a
-            single falling block rather than three stacked headings. */}
-        <h1 className="relative my-5 flex flex-col items-center justify-center leading-[0.92]">
-          <span className="t-head block leading-[0.92] text-ink-soft">
-            <Chars text={`${weeksWord} weeks`} frag="top" />
-          </span>
-          <span className="-mt-[0.06em] block whitespace-nowrap font-display text-[clamp(52px,15vw,190px)] leading-[0.94] text-ink">
-            <Chars text="one c" frag="l" />
-            <HeroZero />
-            <Chars text="mpany" frag="r" />
-          </span>
-          <span className="t-head -mt-[0.04em] block leading-[0.92] text-phosphor">
-            <Chars text="yours." frag="bottom" />
-            <span aria-hidden data-typeon-cursor className="cursor-block" />
-          </span>
-        </h1>
-
-        {/* 3+4+5 · facts, button, # comment — fade up last, space reserved */}
-        <div data-entrance-reveal className="relative">
-          <p className="t-small text-ink-soft">
-            {closeLabel && settings.applicationsOpen && (
-              <>apply by {closeLabel} · </>
-            )}
-            {derived.priceLabel} only if accepted ·{" "}
-            <ZeroThread>0% equity</ZeroThread>
+      <div className="relative z-10 mx-auto flex h-full max-w-[1100px] flex-col items-center px-5 text-center sm:px-6">
+        {/* The lockup is lifted into the OPEN SKY band. Dead-centre put
+            "mpany" straight through the lit towers in both frames; at this
+            offset the type sits on flat sky and the skyline reads clean
+            underneath it. The clamp keeps that relationship from 390 up. */}
+        <div className="flex flex-col items-center pt-[clamp(6.75rem,17vh,10.5rem)]">
+          {/* 1 · identifier — one line, no parenthetical */}
+          <p data-entrance-reveal className="t-small hero-ink-soft relative">
+            a startup accelerator for high schoolers
           </p>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-4">
-            {isAuthed ? (
-              <a
-                href={authedHome!}
-                className="press inline-flex items-center justify-center bg-phosphor-fill px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-              >
-                go to dashboard
-              </a>
-            ) : (
-              <ApplyCta
-                label={`apply for cohort ${String(config.cohort?.cohortNumber ?? 1).padStart(3, "0")}`}
-                location="hero"
-              />
-            )}
-            <span className="aside-note">
-              <ZeroThread>$0 to apply</ZeroThread>
+
+          {/* 2 · the sentence — ONE cascade. Tight leading plus negative
+              margins scaled to EACH line's own font-size (the head lines
+              and the poster line are wildly different sizes, so a single
+              em value would not close both gaps evenly). */}
+          <h1 className="relative mt-4 flex flex-col items-center leading-[0.9]">
+            <span className="t-head hero-ink-soft block leading-[0.9]">
+              <Chars text={`${weeksWord} weeks`} frag="top" />
             </span>
-          </div>
+            <span className="hero-ink -mt-[0.1em] block whitespace-nowrap font-display text-[clamp(52px,15vw,190px)] leading-[0.9]">
+              <Chars text="one c" frag="l" />
+              <HeroZero />
+              <Chars text="mpany" frag="r" />
+            </span>
+            {/* "yours." keeps the amber — it is the accent's second beat
+                after the pixel-0 — but takes the halo so it separates from
+                the sky in the day frame, where burnt amber is weakest. */}
+            <span className="t-head hero-halo -mt-[0.14em] block leading-[0.9] text-phosphor">
+              <Chars text="yours." frag="bottom" />
+              <span aria-hidden data-typeon-cursor className="cursor-block" />
+            </span>
+          </h1>
+        </div>
+
+        {/* 3 · the one quiet cue at the foot of the image. No CTA here —
+            the ask lives in "the deal" now, one scroll down. */}
+        <div
+          data-entrance-reveal
+          className="mt-auto pb-[max(8.5rem,calc(env(safe-area-inset-bottom)+8.5rem))]"
+        >
+          <span className="hero-ink-soft t-small inline-flex flex-col items-center gap-1 lowercase tracking-[0.14em]">
+            scroll
+            <span aria-hidden className="hero-scroll-cue">
+              ↓
+            </span>
+          </span>
         </div>
       </div>
+
+      {/* The seam into the page below. */}
+      <PixelDissolve edge="bottom" height={112} seed={7} />
 
       <HeroEntrance />
     </section>

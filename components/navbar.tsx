@@ -61,7 +61,7 @@ export default function Navbar({
         className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-4 px-5 sm:px-6"
       >
         <Link href="/" className="flex shrink-0 items-center gap-2">
-          <Wordmark className="h-[18px] text-ink" />
+          <Wordmark className="hero-chrome-type h-[18px] text-ink" />
         </Link>
 
         <div className="hidden items-center gap-6 md:flex">
@@ -69,7 +69,7 @@ export default function Navbar({
             <Link
               key={l.href}
               href={l.href}
-              className="text-sm text-ink-soft transition-colors hover:text-ink"
+              className="hero-chrome-dim text-sm text-ink-soft transition-colors hover:text-ink"
             >
               {l.label}
             </Link>
@@ -77,11 +77,11 @@ export default function Navbar({
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
-          <ThemeToggle />
+          <ThemeToggle className="hero-chrome-dim" />
           {!isAuthed && (
             <Link
               href="/login"
-              className="text-sm text-ink-soft transition-colors hover:text-ink"
+              className="hero-chrome-dim text-sm text-ink-soft transition-colors hover:text-ink"
             >
               /login
             </Link>
@@ -105,7 +105,7 @@ export default function Navbar({
             aria-expanded={open}
             aria-controls="mobile-menu"
             aria-label={open ? "Close menu" : "Open menu"}
-            className="press -mr-1 flex h-10 w-10 items-center justify-center rounded-md text-ink"
+            className="hero-chrome-type press -mr-1 flex h-10 w-10 items-center justify-center rounded-md text-ink"
           >
             <svg
               width="20"

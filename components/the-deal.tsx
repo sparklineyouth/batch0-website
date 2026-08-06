@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { SiteConfig } from "@/lib/site-config";
 import { CalendarIcon, ReceiptIcon, FlagIcon } from "@/components/icons/pixel-icon";
 import { ZeroThread } from "@/components/zero-thread";
+import { ApplyCta } from "@/components/apply-cta";
 
 /**
  * The deal — the whole factual offer in one thin strip: deadline as the
@@ -16,7 +17,14 @@ import { ZeroThread } from "@/components/zero-thread";
 
 const ICON_SIZE = 5; // one consistent icon size for this context
 
-export default function TheDeal({ config }: { config: SiteConfig }) {
+export default function TheDeal({
+  config,
+  authedHome,
+}: {
+  config: SiteConfig;
+  /** Signed-in visitors get their role home instead of the apply pitch. */
+  authedHome?: string | null;
+}) {
   const { derived, settings } = config;
   const dates = derived.dateRangeLabel.replace("→", "–").toLowerCase();
   const cohortCode = config.cohort?.cohortNumber
@@ -84,7 +92,6 @@ export default function TheDeal({ config }: { config: SiteConfig }) {
               </div>
             ))}
           </dl>
-          {/* this section's one action */}
           <p className="t-small mt-3 text-ink-faint">
             <Link href="/refund-policy" className="link-ink">
               see refund policy
@@ -94,6 +101,37 @@ export default function TheDeal({ config }: { config: SiteConfig }) {
               : ""}
           </p>
         </article>
+      </div>
+
+      {/* The page's first ask. It used to sit in the hero; moving it here
+          lets the hero be nothing but the artwork, and puts the button
+          directly under the terms it is asking you to accept. */}
+      <div className="mt-10 border-t border-line pt-8">
+        <p className="t-small text-ink-soft">
+          {closeLabel && settings.applicationsOpen && (
+            <>apply by {closeLabel} · </>
+          )}
+          {derived.priceLabel} only if accepted ·{" "}
+          <ZeroThread>0% equity</ZeroThread>
+        </p>
+        <div className="mt-5 flex flex-wrap items-center gap-4">
+          {authedHome ? (
+            <a
+              href={authedHome}
+              className="press inline-flex items-center justify-center bg-phosphor-fill px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            >
+              go to dashboard
+            </a>
+          ) : (
+            <ApplyCta
+              label={`apply for cohort ${cohortCode}`}
+              location="the-deal"
+            />
+          )}
+          <span className="aside-note">
+            <ZeroThread>$0 to apply</ZeroThread>
+          </span>
+        </div>
       </div>
     </section>
   );

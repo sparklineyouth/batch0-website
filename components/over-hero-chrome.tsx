@@ -36,7 +36,7 @@ export function OverHeroChrome({ children }: { children: React.ReactNode }) {
     <div
       data-solid={solid || undefined}
       className={
-        "fixed inset-x-0 top-0 z-50 transition-colors duration-150 " +
+        "over-hero fixed inset-x-0 top-0 z-50 transition-colors duration-150 " +
         "motion-reduce:transition-none " +
         "data-[solid]:border-b data-[solid]:border-line data-[solid]:bg-paper"
       }
