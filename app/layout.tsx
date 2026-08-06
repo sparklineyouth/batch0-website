@@ -236,6 +236,12 @@ export default function RootLayout({
               localhost by design and resolves on Vercel; data only appears once
               Speed Insights is enabled for the project in the dashboard. */}
           <SpeedInsights />
+          {/* No Google Analytics by choice. Both of the above are cookieless,
+              which matters when the audience is 13–18: no consent banner, no
+              cross-site tracking, and a privacy policy we can state plainly.
+              The one thing GA offered that these don't is the Search Console
+              link, and Search Console is wired up directly via the
+              `verification` entry in the metadata above. */}
         </ThemeProvider>
       </body>
     </html>
