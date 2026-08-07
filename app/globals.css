@@ -48,11 +48,28 @@
   --hero-ink: 250 250 249;
   --hero-ink-soft: 208 210 216;
   --hero-halo: 0 2px 18px rgba(0, 0, 0, 0.62), 0 0 4px rgba(0, 0, 0, 0.5);
+  /* Tight variant for small type. The wide 18px glow is right behind a
+   * 160px headline and wrong behind 13px copy — at that size it bleeds
+   * across the whole glyph and eats the very contrast it should buy. */
+  --hero-halo-tight: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.75);
   --hero-chrome-floor: linear-gradient(
     to bottom,
     rgba(6, 6, 8, 0.62) 0%,
     rgba(6, 6, 8, 0.34) 52%,
     rgba(6, 6, 8, 0) 100%
+  );
+  /* Handoff from the painting to the page — a WHISPER, not a band. The
+   * hero owns the whole viewport now, so the fade's only job is to stop
+   * the bottom edge being a hard cut. Anything taller reads as haze over
+   * the park, which is the part of the picture people actually feel. */
+  --hero-fade-h: 12%;
+  --hero-fade: linear-gradient(
+    to bottom,
+    rgb(var(--paper) / 0) 0%,
+    rgb(var(--paper) / 0.06) 48%,
+    rgb(var(--paper) / 0.3) 74%,
+    rgb(var(--paper) / 0.72) 90%,
+    rgb(var(--paper)) 100%
   );
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
@@ -89,11 +106,26 @@
   --hero-ink: 17 17 19;
   --hero-ink-soft: 48 50 54;
   --hero-halo: 0 2px 18px rgba(255, 255, 255, 0.8), 0 0 4px rgba(255, 255, 255, 0.7);
+  --hero-halo-tight: 0 1px 3px rgba(255, 255, 255, 0.95), 0 0 2px rgba(255, 255, 255, 0.9);
   --hero-chrome-floor: linear-gradient(
     to bottom,
     rgba(250, 249, 245, 0.82) 0%,
     rgba(250, 249, 245, 0.46) 52%,
     rgba(250, 249, 245, 0) 100%
+  );
+  /* The day frame gets less still. Cream over a sunlit park is the worst
+   * case for this effect — the foreground is the brightest thing in the
+   * picture, so the wash has nothing dark to disappear into and reads as
+   * fog. Barely there: flat zero for the first two thirds, then a short
+   * ramp that only closes on the final edge. */
+  --hero-fade-h: 7%;
+  --hero-fade: linear-gradient(
+    to bottom,
+    rgb(var(--paper) / 0) 0%,
+    rgb(var(--paper) / 0.02) 62%,
+    rgb(var(--paper) / 0.16) 82%,
+    rgb(var(--paper) / 0.55) 93%,
+    rgb(var(--paper)) 100%
   );
   --smolder-0: #4a2e00;
   --smolder-1: #6e4a00;
@@ -132,6 +164,14 @@
 /* Halo only — for elements that must keep their own colour (the amber
  * "yours." and the pixel-0) but still need to separate from the art. */
 .hero-halo { text-shadow: var(--hero-halo); }
+
+/* Small type on the artwork — the tagline. Takes the FULL ink rather than
+ * the soft step, because it sits over the sunlit path in the day frame,
+ * the brightest thing in either painting. */
+.hero-caption {
+  color: rgb(var(--hero-ink));
+  text-shadow: var(--hero-halo-tight);
+}
 
 /* The scroll cue's arrow: a slow 2px drift, the one moving thing in the
  * hero besides the cursor. Stopped entirely under reduced-motion. */

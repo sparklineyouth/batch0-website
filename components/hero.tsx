@@ -114,22 +114,13 @@ function SkyName() {
 
 export default function Hero() {
   return (
-    // THE WHOLE SCENE IN THE FOLD. The section takes the painting's own
-    // 1672:941 aspect, so at desktop widths the image renders edge to edge
-    // with NO crop at all — sky, skyline and the park foreground all read
-    // without scrolling. (The previous object-top crop pushed the park
-    // below the fold; that was the bug.) A min-height floor keeps the
-    // hero from collapsing to a 219px letterbox on phones, where the
-    // trade is a horizontal crop — vertical stays complete at any box
-    // narrower than 1.777:1, so the foreground never gets cut.
-    <section
-      className="relative w-full overflow-hidden"
-      style={{
-        aspectRatio: "1672 / 941",
-        minHeight: "clamp(560px, 74svh, 680px)",
-        maxHeight: "100svh",
-      }}
-    >
+    // FULL SCREEN ON LANDING. The hero owns the whole first viewport —
+    // you arrive inside the painting, not looking at a picture with page
+    // showing underneath it. Any viewport narrower than the painting's
+    // 1.777:1 is scaled by HEIGHT under object-cover, so the complete
+    // vertical scene (sky → skyline → park → path → water → flowers)
+    // still reads and only the left/right margins crop.
+    <section className="relative h-[100svh] min-h-[560px] w-full overflow-hidden">
       {/* The chrome floats over this section; the sentinel spans the top
           quarter so <OverHeroChrome> turns opaque as soon as the visitor
           scrolls, before the lockup travels up under the nav. */}
@@ -168,39 +159,38 @@ export default function Hero() {
           between the nav above and the skyline below in BOTH frames. */}
       <h1
         data-entrance-reveal
-        className="absolute left-1/2 top-[23%] z-10 -translate-x-1/2 -translate-y-1/2 md:left-[45.5%]"
+        className="absolute left-1/2 top-[23%] z-10 -translate-x-1/2 -translate-y-1/2 md:left-[43%]"
       >
         <SkyName />
       </h1>
 
       {/* The tagline stays OUT of the sky pocket: bottom-left, over the
           park, where it reads as a caption to the scene rather than a
-          second headline. Sits above the fade's strong end. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-[13%] z-10">
+          second headline. Lifted clear of both the hero's bottom edge and
+          the strong end of the fade, so it is never clipped by the fold
+          or washed out by the handoff at any viewport height. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-[19%] z-10">
         <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
           <p
             data-entrance-reveal
-            className="t-small hero-ink-soft max-w-[22ch] sm:max-w-none"
+            className="t-small hero-caption max-w-[22ch] sm:max-w-none"
           >
             a startup accelerator for high schoolers
           </p>
         </div>
       </div>
 
-      {/* SOFT PAINTERLY HANDOFF into the page — a plain gradient to the
-          page colour, no scatter and no band edge. --paper is already
-          theme-reactive, so this is correct in both frames for free.
-          Sized as a PERCENTAGE of the hero, not vh: the hero is now the
-          painting's own height, and the old 42vh band would have eaten
-          the park the whole composition is built around.
+      {/* SOFT PAINTERLY HANDOFF into the page. BOTH the height and the
+          ramp are theme tokens, because the two frames need genuinely
+          different treatments: the night frame's foreground is dark and
+          swallows a tall band, the day frame's is the brightest part of
+          the picture and the same band reads as fog eating the park.
+          See --hero-fade / --hero-fade-h in globals.css.
           (PixelDissolve is still in the codebase for other seams.) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[26%]"
-        style={{
-          background:
-            "linear-gradient(to bottom, rgb(var(--paper) / 0) 0%, rgb(var(--paper) / 0.10) 30%, rgb(var(--paper) / 0.42) 58%, rgb(var(--paper) / 0.84) 82%, rgb(var(--paper)) 100%)",
-        }}
+        className="pointer-events-none absolute inset-x-0 bottom-0"
+        style={{ height: "var(--hero-fade-h)", background: "var(--hero-fade)" }}
       />
 
       <HeroEntrance />
