@@ -155,9 +155,14 @@
 .hero-ink { color: rgb(var(--hero-ink)); }
 .hero-ink-soft { color: rgb(var(--hero-ink-soft)); }
 
-/* Small type on the artwork — the tagline. Takes the FULL ink rather than
- * the soft step, because it sits over the sunlit path in the day frame,
- * the brightest thing in either painting. */
+/* Small type on the artwork — the tagline. Flips with the theme like the
+ * rest of the hero type.
+ *
+ * Constant near-white was tried here and measured WORSE: the bottom-left
+ * corner is not dark in the day frame, it is sunlit stone, so white text
+ * dropped to 4.05:1 mean / 1.02:1 worst-pixel against 4.46 / 1.12 for
+ * charcoal. The corner carries both deep shadow and blown highlight, so
+ * no single ink clears both — see the note in components/hero.tsx. */
 .hero-caption {
   color: rgb(var(--hero-ink));
 }
