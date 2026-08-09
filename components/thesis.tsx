@@ -22,7 +22,15 @@ const BEATS: { from: string; to: string }[] = [
 export default function Thesis() {
   return (
     <section id="thesis" className="border-t border-line py-14 md:py-20">
-      <p className="section-intro">what nine weeks actually changes.</p>
+      {/* The site's identity line. It used to sit on the hero artwork,
+          where the day frame's park foreground made it unreadable at any
+          ink; on the flat page it needs no halo, no scrim and no panel.
+          Set a step heavier than the section gloss beneath it so it reads
+          as what the site IS, not as this section's subtitle. */}
+      <p className="t-small font-medium tracking-[0.02em] text-ink">
+        a startup accelerator for high schoolers
+      </p>
+      <p className="section-intro mt-1.5">what nine weeks actually changes.</p>
 
       <div className="mt-6 grid grid-cols-12 items-center gap-x-6 gap-y-8">
         <div className="col-span-12 md:col-span-7">

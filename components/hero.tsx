@@ -166,21 +166,13 @@ export default function Hero() {
         <SkyName />
       </h1>
 
-      {/* The tagline stays OUT of the sky pocket: bottom-left, over the
-          park, where it reads as a caption to the scene rather than a
-          second headline. Lifted clear of both the hero's bottom edge and
-          the strong end of the fade, so it is never clipped by the fold
-          or washed out by the handoff at any viewport height. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-[19%] z-10">
-        <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
-          <p
-            data-entrance-reveal
-            className="t-small hero-caption max-w-[22ch] sm:max-w-none"
-          >
-            a startup accelerator for high schoolers
-          </p>
-        </div>
-      </div>
+      {/* NOTHING ELSE LIVES HERE. The tagline used to sit bottom-left over
+          the park and could not be made legible in the day frame with
+          colour alone — that corner carries both deep shadow and blown
+          highlight, so every ink collided with one end of the range. It
+          moved to <Thesis/>, onto the solid page background. Solving it
+          by removing it from the artwork rather than by stacking a scrim,
+          a glow or a panel back on top of the painting. */}
 
       {/* SOFT PAINTERLY HANDOFF into the page. BOTH the height and the
           ramp are theme tokens, because the two frames need genuinely

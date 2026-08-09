@@ -155,18 +155,6 @@
 .hero-ink { color: rgb(var(--hero-ink)); }
 .hero-ink-soft { color: rgb(var(--hero-ink-soft)); }
 
-/* Small type on the artwork — the tagline. Flips with the theme like the
- * rest of the hero type.
- *
- * Constant near-white was tried here and measured WORSE: the bottom-left
- * corner is not dark in the day frame, it is sunlit stone, so white text
- * dropped to 4.05:1 mean / 1.02:1 worst-pixel against 4.46 / 1.12 for
- * charcoal. The corner carries both deep shadow and blown highlight, so
- * no single ink clears both — see the note in components/hero.tsx. */
-.hero-caption {
-  color: rgb(var(--hero-ink));
-}
-
 /* The scroll cue's arrow: a slow 2px drift, the one moving thing in the
  * hero besides the cursor. Stopped entirely under reduced-motion. */
 .hero-scroll-cue {
