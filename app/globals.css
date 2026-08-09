@@ -46,12 +46,6 @@
    * haze and softens the hard edges VT323 depends on). */
   --hero-ink: 250 250 249;
   --hero-ink-soft: 208 210 216;
-  --hero-chrome-floor: linear-gradient(
-    to bottom,
-    rgba(6, 6, 8, 0.62) 0%,
-    rgba(6, 6, 8, 0.34) 52%,
-    rgba(6, 6, 8, 0) 100%
-  );
   /* Handoff from the painting to the page — a WHISPER, not a band. The
    * hero owns the whole viewport now, so the fade's only job is to stop
    * the bottom edge being a hard cut. Anything taller reads as haze over
@@ -98,12 +92,6 @@
    * looking punched out of a painting whose darkest values are warm. */
   --hero-ink: 17 17 19;
   --hero-ink-soft: 48 50 54;
-  --hero-chrome-floor: linear-gradient(
-    to bottom,
-    rgba(250, 249, 245, 0.82) 0%,
-    rgba(250, 249, 245, 0.46) 52%,
-    rgba(250, 249, 245, 0) 100%
-  );
   /* The day frame gets less still. Cream over a sunlit park is the worst
    * case for this effect — the foreground is the brightest thing in the
    * picture, so the wash has nothing dark to disappear into and reads as
@@ -149,8 +137,8 @@
  * white on the night frame, charcoal on the day frame. There is no halo
  * — a glow behind pixel type reads as haze and softens the very edges
  * that make VT323 legible. The paintings have enough tonal separation in
- * the sky pocket and over the park that the flip is sufficient; the nav
- * additionally sits on --hero-chrome-floor.
+ * the sky pocket and behind the nav that the flip is sufficient on its
+ * own — there is no band, no floor and no scrim anywhere on the hero.
  * ========================================================================= */
 .hero-ink { color: rgb(var(--hero-ink)); }
 .hero-ink-soft { color: rgb(var(--hero-ink-soft)); }
@@ -168,23 +156,6 @@
 @media (prefers-reduced-motion: reduce) {
   .hero-scroll-cue { animation: none; }
 }
-
-/* The chrome band needs a floor of its own. Both paintings put something
- * dark in a top corner (tree canopy on the day frame, foliage on the
- * night one), and charcoal-on-canopy fails no matter how strong the halo
- * is. This is a gradient confined to the chrome strip and gone by 100% —
- * it never touches the middle of the image where the art actually plays. */
-.over-hero::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 132px;
-  pointer-events: none;
-  background: var(--hero-chrome-floor);
-  opacity: 1;
-  transition: opacity 150ms;
-}
-.over-hero[data-solid]::before { opacity: 0; }
 
 /* THE NAME IS IN THE SKY, so the nav must not say it twice. While the
  * chrome floats over the hero the nav wordmark is withdrawn entirely
