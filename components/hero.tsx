@@ -105,7 +105,7 @@ function Chars({ text, frag }: { text: string; frag: string }) {
  *  that mask is a single colour and could not hold the amber 0. */
 function SkyName() {
   return (
-    <span className="hero-ink block whitespace-nowrap font-display leading-[0.8] text-[clamp(58px,11.5vw,160px)]">
+    <span className="hero-ink block whitespace-nowrap font-display leading-[0.8] text-[clamp(40px,8vw,112px)]">
       <Chars text="batch" frag="l" />
       <HeroZero />
     </span>
@@ -145,21 +145,23 @@ export default function Hero() {
         className="object-cover object-center"
       />
 
-      {/* NO SCRIM. The type carries itself: .hero-ink flips colour with the
-          theme and brings a halo in the opposite direction. A wash strong
-          enough to do the same job also flattened the painting. */}
+      {/* NO SCRIM AND NO HALO. The colour flip alone carries the type:
+          near-white on the night frame, charcoal on the day frame. A wash
+          strong enough to help flattened the painting, and a glow behind
+          pixel type read as haze around the very edges VT323 depends on. */}
 
       {/* THE NAME IN THE SKY.
           Both frames share one composition: tree canopy top-left, tall
           tower cluster right, horizon skyline below, and a clear pocket of
           sky between them running roughly x 27–75% / y 4–31% of the
           painting. The name is centred in that pocket — horizontally it
-          lands at ~51% of the image, which is close enough to dead centre
-          to just centre it, and vertically at 23% it breathes evenly
-          between the nav above and the skyline below in BOTH frames. */}
+          lands within a couple of percent of dead centre, so it is simply
+          centred — and at the smaller size it clears the canopy and the
+          tower cluster with room either side. Vertically 23% breathes
+          evenly between the nav above and the skyline below. */}
       <h1
         data-entrance-reveal
-        className="absolute left-1/2 top-[23%] z-10 -translate-x-1/2 -translate-y-1/2 md:left-[43%]"
+        className="absolute left-1/2 top-[23%] z-10 -translate-x-1/2 -translate-y-1/2"
       >
         <SkyName />
       </h1>

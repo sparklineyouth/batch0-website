@@ -39,19 +39,13 @@
   /* HERO TYPE ON ARTWORK.
    *
    * The hero sits directly on a painting in both themes, so its type can't
-   * use the page ink: it has to answer the IMAGE. The colour flips (near-
-   * white on the night frame, charcoal on the day frame) and a matching
-   * halo in the opposite direction buys separation from the busy parts of
-   * the art. This replaced the old radial scrim outright — a wash strong
-   * enough to carry the type also muddied the painting, and the whole
-   * point of the art is that it breathes. */
+   * use the page ink: it has to answer the IMAGE. The colour flips —
+   * near-white on the night frame, charcoal on the day frame — and that
+   * flip alone carries it. No scrim (a wash strong enough to help also
+   * muddied the painting) and no halo (a glow behind pixel type reads as
+   * haze and softens the hard edges VT323 depends on). */
   --hero-ink: 250 250 249;
   --hero-ink-soft: 208 210 216;
-  --hero-halo: 0 2px 18px rgba(0, 0, 0, 0.62), 0 0 4px rgba(0, 0, 0, 0.5);
-  /* Tight variant for small type. The wide 18px glow is right behind a
-   * 160px headline and wrong behind 13px copy — at that size it bleeds
-   * across the whole glyph and eats the very contrast it should buy. */
-  --hero-halo-tight: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.75);
   --hero-chrome-floor: linear-gradient(
     to bottom,
     rgba(6, 6, 8, 0.62) 0%,
@@ -100,13 +94,10 @@
   /* --phosphor-fill deliberately does NOT flip: solid amber fills carry
    * dark on-phosphor text (11.5:1) and must stay #FFBB00 on both surfaces. */
   --phosphor-rgb: 138 90 0; /* burnt amber — 5.3:1 on paper */
-  /* Charcoal on the day frame, with a white halo instead of a black one.
-   * Not pure black: #111 keeps the type from looking punched out of a
-   * painting whose own darkest values are warm. */
+  /* Charcoal on the day frame. Not pure black: #111 keeps the type from
+   * looking punched out of a painting whose darkest values are warm. */
   --hero-ink: 17 17 19;
   --hero-ink-soft: 48 50 54;
-  --hero-halo: 0 2px 18px rgba(255, 255, 255, 0.8), 0 0 4px rgba(255, 255, 255, 0.7);
-  --hero-halo-tight: 0 1px 3px rgba(255, 255, 255, 0.95), 0 0 2px rgba(255, 255, 255, 0.9);
   --hero-chrome-floor: linear-gradient(
     to bottom,
     rgba(250, 249, 245, 0.82) 0%,
@@ -154,23 +145,21 @@
 .paper .themed-day { display: block; }
 
 /* ============================================================================
- * Type that sits ON the hero artwork. Both the colour and the halo flip
- * with the theme (see --hero-ink / --hero-halo). Everything legible over
- * the painting uses one of these three — including the wordmark and nav,
- * which float over the image until the visitor scrolls.
+ * Type that sits ON the hero artwork. The COLOUR alone carries it: near-
+ * white on the night frame, charcoal on the day frame. There is no halo
+ * — a glow behind pixel type reads as haze and softens the very edges
+ * that make VT323 legible. The paintings have enough tonal separation in
+ * the sky pocket and over the park that the flip is sufficient; the nav
+ * additionally sits on --hero-chrome-floor.
  * ========================================================================= */
-.hero-ink { color: rgb(var(--hero-ink)); text-shadow: var(--hero-halo); }
-.hero-ink-soft { color: rgb(var(--hero-ink-soft)); text-shadow: var(--hero-halo); }
-/* Halo only — for elements that must keep their own colour (the amber
- * "yours." and the pixel-0) but still need to separate from the art. */
-.hero-halo { text-shadow: var(--hero-halo); }
+.hero-ink { color: rgb(var(--hero-ink)); }
+.hero-ink-soft { color: rgb(var(--hero-ink-soft)); }
 
 /* Small type on the artwork — the tagline. Takes the FULL ink rather than
  * the soft step, because it sits over the sunlit path in the day frame,
  * the brightest thing in either painting. */
 .hero-caption {
   color: rgb(var(--hero-ink));
-  text-shadow: var(--hero-halo-tight);
 }
 
 /* The scroll cue's arrow: a slow 2px drift, the one moving thing in the
@@ -230,12 +219,10 @@
 .over-hero:not([data-solid]) .hero-chrome-type,
 .over-hero:not([data-solid]) .hero-chrome-type * {
   color: rgb(var(--hero-ink));
-  text-shadow: var(--hero-halo);
 }
 .over-hero:not([data-solid]) .hero-chrome-dim,
 .over-hero:not([data-solid]) .hero-chrome-dim * {
   color: rgb(var(--hero-ink-soft));
-  text-shadow: var(--hero-halo);
 }
 
 * {
