@@ -143,6 +143,104 @@
 .hero-ink { color: rgb(var(--hero-ink)); }
 .hero-ink-soft { color: rgb(var(--hero-ink-soft)); }
 
+/* ============================================================================
+ * MARKETING SECTION TYPE SYSTEM  (`.sec-*`)
+ *
+ * The language every redesigned section below the hero shares. Three
+ * roles, deliberately few:
+ *
+ *   .sec-eyebrow  mono, tracked, faint — the only place mono survives in
+ *                 prose. It labels; it is not read as a sentence.
+ *   .sec-h2       Inter at poster scale, tight leading and slightly
+ *                 negative tracking. This is what stops the page reading
+ *                 as sparse: a real headline instead of 15px mono.
+ *   .sec-lead     the one paragraph under a headline, larger than body
+ *                 and softer than ink, at a measure that actually wraps.
+ *
+ * VT323 is NOT used for prose here. It keeps the wordmark and the step
+ * numerals, so the pixel texture still has a job and never has to carry
+ * a sentence — which is exactly where it was looking unfinished.
+ * ========================================================================= */
+.sec-eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+  color: rgb(var(--ink-faint));
+}
+.sec-h2 {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(30px, 4.4vw, 52px);
+  font-weight: 500;
+  line-height: 1.06;
+  letter-spacing: -0.022em;
+  color: rgb(var(--ink));
+  text-wrap: balance;
+}
+.sec-lead {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(16px, 1.25vw, 18px);
+  font-weight: 400;
+  line-height: 1.6;
+  color: rgb(var(--ink-soft));
+}
+.sec-body {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: 15.5px;
+  line-height: 1.62;
+  color: rgb(var(--ink-soft));
+}
+
+/* Art plates whose source ships a FLAT backdrop rather than alpha, which
+ * is every painted asset here. Measured, the backdrops do not match the
+ * page and cannot be made to:
+ *
+ *   tree-night  rgb(4,4,6)       page dark  rgb(12,12,13)   → too dark
+ *   tree-day    rgb(249,247,247) page paper rgb(247,243,234) → too cool
+ *
+ * A blend mode cannot fix that — screen pushed the night plate to ~15
+ * against a 12 page and made the square MORE visible, and multiply left
+ * the day plate cool against warm cream. So the edge is dissolved
+ * geometrically instead of tonally: an 8% feather on all four sides,
+ * built from two linear masks intersected. It works whatever the
+ * backdrop happens to be, which also means it will hold for the build
+ * and tower plates without re-measuring anything. */
+.plate-feather {
+  --feather: 8%;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent 0, #000 var(--feather), #000 calc(100% - var(--feather)), transparent 100%),
+    linear-gradient(to bottom, transparent 0, #000 var(--feather), #000 calc(100% - var(--feather)), transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent 0, #000 var(--feather), #000 calc(100% - var(--feather)), transparent 100%),
+    linear-gradient(to bottom, transparent 0, #000 var(--feather), #000 calc(100% - var(--feather)), transparent 100%);
+  mask-composite: intersect;
+}
+
+/* Section rhythm. One vertical step, used by every section, so the page
+ * has a spacing SYSTEM rather than per-section guesses. Generous but
+ * bounded — the old py-14/py-20 left voids at desktop widths. */
+.sec {
+  padding-top: clamp(72px, 9vh, 132px);
+  padding-bottom: clamp(72px, 9vh, 132px);
+}
+
+/* Section-to-section seam: a hairline that fades out at both ends rather
+ * than a full-width rule. Soft handoff, no hard cut. */
+.sec-seam {
+  border: 0;
+  height: 1px;
+  margin: 0;
+  background: linear-gradient(
+    to right,
+    rgb(var(--line) / 0) 0%,
+    rgb(var(--line)) 12%,
+    rgb(var(--line)) 88%,
+    rgb(var(--line) / 0) 100%
+  );
+}
+
 /* The scroll cue's arrow: a slow 2px drift, the one moving thing in the
  * hero besides the cursor. Stopped entirely under reduced-motion. */
 .hero-scroll-cue {

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { VT323, IBM_Plex_Mono } from "next/font/google";
+import { VT323, IBM_Plex_Mono, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
@@ -18,6 +18,18 @@ const mono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-mono",
+  display: "swap",
+});
+// The marketing prose face. Mono-everything read as sparse and unfinished
+// below the hero — long copy in a fixed-pitch face never settles. Inter
+// takes headings and body on the redesigned marketing sections ONLY, via
+// the `font-body` utility; --font-mono stays the default everywhere else,
+// so the product app and dashboards are untouched. VT323 keeps the
+// wordmark and the step numerals: the pixel texture still has a job.
+const body = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-body",
   display: "swap",
 });
 
@@ -131,7 +143,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`dark ${display.variable} ${mono.variable}`}
+      className={`dark ${display.variable} ${mono.variable} ${body.variable}`}
     >
       <body className="bg-paper font-sans text-ink antialiased">
         <script

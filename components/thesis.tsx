@@ -1,16 +1,25 @@
 import React from "react";
-import Image from "next/image";
+import { ThemedImage } from "@/components/themed-image";
 import { ZeroThread } from "@/components/zero-thread";
 
 /**
- * The thesis — one short escalating beat: come in with an idea, leave
- * with a company. Three lines that each raise the stakes on the last,
- * beside the tree plate.
+ * The thesis — the page's first argument, and the pattern every other
+ * section below the hero follows.
  *
- * The tree is the ONLY place this motif appears on the site: an amber
- * zero at the root growing into a lit canopy. It illustrates, it does not
- * decorate — capped at 420px so it reads as a plate beside the argument
- * rather than competing with it, and it stacks under the text on mobile.
+ * SHAPE: asymmetric two-column. The argument runs down a 6-column
+ * measure on the left; the tree occupies its own 5-column plate on the
+ * right, vertically centred against the whole block rather than pinned
+ * to the headline. Below md they stack, argument first — the tree
+ * illustrates the claim, so it should never arrive before it.
+ *
+ * THE TREE IS THEME-PAIRED. It was hardcoded to tree-night, which put a
+ * black-backed square on cream in the paper theme. It is a ThemedImage
+ * now, so the white-backed frame shows on paper and neither one carries
+ * a visible edge against the page.
+ *
+ * The escalation is a real definition list: three rows, each raising the
+ * stakes on the last, with the numerals in VT323 so the pixel texture
+ * survives in the one place it still earns its keep.
  */
 
 const BEATS: { from: string; to: string }[] = [
@@ -21,63 +30,67 @@ const BEATS: { from: string; to: string }[] = [
 
 export default function Thesis() {
   return (
-    <section id="thesis" className="border-t border-line py-14 md:py-20">
-      {/* The site's identity line. It used to sit on the hero artwork,
-          where the day frame's park foreground made it unreadable at any
-          ink; on the flat page it needs no halo, no scrim and no panel.
-          Set a step heavier than the section gloss beneath it so it reads
-          as what the site IS, not as this section's subtitle. */}
-      <p className="t-small font-medium tracking-[0.02em] text-ink">
-        a startup accelerator for high schoolers
-      </p>
-      <p className="section-intro mt-1.5">what nine weeks actually changes.</p>
+    <>
+      {/* soft seam instead of a hard full-width rule */}
+      <hr className="sec-seam" />
+      <section id="thesis" className="sec font-body">
+      <div className="grid grid-cols-12 items-center gap-x-6 gap-y-12 md:gap-y-0">
+        {/* ── the argument ─────────────────────────────────────────── */}
+        <div className="col-span-12 md:col-span-6 lg:col-span-6">
+          <p className="sec-eyebrow">the thesis</p>
 
-      <div className="mt-6 grid grid-cols-12 items-center gap-x-6 gap-y-8">
-        <div className="col-span-12 md:col-span-7">
-          <h2 className="t-head max-w-[18ch] text-ink">
+          <h2 className="sec-h2 mt-4 max-w-[15ch]">
             come in with an idea. leave with a company.
           </h2>
 
-          <dl className="mt-6">
+          <p className="sec-lead mt-5 max-w-[46ch]">
+            Nine weeks is short on purpose — long enough to build the thing,
+            short enough that you cannot spend it planning.
+          </p>
+
+          {/* the escalation */}
+          <dl className="mt-9">
             {BEATS.map((b, i) => (
               <div
                 key={b.from}
-                className="grid grid-cols-[6ch_1fr] border-t border-line py-3.5 last:border-b last:border-line"
+                className="grid grid-cols-[2.75rem_1fr] items-baseline gap-x-2 border-t border-line py-4 last:border-b"
               >
-                <span aria-hidden className="t-small font-mono text-ink-faint">
+                <span
+                  aria-hidden
+                  className="font-display text-[19px] leading-none text-ink-faint"
+                >
                   0{i + 1}
                 </span>
-                <div className="t-body">
-                  <dt className="inline text-ink-soft">{b.from}</dt>
-                  <span aria-hidden className="mx-2 font-mono text-ink-faint">
-                    →
-                  </span>
-                  <dd className="inline font-semibold text-ink">{b.to}</dd>
+                <div>
+                  <dt className="sec-body text-ink-faint">{b.from}</dt>
+                  <dd className="mt-0.5 text-[16.5px] font-medium leading-[1.45] text-ink">
+                    {b.to}
+                  </dd>
                 </div>
               </div>
             ))}
           </dl>
 
-          <p className="t-small mt-5 max-w-[52ch] text-ink-soft">
-            nine weeks is short on purpose. it is long enough to build the
-            thing and short enough that you cannot spend it planning. you
-            start at <ZeroThread>zero</ZeroThread> either way.
+          <p className="sec-body mt-7 max-w-[48ch]">
+            You start at <ZeroThread>zero</ZeroThread> either way. The
+            difference is what you are standing on nine weeks later.
           </p>
         </div>
 
-        <div className="col-span-12 md:col-span-5">
-          {/* Square source (1254²). Sized by max-width, height derived, so
-              the plate scales down cleanly to a 390px viewport. */}
-          <Image
-            src="/tree-night.png"
+        {/* ── the plate ────────────────────────────────────────────── */}
+        <div className="col-span-12 md:col-span-5 md:col-start-8">
+          <ThemedImage
+            night="/tree-night.png"
+            day="/tree-day.png"
             alt="A glowing amber zero at the base of a tree, its lit leaves spreading into a full canopy."
             width={1254}
             height={1254}
-            sizes="(max-width: 768px) 78vw, 420px"
-            className="mx-auto h-auto w-full max-w-[300px] md:max-w-[420px]"
+            sizes="(max-width: 768px) 74vw, 440px"
+            className="plate-feather mx-auto h-auto w-full max-w-[320px] md:max-w-[440px]"
           />
         </div>
       </div>
-    </section>
+      </section>
+    </>
   );
 }

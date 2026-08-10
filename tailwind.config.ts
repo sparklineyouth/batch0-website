@@ -72,6 +72,17 @@ const config: Config = {
           "ui-monospace",
           "monospace",
         ],
+        // Marketing prose only — opt in with `font-body`. The default
+        // `sans` key still resolves to the mono stack so the product app
+        // is unaffected.
+        body: [
+          "var(--font-body)",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "sans-serif",
+        ],
         mono: [
           "var(--font-mono)",
           "ui-monospace",
