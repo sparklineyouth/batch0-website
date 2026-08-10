@@ -8,9 +8,20 @@
    * these ARE the flat-black palette — warm near-black paper, off-white ink,
    * zinc-family secondary text, coherent with the product app. There is no
    * light theme and no runtime flipping. */
-  --paper: 12 12 13;
-  --wash: 24 24 27;
-  --line: 42 42 46;
+  /* THE PAGE IS THE PAINTING'S SHADOW, not a swatch.
+   *
+   * Sampled from hero-night.png: its deep-shadow band is rgb(0,6,10) and
+   * the bottom edge that actually abuts the page is rgb(11,18,22) — a
+   * cool slate, NOT the warm black one might assume from a night scene.
+   * The old rgb(12,12,13) was neutral, so the hero's fade ran from the
+   * painting's slate to a dead grey-black and that colour shift WAS the
+   * seam. These sit in the painting's family, pulled a little back from
+   * the literal bottom-edge value so the page still reads unambiguously
+   * black rather than slate. wash and line move with it — a warm rule on
+   * a cool ground is exactly the mismatch we are removing. */
+  --paper: 10 15 18;
+  --wash: 20 26 30;
+  --line: 38 46 51;
   --ink: 245 245 244;
   --ink-soft: 161 161 170;
   /* AA (4.5:1) on the raised wash footer (24 24 27) *and* on paper — the
@@ -19,7 +30,7 @@
   --phosphor-ink: 255 187 0;
 
   /* Raw page surface used by html/body + browser theme-color. */
-  --background: #0c0c0d;
+  --background: #0a0f12;
   --foreground: #f5f5f4;
 
   /* Chrome amber (the zero thread). FILLS stay #FFBB00 in both themes via
@@ -92,18 +103,24 @@
    * looking punched out of a painting whose darkest values are warm. */
   --hero-ink: 17 17 19;
   --hero-ink-soft: 48 50 54;
-  /* The day frame gets less still. Cream over a sunlit park is the worst
-   * case for this effect — the foreground is the brightest thing in the
-   * picture, so the wash has nothing dark to disappear into and reads as
-   * fog. Barely there: flat zero for the first two thirds, then a short
-   * ramp that only closes on the final edge. */
-  --hero-fade-h: 7%;
+  /* The day frame is the hard case, and it is the OPPOSITE problem to the
+   * night one. Measured, the hero's bottom edge is rgb(53,79,72) — dark
+   * shaded foliage — meeting a cream page: a 463-point channel jump that
+   * no colour rebase can close, because a light theme cannot have a dark
+   * page. Only the fade can bridge it.
+   *
+   * At 7% it was bridging that jump in ~23px, which read as the painting
+   * being cut off with a ruler. This is taller but deliberately BACK-
+   * LOADED: flat zero for the first half, so the wash never climbs into
+   * the park the way the old 26% band did — the reach that read as fog is
+   * roughly halved, while the transition itself gets three times longer. */
+  --hero-fade-h: 18%;
   --hero-fade: linear-gradient(
     to bottom,
     rgb(var(--paper) / 0) 0%,
-    rgb(var(--paper) / 0.02) 62%,
-    rgb(var(--paper) / 0.16) 82%,
-    rgb(var(--paper) / 0.55) 93%,
+    rgb(var(--paper) / 0.03) 52%,
+    rgb(var(--paper) / 0.22) 74%,
+    rgb(var(--paper) / 0.62) 88%,
     rgb(var(--paper)) 100%
   );
   --smolder-0: #4a2e00;

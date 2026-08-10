@@ -38,8 +38,9 @@ export const viewport: Viewport = {
   initialScale: 1,
   // viewport-fit=cover lets safe-area-inset-* expose the notch on iOS.
   viewportFit: "cover",
-  // The site is dark-only; browser chrome always matches the flat-black paper.
-  themeColor: "#0c0c0d",
+  // Browser chrome matches --paper, which is now sampled from the night
+  // painting's shadow family rather than a flat black.
+  themeColor: "#0a0f12",
 };
 
 // The site serves from the apex; batchzero.org and the legacy
