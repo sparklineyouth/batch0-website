@@ -217,6 +217,63 @@
     linear-gradient(to bottom, transparent 0, #000 var(--feather), #000 calc(100% - var(--feather)), transparent 100%);
   mask-composite: intersect;
 }
+/* Opened-up falloff for a plate that is BLED into a section rather than
+ * placed in a cell — it has to stop existing well before the container
+ * edge, not just lose its corners. */
+.plate-soft { --feather: 22%; }
+
+/* RADIAL dissolve, for a plate bled into open space. The box feather
+ * above still leaves a faint rounded rectangle on these assets, because
+ * what remains is not the plate's edge — it is a soft vignette PAINTED
+ * into the artwork around the tree, which is radial. Matching the mask
+ * to the vignette's own shape erases it completely and leaves the tree
+ * sitting in the page with no frame of any kind. Centre is 52% vertical
+ * because the canopy sits above the midline. */
+.plate-radial {
+  -webkit-mask-image: radial-gradient(circle at 50% 52%, #000 40%, rgba(0,0,0,0.55) 58%, transparent 74%);
+  -webkit-mask-composite: source-over;
+  mask-image: radial-gradient(circle at 50% 52%, #000 40%, rgba(0,0,0,0.55) 58%, transparent 74%);
+  mask-composite: add;
+}
+
+/* The feather dissolves the plate's EDGE; this erases what is left of its
+ * BACKDROP. Given the measured values the pair is exact, not approximate:
+ *
+ *   night  bg rgb(4,4,6) is darker than the page in every channel, so
+ *          `lighten` resolves the backdrop to exactly the page colour and
+ *          keeps every tree pixel brighter than it.
+ *   day    bg rgb(249,247,247) is lighter than the page in every channel,
+ *          so `darken` does the same in reverse — min() per channel lands
+ *          precisely on rgb(247,243,234).
+ *
+ * This is why `screen`/`multiply` failed earlier: they blend rather than
+ * choose, so a backdrop that is merely NEAR the page colour still shifts
+ * it. lighten/darken only ever discard the wrong side. */
+.plate-feather.themed-night { mix-blend-mode: lighten; }
+.plate-feather.themed-day { mix-blend-mode: darken; }
+
+/* THE SECTION STATEMENT — the one loud thing.
+ *
+ * Where .sec-h2 is a heading, this is the section itself: VT323 at
+ * near-poster scale, filling a left column, with everything else on the
+ * page deliberately quieter around it. Only one per section, ever.
+ *
+ * It sets its own family rather than composing with .font-display,
+ * because that rule pins line-height:1.1 and is defined later in this
+ * file — a `leading-*` utility on the element would lose the cascade.
+ * Declaring the family here keeps the guardrails (single 400 weight, no
+ * synthesis, positive tracking) while letting the leading breathe, which
+ * is what stops a wall of pixel type reading as a solid block.
+ * ========================================================================= */
+.sec-display {
+  font-family: var(--font-display), var(--font-mono), ui-monospace, monospace;
+  font-weight: 400;
+  font-synthesis: none;
+  font-size: clamp(46px, 7.4vw, 106px);
+  line-height: 1.14;
+  letter-spacing: 0.012em;
+  color: rgb(var(--ink));
+}
 
 /* Section rhythm. One vertical step, used by every section, so the page
  * has a spacing SYSTEM rather than per-section guesses. Generous but
