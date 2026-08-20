@@ -57,8 +57,8 @@ export default function PrivacyPage() {
         <li>
           <strong>Service providers</strong> we use to operate the platform:
           Supabase (database + auth + storage), Stripe (payments), Resend
-          (email), Anthropic (AI co-founder), Vercel (hosting + analytics),
-          Google (Google Analytics). They process data on our behalf only.
+          (email), Anthropic (AI co-founder), Vercel (hosting + cookieless
+          analytics). They process data on our behalf only.
         </li>
         <li>
           <strong>Mentors and investors</strong> only see what you choose to
@@ -68,47 +68,35 @@ export default function PrivacyPage() {
 
       <h2>Cookies and analytics</h2>
       <p>
-        We use two analytics tools to understand how people find and use the
-        site, so we can make it better. Neither is used for advertising, and
-        we do not sell or share this data with advertisers.
+        We deliberately chose analytics that don&apos;t track you. Most of our
+        students are minors, so we use tools that measure the site rather than
+        the person.
       </p>
       <ul>
         <li>
-          <strong>Vercel Analytics</strong> measures page traffic without
-          cookies and without tracking you across other websites.
+          <strong>Vercel Analytics</strong> counts page visits{" "}
+          <strong>without cookies</strong>. It does not follow you to other
+          websites, does not build a profile of you, and cannot identify you
+          personally.
         </li>
         <li>
-          <strong>Google Analytics</strong> sets cookies in your browser to
-          recognise return visits. It records things like which pages you
-          viewed, roughly where in the world you are, and what kind of device
-          and browser you used. We have not enabled Google&apos;s advertising
-          or remarketing features, so this data is not used to target ads at
-          you.
+          <strong>Vercel Speed Insights</strong> records how quickly pages
+          load so we can fix the slow ones. Timings only.
         </li>
       </ul>
       <p>
-        We do not send your name, email address, or anything else that
-        identifies you personally to Google Analytics. It is switched off
-        entirely on our staff-only admin pages.
+        We do not use Google Analytics, advertising trackers, remarketing
+        pixels, or any third-party advertising cookies. We do not sell or
+        share this data with advertisers, and we never will.
       </p>
       <p>
-        You can opt out at any time. Most browsers let you block or delete
-        cookies in their settings, and Google publishes a browser add-on that
-        turns Google Analytics off everywhere at{" "}
-        <a
-          href="https://tools.google.com/dlpage/gaoptout"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          tools.google.com/dlpage/gaoptout
-        </a>
-        . Blocking analytics does not affect your application or your place in
-        the program.
+        The only cookies we set are the ones the site needs to work: keeping
+        you signed in, and remembering whether you chose light or dark mode.
       </p>
       <p>
-        Students and parents in the UK or EU: if you would like us to delete
-        analytics data associated with your visits, email us and we will do
-        it.
+        We also use <strong>Google Search Console</strong>, which tells us
+        which of our pages show up in Google search results. It reports on our
+        pages, not on you, and puts no tracking code in your browser.
       </p>
 
       <h2>Your rights</h2>
@@ -153,7 +141,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-05-12",
+          dateModified: "2026-08-05",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />

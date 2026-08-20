@@ -3,7 +3,6 @@ import { VT323, IBM_Plex_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/components/theme-provider";
-import { GoogleAnalytics } from "@/components/google-analytics";
 import {
   SITE,
   ORG_ID,
@@ -89,6 +88,24 @@ export const metadata: Metadata = {
     description:
       "A live, online startup accelerator for U.S. high schoolers. Build a real company across four build sprints, then pitch it at demo day. $130, free to apply, no equity taken.",
   },
+  // Google Search Console ownership. Set GOOGLE_SITE_VERIFICATION in the
+  // Vercel project env to the token Google gives you (the bare token, not the
+  // whole meta tag) and this renders the verification tag on every page.
+  //
+  // Search Console is the only tool that answers "is Google actually indexing
+  // us" — analytics can't, because a page that was never crawled sends no
+  // events. Right now an exact-phrase search for a post title that exists
+  // nowhere else on the internet returns nothing, so most of the 135 guides
+  // are missing from the index and we have no visibility into which ones.
+  //
+  // Omitted entirely when unset, rather than rendering an empty tag.
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? {
+        verification: {
+          google: process.env.GOOGLE_SITE_VERIFICATION,
+        },
+      }
+    : {}),
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "48x48" },
@@ -219,10 +236,12 @@ export default function RootLayout({
               localhost by design and resolves on Vercel; data only appears once
               Speed Insights is enabled for the project in the dashboard. */}
           <SpeedInsights />
-          {/* GA4. Mounted here, not per-page: the root layout wraps every
-              route, so one mount covers the whole site. Excludes /admin —
-              see components/google-analytics.tsx. Disclosed in /privacy. */}
-          <GoogleAnalytics />
+          {/* No Google Analytics by choice. Both of the above are cookieless,
+              which matters when the audience is 13–18: no consent banner, no
+              cross-site tracking, and a privacy policy we can state plainly.
+              The one thing GA offered that these don't is the Search Console
+              link, and Search Console is wired up directly via the
+              `verification` entry in the metadata above. */}
         </ThemeProvider>
       </body>
     </html>

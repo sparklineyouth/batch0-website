@@ -295,21 +295,53 @@ async function checkLiveMeta(fallback: FallbackFields) {
         pass(`homepage links to ${hubLinks.size} category hubs`);
       }
 
-      // GA4 loads client-side, so the measurement ID should appear in the
-      // shipped HTML. If it doesn't, the tag silently isn't collecting.
-      const gaId = "G-C51DMRB6YE";
-      if (html.includes(gaId)) pass(`Google Analytics tag present (${gaId})`);
-      else warn(`Google Analytics tag (${gaId}) not found in the homepage HTML`);
+      // ---- Search Console ownership ----
+      // The only tool that reports whether Google has actually indexed a
+      // page. Analytics can't answer that: a page that was never crawled
+      // sends no events, so it looks identical to a page nobody visited.
+      if (/name="google-site-verification"/.test(html)) {
+        pass("Google Search Console verification tag present");
+      } else {
+        warn(
+          "no google-site-verification tag — set GOOGLE_SITE_VERIFICATION in the Vercel env (or verify by DNS instead)",
+        );
+      }
 
-      // Analytics on a site used by 13–18 year olds has to be disclosed.
+      // ---- Analytics ----
+      // A 200 means the feature is switched on in the Vercel dashboard, not
+      // merely that <Analytics /> is in the code.
+      try {
+        const res = await fetch(`${SITE}/_vercel/insights/script.js`);
+        if (res.ok) pass("Vercel Analytics enabled");
+        else
+          warn(
+            `Vercel Analytics script returned HTTP ${res.status} — <Analytics /> is mounted but the feature may be off in the dashboard`,
+          );
+      } catch {
+        warn("could not reach the Vercel Analytics script");
+      }
+
+      // Whatever analytics we run has to be disclosed: our users are 13–18.
       try {
         const privacy = await (await fetch(`${SITE}/privacy`)).text();
-        if (/google analytics/i.test(privacy))
-          pass("/privacy discloses Google Analytics");
-        else
+        const disclosesAnalytics = /analytics/i.test(privacy);
+        const usesGoogleAnalytics = html.includes("googletagmanager");
+
+        if (!disclosesAnalytics) {
           fail(
-            "/privacy does not mention Google Analytics — required disclosure for a site collecting data from minors",
+            "/privacy does not mention analytics — required disclosure for a site collecting data from minors",
           );
+        } else {
+          pass("/privacy discloses analytics");
+        }
+
+        // Catch the policy and the code drifting apart in either direction.
+        const claimsNoGA = /do not use google analytics/i.test(privacy);
+        if (usesGoogleAnalytics && claimsNoGA) {
+          fail(
+            "/privacy says we do not use Google Analytics, but a Google tag is loading on the homepage",
+          );
+        }
       } catch {
         warn("could not fetch /privacy to check the analytics disclosure");
       }
