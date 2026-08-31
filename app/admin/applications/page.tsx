@@ -6,7 +6,7 @@ import {
   resolveReferrersByCode,
   tallyApplicationsByReferralCode,
 } from "@/lib/referrals";
-import { passHolderUserIds } from "@/lib/founder-pass";
+import { passGrantsByUserId } from "@/lib/founder-pass";
 import {
   pendingRebuildUserIds,
   decisionTargetStatus,
@@ -92,7 +92,7 @@ export default async function AdminApplicationsPage({
   //  - referrerByCode: who brought each applicant IN (incoming).
   //  - tally: how many applications each applicant has brought in (outgoing),
   //    counted across ALL applications, not just the current filter.
-  const [referrerByCode, tally, passHolders, rebuildUsers] = await Promise.all([
+  const [referrerByCode, tally, passGrants, rebuildUsers] = await Promise.all([
     resolveReferrersByCode(
       admin,
       (apps ?? []).map((a: any) => a.referral_code).filter(Boolean),
@@ -101,7 +101,9 @@ export default async function AdminApplicationsPage({
     // One query for the whole page, not one per row — same reason the two
     // lookups above are batched. Scoped to the page's applicants: only the
     // rows on screen need the badge.
-    passHolderUserIds(
+    // Grants, not just a holder set: since migration 0053 the decision target
+    // is per-pass, so "is this one late?" can't be answered from a boolean.
+    passGrantsByUserId(
       admin,
       (apps ?? []).map((a: any) => a.user_id).filter(Boolean),
     ),
@@ -119,7 +121,8 @@ export default async function AdminApplicationsPage({
       ? String(a.profile.referral_code).toLowerCase()
       : null;
     const sent = ownCode ? tally.get(ownCode) ?? null : null;
-    const isPassHolder = a.user_id ? passHolders.has(a.user_id) : false;
+    const passGrant = a.user_id ? passGrants.get(a.user_id) ?? null : null;
+    const isPassHolder = passGrant !== null;
     return {
       id: a.id,
       full_name: a.full_name,
@@ -140,8 +143,8 @@ export default async function AdminApplicationsPage({
       // Decision-target tracking (perk 2) — only meaningful for a pass app
       // that's still waiting on a decision.
       sla:
-        isPassHolder && a.status === "submitted"
-          ? decisionTargetStatus(a.submitted_at)
+        passGrant && a.status === "submitted"
+          ? decisionTargetStatus(a.submitted_at, new Date(), passGrant.tier)
           : null,
     };
   });

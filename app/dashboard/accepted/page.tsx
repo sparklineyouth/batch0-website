@@ -7,8 +7,7 @@ import { getStudentAccess } from "@/lib/access";
 import { Card } from "@/components/ui/card";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import {
-  hasFounderPass,
-  FOUNDER_PASS_TUITION_DISCOUNT_CENTS,
+  passDiscountCentsForUser,
 } from "@/lib/founder-pass";
 import { fmtDateOnly, isAcceptedStatus } from "@/lib/pre-cohort";
 import { PayButton } from "../application/pay-button";
@@ -61,12 +60,16 @@ export default async function AcceptedPage() {
   // discount) so the number here is the number Stripe charges.
   const basePriceCents = app.cohort?.price_cents ?? 13000;
   const country = getCountryFromHeaders(headers());
-  const holdsPass = await hasFounderPass(supabase, user.id);
-  const passDiscountCents = holdsPass ? FOUNDER_PASS_TUITION_DISCOUNT_CENTS : 0;
-  const priceCents = Math.max(
-    0,
-    getRegionalPrice(basePriceCents, country).amountCents - passDiscountCents,
+  const regionalCents = getRegionalPrice(basePriceCents, country).amountCents;
+  // The discount is read off the holder's own tier and resolved against the
+  // regional amount — the same call checkout makes, so this page and Stripe
+  // can't disagree about what they owe.
+  const passDiscountCents = await passDiscountCentsForUser(
+    supabase,
+    user.id,
+    regionalCents,
   );
+  const priceCents = Math.max(0, regionalCents - passDiscountCents);
   const price = `$${(priceCents / 100).toFixed(0)}`;
 
   const cohortName = app.cohort?.name ?? "batch0";

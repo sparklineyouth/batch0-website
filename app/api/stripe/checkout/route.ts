@@ -5,10 +5,8 @@ import { stripe } from "@/lib/stripe";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
-import {
-  hasFounderPass,
-  FOUNDER_PASS_TUITION_DISCOUNT_CENTS,
-} from "@/lib/founder-pass";
+import { grantDiscountCents } from "@/lib/founder-pass-tiers";
+import { getPassGrantForUser } from "@/lib/founder-pass";
 import {
   getOrCreateStripeCustomer,
   stripeErrorMessage,
@@ -46,7 +44,7 @@ export async function POST(req: Request) {
   // The application, the founder-pass check, and the profile are each
   // keyed off the request alone — none depends on another — so the three
   // reads go out together.
-  const [{ data: app }, holdsFounderPass, { data: profile }] =
+  const [{ data: app }, passGrant, { data: profile }] =
     await Promise.all([
       // Application + cohort, to verify ownership and that it's accepted.
       admin
@@ -56,8 +54,11 @@ export async function POST(req: Request) {
         .maybeSingle(),
       // Founder-pass, checked at charge time rather than stamped on the
       // application: a pass redeemed between acceptance and payment still
-      // counts, and a revoked one doesn't.
-      hasFounderPass(admin, user.id),
+      // counts, and a revoked one doesn't. The GRANT comes back with it — tier
+      // plus any hand-set override (0053/0054) — because what a pass takes off
+      // the bill is no longer a constant, and this is the site that actually
+      // charges the card.
+      getPassGrantForUser(admin, user.id),
       admin
         .from("profiles")
         .select("stripe_customer_id, email, full_name")
@@ -87,10 +88,16 @@ export async function POST(req: Request) {
   const country = getCountryFromHeaders(req.headers);
   const regional = getRegionalPrice(basePriceCents, country);
 
-  // Founder-pass perk: $30 off tuition, applied server-side so it cannot
-  // be requested — you either hold a live pass or you don't.
-  const passDiscountCents = holdsFounderPass
-    ? FOUNDER_PASS_TUITION_DISCOUNT_CENTS
+  // Founder-pass perk: tuition off, applied server-side so it cannot be
+  // requested — the amount comes from the tier on the holder's own pass, never
+  // from the client.
+  //
+  // Resolved against the REGIONAL amount, not the list price, so a "full ride"
+  // waives what this applicant would actually be billed. grantDiscountCents
+  // clamps to that amount, which is why the Math.max below can now only ever
+  // be defensive.
+  const passDiscountCents = passGrant
+    ? grantDiscountCents(passGrant, regional.amountCents)
     : 0;
   const priceCents = Math.max(0, regional.amountCents - passDiscountCents);
   // A fixed Stripe Price can't carry the discounted amount, so any discount

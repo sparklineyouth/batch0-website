@@ -61,6 +61,110 @@ function escape(s: string) {
     .replace(/>/g, "&gt;");
 }
 
+/**
+ * The brushed-silver Founder Pass card, as an email-safe table.
+ *
+ * Every email client is a different browser from 2003, so the "shine" and the
+ * "float" are each built twice — once properly, once as something that still
+ * looks deliberate when the proper version is thrown away:
+ *
+ *   SHINE   `background` carries a multi-stop linear-gradient whose bright
+ *           band at 48-52% is the highlight raking across the metal. Apple
+ *           Mail, iOS Mail and Outlook.com render it; Gmail's web client and
+ *           Outlook's Word engine drop background-image entirely — which is
+ *           why the same cell also carries a `bgcolor` of the gradient's mid
+ *           tone. Those clients show a clean solid-silver card rather than a
+ *           transparent hole, and nothing looks broken.
+ *
+ *   FLOAT   `box-shadow` does the real lift where it's supported. Underneath,
+ *           two decorative rows fake it everywhere else: a 3px darker band
+ *           reading as the card's milled edge, then a soft radial fade for the
+ *           cast shadow. Where gradients are stripped, the second row collapses
+ *           to blank space and the edge alone still reads as thickness.
+ *
+ * Nothing load-bearing lives here. The card carries the serial, the tier and
+ * the holder's name — all of which appear again as plain text in the body and
+ * in the text/plain part — so a client that renders none of this still
+ * delivers a complete, redeemable pass. The code is deliberately NOT on the
+ * card: it has to survive on the worst possible client.
+ */
+function silverPassCard(args: {
+  serial: string;
+  code: string;
+  tierLabel: string;
+  holder?: string | null;
+}) {
+  // Mid-tone of the gradient below. Whatever this is, it must be light enough
+  // for the near-black wordmark to stay legible, because in Gmail this colour
+  // IS the card.
+  const SILVER_FALLBACK = "#c6ccd5";
+  const SILVER_GRADIENT =
+    "linear-gradient(135deg," +
+    "#fbfcfd 0%," +
+    "#e2e6ec 14%," +
+    "#b6bec9 30%," +
+    "#9aa3b0 42%," +
+    "#f6f8fa 50%," + // the highlight raking across
+    "#a8b1bd 58%," +
+    "#c8ced7 74%," +
+    "#eef1f5 90%," +
+    "#dde1e8 100%)";
+
+  const holder = (args.holder ?? "").trim();
+
+  return `
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:4px 0 28px 0">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="380" style="max-width:380px;width:100%">
+        <tr>
+          <td bgcolor="${SILVER_FALLBACK}" style="background:${SILVER_FALLBACK};background:${SILVER_GRADIENT};border-radius:14px;padding:22px 24px;box-shadow:0 18px 38px rgba(0,0,0,0.55);">
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td align="left" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:17px;font-weight:700;letter-spacing:-0.01em;color:#14161a;">
+                  batch<span style="color:#9a7200">0</span>
+                </td>
+                <td align="right" style="font-family:Inter,Arial,sans-serif;font-size:9px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#5c636e;">
+                  Founder Pass
+                </td>
+              </tr>
+              <tr>
+                <td colspan="2" style="padding:22px 0 0 0;font-family:Inter,Arial,sans-serif;font-size:9px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#5c636e;">
+                  Code
+                </td>
+              </tr>
+              <tr>
+                <td colspan="2" style="padding:4px 0 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:30px;font-weight:700;letter-spacing:0.12em;color:#14161a;line-height:1.05;word-break:break-all;">
+                  ${escape(args.code)}
+                </td>
+              </tr>
+              <tr>
+                <td colspan="2" style="padding:14px 0 0 0;">
+                  <div style="height:1px;background:rgba(20,22,26,0.18);line-height:1px;font-size:0">&nbsp;</div>
+                </td>
+              </tr>
+              <tr>
+                <td align="left" style="padding:12px 0 0 0;font-family:Inter,Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#3d434c;">
+                  ${escape(args.tierLabel)}
+                  <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:0.06em;color:#5c636e;">&nbsp;&nbsp;${escape(args.serial)}</span>
+                </td>
+                <td align="right" style="padding:12px 0 0 0;font-family:Inter,Arial,sans-serif;font-size:11px;color:#5c636e;">
+                  ${holder ? escape(holder) : "&nbsp;"}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Milled edge: the card's thickness, so it reads as an object even
+             with every gradient and shadow stripped. -->
+        <tr><td style="padding:0 6px"><div style="height:3px;background:#6e7681;border-radius:0 0 10px 10px;line-height:3px;font-size:0">&nbsp;</div></td></tr>
+        <!-- Cast shadow. Collapses to blank space where radial-gradient is
+             unsupported, which costs nothing. -->
+        <tr><td><div style="height:16px;background:radial-gradient(ellipse at 50% 0%, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 72%);line-height:16px;font-size:0">&nbsp;</div></td></tr>
+      </table>
+    </td></tr>
+  </table>`;
+}
+
 export const Templates = {
   /**
    * Admin-composed blast email (the /admin/email/blast composer). Body
@@ -213,6 +317,112 @@ ${env.siteUrl}`,
       cta: { url: `${env.siteUrl}/pass`, label: "Read your feedback" },
     }),
   }),
+
+  /**
+   * A virtual Founder Pass — the code itself, sent to someone who was never
+   * handed a printed card (app/admin/passes/actions.ts, migrations 0052/0053).
+   *
+   * This email IS the pass. Everything else in this file points at something
+   * the recipient can go and re-read; here the code exists in exactly two
+   * places, this message and the admin's screen at the moment of sending, and
+   * the database holds only a peppered hash of it.
+   *
+   * So the code is printed THREE times, on purpose, each surviving a
+   * different kind of client:
+   *
+   *   1. On the card, as its hero line — the thing it is, rendered as the
+   *      object it stands for.
+   *   2. In the footnote, as plain inline text — this is the copy that
+   *      survives a client which strips gradients, rounded corners and
+   *      background images, i.e. the card collapsing to a grey box.
+   *   3. In the text/plain part, for clients rendering no HTML at all.
+   *
+   * It is deliberately NOT hidden behind the CTA button alone. Nobody should
+   * ever be unable to redeem because their mail client is old.
+   *
+   * `perkLines` comes from tierPerkLines() rather than being written here, so
+   * this email, the admin preview and the holder's own pass page quote one
+   * source. An email promising a credit the pass page doesn't show is worse
+   * than no email.
+   *
+   * `note` is the admin's own line about why this person is getting one. It
+   * is escaped and rendered as a quote, never as the subject or a header —
+   * it's an internal aside made visible, not copy we wrote for the recipient.
+   */
+  founderPassInvite: (args: {
+    code: string;
+    serial: number;
+    tierLabel: string;
+    perkLines: string[];
+    /** True for the tier every printed card carries — see the subject below. */
+    isStandard: boolean;
+    recipientName?: string | null;
+    note?: string | null;
+  }) => {
+    const redeemUrl = `${env.siteUrl}/pass?code=${encodeURIComponent(args.code)}`;
+    const serialLabel = `#${String(args.serial).padStart(3, "0")}`;
+    const first = (args.recipientName ?? "").trim().split(/\s+/)[0] ?? "";
+    const greeting = first ? `Hi ${escape(first)},` : "Hi,";
+    return {
+      // The tier only earns a place in the subject line when it's actually
+      // special. "Your batch0 Founder Pass — standard" reads as a downgrade of
+      // something that isn't one, and standard is what a printed card carries.
+      subject: args.isStandard
+        ? "Your batch0 Founder Pass"
+        : `Your batch0 Founder Pass — ${args.tierLabel.toLowerCase()}`,
+      html: layout({
+        preheader: `Pass ${serialLabel} · ${args.tierLabel} · redeem it at ${env.siteUrl.replace(/^https?:\/\//, "")}/pass`,
+        body: `
+          ${silverPassCard({
+            serial: serialLabel,
+            code: args.code.toUpperCase(),
+            tierLabel: args.tierLabel,
+            holder: args.recipientName ?? null,
+          })}
+          <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">Your Founder Pass</h1>
+          <p>${greeting} someone at batch0 ${first ? "put a Founder Pass in your name" : "set a Founder Pass aside for you"} — <strong>${escape(serialLabel)}</strong>, issued as <strong>${escape(args.tierLabel)}</strong>. It's the same pass that comes on our 3D-printed cards; this one skipped the plastic.</p>
+          <p style="margin:0 0 10px 0">The button below opens your pass with the code already filled in — you don't have to type it. It binds the pass to your account, and carries:</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 18px 0">
+            ${args.perkLines
+              .map(
+                (line) =>
+                  `<tr>
+                     <td width="18" valign="top" style="padding:3px 0;color:#ffbb00;font-size:14px;line-height:1.55">&bull;</td>
+                     <td valign="top" style="padding:3px 0;font-size:15px;line-height:1.55;color:#e7e7e7">${escape(line)}</td>
+                   </tr>`,
+              )
+              .join("")}
+          </table>
+          <p style="color:#bbb">Plus everything every pass carries: the Founder Toolkit, a public founder profile at your serial, the Discord role, and one chance to build your way back in if we say no.</p>
+          ${
+            args.note
+              ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,255,255,0.2);color:#bbb">${escape(args.note)}</p>`
+              : ""
+          }
+          <p style="color:#888">One account, one pass — the code stops working the moment it's claimed, so keep it to yourself.</p>
+        `,
+        cta: { url: redeemUrl, label: "Redeem your pass" },
+        footNote: `Button not working? Go to <a href="${env.siteUrl}/pass" style="color:#ffbb00;text-decoration:none">${env.siteUrl.replace(/^https?:\/\//, "")}/pass</a> and enter <strong>${escape(args.code.toUpperCase())}</strong> by hand.`,
+      }),
+      text: `Your batch0 Founder Pass${args.isStandard ? "" : ` — ${args.tierLabel}`}
+
+${first ? `Hi ${first},` : "Hi,"} someone at batch0 ${first ? `put Founder Pass ${serialLabel} in your name` : `set Founder Pass ${serialLabel} aside for you`}, issued as ${args.tierLabel}.
+
+Your code: ${args.code.toUpperCase()}
+
+Redeem it here: ${redeemUrl}
+Or go to ${env.siteUrl}/pass and type the code in by hand.
+
+This pass carries:
+${args.perkLines.map((l) => `  - ${l}`).join("\n")}
+
+Plus everything every pass carries: the Founder Toolkit, a public founder
+profile at your serial, the Discord role, and one chance to build your way
+back in if we say no.
+${args.note ? `\n${args.note}\n` : ""}
+One account, one pass — the code stops working the moment it's claimed.`,
+    };
+  },
 
   // `startsOn` is set only when the cohort hasn't kicked off yet — before
   // then the course is still locked, so the receipt points at kickoff

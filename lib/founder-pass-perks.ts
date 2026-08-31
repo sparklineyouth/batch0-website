@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hasFounderPass } from "@/lib/founder-pass";
+import { hasFounderPass, getPassTierForUser } from "@/lib/founder-pass";
+import {
+  DEFAULT_TIER,
+  type PassTier,
+} from "@/lib/founder-pass-tiers";
 import {
   FEEDBACK_TOPICS,
   feedbackTopicLabel,
@@ -113,7 +117,60 @@ export async function getFeedbackRequestForUser(
 
 export type CreateFeedbackResult =
   | { ok: true }
-  | { ok: false; reason: "no_pass" | "already_open" | "invalid" | "unavailable" };
+  | {
+      ok: false;
+      reason:
+        | "no_pass"
+        | "already_open" // one is in flight; finish it first
+        | "spent" // the tier's lifetime credits are all used
+        | "invalid"
+        | "unavailable";
+    };
+
+/**
+ * How many of this holder's credits are already committed.
+ *
+ * Counts every non-declined request: a delivered one has been spent, an open
+ * one is being spent. Declined rows are excluded because a decline hands the
+ * credit back — the same rule 0041's index encoded and 0053's comments carry
+ * forward.
+ *
+ * Returns 0 when the table isn't there yet, matching this module's standing
+ * contract that a missing migration reads as "nothing", never an exception.
+ */
+async function spentFeedbackCredits(
+  client: SupabaseClient,
+  userId: string,
+): Promise<number> {
+  const { count, error } = await client
+    .from("founder_pass_feedback_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .neq("status", "declined");
+  if (error) return 0;
+  return count ?? 0;
+}
+
+/**
+ * How many feedback credits this holder has left, and how many they started
+ * with. Null when they hold no pass.
+ *
+ * Surfaced on /pass so "2 credits" is a number the holder can see going down,
+ * rather than a claim in an email they have to take on trust.
+ */
+export async function feedbackCreditBalance(
+  client: SupabaseClient,
+  userId: string,
+): Promise<{ total: number; spent: number; remaining: number } | null> {
+  const tier = await getPassTierForUser(client, userId);
+  if (!tier) return null;
+  const spent = await spentFeedbackCredits(client, userId);
+  return {
+    total: tier.feedbackCredits,
+    spent,
+    remaining: Math.max(0, tier.feedbackCredits - spent),
+  };
+}
 
 export async function createFeedbackRequest(
   client: SupabaseClient,
@@ -122,8 +179,20 @@ export async function createFeedbackRequest(
   if (!FEEDBACK_TOPIC_VALUES.has(args.topic)) {
     return { ok: false, reason: "invalid" };
   }
-  if (!(await hasFounderPass(client, args.userId))) {
+  const tier = await getPassTierForUser(client, args.userId);
+  if (!tier) {
     return { ok: false, reason: "no_pass" };
+  }
+
+  // The lifetime ceiling. Since 0053 the unique index only guards "one OPEN at
+  // a time", so this check is what stops a two-credit holder filing a third.
+  //
+  // It is safe to check-then-insert here precisely because that index still
+  // exists: a holder with a request already open is rejected by the database
+  // no matter what this count said, so this code path only ever runs when
+  // nothing of theirs is in flight — serially, by construction.
+  if ((await spentFeedbackCredits(client, args.userId)) >= tier.feedbackCredits) {
+    return { ok: false, reason: "spent" };
   }
 
   const { error } = await client.from("founder_pass_feedback_requests").insert({
@@ -355,7 +424,7 @@ export async function updatePassProfile(
  * guarantee, because no code can force a human to decide on time. The admin
  * queue shows how a submitted pass app is tracking against it.
  */
-export const FOUNDER_PASS_DECISION_TARGET_DAYS = 3;
+export const FOUNDER_PASS_DECISION_TARGET_DAYS = DEFAULT_TIER.decisionTargetDays;
 
 /**
  * Whole business days (Mon–Fri) elapsed between two instants. Approximate —
@@ -379,18 +448,31 @@ export function businessDaysBetween(start: Date, end: Date): number {
   return business;
 }
 
-/** How a submitted pass application is tracking against the decision target. */
+/**
+ * How a submitted pass application is tracking against its decision target.
+ *
+ * `tier` is optional and defaults to standard, so callers that don't know the
+ * applicant's tier (or run on a pre-0053 database) get exactly the old
+ * three-day behaviour. Pass it wherever the tier is already loaded — a
+ * full-ride holder's application is late a lot sooner than a standard one's,
+ * and a queue that doesn't say so is quietly missing the promise we made.
+ *
+ * `targetDays` comes back with the answer so the caller can render "2 of 1
+ * business days" without re-deriving the number from the tier itself.
+ */
 export function decisionTargetStatus(
   submittedAt: string | null,
   now: Date = new Date(),
-): { businessDays: number; overTarget: boolean } | null {
+  tier: PassTier = DEFAULT_TIER,
+): { businessDays: number; targetDays: number; overTarget: boolean } | null {
   if (!submittedAt) return null;
   const submitted = new Date(submittedAt);
   if (Number.isNaN(submitted.getTime())) return null;
   const businessDays = businessDaysBetween(submitted, now);
   return {
     businessDays,
-    overTarget: businessDays > FOUNDER_PASS_DECISION_TARGET_DAYS,
+    targetDays: tier.decisionTargetDays,
+    overTarget: businessDays > tier.decisionTargetDays,
   };
 }
 

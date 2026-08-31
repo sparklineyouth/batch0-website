@@ -6,15 +6,9 @@ import { getStudentAccess } from "@/lib/access";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
-import {
-  hasFounderPass,
-  FOUNDER_PASS_TUITION_DISCOUNT_CENTS,
-} from "@/lib/founder-pass";
-import {
-  getRebuildForUser,
-  FOUNDER_PASS_DECISION_TARGET_DAYS,
-  type Rebuild,
-} from "@/lib/founder-pass-perks";
+import { getPassGrantForUser } from "@/lib/founder-pass";
+import { grantDiscountCents } from "@/lib/founder-pass-tiers";
+import { getRebuildForUser, type Rebuild } from "@/lib/founder-pass-perks";
 import { PayButton } from "./pay-button";
 import { PaymentResult } from "@/components/payment-result";
 import { syncCheckoutSession } from "@/lib/stripe-fulfillment";
@@ -51,7 +45,7 @@ export default async function ApplicationPage({
   // round trips one after another — the application row, then the pass check,
   // then the profile/access pair — with each one's latency stacked on the
   // last. Only `rebuild` below genuinely depends on the results.
-  const [{ data: app }, holdsPass, access] = await Promise.all([
+  const [{ data: app }, passGrant, access] = await Promise.all([
     supabase
       .from("applications")
       .select("*, cohort:cohorts(*)")
@@ -62,7 +56,7 @@ export default async function ApplicationPage({
     // founder_passes has a self-select policy, so the user's own client can
     // answer "do I hold one". Reused below for the discount, the priority-lane
     // note, and rebuild eligibility.
-    hasFounderPass(supabase, user.id),
+    getPassGrantForUser(supabase, user.id),
     // The SAME pre-cohort decision the middleware and sidebar make, so the
     // copy and CTAs here can never contradict what the routes allow.
     getProfile().then((p) => getStudentAccess(p?.role ?? "student")),
@@ -80,19 +74,18 @@ export default async function ApplicationPage({
     );
   }
 
+  const holdsPass = passGrant !== null;
   const basePriceCents = app.cohort?.price_cents ?? 13000;
   const country = getCountryFromHeaders(headers());
+  const regionalCents = getRegionalPrice(basePriceCents, country).amountCents;
   // Mirror the checkout math (app/api/stripe/checkout) exactly — regional
-  // price, then the founder-pass discount — so the number on this card is
-  // the number Stripe charges.
+  // price, then the tier's discount resolved against it — so the number on
+  // this card is the number Stripe charges.
   const passDiscountCents =
-    app.status === "accepted" && holdsPass
-      ? FOUNDER_PASS_TUITION_DISCOUNT_CENTS
+    app.status === "accepted" && passGrant
+      ? grantDiscountCents(passGrant, regionalCents)
       : 0;
-  const priceCents = Math.max(
-    0,
-    getRegionalPrice(basePriceCents, country).amountCents - passDiscountCents,
-  );
+  const priceCents = Math.max(0, regionalCents - passDiscountCents);
 
   // The seven-day rebuild (perk 4) is only offered to a pass holder whose most
   // recent application was declined. Read through the admin client — the
@@ -146,8 +139,12 @@ export default async function ApplicationPage({
           </p>
           {passDiscountCents > 0 && (
             <p className="mt-2 text-xs font-medium text-phosphor-ink">
-              Founder pass applied — $
-              {(passDiscountCents / 100).toFixed(0)} off tuition.
+              {/* A full ride zeroes the bill, and "$130 off tuition" next to a
+                  "pay your one-time $0" line reads like a bug. Say what
+                  happened instead. */}
+              {priceCents === 0
+                ? "Founder pass applied — tuition waived in full. Confirm your seat below; there's nothing to pay."
+                : `Founder pass applied — $${(passDiscountCents / 100).toFixed(0)} off tuition.`}
             </p>
           )}
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
@@ -157,15 +154,17 @@ export default async function ApplicationPage({
         </Card>
       )}
 
-      {app.status === "submitted" && holdsPass && (
+      {app.status === "submitted" && passGrant && (
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-phosphor/30 bg-phosphor/[0.04] px-4 py-3">
           <Zap className="mt-0.5 h-4 w-4 shrink-0 text-phosphor-ink" />
           <p className="text-sm text-ink-soft">
             <span className="font-medium text-ink">Priority lane.</span> Your
-            pass puts you at the top of the queue — we aim to reach a decision
-            within {FOUNDER_PASS_DECISION_TARGET_DAYS} business days of a
-            complete application. The bar is the same for everyone; you're just
-            read first.
+            pass puts you at the top of the queue — we aim to reach a decision{" "}
+            {passGrant.tier.decisionTargetDays === 1
+              ? "by the next business day after"
+              : `within ${passGrant.tier.decisionTargetDays} business days of`}{" "}
+            a complete application. The bar is the same for everyone; you&apos;re
+            just read first.
           </p>
         </div>
       )}

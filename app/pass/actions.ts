@@ -179,8 +179,14 @@ export async function redeemFeedbackCreditAction(input: {
   if (!result.ok) {
     const messages: Record<typeof result.reason, string> = {
       no_pass: "You don't hold a live founder pass.",
+      // "One at a time" and "you're out" are genuinely different answers now
+      // that a pass can carry more than one credit (migration 0053) — a
+      // founding holder with one request in flight still has a credit left,
+      // and telling them it's spent would be a lie.
       already_open:
-        "You've already redeemed your feedback credit. Watch this space for the team's reply.",
+        "You've got a feedback request open already. We'll reply to that one first.",
+      spent:
+        "You've used every feedback credit on your pass. If you're mid-build and stuck, email us anyway.",
       invalid: "Pick what you'd like feedback on.",
       unavailable: "Feedback credits aren't available yet — try again shortly.",
     };

@@ -5,6 +5,14 @@ import {
   normalizePassCode,
   requirePepper,
 } from "@/lib/founder-pass-code";
+import {
+  grantOf,
+  grantDiscountCents,
+  normalizeDiscountCents,
+  passTier,
+  type PassGrant,
+  type PassTier,
+} from "@/lib/founder-pass-tiers";
 
 // Founder-pass reads and the redemption write.
 //
@@ -47,11 +55,20 @@ export type FounderPass = {
    * simply won't return the columns, and the mapping below defaults them.
    */
   profile: PassProfile;
+  /**
+   * What this pass is actually worth: its tier (migration 0053) plus any
+   * hand-set discount override (0054). Always resolved, never null — a row
+   * from before those migrations, or one naming a tier this build doesn't
+   * know, reads as a standard grant with no override. A holder's pass must
+   * never evaporate because of a deploy ordering.
+   */
+  grant: PassGrant;
 };
 
 /**
  * A founder_passes row as read via select("*"). Profile columns are optional so
- * the shape still matches on a database where migration 0041 hasn't run.
+ * the shape still matches on a database where migration 0041 hasn't run — and
+ * tier/recipient_name likewise for 0053.
  */
 export type PassRow = {
   serial: number;
@@ -65,6 +82,9 @@ export type PassRow = {
   demo_url?: string | null;
   milestones?: unknown;
   profile_public?: boolean | null;
+  tier?: string | null;
+  recipient_name?: string | null;
+  discount_cents?: number | null;
 };
 
 /** Map the profile columns off a founder_passes row, tolerating their absence. */
@@ -90,14 +110,14 @@ function mapPassProfile(row: {
   };
 }
 
-/**
- * Tuition discount for pass holders, in cents. Applied server-side at
- * checkout (app/api/stripe/checkout) and echoed everywhere a price is shown
- * to an accepted holder (dashboard, acceptance email) so the number they
- * read is the number they pay. Flat rather than a percentage so the perk is
- * one honest sentence: "$30 off tuition."
- */
-export const FOUNDER_PASS_TUITION_DISCOUNT_CENTS = 3000;
+// The old FOUNDER_PASS_TUITION_DISCOUNT_CENTS constant lived here, and every
+// payment site read it. It is deliberately gone: since 0053/0054 a pass
+// carries a tier and can carry a hand-set override, so ONE flat number can no
+// longer answer "what does this person pay". A constant that looks
+// authoritative but silently bills a full-ride holder $100 is worse than no
+// constant. Use passDiscountCentsForUser(), or grantDiscountCents() when the
+// grant is already loaded. The standard tier's $30 lives in PASS_TIERS
+// (lib/founder-pass-tiers.ts) and is what the public copy quotes.
 
 export type RedeemResult =
   | { ok: true; serial: number }
@@ -258,7 +278,61 @@ export async function getPassForUser(
     batch: row.batch,
     redeemedCode: row.redeemed_code ?? null,
     profile: mapPassProfile(row),
+    grant: mapPassGrant(row),
   };
+}
+
+/**
+ * Read the tier + discount override off a founder_passes row, tolerating the
+ * absence of both columns on a database where 0053/0054 haven't run.
+ */
+export function mapPassGrant(row: {
+  tier?: string | null;
+  discount_cents?: number | null;
+}): PassGrant {
+  return grantOf(passTier(row.tier), normalizeDiscountCents(row.discount_cents));
+}
+
+/**
+ * The tier a user's live pass carries, or null if they don't hold one.
+ *
+ * The single read every perk site should use when the answer changes the
+ * numbers — checkout, the accepted page, the application page, the admin
+ * accept action. hasFounderPass() remains correct wherever the question is
+ * genuinely boolean (the Discord role, the queue badge), and is implemented on
+ * top of the same read, so the two can never disagree about who holds what.
+ */
+export async function getPassGrantForUser(
+  client: SupabaseClient,
+  userId: string,
+): Promise<PassGrant | null> {
+  return (await getPassForUser(client, userId))?.grant ?? null;
+}
+
+/** The tier alone, for callers that only care about the package's terms. */
+export async function getPassTierForUser(
+  client: SupabaseClient,
+  userId: string,
+): Promise<PassTier | null> {
+  return (await getPassGrantForUser(client, userId))?.tier ?? null;
+}
+
+/**
+ * What a user's pass takes off `listPriceCents` — 0 when they hold no pass.
+ *
+ * `listPriceCents` must already have regional pricing applied, because a "full
+ * ride" waives what the applicant would actually be billed rather than the US
+ * list price. Every surface that shows or charges a discounted tuition goes
+ * through this one function so the dashboard, the acceptance email, the admin
+ * accept action and Stripe cannot quote three different numbers.
+ */
+export async function passDiscountCentsForUser(
+  client: SupabaseClient,
+  userId: string,
+  listPriceCents: number,
+): Promise<number> {
+  const grant = await getPassGrantForUser(client, userId);
+  return grant ? grantDiscountCents(grant, listPriceCents) : 0;
 }
 
 export { mapPassProfile };
@@ -289,14 +363,22 @@ export async function canBypassClosedApplications(
   userId: string | null | undefined,
 ): Promise<boolean> {
   if (!userId) return false;
+
+  // The pass first, because since migration 0053 it can answer on its own. A
+  // tier with earlyAccess "always" is a standing invitation issued to one
+  // named person — the whole point is that it outlives the window, so it must
+  // be read before the setting rather than gated behind it.
+  const tier = await getPassTierForUser(client, userId);
+  if (!tier) return false;
+  if (tier.earlyAccess === "always") return true;
+
   const { data, error } = await client
     .from("site_settings")
     .select("value")
     .eq("key", "founder_pass_early_access")
     .maybeSingle();
   if (error) return false;
-  if (data?.value !== true) return false;
-  return hasFounderPass(client, userId);
+  return data?.value === true;
 }
 
 /**
@@ -322,6 +404,41 @@ export async function passHolderUserIds(
   const out = new Set<string>();
   for (const r of (data ?? []) as Array<{ redeemed_by: string | null }>) {
     if (r.redeemed_by) out.add(r.redeemed_by);
+  }
+  return out;
+}
+
+/**
+ * The same batched read as passHolderUserIds(), but keeping each holder's grant.
+ *
+ * Use this only where the answer actually changes with the tier — today, the
+ * review queue's decision clock, which is per-applicant since migration 0053.
+ * Where the question is genuinely "do they hold one" (every badge on a team
+ * page), passHolderUserIds() stays the right call, and deliberately does NOT
+ * delegate here: it selects one column, while this has to select("*").
+ *
+ * That star select is forced, for the reason getPassForUser documents — naming
+ * `tier` on a database where 0053 hasn't run makes the whole read error, and
+ * every holder's badge would vanish site-wide. It is also why the two are kept
+ * apart: the badge callers pass no `userIds` filter, so routing them through
+ * here would pull every column of every redeemed pass — profile bios and
+ * milestones included — into five public team pages to answer a boolean. The
+ * filters on both queries are identical, so the set and the map still agree
+ * about who holds what.
+ */
+export async function passGrantsByUserId(
+  client: SupabaseClient,
+  userIds?: string[],
+): Promise<Map<string, PassGrant>> {
+  const query = client
+    .from("founder_passes")
+    .select("*")
+    .not("redeemed_by", "is", null)
+    .is("revoked_at", null);
+  const { data } = await (userIds ? query.in("redeemed_by", userIds) : query);
+  const out = new Map<string, PassGrant>();
+  for (const r of (data ?? []) as PassRow[]) {
+    if (r.redeemed_by) out.set(r.redeemed_by, mapPassGrant(r));
   }
   return out;
 }

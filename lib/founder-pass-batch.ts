@@ -21,9 +21,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * only after the Onshape leg — the worst possible moment to discover you
  * meant --start rather than --count.
  *
- * Batch names follow cards-NN and increment per run, so each print run stays
+ * Batch names follow <prefix>-NN and increment per run, so each run stays
  * independently revocable: if one batch's code list leaks, that batch dies
  * without touching cards already in other people's wallets.
+ *
+ * `prefix` exists so virtual passes (issued by email, migration 0052) number
+ * their own runs — virtual-01, virtual-02 — while still drawing serials from
+ * the SAME global sequence as printed cards. That split is deliberate in both
+ * directions: one sequence because a serial identifies a pass and must never
+ * name two of them, separate batch names because the two channels fail
+ * differently. A leaked email thread should be revocable without killing a
+ * print run, and vice versa.
  *
  * Note this is advisory, not a reservation — two mints racing would compute the
  * same start. The unique index on serial is the real guard, and it makes the
@@ -32,7 +40,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export async function nextBatchDefaults(
   client: SupabaseClient,
+  prefix: string = "cards",
 ): Promise<{ start: number; batch: string }> {
+  // Unfiltered on purpose: the serial high-water mark spans every kind of
+  // pass. Scoping it to one prefix would let a virtual pass and a card be
+  // issued the same serial, and the unique index would reject the second
+  // *after* its Onshape export or its email had already gone out.
   const { data: maxRow } = await client
     .from("founder_passes")
     .select("serial")
@@ -41,12 +54,13 @@ export async function nextBatchDefaults(
     .maybeSingle();
   const start = ((maxRow as { serial: number } | null)?.serial ?? 0) + 1;
 
+  const pattern = new RegExp(`^${prefix.replace(/[^a-z0-9]/gi, "")}-(\\d+)$`);
   const { data: batchRows } = await client.from("founder_passes").select("batch");
   const numbers = ((batchRows ?? []) as Array<{ batch: string }>)
-    .map((r) => /^cards-(\d+)$/.exec(r.batch)?.[1])
+    .map((r) => pattern.exec(r.batch)?.[1])
     .filter(Boolean)
     .map((n) => Number.parseInt(n as string, 10));
   const nextNum = (numbers.length ? Math.max(...numbers) : 0) + 1;
 
-  return { start, batch: `cards-${String(nextNum).padStart(2, "0")}` };
+  return { start, batch: `${prefix}-${String(nextNum).padStart(2, "0")}` };
 }

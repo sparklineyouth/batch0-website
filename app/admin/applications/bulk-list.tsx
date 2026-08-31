@@ -68,7 +68,7 @@ type AppRow = {
   /** Submitted a seven-day rebuild that's still awaiting a fresh review. */
   hasPendingRebuild: boolean;
   /** Business-day age vs the 3-day target — only set for waiting pass apps. */
-  sla: { businessDays: number; overTarget: boolean } | null;
+  sla: { businessDays: number; targetDays: number; overTarget: boolean } | null;
 };
 
 /** Columns. Shared by the header and every row so they can't drift apart.
@@ -298,9 +298,12 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
               <LocalTime value={a.submitted_at} mode="date" />
               {a.sla && (
                 <span
+                  // The target is per-tier since migration 0053, so it comes
+                  // in with the reading rather than being hardcoded here — a
+                  // full-ride application is late after one business day.
                   title={`Pass application — ${a.sla.businessDays} business day${
                     a.sla.businessDays === 1 ? "" : "s"
-                  } since submission (3-day target)`}
+                  } since submission (${a.sla.targetDays}-day target)`}
                   className={`ml-1.5 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium ${
                     a.sla.overTarget
                       ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
