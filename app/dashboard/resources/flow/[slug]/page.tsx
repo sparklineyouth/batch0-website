@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser, getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getStudentAccess } from "@/lib/access";
-import { renderMarkdown } from "@/lib/blog";
+import { renderMarkdown } from "@/lib/markdown";
 import type { FlowStepData, StepConfig } from "@/lib/flows";
 import { FlowPlayer, type CompiledStep } from "./flow-player";
 

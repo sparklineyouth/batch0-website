@@ -7,6 +7,8 @@ import { markRebuildReviewedForUser } from "@/lib/founder-pass-perks";
 import { assertPermission } from "@/lib/server-guards";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { env } from "@/lib/env";
+import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
 import { syncMemberRoles, postChannelMessage, announcementEmbed, getDiscordSettings } from "@/lib/discord";
@@ -153,31 +155,53 @@ export async function decideApplication(
     const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
     const listPriceCents = cohort?.price_cents ?? 13000;
     if (decision === "accepted") {
-      const t = Templates.applicationAccepted({
-        name: a.full_name ?? profile?.full_name ?? null,
-        cohortName: cohort?.name ?? "batch0",
-        // Holders pay less by their grant (checkout applies it server-side);
-        // the acceptance email must quote the price they'll actually see.
-        //
-        // Uses the LIST price, not a regional one — this runs in an admin
-        // request, so there is no applicant geography to read here. Someone on
-        // a regional price will be quoted slightly high and then charged less;
-        // the dashboard and Stripe both compute the regional figure. A full
-        // ride still resolves to $0 either way, since the discount clamps to
-        // whatever price it's given.
-        priceCents: Math.max(
-          0,
-          listPriceCents -
-            (applicantGrant
-              ? grantDiscountCents(applicantGrant, listPriceCents)
-              : 0),
-        ),
-      });
+      // Holders pay less by their GRANT — tier plus any hand-set override
+      // (migrations 0055/0056) — and checkout applies it server-side, so the
+      // acceptance email must quote the same number it will charge.
+      //
+      // Uses the LIST price, not a regional one: this runs in an admin
+      // request, so there is no applicant geography to read here. Someone on a
+      // regional price is quoted slightly high and then charged less; the
+      // dashboard and Stripe both compute the regional figure. A full ride
+      // still resolves to $0 either way, since the discount clamps to whatever
+      // price it is given.
+      const priceCents = Math.max(
+        0,
+        listPriceCents -
+          (applicantGrant ? grantDiscountCents(applicantGrant, listPriceCents) : 0),
+      );
+      const acceptedName = a.full_name ?? profile?.full_name ?? null;
       if (profile?.email) {
-        await sendEmail({
+        await sendTemplated("application.accepted", {
           to: profile.email,
-          subject: t.subject,
-          html: t.html,
+          toName: acceptedName,
+          userId: a.user_id,
+          vars: {
+            cohort_name: cohort?.name ?? "batch0",
+            amount: `$${(priceCents / 100).toFixed(0)}`,
+            application_status: "accepted",
+            pay_url: `${env.siteUrl}/dashboard/accepted`,
+          },
+          fallback: () =>
+            Templates.applicationAccepted({
+              name: acceptedName,
+              cohortName: cohort?.name ?? "batch0",
+              priceCents,
+            }),
+        });
+        // Anything an admin has built on top of the acceptance — a payment
+        // nudge three days later, say — hangs off this.
+        await emitEmailEvent("application.accepted", {
+          email: profile.email,
+          name: acceptedName,
+          userId: a.user_id,
+          vars: {
+            cohort_name: cohort?.name ?? "batch0",
+            amount: `$${(priceCents / 100).toFixed(0)}`,
+            application_status: "accepted",
+            pay_url: `${env.siteUrl}/dashboard/accepted`,
+          },
+          dedupeSeed: `application.accepted:${a.id}`,
         });
       }
       await notify({
@@ -188,16 +212,34 @@ export async function decideApplication(
         link: "/dashboard/accepted",
       });
     } else if (decision === "waitlisted") {
-      const t = Templates.applicationWaitlisted({
-        name: a.full_name ?? profile?.full_name ?? null,
-        cohortName: cohort?.name ?? "batch0",
-        notes: effectiveNotes || null,
-      });
+      const waitlistedName = a.full_name ?? profile?.full_name ?? null;
       if (profile?.email) {
-        await sendEmail({
+        await sendTemplated("application.waitlisted", {
           to: profile.email,
-          subject: t.subject,
-          html: t.html,
+          toName: waitlistedName,
+          userId: a.user_id,
+          vars: {
+            cohort_name: cohort?.name ?? "batch0",
+            review_notes: effectiveNotes || "",
+            application_status: "waitlisted",
+          },
+          fallback: () =>
+            Templates.applicationWaitlisted({
+              name: waitlistedName,
+              cohortName: cohort?.name ?? "batch0",
+              notes: effectiveNotes || null,
+            }),
+        });
+        await emitEmailEvent("application.waitlisted", {
+          email: profile.email,
+          name: waitlistedName,
+          userId: a.user_id,
+          vars: {
+            cohort_name: cohort?.name ?? "batch0",
+            review_notes: effectiveNotes || "",
+            application_status: "waitlisted",
+          },
+          dedupeSeed: `application.waitlisted:${a.id}`,
         });
       }
       await notify({
@@ -208,15 +250,31 @@ export async function decideApplication(
         link: "/dashboard/application",
       });
     } else {
-      const t = Templates.applicationRejected({
-        name: a.full_name ?? profile?.full_name ?? null,
-        notes: effectiveNotes || null,
-      });
+      const rejectedName = a.full_name ?? profile?.full_name ?? null;
       if (profile?.email) {
-        await sendEmail({
+        await sendTemplated("application.rejected", {
           to: profile.email,
-          subject: t.subject,
-          html: t.html,
+          toName: rejectedName,
+          userId: a.user_id,
+          vars: {
+            review_notes: effectiveNotes || "",
+            application_status: "rejected",
+          },
+          fallback: () =>
+            Templates.applicationRejected({
+              name: rejectedName,
+              notes: effectiveNotes || null,
+            }),
+        });
+        await emitEmailEvent("application.rejected", {
+          email: profile.email,
+          name: rejectedName,
+          userId: a.user_id,
+          vars: {
+            review_notes: effectiveNotes || "",
+            application_status: "rejected",
+          },
+          dedupeSeed: `application.rejected:${a.id}`,
         });
       }
       await notify({

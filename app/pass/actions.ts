@@ -180,7 +180,7 @@ export async function redeemFeedbackCreditAction(input: {
     const messages: Record<typeof result.reason, string> = {
       no_pass: "You don't hold a live founder pass.",
       // "One at a time" and "you're out" are genuinely different answers now
-      // that a pass can carry more than one credit (migration 0053) — a
+      // that a pass can carry more than one credit (migration 0055) — a
       // founding holder with one request in flight still has a credit left,
       // and telling them it's spent would be a lie.
       already_open:

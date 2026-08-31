@@ -10,6 +10,8 @@ import { RoleSelect } from "../role-select";
 import { ManagePanel } from "./manage-panel";
 import { discordAvatarUrl } from "@/lib/discord";
 import { getSiteConfig } from "@/lib/site-config";
+import { Meter } from "@/components/admin/charts";
+import { getStudentProgress } from "@/lib/progress";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Manage user · Admin" };
@@ -21,11 +23,42 @@ function fmtMoney(cents: number, currency = "usd") {
   }).format(cents / 100);
 }
 
+function ProgressStat({
+  label,
+  done,
+  total,
+  hint,
+}: {
+  label: string;
+  done: number;
+  total: number;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-paper px-3 py-2.5">
+      <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-semibold tabular-nums text-ink">
+        {done}
+        <span className="text-sm font-normal text-ink-faint"> / {total}</span>
+      </p>
+      <div className="mt-1.5">
+        <Meter value={done} max={total || null} />
+      </div>
+      {hint && <p className="mt-1 text-[11px] text-ink-faint">{hint}</p>}
+    </div>
+  );
+}
+
 export default async function AdminStudentDetail({
   params,
 }: {
   params: { id: string };
 }) {
+  // Progress is its own module because it spans five tables; see lib/progress.ts.
+  const progress = await getStudentProgress(params.id);
+
   const { profile: actor, caps } = await requirePermission("people.view");
   const admin = createAdminClient();
 
@@ -149,6 +182,92 @@ export default async function AdminStudentDetail({
           )}
         </div>
       </div>
+
+      {/* Where this student actually is. The roster view at /admin/progress
+          answers the same question across the whole cohort. */}
+      <Card className="mt-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
+            Progress
+          </h2>
+          <Link
+            href="/admin/progress"
+            className="text-xs text-phosphor-ink hover:underline"
+          >
+            Whole cohort →
+          </Link>
+        </div>
+
+        {progress.stoppedAt ? (
+          <div className="mt-3 rounded-xl border border-line bg-paper px-4 py-3">
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
+              Stopped at
+            </p>
+            <p className="mt-1 text-base font-medium text-ink">
+              {progress.stoppedAt.label}
+            </p>
+            <p className="mt-0.5 text-xs text-ink-soft">
+              {progress.stoppedAt.detail} ·{" "}
+              <LocalTime value={progress.stoppedAt.at} mode="datetime-short" />
+              {progress.idleDays !== null &&
+                progress.idleDays > 0 &&
+                ` · ${progress.idleDays}d ago`}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-faint">
+            No recorded activity yet — no lessons watched, flows started, or
+            resources opened.
+          </p>
+        )}
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <ProgressStat
+            label="Course"
+            done={progress.course.done}
+            total={progress.course.total}
+            hint={
+              progress.course.inProgress > 0
+                ? `${progress.course.inProgress} in progress`
+                : undefined
+            }
+          />
+          <ProgressStat
+            label="Flows"
+            done={progress.flows.done}
+            total={progress.flows.total}
+            hint={
+              progress.flows.inProgress > 0
+                ? `${progress.flows.inProgress} in progress`
+                : undefined
+            }
+          />
+          <ProgressStat
+            label="Resources opened"
+            done={progress.resources.done}
+            total={progress.resources.total}
+            hint={progress.missingTable ? "run migration 0053" : undefined}
+          />
+        </div>
+
+        {progress.recent.length > 0 && (
+          <ol className="mt-4 space-y-1.5 border-t border-line pt-3">
+            {progress.recent.map((e, i) => (
+              <li
+                key={`${e.area}-${e.at}-${i}`}
+                className="flex flex-wrap items-baseline gap-x-2 text-xs"
+              >
+                <span className="w-16 shrink-0 text-ink-faint">{e.area}</span>
+                <span className="text-ink">{e.label}</span>
+                {e.detail && <span className="text-ink-faint">· {e.detail}</span>}
+                <span className="ml-auto text-ink-faint">
+                  <LocalTime value={e.at} mode="datetime-short" />
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Card>
 
       <Card className="mt-6">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">

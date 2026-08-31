@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { env } from "@/lib/env";
 import {
   Mail,
   Eye,
@@ -80,6 +81,12 @@ export default async function AdminEmailMetricsPage() {
   }
 
   const rows = (events ?? []) as EventRow[];
+
+  // An empty table has two very different causes — nothing sent yet, or the
+  // webhook never wired up — and the page looked identical either way. It
+  // rendered zeros for months without ever hinting that the ingest endpoint
+  // was returning 503 to every event Resend sent.
+  const webhookConfigured = Boolean(env.resendWebhookSecret);
 
   // Counts by event type for the hero strip. We treat "email.sent" and
   // "email.delivered" as the denominator for engagement rates — sent
@@ -186,6 +193,58 @@ export default async function AdminEmailMetricsPage() {
   }
   const maxDay = Math.max(1, ...days.map((d) => Math.max(d.sent, d.opened)));
 
+
+  const setupNotice =
+    !webhookConfigured || rows.length === 0 ? (
+      <Card
+        className={`mt-6 ${
+          !webhookConfigured ? "border-amber-500/30 bg-amber-500/5" : ""
+        }`}
+      >
+        {!webhookConfigured ? (
+          <>
+            <p className="text-sm text-ink">
+              <strong>No delivery data is being collected.</strong>{" "}
+              <code className="font-mono text-phosphor-ink">
+                RESEND_WEBHOOK_SECRET
+              </code>{" "}
+              isn&rsquo;t set, so{" "}
+              <code className="font-mono text-phosphor-ink">
+                /api/resend/webhook
+              </code>{" "}
+              rejects every event Resend sends with a 503. Sending still works —
+              only the numbers on this page are missing.
+            </p>
+            <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-ink-soft">
+              <li>
+                In the Resend dashboard, add a webhook pointing at{" "}
+                <code className="font-mono text-phosphor-ink">
+                  {env.siteUrl}/api/resend/webhook
+                </code>
+              </li>
+              <li>
+                Subscribe to <em>sent, delivered, opened, clicked, bounced,
+                complained</em>
+              </li>
+              <li>
+                Copy its signing secret (it starts with{" "}
+                <code className="font-mono">whsec_</code>) into the{" "}
+                <code className="font-mono text-phosphor-ink">
+                  RESEND_WEBHOOK_SECRET
+                </code>{" "}
+                environment variable, then redeploy
+              </li>
+            </ol>
+          </>
+        ) : (
+          <p className="text-sm text-ink-soft">
+            The webhook is configured, but no events have arrived in the last 30
+            days. That is expected if nothing has been sent recently — events
+            only appear after Resend delivers one.
+          </p>
+        )}
+      </Card>
+    ) : null;
   return (
     <div className="mx-auto max-w-6xl">
       <div className="flex items-end justify-between gap-3">
@@ -207,6 +266,8 @@ export default async function AdminEmailMetricsPage() {
           </a>
         </div>
       </div>
+
+      {setupNotice}
 
       <section className="mt-6 grid gap-3 md:grid-cols-5">
         <Tile

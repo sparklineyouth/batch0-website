@@ -43,6 +43,12 @@ export default function PrivacyPage() {
           <strong>Operational logs:</strong> standard server logs (IP, user
           agent) for security and debugging.
         </li>
+        <li>
+          <strong>Site analytics:</strong> pages viewed, referring site,
+          device type, and approximate (city-level) location, via Google
+          Analytics and Vercel Analytics. Used in aggregate to understand
+          which pages help people — never to build an advertising profile.
+        </li>
       </ul>
 
       <h2>How we use it</h2>
@@ -57,8 +63,9 @@ export default function PrivacyPage() {
         <li>
           <strong>Service providers</strong> we use to operate the platform:
           Supabase (database + auth + storage), Stripe (payments), Resend
-          (email), Anthropic (AI co-founder), Vercel (hosting). They process
-          data on our behalf only.
+          (email), Anthropic (AI co-founder), Vercel (hosting + analytics),
+          Google Analytics (site analytics). They process data on our behalf
+          only.
         </li>
         <li>
           <strong>Mentors and investors</strong> only see what you choose to

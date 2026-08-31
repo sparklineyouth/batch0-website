@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { VT323, IBM_Plex_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import {
   SITE,
@@ -186,6 +187,25 @@ const websiteJsonLd = {
   inLanguage: "en-US",
 };
 
+// GA4 measurement id. Deliberately a constant rather than an env var: it is
+// public by definition — it ships in the page HTML and anyone can read it —
+// so putting it behind NEXT_PUBLIC_GA_ID would buy no secrecy while adding a
+// variable that has to be set in every Vercel environment before analytics
+// works at all. A missing env var fails silently, which is the one failure
+// mode analytics must not have.
+const GA_MEASUREMENT_ID = "G-C51DMRB6YE";
+
+// Only the production deployment reports. Preview builds and `next dev` share
+// the same code path, and without this gate every branch deploy and every
+// local page load would land in the same property as real traffic — which
+// shows up as phantom sessions from a handful of IPs and quietly poisons
+// exactly the numbers the property exists to answer.
+//
+// VERCEL_ENV is read on the server (this layout is a Server Component) and is
+// "production" only for production builds. Reading an env var is not a dynamic
+// API, so the marketing routes stay prerendered — see scripts/verify-static.
+const GA_ENABLED = process.env.VERCEL_ENV === "production";
+
 export default function RootLayout({
   children,
 }: {
@@ -232,6 +252,13 @@ export default function RootLayout({
               Speed Insights is enabled for the project in the dashboard. */}
           <SpeedInsights />
         </ThemeProvider>
+        {/* gtag.js, loaded afterInteractive so it never blocks first paint.
+            Client-side route changes are counted by GA4's Enhanced
+            Measurement ("page changes based on browser history events"),
+            which is on by default — this component only fires the initial
+            page_view, so that setting must stay enabled in the property or
+            every in-app navigation goes unrecorded. */}
+        {GA_ENABLED && <GoogleAnalytics gaId={GA_MEASUREMENT_ID} />}
       </body>
     </html>
   );

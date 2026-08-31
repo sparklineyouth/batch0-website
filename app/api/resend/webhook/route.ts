@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { env } from "@/lib/env";
+import { verifySvixSignature, isFreshTimestamp } from "@/lib/svix";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,23 +48,22 @@ export async function POST(req: Request) {
   // the signature.
   const rawBody = await req.text();
 
-  if (!verifySvixSignature({
-    secret,
-    svixId,
-    svixTimestamp,
-    svixSignature,
-    rawBody,
-  })) {
+  // Verification lives in lib/svix.ts so it can be tested — see
+  // lib/svix.test.ts, which signs payloads the way Svix does rather than the
+  // way we do, so the two constructions have to agree independently.
+  if (
+    !verifySvixSignature({
+      secret,
+      headers: { id: svixId, timestamp: svixTimestamp, signature: svixSignature },
+      rawBody,
+    })
+  ) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  // Reject timestamps more than 5 minutes off — Svix's recommendation
-  // to prevent replay if a signature ever leaks.
-  const tsSeconds = Number(svixTimestamp);
-  if (
-    !Number.isFinite(tsSeconds) ||
-    Math.abs(Date.now() / 1000 - tsSeconds) > 5 * 60
-  ) {
+  // A signature stays valid forever, so a captured request could otherwise be
+  // replayed indefinitely.
+  if (!isFreshTimestamp(svixTimestamp)) {
     return NextResponse.json({ error: "Stale timestamp" }, { status: 400 });
   }
 
@@ -115,49 +114,4 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ received: true });
-}
-
-/**
- * Svix signature verification.
- *
- * Spec: HMAC-SHA256 of `${svixId}.${svixTimestamp}.${rawBody}` using
- * the secret (base64-decoded after stripping the `whsec_` prefix).
- * The header may contain multiple signatures separated by spaces, each
- * prefixed with `v1,`. Match against any of them in constant time.
- */
-function verifySvixSignature(args: {
-  secret: string;
-  svixId: string;
-  svixTimestamp: string;
-  svixSignature: string;
-  rawBody: string;
-}): boolean {
-  const cleanSecret = args.secret.startsWith("whsec_")
-    ? args.secret.slice("whsec_".length)
-    : args.secret;
-  let secretBytes: Buffer;
-  try {
-    secretBytes = Buffer.from(cleanSecret, "base64");
-  } catch {
-    return false;
-  }
-  const preimage = `${args.svixId}.${args.svixTimestamp}.${args.rawBody}`;
-  const expected = crypto
-    .createHmac("sha256", secretBytes)
-    .update(preimage)
-    .digest("base64");
-
-  const expectedBuf = Buffer.from(expected, "utf8");
-  for (const part of args.svixSignature.split(" ")) {
-    const [, sig] = part.split(",");
-    if (!sig) continue;
-    const candidateBuf = Buffer.from(sig, "utf8");
-    if (
-      candidateBuf.length === expectedBuf.length &&
-      crypto.timingSafeEqual(candidateBuf, expectedBuf)
-    ) {
-      return true;
-    }
-  }
-  return false;
 }

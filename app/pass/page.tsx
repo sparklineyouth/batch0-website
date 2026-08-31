@@ -186,7 +186,7 @@ export default async function PassPage({
         .eq("id", user.id)
         .maybeSingle(),
       getFeedbackRequestForUser(admin, user.id),
-      // A tier can carry more than one credit (migration 0053), so the card
+      // A tier can carry more than one credit (migration 0055), so the card
       // below shows a number going down rather than the flat "one credit" the
       // copy used to assume.
       feedbackCreditBalance(admin, user.id),
@@ -202,7 +202,7 @@ export default async function PassPage({
   // see the full list — it's the whole value proposition.
   const sectionedKeys = new Set(["profile", "toolkit", "feedback_credit"]);
 
-  // Perks whose wording depends on the holder's tier (migration 0053). For a
+  // Perks whose wording depends on the holder's tier (migration 0055). For a
   // holder these are printed from tierPerkLines() in the block under the
   // ticket instead, because the generic copy is written for a standard pass —
   // telling a full-ride holder "$30 off tuition" would contradict the email

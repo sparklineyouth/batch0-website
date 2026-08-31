@@ -57,6 +57,9 @@ export const PERMISSION_KEYS = [
   "ai_usage.view",
   "email.view",
   "email.send",
+  "email.templates",
+  "email.automate",
+  "email.settings",
   "referrals.view",
   "passes.manage",
   "moderation.manage",
@@ -253,8 +256,30 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: "email.send",
-        label: "Send email blasts",
-        description: "Send bulk email to students and applicants.",
+        label: "Send email",
+        description:
+          "Send blasts, compose one-off email to any address, and cancel queued sends.",
+        sensitive: true,
+      },
+      {
+        key: "email.templates",
+        label: "Edit email templates",
+        description:
+          "Rewrite the copy of every email the site sends, including the built-in transactional ones.",
+        sensitive: true,
+      },
+      {
+        key: "email.automate",
+        label: "Build email automations",
+        description:
+          "Create the rules that send email on their own — on an event, on a schedule, or as a drip sequence.",
+        sensitive: true,
+      },
+      {
+        key: "email.settings",
+        label: "Manage email delivery",
+        description:
+          "Change the sending account and sender address, and pause or resume all automated email.",
         sensitive: true,
       },
       {
@@ -462,6 +487,7 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/applications", "applications.view"],
   ["/admin/application-questions", "applications.form"],
   ["/admin/students", "people.view"],
+  ["/admin/progress", "people.view"],
   ["/admin/mentors", "mentors.manage"],
   ["/admin/cohorts", "cohorts.manage"],
   ["/admin/challenges", "challenges.manage"],
@@ -480,6 +506,11 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/interventions", "interventions.manage"],
   ["/admin/ai-usage", "ai_usage.view"],
   ["/admin/email/blast", "email.send"],
+  ["/admin/email/templates", "email.templates"],
+  ["/admin/email/automations", "email.automate"],
+  ["/admin/email/compose", "email.send"],
+  ["/admin/email/outbox", "email.view"],
+  ["/admin/email/settings", "email.settings"],
   ["/admin/email", "email.view"],
   ["/admin/referrals", "referrals.view"],
   ["/admin/passes", "passes.manage"],

@@ -25,7 +25,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * independently revocable: if one batch's code list leaks, that batch dies
  * without touching cards already in other people's wallets.
  *
- * `prefix` exists so virtual passes (issued by email, migration 0052) number
+ * `prefix` exists so virtual passes (issued by email, migration 0054) number
  * their own runs — virtual-01, virtual-02 — while still drawing serials from
  * the SAME global sequence as printed cards. That split is deliberate in both
  * directions: one sequence because a serial identifies a pass and must never

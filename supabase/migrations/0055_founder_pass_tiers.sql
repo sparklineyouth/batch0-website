@@ -1,7 +1,7 @@
 -- ============================================================================
--- 0053 — Founder pass tiers, and who the pass was for.
+-- 0055 — Founder pass tiers, and who the pass was for.
 --
--- 0052 made a pass issuable to one named person by email. This migration makes
+-- 0054 made a pass issuable to one named person by email. This migration makes
 -- that person's pass ABLE TO DIFFER: an admin picks a tier before the code is
 -- generated, and the tier travels with the pass forever — into checkout, into
 -- the applications gate, into the feedback-credit ceiling, into the decision

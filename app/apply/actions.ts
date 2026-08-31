@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { canBypassClosedApplications } from "@/lib/founder-pass";
@@ -341,20 +342,20 @@ async function upsertApplication(
         .select("full_name, email")
         .eq("id", user.id)
         .maybeSingle();
-      const t = Templates.applicationReceived({
-        name: profile?.full_name ?? null,
-      });
       if (user.email) {
         // Best-effort: the applicant confirmation must never affect the
-        // submit result. sendEmail already returns (rather than throws) when
-        // Resend is unconfigured or errors; the extra .catch is belt-and-
-        // suspenders so a thrown error here can't skip the admin notifications
-        // below or surface to the student. Requires RESEND_API_KEY +
-        // RESEND_FROM (verified domain) to actually deliver.
-        const emailRes = await sendEmail({
+        // submit result. sendTemplated already returns (rather than throws)
+        // when no transport is configured or the send errors; the extra
+        // .catch is belt-and-suspenders so a thrown error here can't skip the
+        // admin notifications below or surface to the student. Prefers the
+        // admin-editable `application.received` template and falls back to the
+        // compiled copy.
+        const emailRes = await sendTemplated("application.received", {
           to: user.email,
-          subject: t.subject,
-          html: t.html,
+          toName: profile?.full_name ?? null,
+          userId: user.id,
+          fallback: () =>
+            Templates.applicationReceived({ name: profile?.full_name ?? null }),
         }).catch((err) => {
           console.error("[apply] applicant email threw", err);
           return { ok: false as const, reason: "threw" };
@@ -366,6 +367,16 @@ async function upsertApplication(
           );
         }
       }
+      // Awaited rather than fired-and-forgotten: a serverless invocation can
+      // be frozen the moment its response is returned, and a floating promise
+      // here would drop the enqueue silently. emitEmailEvent swallows its own
+      // failures, so awaiting it can't fail the operation it reports on.
+      await emitEmailEvent("application.submitted", {
+        email: user.email,
+        name: profile?.full_name ?? null,
+        userId: user.id,
+        dedupeSeed: `application.submitted:${user.id}`,
+      });
       await notify({
         userId: user.id,
         type: "application_submitted",

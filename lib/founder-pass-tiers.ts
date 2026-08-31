@@ -2,7 +2,7 @@
 //
 // Every pass used to be identical — one discount, one decision target, one
 // feedback credit — because every pass was a card pulled off a print run with
-// nobody's name on it. Virtual passes (migration 0052) changed that: they are
+// nobody's name on it. Virtual passes (migration 0054) changed that: they are
 // issued TO a person, one at a time, by someone who knows why. This module is
 // where that "why" turns into mechanics.
 //
@@ -51,7 +51,7 @@ export type PassTier = {
    * How many feedback credits this pass carries over its whole life.
    *
    * Distinct from how many may be OPEN at once, which is always one and is
-   * enforced by a partial unique index (migration 0041/0053). This number is
+   * enforced by a partial unique index (migration 0041/0055). This number is
    * the ceiling on non-declined requests in total, checked in code — the index
    * is what makes that check race-safe, since a second concurrent request can
    * never get past "one open".
@@ -64,7 +64,7 @@ export type PassTier = {
  * The roster. Order is deliberate: ascending, so the admin picker reads as a
  * ladder and `standard` sits first as the default.
  *
- * Keep in lockstep with the check constraint in migration 0053. Adding a tier
+ * Keep in lockstep with the check constraint in migration 0055. Adding a tier
  * here without adding it there makes every insert of that tier fail at write
  * time — the same coupling 0051 documents for blog author keys.
  */
@@ -107,7 +107,7 @@ export const DEFAULT_TIER: PassTier = BY_KEY.get("standard")!;
  * Resolve a stored tier key.
  *
  * Falls back to standard rather than throwing, and that fallback is
- * load-bearing in two places: rows written before migration 0053 have no tier
+ * load-bearing in two places: rows written before migration 0055 have no tier
  * at all, and a row written by a future deploy could name a tier this build
  * has never heard of. Neither should make a holder's pass evaporate — the
  * floor is "the pass everyone gets", never "no pass".
@@ -162,7 +162,7 @@ export function discountLabel(tier: PassTier): string {
 
 /**
  * What a specific pass is actually worth: the named package, and an optional
- * hand-set discount that beats it (migration 0054).
+ * hand-set discount that beats it (migration 0056).
  *
  * This — not PassTier — is what every surface should reason about once a pass
  * exists. A tier alone is a shelf item; a grant is what somebody was given.

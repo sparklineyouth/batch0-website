@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getUser } from "@/lib/auth";
 import { capabilitiesForRole } from "@/lib/roles";
 import { can, canAccessAdmin } from "@/lib/permissions";
+import { isEligibleForApp } from "@/lib/app-eligibility";
 import type { Role, ApplicationStatus } from "@/lib/types";
 import {
   computePreCohort,
@@ -231,6 +232,22 @@ export const getStudentAccess = cache(async function getStudentAccess(
     cohortId,
   };
 });
+
+/**
+ * Whether this viewer may use the installed app at /app.
+ *
+ * A pure function on an already-resolved StudentAccess, like aiAccessFrom
+ * below: the layout has one in hand, so the gate costs no extra query. The rule
+ * itself lives in lib/app-eligibility.ts — import-free so it can be tested, and
+ * so there is exactly one definition of who gets in.
+ */
+export function installedAppAccessFrom(access: StudentAccess): boolean {
+  return isEligibleForApp({
+    enrolled: access.enrolled,
+    applicationStatus: access.applicationStatus,
+    staff: access.staff,
+  });
+}
 
 /**
  * AI co-founder access derived from a StudentAccess. Staff always;

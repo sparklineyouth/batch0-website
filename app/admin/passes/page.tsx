@@ -24,7 +24,7 @@ export default async function AdminPassesPage() {
 
   // select("*") rather than a column list on purpose. This repo's migrations
   // are applied by hand in the Supabase SQL editor (see PRODUCTION_READINESS),
-  // so this page can deploy before 0052 has run. Naming kind/issued_to_email
+  // so this page can deploy before 0054 has run. Naming kind/issued_to_email
   // explicitly would turn that gap into a 500 on the whole passes admin; with
   // a star select the columns are simply absent and the mapping below defaults
   // them, exactly the way lib/founder-pass.ts tolerates 0041.
@@ -40,12 +40,12 @@ export default async function AdminPassesPage() {
     redeemed_at: string | null;
     revoked_at: string | null;
     note: string | null;
-    // Migration 0052. Optional so the shape still matches a database where it
+    // Migration 0054. Optional so the shape still matches a database where it
     // hasn't been applied.
     kind?: string | null;
     issued_to_email?: string | null;
     issued_at?: string | null;
-    // Migration 0053, optional for the same reason.
+    // Migration 0055, optional for the same reason.
     tier?: string | null;
     recipient_name?: string | null;
   }>;
@@ -76,13 +76,13 @@ export default async function AdminPassesPage() {
     holder: r.redeemed_by ? nameById.get(r.redeemed_by) ?? "Unknown" : null,
     redeemedAt: r.redeemed_at,
     revoked: !!r.revoked_at,
-    // Every pre-0052 row was printed, so "card" is the right read for a
+    // Every pre-0054 row was printed, so "card" is the right read for a
     // missing column, not a guess — same reasoning as the column default.
     kind: r.kind === "virtual" ? "virtual" : "card",
     issuedTo: r.issued_to_email ?? null,
     recipientName: r.recipient_name ?? null,
     // passTier() resolves an absent or unrecognised key to standard, which is
-    // exactly what a pre-0053 row is.
+    // exactly what a pre-0055 row is.
     tier: passTier(r.tier).key,
   }));
 

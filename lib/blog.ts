@@ -3,15 +3,7 @@ import { cache } from "react";
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
-import { unified } from "unified";
-import remarkParse from "remark-parse";
-import remarkGfm from "remark-gfm";
-import remarkSmartypants from "remark-smartypants";
-import remarkRehype from "remark-rehype";
-import rehypeSlug from "rehype-slug";
-import rehypeAutolinkHeadings from "rehype-autolink-headings";
-import rehypeExternalLinks from "rehype-external-links";
-import rehypeStringify from "rehype-stringify";
+import { renderMarkdown } from "@/lib/markdown";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import {
   AUTHORS,
@@ -283,29 +275,12 @@ export async function getPostSlugs(): Promise<string[]> {
   return [...new Set([...getFileSlugs(), ...rows.map((r) => r.slug)])];
 }
 
-// Shared markdown → semantic-HTML pipeline. Heading anchors (slug +
-// self-link) give AI engines and readers stable deep links; smartypants
-// gives real typographic punctuation; external links get rel safety.
-const processor = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkSmartypants)
-  .use(remarkRehype)
-  .use(rehypeSlug)
-  .use(rehypeAutolinkHeadings, {
-    behavior: "wrap",
-    properties: { className: ["heading-anchor"] },
-  })
-  .use(rehypeExternalLinks, {
-    target: "_blank",
-    rel: ["noopener", "noreferrer"],
-  })
-  .use(rehypeStringify);
-
-export async function renderMarkdown(body: string): Promise<string> {
-  const file = await processor.process(body);
-  return String(file);
-}
+// The markdown → semantic-HTML pipeline now lives in lib/markdown.ts so that
+// callers who only need to render a string (resource flows, the admin editor
+// preview) don't pull node:fs, gray-matter and supabase-js in with it.
+// Re-exported here so existing blog importers are unaffected and both sources
+// keep rendering through the same processor.
+export { renderMarkdown };
 
 /**
  * One post, rendered.

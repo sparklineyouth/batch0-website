@@ -3,7 +3,8 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
-import { renderMarkdown, listFileSlugs } from "@/lib/blog";
+import { listFileSlugs } from "@/lib/blog";
+import { renderMarkdown } from "@/lib/markdown";
 import {
   CATEGORIES,
   AUTHOR_KEYS,

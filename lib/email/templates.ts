@@ -1,65 +1,10 @@
 import { env } from "@/lib/env";
 import { fmtDateOnly } from "@/lib/pre-cohort";
+import { emailLayout as layout, escapeEmail as escape } from "@/lib/email/layout";
 
-/** Shared HTML wrapper for all transactional emails. */
-function layout(args: {
-  preheader?: string;
-  body: string;
-  cta?: { url: string; label: string };
-  /** Small print rendered *after* the CTA. */
-  footNote?: string;
-}) {
-  const cta = args.cta
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:32px 0">
-         <tr><td style="border-radius:8px;background:#ffbb00">
-           <a href="${args.cta.url}" style="display:inline-block;padding:12px 22px;font-family:Inter,Arial,sans-serif;font-size:14px;font-weight:600;color:#000;text-decoration:none;border-radius:8px">
-             ${args.cta.label}
-           </a>
-         </td></tr>
-       </table>`
-    : "";
-  const preheader = args.preheader
-    ? `<div style="display:none;max-height:0;overflow:hidden;color:transparent">${escape(
-        args.preheader,
-      )}</div>`
-    : "";
-  return `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0a0a0a;color:#e7e7e7;font-family:Inter,-apple-system,Arial,sans-serif">
-${preheader}
-<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#0a0a0a;padding:32px 16px">
-  <tr><td align="center">
-    <table role="presentation" cellpadding="0" cellspacing="0" width="560" style="max-width:560px;background:#111;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden">
-      <tr><td style="padding:28px 32px 16px 32px">
-        <div style="font-size:18px;font-weight:700;letter-spacing:-0.01em">
-          <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">batch<span style="color:#ffbb00">0</span></span>
-        </div>
-      </td></tr>
-      <tr><td style="padding:0 32px 32px 32px;font-size:15px;line-height:1.55;color:#e7e7e7">
-        ${args.body}
-        ${cta}
-        ${
-          args.footNote
-            ? `<div style="font-size:12px;line-height:1.6;color:#888;word-break:break-all">${args.footNote}</div>`
-            : ""
-        }
-      </td></tr>
-      <tr><td style="padding:18px 32px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:#888">
-        <a href="${env.siteUrl}" style="color:#ffbb00;text-decoration:none">${env.siteUrl.replace(/^https?:\/\//, "")}</a> · Questions?
-        <a href="mailto:${env.contactEmail}" style="color:#ffbb00;text-decoration:none">${env.contactEmail}</a>
-      </td></tr>
-    </table>
-  </td></tr>
-</table>
-</body></html>`;
-}
-
-function escape(s: string) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+// The shell and the escaper live in lib/email/layout.ts so the compiled
+// templates below and the admin-authored ones in `email_templates` render
+// inside the same chrome. See lib/email/render.ts for the database path.
 
 /**
  * The brushed-silver Founder Pass card, as an email-safe table.
@@ -320,7 +265,7 @@ ${env.siteUrl}`,
 
   /**
    * A virtual Founder Pass — the code itself, sent to someone who was never
-   * handed a printed card (app/admin/passes/actions.ts, migrations 0052/0053).
+   * handed a printed card (app/admin/passes/actions.ts, migrations 0054/0055).
    *
    * This email IS the pass. Everything else in this file points at something
    * the recipient can go and re-read; here the code exists in exactly two

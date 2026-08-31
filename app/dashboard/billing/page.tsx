@@ -6,7 +6,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { PortalButton } from "./portal-button";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { PaymentResult } from "@/components/payment-result";
-import { syncCheckoutSession } from "@/lib/stripe-fulfillment";
+import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { Receipt } from "lucide-react";
 
 export const metadata = { title: "Billing · batch0" };
@@ -33,9 +33,7 @@ export default async function BillingPage({
   // Settle a just-completed Checkout against Stripe before reading the
   // tables below, so a charge paid seconds ago shows as paid rather than
   // sitting in "Outstanding" until the webhook catches up.
-  const payment = searchParams.session_id
-    ? await syncCheckoutSession(searchParams.session_id, user.id)
-    : null;
+  const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
   const [{ data: payments }, { data: profile }, { data: charges }] =
     await Promise.all([

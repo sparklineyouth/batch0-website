@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0052 — Virtual founder passes.
+-- 0054 — Virtual founder passes.
 --
 -- Until now every row in founder_passes was a physical object: minting ran the
 -- Onshape export, embossed the code into an STL, and the card went to a

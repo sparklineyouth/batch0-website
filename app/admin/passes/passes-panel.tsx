@@ -45,13 +45,13 @@ export type PassRow = {
   holder: string | null;
   redeemedAt: string | null;
   revoked: boolean;
-  /** 'card' = 3D-printed; 'virtual' = emailed (migration 0052). */
+  /** 'card' = 3D-printed; 'virtual' = emailed (migration 0054). */
   kind: "card" | "virtual";
   /** Where a virtual pass was sent. Null for printed cards. */
   issuedTo: string | null;
   /** Who it was addressed to, as the sender typed it. */
   recipientName: string | null;
-  /** The perks baked in at issue time (migration 0053). */
+  /** The perks baked in at issue time (migration 0055). */
   tier: PassTierKey;
 };
 

@@ -56,8 +56,8 @@ export type FounderPass = {
    */
   profile: PassProfile;
   /**
-   * What this pass is actually worth: its tier (migration 0053) plus any
-   * hand-set discount override (0054). Always resolved, never null — a row
+   * What this pass is actually worth: its tier (migration 0055) plus any
+   * hand-set discount override (0056). Always resolved, never null — a row
    * from before those migrations, or one naming a tier this build doesn't
    * know, reads as a standard grant with no override. A holder's pass must
    * never evaporate because of a deploy ordering.
@@ -68,7 +68,7 @@ export type FounderPass = {
 /**
  * A founder_passes row as read via select("*"). Profile columns are optional so
  * the shape still matches on a database where migration 0041 hasn't run — and
- * tier/recipient_name likewise for 0053.
+ * tier/recipient_name likewise for 0055.
  */
 export type PassRow = {
   serial: number;
@@ -111,7 +111,7 @@ function mapPassProfile(row: {
 }
 
 // The old FOUNDER_PASS_TUITION_DISCOUNT_CENTS constant lived here, and every
-// payment site read it. It is deliberately gone: since 0053/0054 a pass
+// payment site read it. It is deliberately gone: since 0055/0056 a pass
 // carries a tier and can carry a hand-set override, so ONE flat number can no
 // longer answer "what does this person pay". A constant that looks
 // authoritative but silently bills a full-ride holder $100 is worse than no
@@ -284,7 +284,7 @@ export async function getPassForUser(
 
 /**
  * Read the tier + discount override off a founder_passes row, tolerating the
- * absence of both columns on a database where 0053/0054 haven't run.
+ * absence of both columns on a database where 0055/0056 haven't run.
  */
 export function mapPassGrant(row: {
   tier?: string | null;
@@ -364,7 +364,7 @@ export async function canBypassClosedApplications(
 ): Promise<boolean> {
   if (!userId) return false;
 
-  // The pass first, because since migration 0053 it can answer on its own. A
+  // The pass first, because since migration 0055 it can answer on its own. A
   // tier with earlyAccess "always" is a standing invitation issued to one
   // named person — the whole point is that it outlives the window, so it must
   // be read before the setting rather than gated behind it.
@@ -412,13 +412,13 @@ export async function passHolderUserIds(
  * The same batched read as passHolderUserIds(), but keeping each holder's grant.
  *
  * Use this only where the answer actually changes with the tier — today, the
- * review queue's decision clock, which is per-applicant since migration 0053.
+ * review queue's decision clock, which is per-applicant since migration 0055.
  * Where the question is genuinely "do they hold one" (every badge on a team
  * page), passHolderUserIds() stays the right call, and deliberately does NOT
  * delegate here: it selects one column, while this has to select("*").
  *
  * That star select is forced, for the reason getPassForUser documents — naming
- * `tier` on a database where 0053 hasn't run makes the whole read error, and
+ * `tier` on a database where 0055 hasn't run makes the whole read error, and
  * every holder's badge would vanish site-wide. It is also why the two are kept
  * apart: the badge callers pass no `userIds` filter, so routing them through
  * here would pull every column of every redeemed pass — profile bios and

@@ -278,7 +278,7 @@ export async function issueVirtualPassesAction(input: {
 
   // ---- What they carry. Resolved, not trusted: passTier() falls back to
   // standard for anything it doesn't recognise, so a stale client can only
-  // under-grant, and can never write a key the 0053 check constraint rejects.
+  // under-grant, and can never write a key the 0055 check constraint rejects.
   const tier = passTier(input.tier);
   const discountCents = parseDollarsToCents(input.discountDollars ?? "");
   const grant = grantOf(tier, discountCents);
@@ -343,8 +343,8 @@ export async function issueVirtualPassesAction(input: {
       ok: false,
       error: missingColumn
         ? `Couldn't issue the passes: ${insertError.message}. Virtual passes need migrations ` +
-          `0052_virtual_founder_passes.sql, 0053_founder_pass_tiers.sql and ` +
-          `0054_founder_pass_custom_discount.sql — run them in the Supabase SQL editor ` +
+          `0054_virtual_founder_passes.sql, 0055_founder_pass_tiers.sql and ` +
+          `0056_founder_pass_custom_discount.sql — run them in the Supabase SQL editor ` +
           `and try again.`
         : `Couldn't issue the passes: ${insertError.message}`,
     };

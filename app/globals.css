@@ -58,6 +58,62 @@
   --foreground: #141414;
 }
 
+/* ── Data-viz tokens (admin dashboards) ──────────────────────────────────────
+ *
+ * Chart series colours, kept here beside the other theme tokens so light and
+ * dark swap from one place. Both sets were run through the data-viz palette
+ * validator against THIS app's card surface (`--wash`: #f7f7f5 light,
+ * #18181b dark) rather than picked by eye:
+ *
+ *   categorical (apps / revenue / engagement)
+ *     light  #eda100,#1baf7a,#2a78d6  — all-pairs CVD ΔE 9.1, normal 22.9
+ *     dark   #c98500,#199e70,#3987e5  — all-pairs CVD ΔE 8.4, normal 19.8
+ *   funnel ordinal ramp (one hue, deepening by stage)
+ *     light  #6da7ec→#104281  — light end 2.33:1 on the wash
+ *     dark   #cde2fb→#184f95  — dark end 2.19:1 on the wash
+ *
+ * Note the amber and aqua sit below 3:1 on the LIGHT wash. That is a known
+ * WARN, not an oversight: the relief rule applies, so every chart that uses
+ * them ships direct value labels and a table view and never leaves a value
+ * carried by colour alone. Re-run the validator before changing any hex.
+ *
+ * `--viz-warning` is the status colour and is deliberately NOT one of the
+ * series slots — a status colour must never impersonate a series. */
+:root {
+  --viz-apps: #eda100;
+  --viz-revenue: #1baf7a;
+  --viz-engagement: #2a78d6;
+  --viz-target: #898781;
+  --viz-warning: #d03b3b;
+  --viz-funnel-1: #6da7ec;
+  --viz-funnel-2: #3987e5;
+  --viz-funnel-3: #256abf;
+  --viz-funnel-4: #104281;
+}
+
+.dark {
+  --viz-apps: #c98500;
+  --viz-revenue: #199e70;
+  --viz-engagement: #3987e5;
+  --viz-target: #898781;
+  --viz-warning: #d03b3b;
+  --viz-funnel-1: #cde2fb;
+  --viz-funnel-2: #86b6ef;
+  --viz-funnel-3: #3987e5;
+  --viz-funnel-4: #184f95;
+}
+
+/* Re-pinned for subtrees that force light inside a dark document. */
+.theme-light {
+  --viz-apps: #eda100;
+  --viz-revenue: #1baf7a;
+  --viz-engagement: #2a78d6;
+  --viz-funnel-1: #6da7ec;
+  --viz-funnel-2: #3987e5;
+  --viz-funnel-3: #256abf;
+  --viz-funnel-4: #104281;
+}
+
 /* Arrow glyphs, repaired.
  *
  * next/font subsets IBM Plex Mono and VT323 to a latin `unicode-range` that

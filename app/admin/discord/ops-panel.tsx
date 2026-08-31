@@ -6,6 +6,8 @@ import {
   registerCommands,
   resyncAllRoles,
   refreshLinkedIdentities,
+  repairDiscordServer,
+  fixInteractionsEndpoint,
 } from "./actions";
 import { getActionError } from "@/lib/action-error";
 
@@ -78,6 +80,58 @@ export function OpsPanel({
           Refresh usernames + avatars
         </Button>
       </div>
+
+      {/*
+        The two repairs for the failures that look like configuration
+        problems but can't be fixed from the config form below: IDs that
+        dangle because the channel or role was deleted in Discord, and an
+        interactions endpoint left pointing at an old domain.
+      */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={pending}
+          onClick={() =>
+            run("repair", async () => {
+              const r = await repairDiscordServer();
+              const made =
+                r.rolesCreated.length + r.channelsCreated.length;
+              const kept = r.rolesReused.length + r.channelsReused.length;
+              return made === 0
+                ? `Nothing missing — re-pointed config at ${kept} existing channel/role${kept === 1 ? "" : "s"}.`
+                : `Recreated ${made} missing item${made === 1 ? "" : "s"} (${[
+                    ...r.rolesCreated.map((x) => x.name),
+                    ...r.channelsCreated.map((x) => `#${x.name}`),
+                  ].join(", ")}); kept ${kept} existing.`;
+            })
+          }
+        >
+          Repair server layout
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={pending}
+          onClick={() =>
+            run("endpoint", async () => {
+              const { url } = await fixInteractionsEndpoint();
+              return `Discord will now deliver interactions to ${url}.`;
+            })
+          }
+        >
+          Point interactions endpoint here
+        </Button>
+      </div>
+      <p className="text-xs text-ink-faint">
+        <strong>Repair server layout</strong> recreates any canonical
+        channel or role that's missing and re-points the config at what's
+        actually in the guild. It never deletes anything — unlike Bootstrap
+        below.{" "}
+        <strong>Point interactions endpoint here</strong> tells Discord to
+        deliver slash commands to this deployment; run it after a domain
+        change or slash commands will silently do nothing.
+      </p>
 
       {status && (
         <p

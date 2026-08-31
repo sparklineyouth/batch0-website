@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { BarChart, TrendLine, Funnel, Meter } from "@/components/admin/charts";
 import { isoWeekStart, mondayOf } from "@/lib/week";
 import { thisMonthStartISODate } from "@/lib/ai/pricing";
 import {
-  Activity,
   Inbox,
   CheckCircle,
   CreditCard,
@@ -89,19 +89,25 @@ export default async function PulsePage() {
     { data: aiUsageRow },
     { data: auditDecisions },
   ] = await Promise.all([
+    // One applications read, not two. The all-time set the funnel needs is a
+    // superset of the 8-week window the bar chart and the 7-day deltas need,
+    // and both bucket in JS anyway — so a second, narrower query was a whole
+    // extra table scan on every dashboard load for rows we already had.
     admin
       .from("applications")
       .select("id, status, created_at, submitted_at")
-      .gte("created_at", prev7Start.toISOString()),
+      .limit(5000),
     admin
       .from("payments")
       .select("amount_cents, status, created_at")
       .gte("created_at", eightWeeksStart.toISOString())
       .eq("status", "succeeded"),
+    // Also widened to eight weeks so the participation trend has a history to
+    // draw. The at-risk calculation below still only looks at the last two.
     admin
       .from("student_checkins")
       .select("user_id, cohort_id, week_start, created_at")
-      .gte("week_start", twoWeeksAgo),
+      .gte("week_start", eightWeeks[0].key),
     admin
       .from("cohorts")
       .select("id, name, capacity, status, starts_on, ends_on")
@@ -168,7 +174,6 @@ export default async function PulsePage() {
         new Date(a.created_at) >= w.start && new Date(a.created_at) < w.end,
     ).length,
   }));
-  const maxAppsWk = Math.max(1, ...appsByWeek.map((w) => w.count));
 
   const revByWeek = eightWeeks.map((w) => ({
     ...w,
@@ -179,7 +184,6 @@ export default async function PulsePage() {
       )
       .reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0),
   }));
-  const maxRevWk = Math.max(1, ...revByWeek.map((w) => w.cents));
 
   // ── Check-in completion ─────────────────────────────────────────────────
   const enrolledUserIds = new Set((enrolledRows ?? []).map((e: any) => e.user_id));
@@ -212,6 +216,52 @@ export default async function PulsePage() {
   const atRiskCount = Array.from(enrolledUserIds).filter(
     (id) => !recentCheckinUsers.has(id as string),
   ).length;
+
+  // ── Applicant funnel ────────────────────────────────────────────────────
+  // Each stage is computed as a SUBSET of the one before it rather than as an
+  // independent count, so the funnel is monotone by construction. An
+  // independently-counted stage that came out larger than its predecessor
+  // would render as a funnel that widens — which reads as a rendering bug
+  // even when the underlying data is genuinely odd.
+  const ACCEPTED_OR_BEYOND = new Set(["accepted", "paid", "enrolled"]);
+  const PAID_OR_BEYOND = new Set(["paid", "enrolled"]);
+  const funnelRows = (recentApps ?? []) as {
+    status: string;
+    submitted_at: string | null;
+  }[];
+  const started = funnelRows.length;
+  const submitted = funnelRows.filter((a) => a.submitted_at).length;
+  const accepted = funnelRows.filter(
+    (a) => a.submitted_at && ACCEPTED_OR_BEYOND.has(a.status),
+  ).length;
+  const enrolledViaApp = funnelRows.filter(
+    (a) => a.submitted_at && PAID_OR_BEYOND.has(a.status),
+  ).length;
+  const funnelStages = [
+    { label: "Started", value: started },
+    { label: "Submitted", value: submitted },
+    { label: "Accepted", value: accepted },
+    { label: "Enrolled", value: enrolledViaApp },
+  ];
+
+  // ── Weekly check-in participation ───────────────────────────────────────
+  // Denominator is CURRENT enrolment for every week, because we don't store
+  // enrolment history — so an older week's percentage is against today's
+  // roster, not the roster as it stood then. Called out in the subtitle
+  // rather than left for someone to discover.
+  const checkinsByWeek = eightWeeks.map((w) => {
+    const users = new Set(
+      (weeklyCheckins ?? [])
+        .filter((c: any) => c.week_start === w.key)
+        .map((c: any) => c.user_id)
+        .filter((id: string) => enrolledUserIds.has(id)),
+    );
+    return {
+      key: w.key,
+      label: w.label,
+      value: enrolledTotal > 0 ? Math.round((users.size / enrolledTotal) * 100) : 0,
+    };
+  });
 
   // ── AI usage rollup ─────────────────────────────────────────────────────
   const aiTotal = {
@@ -320,60 +370,59 @@ export default async function PulsePage() {
         </div>
       </section>
 
-      {/* Trend cards */}
+      {/* Trends. Two charts rather than one with two y-axes: applications and
+          revenue have unrelated scales, and overlaying them on a shared plot
+          would invent a correlation the data doesn't contain. */}
       <section className="mt-8 grid gap-6 md:grid-cols-2">
         <Card>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-            Applications · 8 weeks
-          </h2>
-          <p className="mt-1 text-xs text-ink-faint">
-            New applications received per ISO week.
-          </p>
-          <div className="mt-6 grid grid-cols-8 items-end gap-2 h-32">
-            {appsByWeek.map((w) => (
-              <div key={w.key} className="flex flex-col items-center gap-1">
-                <div className="text-[10px] tabular-nums text-ink-soft">
-                  {w.count || ""}
-                </div>
-                <div
-                  className="w-full rounded-t bg-phosphor/50"
-                  style={{
-                    height: `${Math.max(2, Math.round((w.count / maxAppsWk) * 100))}%`,
-                  }}
-                />
-                <div className="text-[9px] tabular-nums text-ink-faint">
-                  {w.label}
-                </div>
-              </div>
-            ))}
-          </div>
+          <BarChart
+            title="Applications · 8 weeks"
+            subtitle="New applications received per ISO week."
+            data={appsByWeek.map((w) => ({
+              key: w.key,
+              label: w.label,
+              value: w.count,
+            }))}
+            series="apps"
+            format={(n) => String(n)}
+          />
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-            Revenue · 8 weeks
-          </h2>
-          <p className="mt-1 text-xs text-ink-faint">
-            Succeeded payments only. Excludes fees & fines.
-          </p>
-          <div className="mt-6 grid grid-cols-8 items-end gap-2 h-32">
-            {revByWeek.map((w) => (
-              <div key={w.key} className="flex flex-col items-center gap-1">
-                <div className="text-[10px] tabular-nums text-ink-soft">
-                  {w.cents > 0 ? fmtMoney(w.cents) : ""}
-                </div>
-                <div
-                  className="w-full rounded-t bg-emerald-400/60"
-                  style={{
-                    height: `${Math.max(2, Math.round((w.cents / maxRevWk) * 100))}%`,
-                  }}
-                />
-                <div className="text-[9px] tabular-nums text-ink-faint">
-                  {w.label}
-                </div>
-              </div>
-            ))}
-          </div>
+          <BarChart
+            title="Revenue · 8 weeks"
+            subtitle="Succeeded payments only. Excludes fees & fines."
+            data={revByWeek.map((w) => ({
+              key: w.key,
+              label: w.label,
+              value: w.cents,
+            }))}
+            series="revenue"
+            format={fmtMoney}
+          />
+        </Card>
+      </section>
+
+      <section className="mt-6 grid gap-6 md:grid-cols-2">
+        <Card>
+          <Funnel
+            title="Applicant funnel · all time"
+            subtitle="Where applicants stop. Each stage is a subset of the one above it."
+            stages={funnelStages}
+          />
+        </Card>
+
+        <Card>
+          <TrendLine
+            title="Check-in participation · 8 weeks"
+            subtitle={
+              enrolledTotal > 0
+                ? `Share of the ${enrolledTotal} currently-enrolled students who checked in each week. Older weeks are measured against today's roster, not that week's.`
+                : "No enrolled students yet."
+            }
+            data={checkinsByWeek}
+            target={70}
+          />
         </Card>
       </section>
 
@@ -418,12 +467,15 @@ export default async function PulsePage() {
                       {c.starts_on} → {c.ends_on ?? "tbd"}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm tabular-nums text-ink-soft">
-                      {enrolled} / {c.capacity ?? "?"}
-                    </div>
-                    <div className="text-[11px] text-ink-faint">
-                      {c.capacity ? `${capPct}% full` : ""}
+                  <div className="flex items-center gap-3">
+                    <Meter value={enrolled} max={c.capacity ?? null} />
+                    <div className="text-right">
+                      <div className="text-sm tabular-nums text-ink-soft">
+                        {enrolled} / {c.capacity ?? "?"}
+                      </div>
+                      <div className="text-[11px] text-ink-faint">
+                        {c.capacity ? `${capPct}% full` : ""}
+                      </div>
                     </div>
                   </div>
                   <ArrowRight className="h-4 w-4 text-ink-faint group-hover:text-ink" />

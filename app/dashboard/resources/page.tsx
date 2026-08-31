@@ -307,7 +307,10 @@ function ResourceList({
                 </div>
                 {url ? (
                   <a
-                    href={url}
+                    // Through /open/[id] rather than straight at the file, so
+                    // the click is recorded and the signed URL is minted fresh
+                    // (see that route). Same one-click experience.
+                    href={`/dashboard/resources/open/${r.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-phosphor px-3 py-2 text-xs font-semibold text-on-phosphor hover:bg-phosphor-200"

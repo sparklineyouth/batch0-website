@@ -23,6 +23,7 @@ import { stripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
 import {
@@ -31,7 +32,7 @@ import {
   postDiscordWebhook,
   syncMemberRoles,
 } from "@/lib/discord";
-import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
+import { cohortHasStarted, fmtDateOnly, todayISO } from "@/lib/pre-cohort";
 
 /**
  * What a Checkout Session means for the student, right now.
@@ -436,14 +437,43 @@ async function announceEnrollment(args: {
       : null;
     const started = cohort ? cohortHasStarted(cohort, todayISO()) : true;
 
-    const t = Templates.paymentReceipt({
-      name: profile?.full_name ?? null,
-      amountCents: args.amountCents,
-      cohortName: args.cohortName,
-      startsOn: started ? null : cohort?.starts_on ?? null,
-    });
+    const startsOn = started ? null : (cohort?.starts_on ?? null);
     if (profile?.email) {
-      await sendEmail({ to: profile.email, subject: t.subject, html: t.html });
+      await sendTemplated("payment.receipt", {
+        to: profile.email,
+        toName: profile?.full_name ?? null,
+        userId: args.userId,
+        vars: {
+          amount: `$${(args.amountCents / 100).toFixed(2)}`,
+          cohort_name: args.cohortName,
+          starts_on: startsOn ? (fmtDateOnly(startsOn) ?? "") : "",
+        },
+        // One receipt per enrollment, however the fulfilment arrived —
+        // webhook, retry, or reconciliation on return from checkout.
+        dedupeKey: `receipt:${args.userId}:${args.cohortId ?? "no-cohort"}`,
+        fallback: () =>
+          Templates.paymentReceipt({
+            name: profile?.full_name ?? null,
+            amountCents: args.amountCents,
+            cohortName: args.cohortName,
+            startsOn,
+          }),
+      });
+      // Awaited rather than fired-and-forgotten: a serverless invocation can
+      // be frozen the moment its response is returned, and a floating promise
+      // here would drop the enqueue silently. emitEmailEvent swallows its own
+      // failures, so awaiting it can't fail the operation it reports on.
+      await emitEmailEvent("payment.succeeded", {
+        email: profile.email,
+        name: profile?.full_name ?? null,
+        userId: args.userId,
+        vars: {
+          amount: `$${(args.amountCents / 100).toFixed(2)}`,
+          cohort_name: args.cohortName,
+          starts_on: startsOn ? (fmtDateOnly(startsOn) ?? "") : "",
+        },
+        dedupeSeed: `payment.succeeded:${args.userId}:${args.cohortId ?? "no-cohort"}`,
+      });
     }
     await notify({
       userId: args.userId,

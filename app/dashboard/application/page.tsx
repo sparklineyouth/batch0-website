@@ -11,7 +11,7 @@ import { grantDiscountCents } from "@/lib/founder-pass-tiers";
 import { getRebuildForUser, type Rebuild } from "@/lib/founder-pass-perks";
 import { PayButton } from "./pay-button";
 import { PaymentResult } from "@/components/payment-result";
-import { syncCheckoutSession } from "@/lib/stripe-fulfillment";
+import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { TrackSubmitted } from "./track-submitted";
 import { RebuildForm } from "./rebuild-form";
 import { fmtDateOnly } from "@/lib/pre-cohort";
@@ -37,9 +37,7 @@ export default async function ApplicationPage({
   // usually loses this race, and a student who just paid must never be
   // shown the "pay now" card again. Both paths run the same idempotent
   // fulfillment, so whichever arrives second is a no-op.
-  const payment = searchParams.session_id
-    ? await syncCheckoutSession(searchParams.session_id, user.id)
-    : null;
+  const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
   // These three are mutually independent, and used to run as three separate
   // round trips one after another — the application row, then the pass check,

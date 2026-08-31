@@ -1,7 +1,7 @@
 -- ============================================================================
--- 0054 — A per-pass tuition discount, set by hand.
+-- 0056 — A per-pass tuition discount, set by hand.
 --
--- 0053 gave a pass a TIER, which is a named package an admin picks off a
+-- 0055 gave a pass a TIER, which is a named package an admin picks off a
 -- shelf. That covers the common cases and keeps the promise text honest,
 -- but it can't express "this one person gets $45 off" — and that is exactly
 -- what gets asked for when you're negotiating with one student in front of

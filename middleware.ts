@@ -14,6 +14,10 @@ export const config = {
   // it forgoes proactive token refresh rather than paying full session work
   // on a 4-second poll.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|logo.svg|og.png|api/stripe/webhook|api/discord/interactions|api/resend/webhook|api/demo-day/reactions|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|xml)$).*)",
+    // manifest.webmanifest is named explicitly because its extension isn't in
+    // the list below. It is a static, viewer-independent file that the browser
+    // fetches on every install check and every launch of the installed app —
+    // there is nothing for a session refresh to do on it.
+    "/((?!_next/static|_next/image|favicon.ico|logo.svg|og.png|manifest.webmanifest|api/stripe/webhook|api/discord/interactions|api/resend/webhook|api/demo-day/reactions|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|xml)$).*)",
   ],
 };

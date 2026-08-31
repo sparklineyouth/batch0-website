@@ -369,6 +369,69 @@ export async function fetchGuildMemberCount(): Promise<number | null> {
   }
 }
 
+/**
+ * The OAuth2 redirect URIs registered on the Discord application.
+ *
+ * Exists because "Invalid OAuth2 redirect_uri" is a dead end for whoever hits
+ * it: Discord rejects on its own domain, before the browser ever comes back,
+ * so /auth/discord/callback never runs and nothing on our side can catch or
+ * explain it. The only place it can be caught is the admin side, ahead of time.
+ *
+ * Null when the list can't be read — the caller degrades to printing the URIs
+ * that need registering, which is still the actionable half.
+ */
+export type DiscordAppInfo = {
+  /** The application the BOT TOKEN belongs to. */
+  id: string | null;
+  name: string | null;
+  redirectUris: string[] | null;
+};
+
+export async function fetchDiscordAppInfo(): Promise<DiscordAppInfo | null> {
+  if (!env.discordBotToken) return null;
+  try {
+    const res = await fetch(`${API}/applications/@me`, {
+      headers: { Authorization: `Bot ${env.discordBotToken}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      id?: unknown;
+      name?: unknown;
+      redirect_uris?: unknown;
+    };
+    return {
+      id: typeof json.id === "string" ? json.id : null,
+      name: typeof json.name === "string" ? json.name : null,
+      redirectUris: Array.isArray(json.redirect_uris)
+        ? json.redirect_uris.filter((u): u is string => typeof u === "string")
+        : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every redirect URI the app can legitimately send. /auth/discord/start
+ * derives it from the REQUEST origin, so a visitor on www produces a different
+ * URI than one on the apex — both must be registered or linking dies for half
+ * the users.
+ */
+export function expectedOauthRedirectUris(siteUrl: string): string[] {
+  const out = new Set<string>();
+  try {
+    const url = new URL(siteUrl);
+    const apex = url.host.replace(/^www\./, "");
+    for (const host of [apex, `www.${apex}`]) {
+      out.add(`${url.protocol}//${host}/auth/discord/callback`);
+    }
+  } catch {
+    /* a malformed NEXT_PUBLIC_SITE_URL shouldn't take the doctor down */
+  }
+  return [...out];
+}
+
 export async function addRoleToMember(
   discordUserId: string,
   roleId: string,
@@ -1412,6 +1475,52 @@ export async function listRegisteredCommands(): Promise<
   }
 }
 
+/**
+ * Point the Discord application's Interactions Endpoint URL at this
+ * deployment.
+ *
+ * Registering commands is only half of making slash commands work: the
+ * command list lives on the application, but Discord delivers the actual
+ * interaction to whatever URL the application has stored. Those two are
+ * set in completely different places, so a domain change (batch0 was
+ * sparklineyouth.org) leaves the commands looking perfectly registered on
+ * /admin/discord while every invocation is POSTed to the old host and the
+ * user just sees "The application did not respond." Nothing in the app
+ * could fix that from here — it was a manual trip to the developer
+ * portal, which is precisely the kind of step that silently never happens.
+ *
+ * Discord validates the URL synchronously by sending it a signed PING and
+ * refuses the PATCH unless it gets a valid PONG back, so a 400 here
+ * almost always means DISCORD_PUBLIC_KEY doesn't match this application
+ * rather than that the URL is malformed.
+ */
+export async function setInteractionsEndpoint(
+  url?: string,
+): Promise<{ url: string }> {
+  if (!env.discordBotToken) {
+    throw new Error("Need DISCORD_BOT_TOKEN to update the application.");
+  }
+  const target = url ?? `${env.siteUrl}/api/discord/interactions`;
+  const res = await fetch(`${API}/applications/@me`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bot ${env.discordBotToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ interactions_endpoint_url: target }),
+  });
+  if (!res.ok) {
+    const text = (await res.text()).slice(0, 400);
+    throw new Error(
+      `Discord rejected the interactions endpoint (${res.status}). ` +
+        `It sends a signed PING to ${target} and only saves the URL if it ` +
+        `verifies — check that DISCORD_PUBLIC_KEY matches this application ` +
+        `and that the deployment is live. ${text}`,
+    );
+  }
+  return { url: target };
+}
+
 // ---------------------------------------------------------------------------
 // Server bootstrap: wipe + rebuild a guild's roles and channels to the
 // canonical batch0 layout. Designed for the very first setup so
@@ -1549,28 +1658,398 @@ async function patchGuild(json: Record<string, unknown>): Promise<void> {
   }
 }
 
-export type BootstrapResult = {
+export type CanonicalLayoutIds = {
+  announcementsChannelId: string;
+  eventsChannelId: string;
+  adminFeedChannelId: string;
+  // Feature-pack channel IDs returned so the caller can upsert them
+  // alongside the originals.
+  teamsCategoryId: string;
+  winsChannelId: string;
+  helpChannelId: string;
+  ohVoiceChannelId: string;
+  introductionsChannelId: string;
+  roleStudentId: string;
+  roleMentorId: string;
+  roleAdminId: string;
+  roleInvestorId: string;
+  // A SIBLING of the four role-mapped roles, never one of them — see the
+  // long note on DiscordSettings.founderPassRoleId. It is built here for a
+  // blunt reason: a rebuilt server used to leave
+  // discord_role_founder_pass_id pointing at a role that no longer
+  // existed, so every redemption silently failed to grant the perk and
+  // the doctor flagged it forever with no way to fix it short of hand-
+  // crafting the role in Discord.
+  roleFounderPassId: string;
+};
+
+export type LayoutSyncResult = {
+  rolesCreated: { name: string; id: string }[];
+  rolesReused: { name: string; id: string }[];
+  channelsCreated: { name: string; id: string }[];
+  channelsReused: { name: string; id: string }[];
+  ids: CanonicalLayoutIds;
+};
+
+export type BootstrapResult = LayoutSyncResult & {
   channelsDeleted: number;
   rolesDeleted: number;
-  rolesCreated: { name: string; id: string }[];
-  channelsCreated: { name: string; id: string }[];
-  ids: {
-    announcementsChannelId: string;
-    eventsChannelId: string;
-    adminFeedChannelId: string;
-    // Feature-pack channel IDs returned so the caller can upsert them
-    // alongside the originals (or empty string if creation failed).
-    teamsCategoryId: string;
-    winsChannelId: string;
-    helpChannelId: string;
-    ohVoiceChannelId: string;
-    introductionsChannelId: string;
-    roleStudentId: string;
-    roleMentorId: string;
-    roleAdminId: string;
-    roleInvestorId: string;
-  };
 };
+
+/** What `repairGuildLayout` gives back — same shape, nothing deleted. */
+export type RepairResult = LayoutSyncResult;
+
+/**
+ * Build the canonical batch0 layout — 5 roles, 6 categories, ~14
+ * channels — and return the IDs the rest of the integration keys off.
+ *
+ * `reuseExisting` picks between the two very different jobs this serves:
+ *
+ *   false — called straight after a wipe, when there is nothing left to
+ *           match against. Every role and channel is created fresh.
+ *   true  — the repair path. Anything already in the guild under the
+ *           canonical name is adopted as-is and reported under
+ *           `rolesReused` / `channelsReused`; only what is genuinely
+ *           missing gets created. Permission overwrites are applied ONLY
+ *           to channels we create, so a repair never stomps permissions
+ *           staff tuned by hand in Discord.
+ *
+ * Throttled at ~3 ops/sec to stay clear of Discord's rate limits.
+ */
+async function ensureCanonicalLayout(
+  reuseExisting: boolean,
+): Promise<LayoutSyncResult> {
+  const guildId = env.discordGuildId!;
+  const everyoneId = guildId; // @everyone always shares the guild's ID
+
+  const existingRoles = reuseExisting ? await listGuildRoles() : [];
+  const existingChannels = reuseExisting ? await listGuildChannels() : [];
+
+  const rolesCreated: { name: string; id: string }[] = [];
+  const rolesReused: { name: string; id: string }[] = [];
+  const channelsCreated: { name: string; id: string }[] = [];
+  const channelsReused: { name: string; id: string }[] = [];
+
+  const norm = (s: string) => s.trim().toLowerCase();
+
+  const ensureRole = async (args: {
+    name: string;
+    color: number;
+  }): Promise<DiscordRole> => {
+    const hit = existingRoles.find(
+      (r) => !r.managed && r.id !== guildId && norm(r.name) === norm(args.name),
+    );
+    if (hit) {
+      rolesReused.push({ name: hit.name, id: hit.id });
+      return hit;
+    }
+    const role = await createRole(args);
+    rolesCreated.push({ name: role.name, id: role.id });
+    await sleep(350);
+    return role;
+  };
+
+  // Channels match on name + type, and on parent when the caller knows
+  // it. The comparison is case-insensitive because Discord lower-cases
+  // and dash-joins text channel names on create, so what comes back does
+  // not always equal what went in.
+  const ensureChannel = async (
+    args: Parameters<typeof createChannel>[0],
+  ): Promise<DiscordChannel> => {
+    const hit = existingChannels.find(
+      (c) =>
+        c.type === args.type &&
+        norm(c.name) === norm(args.name) &&
+        (args.parent_id === undefined ||
+          (c.parent_id ?? null) === args.parent_id),
+    );
+    if (hit) {
+      channelsReused.push({ name: hit.name, id: hit.id });
+      return hit;
+    }
+    const ch = await createChannel(args);
+    channelsCreated.push({ name: ch.name, id: ch.id });
+    await sleep(350);
+    return ch;
+  };
+
+  // ── Roles ──────────────────────────────────────────────────────────
+  // Discord drops new roles at the bottom of the hierarchy, just above
+  // @everyone, so the bot's own managed role stays above them and can
+  // assign them.
+  //
+  // Note: we intentionally do NOT grant ADMINISTRATOR to the Admin role.
+  // Discord refuses to let a bot create a role with permissions the bot
+  // itself lacks, so requesting it aborts the whole run with
+  // `Missing Permissions (50013)`. The Admin role is a marker for "this
+  // user is staff" — the integration matches on role ID, not on Discord
+  // permission bits. Server owners can hand-grant Manage Server in
+  // Discord's Roles UI afterward if they want to.
+  const studentRole = await ensureRole({ name: "Student", color: 0x3b82f6 });
+  const mentorRole = await ensureRole({ name: "Mentor", color: 0x8b5cf6 });
+  const investorRole = await ensureRole({ name: "Investor", color: 0xf59e0b });
+  const adminRole = await ensureRole({ name: "Admin", color: 0xef4444 });
+  const founderPassRole = await ensureRole({
+    name: "Founder Pass",
+    color: BRAND_COLOR,
+  });
+
+  // Helper to build a "hide from everyone, show only to these roles"
+  // overwrite array.
+  const hideExceptFor = (
+    allowedRoleIds: string[],
+    extraAllow: bigint = BigInt(0),
+  ): PermissionOverwrite[] => [
+    {
+      id: everyoneId,
+      type: 0,
+      allow: "0",
+      deny: PERM_VIEW_CHANNEL.toString(),
+    },
+    ...allowedRoleIds.map((id) => ({
+      id,
+      type: 0 as const,
+      allow: (PERM_VIEW_CHANNEL | extraAllow).toString(),
+      deny: "0",
+    })),
+  ];
+
+  // "Staff can post, everyone else reads" — the shape shared by
+  // #welcome, #rules, #announcements, #wins and #events.
+  const staffWriteOnly = (
+    roleIds: string[] = [mentorRole.id, adminRole.id],
+  ): PermissionOverwrite[] => [
+    {
+      id: everyoneId,
+      type: 0,
+      allow: "0",
+      deny: PERM_SEND_MESSAGES.toString(),
+    },
+    ...roleIds.map((id) => ({
+      id,
+      type: 0 as const,
+      allow: PERM_SEND_MESSAGES.toString(),
+      deny: "0",
+    })),
+  ];
+
+  // ── START HERE ─────────────────────────────────────────────────────
+  const startCat = await ensureChannel({
+    name: "START HERE",
+    type: CHANNEL_TYPE_CATEGORY,
+  });
+  await ensureChannel({
+    name: "welcome",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: startCat.id,
+    topic: "Welcome to batch0! Link your account at /dashboard/settings.",
+    permission_overwrites: staffWriteOnly([adminRole.id]),
+  });
+  await ensureChannel({
+    name: "rules",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: startCat.id,
+    topic: "Community guidelines.",
+    permission_overwrites: staffWriteOnly([adminRole.id]),
+  });
+  const announcementsCh = await ensureChannel({
+    name: "announcements",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: startCat.id,
+    topic: "Program announcements. Staff posts only.",
+    permission_overwrites: staffWriteOnly(),
+  });
+
+  // ── STUDENTS ───────────────────────────────────────────────────────
+  const studentsCat = await ensureChannel({
+    name: "STUDENTS",
+    type: CHANNEL_TYPE_CATEGORY,
+  });
+  await ensureChannel({
+    name: "general",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: studentsCat.id,
+  });
+  const introductionsCh = await ensureChannel({
+    name: "introductions",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: studentsCat.id,
+    topic:
+      "Drop a quick intro — name, what you're working on, what you want help with.",
+  });
+  const helpCh = await ensureChannel({
+    name: "help",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: studentsCat.id,
+    topic:
+      "Stuck? Ask here. Mentors are watching. Run /queue join to enter the OH queue.",
+  });
+  await ensureChannel({
+    name: "projects",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: studentsCat.id,
+    topic: "Share what you're building. Demos welcome.",
+  });
+  const winsCh = await ensureChannel({
+    name: "wins",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: studentsCat.id,
+    topic:
+      "Milestones get celebrated here. Mark a check-in as a milestone to broadcast.",
+    permission_overwrites: staffWriteOnly(),
+  });
+  await ensureChannel({
+    name: "off-topic",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: studentsCat.id,
+  });
+
+  // ── TEAMS (private per-team channels live here) ───────────────────
+  // Each team's channels are hidden-by-default and provisioned on
+  // demand by lib/team-discord.ts. The category just gives them a
+  // visual home and a place to inherit permissions from.
+  const teamsCat = await ensureChannel({
+    name: "TEAMS",
+    type: CHANNEL_TYPE_CATEGORY,
+    permission_overwrites: hideExceptFor([mentorRole.id, adminRole.id]),
+  });
+
+  // ── EVENTS ─────────────────────────────────────────────────────────
+  const eventsCat = await ensureChannel({
+    name: "EVENTS",
+    type: CHANNEL_TYPE_CATEGORY,
+  });
+  const eventsCh = await ensureChannel({
+    name: "events",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: eventsCat.id,
+    topic: "Upcoming batch0 events. Run /events in any channel.",
+    permission_overwrites: staffWriteOnly(),
+  });
+  await ensureChannel({
+    name: "event-chat",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: eventsCat.id,
+    topic: "Chat during events.",
+  });
+
+  // ── INVESTORS (private) ────────────────────────────────────────────
+  const investorsCat = await ensureChannel({
+    name: "INVESTORS",
+    type: CHANNEL_TYPE_CATEGORY,
+    permission_overwrites: hideExceptFor([
+      investorRole.id,
+      mentorRole.id,
+      adminRole.id,
+    ]),
+  });
+  await ensureChannel({
+    name: "investor-lounge",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: investorsCat.id,
+  });
+
+  // ── STAFF (private) ────────────────────────────────────────────────
+  const staffCat = await ensureChannel({
+    name: "STAFF",
+    type: CHANNEL_TYPE_CATEGORY,
+    permission_overwrites: hideExceptFor([mentorRole.id, adminRole.id]),
+  });
+  await ensureChannel({
+    name: "mentor-lounge",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: staffCat.id,
+  });
+  const adminFeedCh = await ensureChannel({
+    name: "admin-feed",
+    type: CHANNEL_TYPE_TEXT,
+    parent_id: staffCat.id,
+    topic:
+      "Cross-posts: applications, payments, refunds, link/unlink events.",
+  });
+
+  // ── VOICE ──────────────────────────────────────────────────────────
+  const voiceCat = await ensureChannel({
+    name: "VOICE",
+    type: CHANNEL_TYPE_CATEGORY,
+  });
+  await ensureChannel({
+    name: "General Voice",
+    type: CHANNEL_TYPE_VOICE,
+    parent_id: voiceCat.id,
+  });
+  const ohVoiceCh = await ensureChannel({
+    name: "Office Hours",
+    type: CHANNEL_TYPE_VOICE,
+    parent_id: voiceCat.id,
+    permission_overwrites: [
+      {
+        id: everyoneId,
+        type: 0,
+        allow: "0",
+        deny: (PERM_CONNECT | PERM_SPEAK).toString(),
+      },
+      {
+        id: studentRole.id,
+        type: 0,
+        allow: PERM_CONNECT.toString(),
+        deny: PERM_SPEAK.toString(),
+      },
+      {
+        id: mentorRole.id,
+        type: 0,
+        allow: (PERM_CONNECT | PERM_SPEAK).toString(),
+        deny: "0",
+      },
+      {
+        id: adminRole.id,
+        type: 0,
+        allow: (PERM_CONNECT | PERM_SPEAK).toString(),
+        deny: "0",
+      },
+    ],
+  });
+
+  return {
+    rolesCreated,
+    rolesReused,
+    channelsCreated,
+    channelsReused,
+    ids: {
+      announcementsChannelId: announcementsCh.id,
+      eventsChannelId: eventsCh.id,
+      adminFeedChannelId: adminFeedCh.id,
+      teamsCategoryId: teamsCat.id,
+      winsChannelId: winsCh.id,
+      helpChannelId: helpCh.id,
+      ohVoiceChannelId: ohVoiceCh.id,
+      introductionsChannelId: introductionsCh.id,
+      roleStudentId: studentRole.id,
+      roleMentorId: mentorRole.id,
+      roleAdminId: adminRole.id,
+      roleInvestorId: investorRole.id,
+      roleFounderPassId: founderPassRole.id,
+    },
+  };
+}
+
+/**
+ * Bring the guild up to the canonical layout WITHOUT deleting anything.
+ *
+ * This is the repair most servers actually need. The destructive
+ * bootstrap below is for a genuinely fresh guild; once a server has
+ * message history, "wipe and rebuild" is not a fix anyone can afford to
+ * run. Channels and roles that were deleted out from under
+ * site_settings — which is exactly what leaves the doctor reporting
+ * "Deleted or wrong-guild" ids — get recreated, everything still present
+ * is adopted by name, and the caller persists the returned IDs.
+ */
+export async function repairGuildLayout(): Promise<RepairResult> {
+  if (!env.discordBotToken || !env.discordGuildId) {
+    throw new Error("Need DISCORD_BOT_TOKEN and DISCORD_GUILD_ID");
+  }
+  return await ensureCanonicalLayout(true);
+}
 
 /**
  * Nuke the guild's existing channels + roles (except @everyone and
@@ -1625,340 +2104,10 @@ export async function bootstrapGuildFromScratch(): Promise<BootstrapResult> {
     await sleep(350);
   }
 
-  // Step 4: create the four batch0 roles. Discord defaults new
-  // roles to the bottom of the hierarchy, just above @everyone, so the
-  // bot's own (managed) role stays above them and can assign them.
-  // Hoisting puts them in their own section in the member list.
-  const studentRole = await createRole({
-    name: "Student",
-    color: 0x3b82f6, // blue-500
-  });
-  await sleep(350);
-  const mentorRole = await createRole({
-    name: "Mentor",
-    color: 0x8b5cf6, // violet-500
-  });
-  await sleep(350);
-  const investorRole = await createRole({
-    name: "Investor",
-    color: 0xf59e0b, // amber-500
-  });
-  await sleep(350);
-  // Note: we intentionally do NOT grant ADMINISTRATOR here. Discord
-  // refuses to let a bot create a role with permissions higher than the
-  // bot itself has, so requesting ADMINISTRATOR aborts the whole
-  // bootstrap with `Missing Permissions (50013)`. The Admin role is a
-  // marker for "this user is staff" — the integration matches on role
-  // ID, not on Discord permission bits. Server owners can hand-grant
-  // Manage Server / etc. in Discord's Roles UI afterward if desired.
-  const adminRole = await createRole({
-    name: "Admin",
-    color: 0xef4444, // red-500
-  });
-  await sleep(350);
+  // Step 4: rebuild. Nothing survived the wipe, so nothing is reusable.
+  const layout = await ensureCanonicalLayout(false);
 
-  const everyoneId = guildId; // @everyone always shares the guild's ID
-
-  // Helper to build a "hide from everyone, show only to these roles"
-  // overwrite array.
-  const hideExceptFor = (
-    allowedRoleIds: string[],
-    extraAllow: bigint = BigInt(0),
-  ): PermissionOverwrite[] => [
-    {
-      id: everyoneId,
-      type: 0,
-      allow: "0",
-      deny: PERM_VIEW_CHANNEL.toString(),
-    },
-    ...allowedRoleIds.map((id) => ({
-      id,
-      type: 0 as const,
-      allow: (PERM_VIEW_CHANNEL | extraAllow).toString(),
-      deny: "0",
-    })),
-  ];
-
-  const created: { name: string; id: string }[] = [];
-  const make = async (...args: Parameters<typeof createChannel>) => {
-    const c = await createChannel(...args);
-    created.push({ name: c.name, id: c.id });
-    await sleep(350);
-    return c;
-  };
-
-  // ── START HERE ─────────────────────────────────────────────────────
-  const startCat = await make({ name: "START HERE", type: CHANNEL_TYPE_CATEGORY });
-  await make({
-    name: "welcome",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: startCat.id,
-    topic: "Welcome to batch0! Link your account at /dashboard/settings.",
-    // Read-only for students: deny SEND_MESSAGES on @everyone.
-    permission_overwrites: [
-      {
-        id: everyoneId,
-        type: 0,
-        allow: "0",
-        deny: PERM_SEND_MESSAGES.toString(),
-      },
-      {
-        id: adminRole.id,
-        type: 0,
-        allow: PERM_SEND_MESSAGES.toString(),
-        deny: "0",
-      },
-    ],
-  });
-  await make({
-    name: "rules",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: startCat.id,
-    topic: "Community guidelines.",
-    permission_overwrites: [
-      {
-        id: everyoneId,
-        type: 0,
-        allow: "0",
-        deny: PERM_SEND_MESSAGES.toString(),
-      },
-      {
-        id: adminRole.id,
-        type: 0,
-        allow: PERM_SEND_MESSAGES.toString(),
-        deny: "0",
-      },
-    ],
-  });
-  const announcementsCh = await make({
-    name: "announcements",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: startCat.id,
-    topic: "Program announcements. Staff posts only.",
-    permission_overwrites: [
-      {
-        id: everyoneId,
-        type: 0,
-        allow: "0",
-        deny: PERM_SEND_MESSAGES.toString(),
-      },
-      {
-        id: mentorRole.id,
-        type: 0,
-        allow: PERM_SEND_MESSAGES.toString(),
-        deny: "0",
-      },
-      {
-        id: adminRole.id,
-        type: 0,
-        allow: PERM_SEND_MESSAGES.toString(),
-        deny: "0",
-      },
-    ],
-  });
-
-  // ── STUDENTS ───────────────────────────────────────────────────────
-  const studentsCat = await make({
-    name: "STUDENTS",
-    type: CHANNEL_TYPE_CATEGORY,
-  });
-  await make({ name: "general", type: CHANNEL_TYPE_TEXT, parent_id: studentsCat.id });
-  const introductionsCh = await make({
-    name: "introductions",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: studentsCat.id,
-    topic: "Drop a quick intro — name, what you're working on, what you want help with.",
-  });
-  const helpCh = await make({
-    name: "help",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: studentsCat.id,
-    topic: "Stuck? Ask here. Mentors are watching. Run /queue join to enter the OH queue.",
-  });
-  await make({
-    name: "projects",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: studentsCat.id,
-    topic: "Share what you're building. Demos welcome.",
-  });
-  const winsCh = await make({
-    name: "wins",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: studentsCat.id,
-    topic: "Milestones get celebrated here. Mark a check-in as a milestone to broadcast.",
-    permission_overwrites: [
-      {
-        id: everyoneId,
-        type: 0,
-        allow: "0",
-        deny: PERM_SEND_MESSAGES.toString(),
-      },
-      {
-        id: mentorRole.id,
-        type: 0,
-        allow: PERM_SEND_MESSAGES.toString(),
-        deny: "0",
-      },
-      {
-        id: adminRole.id,
-        type: 0,
-        allow: PERM_SEND_MESSAGES.toString(),
-        deny: "0",
-      },
-    ],
-  });
-  await make({
-    name: "off-topic",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: studentsCat.id,
-  });
-
-  // ── TEAMS (private per-team channels live here) ───────────────────
-  // Each team's channels are hidden-by-default and provisioned on
-  // demand by lib/team-discord.ts. The category just gives them a
-  // visual home and a place to inherit permissions from.
-  const teamsCat = await make({
-    name: "TEAMS",
-    type: CHANNEL_TYPE_CATEGORY,
-    permission_overwrites: hideExceptFor([
-      mentorRole.id,
-      adminRole.id,
-    ]),
-  });
-
-  // ── EVENTS ─────────────────────────────────────────────────────────
-  const eventsCat = await make({ name: "EVENTS", type: CHANNEL_TYPE_CATEGORY });
-  const eventsCh = await make({
-    name: "events",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: eventsCat.id,
-    topic: "Upcoming batch0 events. Run /events in any channel.",
-    permission_overwrites: [
-      {
-        id: everyoneId,
-        type: 0,
-        allow: "0",
-        deny: PERM_SEND_MESSAGES.toString(),
-      },
-      {
-        id: mentorRole.id,
-        type: 0,
-        allow: PERM_SEND_MESSAGES.toString(),
-        deny: "0",
-      },
-      {
-        id: adminRole.id,
-        type: 0,
-        allow: PERM_SEND_MESSAGES.toString(),
-        deny: "0",
-      },
-    ],
-  });
-  await make({
-    name: "event-chat",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: eventsCat.id,
-    topic: "Chat during events.",
-  });
-
-  // ── INVESTORS (private) ────────────────────────────────────────────
-  const investorsCat = await make({
-    name: "INVESTORS",
-    type: CHANNEL_TYPE_CATEGORY,
-    permission_overwrites: hideExceptFor([
-      investorRole.id,
-      mentorRole.id,
-      adminRole.id,
-    ]),
-  });
-  await make({
-    name: "investor-lounge",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: investorsCat.id,
-  });
-
-  // ── STAFF (private) ────────────────────────────────────────────────
-  const staffCat = await make({
-    name: "STAFF",
-    type: CHANNEL_TYPE_CATEGORY,
-    permission_overwrites: hideExceptFor([mentorRole.id, adminRole.id]),
-  });
-  await make({
-    name: "mentor-lounge",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: staffCat.id,
-  });
-  const adminFeedCh = await make({
-    name: "admin-feed",
-    type: CHANNEL_TYPE_TEXT,
-    parent_id: staffCat.id,
-    topic: "Cross-posts: applications, payments, refunds, link/unlink events.",
-  });
-
-  // ── VOICE ──────────────────────────────────────────────────────────
-  const voiceCat = await make({ name: "VOICE", type: CHANNEL_TYPE_CATEGORY });
-  await make({
-    name: "General Voice",
-    type: CHANNEL_TYPE_VOICE,
-    parent_id: voiceCat.id,
-  });
-  const ohVoiceCh = await make({
-    name: "Office Hours",
-    type: CHANNEL_TYPE_VOICE,
-    parent_id: voiceCat.id,
-    permission_overwrites: [
-      {
-        id: everyoneId,
-        type: 0,
-        allow: "0",
-        deny: (PERM_CONNECT | PERM_SPEAK).toString(),
-      },
-      {
-        id: studentRole.id,
-        type: 0,
-        allow: PERM_CONNECT.toString(),
-        deny: PERM_SPEAK.toString(),
-      },
-      {
-        id: mentorRole.id,
-        type: 0,
-        allow: (PERM_CONNECT | PERM_SPEAK).toString(),
-        deny: "0",
-      },
-      {
-        id: adminRole.id,
-        type: 0,
-        allow: (PERM_CONNECT | PERM_SPEAK).toString(),
-        deny: "0",
-      },
-    ],
-  });
-
-  return {
-    channelsDeleted,
-    rolesDeleted,
-    rolesCreated: [
-      { name: "Student", id: studentRole.id },
-      { name: "Mentor", id: mentorRole.id },
-      { name: "Investor", id: investorRole.id },
-      { name: "Admin", id: adminRole.id },
-    ],
-    channelsCreated: created,
-    ids: {
-      announcementsChannelId: announcementsCh.id,
-      eventsChannelId: eventsCh.id,
-      adminFeedChannelId: adminFeedCh.id,
-      teamsCategoryId: teamsCat.id,
-      winsChannelId: winsCh.id,
-      helpChannelId: helpCh.id,
-      ohVoiceChannelId: ohVoiceCh.id,
-      introductionsChannelId: introductionsCh.id,
-      roleStudentId: studentRole.id,
-      roleMentorId: mentorRole.id,
-      roleAdminId: adminRole.id,
-      roleInvestorId: investorRole.id,
-    },
-  };
+  return { ...layout, channelsDeleted, rolesDeleted };
 }
 
 /**

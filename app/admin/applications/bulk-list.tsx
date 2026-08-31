@@ -298,7 +298,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
               <LocalTime value={a.submitted_at} mode="date" />
               {a.sla && (
                 <span
-                  // The target is per-tier since migration 0053, so it comes
+                  // The target is per-tier since migration 0055, so it comes
                   // in with the reading rather than being hardcoded here — a
                   // full-ride application is late after one business day.
                   title={`Pass application — ${a.sla.businessDays} business day${

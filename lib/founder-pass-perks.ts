@@ -132,7 +132,7 @@ export type CreateFeedbackResult =
  *
  * Counts every non-declined request: a delivered one has been spent, an open
  * one is being spent. Declined rows are excluded because a decline hands the
- * credit back — the same rule 0041's index encoded and 0053's comments carry
+ * credit back — the same rule 0041's index encoded and 0055's comments carry
  * forward.
  *
  * Returns 0 when the table isn't there yet, matching this module's standing
@@ -184,7 +184,7 @@ export async function createFeedbackRequest(
     return { ok: false, reason: "no_pass" };
   }
 
-  // The lifetime ceiling. Since 0053 the unique index only guards "one OPEN at
+  // The lifetime ceiling. Since 0055 the unique index only guards "one OPEN at
   // a time", so this check is what stops a two-credit holder filing a third.
   //
   // It is safe to check-then-insert here precisely because that index still
@@ -452,7 +452,7 @@ export function businessDaysBetween(start: Date, end: Date): number {
  * How a submitted pass application is tracking against its decision target.
  *
  * `tier` is optional and defaults to standard, so callers that don't know the
- * applicant's tier (or run on a pre-0053 database) get exactly the old
+ * applicant's tier (or run on a pre-0055 database) get exactly the old
  * three-day behaviour. Pass it wherever the tier is already loaded — a
  * full-ride holder's application is late a lot sooner than a standard one's,
  * and a queue that doesn't say so is quietly missing the promise we made.

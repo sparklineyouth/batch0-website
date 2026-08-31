@@ -251,7 +251,7 @@ export async function runDiscordDoctor(): Promise<DoctorReport> {
       remedy:
         live != null && matches
           ? undefined
-          : `Set the Interactions Endpoint URL to ${expectedEndpoint} in the developer portal (General Information). Discord sends a signed PING and will refuse to save the URL unless DISCORD_PUBLIC_KEY is already correct.`,
+          : `Click “Point interactions endpoint here” under Operations below — it sets the URL to ${expectedEndpoint} for you. (The manual equivalent is the Interactions Endpoint URL field in the developer portal, General Information.) Discord sends a signed PING and will refuse to save the URL unless DISCORD_PUBLIC_KEY is already correct.`,
     });
   }
 
@@ -410,7 +410,7 @@ export async function runDiscordDoctor(): Promise<DoctorReport> {
             : `All ${roleTargets.filter((t) => t.id).length} configured role(s) resolve.`,
       remedy:
         danglingRoles.length > 0 || unsetRequiredRoles.length > 0
-          ? "Fix the ids in the configuration form below, or re-run Bootstrap to recreate the layout."
+          ? "Click “Repair server layout” under Operations below — it recreates the missing roles and re-points the config at them without deleting anything. You can also fix the ids by hand in the configuration form."
           : undefined,
     });
 
@@ -463,7 +463,7 @@ export async function runDiscordDoctor(): Promise<DoctorReport> {
           .join(" "),
         remedy:
           dangling.length > 0 || wrongType.length > 0 || unset.length > 0
-            ? "Correct the ids in the configuration form below, or re-run Bootstrap."
+            ? "Click “Repair server layout” under Operations below — it recreates the missing channels and re-points the config at them without deleting anything. You can also correct the ids by hand in the configuration form."
             : undefined,
       });
 

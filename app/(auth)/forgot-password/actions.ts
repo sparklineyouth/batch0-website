@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { sendTemplated } from "@/lib/email/dispatch";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
 import type { ActionResult } from "@/lib/action-result";
@@ -91,15 +92,21 @@ export async function requestPasswordReset(
   url.searchParams.set("type", "recovery");
   url.searchParams.set("next", "/reset");
 
-  const t = Templates.passwordReset({
-    url: url.toString(),
-    expiresInMinutes: EXPIRY_MINUTES,
-  });
-  const sent = await sendEmail({
+  // The reset link is a required variable on the stored template: if an admin
+  // edits the copy and drops the {{reset_url}} button, the render reports the
+  // gap and sendTemplated falls back to the compiled version rather than
+  // mailing someone a reset they can't complete.
+  const sent = await sendTemplated("auth.password_reset", {
     to: email,
-    subject: t.subject,
-    html: t.html,
-    text: t.text,
+    vars: {
+      reset_url: url.toString(),
+      expires_minutes: EXPIRY_MINUTES,
+    },
+    fallback: () =>
+      Templates.passwordReset({
+        url: url.toString(),
+        expiresInMinutes: EXPIRY_MINUTES,
+      }),
   });
 
   // A send failure is worth telling the truth about — silently claiming

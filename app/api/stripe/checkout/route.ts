@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       // Founder-pass, checked at charge time rather than stamped on the
       // application: a pass redeemed between acceptance and payment still
       // counts, and a revoked one doesn't. The GRANT comes back with it — tier
-      // plus any hand-set override (0053/0054) — because what a pass takes off
+      // plus any hand-set override (0055/0056) — because what a pass takes off
       // the bill is no longer a constant, and this is the site that actually
       // charges the card.
       getPassGrantForUser(admin, user.id),

@@ -5,7 +5,7 @@ import { requireUser, getProfile } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { ButtonLink } from "@/components/ui/button";
 import { PaymentResult } from "@/components/payment-result";
-import { syncCheckoutSession } from "@/lib/stripe-fulfillment";
+import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import {
   ArrowRight,
@@ -39,9 +39,7 @@ export default async function EnrolledPage({
   // Settle first: this is what turns "we'll get to it" into a confirmation
   // the student can trust, and it's what makes the enrolled-only gate
   // below pass on the very first render after paying.
-  const payment = searchParams.session_id
-    ? await syncCheckoutSession(searchParams.session_id, user.id)
-    : null;
+  const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");

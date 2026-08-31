@@ -101,7 +101,7 @@ export default async function AdminApplicationsPage({
     // One query for the whole page, not one per row — same reason the two
     // lookups above are batched. Scoped to the page's applicants: only the
     // rows on screen need the badge.
-    // Grants, not just a holder set: since migration 0053 the decision target
+    // Grants, not just a holder set: since migration 0055 the decision target
     // is per-pass, so "is this one late?" can't be answered from a boolean.
     passGrantsByUserId(
       admin,
