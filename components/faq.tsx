@@ -25,7 +25,7 @@ export default function Faq({ config }: { config: SiteConfig }) {
     },
     {
       q: "who runs batch0?",
-      a: `Rishabh Dagli and Taran Bethi, two serial founders building real companies that have changed the world. Rishabh and Taran personally review applications, run live sessions, and coordinate mentor and investor relationships for students.`,
+      a: `Rishabh Dagli and Shresht Chopra, two serial founders building real companies that have changed the world. Rishabh and Shresht personally review applications, run live sessions, and coordinate mentor and investor relationships for students.`,
     },
     {
       q: "who is it for?",

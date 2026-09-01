@@ -15,24 +15,32 @@ import { smolderShade } from "@/components/smolder";
  * cursor-reactive after it settles — the one living element in the hero.
  */
 
-// The wordmark-family portrait zero, 12×14 — same blockiness as the
-// icon set. Sized in em so it scales with the poster clamp.
+// The wordmark zero, 8×14, drawn to sit as a LETTER rather than a badge.
+//
+// Measured against VT323 at 112px: a character advance is 45.9px (0.41em)
+// and the cap height is 78.4px (0.70em). The previous 12-wide grid came
+// out 67.2px — 46% wider than every other letter in "batch" — which is
+// what made the 0 read as a glyph bolted onto the end of the word rather
+// than the last letter of it. At 8 columns the width is 0.40em ≈ 44.8px,
+// within a pixel of the advance. Height was already right and is
+// unchanged, and the 2-block stem matches VT323's own stem weight.
 const ZERO_ROWS = [
-  "..########..",
-  ".##......##.",
-  "##........##",
-  "##........##",
-  "##........##",
-  "##........##",
-  "##........##",
-  "##........##",
-  "##........##",
-  "##........##",
-  "##........##",
-  "##........##",
-  ".##......##.",
-  "..########..",
+  "..####..",
+  ".##..##.",
+  "##....##",
+  "##....##",
+  "##....##",
+  "##....##",
+  "##....##",
+  "##....##",
+  "##....##",
+  "##....##",
+  "##....##",
+  "##....##",
+  ".##..##.",
+  "..####..",
 ];
+const ZERO_COLS = ZERO_ROWS[0].length;
 // VT323's cap height is ~0.7em; 14 rows at 0.05em puts the glyph exactly at
 // cap height (spec allows up to ~1.15× for presence), feet on the baseline.
 const ZERO_BLOCK_EM = 0.05;
@@ -40,9 +48,9 @@ const ZERO_BLOCK_EM = 0.05;
 function HeroZero() {
   const cells: React.ReactNode[] = [];
   ZERO_ROWS.forEach((row, r) => {
-    for (let c = 0; c < 12; c++) {
+    for (let c = 0; c < ZERO_COLS; c++) {
       if (row[c] !== "#") continue;
-      const si = smolderShade(r, c, ZERO_ROWS.length, 12);
+      const si = smolderShade(r, c, ZERO_ROWS.length, ZERO_COLS);
       cells.push(
         <span
           key={`${r}-${c}`}
@@ -69,12 +77,12 @@ function HeroZero() {
     <span
       aria-hidden="true"
       className="relative mx-[0.015em] inline-block select-none align-baseline"
-      style={{ width: `${ZERO_BLOCK_EM * 12}em`, height: `${ZERO_BLOCK_EM * 14}em` }}
+      style={{ width: `${ZERO_BLOCK_EM * ZERO_COLS}em`, height: `${ZERO_BLOCK_EM * ZERO_ROWS.length}em` }}
     >
       <span
         className="absolute inset-0 grid"
         style={{
-          gridTemplateColumns: `repeat(12, ${ZERO_BLOCK_EM}em)`,
+          gridTemplateColumns: `repeat(${ZERO_COLS}, ${ZERO_BLOCK_EM}em)`,
           gridAutoRows: `${ZERO_BLOCK_EM}em`,
         }}
       >

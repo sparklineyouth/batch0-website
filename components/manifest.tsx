@@ -37,7 +37,7 @@ export default function Manifest() {
         <div className="col-span-12 md:col-span-4 md:col-start-9">
           <div className="mx-auto max-w-[20rem] md:mx-0">
             <ManifestAnchor />
-            <Fig n="06" className="mt-5">
+            <Fig n="03" className="mt-5">
               the manifest
             </Fig>
           </div>

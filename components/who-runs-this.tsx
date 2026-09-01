@@ -23,7 +23,7 @@ const REASONS: { k: string; v: string }[] = [
   },
   {
     k: "the founders are in the room",
-    v: "Not TAs, not a recorded course. Rishabh and Taran run every live session, read every application, and give feedback directly.",
+    v: "Not TAs, not a recorded course. Rishabh and Shresht run every live session, read every application, and give feedback directly.",
   },
   {
     k: "you set the precedent",
@@ -48,7 +48,7 @@ export default function WhoRunsThis({ config }: { config: SiteConfig }) {
           <p className="sec-lead mt-8 max-w-[46ch]">
             batch0 is built and run by{" "}
             <strong className="font-medium text-ink">
-              Rishabh Dagli and Taran Bethi
+              Rishabh Dagli and Shresht Chopra
             </strong>
             , two 17-year-old founders. We built it to give high schoolers the
             chance we wish we had.
@@ -64,7 +64,7 @@ export default function WhoRunsThis({ config }: { config: SiteConfig }) {
         <div className="col-span-12 md:col-span-4 md:col-start-9">
           <div className="mx-auto max-w-[20rem] md:mx-0">
             <CohortAnchor />
-            <Fig n="07" className="mt-5">
+            <Fig n="04" className="mt-5">
               first cohort, capped small
             </Fig>
           </div>
