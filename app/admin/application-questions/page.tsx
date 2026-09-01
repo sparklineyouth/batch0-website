@@ -12,7 +12,7 @@ export default async function AdminApplicationQuestionsPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Application form</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <p className="mt-1 text-sm text-ink-soft">
         Edit the wording of each application question. You can change labels,
         help text, placeholders, and which fields are required or hidden — but
         not add, remove, or reorder fields. Changes apply to every applicant who

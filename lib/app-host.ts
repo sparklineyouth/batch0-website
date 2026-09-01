@@ -38,6 +38,35 @@ export function isAppHost(host: string | null | undefined): boolean {
 }
 
 /**
+ * The cookie the middleware stamps on every `/app` request.
+ *
+ * The name is duplicated as a literal in lib/supabase/middleware.ts rather
+ * than imported from here, because that module is the writer and this one must
+ * stay dependency-free for the readers.
+ */
+export const APP_MARK_COOKIE = "b0_app";
+
+/**
+ * Is this viewer inside the installed app right now?
+ *
+ * Two signals, because the app has two front doors. `isAppHost` covers
+ * app.batch0.org. The cookie covers the other one: the manifest is also
+ * installable from batch0.org/app, and a standalone window opened from there
+ * sends an apex Host like any browser tab — so host alone silently misses that
+ * whole population, who are exactly the people a desktop admin table traps.
+ *
+ * Takes the two values rather than reading them, so this module stays
+ * Edge-safe (middleware imports it) and callable from a layout that already
+ * holds a `headers()` handle without opening a second one.
+ */
+export function isInApp(
+  host: string | null | undefined,
+  appMarkCookie: string | null | undefined,
+): boolean {
+  return isAppHost(host) || appMarkCookie === "1";
+}
+
+/**
  * Public pages that have no business being served from the app subdomain.
  *
  * Everything else — /app, the auth funnel, /dashboard, /admin, /api, /auth —

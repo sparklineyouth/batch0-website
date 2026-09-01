@@ -1,6 +1,8 @@
 import { requireMentor, getCapabilities } from "@/lib/auth";
 import { MentorSidebar } from "@/components/mentor/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
+import { cookies, headers } from "next/headers";
+import { isInApp, APP_MARK_COOKIE } from "@/lib/app-host";
 
 export default async function MentorLayout({
   children,
@@ -10,6 +12,14 @@ export default async function MentorLayout({
   const profile = await requireMentor();
   // Request-cached alongside the guard above, so this is not a second read.
   const caps = await getCapabilities();
+  // app/app/page.tsx redirects mentors and investors straight here — neither
+  // role has a mobile side yet — so this layout is reachable from inside the
+  // installed app, where it would otherwise be a one-way door: a standalone
+  // window has no back button and nothing on this page points at /app.
+  const inApp = isInApp(
+    headers().get("host"),
+    cookies().get(APP_MARK_COOKIE)?.value,
+  );
   // Theme driven site-wide by next-themes on <html> (see ThemeProvider).
   return (
     <div
@@ -17,7 +27,7 @@ export default async function MentorLayout({
     >
       <MentorSidebar role={profile.role} caps={caps} />
       <div className="flex flex-1 flex-col">
-        <MobileNav kind="mentor" role={profile.role} caps={caps} />
+        <MobileNav kind="mentor" role={profile.role} caps={caps} inApp={inApp} />
         {/* Skip-link target. tabIndex={-1} makes the non-focusable <main>
             focusable so screen readers actually move the cursor here. */}
         <main

@@ -89,12 +89,20 @@ export function InstallHint() {
   if (!platform) return null;
 
   return (
-    <div className="relative rounded-xl border border-phosphor/30 bg-phosphor/[0.06] px-4 py-3.5 pr-10">
+    // pr-12, not pr-10: the dismiss target below is a real 44px box, and the
+    // reserve has to clear it or the banner's own text runs under it.
+    <div className="relative rounded-xl border border-phosphor/30 bg-phosphor/[0.06] px-4 py-3.5 pr-12">
+      {/* 44px of box, 14px of glyph. The old `p-1.5` made this 26px wide, and
+          the coarse-pointer floor in globals.css sets min-height only — so the
+          button grew downward into the copy and stayed too narrow to hit, while
+          a near miss landed on the banner's inert padding and did nothing.
+          Offsets pull in to right-1/top-1 rather than going negative, which
+          would push the target outside the card's rounded border. */}
       <button
         type="button"
         onClick={dismiss}
         aria-label="Dismiss"
-        className="press absolute right-2 top-2 rounded-md p-1.5 text-ink-faint hover:bg-wash hover:text-ink"
+        className="press absolute right-1 top-1 flex h-11 w-11 items-center justify-center rounded-md text-ink-faint hover:bg-wash hover:text-ink"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -122,7 +130,7 @@ export function InstallHint() {
           <button
             type="button"
             onClick={install}
-            className="press mt-3 inline-flex h-9 select-none items-center gap-2 rounded-md bg-phosphor px-3.5 text-[13px] font-semibold leading-none text-on-phosphor shadow-cta active:scale-[0.98] hover:bg-phosphor-200"
+            className="press mt-3 inline-flex h-11 select-none items-center gap-2 rounded-md bg-phosphor px-3.5 text-[13px] font-semibold leading-none text-on-phosphor shadow-cta active:scale-[0.98] hover:bg-phosphor-200"
           >
             <Download className="h-3.5 w-3.5" />
             Install

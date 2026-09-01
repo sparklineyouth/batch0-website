@@ -24,6 +24,41 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /**
+ * Time-to-event, as a duration rather than a calendar day.
+ *
+ * "Tomorrow" / "Friday" would group this list better, but a calendar day is a
+ * timezone concept and this runs on the server — which is UTC on Vercel. A 7pm
+ * ET event falls on the *next* UTC day, so day headings computed here would
+ * confidently file tonight's office hours under tomorrow for every reader east
+ * or west of the machine. That is precisely the bug components/ui/local-time.tsx
+ * exists to avoid, and the fix there was to move formatting to the client.
+ *
+ * A duration has no such problem: forty minutes is forty minutes in every
+ * timezone. So this is the one proximity signal a server component can render
+ * honestly, and it is the thing the screen was actually missing — twenty cards
+ * that looked identical whether the event started in forty minutes or in six
+ * weeks.
+ */
+function untilLabel(startsAt: string, nowMs: number): string | null {
+  const ms = new Date(startsAt).getTime() - nowMs;
+  if (!Number.isFinite(ms)) return null;
+  if (ms <= 0) return "starting now";
+  // Floor, never round. Rounding to the nearest bucket overstates the time
+  // left — 1h31m would print "in 2 hours" — and on the one screen whose job is
+  // getting you into a call on time, the two errors are not symmetric: telling
+  // someone they have longer than they do makes them late, telling them less
+  // makes them early. Each branch is entered only above its own threshold, so
+  // flooring can never produce "in 0 min".
+  const min = Math.max(1, Math.floor(ms / 60000));
+  if (min < 60) return `in ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `in ${hr} hour${hr === 1 ? "" : "s"}`;
+  const day = Math.floor(hr / 24);
+  if (day < 14) return `in ${day} day${day === 1 ? "" : "s"}`;
+  return `in ${Math.floor(day / 7)} weeks`;
+}
+
+/**
  * The calendar, upcoming-first.
  *
  * The join link is the entire point of opening this on a phone — you are
@@ -67,6 +102,10 @@ export default async function StudentAppEvents() {
   }
 
   const nowIso = new Date().toISOString();
+  // Same instant the query splits upcoming from past on. Deriving it rather
+  // than calling Date.now() again means a card can never say "starting now"
+  // about an event the query has already filed under past.
+  const nowMs = Date.parse(nowIso);
 
   // Cached (lib/app-cache.ts): the calendar is staff-authored and changes a few
   // times a cohort, so it is shared across everyone in that cohort for a minute
@@ -85,39 +124,89 @@ export default async function StudentAppEvents() {
             <Empty>Nothing scheduled right now.</Empty>
           ) : (
             <div className="space-y-2.5">
-              {(upcoming ?? []).map((e) => (
-                <div
-                  key={e.id as string}
-                  className="rounded-2xl border border-line bg-wash px-5 py-4"
-                >
-                  <p className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-phosphor-ink">
-                    {TYPE_LABEL[e.type as string] ?? "Event"}
-                  </p>
-                  <p className="mt-1.5 text-[15px] leading-snug text-ink">
-                    {e.title as string}
-                  </p>
-                  <p className="mt-1.5 font-mono text-[12px] tabular-nums text-ink-soft">
-                    <LocalTime value={e.starts_at as string} mode="datetime" />
-                  </p>
-                  {!!e.location && (
-                    <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-ink-faint">
-                      <MapPin className="h-3 w-3 shrink-0" />
-                      {e.location as string}
+              {(upcoming ?? []).map((e, i) => {
+                const until = untilLabel(e.starts_at as string, nowMs);
+                // The soonest event is the one you opened this screen for, so
+                // it gets the Alert `info` tone from frame.tsx verbatim —
+                // border-phosphor/30 + bg-phosphor/[0.06]. Copying the exact
+                // values rather than eyeballing a near-miss: a second
+                // almost-identical phosphor border reads as a rendering bug
+                // when the two sit on the same screen.
+                const next = i === 0;
+                return (
+                  <div
+                    key={e.id as string}
+                    className={`rounded-2xl border px-5 py-4 ${
+                      next
+                        ? "border-phosphor/30 bg-phosphor/[0.06]"
+                        : "border-line bg-wash"
+                    }`}
+                  >
+                    {/* Type on the left, proximity on the right, both in the
+                        eyebrow. Keeping the countdown up here means "when" sits
+                        at the same height on every card, so the list scans
+                        vertically instead of card by card. */}
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="truncate font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-phosphor-ink">
+                        {TYPE_LABEL[e.type as string] ?? "Event"}
+                      </p>
+                      {until && (
+                        <p
+                          className={`shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.16em] ${
+                            next ? "text-phosphor-ink" : "text-ink-faint"
+                          }`}
+                        >
+                          {until}
+                        </p>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-[15px] leading-snug text-ink">
+                      {e.title as string}
                     </p>
-                  )}
-                  {!!e.zoom_url && (
-                    <a
-                      href={e.zoom_url as string}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="press mt-3 inline-flex h-9 items-center gap-2 rounded-md bg-phosphor px-3.5 text-[13px] font-semibold leading-none text-on-phosphor active:scale-[0.98]"
-                    >
-                      <Video className="h-3.5 w-3.5" />
-                      Join
-                    </a>
-                  )}
-                </div>
-              ))}
+                    <p className="mt-1.5 font-mono text-[12px] tabular-nums text-ink-soft">
+                      <LocalTime value={e.starts_at as string} mode="datetime" />
+                    </p>
+                    {!!e.location && (
+                      <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-ink-faint">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        {e.location as string}
+                      </p>
+                    )}
+                    {/* `description` was already being selected and thrown
+                        away — pure payload on the worst connection. It sits
+                        below the fixed what/when/where block rather than under
+                        the title so a two-line blurb on one card can't shift
+                        the timestamp on the next one out of alignment. */}
+                    {!!e.description && (
+                      <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-ink-soft">
+                        {e.description as string}
+                      </p>
+                    )}
+                    {!!e.zoom_url && (
+                      // h-11 and full width, not h-9. 36px is the density
+                      // globals.css concedes to admin tables; this is the one
+                      // time-critical tap a student makes, on the screen whose
+                      // own doc comment says you are standing up and it starts
+                      // in two minutes. The card IS the event, so the whole
+                      // bottom edge of it is the join.
+                      //
+                      // Deliberately not <ActionLink>: that is a next/link
+                      // <Link> with no target/rel, and a same-window Zoom
+                      // navigation out of a standalone PWA replaces the app
+                      // with no back button — worse than a small target.
+                      <a
+                        href={e.zoom_url as string}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="press mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-phosphor px-3.5 text-[14px] font-semibold leading-none text-on-phosphor active:scale-[0.98]"
+                      >
+                        <Video className="h-3.5 w-3.5" />
+                        Join
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </Section>

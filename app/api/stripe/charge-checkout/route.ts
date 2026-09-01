@@ -35,10 +35,25 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const { chargeId } = body as { chargeId?: string };
+  const { chargeId, returnTo } = body as {
+    chargeId?: string;
+    returnTo?: string;
+  };
   if (!chargeId) {
     return NextResponse.json({ error: "Missing chargeId" }, { status: 400 });
   }
+
+  // An allowlist, not a validated path. Both of these end up in a Stripe
+  // redirect back into this origin, so anything caller-controlled here is an
+  // open redirect — and "starts with a slash" is not a sufficient check
+  // (`//evil.com` passes it and is a protocol-relative absolute URL). The
+  // client tells us which surface it is on; the server picks from two known
+  // strings and falls back to the desktop page it always used.
+  const RETURN_PATHS: Record<string, string> = {
+    app: "/app/billing",
+    dashboard: "/dashboard/billing",
+  };
+  const returnBase = RETURN_PATHS[returnTo ?? ""] ?? RETURN_PATHS.dashboard;
 
   const admin = createAdminClient();
   const { data: charge } = await admin
@@ -105,12 +120,20 @@ export async function POST(req: Request) {
           user_id: user.id,
         },
       },
-      // The session id rides back so /dashboard/billing can settle the
+      // The session id rides back so the billing screen can settle the
       // charge against Stripe on arrival. That also breaks the pay-fine
       // loop: a fine paid seconds ago is already settled by the time the
       // middleware re-checks for outstanding fines.
-      success_url: `${origin}/dashboard/billing?charge_paid=1&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/dashboard/billing?charge_canceled=1`,
+      //
+      // `returnBase` is chosen from a fixed allowlist rather than taken from
+      // the request. This value goes to Stripe and comes back as a redirect,
+      // so honouring a caller-supplied URL here would be an open redirect;
+      // the client sends a hint and the server decides. It exists because a
+      // student who pays from the installed app was being returned to
+      // /dashboard/billing — the desktop table, at min-w-[520px] on a phone —
+      // which is the one place the app is not allowed to send them.
+      success_url: `${origin}${returnBase}?charge_paid=1&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}${returnBase}?charge_canceled=1`,
     });
 
     await admin

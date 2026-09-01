@@ -117,13 +117,13 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
         return (
           <section
             key={field.key}
-            className="rounded-xl border border-white/10 bg-black/20 p-4"
+            className="rounded-xl border border-line bg-wash p-4"
           >
             <div className="mb-3 flex items-center justify-between gap-3">
-              <code className="text-xs font-medium text-white/45">
+              <code className="text-xs font-medium text-ink-soft">
                 {field.key}
               </code>
-              <span className="text-[11px] uppercase tracking-wider text-white/40">
+              <span className="text-[11px] uppercase tracking-wider text-ink-faint">
                 {field.type}
                 {core && " · required core"}
               </span>
@@ -170,7 +170,7 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
               {field.options.length > 0 && (
                 <div>
                   <Label>Option labels</Label>
-                  <p className="mb-2 text-xs text-white/40">
+                  <p className="mb-2 text-xs text-ink-faint">
                     You can rename each choice, but not add, remove, or change
                     what it stores.
                   </p>
@@ -180,7 +180,7 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
                         key={opt.value}
                         className="flex items-center gap-2"
                       >
-                        <span className="w-8 shrink-0 text-center text-xs text-white/40">
+                        <span className="w-8 shrink-0 text-center text-xs text-ink-faint">
                           {opt.value}
                         </span>
                         <Input

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -10,6 +10,7 @@ import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
 import { ENROLLED_ONLY_HREFS } from "@/lib/nav-config";
 import { InstallHint } from "@/components/app/install-hint";
 import { AppHeader, AppBody, Section, Row } from "@/components/app/frame";
+import { SignOut } from "./sign-out";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "More · batch0" };
@@ -34,6 +35,14 @@ type LinkDef = {
  * middleware gate is real: a link this page shows but middleware bounces is a
  * dead end that looks like a bug in the app, and the two lists are the only
  * thing keeping the three surfaces agreeing.
+ *
+ * `external: true` is now a short list on purpose. It used to be seven of the
+ * nine entries, which made this screen a menu of desktop exits: two of them
+ * (billing, referrals) landed on a horizontally scrolling <table> two taps from
+ * a tab bar, and one (team) was a second copy of the card above. What is left
+ * are the four pages that genuinely have no phone shape — a one-time kickoff
+ * brief, a file library, the Discord handoff, and account settings — and the
+ * caption under the list says plainly what tapping one does.
  */
 const LINKS: LinkDef[] = [
   {
@@ -47,12 +56,6 @@ const LINKS: LinkDef[] = [
     label: "Events",
     hint: "Office hours, workshops, demo day",
     gate: "/dashboard/events",
-  },
-  {
-    href: "/dashboard/team",
-    label: "Your team",
-    hint: "Members, offers, cap table",
-    external: true,
   },
   {
     href: "/dashboard/kickoff",
@@ -72,16 +75,20 @@ const LINKS: LinkDef[] = [
     hint: "The cohort chat",
     external: true,
   },
+  // In-app, gated on the /dashboard route they stand in for — same shape as
+  // Announcements and Events above. These two used to point straight at
+  // /dashboard/billing and /dashboard/referrals, both of which render a
+  // fixed-width table that a 390px screen can only scroll sideways through.
   {
-    href: "/dashboard/billing",
+    href: "/app/billing",
     label: "Billing",
-    hint: "Receipts and payment method",
-    external: true,
+    hint: "What's due, and what you've paid",
+    gate: "/dashboard/billing",
   },
   {
-    href: "/dashboard/referrals",
+    href: "/app/referrals",
     label: "Refer a friend",
-    external: true,
+    gate: "/dashboard/referrals",
   },
   {
     href: "/dashboard/settings",
@@ -112,6 +119,8 @@ export default async function StudentAppMore() {
     return true;
   });
 
+  const build = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
+
   return (
     <>
       <AppHeader
@@ -123,7 +132,11 @@ export default async function StudentAppMore() {
               href="/app/admin"
               prefetch={false}
               aria-label="Switch to the admin app"
-              className="press shrink-0 rounded-lg border border-line px-2.5 py-2 text-ink-soft active:bg-wash"
+              // A real 44px box, not padding around a 16px icon. This is the
+              // staff door into the entire other half of the app, and as
+              // `px-2.5 py-2` it was 36x32 — under the floor on both axes, and
+              // the coarse-pointer rule in globals.css only ever fixes height.
+              className="press inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line text-ink-soft active:bg-wash"
             >
               <ShieldCheck className="h-4 w-4" />
             </Link>
@@ -131,23 +144,36 @@ export default async function StudentAppMore() {
         }
       />
       <AppBody>
+        {/* Not a link any more, and the roster is printed rather than counted.
+            This card used to be tappable to /dashboard/team, and "Your team"
+            in the list below went to the same place — one destination, two
+            affordances, both of them exits from the app. The only thing the
+            desktop page carried that a phone wants is who is on the team, and
+            that fits here: a name, a tagline, and three or four people. Offers
+            and the cap table stay on the desktop page, where a document
+            actually belongs. */}
         {team && (
           <Section title="Team">
-            <Link
-              href="/dashboard/team"
-              prefetch={false}
-              className="press block rounded-2xl border border-line bg-wash px-5 py-4 active:scale-[0.99]"
-            >
+            <div className="rounded-2xl border border-line bg-wash px-5 py-4">
               <p className="text-[15px] leading-tight text-ink">{team.name}</p>
               {team.tagline && (
                 <p className="mt-1.5 text-[13px] leading-snug text-ink-soft">
                   {team.tagline}
                 </p>
               )}
-              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
-                {team.memberCount} member{team.memberCount === 1 ? "" : "s"}
-              </p>
-            </Link>
+              <ul className="mt-3.5 space-y-2 border-t border-line pt-3.5">
+                {team.members.map((m) => (
+                  <li key={m.id} className="flex items-baseline gap-3">
+                    <span className="min-w-0 flex-1 truncate text-[13.5px] leading-snug text-ink-soft">
+                      {m.name}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+                      {m.role}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </Section>
         )}
 
@@ -167,9 +193,16 @@ export default async function StudentAppMore() {
               />
             ))}
           </div>
+          {/* Says what the arrow actually does. The old wording promised the
+              dashboard "opens", which reads as a new window — these are
+              same-window client navigations, and passing `external` to make
+              that true would not help: an in-scope URL in a standalone PWA
+              opens in the app window whatever the target is. So describe the
+              real behaviour instead: you leave the app shell, and Back is how
+              you return. */}
           <p className="mt-2.5 text-[11px] leading-relaxed text-ink-faint">
-            <ArrowUpRight className="mb-0.5 inline h-3 w-3" /> opens the full
-            dashboard — everything the app doesn&apos;t carry lives there.
+            <ArrowUpRight className="mb-0.5 inline h-3 w-3" /> leaves the app for
+            the full site, in this same window. Back brings you here.
           </p>
         </Section>
 
@@ -177,40 +210,51 @@ export default async function StudentAppMore() {
           <InstallHint />
         </div>
 
-        {/* A real POST form, matching every other sign-out in the app. The
-            route rejects cross-origin posts, so a link or a fetch would not do. */}
-        <form action="/auth/signout" method="post" className="mt-7">
-          <button
-            type="submit"
-            className="press inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-line bg-wash text-[14px] font-medium text-ink-soft active:scale-[0.99] active:bg-wash"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </button>
-        </form>
+        {/* Still a real POST form — the route rejects cross-origin posts, so a
+            link or a fetch would not do — but now behind a second tap. See
+            ./sign-out.tsx for why an accidental sign-out costs so much more
+            inside an installed app than it does on the web. */}
+        <SignOut />
 
         <p className="mt-6 text-center font-mono text-[10px] uppercase tracking-[0.22em] text-ink-faint">
           batch<span className="text-phosphor-ink">0</span>
+          {/* The build, for support. This surface runs behind a service worker,
+              so "reload and try again" is not a reliable way to find out which
+              version someone is actually looking at — they have to be able to
+              read it off the screen. Free on the server, ships nothing. */}
+          {build && <span className="ml-2 normal-case">{build}</span>}
         </p>
       </AppBody>
     </>
   );
 }
 
+type TeamMember = { id: string; name: string; role: string };
+
 /**
- * The viewer's team, if they're on one. Two queries rather than an embed
- * because `team_members` is joined to itself here — once to find which team the
- * viewer is on, once to count everyone on it.
+ * The viewer's team, if they're on one — including who is on it.
+ *
+ * `team_members` is joined to itself here: once to find which team the viewer
+ * is on, and once, through the team, to list everyone on it. That nested embed
+ * is what replaced the bare `team_members(count)` aggregate — the card prints
+ * the roster now rather than a number, and the names cost the same single round
+ * trip the count did.
+ *
+ * A team is three or four people by construction, so this is not a list that
+ * needs a limit; if that ever stops being true the card, not the query, is what
+ * has to change.
  */
 async function loadTeam(userId: string): Promise<{
   name: string;
   tagline: string | null;
-  memberCount: number;
+  members: TeamMember[];
 } | null> {
   const admin = createAdminClient();
   const { data: membership } = await admin
     .from("team_members")
-    .select("team_id, team:teams(name, tagline, team_members(count))")
+    .select(
+      "team_id, team:teams(name, tagline, team_members(id, role, created_at, profile:profiles(full_name, email)))",
+    )
     .eq("user_id", userId)
     .limit(1)
     .maybeSingle();
@@ -220,14 +264,31 @@ async function loadTeam(userId: string): Promise<{
   ) as {
     name: string;
     tagline: string | null;
-    team_members?: { count: number }[];
+    team_members?: {
+      id: string;
+      role: string | null;
+      created_at: string | null;
+      profile: { full_name: string | null; email: string } | { full_name: string | null; email: string }[] | null;
+    }[];
   } | null;
   if (!team) return null;
   return {
     name: team.name,
     tagline: team.tagline,
-    // The count rides along on the embed above rather than costing a second
-    // round trip. PostgREST returns an aggregate embed as [{ count: n }].
-    memberCount: team.team_members?.[0]?.count ?? 0,
+    members: (team.team_members ?? [])
+      // Ordered here rather than in the query: PostgREST cannot order an embed
+      // two levels deep, and joined-at is the order the desktop page uses, so
+      // the founder who created the team stays at the top on both surfaces.
+      .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""))
+      .map((m) => {
+        const p = Array.isArray(m.profile) ? m.profile[0] : m.profile;
+        return {
+          id: m.id,
+          // Falling back to the email, then to a placeholder: a blank line in a
+          // three-person roster reads as a missing teammate.
+          name: p?.full_name || p?.email || "Teammate",
+          role: m.role ?? "member",
+        };
+      }),
   };
 }

@@ -1,9 +1,8 @@
 import { requireViewer } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { isoWeekStart, formatWeekRange } from "@/lib/week";
+import { isoWeekStart, formatWeekRange, lastNWeeks } from "@/lib/week";
 import { InstallHint } from "@/components/app/install-hint";
 import {
   AppHeader,
@@ -13,9 +12,13 @@ import {
   Row,
   Empty,
 } from "@/components/app/frame";
+import { Meter, Ring, Spark } from "@/components/app/viz";
 
 export const metadata = { title: "Admin · batch0" };
 export const dynamic = "force-dynamic";
+
+/** How many weeks the revenue trend covers. Eight, same as Pulse's series. */
+const TREND_WEEKS = 8;
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -24,6 +27,41 @@ function money(cents: number) {
     maximumFractionDigits: 0,
   }).format(cents / 100);
 }
+
+/**
+ * The axis-tick form of `money`. A tick gets ~31px in a 248px card, and
+ * "$12,400" is seven glyphs — compact notation keeps every printed figure in
+ * the Spark to four or five.
+ */
+function compactMoney(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(cents / 100);
+}
+
+/**
+ * Application status as three mono glyphs (~40px) instead of a StatusBadge
+ * (~98px for "waitlisted").
+ *
+ * A badge and a date together took 185px of a 246px row, which left about five
+ * glyphs for the applicant's name at 320px — the name being the only reason
+ * anyone taps the row. A colour dot would be smaller still, but it would encode
+ * status by colour alone; the full word rides along in an sr-only span so the
+ * abbreviation is never the only carrier of the meaning.
+ */
+const STATUS_ABBR: Record<string, string> = {
+  draft: "DRF",
+  submitted: "SUB",
+  waitlisted: "WLT",
+  accepted: "ACC",
+  rejected: "REJ",
+  paid: "PAY",
+  enrolled: "ENR",
+  withdrawn: "WDR",
+};
 
 /**
  * What needs attention, in the order it needs it.
@@ -45,20 +83,23 @@ export default async function AdminAppToday() {
   const seePeople = can(caps, "people.view");
   const seeRevenue = can(caps, "payments.view");
   const seeAtRisk = can(caps, "interventions.manage");
-  // Only decides where the "Checked in" tile points — it gates no data here.
-  const seePulse = can(caps, "pulse.view");
 
   const admin = createAdminClient();
   const weekStart = isoWeekStart();
+  const weeks = lastNWeeks(TREND_WEEKS);
+  const windowStart = weeks[0].start.toISOString();
 
   const [
     { count: pending },
     { count: awaitingPayment },
-    { count: enrolled },
-    { count: checkedIn },
+    { data: enrollmentRows },
+    { data: checkinRows },
+    { data: activeCohorts },
     { count: atRisk },
     { data: payments },
     { data: charges },
+    { data: windowPayments },
+    { data: windowCharges },
     { data: recent },
   ] = await Promise.all([
     seeApplications
@@ -80,16 +121,33 @@ export default async function AdminAppToday() {
           // cohort. Dividing this week's check-ins by that made the rate fall
           // forever and read as a program collapsing rather than a stable one.
           // Scoped to cohorts actually running, it means what it says.
+          //
+          // Rows, not `count: exact`, because the count is the wrong number
+          // twice over: it double-counts a student enrolled in two active
+          // cohorts, and it gives the ratio below no way to check that a
+          // check-in belongs to someone in the denominator. The ids are what
+          // make both correct.
           .from("enrollments")
-          .select("id, cohort:cohorts!inner(status)", { count: "exact", head: true })
+          .select("user_id, cohort:cohorts!inner(status)")
           .eq("cohort.status", "active")
-      : { count: null },
+      : { data: null },
     seePeople
       ? admin
+          // Same reason: a head count here counts every check-in row for the
+          // week from every cohort, including completed ones, against a
+          // denominator narrowed to active cohorts — so "33/30" was reachable,
+          // and a ring gauge drawn on it renders past its own maximum while the
+          // warn threshold reads >100% as healthy. Filtering these ids through
+          // the enrolled set is what app/admin/pulse/page.tsx already does.
           .from("student_checkins")
-          .select("id", { count: "exact", head: true })
+          .select("user_id")
           .eq("week_start", weekStart)
-      : { count: null },
+      : { data: null },
+    // The Enrolled meter's ceiling. Summed across active cohorts because a
+    // program running two at once has one roster and two capacities.
+    seePeople
+      ? admin.from("cohorts").select("capacity").eq("status", "active")
+      : { data: null },
     seeAtRisk
       ? admin
           .from("at_risk_interventions")
@@ -112,6 +170,28 @@ export default async function AdminAppToday() {
           .eq("status", "paid")
           .limit(10000)
       : { data: null },
+    // The trend is read separately rather than bucketed out of the two sums
+    // above, because those carry a 10k cap with no ordering: past that many
+    // rows the lifetime total goes approximate, but an arbitrary 10k slice
+    // would silently drop recent weeks and draw a revenue collapse that never
+    // happened. A windowed query can't lose the window.
+    //
+    // Both series bucket by `created_at`, matching Pulse's revenue chart, so a
+    // charge is counted in the week it was raised.
+    seeRevenue
+      ? admin
+          .from("payments")
+          .select("amount_cents, created_at")
+          .eq("status", "succeeded")
+          .gte("created_at", windowStart)
+      : { data: null },
+    seeRevenue
+      ? admin
+          .from("user_charges")
+          .select("amount_cents, created_at")
+          .eq("status", "paid")
+          .gte("created_at", windowStart)
+      : { data: null },
     seeApplications
       ? admin
           .from("applications")
@@ -125,11 +205,56 @@ export default async function AdminAppToday() {
     (payments ?? []).reduce((s, p) => s + (p.amount_cents ?? 0), 0) +
     (charges ?? []).reduce((s, c) => s + (c.amount_cents ?? 0), 0);
 
+  // One bucket per week, from the calendar rather than from the rows — a week
+  // with no payments has no rows, and dropping it would compress the axis and
+  // make a gap look like a shorter history.
+  const inWeek = (iso: string, w: { start: Date; end: Date }) => {
+    const t = new Date(iso);
+    return t >= w.start && t < w.end;
+  };
+  const revenueByWeek = weeks.map((w) => ({
+    key: w.key,
+    label: w.label,
+    value:
+      (windowPayments ?? [])
+        .filter((p) => inWeek(p.created_at as string, w))
+        .reduce((s, p) => s + (p.amount_cents ?? 0), 0) +
+      (windowCharges ?? [])
+        .filter((c) => inWeek(c.created_at as string, w))
+        .reduce((s, c) => s + (c.amount_cents ?? 0), 0),
+  }));
+
+  // Distinct people, not enrollment rows: two seats in two active cohorts is
+  // one student, and the check-in ratio below divides by this.
+  const enrolledUserIds = new Set(
+    (enrollmentRows ?? []).map((e) => e.user_id as string),
+  );
+  const enrolled = seePeople ? enrolledUserIds.size : null;
+  // Only check-ins from someone actually in the denominator, deduped. This is
+  // what keeps the ratio inside 0–100% by construction, which is the property
+  // the Ring and the warn threshold below both assume.
+  const checkedIn = seePeople
+    ? new Set(
+        (checkinRows ?? [])
+          .map((c) => c.user_id as string)
+          .filter((id) => enrolledUserIds.has(id)),
+      ).size
+    : null;
+  const capacity = seePeople
+    ? (activeCohorts ?? []).reduce((s, c) => s + ((c.capacity as number) ?? 0), 0)
+    : 0;
+
   const firstName = profile.full_name?.split(" ")[0] || "there";
-  const checkinRate =
-    seePeople && (enrolled ?? 0) > 0
-      ? `${checkedIn ?? 0}/${enrolled}`
-      : null;
+  const showCheckin = seePeople && (enrolled ?? 0) > 0;
+  // Mirrors Spark's own `hasLine` test exactly. Spark refuses to draw an
+  // all-zero series — correctly, since a line pinned to the axis reads as a
+  // broken chart — but the branch it falls back to renders only its summary
+  // and drops the `caption`, and the caption is where the lifetime total now
+  // lives. Between cohorts every one of the eight weeks is zero, so the tile
+  // would have been a single grey sentence with the program's entire revenue
+  // history nowhere on the screen. Fall back to the total then, the same way
+  // the Enrolled tile falls back when it has no ceiling to measure against.
+  const showRevenueTrend = revenueByWeek.some((w) => w.value !== 0);
 
   return (
     <>
@@ -152,7 +277,7 @@ export default async function AdminAppToday() {
               <Stat
                 label="Awaiting payment"
                 value={awaitingPayment ?? 0}
-                href="/admin/applications?status=accepted"
+                href="/app/admin/awaiting-payment"
                 tone={(awaitingPayment ?? 0) > 0 ? "warn" : "default"}
                 hint="Accepted, unpaid"
               />
@@ -166,32 +291,71 @@ export default async function AdminAppToday() {
                 tappable whether or not it is, so a tile that does nothing is
                 indistinguishable from one that is broken — and each of these
                 already implies exactly one destination. The href is always a
-                page the tile's own permission can open: `Enrolled` needs
-                people.view and goes to the in-app directory; `Checked in`
-                prefers Pulse (the check-in analytics) but falls back to the
-                directory for a role without pulse.view; `Revenue` needs
-                payments.view and goes to the payments ledger it is summing. */}
+                page the tile's own permission can open, and always inside the
+                app: every one of these used to land in /admin, which has no tab
+                bar, a sidebar, and in the payments case a seven-column table
+                whose Refund button is clipped off a phone screen. */}
             <div className="grid grid-cols-2 gap-2.5">
               {seePeople && (
                 <Stat
                   label="Enrolled"
                   value={enrolled ?? 0}
                   href="/app/admin/people"
-                  // Says what the number now actually counts. It is scoped to
-                  // running cohorts (see the query), and a tile labelled just
-                  // "Enrolled" next to a smaller figure than last week would
-                  // read as churn rather than as a narrower question.
-                  hint="In active cohorts"
+                  // A headcount only means something against the seats it is
+                  // filling: 24 is a full cohort or a half-empty one and the
+                  // number alone can't say which.
+                  //
+                  // With no active cohort there is no ceiling, and Meter
+                  // correctly degrades to a single small sentence — but on a
+                  // tile that leaves nothing to read at a glance, so the plain
+                  // count stays the subject until there are seats to measure.
+                  graphic={
+                    capacity > 0 ? (
+                      <Meter
+                        label="Enrolled"
+                        value={enrolled ?? 0}
+                        max={capacity}
+                        caption="Of active cohort seats"
+                      />
+                    ) : undefined
+                  }
+                  hint={capacity > 0 ? undefined : "In active cohorts"}
                 />
               )}
-              {checkinRate && (
+              {showCheckin && (
                 <Stat
                   label="Checked in"
-                  value={checkinRate}
-                  hint="This week"
-                  href={seePulse ? "/admin/pulse" : "/app/admin/people"}
-                  tone={
-                    (checkedIn ?? 0) < (enrolled ?? 0) / 2 ? "warn" : "default"
+                  // Never rendered — the Ring prints its own figure — but Stat
+                  // requires a value, and this is the one it stands in for.
+                  value={`${checkedIn}/${enrolled}`}
+                  // The directory, for every viewer. This tile used to send
+                  // anyone with `pulse.view` to /app/admin/pulse, which does
+                  // not exist — the in-app screens for the other three tiles
+                  // landed and that one did not, so the reader best placed to
+                  // act on a low check-in rate was the only one who got a
+                  // not-found. The directory is where you message a student
+                  // who has gone quiet, so it is a real destination rather
+                  // than a placeholder. Restore the branch (and `pulse.view`)
+                  // the day an in-app Pulse ships.
+                  href="/app/admin/people"
+                  graphic={
+                    <Ring
+                      label="Checked in"
+                      value={checkedIn ?? 0}
+                      max={enrolled ?? 0}
+                      caption={`${checkedIn} of ${enrolled} this week`}
+                      // A binary threshold was the tile's only encoding of the
+                      // rate, so 51% and 99% looked identical. Now the arc
+                      // carries the value and the tone only flags the half of
+                      // the roster that has gone quiet. Safe as a threshold
+                      // because the numerator is a subset of the denominator
+                      // (see the queries) — it cannot exceed 100%.
+                      tone={
+                        (checkedIn ?? 0) < (enrolled ?? 0) / 2
+                          ? "warn"
+                          : "default"
+                      }
+                    />
                   }
                 />
               )}
@@ -199,7 +363,7 @@ export default async function AdminAppToday() {
                 <Stat
                   label="At risk"
                   value={atRisk ?? 0}
-                  href="/admin/interventions"
+                  href="/app/admin/at-risk"
                   tone={(atRisk ?? 0) > 0 ? "warn" : "default"}
                   hint="Open flags"
                 />
@@ -208,8 +372,35 @@ export default async function AdminAppToday() {
                 <Stat
                   label="Revenue"
                   value={money(revenueCents)}
-                  href="/admin/payments"
-                  hint="Every payment"
+                  href="/app/admin/payments"
+                  // Full width: a lifetime total is the one number where
+                  // today's value carries no information — it only ever goes
+                  // up, and reads the same whether last week brought $12,000 or
+                  // nothing. The last eight weeks answer the question the tile
+                  // was pretending to; the total stays as the caption, where a
+                  // long currency string fits at 11.5px and, unlike at 34px in
+                  // half a grid, cannot collide with the tile beside it.
+                  //
+                  // `span` stays on in both branches: full width is also what
+                  // makes the fallback safe, since a lifetime total is the one
+                  // string long enough to overflow a half-grid tile even at the
+                  // clamped size.
+                  span
+                  graphic={
+                    showRevenueTrend ? (
+                      <Spark
+                        label="Revenue"
+                        points={revenueByWeek}
+                        format={compactMoney}
+                        caption={`${money(revenueCents)} all time · last ${TREND_WEEKS} weeks`}
+                      />
+                    ) : undefined
+                  }
+                  hint={
+                    showRevenueTrend
+                      ? undefined
+                      : `All time · nothing in ${TREND_WEEKS} weeks`
+                  }
                 />
               )}
             </div>
@@ -225,24 +416,59 @@ export default async function AdminAppToday() {
               <Empty>No applications yet.</Empty>
             ) : (
               <div className="rounded-2xl border border-line px-4 sm:px-5">
-                {(recent ?? []).map((a) => (
-                  <Row
-                    key={a.id as string}
-                    label={(a.full_name as string) || "Unnamed applicant"}
-                    href={`/admin/applications/${a.id}`}
-                    right={
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className="font-mono text-[11px] tabular-nums text-ink-faint">
-                          <LocalTime
-                            value={(a.submitted_at as string) || (a.created_at as string)}
-                            mode="date"
-                          />
+                {/* Name, date and status on one line was a three-column table
+                    row wearing a flex layout: the date and badge are shrink-0,
+                    so at 320px they took 185px of a 246px row and the name —
+                    the only reason anyone taps — got about five glyphs. The
+                    date drops to `meta`, where Row already gives it a line of
+                    its own, and the status shrinks to three glyphs. */}
+                {(recent ?? []).map((a) => {
+                  const status = a.status as string;
+                  // Only the rows the review queue actually contains are
+                  // links. This list is the six most recent applications by
+                  // `created_at` at any status, but /app/admin/review filters
+                  // to submitted+waitlisted — so linking all of them meant
+                  // tapping a rejected or enrolled applicant landed you in a
+                  // list that provably does not include them, with nothing on
+                  // screen to say why. There is no in-app detail route to send
+                  // the others to, and the desktop one is outside the shell,
+                  // so a settled application is history: rendered muted and
+                  // not tappable, which is the honest shape of "nowhere to go
+                  // from here" rather than a tap that silently misses.
+                  const actionable =
+                    status === "submitted" || status === "waitlisted";
+                  return (
+                    <Row
+                      key={a.id as string}
+                      label={(a.full_name as string) || "Unnamed applicant"}
+                      // The queue, not /admin/applications/[id]: there is no
+                      // in-app detail screen, and the desktop one is outside
+                      // the shell. prefetch={false} because these rows all
+                      // resolve to the one route the section header and the
+                      // "To review" tile already prefetch.
+                      href={actionable ? "/app/admin/review" : undefined}
+                      prefetch={false}
+                      muted={!actionable}
+                      meta={
+                        <LocalTime
+                          value={
+                            (a.submitted_at as string) ||
+                            (a.created_at as string)
+                          }
+                          mode="date"
+                        />
+                      }
+                      right={
+                        <span className="shrink-0 font-mono text-[11px] font-medium uppercase tracking-wider text-ink-soft">
+                          <span aria-hidden>
+                            {STATUS_ABBR[status] ?? status.slice(0, 3)}
+                          </span>
+                          <span className="sr-only">{status}</span>
                         </span>
-                        <StatusBadge status={a.status as string} />
-                      </div>
-                    }
-                  />
-                ))}
+                      }
+                    />
+                  );
+                })}
               </div>
             )}
           </Section>

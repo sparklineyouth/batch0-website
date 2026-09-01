@@ -288,7 +288,14 @@ body {
   transition: none;
 }
 .press:active {
-  transform: scale(0.98);
+  /* Overridable per element. 0.98 is right for a button inside a card, but a
+   * tab bar sits under the thumb and gets pressed one-handed and in a hurry,
+   * where the same 2% is barely perceptible — it sets `[--press-scale:0.96]`.
+   * Without the var this rule silently won that override on source order
+   * (both are specificity 0,2,0 and utilities are emitted first), so every
+   * `active:scale-[…]` in the app was inert and the deeper press never
+   * happened. */
+  transform: scale(var(--press-scale, 0.98));
 }
 .press:disabled,
 .press[aria-disabled="true"] {

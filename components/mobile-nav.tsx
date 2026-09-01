@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, Search, ChevronDown } from "lucide-react";
+import { Menu, X, Search, ChevronDown, ChevronLeft } from "lucide-react";
 import {
   STUDENT_NAV_GROUPS,
   ADMIN_NAV_GROUPS,
@@ -72,6 +72,7 @@ export function MobileNav({
   enrolled = true,
   referralsEnabled = true,
   preCohort = false,
+  inApp = false,
 }: {
   kind: MobileNavKind;
   role?: Role;
@@ -82,6 +83,12 @@ export function MobileNav({
   enrolled?: boolean;
   referralsEnabled?: boolean;
   preCohort?: boolean;
+  /**
+   * Rendering inside the installed app (app/app/**), which linked out here.
+   * Resolved server-side by the layouts — see app/admin/layout.tsx. Replaces
+   * the whole header with a single way back; see the branch below.
+   */
+  inApp?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -197,6 +204,53 @@ export function MobileNav({
     () => resolveActiveHref(pathname, rawGroups),
     [pathname, rawGroups],
   );
+
+  // Inside the installed app, this page is a DETOUR, not a destination.
+  //
+  // The manifest's scope is "/" (app/manifest.webmanifest/route.ts explains
+  // why it must stay that way), so every "open the full panel" link in the
+  // app's More screens keeps the person in the app window — with no browser
+  // back button, no tab bar, and a desktop sidebar that is `hidden md:flex`
+  // and therefore invisible on the phone this is running on. That is a trap.
+  // One control back to /app is the entire job here; the drawer, the search
+  // filter and the cross-panel links all belong to the desktop chrome we are
+  // suppressing, and offering the app's own navigation twice is worse than
+  // not offering it at all.
+  //
+  // Note what is NOT here: `md:hidden`. Everywhere else this component is a
+  // phone-only header that hands off to a sidebar at md. In this branch the
+  // sidebar is gone (app/admin/layout.tsx drops it), so hiding the bar at md
+  // would leave a wide app window — or a browser carrying a stale b0_app
+  // cookie — with no navigation whatsoever. Always-visible is what makes a
+  // misdetection recoverable instead of a second trap.
+  //
+  // pt-[max(...)] rather than the bare inset, same pattern as AppHeader in
+  // components/app/frame.tsx: viewport-fit is "cover" (app/layout.tsx), so in
+  // a standalone window the chevron would render under the status bar, and the
+  // bare inset is 0 in a normal tab, which would leave the bar with no top
+  // padding at all. The floor is 0.75rem, not AppHeader's 1rem, so that it
+  // matches this bar's own pb-3 when the inset is 0.
+  if (inApp) {
+    return (
+      <header className="sticky top-0 z-40 flex items-center justify-between gap-2 border-b border-line bg-paper/80 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
+        {/* prefetch={false}: /app has no loading.tsx, and it is a redirect-only
+            entry that resolves the viewer's side of the app anyway. */}
+        <Link
+          href="/app"
+          prefetch={false}
+          className="press inline-flex min-h-11 items-center gap-1 rounded-lg pl-1 pr-3 text-sm font-medium text-ink-soft hover:text-ink"
+        >
+          <ChevronLeft className="h-5 w-5 shrink-0" />
+          Back to app
+        </Link>
+        {label && (
+          <span className="shrink-0 rounded-full bg-phosphor/15 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-phosphor-ink">
+            {label}
+          </span>
+        )}
+      </header>
+    );
+  }
 
   // Cross-panel links. Permission-driven when the layout passed capabilities
   // down; the role comparison is the fallback for any caller that hasn't been

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ArrowRight, Lock } from "lucide-react";
 import { requireViewer, roleHome } from "@/lib/auth";
@@ -33,12 +33,26 @@ const STUDENT_TABS: Tab[] = [
   { href: "/app/home", label: "Home", icon: "Home", exact: true },
   { href: "/app/course", label: "Course", icon: "PlayCircle" },
   { href: "/app/checkin", label: "Check in", icon: "CheckCircle" },
-  { href: "/app/more", label: "More", icon: "MoreHorizontal" },
+  // Announcements and Events are reached through More but do not live under
+  // it, so More adopts them — otherwise all four tabs read as inactive on two
+  // screens a student opens every week, and the bar says "you are nowhere".
+  {
+    href: "/app/more",
+    label: "More",
+    icon: "MoreHorizontal",
+    match: ["/app/announcements", "/app/events", "/app/billing", "/app/referrals"],
+  },
 ];
 
 // Every tab plus the two full screens that hang off More. Defined at module
 // scope so its identity is stable and the prefetcher does not re-run on every
 // render of the layout.
+//
+// /app/notifications is deliberately not here. This list is the set of screens
+// a student reaches by tapping the chrome that is on every page, so warming
+// them pays off on the very next tap. Notifications hangs off the Home header
+// instead — one entry point, opened when something is unread — so it carries a
+// back affordance of its own rather than a speculative fetch on every screen.
 const PREFETCH_ROUTES = [
   "/app/home",
   "/app/course",
@@ -86,8 +100,22 @@ export default async function StudentAppLayout({
   //
   // Full admins bypass, matching middleware, so they can still reach /admin to
   // waive the fine they are looking at.
-  if (pendingFine && !caps.superAdmin) {
-    redirect("/dashboard/pay-fine");
+  //
+  // The destination is /app/billing, not /dashboard/pay-fine. A fine is the one
+  // state where the app has something genuinely urgent to say, and it was the
+  // one state that ejected the student out of the installed app onto a desktop
+  // route to say it — a standalone window with no back button, for the message
+  // that most needs to be acted on. /app/billing shows the same fine in a warn
+  // Alert, with the same ChargePayButton, inside the app shell.
+  //
+  // Billing has to be exempt from the gate or the redirect is an infinite loop:
+  // it lives in this route group, so this layout runs for it too. `x-pathname`
+  // is stamped by the middleware, which is also where the admin layout gets it.
+  // The exemption is exactly one path — every other screen stays blocked, so
+  // the lock still does its job.
+  const path = headers().get("x-pathname") ?? "";
+  if (pendingFine && !caps.superAdmin && path !== "/app/billing") {
+    redirect("/app/billing");
   }
 
   // The app is for people who are actually in the program — enrolled, or with a
@@ -134,20 +162,35 @@ function NotInTheProgram({ status }: { status: string | null }) {
           ? "Your application for this cohort is closed, so there's nothing here to show you yet. You can apply again when the next one opens."
           : "batch0 on your phone is for students in the program. Submit an application and it unlocks — you'll get your cohort, your week, and your check-in right here."}
       </p>
+      {/* One action, and only one. This used to also carry a "Go to the full
+          dashboard" link — a same-window navigation out of the standalone
+          window into a desktop-shaped surface that has nothing for someone who
+          is not in the program (that absence is why this screen exists), and
+          nothing over there links back. Applying is the only thing that moves
+          this person forward. */}
       <div className="mt-9">
         <ActionLink href="/apply">
           {closed ? "Apply to another cohort" : "Start your application"}
           <ArrowRight className="h-4 w-4" />
         </ActionLink>
       </div>
-      <Link
-        href="/dashboard"
-        prefetch={false}
-        className="press mt-4 text-[13px] text-ink-soft underline active:text-ink"
-      >
-        Go to the full dashboard
-      </Link>
-      <p className="mt-10 font-mono text-[10px] uppercase tracking-[0.22em] text-ink-faint">
+      {/* The way off this screen that isn't "apply". There is no tab bar here
+          and no dashboard link any more, so without this the only affordance a
+          locked-out person has is the one action they may have already decided
+          against — and someone who signed in with the wrong account, or handed
+          the phone to a sibling, has no way to get back to a sign-in form.
+          A plain POST form rather than the two-step control on More: a stray
+          tap on a screen with nothing behind it costs nothing, and this must
+          keep working before JavaScript has hydrated. */}
+      <form action="/auth/signout" method="post" className="mt-4">
+        <button
+          type="submit"
+          className="press inline-flex h-11 items-center px-3 text-[13px] text-ink-soft underline active:text-ink"
+        >
+          Sign out
+        </button>
+      </form>
+      <p className="mt-6 font-mono text-[10px] uppercase tracking-[0.22em] text-ink-faint">
         batch<span className="text-phosphor-ink">0</span>
       </p>
     </div>

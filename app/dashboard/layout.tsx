@@ -1,5 +1,7 @@
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getViewer } from "@/lib/auth";
+import { isInApp, APP_MARK_COOKIE } from "@/lib/app-host";
 import { can } from "@/lib/permissions";
 import { getStudentAccess, aiAccessFrom, loadAccessRows } from "@/lib/access";
 import { isDiscordEnabled } from "@/lib/discord";
@@ -32,6 +34,15 @@ export default async function DashboardLayout({
   const { profile, caps } = viewer;
   // Theme driven site-wide by next-themes on <html> (see ThemeProvider).
 
+  // Rendering inside the installed app? The app's More screens link out to
+  // several /dashboard pages, and the manifest's scope keeps those links in the
+  // app window, so without a return path they are one-way trips on a phone with
+  // no browser chrome. Same two signals as app/admin/layout.tsx: the subdomain,
+  // plus the `b0_app` cookie that lib/supabase/middleware.ts stamps on every
+  // /app request for the people who installed from batch0.org/app.
+  const inApp =
+    isInApp(headers().get("host"), cookies().get(APP_MARK_COOKIE)?.value);
+
   // Middleware gates /dashboard to roles carrying `student.dashboard` (plus
   // admins, via the wildcard). Anyone else only lands here when middleware
   // sent them to a shared subroute (pay-fine / billing); render those without
@@ -39,6 +50,12 @@ export default async function DashboardLayout({
   if (!can(caps, "student.dashboard")) {
     return (
       <div className="min-h-screen bg-paper text-ink">
+        {/* This branch has no nav of any kind, which is fine in a browser and a
+            dead end in the app window — and it is reachable from there, since
+            pay-fine and billing are exactly the pages a mentor or investor gets
+            sent to. The contained bar is the only way out. `kind` is inert in
+            that mode; it renders one link back to /app. */}
+        {inApp && <MobileNav kind="student" inApp />}
         <main id="main-content" tabIndex={-1} className="px-5 py-6 md:px-10 md:py-10">{children}</main>
       </div>
     );
@@ -80,6 +97,7 @@ export default async function DashboardLayout({
           enrolled={enrolled}
           referralsEnabled={referralsEnabled}
           preCohort={preCohort}
+          inApp={inApp}
         />
         <main id="main-content" tabIndex={-1} className="flex-1 px-5 py-6 md:px-10 md:py-10">{children}</main>
       </div>

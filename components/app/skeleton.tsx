@@ -26,16 +26,57 @@ function Bar({ className = "" }: { className?: string }) {
   return <div className={`rounded-md bg-wash ${className}`} />;
 }
 
+/** One labelled 2-up grid of stat tiles — a Section of counts, reserved. */
+function TileGroup({ count }: { count: number }) {
+  return (
+    <>
+      <Bar className="h-2.5 w-28" />
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
+        {Array.from({ length: count }).map((_, i) => (
+          <div
+            key={i}
+            className="min-h-[7rem] rounded-2xl border border-line bg-wash/60 px-4 py-4"
+          >
+            <Bar className="h-2.5 w-16 bg-line" />
+            <Bar className="mt-3 h-7 w-12 bg-line" />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 /** Header + body skeleton. `rows` and `tiles` shape it to the target screen. */
 export function ScreenSkeleton({
   tiles = 0,
   rows = 4,
 }: {
-  /** Stat tiles above the list, rendered as a 2-up grid. */
-  tiles?: number;
+  /**
+   * Stat tiles above the list, rendered as a 2-up grid.
+   *
+   * An array is one grid per entry, each with its own section label — the
+   * admin start screen has two Sections of counts, and reserving them as a
+   * single grid left ~270px unaccounted for, so the list under them jumped
+   * down every time the real page settled. On the admin start_url that is
+   * every launch of the app.
+   */
+  tiles?: number | number[];
   /** List rows below. */
   rows?: number;
 }) {
+  // Empty groups are dropped rather than rendered as a bare section label with
+  // nothing under it, so `[2, 0]` and `2` reserve the same box and a caller can
+  // build the array from a condition without special-casing zero.
+  //
+  // How many to ask for is the caller's call, and it is a guess either way: a
+  // loading boundary has no viewer, so it cannot know which tiles a permission
+  // set will render, and in Next it is shared by every route beneath it. Under-
+  // reserving is the cheaper miss — content settling by growing is less jarring
+  // than a list that jumps up — so callers should size to the smallest grid
+  // their busiest route shows.
+  const groups = (typeof tiles === "number" ? [tiles] : tiles).filter(
+    (n) => n > 0,
+  );
   return (
     <div className="animate-pulse" aria-hidden="true">
       {/* Matches AppHeader's box exactly so the real header doesn't jump in. */}
@@ -50,24 +91,15 @@ export function ScreenSkeleton({
       </div>
 
       <div className="px-5 pt-7 sm:px-6">
-        {tiles > 0 && (
-          <>
-            <Bar className="h-2.5 w-28" />
-            <div className="mt-4 grid grid-cols-2 gap-2.5">
-              {Array.from({ length: tiles }).map((_, i) => (
-                <div
-                  key={i}
-                  className="min-h-[7rem] rounded-2xl border border-line bg-wash/60 px-4 py-4"
-                >
-                  <Bar className="h-2.5 w-16 bg-line" />
-                  <Bar className="mt-3 h-7 w-12 bg-line" />
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+        {groups.map((count, i) => (
+          // mt-10 matches Section's own `mt-10 first:mt-0`, so a second group
+          // sits exactly where the second Section will.
+          <div key={i} className={i > 0 ? "mt-10" : ""}>
+            <TileGroup count={count} />
+          </div>
+        ))}
 
-        <div className={tiles > 0 ? "mt-10" : ""}>
+        <div className={groups.length > 0 ? "mt-10" : ""}>
           <Bar className="h-2.5 w-24" />
           <div className="mt-4 rounded-2xl border border-line px-4 sm:px-5">
             {Array.from({ length: rows }).map((_, i) => (

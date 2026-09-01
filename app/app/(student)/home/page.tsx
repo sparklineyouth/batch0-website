@@ -5,7 +5,7 @@ import { getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
-import { isoWeekStart, formatWeekRange } from "@/lib/week";
+import { isoWeekStart, formatWeekRange, lastNWeeks } from "@/lib/week";
 import { cohortWeek } from "@/lib/cohort-week";
 import { getActiveChallenge } from "@/lib/challenges";
 import { fmtDateOnly } from "@/lib/pre-cohort";
@@ -19,6 +19,7 @@ import {
   Alert,
   ActionLink,
 } from "@/components/app/frame";
+import { Meter, DotRail } from "@/components/app/viz";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Home · batch0" };
@@ -49,6 +50,9 @@ export default async function StudentAppHome() {
   const userId = user.id;
   const weekStart = isoWeekStart();
   const nowIso = new Date().toISOString();
+  // The window the check-in rail is drawn over. Built from the calendar rather
+  // than from whatever the query returns — see where the cells are marked.
+  const checkinWeeks = lastNWeeks(8);
 
   // getStudentAccess needs a role, so it chains off the profile rather than
   // blocking the whole batch on it. Both are request-cached and were already
@@ -64,7 +68,7 @@ export default async function StudentAppHome() {
     access,
     { data: enrollment },
     { data: charges },
-    { data: checkin },
+    { data: checkins },
     { count: unread },
     { data: allProgress },
     challenge,
@@ -92,12 +96,16 @@ export default async function StudentAppHome() {
       .eq("user_id", userId)
       .eq("status", "pending")
       .order("created_at", { ascending: true }),
+    // Eight weeks, not one. "Did I check in this week" is a boolean, and a
+    // boolean is not the question a habit surface answers — the rail under the
+    // row needs the whole window. Widening the range costs nothing: it stays
+    // inside this Promise.all, so it is the same round trip, eight rows wide.
     admin
       .from("student_checkins")
-      .select("id, accomplished")
+      .select("id, accomplished, week_start")
       .eq("user_id", userId)
-      .eq("week_start", weekStart)
-      .maybeSingle(),
+      .gte("week_start", checkinWeeks[0].key)
+      .order("week_start", { ascending: true }),
     admin
       .from("notifications")
       .select("id", { count: "exact", head: true })
@@ -192,6 +200,57 @@ export default async function StudentAppHome() {
   const weekDone = weekLessonIds.filter((id) => doneLessonIds.has(id)).length;
   const weekModuleTitle = (weekLessons ?? [])[0]?.title as string | undefined;
 
+  // The rail is built from the calendar and then marked, never from the rows
+  // themselves: a range query returns rows only for weeks that HAVE a check-in,
+  // so a skipped week comes back as a missing row rather than as a false value.
+  // Mapping the results directly would draw a four-cell rail that reads as a
+  // short history instead of the gappy one it actually is.
+  const postedWeeks = new Set(
+    (checkins ?? []).map((c) => c.week_start as string),
+  );
+  const checkin = (checkins ?? []).find((c) => c.week_start === weekStart);
+  // The window also has to START where the student's did. A cohort in its
+  // second week has had two weeks in which a check-in was even possible, and
+  // an unclamped eight-week rail marks the six before it as misses — a picture
+  // accusing someone of a record they could not have had. Under four cells
+  // DotRail degrades to a sentence on its own, which is the right shape for a
+  // history that short.
+  //
+  // The NaN guard is the one cohortWeek() carries, for the same reason:
+  // `starts_on` is a bare date column, and a malformed one would make
+  // isoWeekStart throw inside toISOString() and take the screen down over what
+  // is only a clamp.
+  const cohortStartsOn = cohort?.starts_on ?? access.cohortStartsOn;
+  const cohortStart = cohortStartsOn
+    ? new Date(`${cohortStartsOn}T00:00:00Z`)
+    : null;
+  const cohortStartWeek =
+    cohortStart && !Number.isNaN(cohortStart.getTime())
+      ? isoWeekStart(cohortStart)
+      : null;
+  const checkinCells = checkinWeeks
+    // ISO dates compare correctly as strings, which is why week_start is stored
+    // in this format everywhere.
+    .filter((w) => !cohortStartWeek || w.key >= cohortStartWeek)
+    .map((w) => ({
+      key: w.key,
+      label: w.label,
+      // The current week is not a miss until it is over. It renders as the open
+      // cell at the end of the rail, and DotRail leaves "future" cells out of
+      // the count, so an unposted Monday never reads as a broken streak.
+      state: postedWeeks.has(w.key)
+        ? ("hit" as const)
+        : w.key === weekStart
+          ? ("future" as const)
+          : ("miss" as const),
+    }));
+  const postedCount = checkinCells.filter((c) => c.state === "hit").length;
+  // The denominator is the weeks that are OVER, not the cells on screen. The
+  // in-progress week is the open cell and DotRail leaves it out of its own
+  // spoken summary, so counting it here printed "7 of the last 8 weeks" beside
+  // an accessible name that said "all 7 on record".
+  const railWeeks = checkinCells.filter((c) => c.state !== "future").length;
+
   const firstName = profile?.full_name?.split(" ")[0] || "there";
   const startLabel = fmtDateOnly(access.cohortStartsOn);
 
@@ -208,12 +267,21 @@ export default async function StudentAppHome() {
         eyebrow={eyebrow}
         action={
           <Link
-            href="/notifications"
+            // /app/notifications, not /notifications. The desktop screen is a
+            // max-w-3xl page outside AppShell whose only exit is a "Back" link
+            // resolved through roleHome() — which for a student is /dashboard.
+            // In a standalone PWA there is no browser chrome to escape with, so
+            // tapping the bell used to strand the reader in the desktop app.
+            href="/app/notifications"
             prefetch={false}
             aria-label={
               unread ? `Notifications, ${unread} unread` : "Notifications"
             }
-            className="press relative rounded-lg border border-line px-2.5 py-2 text-ink-soft active:bg-wash"
+            // 44px square. The padding pair here was 36x32 — AppHeader's action
+            // wrapper now floors that, but the size is stated outright because
+            // this is the only control in the persistent header and it sits in
+            // the hardest corner of the screen to reach.
+            className="press relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line text-ink-soft active:bg-wash"
           >
             <Megaphone className="h-4 w-4" />
             {!!unread && unread > 0 && (
@@ -237,7 +305,12 @@ export default async function StudentAppHome() {
                 title={`${c.kind === "fine" ? "Fine" : "Fee"} due — $${(
                   c.amount_cents / 100
                 ).toFixed(2)}`}
-                action={<ChargePayButton chargeId={c.id} />}
+                // A full-width 48px bar, not the shared 32px default: this is
+                // the action that unblocks a fine-locked account, and a fine
+                // is a hard middleware gate on the whole product.
+                action={
+                  <ChargePayButton chargeId={c.id} size="lg" fullWidth returnTo="app" />
+                }
               >
                 {c.description}
                 {c.kind === "fine" &&
@@ -273,13 +346,20 @@ export default async function StudentAppHome() {
               <div className="rounded-2xl border border-line">
                 <div className="px-4">
                   <Row
-                    label={
-                      checkin
-                        ? "Check-in posted"
-                        : "Weekly check-in not posted yet"
-                    }
+                    // Short on purpose. "Weekly check-in not posted yet" is 30
+                    // glyphs ≈ 279px of mono against the 218px this column has
+                    // at 320px, so it truncated; the week range in `value`
+                    // already carries the weekly framing.
+                    label={checkin ? "Check-in posted" : "Check-in not posted"}
                     value={formatWeekRange(weekStart)}
                     href="/app/checkin"
+                    below={
+                      <DotRail
+                        label="Weekly check-ins"
+                        cells={checkinCells}
+                        caption={`${postedCount} of the last ${railWeeks} weeks`}
+                      />
+                    }
                     right={
                       checkin ? (
                         <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
@@ -291,9 +371,19 @@ export default async function StudentAppHome() {
                   {weekLessonIds.length > 0 && (
                     <Row
                       label={weekModuleTitle ?? `Week ${week} lessons`}
-                      value={`${weekDone} of ${weekLessonIds.length} done`}
                       href="/app/course"
                       muted={weekDone === weekLessonIds.length}
+                      // The number this screen exists to answer, as a bar
+                      // rather than as prose in the 13.5px secondary line.
+                      // Meter prints "3/5" beside the track, so nothing is lost
+                      // by dropping the sentence it replaces.
+                      below={
+                        <Meter
+                          label="Lessons done this week"
+                          value={weekDone}
+                          max={weekLessonIds.length}
+                        />
+                      }
                       right={
                         weekDone === weekLessonIds.length ? (
                           <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
@@ -312,20 +402,30 @@ export default async function StudentAppHome() {
                           : (challenge.prizeLabel || "Open for entries")
                       }
                       href={`/challenges/${challenge.slug}`}
+                      // No loading boundary anywhere on /challenges, and the
+                      // page is force-dynamic — with staleTimes.dynamic = 0 a
+                      // prefetch here is a full render thrown away on a screen
+                      // most people scroll past.
+                      prefetch={false}
                       muted={!!challengeEntry}
+                      // The deadline moves to its own line for the same reason
+                      // as the event stamp below: an unshrinkable date in
+                      // `right` was eating ~80px of a 248px row and truncating
+                      // the challenge title at 320px.
+                      meta={
+                        challenge.closesAt ? (
+                          <>
+                            Closes{" "}
+                            <LocalTime value={challenge.closesAt} mode="date" />
+                          </>
+                        ) : undefined
+                      }
                       right={
-                        <div className="flex shrink-0 items-center gap-2">
-                          {challenge.closesAt && (
-                            <span className="font-mono text-[11px] tabular-nums text-ink-faint">
-                              <LocalTime value={challenge.closesAt} mode="date" />
-                            </span>
-                          )}
-                          {challengeEntry ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                          ) : (
-                            <Circle className="h-4 w-4 text-ink-faint" />
-                          )}
-                        </div>
+                        challengeEntry ? (
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <Circle className="h-4 w-4 shrink-0 text-ink-faint" />
+                        )
                       }
                     />
                   )}
@@ -347,12 +447,18 @@ export default async function StudentAppHome() {
                     <Row
                       key={e.id}
                       label={e.title}
-                      value={e.location || e.type.replace(/_/g, " ")}
                       href="/app/events"
-                      right={
-                        <span className="shrink-0 text-right font-mono text-[11px] leading-tight tabular-nums text-ink-faint">
+                      // Time and place on one mono line under the title,
+                      // instead of a `shrink-0` stamp in `right`. "Sep 12,
+                      // 7:00 PM" is 15 glyphs ≈ 99px it never gave back, which
+                      // left ~135px — about 14 characters — for the title at
+                      // 320px. Folding the location in here as well keeps the
+                      // row two lines rather than three.
+                      meta={
+                        <>
                           <LocalTime value={e.starts_at} mode="datetime-short" />
-                        </span>
+                          {` · ${e.location || e.type.replace(/_/g, " ")}`}
+                        </>
                       }
                     />
                   ))}

@@ -56,6 +56,23 @@ const AUTH_COOKIE = new RegExp(
   `^sb-${PROJECT_REF ?? "[a-z0-9]+"}-auth-token(\\.\\d+)?$`,
 );
 
+/**
+ * Marks a browser that is currently inside the installed app (app/app/**).
+ *
+ * The desktop areas the app links out to — /admin, /dashboard — need to know
+ * they are rendering inside the app window so they can drop their own chrome
+ * and offer a way back. `isAppHost()` answers that for app.batch0.org, but the
+ * app is equally installable from batch0.org/app (see
+ * app/manifest.webmanifest/route.ts), and that whole population arrives on the
+ * apex host where the Host header says nothing. This cookie is the second
+ * signal; app/admin/layout.tsx and app/dashboard/layout.tsx read the pair.
+ *
+ * Read by name in those two layouts rather than imported from here: this
+ * module pulls in next/server and the Supabase client, and neither belongs in
+ * a layout's module graph for the sake of one string.
+ */
+const APP_MARK_COOKIE = "b0_app";
+
 const FALLBACK_HOME: Record<string, string> = {
   student: "/dashboard",
   admin: "/admin",
@@ -279,6 +296,35 @@ export async function updateSession(request: NextRequest) {
   const user = claims ? { id: claims.sub as string } : null;
 
   const path = request.nextUrl.pathname;
+
+  // Stamp the "inside the installed app" mark on every /app request, beside
+  // the x-pathname header above.
+  //
+  // Written HERE rather than next to that header because setAll() replaces
+  // `response` wholesale when the auth call refreshes a token — anything set
+  // before getClaims() is discarded on exactly the requests that refresh.
+  // redirectTo() copies every response cookie forward, so it also survives the
+  // gates below.
+  //
+  // Deliberately short-lived and deliberately not slid forward on non-/app
+  // requests: a desktop browser that visited /app once would otherwise keep
+  // getting the contained (sidebar-less) admin panel indefinitely. Twelve hours
+  // outlasts any single detour — the return bar has to still be there after the
+  // person has clicked three pages deep into /admin — while making a stale mark
+  // self-healing, and the real app renews it every launch, since /app is the
+  // manifest's start_url and every escape link is downstream of it.
+  if (isAppPath(path)) {
+    response.cookies.set(APP_MARK_COOKIE, "1", {
+      httpOnly: true,
+      // secure: true would drop the cookie on http://localhost, matching
+      // app/auth/discord/start/route.ts.
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 12,
+    });
+  }
+
   // Did the auth library mint a new session while we were in here? If so, the
   // cookie on the response is fresh by definition and must never be expired,
   // whatever the verification outcome was.
@@ -397,7 +443,9 @@ export async function updateSession(request: NextRequest) {
     // and sign out.
     // NOTE: /app is deliberately NOT here, and that is not a hole — the gate
     // moved rather than disappeared. app/app/(student)/layout.tsx runs the same
-    // pending-fine check and sends a fined student to /dashboard/pay-fine.
+    // pending-fine check and sends a fined student to /app/billing, which is
+    // exempted there the way /dashboard/billing is exempted here, and for the
+    // same reason: the screen that takes the money cannot be behind the lock.
     //
     // It moved because of where the cost lands. Middleware runs at the edge PoP
     // nearest the visitor while Postgres sits in one region, so listing a path

@@ -30,7 +30,15 @@ export default async function NotificationsPage() {
   return (
     <div className="min-h-screen bg-paper text-ink">
       <div className="border-b border-line">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-4 md:px-8">
+        {/* max(1rem, inset) rather than the bare inset, matching AppHeader.
+            app/layout.tsx sets viewportFit: "cover", so in a standalone window
+            this header starts at y=0 and the Back control renders under a
+            47-59px status bar — the one control on the page, unreachable. The
+            inset resolves to 0 in an ordinary tab, which is why it needs the
+            floor rather than the raw value. Students reach the in-app
+            /app/notifications instead, but staff, mentors and investors still
+            land here from the bell. */}
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-8">
           <Link
             href={home}
             className="press inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink"

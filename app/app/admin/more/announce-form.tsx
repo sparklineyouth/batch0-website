@@ -31,6 +31,11 @@ export type CohortOption = { id: string; name: string };
  *   Send takes a confirmation tap, and the button says exactly who it reaches.
  *   The recipient count comes back from the action afterwards, so the label is
  *   the audience, not a number we'd have to fetch to be honest about.
+ *
+ * The confirmation is a *second* control, not the same button relabelled, and
+ * touching anything that changes who this reaches disarms it — see `disarm`.
+ * Arming a button and then flipping "Also email everyone" under it left a
+ * primed control whose blast radius had silently changed.
  */
 export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
   const [title, setTitle] = useState("");
@@ -50,6 +55,13 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
   const audience = cohortId
     ? (cohorts.find((c) => c.id === cohortId)?.name ?? "that cohort")
     : "every enrolled student";
+
+  // Any change to who this reaches un-arms the confirm. Without it you could
+  // arm the button, flip "Also email everyone", and the next tap would email
+  // every enrolled student from a control armed for a different audience.
+  function disarm() {
+    setConfirming(false);
+  }
 
   function send() {
     if (!confirming) {
@@ -77,44 +89,50 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
     });
   }
 
-  if (sent) {
-    return (
-      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4">
-        <p className="text-[14px] font-medium text-emerald-700 dark:text-emerald-300">
-          Sent to {sent.recipients} student{sent.recipients === 1 ? "" : "s"}.
-        </p>
-        <p className="mt-1 text-[12px] text-ink-soft">
-          {sent.discord
-            ? "Posted to Discord too."
-            : discord
-              ? "Discord post didn't go through — check the channel config."
-              : "In-app only."}
-        </p>
-        <button
-          type="button"
-          onClick={() => setSent(null)}
-          className="press mt-3 text-[13px] text-phosphor-ink underline"
-        >
-          Write another
-        </button>
-      </div>
-    );
+  /**
+   * Clears everything the last send configured, not just its text.
+   *
+   * The reset lives here rather than in the success path on purpose. The
+   * outcome card reads live `discord` to explain what happened, so clearing it
+   * back to its default in the same tick as the result would make a send the
+   * admin deliberately kept in-app report "Discord post didn't go through".
+   *
+   * It has to happen somewhere, though: the blast radius used to survive a
+   * send, so the second announcement of a session silently inherited the
+   * first one's email fan-out — defeating the email-OFF default above, which
+   * is the whole reason that default exists.
+   */
+  function writeAnother() {
+    setSent(null);
+    setError(null);
+    setCohortId("");
+    setEmail(false);
+    setDiscord(true);
+    setPing("none");
+    setConfirming(false);
   }
 
   return (
     <div className="space-y-3.5">
+      {/* 16px on both, not 15: iOS Safari zooms the whole viewport when a
+          focused field's text is under 16px and never zooms back out on blur.
+          globals.css sets text-size-adjust for the neighbouring reason, but
+          that does not cover focus zoom — only the font size does. The two
+          <select>s below stay at 15px: a picker wheel never triggers it. */}
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Title"
-        className="h-11 w-full rounded-xl border border-line bg-wash px-3.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
+        autoCapitalize="sentences"
+        enterKeyHint="next"
+        className="h-11 w-full rounded-xl border border-line bg-wash px-3.5 text-[16px] text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
       />
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={4}
         placeholder="What's happening?"
-        className="block w-full resize-y rounded-xl border border-line bg-wash px-3.5 py-3 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
+        className="block w-full resize-y rounded-xl border border-line bg-wash px-3.5 py-3 text-[16px] leading-relaxed text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
       />
 
       <label className="block">
@@ -123,7 +141,10 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
         </span>
         <select
           value={cohortId}
-          onChange={(e) => setCohortId(e.target.value)}
+          onChange={(e) => {
+            disarm();
+            setCohortId(e.target.value);
+          }}
           className="mt-2 h-11 w-full rounded-xl border border-line bg-wash px-3 text-[15px] text-ink focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
         >
           <option value="">Everyone enrolled</option>
@@ -138,13 +159,19 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
       <div className="space-y-2">
         <Toggle
           checked={discord}
-          onChange={setDiscord}
+          onChange={(v) => {
+            disarm();
+            setDiscord(v);
+          }}
           label="Post to Discord"
           hint="Goes to the announcements channel."
         />
         <Toggle
           checked={email}
-          onChange={setEmail}
+          onChange={(v) => {
+            disarm();
+            setEmail(v);
+          }}
           label="Also email everyone"
           hint="One email per recipient. Can't be unsent."
           tone="warn"
@@ -158,7 +185,10 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
           </span>
           <select
             value={ping}
-            onChange={(e) => setPing(e.target.value as AnnouncementPing)}
+            onChange={(e) => {
+              disarm();
+              setPing(e.target.value as AnnouncementPing);
+            }}
             className="mt-2 h-11 w-full rounded-xl border border-line bg-wash px-3 text-[15px] text-ink focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
           >
             <option value="none">No ping</option>
@@ -168,33 +198,101 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
         </label>
       )}
 
-      {error && (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-[13px] text-red-600 dark:text-red-300">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="button"
-        onClick={send}
-        disabled={!ready || pending}
-        aria-busy={pending}
-        className="press inline-flex h-11 w-full select-none items-center justify-center gap-2 rounded-md bg-phosphor text-[14px] font-semibold leading-none text-on-phosphor shadow-cta active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-      >
-        <Send className="h-4 w-4" />
-        {pending
-          ? "Sending…"
-          : confirming
-            ? `Send to ${audience}?`
-            : "Send announcement"}
-      </button>
-      {confirming && (
-        <p className="text-center text-[11px] leading-relaxed text-ink-faint">
-          Tap again to send to {audience}
-          {email ? ", including email" : ""}
-          {discord && ping !== "none" ? `, pinging @${ping}` : ""}.
-        </p>
-      )}
+      {/* Sticky above the tab bar. The fields above run ~550px on a phone, and
+          with the iOS keyboard up the visual viewport is ~380px tall — a button
+          at the end of the document is off screen for the entire time you are
+          writing. 3.75rem is the tab bar's real height (the same number
+          components/app/frame.tsx reserves in <main>), plus half a rem of
+          gutter so this reads as its own bar rather than a second row of the
+          tab bar. The negative margins match AppBody's px-5 sm:px-6 so the
+          fill reaches the column edges. */}
+      <div className="sticky bottom-[calc(3.75rem+var(--safe-bottom)+0.5rem)] -mx-5 border-t border-line bg-paper/95 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+        {/* The failure rides in the bar with the button, not up in the flow
+            where it used to sit. Once the send control became sticky, the
+            error was the one piece of the exchange that wasn't: you tap Send
+            from a bar pinned to the bottom, the action throws, and the only
+            evidence is a red paragraph ~400px above the fold next to the
+            fields. The button just goes back to saying "Send announcement",
+            which is indistinguishable from a send that worked. */}
+        {error && (
+          <p
+            role="alert"
+            className="mb-2.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-[13px] leading-snug text-red-600 dark:text-red-300"
+          >
+            {error}
+          </p>
+        )}
+        {sent ? (
+          // The outcome replaces the BUTTON, not the form. Swapping the whole
+          // form took ~500px out of a document that is still far taller than
+          // the viewport (the nav list sits below), so the browser had no
+          // reason to clamp the scroll and the sender stayed parked on
+          // "Everything else" with the confirmation off screen above them.
+          <div
+            role="status"
+            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3"
+          >
+            <p className="text-[14px] font-medium text-emerald-700 dark:text-emerald-300">
+              Sent to {sent.recipients}{" "}
+              {sent.recipients === 1 ? "student" : "students"}.
+            </p>
+            <p className="mt-1 text-[12px] leading-snug text-ink-soft">
+              {sent.discord
+                ? "Posted to Discord too."
+                : discord
+                  ? "Discord post didn't go through — check the channel config."
+                  : "In-app only."}
+            </p>
+            <button
+              type="button"
+              onClick={writeAnother}
+              className="press mt-0.5 inline-flex min-h-11 items-center text-[13px] text-phosphor-ink underline"
+            >
+              Write another
+            </button>
+          </div>
+        ) : confirming ? (
+          // The confirm is a different target from the tap that armed it, and
+          // the two are stacked rather than side by side: `audience` defaults
+          // to "every enrolled student", ~200px at 14px, which leaves nothing
+          // for Cancel at 320px. The consequence goes above both, so a thumb
+          // travelling down the screen reads it before it lands on anything.
+          <>
+            <p className="mb-2.5 text-center text-[12px] leading-relaxed text-ink-soft">
+              Sends to {audience}
+              {email ? ", including email" : ""}
+              {discord && ping !== "none" ? `, pinging @${ping}` : ""}.
+            </p>
+            <button
+              type="button"
+              onClick={send}
+              disabled={!ready}
+              className="press inline-flex h-11 w-full select-none items-center justify-center gap-2 rounded-md bg-phosphor text-[14px] font-semibold leading-none text-on-phosphor shadow-cta active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+            >
+              <Send className="h-4 w-4" />
+              Yes, send
+            </button>
+            <button
+              type="button"
+              onClick={disarm}
+              className="press mt-2 inline-flex h-11 w-full select-none items-center justify-center rounded-md border border-line bg-wash text-[14px] font-medium text-ink-soft active:scale-[0.99]"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={send}
+            disabled={!ready || pending}
+            aria-busy={pending}
+            className="press inline-flex h-11 w-full select-none items-center justify-center gap-2 rounded-md bg-phosphor text-[14px] font-semibold leading-none text-on-phosphor shadow-cta active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+          >
+            <Send className="h-4 w-4" />
+            {pending ? "Sending…" : "Send announcement"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
