@@ -70,6 +70,18 @@
     rgb(var(--paper) / 0.72) 90%,
     rgb(var(--paper)) 100%
   );
+  /* Footer scrim. It used to be four hardcoded rgba(12,12,13) stops
+   * applied in BOTH themes, so the light footer got a dark wash over a
+   * daylight skyline — the muddiness flagged earlier. Now a token: dark
+   * wash on the night frame, light wash on the day one, each keyed to
+   * its own page colour. */
+  --footer-scrim: linear-gradient(
+    to bottom,
+    rgb(var(--paper) / 0.88) 0%,
+    rgb(var(--paper) / 0.74) 42%,
+    rgb(var(--paper) / 0.56) 72%,
+    rgb(var(--paper) / 0.8) 100%
+  );
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
   --safe-left: env(safe-area-inset-left);
@@ -122,6 +134,15 @@
     rgb(var(--paper) / 0.22) 74%,
     rgb(var(--paper) / 0.62) 88%,
     rgb(var(--paper)) 100%
+  );
+  /* The day skyline is bright, so the footer text is dark ink and the
+   * scrim has to LIFT the image toward cream rather than darken it. */
+  --footer-scrim: linear-gradient(
+    to bottom,
+    rgb(var(--paper) / 0.9) 0%,
+    rgb(var(--paper) / 0.78) 42%,
+    rgb(var(--paper) / 0.62) 72%,
+    rgb(var(--paper) / 0.84) 100%
   );
   --smolder-0: #4a2e00;
   --smolder-1: #6e4a00;

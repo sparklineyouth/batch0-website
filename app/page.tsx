@@ -7,7 +7,6 @@ import TheDeal from "@/components/the-deal";
 import HowItWorks from "@/components/how-it-works";
 import Manifest from "@/components/manifest";
 import WhoRunsThis from "@/components/who-runs-this";
-import FoundingCohort from "@/components/founding-cohort";
 import Faq from "@/components/faq";
 import CTA from "@/components/cta";
 import Footer from "@/components/footer";
@@ -63,7 +62,6 @@ export default async function Home() {
         <HowItWorks config={config} />
         <Manifest />
         <WhoRunsThis config={config} />
-        <FoundingCohort config={config} />
         <Faq config={config} />
         <CTA config={config} />
       </div>

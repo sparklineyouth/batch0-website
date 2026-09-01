@@ -1,10 +1,12 @@
 import React from "react";
-import { FolderIcon } from "@/components/icons/pixel-icon";
+import { Section, Eyebrow, Fig } from "@/components/section-kit";
+import { ManifestAnchor } from "@/components/anchors";
 
 /**
- * What you leave with — the deliverables manifest, read as an `ls -la` of
- * the directory you walk away owning. Lifted verbatim from the old
- * front-page.tsx. No action: this section only has to be true.
+ * What you leave with — deliberately a DIFFERENT shape from the program
+ * above it: that section is a vertical run of numbered steps, so this
+ * one is a two-column grid of artefacts. No two adjacent sections share
+ * a silhouette.
  */
 
 const ARTIFACTS: { file: string; note: string }[] = [
@@ -16,33 +18,51 @@ const ARTIFACTS: { file: string; note: string }[] = [
   { file: "your-company/", note: "batch0 takes no equity, no IP, and no royalties. Everything you build is yours." },
 ];
 
-const ICON_SIZE = 5;
-
 export default function Manifest() {
   return (
-    <section id="what-you-leave-with" className="border-t border-line py-14 md:py-20">
-      <p className="section-intro">the six things you own at the end.</p>
-
-      <div className="mt-6">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <FolderIcon size={ICON_SIZE} />
-          <h2 className="t-body font-semibold text-ink">what you leave with</h2>
+    <Section id="what-you-leave-with">
+      <div className="grid grid-cols-12 items-start gap-x-6 gap-y-14">
+        <div className="col-span-12 md:col-span-7">
+          <Eyebrow>what you leave with</Eyebrow>
+          <h2 className="sec-display mt-6 max-w-[13ch]">
+            six things, and the last one is{" "}
+            <span className="text-phosphor">yours.</span>
+          </h2>
+          <p className="sec-lead mt-8 max-w-[44ch]">
+            Not a certificate. The actual artefacts of a company, and the
+            company itself.
+          </p>
         </div>
-        <ul className="mt-4 grid grid-cols-12 gap-x-6">
-          {ARTIFACTS.map((a) => (
-            <li key={a.file} className="col-span-12 md:col-span-6">
-              <div className="grid grid-cols-12 gap-x-6 border-t border-line py-2.5 max-sm:grid-cols-1">
-                <span className="t-small col-span-5 font-mono font-semibold text-ink">
-                  {a.file}
-                </span>
-                <span className="t-small col-span-7 text-ink-soft">
-                  {a.note}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+
+        <div className="col-span-12 md:col-span-4 md:col-start-9">
+          <div className="mx-auto max-w-[20rem] md:mx-0">
+            <ManifestAnchor />
+            <Fig n="06" className="mt-5">
+              the manifest
+            </Fig>
+          </div>
+        </div>
       </div>
-    </section>
+
+      <ul className="mt-16 grid grid-cols-12 gap-x-6">
+        {ARTIFACTS.map((a, i) => (
+          <li
+            key={a.file}
+            className={`col-span-12 border-t border-line py-5 md:col-span-6 ${
+              i >= ARTIFACTS.length - 2 ? "md:border-b" : ""
+            } ${i === ARTIFACTS.length - 1 ? "border-b" : ""}`}
+          >
+            <p
+              className={`font-mono text-[14px] font-medium ${
+                i === ARTIFACTS.length - 1 ? "text-phosphor" : "text-ink"
+              }`}
+            >
+              {a.file}
+            </p>
+            <p className="sec-body mt-1.5 max-w-[46ch]">{a.note}</p>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }

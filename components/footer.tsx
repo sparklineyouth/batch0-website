@@ -1,5 +1,5 @@
 import React from "react";
-import Image from "next/image";
+import { ThemedImage } from "@/components/themed-image";
 import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { getSiteConfig, type SiteConfig } from "@/lib/site-config";
@@ -28,8 +28,9 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
           horizon and treeline to the footer's lower edge, which keeps the
           whole upper band — where every link and the colophon sit — on
           dark sky rather than on the sunset. Decorative, so alt="". */}
-      <Image
-        src="/footer-night.png"
+      <ThemedImage
+        night="/footer-night.png"
+        day="/footer-day.png"
         alt=""
         fill
         sizes="100vw"
@@ -41,10 +42,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(to bottom, rgba(12,12,13,.86) 0%, rgba(12,12,13,.72) 42%, rgba(12,12,13,.55) 72%, rgba(12,12,13,.78) 100%)",
-        }}
+        style={{ background: "var(--footer-scrim)" }}
       />
       <div className="relative z-10 mx-auto max-w-[1100px]">
         <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">

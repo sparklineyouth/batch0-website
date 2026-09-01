@@ -1,12 +1,16 @@
 import React from "react";
 import type { SiteConfig } from "@/lib/site-config";
-import { BubbleIcon } from "@/components/icons/pixel-icon";
+import { Section, Eyebrow } from "@/components/section-kit";
 
 /**
- * Questions parents ask — what remains of the old fine-print once "who
- * runs this" moved up to its own section and the founding-cohort argument
- * moved into <FoundingCohort/>. FAQ JSON-LD rides along so the structured
- * answers keep matching the visible ones exactly.
+ * Questions parents ask. No anchor here on purpose — this is the one
+ * section whose content IS a list of answers, and a drawn diagram beside
+ * it would be decoration with nothing to illustrate. It earns its place
+ * in the system through type and rhythm instead: the statement carries
+ * the section, the answers sit in a single readable column.
+ *
+ * The FAQ JSON-LD rides along so the structured answers keep matching
+ * the visible ones exactly.
  */
 export default function Faq({ config }: { config: SiteConfig }) {
   const { derived, settings } = config;
@@ -60,33 +64,38 @@ export default function Faq({ config }: { config: SiteConfig }) {
   };
 
   return (
-    <section id="faq" className="border-t border-line py-14 md:py-20">
-      <p className="section-intro">the questions parents ask first.</p>
-
-      <div className="mt-6 flex items-center gap-3.5">
-        <BubbleIcon size={5} />
-        <h2 className="t-body font-semibold text-ink">questions parents ask</h2>
+    <Section id="faq">
+      <div className="max-w-[46rem]">
+        <Eyebrow>questions parents ask</Eyebrow>
+        <h2 className="sec-display mt-6 max-w-[13ch]">
+          the <span className="text-phosphor">fine print,</span> up front.
+        </h2>
       </div>
 
-      <div className="mt-4 grid grid-cols-12 gap-x-6">
-        <div className="col-span-12 md:col-span-8">
+      <div className="mt-14 grid grid-cols-12 gap-x-6">
+        <div className="col-span-12 md:col-span-9 lg:col-span-8">
           {faqs.map((f) => (
-            <details key={f.q} className="group">
-              <summary className="t-body flex cursor-pointer list-none items-baseline gap-3 py-2.5 font-medium text-ink hover:bg-ink/[0.05] [&::-webkit-details-marker]:hidden">
+            <details key={f.q} className="group border-t border-line last:border-b">
+              <summary className="flex cursor-pointer list-none items-baseline justify-between gap-6 py-5 text-[17px] font-medium leading-[1.4] text-ink [&::-webkit-details-marker]:hidden">
                 {f.q}
+                <span
+                  aria-hidden
+                  className="mt-1 flex-none text-[13px] text-ink-faint transition-transform group-open:rotate-45 motion-reduce:transition-none"
+                >
+                  +
+                </span>
               </summary>
-              <p className="t-small ml-[0.5ch] max-w-[58ch] border-l border-line pb-3.5 pl-[3ch] pt-0.5 text-ink-soft">
-                {f.a}
-              </p>
+              <p className="sec-body max-w-[62ch] pb-6 pr-8">{f.a}</p>
             </details>
           ))}
         </div>
       </div>
+
       <script
         type="application/ld+json"
         // Fixed literal built from the FAQ copy above — no user input.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
-    </section>
+    </Section>
   );
 }
