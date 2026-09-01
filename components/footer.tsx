@@ -2,7 +2,7 @@ import React from "react";
 import { ThemedImage } from "@/components/themed-image";
 import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
-import { getSiteConfig, type SiteConfig } from "@/lib/site-config";
+import { getPublicSiteConfig, type SiteConfig } from "@/lib/site-config";
 
 // Footer can take an explicit config (lets a page render in a single
 // pass without re-querying) or self-resolve when used inside a layout
@@ -12,7 +12,14 @@ import { getSiteConfig, type SiteConfig } from "@/lib/site-config";
 // is the shell convention for "nothing went wrong"), paths are lowercase
 // nav, the entity line keeps its proper nouns.
 export default async function Footer({ config }: { config?: SiteConfig }) {
-  const resolved = config ?? (await getSiteConfig());
+  // MUST be the public (cached) read, not getSiteConfig(). The legal layout
+  // renders <Footer /> with no config prop, so this fallback runs during
+  // prerendering — and getSiteConfig goes through the no-store admin client,
+  // which throws DynamicServerError, gets swallowed as a digest, and silently
+  // drops /privacy, /terms and /refund-policy to per-request rendering.
+  // scripts/verify-static.mjs exists to catch exactly this and fails the
+  // deploy when it happens.
+  const resolved = config ?? (await getPublicSiteConfig());
   const contactEmail = resolved.settings.contactEmail;
   const links = [
     { href: "/program", label: "/program" },
