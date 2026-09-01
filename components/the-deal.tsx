@@ -1,22 +1,19 @@
 import React from "react";
 import Link from "next/link";
 import type { SiteConfig } from "@/lib/site-config";
-import { CalendarIcon, ReceiptIcon, FlagIcon } from "@/components/icons/pixel-icon";
+import { Section, Eyebrow, Fig } from "@/components/section-kit";
+import { TermsAnchor } from "@/components/anchors";
 import { ZeroThread } from "@/components/zero-thread";
 import { ApplyCta } from "@/components/apply-cta";
 
 /**
- * The deal — the whole factual offer in one thin strip: deadline as the
- * lead story, dates, and the price ledger. Sits directly after the thesis
- * because the thesis provokes exactly one question ("what's the catch?")
- * and this answers it before the program detail arrives.
+ * The deal — the whole factual offer, and the page's first ask.
  *
- * Lifted verbatim from the old front-page.tsx story columns. One action:
- * the refund-policy link. Every icon leads the fact it means, at one size.
+ * Statement on the left, the terms ledger drawn on the right. The
+ * tracer is the equity zero, which is also the amber row in the anchor:
+ * the drawing and the sentence are making the same point in two
+ * materials, which is what stops the anchor reading as decoration.
  */
-
-const ICON_SIZE = 5; // one consistent icon size for this context
-
 export default function TheDeal({
   config,
   authedHome,
@@ -36,103 +33,74 @@ export default function TheDeal({
         .toLowerCase()
     : null;
 
+  const terms: [string, string][] = [
+    ["applications close", closeLabel ?? "tba"],
+    ["cohort runs", dates || "dates tba"],
+    ["tuition", `${derived.priceLabel.toLowerCase()}, only if accepted`],
+    ["equity taken", "none"],
+  ];
+
   return (
-    <section id="the-deal" className="border-t border-line py-14 md:py-20">
-      <p className="section-intro">dates, deadline, and what it costs.</p>
-
-      {/* story columns on the shared grid; the lead is the deadline */}
-      <div className="mt-6 grid grid-cols-12 gap-x-6">
-        <article className="col-span-12 border-t border-line py-6 md:col-span-6 md:border-t-0 md:py-0">
-          <FlagIcon size={ICON_SIZE} />
-          <h3 className="t-head mt-4 max-w-[16ch] text-ink">
-            {settings.applicationsOpen && closeLabel ? (
-              <>
-                applications for cohort <ZeroThread>{cohortCode}</ZeroThread>{" "}
-                close <span data-retype>{closeLabel}</span>
-              </>
-            ) : settings.applicationsOpen ? (
-              <>
-                applications for cohort <ZeroThread>{cohortCode}</ZeroThread>{" "}
-                are open
-              </>
-            ) : (
-              <>applications are closed for now</>
-            )}
-          </h3>
-          <p className="t-small mt-3 max-w-[42ch] text-ink-soft">
-            reviewed on a rolling basis, read by the founders.
+    <Section id="the-deal">
+      <div className="grid grid-cols-12 items-start gap-x-6 gap-y-14">
+        {/* ── statement ──────────────────────────────────────────── */}
+        <div className="col-span-12 md:col-span-7">
+          <Eyebrow>the deal</Eyebrow>
+          <h2 className="sec-display mt-6 max-w-[12ch]">
+            free to apply. <ZeroThread>0%</ZeroThread> equity. ever.
+          </h2>
+          <p className="sec-lead mt-8 max-w-[44ch]">
+            {derived.priceLabel} once, and only if you get in. Everything you
+            build stays yours — no equity, no IP claim, no royalties.
           </p>
-        </article>
+        </div>
 
-        <article className="col-span-12 border-t border-line py-6 md:col-span-3 md:border-l md:border-t-0 md:py-0 md:pl-6">
-          <CalendarIcon size={ICON_SIZE} />
-          <h3 className="t-head mt-4 text-ink">{dates || "dates tba"}</h3>
-          <p className="t-small mt-3 max-w-[38ch] text-ink-soft">
-            live build sprints, mentorship, and a demo day, all online.
-            designed to fit around school.
-          </p>
-        </article>
-
-        <article className="col-span-12 border-t border-line py-6 md:col-span-3 md:border-l md:border-t-0 md:py-0 md:pl-6">
-          <ReceiptIcon size={ICON_SIZE} />
-          <h3 className="t-head mt-4 text-ink">
-            {derived.priceLabel.toLowerCase()}, once
-          </h3>
-          <dl className="ledger mt-3 lowercase text-ink-soft">
-            {[
-              ["application", "free"],
-              ["tuition", "only if accepted"],
-              ["hidden fees", "none"],
-              ["equity taken", "none"],
-            ].map(([k, v]) => (
-              <div key={k} className="ledger-row">
-                <dt className="tracking-[0.06em] text-ink-faint">{k}</dt>
-                <span aria-hidden className="ledger-dots" />
-                <dd className="text-right font-medium text-ink">{v}</dd>
-              </div>
-            ))}
-          </dl>
-          <p className="t-small mt-3 text-ink-faint">
-            <Link href="/refund-policy" className="link-ink">
-              see refund policy
-            </Link>
-            {derived.isRegionalPrice
-              ? " · showing adjusted pricing for your region"
-              : ""}
-          </p>
-        </article>
-      </div>
-
-      {/* The page's first ask. It used to sit in the hero; moving it here
-          lets the hero be nothing but the artwork, and puts the button
-          directly under the terms it is asking you to accept. */}
-      <div className="mt-10 border-t border-line pt-8">
-        <p className="t-small text-ink-soft">
-          {closeLabel && settings.applicationsOpen && (
-            <>apply by {closeLabel} · </>
-          )}
-          {derived.priceLabel} only if accepted ·{" "}
-          <ZeroThread>0% equity</ZeroThread>
-        </p>
-        <div className="mt-5 flex flex-wrap items-center gap-4">
-          {authedHome ? (
-            <a
-              href={authedHome}
-              className="press inline-flex items-center justify-center bg-phosphor-fill px-5 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-            >
-              go to dashboard
-            </a>
-          ) : (
-            <ApplyCta
-              label={`apply for cohort ${cohortCode}`}
-              location="the-deal"
-            />
-          )}
-          <span className="aside-note">
-            <ZeroThread>$0 to apply</ZeroThread>
-          </span>
+        {/* ── anchor ─────────────────────────────────────────────── */}
+        <div className="col-span-12 md:col-span-4 md:col-start-9">
+          <div className="mx-auto max-w-[20rem] md:mx-0">
+            <TermsAnchor />
+            <Fig n="02" className="mt-5">
+              the terms, in full
+            </Fig>
+          </div>
         </div>
       </div>
-    </section>
+
+      {/* ── the ledger, read as a table ────────────────────────── */}
+      <dl className="mt-16 max-w-[42rem]">
+        {terms.map(([k, v]) => (
+          <div
+            key={k}
+            className="flex items-baseline justify-between gap-6 border-t border-line py-3.5 last:border-b"
+          >
+            <dt className="sec-body text-ink-faint">{k}</dt>
+            <dd className="text-right text-[15px] font-medium text-ink">{v}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* ── the ask ────────────────────────────────────────────── */}
+      <div className="mt-12 flex flex-wrap items-center gap-x-6 gap-y-4">
+        {authedHome ? (
+          <a
+            href={authedHome}
+            className="press inline-flex items-center justify-center bg-phosphor-fill px-6 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          >
+            go to dashboard
+          </a>
+        ) : (
+          <ApplyCta label={`apply for cohort ${cohortCode}`} location="the-deal" />
+        )}
+        <p className="sec-body text-ink-faint">
+          <ZeroThread>$0</ZeroThread> to apply
+          {settings.applicationsOpen && closeLabel ? ` · closes ${closeLabel}` : ""}
+          {" · "}
+          <Link href="/refund-policy" className="link-ink">
+            refund policy
+          </Link>
+          {derived.isRegionalPrice ? " · regional pricing applied" : ""}
+        </p>
+      </div>
+    </Section>
   );
 }
