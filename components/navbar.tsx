@@ -111,7 +111,7 @@ export default function Navbar({
             // immediately. Same reasoning as components/dashboard/sidebar.tsx.
             prefetch={false}
             onClick={() => !isAuthed && track("apply_click", { location: "navbar" })}
-            className="press rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="press rounded-md bg-phosphor-fill px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             <AuthLabel signedOut={applyLabel} />
           </Link>
@@ -169,7 +169,7 @@ export default function Navbar({
                   setOpen(false);
                   if (!isAuthed) track("apply_click", { location: "navbar-mobile" });
                 }}
-                className="press rounded-md bg-phosphor px-4 py-3 text-center text-[15px] font-semibold text-on-phosphor shadow-cta"
+                className="press rounded-md bg-phosphor-fill px-4 py-3 text-center text-[15px] font-semibold text-on-phosphor shadow-cta"
               >
                 {isAuthed ? "Dashboard" : applyLabel}
               </Link>

@@ -21,6 +21,13 @@ const config: Config = {
           // Reads --phosphor-fill (globals.css) so #FFBB00 is written once.
           fill: "var(--phosphor-fill)",
           "fill-hover": "#FFD75C",
+          // The hover lift. This step was deleted during the marketing
+          // redesign, before main's 267 commits landed — and main uses
+          // `hover:bg-phosphor-200` / `text-phosphor-200` in 13 places
+          // (navbar, sticky CTA, ui/button, admin, dashboard, challenges).
+          // Without it those were silently dead classes: buttons with no
+          // hover state at all. Same value as fill-hover by design.
+          200: "#FFD75C",
         },
         ink: {
           // Light-surface ink ramp (DESIGN.md). DEFAULT/soft/faint are

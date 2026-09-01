@@ -38,7 +38,15 @@ export function ApplyCta({
   const base =
     "press inline-flex items-center justify-center gap-2 rounded-md text-[15px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
   const variants = {
-    primary: "bg-yellow-200 px-5 py-3.5 text-on-phosphor shadow-cta hover:bg-phosphor-200",
+    // The brand amber, not a stock Tailwind yellow. `bg-yellow-200` is
+    // #fef08a — a pale lemon that arrived from the apply-btn-color-test-*
+    // experiments and never got reverted; `phosphor-200` no longer exists
+    // in the config either, so the hover was a no-op. phosphor-fill is the
+    // single #FFBB00 token every other CTA on the site already uses, and it
+    // deliberately does NOT flip with the theme, so the button stays the
+    // same amber on cream and on the night page.
+    primary:
+      "bg-phosphor-fill px-5 py-3.5 text-on-phosphor shadow-cta hover:bg-phosphor-fill-hover",
     secondary:
       "border border-line bg-paper px-5 py-3.5 font-medium text-ink hover:border-ink/30",
   } as const;
