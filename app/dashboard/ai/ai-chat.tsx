@@ -89,7 +89,16 @@ export function AiChat({
   }
 
   return (
-    <div className="flex h-[calc(100vh-9rem)] min-h-[480px] flex-col rounded-2xl border border-line bg-wash">
+    // Below lg the conversation list stacks ABOVE this panel, so the full
+    // `100vh - 9rem` box starts below that list and pushes the composer off
+    // the bottom of the screen. It needs a shorter box on mobile — but it
+    // still needs a BOUNDED one: the transcript at line ~106 is
+    // `flex-1 overflow-y-auto`, which only scrolls if this parent has a
+    // height to divide up. Dropping the height entirely would make the panel
+    // grow with every message and push the composer further away with each
+    // reply, which is worse than the bug being fixed. `svh` rather than `vh`
+    // so a mobile browser's collapsing toolbar doesn't resize it mid-scroll.
+    <div className="flex h-[70svh] min-h-[380px] flex-col rounded-2xl border border-line bg-wash lg:h-[calc(100vh-9rem)] lg:min-h-[480px]">
       <div className="flex items-center gap-2 border-b border-line px-5 py-3">
         <Sparkles className="h-4 w-4 text-phosphor-ink" />
         <span className="text-sm font-semibold text-ink">

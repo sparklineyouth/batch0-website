@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { assertStaff } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 export type ReviewInput = {
@@ -24,7 +24,7 @@ export type ReviewInput = {
 };
 
 export async function saveMyReview(input: ReviewInput) {
-  await assertStaff();
+  await assertPermission("applications.view");
   const supabase = createClient();
   const {
     data: { user },

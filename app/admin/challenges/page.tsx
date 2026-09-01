@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { ChallengeRowActions } from "./challenge-row-actions";
 import type { ChallengeStatus } from "@/lib/challenges";
@@ -18,7 +18,7 @@ export default async function AdminChallengesPage({
 }: {
   searchParams: { status?: string };
 }) {
-  await requireAdmin();
+  await requirePermission("challenges.manage");
   const admin = createAdminClient();
   const status = searchParams.status;
 
@@ -54,9 +54,7 @@ export default async function AdminChallengesPage({
             marquee on the homepage.
           </p>
         </div>
-        <Link href="/admin/challenges/new">
-          <Button>New challenge</Button>
-        </Link>
+        <ButtonLink href="/admin/challenges/new">New challenge</ButtonLink>
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">

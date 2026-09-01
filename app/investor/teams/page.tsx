@@ -16,13 +16,22 @@ export default async function InvestorTeamsPage({
   const admin = createAdminClient();
   const cohortFilter = searchParams.cohort ?? "all";
 
+  // Only the columns the cards render — teams rows also carry tear-sheet
+  // text blobs and cap-table fields that belong to the detail page.
+  let teamsQuery = admin
+    .from("teams")
+    .select(
+      "id, name, tagline, description, slug, is_public, cohort_id, pitch_deck_url, pitch_video_url, website_url, cohort:cohorts(id, name, slug)",
+    )
+    .order("created_at", { ascending: false });
+  if (cohortFilter !== "all") {
+    teamsQuery = teamsQuery.eq("cohort_id", cohortFilter);
+  }
+
   const [{ data: cohorts }, { data: teams }, { data: interests }] =
     await Promise.all([
       admin.from("cohorts").select("id, name").order("starts_on"),
-      admin
-        .from("teams")
-        .select("*, cohort:cohorts(id, name, slug)")
-        .order("created_at", { ascending: false }),
+      teamsQuery,
       admin
         .from("investor_interests")
         .select("team_id, level")
@@ -34,10 +43,7 @@ export default async function InvestorTeamsPage({
     interestByTeam.set(i.team_id, i.level);
   }
 
-  const filtered =
-    cohortFilter === "all"
-      ? teams ?? []
-      : (teams ?? []).filter((t: any) => t.cohort_id === cohortFilter);
+  const rows = (teams ?? []) as any[];
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -62,12 +68,12 @@ export default async function InvestorTeamsPage({
       </div>
 
       <div className="mt-6 grid gap-3">
-        {filtered.length === 0 && (
+        {rows.length === 0 && (
           <Card>
             <p className="text-sm text-ink-faint">No teams to show yet.</p>
           </Card>
         )}
-        {filtered.map((t: any) => {
+        {rows.map((t: any) => {
           const level = interestByTeam.get(t.id) ?? null;
           const cohort = Array.isArray(t.cohort) ? t.cohort[0] : t.cohort;
           const publicHref =

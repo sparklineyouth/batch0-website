@@ -1,10 +1,10 @@
 ---
 title: "How to Build a Landing Page That Converts"
-description: "A landing page has one job: get one clear action. Here's the anatomy of a landing page that converts, from headline to proof to call-to-action, for first-time founders."
+description: "A landing page has one job: get one clear action. The anatomy of a landing page that converts, from headline to proof to call-to-action."
 date: "2026-04-10"
 updated: "2026-04-10"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["landing page", "conversion", "copywriting", "waitlist", "marketing"]
 ---
 

@@ -1,0 +1,17 @@
+# Not needed by `next build` — keeps the deploy upload small (the audit
+# docs alone are ~10MB, and large uploads have flaked on this network).
+# Patterns are root-anchored: a bare "supabase" would also exclude
+# lib/supabase/ (gitignore semantics) and break the build.
+/docs
+/out
+/supabase
+
+# NOT /scripts. The build script now chains scripts/verify-static.mjs, which
+# fails the deploy if the marketing routes stop being prerendered — excluding
+# the directory would make every Vercel build die on a missing module. The
+# whole directory is 144 KB; the upload savings this was buying were noise
+# next to /docs.
+
+# 9.7MB of graphify knowledge-graph output. Not gitignored historically, so
+# it would otherwise be uploaded on every `vercel --prod` from a working copy.
+/graphify-out

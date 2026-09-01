@@ -1,13 +1,82 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { stashRefFromLocation } from "@/lib/referral-code";
 import { signUpAction } from "./actions";
 
-export function SignupForm({ next }: { next?: string }) {
+// Mirrors safeNext in app/(auth)/login/login-form.tsx — same-origin paths
+// only, so a tampered ?next= can't trampoline the user off-site after signup.
+function safeNext(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (!raw.startsWith("/") || raw.startsWith("//")) return undefined;
+  return raw;
+}
+
+/**
+ * The whole signup card: heading copy, form, and login link. Everything that
+ * depends on ?next (which copy variant, the post-signup redirect, the login
+ * link's carried-along ?next) reads window.location in effects/handlers, not
+ * useSearchParams — that hook would bail the entire card out of the
+ * prerendered HTML and a slow-JS visitor would stare at an empty box. This
+ * way the neutral heading, the full form, and the login link are all in the
+ * static shell; the apply-flow copy variant and the ?next-carrying href swap
+ * in one frame after mount for mid-apply visitors.
+ */
+export function SignupCard({ priceLabel }: { priceLabel: string }) {
+  const [next, setNext] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setNext(safeNext(new URLSearchParams(window.location.search).get("next")));
+  }, []);
+  const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
+  // Only frame this as "step 1 of applying" when the visitor is actually
+  // mid-apply. An account is a thing you can just have — staff, mentors, and
+  // interns are given their role after signing up, never by applying — so a
+  // bare /signup gets neutral copy.
+  const isApplyFlow = !!next && (next === "/apply" || next.startsWith("/apply?"));
+
+  return (
+    <div>
+      {isApplyFlow ? (
+        <>
+          <p className="font-mono text-[12px] uppercase tracking-[0.08em] text-white/55">
+            Apply · step 1 of 2
+          </p>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">
+            Create your account
+          </h1>
+          <p className="mt-2 text-sm leading-[1.6] text-white/50">
+            The application itself is step 2 — one form about you and what
+            you want to build. Applying is free;{" "}
+            {priceLabel} tuition is charged only if you&apos;re
+            accepted. Decisions go out by email on a rolling basis.
+          </p>
+        </>
+      ) : (
+        <>
+          <h1 className="text-2xl font-bold tracking-tight text-white">
+            Create your account
+          </h1>
+          <p className="mt-1 text-sm text-white/50">
+            Sign up for batch0. Takes 30 seconds. Applying to a cohort is a
+            separate, optional step.
+          </p>
+        </>
+      )}
+      <SignupForm />
+      <p className="mt-6 text-center text-sm text-white/50">
+        Already have an account?{" "}
+        <Link href={loginHref} className="text-phosphor hover:underline">
+          Log in
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+export function SignupForm() {
   const [fullName, setFullName] = useState("");
 
   // Capture the referral code on mount and stash it so the apply flow can
@@ -38,7 +107,20 @@ export function SignupForm({ next }: { next?: string }) {
       return;
     }
 
-    const supabase = createClient();
+    let supabase;
+    try {
+      // supabase-js is loaded at submit time (warmed on field focus below) so
+      // its ~63 kB gz chunk stays out of the signup page's first-load JS. The
+      // import can fail where the old static import couldn't (offline, deploy
+      // skew) — and at this point the account already exists, so say that
+      // instead of leaving the button stuck on loading.
+      const { createClient } = await import("@/lib/supabase/client");
+      supabase = createClient();
+    } catch {
+      setError("Your account was created, but sign-in couldn't load. Go to Log in and use your new password.");
+      setLoading(false);
+      return;
+    }
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -51,10 +133,10 @@ export function SignupForm({ next }: { next?: string }) {
 
     // Hard reload so the freshly-set auth cookies ride along on the next
     // request (client-side navigation can race cookie propagation and
-    // bounce the user back to /login).
-    const safeNext =
-      next && next.startsWith("/") && !next.startsWith("//") ? next : null;
-    window.location.assign(safeNext ?? "/dashboard");
+    // bounce the user back to /login). ?next is read here at submit time —
+    // see the SignupCard doc comment for why not useSearchParams.
+    const next = safeNext(new URLSearchParams(window.location.search).get("next"));
+    window.location.assign(next ?? "/dashboard");
   }
 
   return (
@@ -70,6 +152,11 @@ export function SignupForm({ next }: { next?: string }) {
           aria-required="true"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
+          onFocus={() => {
+            // Warm the lazily-loaded supabase-js chunk (see onSubmit) so
+            // the submit click doesn't stall on a network fetch.
+            void import("@/lib/supabase/client").catch(() => {});
+          }}
         />
       </div>
       <div>

@@ -1,6 +1,6 @@
 ---
 title: "How to Find a Co-Founder in High School"
-description: "The right co-founder doubles your odds; the wrong one sinks you. Here's how to find, test, and choose a co-founder in high school, and when to just stay solo."
+description: "The right co-founder doubles your odds; the wrong one sinks you. How to find, test, and choose a co-founder in high school, and when to stay solo."
 date: "2026-04-17"
 updated: "2026-04-17"
 category: "Founders"

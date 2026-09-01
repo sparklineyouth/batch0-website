@@ -1,7 +1,8 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertAdmin, assertPermission } from "@/lib/server-guards";
+import { capabilitiesForRole } from "@/lib/roles";
 import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
@@ -41,7 +42,7 @@ async function fetchTargetProfile(userId: string) {
  * by re-accepting them or moving them back into a cohort.
  */
 export async function removeFromProgram(userId: string, reason: string) {
-  const { userId: actorId } = await assertAdmin();
+  const { userId: actorId } = await assertPermission("people.manage");
   if (userId === actorId) throw new Error("Use a separate admin to remove yourself.");
   const target = await fetchTargetProfile(userId);
 
@@ -128,7 +129,7 @@ export async function removeFromProgram(userId: string, reason: string) {
  * application + replaces the enrollment row.
  */
 export async function moveToCohort(userId: string, cohortId: string) {
-  const { userId: actorId } = await assertAdmin();
+  const { userId: actorId } = await assertPermission("people.manage");
   if (!cohortId) throw new Error("Pick a cohort");
   const target = await fetchTargetProfile(userId);
 
@@ -197,7 +198,7 @@ export async function moveToCohort(userId: string, cohortId: string) {
  * we just trigger it).
  */
 export async function sendPasswordResetForUser(userId: string) {
-  await assertAdmin();
+  await assertPermission("people.manage");
   const target = await fetchTargetProfile(userId);
   if (!target.email) throw new Error("User has no email on file");
 
@@ -221,10 +222,14 @@ export async function sendPasswordResetForUser(userId: string) {
  */
 export async function deleteUserAccount(userId: string, reason: string) {
   const { userId: actorId } = await assertAdmin();
+  // Intentionally NOT a delegable permission: this hard-deletes the auth user
+  // and cascades through every table that references them.
   if (userId === actorId) throw new Error("You can't delete your own account.");
   const target = await fetchTargetProfile(userId);
-  if (target.role === "admin") {
-    throw new Error("Demote the user from admin before deleting.");
+  // Any role carrying the wildcard, not just the built-in `admin` slug.
+  const targetCaps = await capabilitiesForRole(target.role);
+  if (targetCaps.superAdmin) {
+    throw new Error("Move the user off a full-access role before deleting.");
   }
 
   const admin = createAdminClient();
@@ -260,7 +265,7 @@ export async function deleteUserAccount(userId: string, reason: string) {
  * `accepted` so they can re-pay (or be removed separately).
  */
 export async function refundLatestPayment(userId: string, reason: string) {
-  await assertAdmin();
+  await assertPermission("payments.manage");
   const target = await fetchTargetProfile(userId);
 
   const admin = createAdminClient();

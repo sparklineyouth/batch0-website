@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import {
@@ -68,7 +68,7 @@ export async function saveChallenge(
   input: ChallengeInput,
 ): Promise<ActionResult<{ id: string; slug: string }>> {
   return runAction({ name: "saveChallenge" }, async () => {
-    await assertAdmin();
+    await assertPermission("challenges.manage");
 
     const title = (input.title ?? "").trim();
     if (!title) throw new Error("Title is required");
@@ -172,7 +172,7 @@ export async function setChallengeStatus(
   status: ChallengeStatus,
 ): Promise<ActionResult> {
   return runAction({ name: "setChallengeStatus" }, async () => {
-    await assertAdmin();
+    await assertPermission("challenges.manage");
     if (!ALLOWED_STATUSES.includes(status)) {
       throw new Error(`Invalid status "${status}"`);
     }
@@ -211,7 +211,7 @@ export async function setChallengeStatus(
  */
 export async function deleteChallenge(id: string): Promise<ActionResult> {
   return runAction({ name: "deleteChallenge" }, async () => {
-    await assertAdmin();
+    await assertPermission("challenges.manage");
     const admin = createAdminClient();
 
     const { count } = await admin
@@ -259,7 +259,7 @@ export async function reviewChallengeSubmission(
   input: ReviewInput,
 ): Promise<ActionResult> {
   return runAction({ name: "reviewChallengeSubmission" }, async () => {
-    const { userId } = await assertAdmin();
+    const { userId } = await assertPermission("challenges.manage");
     if (!ALLOWED_SUBMISSION_STATUSES.has(input.status)) {
       throw new Error(`Invalid status "${input.status}"`);
     }

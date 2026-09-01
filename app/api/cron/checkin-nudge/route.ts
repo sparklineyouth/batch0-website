@@ -6,6 +6,9 @@ import { isoWeekStart } from "@/lib/week";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Backstop: DMs go out a few at a time, but a big cohort with few
+// check-ins is still dozens of two-round-trip Discord sends per run.
+export const maxDuration = 300;
 
 /**
  * Weekly Discord DM nudge for students who haven't posted this week's
@@ -81,51 +84,66 @@ export async function GET(req: Request) {
     .in("dedupe_key", dedupeKeys);
   const alreadyNudged = new Set((prior ?? []).map((p: any) => p.dedupe_key));
 
-  let sent = 0;
+  // Settle the skips up front so the network work below only touches
+  // students who actually need a nudge.
+  const toNudge: Row[] = [];
   let skipped = 0;
-  let failed = 0;
   for (const c of candidates) {
-    if (alreadyCheckedIn.has(c.user_id)) {
+    if (
+      alreadyCheckedIn.has(c.user_id) ||
+      alreadyNudged.has(`checkin_nudge:${c.user_id}:${week}`)
+    ) {
       skipped++;
-      continue;
-    }
-    const key = `checkin_nudge:${c.user_id}:${week}`;
-    if (alreadyNudged.has(key)) {
-      skipped++;
-      continue;
-    }
-
-    const ok = await sendDirectMessage(c.discord_user_id!, {
-      embeds: [
-        {
-          title: "Quick check-in?",
-          description: [
-            `Hey${c.full_name ? `, ${c.full_name}` : ""} — your weekly batch0 check-in for the week of **${week}** is empty.`,
-            "",
-            "Run `/checkin` right here to post it in 30 seconds, or open the dashboard:",
-            `${env.siteUrl}/dashboard/checkin`,
-          ].join("\n"),
-          color: 0xffbb00,
-        },
-      ],
-    });
-    if (ok) {
-      sent++;
-      // Record the nudge so we don't double-fire.
-      await admin
-        .from("notifications")
-        .insert({
-          user_id: c.user_id,
-          type: "checkin_nudge",
-          title: "We DM'd you a check-in nudge",
-          body: null,
-          link: "/dashboard/checkin",
-          dedupe_key: key,
-        })
-        .then(() => {}, () => {});
     } else {
-      failed++;
+      toNudge.push(c);
     }
+  }
+
+  let sent = 0;
+  let failed = 0;
+  // Each DM is two Discord round trips (open channel + post), so nudges
+  // run a few at a time — comfortably inside Discord's per-route rate
+  // limits — with each dedupe record written right after its own send so
+  // a run cut short can't re-DM anyone on the next attempt.
+  // sendDirectMessage soft-fails to false rather than throwing, so one
+  // refused DM never sinks the rest of the run.
+  const CONCURRENCY = 5;
+  for (let i = 0; i < toNudge.length; i += CONCURRENCY) {
+    await Promise.all(
+      toNudge.slice(i, i + CONCURRENCY).map(async (c) => {
+        const ok = await sendDirectMessage(c.discord_user_id!, {
+          embeds: [
+            {
+              title: "Quick check-in?",
+              description: [
+                `Hey${c.full_name ? `, ${c.full_name}` : ""} — your weekly batch0 check-in for the week of **${week}** is empty.`,
+                "",
+                "Run `/checkin` right here to post it in 30 seconds, or open the dashboard:",
+                `${env.siteUrl}/dashboard/checkin`,
+              ].join("\n"),
+              color: 0xffbb00,
+            },
+          ],
+        });
+        if (ok) {
+          sent++;
+          // Record the nudge so we don't double-fire.
+          await admin
+            .from("notifications")
+            .insert({
+              user_id: c.user_id,
+              type: "checkin_nudge",
+              title: "We DM'd you a check-in nudge",
+              body: null,
+              link: "/dashboard/checkin",
+              dedupe_key: `checkin_nudge:${c.user_id}:${week}`,
+            })
+            .then(() => {}, () => {});
+        } else {
+          failed++;
+        }
+      }),
+    );
   }
 
   return NextResponse.json({ week, sent, skipped, failed });

@@ -11,9 +11,12 @@ import {
   isDiscordEnabled,
   listRegisteredCommands,
   fetchGuildMemberCount,
+  fetchDiscordAppInfo,
+  expectedOauthRedirectUris,
   SLASH_COMMANDS,
 } from "@/lib/discord";
 import { env } from "@/lib/env";
+import { runDiscordDoctor, type Check } from "@/lib/discord-doctor";
 import type { DiscordConfigInput } from "./actions";
 import type { Role } from "@/lib/types";
 
@@ -36,26 +39,42 @@ const KEYS_TO_FIELD = {
   discord_role_mentor_id: "roleMentorId",
   discord_role_admin_id: "roleAdminId",
   discord_role_investor_id: "roleInvestorId",
+  discord_role_founder_pass_id: "roleFounderPassId",
 } as const;
 
 export default async function AdminDiscordPage() {
   const admin = createAdminClient();
   const user = await requireUser();
-  const [{ data: rows }, enabled, registered, memberCount, { data: meRow }] =
-    await Promise.all([
-      admin
-        .from("site_settings")
-        .select("key, value")
-        .in("key", Object.keys(KEYS_TO_FIELD)),
-      isDiscordEnabled(),
-      listRegisteredCommands(),
-      fetchGuildMemberCount(),
-      admin
-        .from("profiles")
-        .select("discord_user_id, discord_username, discord_linked_at")
-        .eq("id", user.id)
-        .maybeSingle(),
-    ]);
+  const [
+    { data: rows },
+    enabled,
+    registered,
+    memberCount,
+    { data: meRow },
+    doctor,
+    appInfo,
+  ] = await Promise.all([
+    admin
+      .from("site_settings")
+      .select("key, value")
+      .in("key", Object.keys(KEYS_TO_FIELD)),
+    isDiscordEnabled(),
+    listRegisteredCommands(),
+    fetchGuildMemberCount(),
+    admin
+      .from("profiles")
+      .select("discord_user_id, discord_username, discord_linked_at")
+      .eq("id", user.id)
+      .maybeSingle(),
+    // Live end-to-end check. Read-only, so it is safe to run on every page
+    // load; it is the only thing here that proves the integration actually
+    // works rather than merely being configured.
+    runDiscordDoctor().catch((err) => {
+      console.error("[discord] doctor failed", err);
+      return null;
+    }),
+    fetchDiscordAppInfo(),
+  ]);
 
   const initial: DiscordConfigInput = {
     announcementsChannelId: "",
@@ -70,6 +89,7 @@ export default async function AdminDiscordPage() {
     roleMentorId: "",
     roleAdminId: "",
     roleInvestorId: "",
+    roleFounderPassId: "",
   };
   for (const r of rows ?? []) {
     const field = (KEYS_TO_FIELD as any)[r.key] as keyof DiscordConfigInput;
@@ -122,6 +142,27 @@ export default async function AdminDiscordPage() {
 
   const hasBot = Boolean(env.discordBotToken);
   const hasOauth = Boolean(env.discordClientId && env.discordClientSecret);
+  // /auth/discord/start builds the redirect from the REQUEST origin, so apex
+  // and www each produce their own URI and both must be registered.
+  const expectedRedirects = expectedOauthRedirectUris(env.siteUrl);
+  const registeredRedirects = appInfo?.redirectUris ?? null;
+  const missingRedirects =
+    registeredRedirects === null
+      ? []
+      : expectedRedirects.filter((u) => !registeredRedirects.includes(u));
+  const redirectsOk =
+    expectedRedirects.length > 0 &&
+    registeredRedirects !== null &&
+    missingRedirects.length === 0;
+
+  // The bot token and DISCORD_CLIENT_ID can belong to DIFFERENT Discord
+  // applications. When they do, everything above still looks healthy — the
+  // redirect check reads the bot's app while the OAuth link uses the other one
+  // — and account linking fails with "Invalid OAuth2 redirect_uri" no matter
+  // how many times the URI is added, because it keeps being added to the app
+  // nobody is authorising against.
+  const appIdMatches =
+    !appInfo?.id || !env.discordClientId || appInfo.id === env.discordClientId;
   const hasInteractions = Boolean(env.discordPublicKey);
   const guildId = env.discordGuildId;
 
@@ -159,6 +200,39 @@ export default async function AdminDiscordPage() {
       </div>
 
       <Card className="mt-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
+            Live health check
+          </h2>
+          {doctor && (
+            <p className="text-xs text-ink-faint">
+              {doctor.counts.fail > 0
+                ? `${doctor.counts.fail} failing`
+                : doctor.counts.warn > 0
+                  ? `${doctor.counts.warn} warning${doctor.counts.warn === 1 ? "" : "s"}`
+                  : "All checks passing"}
+              {doctor.guildName ? ` · ${doctor.guildName}` : ""}
+            </p>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-ink-faint">
+          Calls Discord on every load and compares the live server against this
+          configuration. Read-only — it never changes your server.
+        </p>
+        {doctor === null ? (
+          <p className="mt-4 text-xs text-red-700 dark:text-red-300">
+            The health check itself failed to run — see the server logs.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-3 text-sm">
+            {doctor.checks.map((c) => (
+              <CheckRow key={c.id} check={c} />
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card className="mt-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Connection status
         </h2>
@@ -180,6 +254,35 @@ export default async function AdminDiscordPage() {
               hasOauth
                 ? "Account-linking enabled."
                 : "Without these, users can't link Discord accounts."
+            }
+          />
+          <Status
+            ok={appIdMatches}
+            label="Bot token and DISCORD_CLIENT_ID are the same application"
+            hint={
+              appIdMatches
+                ? appInfo?.name
+                  ? `Both point at “${appInfo.name}” (${appInfo.id}).`
+                  : "No mismatch detected."
+                : `MISMATCH — the bot token belongs to “${appInfo?.name}” (${appInfo?.id}) but DISCORD_CLIENT_ID is ${env.discordClientId}. Account linking authorises against DISCORD_CLIENT_ID, so redirect URIs must be registered on THAT application. The check below reads the bot's app, so it can't be trusted while these differ.`
+            }
+          />
+          {/*
+            Discord rejects an unregistered redirect on its own domain, before
+            the browser returns — /auth/discord/callback never runs, so this is
+            the only place the failure can be surfaced.
+          */}
+          <Status
+            ok={redirectsOk}
+            label="OAuth redirect URIs registered with Discord"
+            hint={
+              expectedRedirects.length === 0
+                ? "NEXT_PUBLIC_SITE_URL is malformed, so the callback URL can't be derived."
+                : registeredRedirects === null
+                  ? `Couldn't read the allow-list. Ensure OAuth2 → Redirects contains: ${expectedRedirects.join(", ")}`
+                  : missingRedirects.length === 0
+                    ? `All ${expectedRedirects.length} registered.`
+                    : `MISSING: ${missingRedirects.join(", ")} — add these at https://discord.com/developers/applications/${env.discordClientId ?? appInfo?.id ?? ""}/oauth2 and press Save Changes, or linking fails with "Invalid OAuth2 redirect_uri".`
             }
           />
           <Status
@@ -347,6 +450,32 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] uppercase tracking-wider text-ink-faint">{label}</p>
       <p className="mt-1 text-sm font-semibold text-ink">{value}</p>
     </div>
+  );
+}
+
+const CHECK_DOT: Record<Check["status"], string> = {
+  ok: "bg-emerald-500",
+  warn: "bg-amber-500",
+  fail: "bg-red-500",
+  skip: "bg-ink-faint/40",
+};
+
+function CheckRow({ check }: { check: Check }) {
+  return (
+    <li className="flex items-start gap-3">
+      <span
+        className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${CHECK_DOT[check.status]}`}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-ink">{check.label}</p>
+        <p className="text-xs text-ink-faint">{check.detail}</p>
+        {check.remedy && (
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-200">
+            Fix: {check.remedy}
+          </p>
+        )}
+      </div>
+    </li>
   );
 }
 

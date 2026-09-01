@@ -14,6 +14,7 @@ import {
   removeTeamMember,
 } from "./actions";
 import { getActionError } from "@/lib/action-error";
+import { FounderPassBadge } from "@/components/founder-pass-badge";
 
 type Member = {
   id: string;
@@ -34,12 +35,15 @@ export function TeamMembersTab({
   team,
   members,
   pendingInvites,
+  passHolderIds = [],
 }: {
   currentUserId: string;
   team: { id: string };
   members: Member[];
   pendingInvites: Invite[];
+  passHolderIds?: string[];
 }) {
+  const passHolders = new Set(passHolderIds);
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | undefined>();
@@ -150,8 +154,11 @@ export function TeamMembersTab({
           {members.map((m) => (
             <li key={m.id} className="flex items-center justify-between py-3">
               <div className="min-w-0">
-                <div className="truncate text-sm text-ink">
-                  {m.profile?.full_name ?? m.profile?.email}
+                <div className="flex flex-wrap items-center gap-2 text-sm text-ink">
+                  <span className="truncate">
+                    {m.profile?.full_name ?? m.profile?.email}
+                  </span>
+                  {passHolders.has(m.user_id) && <FounderPassBadge />}
                 </div>
                 <div className="text-xs text-ink-faint">
                   {m.role}

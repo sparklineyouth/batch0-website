@@ -1,7 +1,8 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { SITE_CONFIG_TAG } from "@/lib/site-config";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { runAction, type ActionResult } from "@/lib/action-result";
 
@@ -33,7 +34,7 @@ export async function saveSiteSettings(
   input: SiteSettingsInput,
 ): Promise<ActionResult> {
   return runAction({ name: "saveSiteSettings" }, async () => {
-    await assertAdmin();
+    await assertPermission("settings.manage");
 
     if (input.contact_email && !/^\S+@\S+\.\S+$/.test(input.contact_email)) {
       throw new Error("Contact email looks invalid");
@@ -61,8 +62,16 @@ export async function saveSiteSettings(
       payload: input,
     });
     revalidatePath("/admin/settings");
+    // One tag covers every surface that reads the cohort/settings record —
+    // the homepage, the program page, sponsors, challenges, the legal footer
+    // and all 135 blog posts. Those are prerendered now, so without this an
+    // admin's price or date change would sit behind the cache's revalidate
+    // window on every page except the ones listed explicitly below.
+    revalidateTag(SITE_CONFIG_TAG);
     revalidatePath("/");
+    revalidatePath("/program");
     revalidatePath("/apply");
+    revalidatePath("/signup");
     revalidatePath("/opengraph-image");
     // Surfaces gated on referrals_enabled (and other settings). Refresh
     // their route caches too so a toggle change shows immediately.

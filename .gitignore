@@ -9,6 +9,16 @@ out
 .claude
 supabase/.temp
 *.tsbuildinfo
+.gstack/
 
-# Design-audit screenshots (regenerable via scripts/design-audit/capture-all.mjs)
-docs/design-audit/shots/
+# Founder pass mint output. manifest.csv holds the PLAINTEXT card codes — the
+# only copy outside the printed plastic, since the database stores peppered
+# hashes only. The bare `out` entry above already covers this, but that one is
+# there for Next's static export: this line is deliberately redundant so that
+# removing it can never silently start committing live card codes.
+out/manifest.csv
+out/*.stl
+
+# Knowledge-graph output from the graphify skill. Regenerable, ~10MB, and
+# nothing in the app reads it — it should never enter the repo or a deploy.
+graphify-out/

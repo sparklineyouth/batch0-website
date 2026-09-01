@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
@@ -18,7 +18,7 @@ export async function generateAndSendRecap(teamId: string): Promise<{
   summary: string;
   emailed: number;
 }> {
-  await assertAdmin();
+  await assertPermission("demoday.manage");
   const admin = createAdminClient();
 
   const [

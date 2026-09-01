@@ -4,7 +4,7 @@ description: "Every founder wants to add more features. Here's how to prioritize
 date: "2026-02-08"
 updated: "2026-02-08"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["feature prioritization", "product roadmap", "feature creep", "say no", "mvp scope"]
 ---
 

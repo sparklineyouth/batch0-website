@@ -24,20 +24,18 @@ export default async function CheckinPage() {
   const supabase = createClient();
   const weekStart = isoWeekStart();
 
-  const { data: current } = await supabase
+  // Current week + up to 8 prior weeks in one read: check-ins are written
+  // with the same isoWeekStart, so the newest 9 rows always cover this
+  // week's row (when it exists) plus the 8-entry history.
+  const { data: checkins } = await supabase
     .from("student_checkins")
     .select("id, week_start, accomplished, next_up, blockers, is_milestone, updated_at")
     .eq("user_id", user.id)
-    .eq("week_start", weekStart)
-    .maybeSingle();
-
-  const { data: history } = await supabase
-    .from("student_checkins")
-    .select("id, week_start, accomplished, next_up, blockers, updated_at")
-    .eq("user_id", user.id)
-    .neq("week_start", weekStart)
     .order("week_start", { ascending: false })
-    .limit(8);
+    .limit(9);
+  const rows = (checkins ?? []) as any[];
+  const current = rows.find((r) => r.week_start === weekStart) ?? null;
+  const history = rows.filter((r) => r.week_start !== weekStart).slice(0, 8);
 
   // Feedback for current + prior weeks in one shot.
   const ids = [current?.id, ...((history ?? []).map((h: any) => h.id))]

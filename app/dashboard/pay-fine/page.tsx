@@ -64,9 +64,9 @@ export default async function PayFinePage() {
                   <div className="text-xs uppercase tracking-wider text-red-700 dark:text-red-300">
                     Fine
                   </div>
-                  <h3 className="mt-1 text-base font-semibold">
+                  <h2 className="mt-1 text-base font-semibold">
                     {f.description}
-                  </h3>
+                  </h2>
                   <p className="mt-1 text-xs text-ink-faint">
                     Issued <LocalTime value={f.created_at} />
                   </p>

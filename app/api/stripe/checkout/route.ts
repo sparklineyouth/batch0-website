@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
-import { getCountryFromHeaders, getRegionalPrice, DEFAULT_PRICE_CENTS } from "@/lib/pricing";
+import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
+import { grantDiscountCents } from "@/lib/founder-pass-tiers";
+import { getPassGrantForUser } from "@/lib/founder-pass";
 import {
   getOrCreateStripeCustomer,
   stripeErrorMessage,
@@ -39,12 +41,30 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient();
 
-  // Fetch application + cohort, ensure ownership and that it's accepted
-  const { data: app } = await admin
-    .from("applications")
-    .select("*, cohort:cohorts(*)")
-    .eq("id", applicationId)
-    .maybeSingle();
+  // The application, the founder-pass check, and the profile are each
+  // keyed off the request alone — none depends on another — so the three
+  // reads go out together.
+  const [{ data: app }, passGrant, { data: profile }] =
+    await Promise.all([
+      // Application + cohort, to verify ownership and that it's accepted.
+      admin
+        .from("applications")
+        .select("*, cohort:cohorts(*)")
+        .eq("id", applicationId)
+        .maybeSingle(),
+      // Founder-pass, checked at charge time rather than stamped on the
+      // application: a pass redeemed between acceptance and payment still
+      // counts, and a revoked one doesn't. The GRANT comes back with it — tier
+      // plus any hand-set override (0055/0056) — because what a pass takes off
+      // the bill is no longer a constant, and this is the site that actually
+      // charges the card.
+      getPassGrantForUser(admin, user.id),
+      admin
+        .from("profiles")
+        .select("stripe_customer_id, email, full_name")
+        .eq("id", user.id)
+        .single(),
+    ]);
 
   if (!app || app.user_id !== user.id) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -56,7 +76,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const basePriceCents = app.cohort?.price_cents ?? DEFAULT_PRICE_CENTS;
+  const basePriceCents = app.cohort?.price_cents ?? 13000;
   const cohortName = app.cohort?.name ?? "batch0 cohort";
   const stripePriceId: string | null = app.cohort?.stripe_price_id ?? null;
 
@@ -67,14 +87,23 @@ export async function POST(req: Request) {
   // object can't carry a different unit_amount.
   const country = getCountryFromHeaders(req.headers);
   const regional = getRegionalPrice(basePriceCents, country);
-  const priceCents = regional.amountCents;
-  const usePriceId = stripePriceId && !regional.isRegional;
 
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("stripe_customer_id, email, full_name")
-    .eq("id", user.id)
-    .single();
+  // Founder-pass perk: tuition off, applied server-side so it cannot be
+  // requested — the amount comes from the tier on the holder's own pass, never
+  // from the client.
+  //
+  // Resolved against the REGIONAL amount, not the list price, so a "full ride"
+  // waives what this applicant would actually be billed. grantDiscountCents
+  // clamps to that amount, which is why the Math.max below can now only ever
+  // be defensive.
+  const passDiscountCents = passGrant
+    ? grantDiscountCents(passGrant, regional.amountCents)
+    : 0;
+  const priceCents = Math.max(0, regional.amountCents - passDiscountCents);
+  // A fixed Stripe Price can't carry the discounted amount, so any discount
+  // forces the ad-hoc price_data path (same mechanics as regional pricing).
+  const usePriceId =
+    stripePriceId && !regional.isRegional && !passDiscountCents;
 
   // Always use the canonical site URL — never a request-controlled
   // header. The Origin header is attacker-controllable and would let a
@@ -106,8 +135,9 @@ export async function POST(req: Request) {
                 unit_amount: priceCents,
                 product_data: {
                   name: `batch0 — ${cohortName}`,
-                  description:
-                    "One-time enrollment fee for the batch0 accelerator.",
+                  description: passDiscountCents
+                    ? `One-time enrollment fee for the batch0 accelerator. Includes your $${(passDiscountCents / 100).toFixed(0)} founder pass discount.`
+                    : "One-time enrollment fee for the batch0 accelerator.",
                 },
               },
             },
@@ -118,6 +148,7 @@ export async function POST(req: Request) {
         cohort_id: app.cohort_id ?? "",
         country: country ?? "",
         regional_pricing: regional.isRegional ? "1" : "0",
+        founder_pass_discount_cents: String(passDiscountCents),
       },
       payment_intent_data: {
         metadata: {
@@ -125,7 +156,11 @@ export async function POST(req: Request) {
           user_id: user.id,
         },
       },
-      success_url: `${origin}/dashboard/application?paid=1`,
+      // Land on the enrollment confirmation, not back on the application
+      // form. The session id rides along so that page can settle the
+      // payment against Stripe directly instead of waiting on the webhook
+      // — the student is normally back before Stripe's POST lands.
+      success_url: `${origin}/dashboard/enrolled?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/dashboard/application?canceled=1`,
     });
 

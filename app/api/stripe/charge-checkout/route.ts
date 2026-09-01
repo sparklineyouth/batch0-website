@@ -105,7 +105,11 @@ export async function POST(req: Request) {
           user_id: user.id,
         },
       },
-      success_url: `${origin}/dashboard/billing?charge_paid=1`,
+      // The session id rides back so /dashboard/billing can settle the
+      // charge against Stripe on arrival. That also breaks the pay-fine
+      // loop: a fine paid seconds ago is already settled by the time the
+      // middleware re-checks for outstanding fines.
+      success_url: `${origin}/dashboard/billing?charge_paid=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/dashboard/billing?charge_canceled=1`,
     });
 

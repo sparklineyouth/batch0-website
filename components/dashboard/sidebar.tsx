@@ -6,25 +6,33 @@ import type { Role } from "@/lib/types";
 import {
   STUDENT_NAV_GROUPS,
   STAFF_LINKS,
-  ENROLLED_ONLY_HREFS,
+  filterStudentNavItem,
 } from "@/lib/nav-config";
+import { canAccessAdmin, type Capabilities } from "@/lib/permissions";
 import { NotificationBell } from "@/components/notification-bell";
 import { SidebarNav, SIDEBAR_ROW } from "@/components/sidebar-nav";
 
 export function StudentSidebar({
   role,
+  caps,
   aiAccess,
   discordEnabled,
   enrolled,
   referralsEnabled,
+  preCohort,
 }: {
   role: Role;
+  caps?: Capabilities | null;
   aiAccess: boolean;
   discordEnabled: boolean;
   enrolled: boolean;
   referralsEnabled: boolean;
+  preCohort: boolean;
 }) {
-  const showAdminBack = role === "admin";
+  // Permission-driven when the layout passed capabilities down. The role
+  // comparison stays as the fallback so any caller that hasn't been updated
+  // behaves exactly as it did before roles became data.
+  const showAdminBack = caps ? canAccessAdmin(caps) : role === "admin";
 
   return (
     <aside className="hidden md:flex md:sticky md:top-0 md:h-screen w-60 shrink-0 flex-col border-r border-line bg-wash px-4 py-6 overflow-hidden">
@@ -37,13 +45,15 @@ export function StudentSidebar({
       <SidebarNav
         storageKey="student"
         groups={STUDENT_NAV_GROUPS}
-        filterItem={(it) => {
-          if (it.href === "/dashboard/ai") return aiAccess;
-          if (it.href === "/dashboard/community") return discordEnabled;
-          if (it.href === "/dashboard/referrals") return referralsEnabled;
-          if (!enrolled && ENROLLED_ONLY_HREFS.has(it.href)) return false;
-          return true;
-        }}
+        filterItem={(it) =>
+          filterStudentNavItem(it, {
+            aiAccess,
+            discordEnabled,
+            referralsEnabled,
+            enrolled,
+            preCohort,
+          })
+        }
       />
       {showAdminBack && (
         <div className="mt-4 space-y-0.5 border-t border-line pt-4">
@@ -73,7 +83,9 @@ function StaffLink({
   icon: any;
 }) {
   return (
-    <Link href={href} className={SIDEBAR_ROW}>
+    // prefetch={false}: authed dynamic route + staleTimes.dynamic=0 makes
+    // prefetched payloads throwaway work — see components/sidebar-nav.tsx.
+    <Link href={href} prefetch={false} className={SIDEBAR_ROW}>
       <Icon className="h-4 w-4" />
       {label}
     </Link>

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { track } from "@vercel/analytics";
 import type { SiteConfig } from "@/lib/site-config";
+import { useIsAuthed } from "@/components/auth-label";
 
 /**
  * A pinned apply CTA at the bottom of the viewport on mobile once the
@@ -9,28 +10,28 @@ import type { SiteConfig } from "@/lib/site-config";
  *  - on desktop (md+)
  *  - visitor is already signed in (they have a dashboard CTA)
  *  - applications are closed
+ *
+ * The signed-in check used to arrive as a server-resolved prop, which is
+ * what kept the homepage from prerendering. It resolves in the browser now —
+ * free of charge here, because this bar only appears after a scroll, long
+ * after hydration, so there is nothing to flash and nothing to shift.
  */
-export default function StickyMobileCta({
-  config,
-  authedHome,
-}: {
-  config: SiteConfig;
-  authedHome?: string | null;
-}) {
+export default function StickyMobileCta({ config }: { config: SiteConfig }) {
   const { derived, settings } = config;
   const [show, setShow] = useState(false);
+  const isAuthed = useIsAuthed();
 
   useEffect(() => {
-    if (authedHome) return;
+    if (isAuthed) return;
     if (!settings.applicationsOpen) return;
     // Appear once the hero is behind the reader.
     const onScroll = () => setShow(window.scrollY > 480);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [authedHome, settings.applicationsOpen]);
+  }, [isAuthed, settings.applicationsOpen]);
 
-  if (authedHome || !settings.applicationsOpen) return null;
+  if (isAuthed || !settings.applicationsOpen) return null;
 
   const cohortLabel = derived.cohortLabel || "the next cohort";
 
@@ -47,14 +48,17 @@ export default function StickyMobileCta({
         <a
           href="/apply"
           onClick={() => track("apply_click", { location: "sticky-mobile" })}
-          className="press flex w-full items-center justify-between gap-3 bg-phosphor-fill px-4 py-3.5 text-[15px] font-semibold lowercase text-on-phosphor hover:bg-phosphor-fill-hover"
+          className="press flex w-full items-center justify-between gap-3 rounded-md bg-phosphor px-4 py-3.5 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
         >
           <span className="flex flex-col items-start leading-tight">
-            <span>apply for {cohortLabel}</span>
-            {/* on-phosphor, NOT the reactive ink: the yellow fill is
-                constant, so this must stay dark (was ~1.5:1 white-on-amber). */}
+            <span>Apply for {cohortLabel}</span>
+            {/* `text-on-phosphor`, never `text-ink`. The phosphor fill is a
+                constant yellow in both themes, but --ink flips to near-white
+                in dark mode — so text-ink/70 here rendered at ~1.35:1 and the
+                risk-reversal line effectively vanished on the highest-intent
+                element on mobile. See the token note in tailwind.config.ts. */}
             <span className="text-[11px] font-normal text-on-phosphor/70">
-              free to apply · {derived.priceLabel} if accepted
+              Free to apply · {derived.priceLabel} if accepted
             </span>
           </span>
           <span aria-hidden className="text-lg">→</span>

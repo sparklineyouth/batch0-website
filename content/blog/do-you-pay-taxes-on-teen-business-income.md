@@ -4,7 +4,7 @@ description: "If your high school startup earns money, you may owe taxes even as
 date: "2026-02-11"
 updated: "2026-02-11"
 category: "Founders"
-author: "taran"
+author: "shresht"
 tags: ["teen business taxes", "self employment tax", "1099 minor", "student income tax", "teen entrepreneur money", "hobby income"]
 ---
 

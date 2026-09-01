@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { env } from "@/lib/env";
+import { verifySvixSignature, isFreshTimestamp } from "@/lib/svix";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +22,11 @@ export const dynamic = "force-dynamic";
  * `<site>/api/resend/webhook`, copy the signing secret into the
  * `RESEND_WEBHOOK_SECRET` env var, and subscribe to email.sent,
  * email.delivered, email.bounced, email.complained, email.opened,
- * email.clicked.
+ * email.clicked, email.failed, email.delivery_delayed and
+ * email.suppressed. The last three are newer than the original six and are
+ * usually left unticked; without them a message that never left Resend at all
+ * is invisible here, which reads on the dashboard as "sent and never opened"
+ * rather than "never sent". /admin/email lists the subscription gaps it finds.
  */
 export async function POST(req: Request) {
   const secret = env.resendWebhookSecret;
@@ -48,23 +52,22 @@ export async function POST(req: Request) {
   // the signature.
   const rawBody = await req.text();
 
-  if (!verifySvixSignature({
-    secret,
-    svixId,
-    svixTimestamp,
-    svixSignature,
-    rawBody,
-  })) {
+  // Verification lives in lib/svix.ts so it can be tested — see
+  // lib/svix.test.ts, which signs payloads the way Svix does rather than the
+  // way we do, so the two constructions have to agree independently.
+  if (
+    !verifySvixSignature({
+      secret,
+      headers: { id: svixId, timestamp: svixTimestamp, signature: svixSignature },
+      rawBody,
+    })
+  ) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  // Reject timestamps more than 5 minutes off — Svix's recommendation
-  // to prevent replay if a signature ever leaks.
-  const tsSeconds = Number(svixTimestamp);
-  if (
-    !Number.isFinite(tsSeconds) ||
-    Math.abs(Date.now() / 1000 - tsSeconds) > 5 * 60
-  ) {
+  // A signature stays valid forever, so a captured request could otherwise be
+  // replayed indefinitely.
+  if (!isFreshTimestamp(svixTimestamp)) {
     return NextResponse.json({ error: "Stale timestamp" }, { status: 400 });
   }
 
@@ -92,8 +95,41 @@ export async function POST(req: Request) {
       ? event.created_at
       : new Date().toISOString();
 
-  const admin = createAdminClient();
-  const { error } = await admin.from("email_events").insert({
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v : null;
+
+  // The event-specific sub-objects. Each only appears on its own event type,
+  // so these are all null on an ordinary delivered/opened event.
+  const bounce = data.bounce ?? {};
+  const click = data.click ?? {};
+  const tags =
+    data.tags && typeof data.tags === "object" && !Array.isArray(data.tags)
+      ? (data.tags as Record<string, unknown>)
+      : null;
+
+  // Everything worth querying, lifted out of the payload into columns. The
+  // payload is still stored whole — these are a fast path for the aggregates on
+  // /admin/email, not a replacement for the forensic copy.
+  const detail = {
+    broadcast_id: str(data.broadcast_id),
+    // Set by lib/email/send.ts on every send it makes, which is what turns the
+    // per-template table from "group by subject prefix and hope" into exact
+    // attribution.
+    template_key: str(tags?.template) ?? str(tags?.template_key),
+    bounce_type: str(bounce.type),
+    bounce_subtype: str(bounce.subType),
+    bounce_message: str(bounce.message),
+    click_link: str(click.link),
+    // Opens carry no sub-object, so the user agent has to be read from the
+    // click for clicks and from the top level for opens — Resend puts it in
+    // different places depending on the event.
+    user_agent: str(click.userAgent) ?? str(data.user_agent) ?? str(data.userAgent),
+    ip_address: str(click.ipAddress) ?? str(data.ip_address) ?? str(data.ipAddress),
+    failure_reason: str(data.failed?.reason) ?? str(data.suppressed?.message),
+    tags,
+  };
+
+  const base = {
     svix_id: svixId,
     event_type: eventType,
     resend_email_id: emailId,
@@ -101,7 +137,23 @@ export async function POST(req: Request) {
     subject,
     payload: event,
     occurred_at: occurredAt,
-  });
+  };
+
+  const admin = createAdminClient();
+  let { error } = await admin.from("email_events").insert({ ...base, ...detail });
+
+  // A deploy can land before `supabase db push` does, and for those few minutes
+  // the detail columns don't exist yet. Losing the event entirely over that
+  // would be the wrong trade — Resend retries a handful of times and then drops
+  // it for good, so the data would be gone permanently to save a column that
+  // arrives an hour later. Retry with the 0024 column set and keep the payload,
+  // which migration 0057 backfills from.
+  if (error && isUnknownColumn(error)) {
+    console.warn(
+      "[resend webhook] detail columns missing — run migration 0057; storing base row",
+    );
+    ({ error } = await admin.from("email_events").insert(base));
+  }
 
   if (error) {
     // 23505 = unique violation = duplicate delivery. That's expected
@@ -118,46 +170,14 @@ export async function POST(req: Request) {
 }
 
 /**
- * Svix signature verification.
- *
- * Spec: HMAC-SHA256 of `${svixId}.${svixTimestamp}.${rawBody}` using
- * the secret (base64-decoded after stripping the `whsec_` prefix).
- * The header may contain multiple signatures separated by spaces, each
- * prefixed with `v1,`. Match against any of them in constant time.
+ * PostgREST rejects an unknown column with PGRST204 before the statement ever
+ * reaches Postgres; 42703 is the raw Postgres code for the same thing, which is
+ * what surfaces when the schema cache is warm but the column isn't there.
  */
-function verifySvixSignature(args: {
-  secret: string;
-  svixId: string;
-  svixTimestamp: string;
-  svixSignature: string;
-  rawBody: string;
-}): boolean {
-  const cleanSecret = args.secret.startsWith("whsec_")
-    ? args.secret.slice("whsec_".length)
-    : args.secret;
-  let secretBytes: Buffer;
-  try {
-    secretBytes = Buffer.from(cleanSecret, "base64");
-  } catch {
-    return false;
-  }
-  const preimage = `${args.svixId}.${args.svixTimestamp}.${args.rawBody}`;
-  const expected = crypto
-    .createHmac("sha256", secretBytes)
-    .update(preimage)
-    .digest("base64");
-
-  const expectedBuf = Buffer.from(expected, "utf8");
-  for (const part of args.svixSignature.split(" ")) {
-    const [, sig] = part.split(",");
-    if (!sig) continue;
-    const candidateBuf = Buffer.from(sig, "utf8");
-    if (
-      candidateBuf.length === expectedBuf.length &&
-      crypto.timingSafeEqual(candidateBuf, expectedBuf)
-    ) {
-      return true;
-    }
-  }
-  return false;
+function isUnknownColumn(error: unknown): boolean {
+  const code = (error as any)?.code;
+  if (code === "PGRST204" || code === "42703") return true;
+  return /column .* does not exist|could not find the .* column/i.test(
+    (error as any)?.message ?? "",
+  );
 }

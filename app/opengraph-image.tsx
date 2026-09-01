@@ -1,13 +1,19 @@
 import { ImageResponse } from "next/og";
-import { getSiteConfig } from "@/lib/site-config";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import { ogFonts, OG_DISPLAY, OG_BODY } from "@/lib/og-fonts";
 
 // Route segment config for the OG image. Next.js picks these up to build
 // the actual /opengraph-image route + metadata. Runs on Node so we can
-// share the Supabase admin client with the rest of the server. Marked
-// dynamic so the active cohort is resolved at request time.
+// share the Supabase clients with the rest of the server. Prerendered:
+// link scrapers hit every page inheriting the root metadata and re-scrape
+// aggressively, so each unfurl must not pay a satori render plus the
+// config queries. The cohort facts only move on admin edits, which fire
+// revalidateTag(SITE_CONFIG_TAG) + revalidatePath("/opengraph-image");
+// the hourly window is only the fallback. The config read has to be
+// getPublicSiteConfig — the no-store private variant inside a prerendered
+// route silently serves FALLBACK_COHORT (see lib/site-config.ts).
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 export const alt =
   "batch0 — startup accelerator for high schoolers. Cohort facts: dates, tuition, no equity taken.";
 export const size = { width: 1200, height: 630 };
@@ -16,7 +22,10 @@ export const contentType = "image/png";
 // DESIGN.md on a card: white paper, ink type, one yellow. The ledger rows
 // carry the real cohort facts, same as the site's signature element.
 export default async function OpengraphImage() {
-  const [{ derived }, fonts] = await Promise.all([getSiteConfig(), ogFonts()]);
+  const [{ derived }, fonts] = await Promise.all([
+    getPublicSiteConfig(),
+    ogFonts(),
+  ]);
   const dates = derived.dateRangeLabel.replace("→", "–");
   const rows: [string, string][] = [
     ["COHORT", `${derived.cohortLabel || "Cohort"} · ${derived.cohortName}`],

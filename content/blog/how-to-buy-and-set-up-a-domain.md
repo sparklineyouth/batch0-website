@@ -4,7 +4,7 @@ description: "Your domain is the first thing people judge. Here's how to choose 
 date: "2026-02-18"
 updated: "2026-02-18"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["buy a domain", "domain name", "startup name", "dns setup", "custom domain"]
 ---
 

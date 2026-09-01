@@ -13,33 +13,28 @@ export default async function MentorStudentsPage({
   const admin = createAdminClient();
   const cohortFilter = searchParams.cohort ?? "all";
 
+  // The completed-lesson column only needs a number per student, so it rides
+  // the enrollments query as a filtered count embed instead of a second
+  // round trip shipping every lesson_progress row for every listed user.
+  // The .not() filter scopes the embedded rows (not the enrollments), so the
+  // count is completions only.
+  let enrollmentsQuery = admin
+    .from("enrollments")
+    .select(
+      "id, enrolled_at, cohort_id, cohort:cohorts(name), profile:profiles(id, email, full_name, lesson_progress(count))",
+    )
+    .not("profile.lesson_progress.completed_at", "is", null)
+    .order("enrolled_at", { ascending: false });
+  if (cohortFilter !== "all") {
+    enrollmentsQuery = enrollmentsQuery.eq("cohort_id", cohortFilter);
+  }
+
   const [{ data: cohorts }, { data: enrollments }] = await Promise.all([
     admin.from("cohorts").select("id, name").order("starts_on"),
-    admin
-      .from("enrollments")
-      .select(
-        "id, enrolled_at, cohort_id, cohort:cohorts(name), profile:profiles(id, email, full_name)",
-      )
-      .order("enrolled_at", { ascending: false }),
+    enrollmentsQuery,
   ]);
 
-  const filtered = (enrollments ?? []).filter((e: any) =>
-    cohortFilter === "all" ? true : e.cohort_id === cohortFilter,
-  );
-
-  // Pull lesson_progress to compute completed count per student.
-  const userIds = filtered.map((e: any) => e.profile?.id).filter(Boolean);
-  const { data: progress } = userIds.length
-    ? await admin
-        .from("lesson_progress")
-        .select("user_id, completed_at")
-        .in("user_id", userIds)
-    : { data: [] };
-  const completedByUser = new Map<string, number>();
-  for (const p of (progress ?? []) as any[]) {
-    if (!p.completed_at) continue;
-    completedByUser.set(p.user_id, (completedByUser.get(p.user_id) ?? 0) + 1);
-  }
+  const rows = (enrollments ?? []) as any[];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -64,7 +59,7 @@ export default async function MentorStudentsPage({
       </div>
 
       <Card className="mt-6 !p-0 overflow-hidden">
-        {filtered.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="p-6 text-sm text-ink-faint">No enrolled students.</p>
         ) : (
           <table className="w-full text-sm">
@@ -78,7 +73,7 @@ export default async function MentorStudentsPage({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e: any) => (
+              {rows.map((e: any) => (
                 <tr
                   key={e.id}
                   className="border-b border-line last:border-0 hover:bg-wash"
@@ -101,7 +96,7 @@ export default async function MentorStudentsPage({
                     <LocalTime value={e.enrolled_at} mode="date" />
                   </td>
                   <td className="px-5 py-3 text-ink-soft tabular-nums">
-                    {completedByUser.get(e.profile?.id) ?? 0}
+                    {e.profile?.lesson_progress?.[0]?.count ?? 0}
                   </td>
                 </tr>
               ))}

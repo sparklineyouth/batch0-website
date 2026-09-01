@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
@@ -5,19 +6,27 @@ import { LocalTime } from "@/components/ui/local-time";
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
+// One lookup shared by generateMetadata and the page body — React cache()
+// dedupes it within the request, so a certificate view costs one round trip
+// instead of two. Selects the union of the columns both callers read.
+const getCertByCode = cache(async (code: string) => {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("certificates")
+    .select(
+      "code, issued_at, user:profiles(full_name), cohort:cohorts(name, ends_on)",
+    )
+    .eq("code", code)
+    .maybeSingle();
+  return data;
+});
+
 export async function generateMetadata({
   params,
 }: {
   params: { code: string };
 }) {
-  const admin = createAdminClient();
-  const { data: cert } = await admin
-    .from("certificates")
-    .select(
-      "issued_at, user:profiles(full_name), cohort:cohorts(name)",
-    )
-    .eq("code", params.code)
-    .maybeSingle();
+  const cert = await getCertByCode(params.code);
   if (!cert) return { title: "Certificate · batch0" };
   const user = Array.isArray(cert.user) ? cert.user[0] : cert.user;
   return {
@@ -33,21 +42,14 @@ export default async function VerifyCertificatePage({
 }: {
   params: { code: string };
 }) {
-  const admin = createAdminClient();
-  const { data: cert } = await admin
-    .from("certificates")
-    .select(
-      "code, issued_at, user:profiles(full_name), cohort:cohorts(name, ends_on)",
-    )
-    .eq("code", params.code)
-    .maybeSingle();
+  const cert = await getCertByCode(params.code);
   if (!cert) notFound();
   const user = Array.isArray(cert.user) ? cert.user[0] : cert.user;
   const cohort = Array.isArray(cert.cohort) ? cert.cohort[0] : cert.cohort;
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <main className="mx-auto max-w-2xl px-5 py-16 md:px-8">
+      <main id="main-content" tabIndex={-1} className="mx-auto max-w-2xl px-5 py-16 md:px-8">
         <Link
           href="/"
           className="text-xs uppercase tracking-wider text-white/40 hover:text-white"

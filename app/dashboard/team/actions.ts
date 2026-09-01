@@ -6,6 +6,7 @@ import { assertSelf } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { reserveTeamSlug, slugify } from "@/lib/team";
+import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
 import {
   syncTeamDiscordChannels,
   archiveTeamDiscordChannels,
@@ -23,12 +24,28 @@ async function getEnrollment(userId: string) {
   const admin = createAdminClient();
   const { data } = await admin
     .from("enrollments")
-    .select("cohort_id")
+    .select("cohort_id, cohort:cohorts(starts_on, status)")
     .eq("user_id", userId)
-    .order("enrolled_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data?.cohort_id ?? null;
+    .order("enrolled_at", { ascending: false });
+  // Teams can be formed before kickoff — an enrolled student shouldn't have
+  // to wait for day one to line up co-founders. A started cohort still wins
+  // when the student is tied to several (an alum enrolling again keeps
+  // building in the live one); otherwise fall back to the soonest upcoming
+  // cohort so a pre-cohort team lands in the right batch.
+  const today = todayISO();
+  const rows = (data ?? []).flatMap((row) => {
+    const cohort = Array.isArray(row.cohort) ? row.cohort[0] : row.cohort;
+    return row.cohort_id && cohort
+      ? [{ cohortId: row.cohort_id as string, cohort }]
+      : [];
+  });
+  const started = rows.find((r) => cohortHasStarted(r.cohort, today));
+  if (started) return started.cohortId;
+  const upcoming = rows
+    .filter((r) => !!r.cohort.starts_on)
+    .sort((a, b) => (a.cohort.starts_on! < b.cohort.starts_on! ? -1 : 1))[0];
+  // A dateless cohort ("upcoming", no start date yet) is still a real seat.
+  return (upcoming ?? rows[0])?.cohortId ?? null;
 }
 
 async function assertTeamMember(userId: string, teamId: string) {

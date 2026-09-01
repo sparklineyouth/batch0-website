@@ -8,9 +8,12 @@ import { AiScreenButton } from "./ai-screen-button";
 import { ReviewThread } from "./review-thread";
 import { ReviewScorecard } from "./review-scorecard";
 import { getSiteConfig } from "@/lib/site-config";
-import { requireAdmin } from "@/lib/auth";
-import { resolveReferrersByCode } from "@/lib/referrals";
-import { Share2 } from "lucide-react";
+import { requirePermission } from "@/lib/auth";
+import { resolveReferrersByCode, type Referrer } from "@/lib/referrals";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { hasFounderPass } from "@/lib/founder-pass";
+import { getRebuildForUser } from "@/lib/founder-pass-perks";
+import { Share2, Hammer, ExternalLink } from "lucide-react";
 
 export const metadata = { title: "Review application · Admin" };
 
@@ -20,7 +23,7 @@ export default async function AdminApplicationDetail({
   params: { id: string };
 }) {
   const admin = createAdminClient();
-  const viewer = await requireAdmin();
+  const { profile: viewer } = await requirePermission("applications.view");
   const [{ data: app }, { data: comments }, siteConfig, { data: reviews }] =
     await Promise.all([
       admin
@@ -48,12 +51,25 @@ export default async function AdminApplicationDetail({
 
   if (!app) notFound();
 
+  // Everything below keys off the fetched application row, so it runs as one
+  // wave rather than three sequential stages.
+  const [holdsPass, rebuild, referrerByCode, duplicates] = await Promise.all([
+    // Founder-pass context: whether this applicant holds one (gates the
+    // structured-feedback requirement in the review UI) and any seven-day
+    // rebuild they've submitted (which the reviewer should read before
+    // re-deciding).
+    hasFounderPass(admin, app.user_id),
+    getRebuildForUser(admin, app.user_id),
+    app.referral_code
+      ? resolveReferrersByCode(admin, [app.referral_code as string])
+      : Promise.resolve(new Map<string, Referrer>()),
+    findDuplicateIdeas(admin, app),
+  ]);
+
   // Name the referrer rather than showing a bare code — "a3f9k2" tells a
   // reviewer nothing about who vouched for this applicant.
   const referrer = app.referral_code
-    ? (
-        await resolveReferrersByCode(admin, [app.referral_code as string])
-      ).get(String(app.referral_code).toLowerCase()) ?? null
+    ? referrerByCode.get(String(app.referral_code).toLowerCase()) ?? null
     : null;
 
   const myReview =
@@ -61,37 +77,6 @@ export default async function AdminApplicationDetail({
   const otherSubmitted = (reviews ?? []).filter(
     (r: any) => r.reviewer_id !== viewer.id && r.submitted_at,
   );
-
-  // Duplicate detection: bigram-level overlap on startup_idea. We
-  // match on any of the top distinctive 3-grams. The gin_trgm index
-  // on applications.startup_idea (migration 0032) makes this cheap.
-  let duplicates: { id: string; full_name: string | null; startup_idea: string | null; status: string }[] = [];
-  if (app.startup_idea) {
-    const tokens: string[] = (app.startup_idea as string)
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]+/g, " ")
-      .split(/\s+/)
-      .filter((w: string) => w.length >= 4 && !STOP_WORDS.has(w))
-      .slice(0, 6);
-    if (tokens.length > 0) {
-      const orFilters = tokens.map((t: string) => `startup_idea.ilike.%${t}%`).join(",");
-      const { data } = await admin
-        .from("applications")
-        .select("id, full_name, startup_idea, status")
-        .neq("id", app.id)
-        .or(orFilters)
-        .limit(20);
-      const seenWords = new Set<string>(tokens);
-      duplicates = (data ?? [])
-        .map((row: any) => ({
-          ...row,
-          overlap: countOverlap(row.startup_idea ?? "", seenWords),
-        }))
-        .filter((row: any) => row.overlap >= 2)
-        .sort((a: any, b: any) => b.overlap - a.overlap)
-        .slice(0, 4);
-    }
-  }
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -230,6 +215,37 @@ export default async function AdminApplicationDetail({
         </p>
       </Card>
 
+      {rebuild && (
+        <Card className="mt-6 border-phosphor/40 bg-phosphor/[0.04]">
+          <div className="flex items-center gap-2">
+            <Hammer className="h-4 w-4 text-phosphor-ink" />
+            <h3 className="text-sm font-semibold text-phosphor-ink">
+              Seven-day rebuild submitted
+            </h3>
+            <span className="ml-auto text-xs text-ink-faint">
+              {rebuild.status === "reviewed" ? "reviewed" : "awaiting review"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-ink-faint">
+            This pass holder was declined and built their way back in. Read it,
+            then re-open and re-decide below to give them their fresh review.
+          </p>
+          <p className="mt-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
+            {rebuild.summary}
+          </p>
+          {rebuild.linkUrl && (
+            <a
+              href={rebuild.linkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-phosphor-ink underline underline-offset-4"
+            >
+              What they built <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+        </Card>
+      )}
+
       <Card className="mt-6">
         <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-faint">
           Decision
@@ -240,6 +256,13 @@ export default async function AdminApplicationDetail({
           feeWaived={Boolean((app as any).fee_waived)}
           initialNotes={app.review_notes ?? ""}
           priceLabel={siteConfig.derived.priceLabel}
+          passHolder={holdsPass}
+          initialFeedback={{
+            strongest: (app as any).feedback_strongest ?? "",
+            missing: (app as any).feedback_missing ?? "",
+            nextStep: (app as any).feedback_next_step ?? "",
+            secondReview: (app as any).feedback_second_review ?? null,
+          }}
         />
       </Card>
 
@@ -393,6 +416,50 @@ function countOverlap(text: string, tokens: Set<string>): number {
     if (lc.includes(t)) hits += 1;
   }
   return hits;
+}
+
+/**
+ * Duplicate detection: bigram-level overlap on startup_idea. We match on any
+ * of the top distinctive 3-grams. The gin_trgm index on
+ * applications.startup_idea (migration 0032) makes this cheap.
+ */
+async function findDuplicateIdeas(
+  admin: SupabaseClient,
+  app: { id: string; startup_idea: string | null },
+): Promise<
+  {
+    id: string;
+    full_name: string | null;
+    startup_idea: string | null;
+    status: string;
+  }[]
+> {
+  if (!app.startup_idea) return [];
+  const tokens: string[] = app.startup_idea
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter((w: string) => w.length >= 4 && !STOP_WORDS.has(w))
+    .slice(0, 6);
+  if (tokens.length === 0) return [];
+  const orFilters = tokens
+    .map((t: string) => `startup_idea.ilike.%${t}%`)
+    .join(",");
+  const { data } = await admin
+    .from("applications")
+    .select("id, full_name, startup_idea, status")
+    .neq("id", app.id)
+    .or(orFilters)
+    .limit(20);
+  const seenWords = new Set<string>(tokens);
+  return (data ?? [])
+    .map((row: any) => ({
+      ...row,
+      overlap: countOverlap(row.startup_idea ?? "", seenWords),
+    }))
+    .filter((row: any) => row.overlap >= 2)
+    .sort((a: any, b: any) => b.overlap - a.overlap)
+    .slice(0, 4);
 }
 
 function teamSizeAdminLabel(value: number | null | undefined): string {

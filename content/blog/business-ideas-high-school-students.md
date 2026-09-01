@@ -1,9 +1,10 @@
 ---
 title: "23 Real Business Ideas for High School Students"
-description: "23 realistic business ideas high schoolers can actually start now, from service businesses to software, with what makes each work and who your first customer is."
+description: "23 realistic business ideas high schoolers can start now, from service businesses to software, with what makes each work and who your first customer is."
 date: "2026-03-13"
 updated: "2026-03-13"
 category: "Validate"
+featured: true
 author: "team"
 tags: ["business ideas for students", "high school business", "side hustles for teens", "startup ideas", "teen entrepreneurs"]
 ---

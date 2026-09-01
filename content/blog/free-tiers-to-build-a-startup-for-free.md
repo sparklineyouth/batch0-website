@@ -4,7 +4,7 @@ description: "You can run a real product on free tiers alone. Here's a stack of 
 date: "2026-02-12"
 updated: "2026-02-12"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["free tier", "build for free", "startup stack", "free hosting", "student startup"]
 ---
 

@@ -1,10 +1,10 @@
 ---
 title: "How to Find a Startup Problem Worth Solving"
-description: "The best startup ideas start with a problem, not a product. Here's how to find problems worth solving by mining your own life, frustrations, and communities."
+description: "The best startup ideas start with a problem, not a product. How to find problems worth solving by mining your own life and communities."
 date: "2026-03-10"
 updated: "2026-03-10"
 category: "Validate"
-author: "taran"
+author: "shresht"
 tags: ["startup ideas", "finding a problem", "problem discovery", "teen entrepreneurship", "business ideas"]
 ---
 

@@ -4,7 +4,7 @@ description: "Domains, hosting, tools, and fees add up fast. Here's how to estim
 date: "2026-02-06"
 updated: "2026-02-06"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["cost to build", "startup costs", "hosting costs", "tool budget", "unit economics"]
 ---
 

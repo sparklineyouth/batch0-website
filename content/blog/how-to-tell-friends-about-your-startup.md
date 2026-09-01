@@ -1,10 +1,10 @@
 ---
 title: "How to Tell Your Friends You're Building a Startup"
-description: "Telling friends about your startup can bring eye-rolls or support. Here's how to talk about your business without sounding cringe, and how to handle the skeptics."
+description: "Telling friends about your startup can bring eye-rolls or support. How to talk about your business without sounding cringe, and handle skeptics."
 date: "2026-02-25"
 updated: "2026-02-25"
 category: "Founders"
-author: "taran"
+author: "shresht"
 tags: ["telling friends startup", "social pressure founder", "teen entrepreneur friends", "sounding cringe", "peer support", "founder isolation"]
 ---
 

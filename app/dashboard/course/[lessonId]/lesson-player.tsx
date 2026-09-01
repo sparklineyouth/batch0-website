@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2 } from "lucide-react";
 
@@ -24,11 +23,22 @@ export function LessonPlayer({
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const supabase = createClient();
+    // Deferred import keeps supabase-js out of the route's first-load JS.
+    // Started here (not inside onTime) so the chunk is already in flight
+    // before the first 10-second save comes due. A load failure surfaces
+    // per save attempt; the noop handler keeps a never-played video from
+    // logging an unhandled rejection nothing awaited.
+    const clientModule = import("@/lib/supabase/client");
+    clientModule.catch(() => {});
     const onTime = async () => {
       const seconds = Math.floor(v.currentTime);
       if (seconds - lastSavedRef.current < 10) return;
       lastSavedRef.current = seconds;
+      // Saves are best-effort (results unchecked), so a missing client just
+      // skips this tick rather than throwing out of the event listener.
+      const mod = await clientModule.catch(() => null);
+      if (!mod) return;
+      const supabase = mod.createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       await supabase.from("lesson_progress").upsert(
@@ -46,6 +56,15 @@ export function LessonPlayer({
 
   async function markComplete() {
     setSaving(true);
+    let createClient;
+    try {
+      // The lazy chunk load can fail (offline, deploy skew) where the old
+      // static import couldn't; release the button so the click can retry.
+      ({ createClient } = await import("@/lib/supabase/client"));
+    } catch {
+      setSaving(false);
+      return;
+    }
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {

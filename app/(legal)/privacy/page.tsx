@@ -1,3 +1,5 @@
+import { JsonLd, breadcrumbJsonLd, webPageJsonLd } from "@/lib/schema";
+
 export const metadata = {
   title: "Privacy Policy · batch0",
   description: "How batch0 collects, uses, and protects student and parent data.",
@@ -41,6 +43,12 @@ export default function PrivacyPage() {
           <strong>Operational logs:</strong> standard server logs (IP, user
           agent) for security and debugging.
         </li>
+        <li>
+          <strong>Site analytics:</strong> pages viewed, referring site,
+          device type, and approximate (city-level) location, via Google
+          Analytics and Vercel Analytics. Used in aggregate to understand
+          which pages help people — never to build an advertising profile.
+        </li>
       </ul>
 
       <h2>How we use it</h2>
@@ -55,8 +63,9 @@ export default function PrivacyPage() {
         <li>
           <strong>Service providers</strong> we use to operate the platform:
           Supabase (database + auth + storage), Stripe (payments), Resend
-          (email), Anthropic (AI co-founder), Vercel (hosting). They process
-          data on our behalf only.
+          (email), Anthropic (AI co-founder), Vercel (hosting + analytics),
+          Google Analytics (site analytics). They process data on our behalf
+          only.
         </li>
         <li>
           <strong>Mentors and investors</strong> only see what you choose to
@@ -99,6 +108,17 @@ export default function PrivacyPage() {
           hello@batch0.org
         </a>
       </p>
+
+      <JsonLd
+        data={webPageJsonLd({
+          path: "/privacy",
+          name: "Privacy Policy",
+          description:
+            "How batch0 collects, uses, and protects student and parent data.",
+          dateModified: "2026-05-12",
+        })}
+      />
+      <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />
     </>
   );
 }

@@ -12,7 +12,6 @@ import {
   getDownloadUrl,
 } from "./actions";
 import { getUploadToken } from "@/app/admin/course/upload-actions";
-import { createClient } from "@/lib/supabase/client";
 import {
   Upload,
   Loader2,
@@ -84,6 +83,9 @@ export function FilesManager({
       return;
     }
     try {
+      // Deferred import keeps supabase-js out of the route's first-load JS;
+      // it's only needed here, at the moment an upload starts.
+      const { createClient } = await import("@/lib/supabase/client");
       for (const file of list) {
         setUploading(file.name);
         const { path, token } = await getUploadToken(

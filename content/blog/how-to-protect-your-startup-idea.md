@@ -4,7 +4,7 @@ description: "Most teen founders overprotect a fragile idea. Here's the truth ab
 date: "2026-02-27"
 updated: "2026-02-27"
 category: "Founders"
-author: "taran"
+author: "shresht"
 tags: ["protect startup idea", "idea theft", "NDA startup", "patents for teens", "should i patent my idea", "sharing your idea"]
 ---
 

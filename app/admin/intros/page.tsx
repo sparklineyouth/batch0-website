@@ -1,12 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { IntroRow } from "./intro-row";
 
 export const metadata = { title: "Intros · Admin" };
 
 export default async function AdminIntrosPage() {
-  await requireAdmin();
+  await requirePermission("intros.manage");
   const admin = createAdminClient();
 
   const { data: rows } = await admin

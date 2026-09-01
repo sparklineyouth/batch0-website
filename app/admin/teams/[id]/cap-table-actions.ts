@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertStaff } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 export type HolderKind = "founder" | "option" | "safe" | "investor" | "advisor";
@@ -42,7 +42,7 @@ function clean(input: HolderInput) {
 }
 
 export async function upsertHolder(input: HolderInput): Promise<string> {
-  await assertStaff();
+  await assertPermission("teams.manage");
   const admin = createAdminClient();
   const row = clean(input);
   if (input.id) {
@@ -77,7 +77,7 @@ export async function upsertHolder(input: HolderInput): Promise<string> {
 }
 
 export async function deleteHolder(id: string, teamId: string) {
-  await assertStaff();
+  await assertPermission("teams.manage");
   const admin = createAdminClient();
   const { error } = await admin
     .from("cap_table_holders")

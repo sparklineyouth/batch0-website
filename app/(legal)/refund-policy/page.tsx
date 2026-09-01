@@ -1,3 +1,5 @@
+import { JsonLd, breadcrumbJsonLd, webPageJsonLd } from "@/lib/schema";
+
 export const metadata = {
   title: "Refund Policy · batch0",
   description: "batch0 tuition refund terms — what is refundable, when, and how to request one.",
@@ -44,6 +46,21 @@ export default function RefundPolicyPage() {
           hello@batch0.org
         </a>
       </p>
+
+      <JsonLd
+        data={webPageJsonLd({
+          path: "/refund-policy",
+          name: "Refund Policy",
+          description:
+            "batch0 tuition refund terms — what is refundable, when, and how to request one.",
+          dateModified: "2026-05-12",
+        })}
+      />
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: "Refund policy", path: "/refund-policy" },
+        ])}
+      />
     </>
   );
 }

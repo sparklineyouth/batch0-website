@@ -42,6 +42,7 @@ export function TeamHome({
   files,
   messages,
   pitch,
+  passHolderIds = [],
 }: {
   currentUserId: string;
   team: Team;
@@ -50,6 +51,7 @@ export function TeamHome({
   files: any[];
   messages: any[];
   pitch: any;
+  passHolderIds?: string[];
 }) {
   const [tab, setTab] = useState<Tab>("overview");
 
@@ -155,10 +157,15 @@ export function TeamHome({
             team={team}
             members={members}
             pendingInvites={pendingInvites}
+            passHolderIds={passHolderIds}
           />
         )}
         {tab === "thread" && (
-          <TeamThreadTab teamId={team.id} messages={messages} />
+          <TeamThreadTab
+            teamId={team.id}
+            messages={messages}
+            passHolderIds={passHolderIds}
+          />
         )}
         {tab === "drive" && (
           <TeamDriveTab teamId={team.id} files={files} />

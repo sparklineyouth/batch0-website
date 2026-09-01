@@ -77,7 +77,7 @@ export function Reactions({
             className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition ${
               reacted
                 ? "border-phosphor/40 bg-phosphor/10 text-phosphor-ink"
-                : "border-line bg-wash text-ink-soft hover:border-ink/30 hover:bg-wash"
+                : "border-line bg-wash text-ink-soft hover:border-ink/30 hover:bg-ink/[0.04]"
             } ${count === 0 && !reacted ? "opacity-60" : ""}`}
           >
             <span>{EMOJI_GLYPH[e]}</span>

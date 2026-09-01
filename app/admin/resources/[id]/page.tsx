@@ -43,6 +43,7 @@ export default async function EditResourcePage({
             external_url: resource.external_url,
             size_bytes: resource.size_bytes,
             mime_type: resource.mime_type,
+            pre_cohort: resource.pre_cohort ?? false,
           }}
           cohorts={cohorts ?? []}
         />

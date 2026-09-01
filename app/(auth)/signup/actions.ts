@@ -3,6 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { friendlyAuthError } from "@/lib/auth-errors";
 
@@ -63,8 +64,24 @@ export async function signUpAction(input: SignUpInput): Promise<SignUpResult> {
   // integration never blocks account creation.
   if (user?.email) {
     try {
-      const t = Templates.welcome({ name: fullName || null });
-      await sendEmail({ to: user.email, subject: t.subject, html: t.html });
+      // Prefers the admin-editable `auth.welcome` row and falls back to the
+      // compiled copy when it isn't there — see lib/email/dispatch.ts.
+      await sendTemplated("auth.welcome", {
+        to: user.email,
+        toName: fullName || null,
+        userId: user.id,
+        fallback: () => Templates.welcome({ name: fullName || null }),
+      });
+      // Awaited rather than fired-and-forgotten: a serverless invocation can
+      // be frozen the moment its response is returned, and a floating promise
+      // here would drop the enqueue silently. emitEmailEvent swallows its own
+      // failures, so awaiting it can't fail the operation it reports on.
+      await emitEmailEvent("user.signup", {
+        email: user.email,
+        name: fullName || null,
+        userId: user.id,
+        dedupeSeed: user.id,
+      });
     } catch (err) {
       console.error("[signup] welcome email failed", err);
     }

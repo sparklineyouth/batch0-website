@@ -4,7 +4,7 @@ description: "Time is the real constraint in high school. Here's how to decide w
 date: "2026-02-05"
 updated: "2026-02-05"
 category: "Founders"
-author: "taran"
+author: "shresht"
 tags: ["quitting activities", "time tradeoffs", "startup vs extracurriculars", "high school time management", "dropping a club", "opportunity cost"]
 ---
 

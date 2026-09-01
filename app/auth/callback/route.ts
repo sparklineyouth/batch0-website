@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   }
 
   const supabase = createClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     console.error("[auth/callback] exchangeCodeForSession failed:", error);
     return NextResponse.redirect(
@@ -44,30 +44,37 @@ export async function GET(request: Request) {
   // (best effort; failures are swallowed so a flaky integration doesn't
   // break login).
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    // The exchange already returned the session's user — a follow-up
+    // auth.getUser() would be a second network hop for the same answer.
+    const user = data.user;
     if (user) {
       const admin = createAdminClient();
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("full_name, role")
-        .eq("id", user.id)
-        .maybeSingle();
+      // The profile and the welcome-notification check are independent;
+      // both sit between the user and their redirect, so they go out
+      // together.
+      const [{ data: profile }, { data: existing }] = await Promise.all([
+        admin
+          .from("profiles")
+          .select("full_name, role")
+          .eq("id", user.id)
+          .maybeSingle(),
+        user.email
+          ? // Avoid re-notifying on every login: only fire if there's no
+            // welcome notification yet.
+            admin
+              .from("notifications")
+              .select("id")
+              .eq("user_id", user.id)
+              .eq("type", "welcome")
+              .limit(1)
+          : Promise.resolve({ data: null }),
+      ]);
 
       if (!nextParam) {
-        destination = roleHome((profile?.role ?? "student") as any);
+        destination = await roleHome((profile?.role ?? "student") as any);
       }
 
       if (user.email) {
-        // Avoid re-notifying on every login: only fire if there's no welcome
-        // notification yet.
-        const { data: existing } = await admin
-          .from("notifications")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("type", "welcome")
-          .limit(1);
         if (!existing || existing.length === 0) {
           const t = Templates.welcome({ name: profile?.full_name ?? null });
           await sendEmail({ to: user.email, subject: t.subject, html: t.html });

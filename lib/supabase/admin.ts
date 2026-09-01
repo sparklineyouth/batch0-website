@@ -23,3 +23,31 @@ export function createAdminClient() {
     },
   );
 }
+
+/**
+ * Service-role client for PUBLIC, cacheable reads. Same key and the same
+ * RLS bypass — the only difference is that it does NOT force `no-store`.
+ *
+ * That difference decides how the whole marketing site renders. In the App
+ * Router a `fetch(..., { cache: "no-store" })` inside a page throws a
+ * DynamicServerError during prerendering, which aborts static generation for
+ * the entire route. The forced no-store above is therefore not just a cache
+ * setting: it was single-handedly keeping every marketing page — including
+ * all 135 blog posts, which have generateStaticParams and looked static in
+ * the build table — on the per-request serverless path.
+ *
+ * Use this ONLY for data that is the same for every visitor and safe to serve
+ * a few minutes stale (the marketing cohort/settings read in lib/site-config).
+ * Anything per-user, or anything gating access, stays on createAdminClient —
+ * see the note above about `referrals_enabled` reading stale.
+ *
+ * The same trick is already used, for the same reason, by `blogReadClient()`
+ * in lib/blog.ts.
+ */
+export function createPublicReadClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+}

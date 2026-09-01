@@ -4,7 +4,7 @@ description: "A startup can make a great college essay or a bragging one. Here's
 date: "2026-02-21"
 updated: "2026-02-21"
 category: "Founders"
-author: "taran"
+author: "shresht"
 tags: ["startup college essay", "college application activities", "writing about your business", "common app startup", "admissions essay", "extracurricular startup"]
 ---
 

@@ -54,6 +54,36 @@ where email = 'your.email@example.com';
 
 You'll now see an "Admin panel" link in your dashboard sidebar.
 
+## 4b. Roles and permissions
+
+Roles are rows in `public.app_roles`, not hard-coded strings. Five ship out of
+the box — `student`, `admin`, `mentor`, `investor`, and `intern` — and admins
+mint more at **/admin/roles**.
+
+Each role owns a list of permission keys (defined in
+[`lib/permissions.ts`](lib/permissions.ts)). A permission decides three things
+at once, from one string:
+
+- whether the link appears in the admin sidebar,
+- whether the route loads (enforced in the middleware *and* in
+  `app/admin/layout.tsx`),
+- whether the server actions on that page will run.
+
+`admin` holds the `*` wildcard — everything, including permissions added
+later. That's deliberately not editable from the UI: narrowing it would lock
+every admin, including you, out of the site. To give someone less, create a
+role.
+
+Two rules keep the system from being a privilege-escalation ladder:
+
+- **You can't grant what you don't hold.** Creating or editing a role, and
+  assigning one to a person, are all capped by the assigner's own permissions.
+- **Nobody re-roles themselves.**
+
+Nobody applies for a role. They sign up at `/signup` like anyone else, then an
+admin assigns the role — on the People page, or by email at the bottom of
+/admin/roles. No application, cohort, or payment is involved.
+
 ## 5. Stripe webhook (local dev)
 
 Stripe must be able to call your `/api/stripe/webhook` endpoint to confirm payment. Locally, use the Stripe CLI:
@@ -69,10 +99,33 @@ The CLI prints `Ready! Your webhook signing secret is whsec_xxxxx`. Copy that in
 For production, create a webhook in the Stripe dashboard pointed at `https://yourdomain.com/api/stripe/webhook`. Subscribe to:
 
 - `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `checkout.session.expired`
 - `payment_intent.payment_failed`
 - `charge.refunded`
 
 Then copy the production "Signing secret" into your hosting platform's env vars.
+
+### Payment state is reconciled three ways
+
+The webhook is the primary path, but it is never the only one — a student
+must never be shown "pay now" for money they already sent.
+
+1. **Webhook** — Stripe's authoritative delivery.
+2. **On return from Checkout** — the success URL carries the session id, and
+   `/dashboard/application` and `/dashboard/billing` settle it against
+   Stripe before rendering. This wins the redirect race almost every time.
+3. **Reconciliation** — `/api/cron/stripe-reconcile` runs daily over a
+   14-day window, and **Admin → Payments → Sync from Stripe** replays the
+   whole account history on demand. Use the button after changing webhook
+   config, after an outage, or to backfill transactions that predate the
+   webhook.
+
+All three run the same idempotent fulfillment in `lib/stripe-fulfillment.ts`,
+so whichever arrives first wins and the rest are no-ops. Emails and
+notifications fire only on the real transition into paid; reconciliation
+runs silently.
 
 ## 6. Run the dev server
 

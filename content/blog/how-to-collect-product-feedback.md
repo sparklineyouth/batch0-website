@@ -4,7 +4,7 @@ description: "Not all feedback is useful. Learn how to collect product feedback 
 date: "2026-02-02"
 updated: "2026-02-02"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["product feedback", "user feedback", "feature requests", "product iteration", "build feedback"]
 ---
 

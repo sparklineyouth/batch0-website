@@ -11,7 +11,8 @@ export default async function MentorOverview() {
     { count: totalStudents },
     { count: enrolledCount },
     { data: cohorts },
-    { data: progress },
+    { count: completionCount },
+    { count: activeLearnerCount },
   ] = await Promise.all([
     admin
       .from("profiles")
@@ -22,15 +23,29 @@ export default async function MentorOverview() {
       .from("cohorts")
       .select("id, name, status, starts_on, ends_on, capacity, enrollments(count)")
       .order("starts_on", { ascending: true }),
-    admin.from("lesson_progress").select("user_id, completed_at"),
+    // Both learning stats are pure counts, so they stay head-only: pulling
+    // lesson_progress rows to aggregate in JS hits PostgREST's 1000-row cap
+    // and understates the numbers once the table outgrows it.
+    admin
+      .from("lesson_progress")
+      .select("user_id", { count: "exact", head: true })
+      .not("completed_at", "is", null),
+    // "Distinct users with a completion" without an RPC: count profiles that
+    // have at least one completed lesson_progress row. The inner join makes
+    // the child filter restrict parents, and PostgREST counts each parent
+    // once — every progress row has a profile (FK), so this equals the
+    // distinct-user count.
+    admin
+      .from("profiles")
+      .select("id, lesson_progress!inner(user_id)", {
+        count: "exact",
+        head: true,
+      })
+      .not("lesson_progress.completed_at", "is", null),
   ]);
 
-  const completions = (progress ?? []).filter((p: any) => p.completed_at).length;
-  const activeStudents = new Set(
-    (progress ?? [])
-      .filter((p: any) => p.completed_at)
-      .map((p: any) => p.user_id),
-  ).size;
+  const completions = completionCount ?? 0;
+  const activeStudents = activeLearnerCount ?? 0;
 
   return (
     <div className="mx-auto max-w-6xl">

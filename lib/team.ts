@@ -41,15 +41,20 @@ export async function reserveTeamSlug(
 ): Promise<string> {
   const admin = createAdminClient();
   const root = slugify(base) || "team";
-  for (let i = 0; i < 20; i++) {
-    const candidate = i === 0 ? root : `${root}-${i}`;
-    const { data } = await admin
-      .from("teams")
-      .select("id")
-      .eq("cohort_id", cohortId)
-      .eq("slug", candidate)
-      .maybeSingle();
-    if (!data) return candidate;
+  // All 20 candidates probed in one query — the first free one wins, in
+  // suffix order, so a collision-heavy name doesn't pay a round trip per
+  // taken suffix. The timestamp fallback covers all 20 being taken.
+  const candidates = Array.from({ length: 20 }, (_, i) =>
+    i === 0 ? root : `${root}-${i}`,
+  );
+  const { data } = await admin
+    .from("teams")
+    .select("slug")
+    .eq("cohort_id", cohortId)
+    .in("slug", candidates);
+  const taken = new Set((data ?? []).map((r) => r.slug as string));
+  for (const candidate of candidates) {
+    if (!taken.has(candidate)) return candidate;
   }
   return `${root}-${Date.now().toString(36)}`;
 }

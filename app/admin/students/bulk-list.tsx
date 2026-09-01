@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { CheckSquare, Square } from "lucide-react";
-import { RoleSelect } from "./role-select";
+import { RoleSelect, type RoleOption } from "./role-select";
 import { bulkChangeUserRole } from "./actions";
 import { getActionError } from "@/lib/action-error";
+import { roleColorClasses } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
 
 type Row = {
@@ -23,14 +24,24 @@ type Row = {
   cohort_name: string | null;
 };
 
-const ROLE_OPTIONS: Role[] = ["student", "mentor", "investor", "admin"];
-
-export function StudentsBulkList({ rows }: { rows: Row[] }) {
+export function StudentsBulkList({
+  rows,
+  roleOptions,
+  canChangeRoles,
+}: {
+  rows: Row[];
+  /** Assignable roles, from public.app_roles. */
+  roleOptions: RoleOption[];
+  /** False when the viewer can read the directory but not re-role anyone. */
+  canChangeRoles: boolean;
+}) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
   const [confirmRole, setConfirmRole] = useState<Role | null>(null);
-  const [bulkRole, setBulkRole] = useState<Role>("student");
+  const [bulkRole, setBulkRole] = useState<Role>(
+    roleOptions[0]?.slug ?? "student",
+  );
   const [err, setErr] = useState<string | undefined>();
   const [lastResult, setLastResult] = useState<string | undefined>();
 
@@ -126,7 +137,15 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
             <div className="truncate text-ink">{p.full_name || "—"}</div>
             <div className="truncate text-ink-soft">{p.email}</div>
             <div>
-              <RoleSelect userId={p.id} role={p.role} />
+              {canChangeRoles ? (
+                <RoleSelect
+                  userId={p.id}
+                  role={p.role}
+                  options={roleOptions}
+                />
+              ) : (
+                <RoleBadge role={p.role} options={roleOptions} />
+              )}
             </div>
             <div>
               {p.latest_app_status ? (
@@ -153,7 +172,7 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
         );
       })}
 
-      {someSelected && (
+      {someSelected && canChangeRoles && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-3">
             <div className="text-sm">
@@ -180,9 +199,9 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
               className="!h-8 w-32"
               disabled={pending}
             >
-              {ROLE_OPTIONS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
+              {roleOptions.map((r) => (
+                <option key={r.slug} value={r.slug}>
+                  {r.label}
                 </option>
               ))}
             </Select>
@@ -199,19 +218,41 @@ export function StudentsBulkList({ rows }: { rows: Row[] }) {
 
       <ConfirmDialog
         open={confirmRole !== null}
-        title={`Change ${selected.size} user${selected.size === 1 ? "" : "s"} to ${confirmRole}?`}
+        title={`Change ${selected.size} user${selected.size === 1 ? "" : "s"} to ${
+          roleOptions.find((r) => r.slug === confirmRole)?.label ?? confirmRole
+        }?`}
         confirmLabel="Update roles"
         pending={pending}
         onCancel={() => !pending && setConfirmRole(null)}
         onConfirm={() => confirmRole && runBulk(confirmRole)}
         description={
           <p className="text-sm text-ink-soft">
-            Each user's role is updated and any linked Discord membership
-            is re-synced. You can't downgrade your own admin role through
-            this flow — it's skipped automatically.
+            Each user&apos;s role is updated and any linked Discord
+            membership is re-synced. Your own account is skipped — nobody
+            re-roles themselves.
           </p>
         }
       />
     </div>
+  );
+}
+
+/** Static role badge for viewers who can read the directory but not edit it. */
+function RoleBadge({
+  role,
+  options,
+}: {
+  role: Role;
+  options: RoleOption[];
+}) {
+  const match = options.find((o) => o.slug === role);
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${roleColorClasses(
+        match?.color ?? "slate",
+      )}`}
+    >
+      {match?.label ?? role}
+    </span>
   );
 }

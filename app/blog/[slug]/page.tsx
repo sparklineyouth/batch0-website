@@ -4,23 +4,41 @@ import { notFound } from "next/navigation";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { ApplyCta } from "@/components/apply-cta";
-import { getSiteConfig } from "@/lib/site-config";
-import { getProfile, roleHome } from "@/lib/auth";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import {
   getPostBySlug,
   getPostSlugs,
   getRelatedPosts,
   formatPostDate,
 } from "@/lib/blog";
-
-const SITE = "https://batch0.org";
+import { SITE, ORG_ID } from "@/lib/schema";
+import { blogTitleTag } from "@/lib/seo-meta";
+import { categoryPath } from "@/lib/blog-shared";
 
 // Every post is a file on disk, so the whole set can be pre-rendered at
 // build time — static HTML is the fastest thing to serve and the cleanest
 // thing for both search crawlers and AI retrieval bots to read.
+//
+// This was true in intent but not in fact: the build table printed "● SSG"
+// for this route (which only means generateStaticParams exists) while the
+// prerender manifest contained zero /blog/<slug> entries. Two dynamic APIs
+// were aborting every prerender — cookies(), via a getProfile() call that
+// existed to pick one navbar href, and a forced `no-store` fetch inside
+// getSiteConfig(). Both are gone; these 135 articles are real static HTML
+// again, which is what the two worst Core Web Vitals scores in production
+// were waiting on.
 export async function generateStaticParams() {
   return (await getPostSlugs()).map((slug) => ({ slug }));
 }
+
+// Posts are immutable prose; the only thing on the page that moves is the
+// price in the end-of-post CTA. An hour is a generous ceiling on staleness,
+// and admin edits publish immediately anyway — the settings and cohort
+// actions call revalidateTag(SITE_CONFIG_TAG), and publishing a post
+// revalidates /blog. `dynamicParams` stays default-true, so a post authored
+// in the admin panel after the last build still renders on first request and
+// is cached from then on.
+export const revalidate = 3600;
 
 export async function generateMetadata({
   params,
@@ -32,7 +50,10 @@ export async function generateMetadata({
   const { meta } = post;
   const url = `${SITE}/blog/${meta.slug}`;
   return {
-    title: `${meta.title} — batch0`,
+    // Conditional brand suffix — see `blogTitleTag`. Unconditionally appending
+    // " — batch0" pushed 58 of 135 posts past Google's ~60-character render
+    // budget, and the truncation ate the suffix it was there to add.
+    title: blogTitleTag(meta.title, meta.seoTitle),
     description: meta.description,
     keywords: meta.tags,
     alternates: { canonical: `/blog/${meta.slug}` },
@@ -66,10 +87,14 @@ export default async function BlogPostPage({
   if (!post) notFound();
   const { meta, html } = post;
 
-  const [config, profile] = await Promise.all([getSiteConfig(), getProfile()]);
-  const authedHome = profile ? roleHome(profile.role) : null;
+  // Both of these are cheap now and neither depends on the other: config is
+  // a tagged cache read, related posts come off a process-level index of the
+  // post frontmatter rather than re-reading 135 files from disk.
+  const [config, related] = await Promise.all([
+    getPublicSiteConfig(),
+    getRelatedPosts(meta),
+  ]);
   const cohortLabel = config.derived.cohortLabel || "the next cohort";
-  const related = await getRelatedPosts(meta);
   const url = `${SITE}/blog/${meta.slug}`;
   const ogImage = `${SITE}/blog/${meta.slug}/opengraph-image`;
 
@@ -93,12 +118,9 @@ export default async function BlogPostPage({
       name: meta.author.name,
       url: meta.author.url,
     },
-    publisher: {
-      "@type": "Organization",
-      name: "batch0",
-      url: SITE,
-      logo: { "@type": "ImageObject", url: `${SITE}/icon-512.png` },
-    },
+    // Reference, not a redeclaration — the full org node ships in the root
+    // layout and matching `@id`s merge them into one entity.
+    publisher: { "@id": ORG_ID },
     isPartOf: {
       "@type": "Blog",
       "@id": `${SITE}/blog`,
@@ -112,9 +134,18 @@ export default async function BlogPostPage({
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "Home", item: SITE },
       { "@type": "ListItem", position: 2, name: "Blog", item: `${SITE}/blog` },
+      // The category hub sits between the blog and the post. This is the
+      // structural half of the topic cluster: it tells a crawler which of the
+      // six themes this post belongs to, and mirrors the visible breadcrumb.
       {
         "@type": "ListItem",
         position: 3,
+        name: meta.category,
+        item: `${SITE}${categoryPath(meta.category)}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 4,
         name: meta.title,
         item: url,
       },
@@ -122,8 +153,12 @@ export default async function BlogPostPage({
   };
 
   return (
-    <main className="min-h-screen bg-paper">
-      <Navbar authedHome={authedHome} cohortLabel={cohortLabel} />
+    // <main> wraps the content only: containing the navbar and footer in it
+    // suppresses their banner/contentinfo landmarks and sends "Skip to
+    // content" above the nav. No layout classes on it, so nothing shifts.
+    <div className="min-h-screen bg-paper">
+      <Navbar cohortLabel={cohortLabel} />
+      <main id="main-content" tabIndex={-1}>
 
       <article className="px-5 sm:px-6">
         <div className="mx-auto max-w-[720px] pt-10 sm:pt-14">
@@ -135,7 +170,14 @@ export default async function BlogPostPage({
             <span aria-hidden className="px-2">
               /
             </span>
-            <span className="text-ink-soft">{meta.category}</span>
+            {/* Links up to the category hub — every post in a cluster passes
+                authority to its hub, and readers get a way sideways. */}
+            <Link
+              href={categoryPath(meta.category)}
+              className="text-ink-soft hover:text-ink"
+            >
+              {meta.category}
+            </Link>
           </nav>
 
           <header className="mt-6">
@@ -164,9 +206,9 @@ export default async function BlogPostPage({
               Stop reading. Start building.
             </p>
             <p className="mt-3 max-w-[40rem] text-[15px] leading-[1.65] text-ink-soft">
-              batch0 is a live, online accelerator for U.S. high
-              schoolers. You&apos;ll build a real company across four sprints
-              and pitch it at demo day. Free to apply, {config.derived.priceLabel}{" "}
+              batch0 is a live, online accelerator for high schoolers.
+              You&apos;ll build a real company across four sprints and pitch it
+              at demo day. Free to apply, {config.derived.priceLabel}{" "}
               only if accepted, no equity taken.
             </p>
             <div className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
@@ -207,6 +249,7 @@ export default async function BlogPostPage({
         </section>
       )}
 
+      </main>
       <Footer config={config} />
 
       <script
@@ -217,6 +260,6 @@ export default async function BlogPostPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
-    </main>
+    </div>
   );
 }

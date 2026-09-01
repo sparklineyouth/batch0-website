@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { passHolderUserIds } from "@/lib/founder-pass";
+import { FounderPassBadge } from "@/components/founder-pass-badge";
 import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
@@ -22,16 +24,11 @@ export default async function InvestorTeamDetailPage({
   const profile = await requireInvestor();
   const admin = createAdminClient();
 
-  const { data: team } = await admin
-    .from("teams")
-    .select(
-      "id, name, tagline, description, logo_url, logo_status, website_url, raised_cents, post_money_cents, lead_investor, round_kind, round_closed_on, tear_sheet, tear_sheet_generated_at, cohort_id, cohort:cohorts(name)",
-    )
-    .eq("id", params.id)
-    .maybeSingle();
-  if (!team) notFound();
-
+  // Every query here keys off params.id / profile.id, not the team row, so
+  // the team fetch rides the same wave; the not-found check happens after
+  // the batch settles.
   const [
+    { data: team },
     { data: members },
     { data: messages },
     { data: pitch },
@@ -40,14 +37,24 @@ export default async function InvestorTeamDetailPage({
     { data: rubric },
     { data: myRubricScores },
     { data: rxnRows },
+    passHolders,
   ] = await Promise.all([
+    admin
+      .from("teams")
+      .select(
+        "id, name, tagline, description, logo_url, logo_status, website_url, raised_cents, post_money_cents, lead_investor, round_kind, round_closed_on, tear_sheet, tear_sheet_generated_at, cohort_id, cohort:cohorts(name)",
+      )
+      .eq("id", params.id)
+      .maybeSingle(),
     admin
       .from("team_members")
       .select("user_id, role, profile:profiles(full_name)")
       .eq("team_id", params.id),
     admin
       .from("team_messages")
-      .select("id, body, kind, created_at, author:profiles(full_name, email)")
+      .select(
+        "id, body, kind, created_at, author_id, author:profiles(full_name, email)",
+      )
       .eq("team_id", params.id)
       .order("created_at", { ascending: true })
       .limit(200),
@@ -81,7 +88,9 @@ export default async function InvestorTeamDetailPage({
       .from("demo_day_reactions")
       .select("emoji")
       .eq("team_id", params.id),
+    passHolderUserIds(admin),
   ]);
+  if (!team) notFound();
 
   // Cohort-scoped rubric: criteria with cohort_id null apply to all.
   const teamCohortId = (team as any).cohort_id ?? null;
@@ -173,8 +182,12 @@ export default async function InvestorTeamDetailPage({
           {(members ?? []).map((m: any) => {
             const p = Array.isArray(m.profile) ? m.profile[0] : m.profile;
             return (
-              <li key={m.user_id} className="text-sm text-ink-soft">
-                {p?.full_name ?? "—"}{" "}
+              <li
+                key={m.user_id}
+                className="flex flex-wrap items-center gap-2 text-sm text-ink-soft"
+              >
+                {p?.full_name ?? "—"}
+                {passHolders.has(m.user_id) && <FounderPassBadge />}
                 <span className="text-xs text-ink-faint">· {m.role}</span>
               </li>
             );
@@ -247,7 +260,11 @@ export default async function InvestorTeamDetailPage({
       </div>
 
       <div className="mt-6">
-        <TeamThread teamId={params.id} messages={(messages ?? []) as any[]} />
+        <TeamThread
+          teamId={params.id}
+          messages={(messages ?? []) as any[]}
+          passHolderIds={[...passHolders]}
+        />
       </div>
     </div>
   );

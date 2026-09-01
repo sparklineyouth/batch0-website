@@ -27,9 +27,16 @@ export function PayButton({ applicationId }: { applicationId: string }) {
 
   return (
     <div>
-      <Button onClick={pay} disabled={loading}>
-        {loading ? "Redirecting…" : "Pay & enroll →"}
+      <Button onClick={pay} disabled={loading} aria-busy={loading}>
+        {loading ? "Opening secure checkout…" : "Pay & enroll →"}
       </Button>
+      {/* `loading` stays true through the redirect — say why the page is
+          sitting there so nobody double-clicks into a second checkout. */}
+      <p className="mt-2 text-xs text-ink-faint">
+        {loading
+          ? "Taking you to Stripe — don't close this tab."
+          : "Card payment handled by Stripe. You'll come straight back here with a confirmation."}
+      </p>
       {error && <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );

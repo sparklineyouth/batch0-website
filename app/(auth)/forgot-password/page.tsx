@@ -1,10 +1,9 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
-import { friendlyAuthError } from "@/lib/auth-errors";
+import { requestPasswordReset } from "./actions";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -12,16 +11,26 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
 
+  // An expired or reused reset link lands back here with ?error=… (see
+  // app/auth/confirm/route.ts). Read from window.location rather than
+  // useSearchParams so this page keeps prerendering — same reasoning as
+  // login-form.tsx.
+  useEffect(() => {
+    const msg = new URLSearchParams(window.location.search).get("error");
+    if (msg) setError(msg);
+  }, []);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(undefined);
-    const supabase = createClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${location.origin}/reset`,
-    });
-    if (error) {
-      setError(friendlyAuthError(error));
+    // The email is minted and sent server-side (./actions.ts) — through
+    // Resend, on our own domain, rather than Supabase's test mailer. Nothing
+    // on this page needs supabase-js any more, so its ~63 kB gz chunk is
+    // gone from the reset funnel entirely.
+    const res = await requestPasswordReset(email);
+    if (!res.ok) {
+      setError(res.error);
       setLoading(false);
       return;
     }
@@ -29,8 +38,11 @@ export default function ForgotPasswordPage() {
     setLoading(false);
   }
 
+  // The auth shell has no <main>, so this page's own (classless) root is the
+  // skip-link target: <div> → <main>, same box, plus tabIndex={-1} so it's
+  // focusable and screen readers actually move the cursor to it.
   return (
-    <div>
+    <main id="main-content" tabIndex={-1}>
       <h1 className="text-2xl font-bold tracking-tight text-white">Reset password</h1>
       <p className="mt-1 text-sm text-white/65">
         Enter your email and we'll send you a reset link.
@@ -81,6 +93,6 @@ export default function ForgotPasswordPage() {
           Back to login
         </Link>
       </p>
-    </div>
+    </main>
   );
 }

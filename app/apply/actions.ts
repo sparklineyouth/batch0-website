@@ -6,8 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { canBypassClosedApplications, hasFounderPass } from "@/lib/founder-pass";
+import { autoAdmitOnSubmit } from "@/lib/admissions";
+import { planReapply, selectCohortId } from "@/lib/reapply";
 import {
   postChannelMessage,
   applicationEmbed,
@@ -136,39 +140,34 @@ type ActionResult = {
   fieldErrors?: Record<string, string>;
   applicationId?: string;
   savedAt?: string;
+  /** Set on submit when a virtual founder pass admitted them outright. */
+  autoAdmitted?: boolean;
 };
 
-async function getActiveCohortId(
+/** The admin-pinned active cohort, or null. Not validated as open here — the
+ *  caller only ever looks it up inside a list that already is. */
+async function getPinnedCohortId(
   supabase: ReturnType<typeof createClient>,
 ): Promise<string | null> {
-  // 1) Honor admin-pinned active_cohort_id site setting.
   const { data: setting } = await supabase
     .from("site_settings")
     .select("value")
     .eq("key", "active_cohort_id")
     .maybeSingle();
-  const pinned =
-    typeof setting?.value === "string" && setting.value.length > 0
-      ? (setting.value as string)
-      : null;
-  if (pinned) {
-    const { data } = await supabase
-      .from("cohorts")
-      .select("id")
-      .eq("id", pinned)
-      .in("status", ["upcoming", "active"])
-      .maybeSingle();
-    if (data?.id) return data.id;
-  }
-  // 2) Fall back to next upcoming/active cohort by start date.
-  const { data: cohort } = await supabase
+  return typeof setting?.value === "string" && setting.value.length > 0
+    ? (setting.value as string)
+    : null;
+}
+
+async function getActiveCohortId(
+  supabase: ReturnType<typeof createClient>,
+): Promise<string | null> {
+  const { data: open } = await supabase
     .from("cohorts")
-    .select("id")
+    .select("id, name, starts_on")
     .in("status", ["upcoming", "active"])
-    .order("starts_on", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return cohort?.id ?? null;
+    .order("starts_on", { ascending: true });
+  return selectCohortId(open ?? [], [await getPinnedCohortId(supabase)]);
 }
 
 async function upsertApplication(
@@ -205,29 +204,93 @@ async function upsertApplication(
       .eq("key", "applications_open")
       .maybeSingle();
     if (openSetting?.value === false) {
-      return {
-        ok: false,
-        error: "Applications are currently closed.",
-      };
+      // Founder pass holders can submit during the early-access window. This
+      // has to be re-checked server-side even though app/apply/page.tsx
+      // already gated the render: the page check only decides what to draw,
+      // and a client can post here directly.
+      const early = await canBypassClosedApplications(
+        createAdminClient(),
+        user.id,
+      );
+      if (!early) {
+        return {
+          ok: false,
+          error: "Applications are currently closed.",
+        };
+      }
     }
   }
 
   const data = parsed.data as Record<string, any>;
-  // Prefer the user's explicit pick. Fall back to the admin-pinned /
-  // next-upcoming active cohort. Validate the pick is an open cohort
-  // so a client can't ride a stale id onto a closed one.
-  let cohortId: string | null = null;
-  const requested = typeof data.cohort_id === "string" ? data.cohort_id : "";
-  if (requested) {
-    const { data: pickedRow } = await supabase
-      .from("cohorts")
-      .select("id")
-      .eq("id", requested)
-      .in("status", ["upcoming", "active"])
-      .maybeSingle();
-    if (pickedRow?.id) cohortId = pickedRow.id;
+
+  // Everything the reapply rules need, in one wave. The history is EVERY
+  // application (not just the newest) because a decline shuts that cohort for
+  // good — see lib/reapply.ts.
+  const [{ data: history }, { data: openCohorts }, pinnedId, holdsPass] =
+    await Promise.all([
+      supabase
+        .from("applications")
+        .select("id, status, cohort_id, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("cohorts")
+        .select("id, name, starts_on")
+        .in("status", ["upcoming", "active"])
+        .order("starts_on", { ascending: true }),
+      getPinnedCohortId(supabase),
+      hasFounderPass(createAdminClient(), user.id),
+    ]);
+
+  const applications = history ?? [];
+  const existing = applications[0] ?? null;
+  const plan = planReapply({
+    cohorts: openCohorts ?? [],
+    history: applications,
+    latestStatus: existing?.status ?? null,
+    holdsPass,
+  });
+
+  // Lifecycle gate, re-checked here even though app/apply/page.tsx already
+  // decided what to render: the page decides what to DRAW, and a client can
+  // post to this action directly.
+  if (plan.stage === "locked") {
+    return {
+      ok: false,
+      error: "Your application is already in review or decided.",
+    };
   }
-  if (!cohortId) cohortId = await getActiveCohortId(supabase);
+
+  // Which cohort this application is FOR. Same order as the picker — explicit
+  // pick, then the draft's own cohort, then the admin-pinned one, then the most
+  // upcoming — and resolved against `plan.allowed` rather than the raw open
+  // list. That last part is the fix: a declined applicant used to be able to
+  // post the id of the very cohort that declined them and land a second
+  // application in the same reviewer's queue.
+  const requested = typeof data.cohort_id === "string" ? data.cohort_id : "";
+  const draftCohortId =
+    existing?.status === "draft" ? (existing as any).cohort_id ?? null : null;
+  const cohortId = selectCohortId(plan.allowed, [
+    requested,
+    draftCohortId,
+    pinnedId,
+  ]);
+
+  // A submit with nowhere to go must fail loudly rather than quietly attaching
+  // itself to whatever cohort happened to sort first. Drafts are let through
+  // with a null cohort — they're not an application yet, and autosave failing
+  // mid-sentence would be worse than a draft that gets its cohort on submit.
+  if (submit && !cohortId) {
+    return {
+      ok: false,
+      error:
+        plan.blocked.length > 0
+          ? `You've already had a decision on ${plan.blocked
+              .map((c) => c.name)
+              .join(" and ")}. Applying again means a different cohort, and there isn't one open yet — we'll email you when the next one opens.`
+          : "No cohort is open for applications right now.",
+    };
+  }
 
   const payload = {
     user_id: user.id,
@@ -265,49 +328,23 @@ async function upsertApplication(
   // Don't blow away an existing referral_code with undefined on later saves.
   if (payload.referral_code === undefined) delete (payload as any).referral_code;
 
-  // Find the most recent application for this user.
-  const { data: existing } = await supabase
-    .from("applications")
-    .select("id, status")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
   let applicationId: string;
 
-  // Lifecycle handling:
-  //   - draft → update in place
-  //   - rejected or withdrawn → INSERT a brand-new application so the
-  //     student can apply to a different cohort without disturbing the
-  //     historical record (admin review pages keep showing both)
-  //   - submitted / accepted / paid / enrolled → block (those need
-  //     admin action, not another self-serve write)
-  if (existing) {
-    if (existing.status === "draft") {
-      const { error } = await supabase
-        .from("applications")
-        .update(payload)
-        .eq("id", existing.id);
-      if (error) return { ok: false, error: error.message };
-      applicationId = existing.id;
-    } else if (
-      existing.status === "rejected" ||
-      existing.status === "withdrawn"
-    ) {
-      const { data: created, error } = await supabase
-        .from("applications")
-        .insert(payload)
-        .select("id")
-        .single();
-      if (error) return { ok: false, error: error.message };
-      applicationId = created!.id;
-    } else {
-      return {
-        ok: false,
-        error: "Your application is already in review or decided.",
-      };
-    }
+  // Lifecycle handling, from the stage lib/reapply.ts already resolved:
+  //   - "draft"   → update in place
+  //   - "reapply" → INSERT a brand-new application so the student can apply to
+  //                 a different cohort without disturbing the historical
+  //                 record (admin review pages keep showing both)
+  //   - "new"     → INSERT the first one
+  //   - "locked"  → returned above; those move by admin action, not by another
+  //                 self-serve write
+  if (plan.stage === "draft") {
+    const { error } = await supabase
+      .from("applications")
+      .update(payload)
+      .eq("id", existing!.id);
+    if (error) return { ok: false, error: error.message };
+    applicationId = existing!.id;
   } else {
     const { data: created, error } = await supabase
       .from("applications")
@@ -318,7 +355,21 @@ async function upsertApplication(
     applicationId = created!.id;
   }
 
+  // The auto-admit perk: a virtual founder pass turns "submitted" into
+  // "accepted" right here, before the applicant's own confirmation email is
+  // composed below, so the two can't contradict each other. A no-op for
+  // everyone else, and best-effort — see lib/admissions.ts.
+  let autoAdmitted = false;
+  if (submit) {
+    const result = await autoAdmitOnSubmit(createAdminClient(), {
+      applicationId,
+      userId: user.id,
+    });
+    autoAdmitted = result.admitted;
+  }
+
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/accepted");
   revalidatePath("/dashboard/application");
   revalidatePath("/apply");
 
@@ -330,20 +381,26 @@ async function upsertApplication(
         .select("full_name, email")
         .eq("id", user.id)
         .maybeSingle();
-      const t = Templates.applicationReceived({
-        name: profile?.full_name ?? null,
-      });
-      if (user.email) {
+      // An auto-admitted applicant already has an acceptance in their inbox
+      // (lib/admissions.ts sent it moments ago). "Thanks — we'll review and
+      // email you with a decision" arriving right after "you're in" doesn't
+      // read as thorough, it reads as a bug, and it makes the seat look
+      // provisional. So the whole applicant-facing half of this block is
+      // skipped for them; the admin-facing half below still runs.
+      if (user.email && !autoAdmitted) {
         // Best-effort: the applicant confirmation must never affect the
-        // submit result. sendEmail already returns (rather than throws) when
-        // Resend is unconfigured or errors; the extra .catch is belt-and-
-        // suspenders so a thrown error here can't skip the admin notifications
-        // below or surface to the student. Requires RESEND_API_KEY +
-        // RESEND_FROM (verified domain) to actually deliver.
-        const emailRes = await sendEmail({
+        // submit result. sendTemplated already returns (rather than throws)
+        // when no transport is configured or the send errors; the extra
+        // .catch is belt-and-suspenders so a thrown error here can't skip the
+        // admin notifications below or surface to the student. Prefers the
+        // admin-editable `application.received` template and falls back to the
+        // compiled copy.
+        const emailRes = await sendTemplated("application.received", {
           to: user.email,
-          subject: t.subject,
-          html: t.html,
+          toName: profile?.full_name ?? null,
+          userId: user.id,
+          fallback: () =>
+            Templates.applicationReceived({ name: profile?.full_name ?? null }),
         }).catch((err) => {
           console.error("[apply] applicant email threw", err);
           return { ok: false as const, reason: "threw" };
@@ -355,14 +412,28 @@ async function upsertApplication(
           );
         }
       }
-      await notify({
-        userId: user.id,
-        type: "application_submitted",
-        title: "Application submitted",
-        body: "We'll review and email you with a decision.",
-        link: "/dashboard/application",
-      });
-      // Notify all admins so they see it in their bell + email.
+      // Awaited rather than fired-and-forgotten: a serverless invocation can
+      // be frozen the moment its response is returned, and a floating promise
+      // here would drop the enqueue silently. emitEmailEvent swallows its own
+      // failures, so awaiting it can't fail the operation it reports on.
+      if (!autoAdmitted) {
+        await emitEmailEvent("application.submitted", {
+          email: user.email,
+          name: profile?.full_name ?? null,
+          userId: user.id,
+          dedupeSeed: `application.submitted:${user.id}`,
+        });
+        await notify({
+          userId: user.id,
+          type: "application_submitted",
+          title: "Application submitted",
+          body: "We'll review and email you with a decision.",
+          link: "/dashboard/application",
+        });
+      }
+      // Notify all admins so they see it in their bell + email. This one runs
+      // either way: an auto-admit is exactly the event staff most want to see
+      // land, and it is the only admission nobody on the team clicked.
       const admin = createAdminClient();
       const { data: admins } = await admin
         .from("profiles")
@@ -372,8 +443,12 @@ async function upsertApplication(
         await notify({
           userId: a.id,
           type: "admin_new_application",
-          title: "New application received",
-          body: `${profile?.full_name ?? profile?.email ?? "Someone"} just applied.`,
+          title: autoAdmitted
+            ? "Founder pass auto-admitted"
+            : "New application received",
+          body: autoAdmitted
+            ? `${profile?.full_name ?? profile?.email ?? "Someone"} applied and was admitted automatically by their virtual founder pass.`
+            : `${profile?.full_name ?? profile?.email ?? "Someone"} just applied.`,
           link: `/admin/applications/${applicationId}`,
         });
       }
@@ -413,6 +488,7 @@ async function upsertApplication(
     ok: true,
     applicationId,
     savedAt: new Date().toISOString(),
+    autoAdmitted,
   };
 }
 
@@ -449,6 +525,10 @@ export async function submitApplicationAction(
   formData: FormData,
 ) {
   const result = await upsertApplication(formData, true);
+  // An auto-admitted holder lands on the page that takes their money rather
+  // than on "we'll be in touch" — the seat is granted, the only thing left is
+  // to lock it in.
+  if (result.ok && result.autoAdmitted) redirect("/dashboard/accepted");
   if (result.ok) redirect("/dashboard/application?submitted=1");
   return result;
 }

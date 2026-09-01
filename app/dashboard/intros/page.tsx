@@ -180,7 +180,11 @@ function IntroRow({ intro }: { intro: any }) {
   return (
     <li className="flex items-start gap-4 py-5">
       <div className="min-w-0 flex-1">
-        <p className="text-[15px] font-medium text-ink">{name}</p>
+        {/* Falls back to the investor's email, which has no break
+            opportunity and would otherwise be clipped by min-w-0. */}
+        <p className="text-[15px] font-medium text-ink break-words [overflow-wrap:anywhere]">
+          {name}
+        </p>
         {team?.name && (
           <p className="mt-0.5 text-xs text-ink-soft">
             For team {team.name}

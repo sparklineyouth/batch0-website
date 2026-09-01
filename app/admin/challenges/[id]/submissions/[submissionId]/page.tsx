@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { rowToSubmission, HTTP_URL_RE } from "@/lib/challenges";
+import {
+  rowToSubmission,
+  HTTP_URL_RE,
+  isUploadAnswer,
+  uploadPathOf,
+  CHALLENGE_UPLOAD_BUCKET,
+} from "@/lib/challenges";
 import { SubmissionReview } from "./submission-review";
 
 export const metadata = { title: "Submission · Admin" };
@@ -15,7 +21,7 @@ export default async function SubmissionDetailPage({
 }: {
   params: { id: string; submissionId: string };
 }) {
-  await requireAdmin();
+  await requirePermission("challenges.manage");
   const admin = createAdminClient();
 
   const { data } = await admin
@@ -29,6 +35,19 @@ export default async function SubmissionDetailPage({
   const applicantName =
     (data as any).applicant?.full_name ?? (data as any).applicant?.email ?? "Applicant";
   const applicantEmail = (data as any).applicant?.email ?? null;
+
+  // Uploaded videos live in the private `challenge-uploads` bucket — mint a
+  // short-lived signed URL for any uploaded answer (video OR link field, since
+  // every link field now offers an upload) so admins can play them here.
+  const videoSignedUrls: Record<string, string> = {};
+  for (const q of sub.questionsSnapshot) {
+    const raw = (sub.answers[q.id] ?? "").trim();
+    if (!isUploadAnswer(raw)) continue;
+    const { data: signed } = await admin.storage
+      .from(CHALLENGE_UPLOAD_BUCKET)
+      .createSignedUrl(uploadPathOf(raw), 3600);
+    if (signed?.signedUrl) videoSignedUrls[q.id] = signed.signedUrl;
+  }
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -73,21 +92,43 @@ export default async function SubmissionDetailPage({
                   {q.label}
                 </dt>
                 <dd className="mt-1 whitespace-pre-line text-sm text-ink">
-                  {raw ? (
-                    q.type === "url" && HTTP_URL_RE.test(raw) ? (
-                      <a
-                        href={raw}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-phosphor-ink underline decoration-phosphor-ink/30 underline-offset-2 hover:decoration-phosphor-ink"
-                      >
-                        {raw}
-                      </a>
-                    ) : (
-                      raw
-                    )
-                  ) : (
+                  {!raw ? (
                     <span className="text-ink-faint">—</span>
+                  ) : isUploadAnswer(raw) ? (
+                    videoSignedUrls[q.id] ? (
+                      <div className="space-y-2">
+                        <video
+                          controls
+                          preload="metadata"
+                          src={videoSignedUrls[q.id]}
+                          className="w-full max-w-lg rounded-lg border border-line bg-black"
+                        />
+                        <a
+                          href={videoSignedUrls[q.id]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block text-xs text-phosphor-ink underline decoration-phosphor-ink/30 underline-offset-2 hover:decoration-phosphor-ink"
+                        >
+                          Open / download video
+                        </a>
+                      </div>
+                    ) : (
+                      <span className="text-ink-faint">
+                        Uploaded video (link expired — reload to refresh)
+                      </span>
+                    )
+                  ) : (q.type === "url" || q.type === "video") &&
+                    HTTP_URL_RE.test(raw) ? (
+                    <a
+                      href={raw}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-phosphor-ink underline decoration-phosphor-ink/30 underline-offset-2 hover:decoration-phosphor-ink"
+                    >
+                      {raw}
+                    </a>
+                  ) : (
+                    raw
                   )}
                 </dd>
               </div>

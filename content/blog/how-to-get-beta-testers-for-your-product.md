@@ -4,7 +4,7 @@ description: "You can't improve a product nobody's tried. Here's how to recruit 
 date: "2026-02-24"
 updated: "2026-02-24"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["beta testers", "beta launch", "user feedback", "early users", "product testing"]
 ---
 

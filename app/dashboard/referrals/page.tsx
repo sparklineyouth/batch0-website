@@ -23,7 +23,24 @@ function maskName(full: string | null, fallback: string) {
 export default async function StudentReferralsPage() {
   const profile = await requireStudent();
   const admin = createAdminClient();
-  const siteConfig = await getSiteConfig();
+
+  // Use the admin client: a student's own referral count spans OTHER users'
+  // applications, which RLS (own-or-staff) would hide from the scoped client.
+  // Only non-PII status is selected. The leaderboard chains off the (request-
+  // cached, so effectively instant) config read instead of joining the batch
+  // unconditionally: computeReferralLeaderboard throws on query errors, and
+  // the paused card must never 500 because of a read it doesn't render.
+  const configPromise = getSiteConfig();
+  const [siteConfig, { data: ownReferred }, leaderboard] = await Promise.all([
+    configPromise,
+    admin
+      .from("applications")
+      .select("status")
+      .eq("referral_code", profile.referral_code ?? "__none__"),
+    configPromise.then((cfg) =>
+      cfg.settings.referralsEnabled ? computeReferralLeaderboard(admin, 10) : [],
+    ),
+  ]);
 
   if (!siteConfig.settings.referralsEnabled) {
     return (
@@ -38,14 +55,6 @@ export default async function StudentReferralsPage() {
     );
   }
 
-  // Use the admin client: a student's own referral count spans OTHER users'
-  // applications, which RLS (own-or-staff) would hide from the scoped client.
-  // Only non-PII status is selected.
-  const { data: ownReferred } = await admin
-    .from("applications")
-    .select("status")
-    .eq("referral_code", profile.referral_code ?? "__none__");
-
   const myCounts = (ownReferred ?? []).reduce(
     (acc: any, a: any) => {
       acc.applied++;
@@ -56,7 +65,6 @@ export default async function StudentReferralsPage() {
     { applied: 0, accepted: 0, paid: 0 },
   );
 
-  const leaderboard = await computeReferralLeaderboard(admin, 10);
   const myRankRaw = leaderboard.findIndex((r) => r.userId === profile.id);
   const myRank = myRankRaw >= 0 ? myRankRaw + 1 : null;
 
@@ -97,7 +105,10 @@ export default async function StudentReferralsPage() {
             No referred applications yet. Be the first.
           </p>
         ) : (
-          <table className="w-full text-sm">
+          // The Card clips overflow, so without a scroller here the last
+          // columns are silently chopped at 375px instead of scrolling.
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
                 <th className="px-5 py-3 w-12">#</th>
@@ -138,6 +149,7 @@ export default async function StudentReferralsPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>

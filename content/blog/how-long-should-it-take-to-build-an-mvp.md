@@ -4,7 +4,7 @@ description: "If your MVP is taking months, something is wrong. Here's a realist
 date: "2026-02-10"
 updated: "2026-02-10"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["mvp timeline", "build an mvp", "scope cutting", "shipping fast", "mvp scope"]
 ---
 

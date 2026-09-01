@@ -1,66 +1,29 @@
-import Link from "next/link";
-import { SignupForm } from "./signup-form";
-import { getSiteConfig } from "@/lib/site-config";
+import { SignupCard } from "./signup-form";
+import { getPublicSiteConfig } from "@/lib/site-config";
 
 export const metadata = {
-  title: "Apply — Create Your Account · batch0",
+  title: "Create Your Account · batch0",
   description:
-    "Step 1 of applying to batch0: create your free account, then fill in the application. Free to apply; tuition is charged only if accepted.",
+    "Create your free batch0 account. Applying to a cohort is optional and free; tuition is charged only if you're accepted.",
 };
 
-// Mirrors safeNext in app/(auth)/login/page.tsx — same-origin paths only,
-// so a tampered ?next= can't trampoline the user off-site after signup.
-function safeNext(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  if (!raw.startsWith("/") || raw.startsWith("//")) return undefined;
-  return raw;
-}
-
-export default async function SignupPage({
-  searchParams,
-}: {
-  searchParams: { next?: string };
-}) {
-  const safe = safeNext(searchParams.next);
-  const loginHref = safe ? `/login?next=${encodeURIComponent(safe)}` : "/login";
-  const config = await getSiteConfig();
-  const { derived } = config;
-  const isApplyFlow = !safe || safe === "/apply" || safe.startsWith("/apply?");
-
+export default async function SignupPage() {
+  // Cached public read (tag-busted on admin edits, ≤300s stale): the price
+  // here is one sentence of marketing copy, not a gate, and the no-store
+  // getSiteConfig() variant would force this page dynamic.
+  const { derived } = await getPublicSiteConfig();
+  // SignupCard reads ?next from window.location in effects/handlers (no
+  // useSearchParams, no Suspense), so the page prerenders with the whole
+  // card — heading, form, links — in the static HTML (asserted by
+  // scripts/verify-static.mjs). The signed-in bounce away from /signup
+  // lives in middleware.
+  // The auth shell has no <main>, and SignupCard's own root lives in a client
+  // component this page doesn't own — so the target goes on a bare, unstyled
+  // <main> here. No classes, so the box model is unchanged. tabIndex={-1}
+  // makes it focusable so screen readers move the cursor to it.
   return (
-    <div>
-      {isApplyFlow ? (
-        <>
-          <p className="font-mono text-[12px] uppercase tracking-[0.08em] text-white/55">
-            Apply · step 1 of 2
-          </p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">
-            Create your account
-          </h1>
-          <p className="mt-2 text-sm leading-[1.6] text-white/50">
-            The application itself is step 2 — one form about you and what
-            you want to build. Applying is free;{" "}
-            {derived.priceLabel} tuition is charged only if you&apos;re
-            accepted. Decisions go out by email on a rolling basis.
-          </p>
-        </>
-      ) : (
-        <>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            Create your account
-          </h1>
-          <p className="mt-1 text-sm text-white/50">
-            Sign up for batch0. Takes 30 seconds.
-          </p>
-        </>
-      )}
-      <SignupForm next={safe} />
-      <p className="mt-6 text-center text-sm text-white/50">
-        Already have an account?{" "}
-        <Link href={loginHref} className="text-phosphor hover:underline">
-          Log in
-        </Link>
-      </p>
-    </div>
+    <main id="main-content" tabIndex={-1}>
+      <SignupCard priceLabel={derived.priceLabel} />
+    </main>
   );
 }

@@ -9,16 +9,19 @@ export const metadata = { title: "Notifications · batch0" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();
-  const profile = await getProfile();
-  const home = roleHome(profile?.role ?? "student");
-
   const supabase = createClient();
-  const { data: items } = await supabase
-    .from("notifications")
-    .select("id, type, title, body, link, read_at, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(200);
+
+  // The list needs only the user id, so it loads alongside the back-link's
+  // home resolution (profile → role home) instead of behind it.
+  const [home, { data: items }] = await Promise.all([
+    getProfile().then((p) => roleHome(p?.role ?? "student")),
+    supabase
+      .from("notifications")
+      .select("id, type, title, body, link, read_at, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(200),
+  ]);
 
   const all = items ?? [];
   const unread = all.filter((i) => !i.read_at);
@@ -39,7 +42,7 @@ export default async function NotificationsPage() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-3xl px-5 py-10 md:px-8 md:py-14">
+      <main id="main-content" tabIndex={-1} className="mx-auto max-w-3xl px-5 py-10 md:px-8 md:py-14">
         <div className="flex items-baseline justify-between gap-4">
           <div>
             <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">

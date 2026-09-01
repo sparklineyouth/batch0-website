@@ -1,12 +1,12 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
-import { notify } from "@/lib/notifications";
+import { notifyMany } from "@/lib/notifications";
 
 export async function approveTeamLogo(input: { teamId: string }) {
-  await assertAdmin();
+  await assertPermission("moderation.manage");
   const admin = createAdminClient();
   const { data: team } = await admin
     .from("teams")
@@ -28,20 +28,20 @@ export async function approveTeamLogo(input: { teamId: string }) {
     payload: null,
   });
 
-  // Tell the team it's approved.
+  // Tell the team it's approved — one batched insert for the whole roster.
   const { data: members } = await admin
     .from("team_members")
     .select("user_id")
     .eq("team_id", input.teamId);
-  for (const m of members ?? []) {
-    await notify({
+  await notifyMany(
+    (members ?? []).map((m) => ({
       userId: m.user_id,
       type: "team_logo_approved",
       title: "Your team logo was approved",
       body: team?.name ? `${team.name}'s logo is now public.` : null,
       link: "/dashboard/team",
-    });
-  }
+    })),
+  );
   revalidatePath("/admin/moderation");
   revalidatePath("/dashboard/team");
 }
@@ -50,7 +50,7 @@ export async function rejectTeamLogo(input: {
   teamId: string;
   reason: string;
 }) {
-  await assertAdmin();
+  await assertPermission("moderation.manage");
   const reason = (input.reason ?? "").trim().slice(0, 240);
   const admin = createAdminClient();
 
@@ -93,15 +93,15 @@ export async function rejectTeamLogo(input: {
     .from("team_members")
     .select("user_id")
     .eq("team_id", input.teamId);
-  for (const m of members ?? []) {
-    await notify({
+  await notifyMany(
+    (members ?? []).map((m) => ({
       userId: m.user_id,
       type: "team_logo_rejected",
       title: "Team logo needs changes",
       body: reason || "Upload a different logo.",
       link: "/dashboard/team",
-    });
-  }
+    })),
+  );
   revalidatePath("/admin/moderation");
   revalidatePath("/dashboard/team");
 }

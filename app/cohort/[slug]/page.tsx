@@ -1,20 +1,31 @@
+import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 
+// One lookup shared by generateMetadata and the page body — React cache()
+// dedupes it within the request, so a view costs one round trip instead of
+// two. Selects the union of the columns both callers read.
+const getCohortBySlug = cache(async (slug: string) => {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("cohorts")
+    .select(
+      "id, name, slug, starts_on, ends_on, landing_headline, landing_subhead, landing_cta_label, accent_hex, hero_image_url",
+    )
+    .eq("slug", slug)
+    .maybeSingle();
+  return data;
+});
+
 export async function generateMetadata({
   params,
 }: {
   params: { slug: string };
 }) {
-  const admin = createAdminClient();
-  const { data: cohort } = await admin
-    .from("cohorts")
-    .select("name, landing_headline, landing_subhead")
-    .eq("slug", params.slug)
-    .maybeSingle();
+  const cohort = await getCohortBySlug(params.slug);
   if (!cohort) return { title: "Cohort · batch0" };
   return {
     title: `${cohort.name} · batch0`,
@@ -35,16 +46,10 @@ export default async function CohortPage({
 }: {
   params: { slug: string };
 }) {
-  const admin = createAdminClient();
-  const { data: cohort } = await admin
-    .from("cohorts")
-    .select(
-      "id, name, slug, starts_on, ends_on, landing_headline, landing_subhead, landing_cta_label, accent_hex, hero_image_url",
-    )
-    .eq("slug", params.slug)
-    .maybeSingle();
+  const cohort = await getCohortBySlug(params.slug);
   if (!cohort) notFound();
 
+  const admin = createAdminClient();
   const { data: teams } = await admin
     .from("teams")
     .select("id, name, slug, tagline, description, logo_url, website_url")
@@ -61,11 +66,13 @@ export default async function CohortPage({
   } as React.CSSProperties;
 
   return (
-    <main
+    // See app/page.tsx: <main> must not contain the navbar or footer.
+    <div
       style={accentStyle}
       className="relative min-h-screen overflow-hidden bg-black text-white"
     >
       <Navbar />
+      <main id="main-content" tabIndex={-1}>
       <section className="relative mx-auto max-w-6xl px-6 pb-20 pt-32">
         <p
           className="text-sm font-medium uppercase tracking-[0.2em]"
@@ -103,6 +110,12 @@ export default async function CohortPage({
               src={c.hero_image_url}
               alt={`${cohort.name} hero`}
               className="w-full"
+              // Admin uploads carry no stored dimensions, so reserve a 16:9
+              // box while the file loads (`auto` hands the real ratio back
+              // once known) instead of letting the team grid jump. When
+              // present this is the page's LCP element, so fetch it first.
+              style={{ aspectRatio: "auto 16 / 9" }}
+              fetchPriority="high"
             />
           </div>
         )}
@@ -141,7 +154,7 @@ export default async function CohortPage({
                     {t.name.charAt(0)}
                   </div>
                 )}
-                <h3 className="text-lg font-semibold text-white">{t.name}</h3>
+                <h2 className="text-lg font-semibold text-white">{t.name}</h2>
                 {t.tagline && (
                   <p className="mt-1 text-sm text-white/65">{t.tagline}</p>
                 )}
@@ -150,8 +163,9 @@ export default async function CohortPage({
           )}
         </div>
       </section>
+      </main>
       <Footer />
-    </main>
+    </div>
   );
 }
 

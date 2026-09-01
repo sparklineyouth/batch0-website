@@ -61,13 +61,35 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Missing team_id" }, { status: 400 });
   }
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("demo_day_reactions")
-    .select("emoji")
-    .eq("team_id", teamId);
+  // Head-only counts, one per allowed emoji, so the response stays a
+  // handful of integers no matter how many reactions a team racks up —
+  // fetching rows to recount in JS would silently undercount past
+  // PostgREST's 1000-row page cap during a busy Demo Day. Only emoji
+  // with at least one reaction appear in the payload.
+  const emojis = [...ALLOWED];
+  const results = await Promise.all(
+    emojis.map((emoji) =>
+      admin
+        .from("demo_day_reactions")
+        .select("id", { count: "exact", head: true })
+        .eq("team_id", teamId)
+        .eq("emoji", emoji),
+    ),
+  );
   const counts: Record<string, number> = {};
-  for (const r of (data ?? []) as { emoji: string }[]) {
-    counts[r.emoji] = (counts[r.emoji] ?? 0) + 1;
-  }
-  return NextResponse.json({ counts });
+  emojis.forEach((emoji, i) => {
+    const count = results[i].count ?? 0;
+    if (count > 0) counts[emoji] = count;
+  });
+  return NextResponse.json(
+    { counts },
+    {
+      headers: {
+        // A live audience polls this every ~4s per viewer; a short CDN
+        // TTL lets Vercel collapse those into ~1 origin hit per few
+        // seconds while counts still track live taps.
+        "Cache-Control": "public, s-maxage=3, stale-while-revalidate=5",
+      },
+    },
+  );
 }

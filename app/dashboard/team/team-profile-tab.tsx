@@ -5,7 +5,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
-import { createClient } from "@/lib/supabase/client";
 import { Upload, Trash2 } from "lucide-react";
 import {
   updateTeamInfo,
@@ -75,6 +74,9 @@ export function TeamProfileTab({ team }: { team: Team }) {
         teamId: team.id,
         filename: file.name,
       });
+      // Deferred import keeps supabase-js out of the route's first-load JS;
+      // it's only needed here, at the moment an upload starts.
+      const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
       const up = await supabase.storage
         .from("team-logos")

@@ -4,8 +4,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildSystemPrompt } from "@/lib/ai/system-prompt";
 import { env } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { canUseAi } from "@/lib/access";
 import { applyUsage, isOverHardCap } from "@/lib/ai/usage";
+import { getAllRoles } from "@/lib/roles";
+import { capabilitiesFrom, can, canAccessAdmin } from "@/lib/permissions";
+import {
+  computePreCohort,
+  isAcceptedStatus,
+  todayISO,
+  type PreCohortCohort,
+} from "@/lib/pre-cohort";
 import type { Role } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -43,111 +50,71 @@ export async function POST(req: Request) {
     });
   }
 
-  // Gate: only accepted+ students (and staff) can use the AI co-founder.
-  const { data: profileRow } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const role = (profileRow?.role as Role | undefined) ?? "student";
-  const allowed = await canUseAi(role);
-  if (!allowed) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "The AI co-founder is locked until your application is accepted.",
-      }),
-      { status: 403 },
-    );
-  }
-
-  // Per-user hard cap so a runaway loop can't burn unlimited cost.
-  // Students past the monthly hard ceiling are blocked entirely; admins
-  // bypass so they can debug.
-  if (role !== "admin" && (await isOverHardCap(user.id))) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "You've hit the AI usage hard cap for this month. Contact batch0 if you need more.",
-      }),
-      { status: 402 },
-    );
-  }
-
-  // Modest per-user rate limit, separate from token quota.
-  const rl = await checkRateLimit({
-    kind: "ai-chat",
-    identifier: user.id,
-    limit: 60,
-    windowSeconds: 60 * 60,
-  });
-  if (!rl.ok) {
-    return new Response(
-      JSON.stringify({
-        error: "You've hit the hourly chat limit. Try again later.",
-      }),
-      { status: 429 },
-    );
-  }
-
   const body = await req.json().catch(() => ({}));
   const { conversationId, message } = body as {
     conversationId?: string;
     message?: string;
   };
-  if (!conversationId || !message?.trim()) {
-    return new Response(JSON.stringify({ error: "Missing fields" }), {
-      status: 400,
-    });
-  }
-  // Hard ceiling per turn — bigger inputs are usually accidents.
-  const trimmedMessage = message.trim().slice(0, 8000);
 
   const admin = createAdminClient();
 
-  // Verify conversation belongs to user.
-  const { data: convo } = await admin
-    .from("ai_conversations")
-    .select("id, user_id, title, team_id")
-    .eq("id", conversationId)
-    .single();
-  if (!convo || convo.user_id !== user.id) {
-    return new Response(JSON.stringify({ error: "Not found" }), {
-      status: 404,
-    });
-  }
-
-  // Persist the user's message immediately so it survives even if streaming fails.
-  await admin.from("ai_messages").insert({
-    conversation_id: conversationId,
-    role: "user",
-    content: trimmedMessage,
-  });
-
-  // Pull profile + recent history + live retrieval context. We deliberately
-  // cap history to HISTORY_WINDOW to keep cost predictable; older context
-  // is captured in retrieval-block summaries.
+  // Time-to-first-token is the most-felt latency in the product, so every
+  // read the gates and the retrieval context need goes out in one parallel
+  // batch — each is keyed only off the signed-in user or the request body,
+  // never off another read. The gates are still evaluated in their
+  // original order below (403 → 402 → 429 → 400 → 404), so responses are
+  // unchanged. History is capped one short of HISTORY_WINDOW because the
+  // new user message is appended locally rather than read back after its
+  // insert; older context is captured in retrieval-block summaries.
   const [
     { data: profile },
+    allRoles,
+    overHardCap,
+    rl,
+    { data: convo },
     { data: history },
+    { data: enrollments },
     { data: application },
     { data: membership },
     { data: recentCheckins },
   ] = await Promise.all([
-    admin
+    supabase
       .from("profiles")
-      .select("full_name, ai_context")
+      .select("role, full_name, ai_context")
       .eq("id", user.id)
-      .single(),
+      .maybeSingle(),
+    getAllRoles(),
+    isOverHardCap(user.id),
+    checkRateLimit({
+      kind: "ai-chat",
+      identifier: user.id,
+      limit: 60,
+      windowSeconds: 60 * 60,
+    }),
+    conversationId
+      ? admin
+          .from("ai_conversations")
+          .select("id, user_id, title, team_id")
+          .eq("id", conversationId)
+          .single()
+      : Promise.resolve({ data: null }),
+    conversationId
+      ? admin
+          .from("ai_messages")
+          .select("role, content, created_at")
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: false })
+          .limit(HISTORY_WINDOW - 1)
+      : Promise.resolve({ data: null }),
     admin
-      .from("ai_messages")
-      .select("role, content, created_at")
-      .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: false })
-      .limit(HISTORY_WINDOW),
+      .from("enrollments")
+      .select("cohort_id, cohort:cohorts(name, starts_on, status)")
+      .eq("user_id", user.id),
     admin
       .from("applications")
-      .select("status, startup_idea, why_join, experience")
+      .select(
+        "status, cohort_id, startup_idea, why_join, experience, cohort:cohorts(name, starts_on, status)",
+      )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -165,6 +132,94 @@ export async function POST(req: Request) {
       .order("week_start", { ascending: false })
       .limit(4),
   ]);
+
+  const role = (profile?.role as Role | undefined) ?? "student";
+
+  // Gate: only accepted+ students (and staff) can use the AI co-founder.
+  // Inline equivalent of canUseAi → getStudentAccess → aiAccessFrom
+  // (lib/access.ts), evaluated against the rows batched above instead of
+  // letting those helpers re-fetch them — keep in lockstep with
+  // lib/access.ts.
+  const caps = capabilitiesFrom(
+    role,
+    allRoles.find((r) => r.slug === role)?.permissions ?? [],
+  );
+  let allowed =
+    canAccessAdmin(caps) ||
+    can(caps, "mentor.panel") ||
+    can(caps, "investor.panel");
+  if (!allowed) {
+    const applicationStatus = application?.status ?? null;
+    const accepted = isAcceptedStatus(applicationStatus);
+    const enrolled = (enrollments?.length ?? 0) > 0;
+    let preCohort = false;
+    if (enrolled || accepted) {
+      // Every cohort the student is tied to: all enrollments plus the
+      // accepted application's cohort. Supabase embeds to-one relations
+      // as object or single-element array.
+      const cohorts: PreCohortCohort[] = [];
+      for (const e of (enrollments ?? []) as any[]) {
+        const c = Array.isArray(e.cohort) ? e.cohort[0] : e.cohort;
+        if (e.cohort_id && c) cohorts.push(c);
+      }
+      if (accepted && application?.cohort_id) {
+        const c = Array.isArray((application as any).cohort)
+          ? (application as any).cohort[0]
+          : (application as any).cohort;
+        if (c) cohorts.push(c);
+      }
+      preCohort = computePreCohort(true, cohorts, todayISO());
+    }
+    allowed = !preCohort && accepted;
+  }
+  if (!allowed) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "The AI co-founder is locked until your application is accepted.",
+      }),
+      { status: 403 },
+    );
+  }
+
+  // Per-user hard cap so a runaway loop can't burn unlimited cost.
+  // Students past the monthly hard ceiling are blocked entirely; admins
+  // bypass so they can debug.
+  if (role !== "admin" && overHardCap) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "You've hit the AI usage hard cap for this month. Contact batch0 if you need more.",
+      }),
+      { status: 402 },
+    );
+  }
+
+  // Modest per-user rate limit, separate from token quota.
+  if (!rl.ok) {
+    return new Response(
+      JSON.stringify({
+        error: "You've hit the hourly chat limit. Try again later.",
+      }),
+      { status: 429 },
+    );
+  }
+
+  if (!conversationId || !message?.trim()) {
+    return new Response(JSON.stringify({ error: "Missing fields" }), {
+      status: 400,
+    });
+  }
+  // Hard ceiling per turn — bigger inputs are usually accidents.
+  const trimmedMessage = message.trim().slice(0, 8000);
+
+  // Verify conversation belongs to user.
+  if (!convo || convo.user_id !== user.id) {
+    return new Response(JSON.stringify({ error: "Not found" }), {
+      status: 404,
+    });
+  }
+
   const latestCheckin = (recentCheckins ?? [])[0] ?? null;
   const checkinHistory = (recentCheckins ?? []).slice(1);
 
@@ -172,63 +227,110 @@ export async function POST(req: Request) {
   // team_id, otherwise we fall back to the user's current membership.
   const teamId = convo.team_id ?? membership?.team_id ?? null;
 
+  // The cohort whose curriculum feeds the corpus below. Exactly one
+  // enrollment pins it; zero or several resolve nothing rather than
+  // guessing between cohorts.
+  const cohortId =
+    enrollments && enrollments.length === 1
+      ? ((enrollments[0] as any).cohort_id ?? null)
+      : null;
+
   let teamRetrieval: any = null;
   let teamMessages: { author: string | null; body: string; created_at: string }[] =
     [];
-  if (teamId) {
-    const [{ data: team }, { count }, { data: pitch }, { data: tMsgs }] =
-      await Promise.all([
-        admin
-          .from("teams")
-          .select("name, tagline, description")
-          .eq("id", teamId)
-          .maybeSingle(),
-        admin
-          .from("team_members")
-          .select("id", { count: "exact", head: true })
-          .eq("team_id", teamId),
-        admin
-          .from("pitch_submissions")
-          .select("submitted_at")
-          .eq("team_id", teamId)
-          .maybeSingle(),
-        admin
-          .from("team_messages")
-          .select(
-            "body, created_at, kind, author:profiles(full_name)",
-          )
-          .eq("team_id", teamId)
-          .order("created_at", { ascending: false })
-          .limit(8),
-      ]);
-    if (team) {
-      teamRetrieval = {
-        name: team.name,
-        tagline: team.tagline,
-        description: team.description,
-        member_count: count ?? 1,
-        submitted_pitch_at: pitch?.submitted_at ?? null,
-      };
-      teamMessages = (tMsgs ?? [])
-        .filter((m: any) => m.kind !== "system")
-        .map((m: any) => {
-          const author = Array.isArray(m.author) ? m.author[0] : m.author;
-          return {
-            author: author?.full_name ?? null,
-            body: m.body,
-            created_at: m.created_at,
-          };
-        });
-      // Pin the conversation to the team so subsequent messages
-      // continue routing the same way.
-      if (!convo.team_id) {
-        await admin
-          .from("ai_conversations")
-          .update({ team_id: teamId })
-          .eq("id", conversationId);
+  let curriculumCorpus: string | null = null;
+
+  await Promise.all([
+    // Persist the user's message immediately so it survives even if
+    // streaming fails.
+    admin.from("ai_messages").insert({
+      conversation_id: conversationId,
+      role: "user",
+      content: trimmedMessage,
+    }),
+    (async () => {
+      if (!teamId) return;
+      const [{ data: team }, { count }, { data: pitch }, { data: tMsgs }] =
+        await Promise.all([
+          admin
+            .from("teams")
+            .select("name, tagline, description")
+            .eq("id", teamId)
+            .maybeSingle(),
+          admin
+            .from("team_members")
+            .select("id", { count: "exact", head: true })
+            .eq("team_id", teamId),
+          admin
+            .from("pitch_submissions")
+            .select("submitted_at")
+            .eq("team_id", teamId)
+            .maybeSingle(),
+          admin
+            .from("team_messages")
+            .select(
+              "body, created_at, kind, author:profiles(full_name)",
+            )
+            .eq("team_id", teamId)
+            .order("created_at", { ascending: false })
+            .limit(8),
+        ]);
+      if (team) {
+        teamRetrieval = {
+          name: team.name,
+          tagline: team.tagline,
+          description: team.description,
+          member_count: count ?? 1,
+          submitted_pitch_at: pitch?.submitted_at ?? null,
+        };
+        teamMessages = (tMsgs ?? [])
+          .filter((m: any) => m.kind !== "system")
+          .map((m: any) => {
+            const author = Array.isArray(m.author) ? m.author[0] : m.author;
+            return {
+              author: author?.full_name ?? null,
+              body: m.body,
+              created_at: m.created_at,
+            };
+          });
+        // Pin the conversation to the team so subsequent messages
+        // continue routing the same way.
+        if (!convo.team_id) {
+          await admin
+            .from("ai_conversations")
+            .update({ team_id: teamId })
+            .eq("id", conversationId);
+        }
       }
-    }
-  }
+    })(),
+    (async () => {
+      // Cohort-scoped curriculum corpus, cached separately from the
+      // per-student system prompt so it stays warm across every student
+      // in the cohort.
+      try {
+        if (!cohortId) return;
+        const { data: mods } = await admin
+          .from("modules")
+          .select("week, title, summary, lessons:lessons(title, summary)")
+          .eq("cohort_id", cohortId)
+          .order("week", { ascending: true });
+        if (mods && mods.length > 0) {
+          const lines: string[] = ["# batch0 curriculum"];
+          for (const m of mods as any[]) {
+            lines.push(`\n## Week ${m.week}: ${m.title}`);
+            if (m.summary) lines.push(m.summary);
+            const lessons = Array.isArray(m.lessons) ? m.lessons : [];
+            for (const l of lessons) {
+              lines.push(`- ${l.title}${l.summary ? ` — ${l.summary}` : ""}`);
+            }
+          }
+          curriculumCorpus = lines.join("\n");
+        }
+      } catch (err) {
+        console.error("[ai-chat] curriculum corpus build failed", err);
+      }
+    })(),
+  ]);
 
   const systemText = buildSystemPrompt({
     studentName: profile?.full_name ?? null,
@@ -261,45 +363,16 @@ export async function POST(req: Request) {
     },
   });
 
-  // Cohort-scoped curriculum corpus, cached separately from the
-  // per-student system prompt so it stays warm across every student in
-  // the cohort.
-  let curriculumCorpus: string | null = null;
-  try {
-    let cohortId: string | null = null;
-    const { data: enrollment } = await admin
-      .from("enrollments")
-      .select("cohort_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    cohortId = (enrollment as any)?.cohort_id ?? null;
-    if (cohortId) {
-      const { data: mods } = await admin
-        .from("modules")
-        .select("week, title, summary, lessons:lessons(title, summary)")
-        .eq("cohort_id", cohortId)
-        .order("week", { ascending: true });
-      if (mods && mods.length > 0) {
-        const lines: string[] = ["# batch0 curriculum"];
-        for (const m of mods as any[]) {
-          lines.push(`\n## Week ${m.week}: ${m.title}`);
-          if (m.summary) lines.push(m.summary);
-          const lessons = Array.isArray(m.lessons) ? m.lessons : [];
-          for (const l of lessons) {
-            lines.push(`- ${l.title}${l.summary ? ` — ${l.summary}` : ""}`);
-          }
-        }
-        curriculumCorpus = lines.join("\n");
-      }
-    }
-  } catch (err) {
-    console.error("[ai-chat] curriculum corpus build failed", err);
-  }
-
+  // The history read predates the user-message insert, so the new turn is
+  // appended locally — together they form the same HISTORY_WINDOW-message
+  // context a post-insert read would produce.
   const orderedHistory = (history ?? []).slice().reverse();
-  const messages: Anthropic.MessageParam[] = orderedHistory
-    .filter((m: any) => m.role === "user" || m.role === "assistant")
-    .map((m: any) => ({ role: m.role, content: m.content }));
+  const messages: Anthropic.MessageParam[] = [
+    ...orderedHistory
+      .filter((m: any) => m.role === "user" || m.role === "assistant")
+      .map((m: any) => ({ role: m.role, content: m.content })),
+    { role: "user" as const, content: trimmedMessage },
+  ];
 
   const client = new Anthropic({ apiKey: env.anthropicApiKey });
 

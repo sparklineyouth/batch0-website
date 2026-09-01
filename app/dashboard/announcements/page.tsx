@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser, getProfile } from "@/lib/auth";
+import { getStudentAccess } from "@/lib/access";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
+import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { Megaphone } from "lucide-react";
 import { Reactions } from "./reactions";
 import { EMOJIS, type Emoji } from "./emoji";
@@ -13,6 +15,22 @@ export const dynamic = "force-dynamic";
 export default async function AnnouncementsPage() {
   const user = await requireUser();
   const profile = await getProfile();
+  const access = await getStudentAccess(profile?.role ?? "student");
+
+  // The sidebar hides this from an unenrolled applicant, but hiding a link
+  // is not a gate — typing the URL used to land on a page whose RLS could
+  // only ever return nothing, which looks identical to "no news yet". Say
+  // what's actually true instead. Staff resolve as enrolled (lib/access.ts)
+  // so they keep their preview.
+  if (!access.enrolled) {
+    return (
+      <LockedFeature
+        title="Announcements"
+        applicationStatus={access.applicationStatus}
+      />
+    );
+  }
+
   const supabase = createClient();
 
   // RLS already gates which announcements the user can read; this
@@ -81,7 +99,10 @@ export default async function AnnouncementsPage() {
             landed.
           </p>
         </div>
-        {profile?.role === "admin" && (
+        {/* access.staff, not `role === "admin"`: roles are data since
+            migration 0048, so a custom admin-area role gets the composer
+            link too (lib/access.ts resolves it from the permission). */}
+        {access.staff && (
           <a
             href="/admin/announcements"
             className="text-xs text-phosphor-ink hover:underline"

@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertStaff } from "@/lib/server-guards";
 import { assertMentorCanAccessStudent } from "@/lib/mentor-scope";
-import { notify } from "@/lib/notifications";
+import { notify, notifyMany } from "@/lib/notifications";
 
 export async function postFileFeedback(input: {
   studentFileId?: string;
@@ -67,15 +67,15 @@ export async function postFileFeedback(input: {
         .from("team_members")
         .select("user_id")
         .eq("team_id", teamId);
-      for (const m of members ?? []) {
-        await notify({
+      await notifyMany(
+        (members ?? []).map((m) => ({
           userId: m.user_id,
           type: "file_feedback",
           title: "New feedback on a team file",
           body: body.slice(0, 200),
           link: "/dashboard/team",
-        });
-      }
+        })),
+      );
     }
   } catch {}
 

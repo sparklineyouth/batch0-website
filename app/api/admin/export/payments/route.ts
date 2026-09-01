@@ -1,12 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getProfile } from "@/lib/auth";
+import { viewerCan } from "@/lib/auth";
 import { toCsv, csvResponse } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const actor = await getProfile();
-  if (actor?.role !== "admin") {
+  if (!(await viewerCan("payments.view"))) {
     return new Response("Forbidden", { status: 403 });
   }
   const admin = createAdminClient();

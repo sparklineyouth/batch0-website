@@ -1,6 +1,6 @@
 ---
 title: "Unit Economics, Explained Simply"
-description: "Unit economics is simply whether you make money on one sale. Here's CAC, LTV, and margin explained plainly, with a worked example any student founder can copy."
+description: "Unit economics is whether you make money on one sale. CAC, LTV, and margin explained plainly, with a worked example any student can copy."
 date: "2026-04-21"
 updated: "2026-04-21"
 category: "Build"

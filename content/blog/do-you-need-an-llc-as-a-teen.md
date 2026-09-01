@@ -1,6 +1,6 @@
 ---
 title: "Do You Need an LLC as a Teen Entrepreneur?"
-description: "Most teen founders don't need an LLC to start. You can validate and even earn first revenue without one. Here's when an LLC actually helps, and when to wait."
+description: "Most teen founders don't need an LLC to start. You can validate and earn first revenue without one. When an LLC helps, and when to wait."
 date: "2026-05-05"
 updated: "2026-05-05"
 category: "Founders"

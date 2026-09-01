@@ -1,5 +1,6 @@
 ---
 title: "Scholarships for Student Entrepreneurs Who Started a Business"
+seoTitle: "Scholarships for Student Entrepreneurs"
 description: "Some scholarships reward building a company, not just grades. Here are scholarships for student entrepreneurs and how to frame your startup to win them."
 date: "2026-02-12"
 updated: "2026-02-12"

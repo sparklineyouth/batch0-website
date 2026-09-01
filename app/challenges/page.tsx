@@ -2,8 +2,7 @@ import Link from "next/link";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { ChallengeWinners } from "@/components/challenge-winners";
-import { getSiteConfig } from "@/lib/site-config";
-import { getProfile, roleHome } from "@/lib/auth";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import { getActiveChallenge, getPublicWinners } from "@/lib/challenges";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -15,20 +14,19 @@ export const metadata = {
 };
 
 export default async function ChallengesIndexPage() {
-  const [config, profile, active, winners] = await Promise.all([
-    getSiteConfig(),
-    getProfile(),
+  const [config, active, winners] = await Promise.all([
+    getPublicSiteConfig(),
     getActiveChallenge(),
     getPublicWinners(),
   ]);
-  const authedHome = profile ? roleHome(profile.role) : null;
 
   return (
-    <main className="min-h-screen bg-paper">
-      <Navbar
-        authedHome={authedHome}
-        cohortLabel={config.derived.cohortLabel || "the next cohort"}
-      />
+    // <main> wraps the content only: containing the navbar and footer in it
+    // suppresses their banner/contentinfo landmarks and sends "Skip to
+    // content" above the nav. No layout classes on it, so nothing shifts.
+    <div className="min-h-screen bg-paper">
+      <Navbar cohortLabel={config.derived.cohortLabel || "the next cohort"} />
+      <main id="main-content" tabIndex={-1}>
 
       <section className="px-5 pb-8 pt-16 sm:px-6 md:pt-24">
         <div className="mx-auto max-w-[1100px]">
@@ -95,7 +93,8 @@ export default async function ChallengesIndexPage() {
       </section>
 
       <ChallengeWinners winners={winners} />
+      </main>
       <Footer config={config} />
-    </main>
+    </div>
   );
 }

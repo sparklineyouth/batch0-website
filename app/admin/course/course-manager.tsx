@@ -16,7 +16,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
-import { createClient } from "@/lib/supabase/client";
 import {
   saveModule,
   deleteModule,
@@ -632,6 +631,9 @@ function FileUploader({
     setProgress(0);
     try {
       const { path, token } = await getUploadToken(bucket, folder, file.name);
+      // Deferred import keeps supabase-js out of the route's first-load JS;
+      // it's only needed here, at the moment an upload starts.
+      const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
       const { error: upErr } = await supabase.storage
         .from(bucket)
@@ -652,7 +654,7 @@ function FileUploader({
 
   return (
     <div>
-      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-wash px-3 py-2 text-xs text-ink-soft hover:border-ink/30 hover:bg-wash">
+      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-wash px-3 py-2 text-xs text-ink-soft hover:border-ink/30 hover:bg-ink/[0.04]">
         {progress !== null ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : (

@@ -24,35 +24,37 @@ export default async function StudentProgressPage({
 
   const studentId = params.id;
 
+  // Each select names only what its card renders — several of these tables
+  // carry wide rows (profiles.ai_context, check-in prose) the page never
+  // reads.
   const [
     { data: profile },
     { data: enrollment },
-    { data: app },
     { data: progress },
-    { data: lessons },
+    { count: lessonCount },
     { data: checkins },
     { data: aiConvos },
     { data: team },
     { data: files },
   ] = await Promise.all([
-    admin.from("profiles").select("*").eq("id", studentId).maybeSingle(),
+    admin
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", studentId)
+      .maybeSingle(),
     admin
       .from("enrollments")
-      .select("*, cohort:cohorts(name)")
+      .select("cohort:cohorts(name)")
       .eq("user_id", studentId)
       .maybeSingle(),
     admin
-      .from("applications")
-      .select("*")
-      .eq("user_id", studentId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    admin.from("lesson_progress").select("*").eq("user_id", studentId),
-    admin.from("lessons").select("id"),
+      .from("lesson_progress")
+      .select("completed_at")
+      .eq("user_id", studentId),
+    admin.from("lessons").select("id", { count: "exact", head: true }),
     admin
       .from("student_checkins")
-      .select("*")
+      .select("id, week_start, accomplished, blockers")
       .eq("user_id", studentId)
       .order("week_start", { ascending: false })
       .limit(8),
@@ -64,7 +66,7 @@ export default async function StudentProgressPage({
       .limit(5),
     admin
       .from("team_members")
-      .select("team:teams(id, name, slug)")
+      .select("team:teams(id, name)")
       .eq("user_id", studentId)
       .limit(1)
       .maybeSingle(),
@@ -80,10 +82,17 @@ export default async function StudentProgressPage({
   const completedLessons = (progress ?? []).filter(
     (p: any) => p.completed_at,
   ).length;
-  const totalLessons = (lessons ?? []).length || 0;
+  const totalLessons = lessonCount ?? 0;
 
   const recentCheckins = (checkins ?? []) as any[];
   const streak = recentCheckins.length;
+  // Supabase types to-one embeds as arrays on the untyped client; the wire
+  // shape is an object. Normalize like the team embed below.
+  const enrollmentCohort = enrollment?.cohort
+    ? Array.isArray(enrollment.cohort)
+      ? enrollment.cohort[0]
+      : enrollment.cohort
+    : null;
   const t = team?.team
     ? Array.isArray(team.team)
       ? team.team[0]
@@ -103,7 +112,7 @@ export default async function StudentProgressPage({
       </h1>
       <p className="mt-1 text-sm text-ink-soft">
         {profile.email}
-        {enrollment?.cohort?.name && <> · {(enrollment as any).cohort.name}</>}
+        {enrollmentCohort?.name && <> · {enrollmentCohort.name}</>}
       </p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">

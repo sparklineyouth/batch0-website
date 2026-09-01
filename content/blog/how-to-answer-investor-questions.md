@@ -4,7 +4,7 @@ description: "The Q&A after your pitch is where it's won or lost. Here's how to 
 date: "2026-06-09"
 updated: "2026-06-09"
 category: "Pitch"
-author: "taran"
+author: "shresht"
 tags: ["Q&A", "investor questions", "pitching", "objection handling", "demo day"]
 ---
 

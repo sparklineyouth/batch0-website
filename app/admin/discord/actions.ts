@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import {
   postChannelMessage,
@@ -10,7 +10,11 @@ import {
   syncMemberRoles,
   refreshDiscordIdentity,
   bootstrapGuildFromScratch,
+  repairGuildLayout,
+  setInteractionsEndpoint,
   type BootstrapResult,
+  type RepairResult,
+  type CanonicalLayoutIds,
 } from "@/lib/discord";
 import type { Role } from "@/lib/types";
 
@@ -19,7 +23,7 @@ import type { Role } from "@/lib/types";
  * circuits and the student-facing Discord UI hides itself.
  */
 export async function setDiscordEnabled(enabled: boolean) {
-  await assertAdmin();
+  await assertPermission("discord.manage");
   const admin = createAdminClient();
   const { error } = await admin
     .from("site_settings")
@@ -58,6 +62,11 @@ export type DiscordConfigInput = {
   roleMentorId: string;
   roleAdminId: string;
   roleInvestorId: string;
+  // NOT one of the four role-mapped roles above, and deliberately listed apart
+  // from them: syncMemberRoles() strips every role in roleIdByRole that isn't
+  // the member's current target, so a founder pass filed alongside them would
+  // be torn off holders on the next sync. See lib/discord.ts.
+  roleFounderPassId: string;
 };
 
 const KEY_BY_FIELD: Record<keyof DiscordConfigInput, string> = {
@@ -73,6 +82,7 @@ const KEY_BY_FIELD: Record<keyof DiscordConfigInput, string> = {
   roleMentorId: "discord_role_mentor_id",
   roleAdminId: "discord_role_admin_id",
   roleInvestorId: "discord_role_investor_id",
+  roleFounderPassId: "discord_role_founder_pass_id",
 };
 
 function sanitizeSnowflake(v: string): string {
@@ -86,7 +96,7 @@ function sanitizeSnowflake(v: string): string {
 }
 
 export async function saveDiscordConfig(input: DiscordConfigInput) {
-  await assertAdmin();
+  await assertPermission("discord.manage");
   const admin = createAdminClient();
   const rows = (Object.keys(KEY_BY_FIELD) as (keyof DiscordConfigInput)[]).map(
     (field) => ({
@@ -115,7 +125,7 @@ export async function saveDiscordConfig(input: DiscordConfigInput) {
  * the UI can confirm.
  */
 export async function registerCommands(): Promise<{ names: string[] }> {
-  await assertAdmin();
+  await assertPermission("discord.manage");
   const registered = await discordRegisterCommands();
   const names = registered.map((c) => c.name);
   await logAudit({
@@ -139,7 +149,7 @@ export async function resyncAllRoles(): Promise<{
   attempted: number;
   succeeded: number;
 }> {
-  await assertAdmin();
+  await assertPermission("discord.manage");
   const admin = createAdminClient();
   const { data: rows, error } = await admin
     .from("profiles")
@@ -176,7 +186,7 @@ export async function refreshLinkedIdentities(): Promise<{
   attempted: number;
   succeeded: number;
 }> {
-  await assertAdmin();
+  await assertPermission("discord.manage");
   const admin = createAdminClient();
   const { data: rows, error } = await admin
     .from("profiles")
@@ -200,6 +210,87 @@ export async function refreshLinkedIdentities(): Promise<{
 }
 
 /**
+ * Write a freshly-built layout's channel + role IDs into site_settings.
+ *
+ * Shared by bootstrap and repair so the two can't drift. The founder-pass
+ * role is in here deliberately: bootstrap used to rebuild the server
+ * without it, which left discord_role_founder_pass_id pointing at a role
+ * that no longer existed and silently broke the pass perk for every
+ * redemption afterward.
+ */
+async function persistLayoutIds(ids: CanonicalLayoutIds) {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const rows = [
+    { key: "discord_channel_announcements_id", value: ids.announcementsChannelId },
+    { key: "discord_channel_events_id", value: ids.eventsChannelId },
+    { key: "discord_channel_admin_feed_id", value: ids.adminFeedChannelId },
+    { key: "discord_channel_teams_category_id", value: ids.teamsCategoryId },
+    { key: "discord_channel_wins_id", value: ids.winsChannelId },
+    { key: "discord_channel_help_id", value: ids.helpChannelId },
+    { key: "discord_channel_oh_voice_id", value: ids.ohVoiceChannelId },
+    { key: "discord_channel_introductions_id", value: ids.introductionsChannelId },
+    { key: "discord_role_student_id", value: ids.roleStudentId },
+    { key: "discord_role_mentor_id", value: ids.roleMentorId },
+    { key: "discord_role_admin_id", value: ids.roleAdminId },
+    { key: "discord_role_investor_id", value: ids.roleInvestorId },
+    { key: "discord_role_founder_pass_id", value: ids.roleFounderPassId },
+  ].map((r) => ({ ...r, updated_at: now }));
+  const { error } = await admin
+    .from("site_settings")
+    .upsert(rows, { onConflict: "key" });
+  if (error) throw new Error(`Saving IDs failed: ${error.message}`);
+}
+
+/**
+ * Recreate whatever the canonical layout is missing and re-point
+ * site_settings at what's actually in the guild — without deleting a
+ * single thing.
+ *
+ * This is the fix for the failure the doctor reports as "Deleted or
+ * wrong-guild" ids: channels or roles got removed in Discord, so every
+ * stored ID now dangles and announcements, role sync, team channels and
+ * the OH queue all fail silently. Until now the only repair on offer was
+ * the destructive bootstrap, which is unusable on a server that has any
+ * message history worth keeping.
+ *
+ * Safe to run repeatedly — anything already present under the canonical
+ * name is adopted, not duplicated.
+ */
+export async function repairDiscordServer(): Promise<RepairResult> {
+  await assertPermission("discord.manage");
+  const result = await repairGuildLayout();
+  await persistLayoutIds(result.ids);
+  await logAudit({
+    action: "discord.server_repaired",
+    payload: {
+      rolesCreated: result.rolesCreated.map((r) => r.name),
+      rolesReused: result.rolesReused.length,
+      channelsCreated: result.channelsCreated.map((c) => c.name),
+      channelsReused: result.channelsReused.length,
+    },
+  });
+  revalidatePath("/admin/discord");
+  return result;
+}
+
+/**
+ * Re-point the Discord application's interactions endpoint at this
+ * deployment. One click instead of a trip to the developer portal — and
+ * the only way to recover from a domain change without one.
+ */
+export async function fixInteractionsEndpoint(): Promise<{ url: string }> {
+  await assertPermission("discord.manage");
+  const result = await setInteractionsEndpoint();
+  await logAudit({
+    action: "discord.interactions_endpoint_set",
+    payload: { url: result.url },
+  });
+  revalidatePath("/admin/discord");
+  return result;
+}
+
+/**
  * Wipe every channel + every non-managed role in the guild, then create
  * the canonical batch0 layout (4 roles, 5 categories, ~14
  * channels) and persist the new channel/role IDs into site_settings so
@@ -212,31 +303,12 @@ export async function refreshLinkedIdentities(): Promise<{
 export async function bootstrapDiscordServer(
   confirm: string,
 ): Promise<BootstrapResult> {
-  await assertAdmin();
+  await assertPermission("discord.manage");
   if (confirm !== "DELETE AND REBUILD") {
     throw new Error('Type "DELETE AND REBUILD" exactly to confirm.');
   }
   const result = await bootstrapGuildFromScratch();
-  const admin = createAdminClient();
-  const now = new Date().toISOString();
-  const rows = [
-    { key: "discord_channel_announcements_id", value: result.ids.announcementsChannelId },
-    { key: "discord_channel_events_id", value: result.ids.eventsChannelId },
-    { key: "discord_channel_admin_feed_id", value: result.ids.adminFeedChannelId },
-    { key: "discord_channel_teams_category_id", value: result.ids.teamsCategoryId },
-    { key: "discord_channel_wins_id", value: result.ids.winsChannelId },
-    { key: "discord_channel_help_id", value: result.ids.helpChannelId },
-    { key: "discord_channel_oh_voice_id", value: result.ids.ohVoiceChannelId },
-    { key: "discord_channel_introductions_id", value: result.ids.introductionsChannelId },
-    { key: "discord_role_student_id", value: result.ids.roleStudentId },
-    { key: "discord_role_mentor_id", value: result.ids.roleMentorId },
-    { key: "discord_role_admin_id", value: result.ids.roleAdminId },
-    { key: "discord_role_investor_id", value: result.ids.roleInvestorId },
-  ].map((r) => ({ ...r, updated_at: now }));
-  const { error } = await admin
-    .from("site_settings")
-    .upsert(rows, { onConflict: "key" });
-  if (error) throw new Error(`Saving IDs failed: ${error.message}`);
+  await persistLayoutIds(result.ids);
   await logAudit({
     action: "discord.server_bootstrapped",
     payload: {
@@ -258,7 +330,7 @@ export async function bootstrapDiscordServer(
 export async function pingChannel(
   which: "announcements" | "events" | "admin_feed",
 ) {
-  await assertAdmin();
+  await assertPermission("discord.manage");
   const settings = await getDiscordSettings();
   const channelId =
     which === "announcements"

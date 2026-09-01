@@ -11,12 +11,27 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // scripts/*.ts run on plain `node --env-file=... scripts/foo.ts` via Node's
+    // native type stripping, which resolves imports literally and so requires
+    // the real "./x.ts" extension. Next/bundler resolution never needs it, so
+    // this only widens what's permitted — no app import has to change.
+    "allowImportingTsExtensions": true,
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "baseUrl": ".",
     "paths": { "@/*": ["./*"] }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    // scripts/*.mts — .mts rather than .ts so Node treats them as ESM without
+    // a "type": "module" in package.json, which would break the CJS postcss /
+    // tailwind configs. The default "**/*.ts" glob does not match .mts, so
+    // without this line the scripts silently stop being typechecked.
+    "**/*.mts",
+    ".next/types/**/*.ts"
+  ],
   "exclude": ["node_modules"]
 }

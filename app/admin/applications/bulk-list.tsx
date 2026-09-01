@@ -9,11 +9,13 @@ import { Textarea, Label } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { bulkDecideApplications } from "./[id]/actions";
 import { getActionError } from "@/lib/action-error";
-import { CheckSquare, Square, Share2 } from "lucide-react";
+import { CheckSquare, Square, Share2, Ticket, Hammer } from "lucide-react";
 
 // Statuses where bulk-decide makes sense. Decided / paid / enrolled rows
-// don't get a usable checkbox — clicking them just navigates.
-const DECIDABLE = new Set(["submitted", "draft"]);
+// don't get a usable checkbox — clicking them just navigates. Waitlisted
+// rows stay decidable: bulk-accept when seats open, bulk-reject when the
+// cohort fills.
+const DECIDABLE = new Set(["submitted", "draft", "waitlisted"]);
 
 // Score tone duplicated from page.tsx — keeping it local rather than
 // hoisting to a shared file because the list is the only consumer and a
@@ -61,6 +63,12 @@ type AppRow = {
   referralsSent: number;
   /** Of those, how many reached paid/enrolled. */
   referralsPaid: number;
+  /** Holds a redeemed 3D-printed founder pass card. Outranks a referral. */
+  hasFounderPass: boolean;
+  /** Submitted a seven-day rebuild that's still awaiting a fresh review. */
+  hasPendingRebuild: boolean;
+  /** Business-day age vs the 3-day target — only set for waiting pass apps. */
+  sla: { businessDays: number; targetDays: number; overTarget: boolean } | null;
 };
 
 /** Columns. Shared by the header and every row so they can't drift apart.
@@ -191,9 +199,15 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
             </button>
             <Link
               href={`/admin/applications/${a.id}`}
-              className="truncate text-ink group-hover:text-phosphor-ink"
+              className="flex min-w-0 items-center gap-1.5 text-ink group-hover:text-phosphor-ink"
             >
-              {a.full_name || "—"}
+              {a.hasPendingRebuild && (
+                <Hammer
+                  className="h-3.5 w-3.5 shrink-0 text-phosphor-ink"
+                  aria-label="Seven-day rebuild — awaiting fresh review"
+                />
+              )}
+              <span className="truncate">{a.full_name || "—"}</span>
             </Link>
             <div className="truncate text-ink-soft">
               {a.profile?.email ?? "—"}
@@ -216,7 +230,24 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
               )}
             </div>
             <div className="min-w-0">
-              {a.referralCode ? (
+              {/* A founder pass outranks a referral and shares this column
+                  rather than claiming a new one — COLS is budgeted tight
+                  (see the note on it), and a pass holder who was ALSO referred
+                  is rare enough that stacking two pills isn't worth the row
+                  height. The referral is kept in the tooltip so it isn't lost. */}
+              {a.hasFounderPass ? (
+                <span
+                  title={
+                    a.referralCode
+                      ? `Founder pass holder — fast-tracked. Also referred with code ${a.referralCode}.`
+                      : "Founder pass holder — redeemed a printed card, fast-tracked"
+                  }
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] font-medium text-amber-200"
+                >
+                  <Ticket className="h-3 w-3 shrink-0" />
+                  <span className="min-w-0 truncate">Founder pass</span>
+                </span>
+              ) : a.referralCode ? (
                 <span
                   title={
                     a.referrerName
@@ -263,8 +294,25 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
             <div>
               <StatusBadge status={a.status} />
             </div>
-            <div className="text-ink-faint font-mono tabular-nums">
+            <div className="font-mono tabular-nums text-ink-faint">
               <LocalTime value={a.submitted_at} mode="date" />
+              {a.sla && (
+                <span
+                  // The target is per-tier since migration 0055, so it comes
+                  // in with the reading rather than being hardcoded here — a
+                  // full-ride application is late after one business day.
+                  title={`Pass application — ${a.sla.businessDays} business day${
+                    a.sla.businessDays === 1 ? "" : "s"
+                  } since submission (${a.sla.targetDays}-day target)`}
+                  className={`ml-1.5 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium ${
+                    a.sla.overTarget
+                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                      : "bg-phosphor/10 text-phosphor-ink"
+                  }`}
+                >
+                  {a.sla.businessDays}bd
+                </span>
+              )}
             </div>
           </div>
         );

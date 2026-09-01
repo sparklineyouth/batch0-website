@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertStaff, assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 function slugify(s: string) {
@@ -39,7 +39,7 @@ export type TeamInput = {
 };
 
 export async function saveTeam(input: TeamInput) {
-  await assertStaff();
+  await assertPermission("teams.manage");
   if (!input.name.trim()) throw new Error("Team name required");
   if (!input.cohort_id) throw new Error("Cohort required");
 
@@ -88,7 +88,7 @@ export async function saveTeam(input: TeamInput) {
 }
 
 export async function deleteTeam(id: string) {
-  await assertAdmin();
+  await assertPermission("teams.manage");
   const admin = createAdminClient();
   const { error } = await admin.from("teams").delete().eq("id", id);
   if (error) throw new Error(error.message);
@@ -105,7 +105,7 @@ export async function addTeamMember(args: {
   userId: string;
   role: string;
 }) {
-  await assertStaff();
+  await assertPermission("teams.manage");
   const admin = createAdminClient();
   const { error } = await admin.from("team_members").upsert(
     {
@@ -120,7 +120,7 @@ export async function addTeamMember(args: {
 }
 
 export async function removeTeamMember(memberId: string) {
-  await assertStaff();
+  await assertPermission("teams.manage");
   const admin = createAdminClient();
   const { error } = await admin
     .from("team_members")

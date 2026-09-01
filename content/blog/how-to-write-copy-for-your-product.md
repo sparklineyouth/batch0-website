@@ -4,7 +4,7 @@ description: "The words on your product matter as much as the code. Here's how t
 date: "2026-02-14"
 updated: "2026-02-14"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["product copy", "copywriting", "microcopy", "ux writing", "conversion copy"]
 ---
 

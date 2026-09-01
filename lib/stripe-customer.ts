@@ -9,13 +9,17 @@ type ProfileInput = {
 };
 
 /**
- * Returns a Stripe customer ID that is valid in the *current* Stripe
- * mode (test vs live). If the profile's stored ID belongs to a different
- * mode (or was deleted in the dashboard), it's silently replaced.
+ * Returns the Stripe customer ID to charge for this profile, creating and
+ * persisting one when none is stored.
  *
- * Why: Stripe's test and live datasets don't share customer IDs. After
- * switching keys, every previously-stored `cus_...` becomes a phantom
- * reference that makes checkout/portal calls throw `resource_missing`.
+ * A stored ID is trusted as-is — no pre-validating `customers.retrieve`.
+ * That round trip (~200-400ms) would sit on every checkout click to guard
+ * a rare state: a stored ID only goes stale through Stripe-mode drift
+ * (test and live don't share customer IDs) or a hand-deletion in the
+ * dashboard. Both surface as `resource_missing` on the caller's next
+ * Stripe call, which the checkout routes report via stripeErrorMessage()
+ * below, and which the portal route heals by nulling
+ * `profiles.stripe_customer_id` so a later payment re-creates it.
  */
 export async function getOrCreateStripeCustomer(
   admin: SupabaseClient,
@@ -23,16 +27,7 @@ export async function getOrCreateStripeCustomer(
   fallbackEmail: string | null | undefined,
 ): Promise<string> {
   if (profile.stripe_customer_id) {
-    try {
-      const existing = await stripe.customers.retrieve(profile.stripe_customer_id);
-      if (existing && !(existing as { deleted?: boolean }).deleted) {
-        return profile.stripe_customer_id;
-      }
-    } catch (err: unknown) {
-      const code = (err as { code?: string }).code;
-      if (code !== "resource_missing") throw err;
-      // fall through to recreate
-    }
+    return profile.stripe_customer_id;
   }
 
   const customer = await stripe.customers.create({

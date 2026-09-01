@@ -4,7 +4,7 @@ description: "Your first 10 customers come from doing things that don't scale: g
 date: "2026-04-24"
 updated: "2026-04-24"
 category: "Market"
-author: "taran"
+author: "shresht"
 tags: ["first customers", "early traction", "distribution", "growth", "student founders"]
 ---
 

@@ -4,6 +4,7 @@ description: "You don't need investors to fund a high school startup. Here are t
 date: "2026-02-26"
 updated: "2026-02-26"
 category: "Playbook"
+featured: true
 author: "team"
 tags: ["fund a high school startup", "bootstrapping", "startup funding for teens", "non-dilutive funding", "raise money"]
 ---

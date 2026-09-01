@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 export type RubricCriterion = {
@@ -15,7 +15,7 @@ export type RubricCriterion = {
 };
 
 export async function saveRubric(rows: RubricCriterion[]) {
-  await assertAdmin();
+  await assertPermission("demoday.manage");
   const admin = createAdminClient();
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -52,7 +52,7 @@ export async function saveRubric(rows: RubricCriterion[]) {
 }
 
 export async function deleteCriterion(id: string) {
-  await assertAdmin();
+  await assertPermission("demoday.manage");
   const admin = createAdminClient();
   const { error } = await admin
     .from("demo_day_rubric_criteria")
@@ -74,7 +74,7 @@ export type ScoreInput = {
 };
 
 export async function submitScores(rows: ScoreInput[]) {
-  const { userId } = await assertAdmin().catch(async () => {
+  const { userId } = await assertPermission("demoday.manage").catch(async () => {
     // Investors + mentors are also allowed by RLS; just fetch userId.
     const { createClient } = await import("@/lib/supabase/server");
     const supa = createClient();

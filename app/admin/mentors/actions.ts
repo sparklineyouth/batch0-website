@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { syncTeamDiscordChannels } from "@/lib/team-discord";
 
@@ -29,7 +29,7 @@ export async function assignMentor(args: {
   studentId: string;
   cohortId: string | null;
 }) {
-  await assertAdmin();
+  await assertPermission("mentors.manage");
   const admin = createAdminClient();
   const { error } = await admin.from("mentor_assignments").upsert(
     {
@@ -51,7 +51,7 @@ export async function assignMentor(args: {
 }
 
 export async function unassignMentor(assignmentId: string) {
-  await assertAdmin();
+  await assertPermission("mentors.manage");
   const admin = createAdminClient();
   // Look up the student BEFORE deletion so we know which team to resync.
   const { data: row } = await admin

@@ -5,6 +5,7 @@ import { LogOut, ShieldCheck } from "lucide-react";
 import type { Role } from "@/lib/types";
 import { INVESTOR_NAV_GROUPS } from "@/lib/nav-config";
 import type { NavGroup } from "@/lib/nav-config";
+import { canAccessAdmin, type Capabilities } from "@/lib/permissions";
 import { NotificationBell } from "@/components/notification-bell";
 import { SidebarNav, SIDEBAR_ROW } from "@/components/sidebar-nav";
 
@@ -27,12 +28,17 @@ const LABEL_BY_KIND: Record<RoleSidebarKind, string> = {
 export function RoleSidebar({
   kind,
   role,
+  caps,
 }: {
   kind: RoleSidebarKind;
   role: Role;
+  caps?: Capabilities | null;
 }) {
   const groups = GROUPS_BY_KIND[kind];
   const label = LABEL_BY_KIND[kind];
+  // Permission-driven when the layout passes capabilities; the role
+  // comparison is the pre-roles-table fallback.
+  const showAdminBack = caps ? canAccessAdmin(caps) : role === "admin";
   return (
     <aside className="hidden md:flex md:sticky md:top-0 md:h-screen w-60 shrink-0 flex-col border-r border-line bg-wash px-4 py-6 overflow-hidden">
       <div className="mb-2 flex items-center justify-between px-2">
@@ -45,9 +51,12 @@ export function RoleSidebar({
         {label}
       </p>
       <SidebarNav storageKey={`role-${kind}`} groups={groups} />
-      {role === "admin" && (
+      {showAdminBack && (
         <div className="mt-4 space-y-0.5 border-t border-line pt-4">
-          <Link href="/admin" className={SIDEBAR_ROW}>
+          {/* prefetch={false}: authed dynamic route + staleTimes.dynamic=0
+              makes prefetched payloads throwaway work — see
+              components/sidebar-nav.tsx. */}
+          <Link href="/admin" prefetch={false} className={SIDEBAR_ROW}>
             <ShieldCheck className="h-4 w-4" />
             Admin panel
           </Link>

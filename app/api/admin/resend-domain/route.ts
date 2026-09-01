@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
-import { getProfile } from "@/lib/auth";
+import { viewerCan } from "@/lib/auth";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +20,7 @@ export const dynamic = "force-dynamic";
  */
 
 async function guard() {
-  const actor = await getProfile();
-  if (actor?.role !== "admin") {
+  if (!(await viewerCan("settings.manage"))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (!env.resendApiKey) {

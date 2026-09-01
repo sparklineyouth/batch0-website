@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 export type ResourceInput = {
@@ -14,6 +14,8 @@ export type ResourceInput = {
   external_url: string | null;
   size_bytes: number | null;
   mime_type: string | null;
+  /** Visible to accepted students before their cohort starts. */
+  pre_cohort: boolean;
 };
 
 function validate(input: ResourceInput) {
@@ -30,7 +32,7 @@ function validate(input: ResourceInput) {
 }
 
 export async function saveResource(input: ResourceInput): Promise<string> {
-  const { userId } = await assertAdmin();
+  const { userId } = await assertPermission("resources.manage");
   validate(input);
 
   const admin = createAdminClient();
@@ -43,6 +45,7 @@ export async function saveResource(input: ResourceInput): Promise<string> {
     external_url: input.external_url?.trim() || null,
     size_bytes: input.size_bytes,
     mime_type: input.mime_type,
+    pre_cohort: !!input.pre_cohort,
   };
   let id = input.id;
   if (id) {
@@ -74,7 +77,7 @@ export async function saveResource(input: ResourceInput): Promise<string> {
 }
 
 export async function deleteResource(id: string) {
-  await assertAdmin();
+  await assertPermission("resources.manage");
   const admin = createAdminClient();
   const { data: existing } = await admin
     .from("resources")

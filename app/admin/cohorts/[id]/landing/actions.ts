@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 export type LandingInput = {
@@ -14,7 +14,7 @@ export type LandingInput = {
 };
 
 export async function saveLanding(input: LandingInput) {
-  await assertAdmin();
+  await assertPermission("cohorts.manage");
   if (
     input.accent_hex &&
     !/^#[0-9a-fA-F]{6}$/.test(input.accent_hex.trim())

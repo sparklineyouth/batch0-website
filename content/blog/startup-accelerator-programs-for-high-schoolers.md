@@ -1,9 +1,11 @@
 ---
 title: "Startup Accelerator Programs for High Schoolers: A 2026 Guide"
-description: "A 2026 guide to startup accelerator programs for high schoolers: what they offer, what to look for, the red flags to avoid, and how to choose the right one for you."
+seoTitle: "Startup Accelerator Programs for High Schoolers"
+description: "A 2026 guide to startup accelerator programs for high schoolers: what they offer, what to look for, the red flags, and how to choose one."
 date: "2026-06-12"
 updated: "2026-06-12"
 category: "Playbook"
+featured: true
 author: "team"
 tags: ["startup accelerator for high schoolers", "teen accelerator", "summer programs", "entrepreneurship programs", "high school startup program"]
 ---

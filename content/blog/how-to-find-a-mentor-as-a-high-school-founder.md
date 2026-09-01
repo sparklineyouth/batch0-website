@@ -4,7 +4,7 @@ description: "The right mentor can save a young founder months of mistakes. Here
 date: "2026-02-15"
 updated: "2026-02-15"
 category: "Founders"
-author: "taran"
+author: "shresht"
 tags: ["startup mentor", "finding a mentor", "cold email mentor", "high school founder", "advisor for teens", "mentorship"]
 ---
 
@@ -50,7 +50,7 @@ Keep the whole thing under 120 words. If you attach anything, link your live [la
 
 > Subject: 16yo founder from Lincoln High, quick question on early users
 >
-> Hi Priya — I'm a junior at Lincoln High building a tutoring-match app for my school district. I've done 25 interviews with parents and have 60 people on a waitlist, but I can't figure out how to get the first ones to actually pay. I saw your post on pre-selling before you build, and that's exactly my wall. Could I ask you two specific questions over email? Completely fine if you're too busy. Thanks either way — Taran
+> Hi Priya — I'm a junior at Lincoln High building a tutoring-match app for my school district. I've done 25 interviews with parents and have 60 people on a waitlist, but I can't figure out how to get the first ones to actually pay. I saw your post on pre-selling before you build, and that's exactly my wall. Could I ask you two specific questions over email? Completely fine if you're too busy. Thanks either way — Shresht
 
 Notice it never uses the word "mentor," never asks for a call out of nowhere, and gives her an easy exit. That's a message a stranger answers on their lunch break. For the full breakdown, see [writing a cold email that actually gets replies](/blog/how-to-write-a-cold-email-that-gets-replies), and if you'd rather use DMs, [how to cold DM without being annoying](/blog/how-to-cold-dm-people-without-being-annoying) covers that.
 

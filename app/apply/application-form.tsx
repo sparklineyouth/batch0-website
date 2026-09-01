@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
 import {
   saveDraftAction,
@@ -7,6 +8,7 @@ import {
   attachReferralCodeAction,
 } from "./actions";
 import type { Application } from "@/lib/types";
+import { Check, Loader2, AlertCircle } from "lucide-react";
 import { IdeaValidator } from "./idea-validate";
 import {
   QUESTION_FIELDS,
@@ -25,19 +27,8 @@ const STEPS = [
 // Theme-native field styling. The shared Input/Textarea components ship dark
 // literals; we append these tokens so they override to the marketing surface
 // (works in light + dark). Kept in one place so every field stays consistent.
-// `rounded-none` squares the corners per the broadsheet system (it wins over
-// the baked `rounded-md` — Tailwind emits .rounded-none after .rounded-md);
-// the shared components already carry the amber focus ring.
 const FIELD_CLASS =
-  "rounded-none bg-paper border-line text-ink placeholder:text-ink-faint focus:border-phosphor";
-
-// Broadsheet-system buttons: squared, key-press shift (.press), amber
-// primary / hairline secondary. Local literals (UI-only) — the shared
-// ui/Button ships rounded corners + scale easing that the system forbids.
-const BTN_BASE =
-  "press inline-flex h-10 select-none items-center justify-center whitespace-nowrap px-4 text-sm font-semibold lowercase leading-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
-const BTN_PRIMARY = `${BTN_BASE} bg-phosphor-fill text-on-phosphor hover:bg-phosphor-fill-hover`;
-const BTN_SECONDARY = `${BTN_BASE} border border-line bg-paper font-medium text-ink hover:border-ink/30`;
+  "bg-paper border-line text-ink placeholder:text-ink-faint focus:border-phosphor";
 
 type FormState = {
   full_name: string;
@@ -148,11 +139,12 @@ function validateStep(
     }
   }
   if (step === 3) {
-    if (form.why_join.trim().length < 40) {
+    const whyLen = form.why_join.trim().length;
+    if (whyLen < 40) {
       errs.why_join =
-        form.why_join.trim().length === 0
-          ? "Required"
-          : "Tell us at least a couple sentences";
+        whyLen === 0
+          ? "Required — at least 40 characters"
+          : `Needs at least 40 characters — you're at ${whyLen}`;
     }
     const sizeNum = parseInt(form.team_size, 10);
     if (!form.team_size) {
@@ -203,6 +195,13 @@ export function ApplicationForm({
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [save, setSave] = useState<SaveStatus>({ kind: "idle" });
+  // Steps where the user has already tried to continue. From that moment the
+  // step validates LIVE: errors appear on the click, then update keystroke by
+  // keystroke until everything's fixed — no dead buttons, no silent refusals.
+  const [attempted, setAttempted] = useState<Record<number, boolean>>({});
+  // Brief shake on Next when the click is refused, so the "no" is felt even
+  // before the error summary is read.
+  const [shakeNext, setShakeNext] = useState(false);
 
   const [form, setForm] = useState<FormState>({
     full_name: defaults?.full_name ?? "",
@@ -357,9 +356,12 @@ export function ApplicationForm({
 
   function goNext() {
     const errs = validateStep(step, form, cfg);
+    setAttempted((a) => ({ ...a, [step]: true }));
     if (Object.keys(errs).length > 0) {
       setFieldErrors((prev) => ({ ...prev, ...errs }));
       focusFirstError(errs);
+      setShakeNext(true);
+      window.setTimeout(() => setShakeNext(false), 450);
       return;
     }
     setStep(step + 1);
@@ -373,6 +375,7 @@ export function ApplicationForm({
     }
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
+      setAttempted({ 1: true, 2: true, 3: true, 4: true });
       // Jump to the first step with an error.
       let firstErrorStep = step;
       for (const s of [1, 2, 3] as const) {
@@ -407,6 +410,27 @@ export function ApplicationForm({
   const stepHasErrors = (s: number) =>
     Object.keys(validateStep(s, form, cfg)).length > 0;
 
+  // Live validation for the current step — only once the user has tried to
+  // continue. Merged with server-reported errors per field, so a message
+  // vanishes the moment the fix lands and reappears if they re-break it.
+  const liveErrs = attempted[step] ? validateStep(step, form, cfg) : {};
+  const liveErrKeys = Object.keys(liveErrs);
+  const errFor = (key: string) => fieldErrors[key] || liveErrs[key] || "";
+
+  // Human label for the error summary list.
+  const labelFor = (key: string) =>
+    cfg[key]?.label ?? key.replace(/_/g, " ");
+
+  function jumpToField(key: string) {
+    focusFirstError({ [key]: "jump" });
+  }
+
+  // Long-answer progress: mirrors validateStep's 40-char minimum on why_join
+  // so the counter, the bar, and the rule can never disagree.
+  const WHY_MIN = 40;
+  const whyLen = form.why_join.trim().length;
+  const whyMet = whyLen >= WHY_MIN;
+
   // Derive parent-email requirement from the current age value. Used
   // both to enforce HTML-level required + aria-required and to swap the
   // placeholder copy so the user knows why the field has lit up. Layered
@@ -427,14 +451,14 @@ export function ApplicationForm({
   const show = (key: string) => isVisible(cfg, key);
 
   return (
-    <div className="border border-line p-5 sm:p-6 md:p-8">
+    <div className="rounded-2xl border border-line bg-wash p-5 sm:p-6 md:p-8">
       {/* Mobile stepper: compact progress + current label only. The full
           4-up stepper wraps awkwardly under 380px. */}
       <div
         className="mb-6 sm:hidden"
         aria-label={`Application progress: step ${step} of ${STEPS.length}`}
       >
-        <div className="flex items-center justify-between font-mono text-[11px] font-medium lowercase tracking-[0.06em]">
+        <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.18em]">
           <span className="text-phosphor-ink">
             Step {step} of {STEPS.length}
           </span>
@@ -444,10 +468,10 @@ export function ApplicationForm({
         </div>
         <div
           aria-hidden
-          className="mt-2 h-1 w-full overflow-hidden bg-line"
+          className="mt-2 h-1 w-full overflow-hidden rounded-full bg-line"
         >
           <div
-            className="h-full bg-phosphor-fill"
+            className="h-full bg-phosphor transition-all duration-300"
             style={{ width: `${(step / STEPS.length) * 100}%` }}
           />
         </div>
@@ -463,9 +487,9 @@ export function ApplicationForm({
                 onClick={() => setStep(s.id)}
                 aria-label={`Jump to step ${s.id}: ${s.title}`}
                 aria-current={isCurrent ? "step" : undefined}
-                className={`press flex h-8 w-8 items-center justify-center border font-mono text-[11px] font-medium ${
+                className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-medium ${
                   isCurrent
-                    ? "border-phosphor bg-phosphor-fill text-on-phosphor"
+                    ? "border-phosphor bg-phosphor text-on-phosphor"
                     : reached
                       ? hasErr
                         ? "border-red-400/60 bg-red-400/10 text-red-500"
@@ -473,7 +497,7 @@ export function ApplicationForm({
                       : "border-line text-ink-faint"
                 }`}
               >
-                {hasErr ? <span aria-hidden>!</span> : s.id}
+                {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
               </button>
             );
           })}
@@ -496,12 +520,12 @@ export function ApplicationForm({
                 onClick={() => setStep(s.id)}
                 aria-label={`Step ${s.id}: ${s.title}${hasErr ? " (has errors)" : ""}`}
                 aria-current={isCurrent ? "step" : undefined}
-                className="group inline-flex items-center gap-2 py-0.5 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60"
+                className="group inline-flex items-center gap-2 rounded-full py-0.5 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60"
               >
                 <span
-                  className={`flex h-7 w-7 items-center justify-center border font-mono text-[11px] font-medium ${
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-medium ${
                     isCurrent
-                      ? "border-phosphor bg-phosphor-fill text-on-phosphor"
+                      ? "border-phosphor bg-phosphor text-on-phosphor"
                       : reached
                         ? hasErr
                           ? "border-red-400/60 bg-red-400/10 text-red-500"
@@ -509,14 +533,14 @@ export function ApplicationForm({
                         : "border-line text-ink-faint group-hover:border-ink/30 group-hover:text-ink-soft"
                   }`}
                 >
-                  {hasErr ? <span aria-hidden>!</span> : s.id}
+                  {hasErr ? <AlertCircle className="h-3.5 w-3.5" /> : s.id}
                 </span>
                 <span
-                  className={`lowercase ${
+                  className={
                     isCurrent
                       ? "text-ink"
                       : "text-ink-faint group-hover:text-ink-soft"
-                  }`}
+                  }
                 >
                   {s.title}
                 </span>
@@ -534,7 +558,7 @@ export function ApplicationForm({
       {step === 1 && (
         <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
-            <Label className="lowercase" htmlFor="account_email">Account email</Label>
+            <Label htmlFor="account_email">Account email</Label>
             <Input
               id="account_email"
               className={FIELD_CLASS}
@@ -545,7 +569,7 @@ export function ApplicationForm({
           </div>
           {show("full_name") && (
             <div className="md:col-span-2">
-              <Label className="lowercase" htmlFor="full_name" required={isRequired(cfg, "full_name")}>
+              <Label htmlFor="full_name" required={isRequired(cfg, "full_name")}>
                 {cfg.full_name.label} {reqMark("full_name")}
               </Label>
               <Input
@@ -554,13 +578,13 @@ export function ApplicationForm({
                 autoComplete="name"
                 required={isRequired(cfg, "full_name")}
                 aria-required={isRequired(cfg, "full_name") || undefined}
-                error={fieldErrors.full_name}
+                error={errFor("full_name")}
                 value={form.full_name}
                 onChange={(e) => set("full_name", e.target.value)}
                 placeholder={cfg.full_name.placeholder || undefined}
               />
               <FieldError id="full_name-error">
-                {fieldErrors.full_name}
+                {errFor("full_name")}
               </FieldError>
               {cfg.full_name.help && (
                 <p className="mt-1 text-xs text-ink-soft">
@@ -571,7 +595,7 @@ export function ApplicationForm({
           )}
           {show("age") && (
             <div>
-              <Label className="lowercase" htmlFor="age" required={isRequired(cfg, "age")}>
+              <Label htmlFor="age" required={isRequired(cfg, "age")}>
                 {cfg.age.label} {reqMark("age")}
               </Label>
               <Input
@@ -583,12 +607,12 @@ export function ApplicationForm({
                 max={25}
                 required={isRequired(cfg, "age")}
                 aria-required={isRequired(cfg, "age") || undefined}
-                error={fieldErrors.age}
+                error={errFor("age")}
                 value={form.age}
                 onChange={(e) => set("age", e.target.value)}
                 placeholder={cfg.age.placeholder || undefined}
               />
-              <FieldError id="age-error">{fieldErrors.age}</FieldError>
+              <FieldError id="age-error">{errFor("age")}</FieldError>
               {cfg.age.help && (
                 <p className="mt-1 text-xs text-ink-soft">{cfg.age.help}</p>
               )}
@@ -596,7 +620,7 @@ export function ApplicationForm({
           )}
           {show("grade") && (
             <div>
-              <Label className="lowercase" htmlFor="grade" required={isRequired(cfg, "grade")}>
+              <Label htmlFor="grade" required={isRequired(cfg, "grade")}>
                 {cfg.grade.label} {reqMark("grade")}
               </Label>
               <Input
@@ -615,7 +639,7 @@ export function ApplicationForm({
           )}
           {show("school") && (
             <div className="md:col-span-2">
-              <Label className="lowercase" htmlFor="school" required={isRequired(cfg, "school")}>
+              <Label htmlFor="school" required={isRequired(cfg, "school")}>
                 {cfg.school.label} {reqMark("school")}
               </Label>
               <Input
@@ -635,7 +659,7 @@ export function ApplicationForm({
           )}
           {show("city") && (
             <div>
-              <Label className="lowercase" htmlFor="city" required={isRequired(cfg, "city")}>
+              <Label htmlFor="city" required={isRequired(cfg, "city")}>
                 {cfg.city.label} {reqMark("city")}
               </Label>
               <Input
@@ -655,7 +679,7 @@ export function ApplicationForm({
           )}
           {show("country") && (
             <div>
-              <Label className="lowercase" htmlFor="country" required={isRequired(cfg, "country")}>
+              <Label htmlFor="country" required={isRequired(cfg, "country")}>
                 {cfg.country.label} {reqMark("country")}
               </Label>
               <Input
@@ -675,7 +699,7 @@ export function ApplicationForm({
           )}
           {show("parent_email") && (
             <div className="md:col-span-2">
-              <Label className="lowercase" htmlFor="parent_email">
+              <Label htmlFor="parent_email">
                 {cfg.parent_email.label}{" "}
                 {parentEmailRequired && (
                   <>
@@ -693,7 +717,7 @@ export function ApplicationForm({
                 autoComplete="email"
                 required={parentEmailRequired}
                 aria-required={parentEmailRequired || undefined}
-                error={fieldErrors.parent_email}
+                error={errFor("parent_email")}
                 value={form.parent_email}
                 onChange={(e) => set("parent_email", e.target.value)}
                 placeholder={
@@ -703,7 +727,7 @@ export function ApplicationForm({
                 }
               />
               <FieldError id="parent_email-error">
-                {fieldErrors.parent_email}
+                {errFor("parent_email")}
               </FieldError>
               {cfg.parent_email.help && (
                 <p className="mt-1 text-xs text-ink-soft">
@@ -720,7 +744,6 @@ export function ApplicationForm({
           {show("experience") && (
             <div>
               <Label
-                className="lowercase"
                 htmlFor="experience"
                 required={isRequired(cfg, "experience")}
               >
@@ -747,7 +770,6 @@ export function ApplicationForm({
             {show("hours_per_week") && (
               <div>
                 <Label
-                  className="lowercase"
                   htmlFor="hours_per_week"
                   required={isRequired(cfg, "hours_per_week")}
                 >
@@ -778,7 +800,6 @@ export function ApplicationForm({
             {show("referral_source") && (
               <div>
                 <Label
-                  className="lowercase"
                   htmlFor="referral_source"
                   required={isRequired(cfg, "referral_source")}
                 >
@@ -806,8 +827,8 @@ export function ApplicationForm({
           {(show("linkedin_url") ||
             show("resume_url") ||
             show("portfolio_url")) && (
-            <div className="border border-line p-4">
-              <p className="font-mono text-xs font-medium lowercase tracking-[0.06em] text-phosphor-ink">
+            <div className="rounded-xl border border-line bg-paper p-4">
+              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
                 Links (optional)
               </p>
               <p className="mt-1 text-xs text-ink-soft">
@@ -817,7 +838,6 @@ export function ApplicationForm({
                 {show("linkedin_url") && (
                   <div>
                     <Label
-                      className="lowercase"
                       htmlFor="linkedin_url"
                       required={isRequired(cfg, "linkedin_url")}
                     >
@@ -830,7 +850,7 @@ export function ApplicationForm({
                       inputMode="url"
                       autoComplete="url"
                       placeholder={cfg.linkedin_url.placeholder || undefined}
-                      error={fieldErrors.linkedin_url}
+                      error={errFor("linkedin_url")}
                       value={form.linkedin_url}
                       onChange={(e) => set("linkedin_url", e.target.value)}
                       required={isRequired(cfg, "linkedin_url")}
@@ -839,7 +859,7 @@ export function ApplicationForm({
                       }
                     />
                     <FieldError id="linkedin_url-error">
-                      {fieldErrors.linkedin_url}
+                      {errFor("linkedin_url")}
                     </FieldError>
                     {cfg.linkedin_url.help && (
                       <p className="mt-1 text-xs text-ink-soft">
@@ -851,7 +871,6 @@ export function ApplicationForm({
                 {show("resume_url") && (
                   <div>
                     <Label
-                      className="lowercase"
                       htmlFor="resume_url"
                       required={isRequired(cfg, "resume_url")}
                     >
@@ -864,7 +883,7 @@ export function ApplicationForm({
                       inputMode="url"
                       autoComplete="url"
                       placeholder={cfg.resume_url.placeholder || undefined}
-                      error={fieldErrors.resume_url}
+                      error={errFor("resume_url")}
                       value={form.resume_url}
                       onChange={(e) => set("resume_url", e.target.value)}
                       required={isRequired(cfg, "resume_url")}
@@ -873,7 +892,7 @@ export function ApplicationForm({
                       }
                     />
                     <FieldError id="resume_url-error">
-                      {fieldErrors.resume_url}
+                      {errFor("resume_url")}
                     </FieldError>
                     {cfg.resume_url.help && (
                       <p className="mt-1 text-xs text-ink-soft">
@@ -885,7 +904,6 @@ export function ApplicationForm({
                 {show("portfolio_url") && (
                   <div>
                     <Label
-                      className="lowercase"
                       htmlFor="portfolio_url"
                       required={isRequired(cfg, "portfolio_url")}
                     >
@@ -898,7 +916,7 @@ export function ApplicationForm({
                       inputMode="url"
                       autoComplete="url"
                       placeholder={cfg.portfolio_url.placeholder || undefined}
-                      error={fieldErrors.portfolio_url}
+                      error={errFor("portfolio_url")}
                       value={form.portfolio_url}
                       onChange={(e) => set("portfolio_url", e.target.value)}
                       required={isRequired(cfg, "portfolio_url")}
@@ -907,7 +925,7 @@ export function ApplicationForm({
                       }
                     />
                     <FieldError id="portfolio_url-error">
-                      {fieldErrors.portfolio_url}
+                      {errFor("portfolio_url")}
                     </FieldError>
                     {cfg.portfolio_url.help && (
                       <p className="mt-1 text-xs text-ink-soft">
@@ -925,7 +943,7 @@ export function ApplicationForm({
       {step === 3 && (
         <div className="space-y-4">
           <div>
-            <Label className="lowercase" htmlFor="why_join" required={isRequired(cfg, "why_join")}>
+            <Label htmlFor="why_join" required={isRequired(cfg, "why_join")}>
               {cfg.why_join.label} {reqMark("why_join")}
             </Label>
             <Textarea
@@ -934,18 +952,53 @@ export function ApplicationForm({
               rows={6}
               required={isRequired(cfg, "why_join")}
               aria-required={isRequired(cfg, "why_join") || undefined}
-              error={fieldErrors.why_join}
+              error={errFor("why_join")}
               aria-describedby="why_join-counter"
               value={form.why_join}
               onChange={(e) => set("why_join", e.target.value)}
               placeholder={cfg.why_join.placeholder || undefined}
             />
-            <div className="mt-1 flex items-center justify-between text-xs">
+            {/* Live progress toward the 40-char minimum: bar + counter shift
+                amber → green the moment the requirement is met, so nobody
+                discovers the rule only by being refused at Next. */}
+            <div
+              aria-hidden
+              className="mt-1.5 h-[3px] w-full overflow-hidden rounded-full bg-line"
+            >
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  whyMet ? "bg-emerald-500" : "bg-amber-500"
+                }`}
+                style={{
+                  width: `${Math.min(100, (whyLen / WHY_MIN) * 100)}%`,
+                }}
+              />
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-3 text-xs">
               <FieldError id="why_join-error">
-                {fieldErrors.why_join}
+                {errFor("why_join")}
               </FieldError>
-              <span id="why_join-counter" className="text-ink-faint">
-                {form.why_join.trim().length} / 40+ chars
+              <span
+                id="why_join-counter"
+                aria-live="polite"
+                className={
+                  whyMet
+                    ? "inline-flex shrink-0 items-center gap-1 text-emerald-600 dark:text-emerald-400"
+                    : whyLen > 0
+                      ? "shrink-0 text-amber-600 dark:text-amber-400"
+                      : "shrink-0 text-ink-faint"
+                }
+              >
+                {whyMet ? (
+                  <>
+                    <Check className="h-3 w-3" aria-hidden />
+                    {whyLen} characters — good to go
+                  </>
+                ) : whyLen > 0 ? (
+                  `${WHY_MIN - whyLen} more character${WHY_MIN - whyLen === 1 ? "" : "s"} to go`
+                ) : (
+                  `${WHY_MIN} characters minimum`
+                )}
               </span>
             </div>
             {cfg.why_join.help && (
@@ -955,7 +1008,6 @@ export function ApplicationForm({
           {show("startup_idea") && (
             <div>
               <Label
-                className="lowercase"
                 htmlFor="startup_idea"
                 required={isRequired(cfg, "startup_idea")}
               >
@@ -980,7 +1032,7 @@ export function ApplicationForm({
             </div>
           )}
           <div>
-            <Label className="lowercase" required={isRequired(cfg, "team_size")}>
+            <Label required={isRequired(cfg, "team_size")}>
               {cfg.team_size.label} {reqMark("team_size")}
             </Label>
             {cfg.team_size.help && (
@@ -993,10 +1045,10 @@ export function ApplicationForm({
               role="radiogroup"
               aria-label={cfg.team_size.label}
               aria-required="true"
-              aria-invalid={fieldErrors.team_size ? true : undefined}
+              aria-invalid={errFor("team_size") ? true : undefined}
               tabIndex={-1}
-              className={`flex flex-wrap gap-2 ${
-                fieldErrors.team_size
+              className={`flex flex-wrap gap-2 rounded-lg ${
+                errFor("team_size")
                   ? "ring-1 ring-red-400/40 ring-offset-2 ring-offset-transparent p-2 -m-2"
                   : ""
               }`}
@@ -1010,7 +1062,7 @@ export function ApplicationForm({
                     role="radio"
                     aria-checked={selected}
                     onClick={() => set("team_size", String(opt.value))}
-                    className={`press border px-3 py-2 text-sm lowercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60 ${
+                    className={`rounded-lg border px-3 py-2 text-sm transition active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor/60 ${
                       selected
                         ? "border-phosphor bg-phosphor/15 text-ink"
                         : "border-line bg-paper text-ink-soft hover:border-ink/30 hover:text-ink"
@@ -1022,7 +1074,7 @@ export function ApplicationForm({
               })}
             </div>
             <FieldError id="team_size-error">
-              {fieldErrors.team_size}
+              {errFor("team_size")}
             </FieldError>
           </div>
         </div>
@@ -1030,8 +1082,8 @@ export function ApplicationForm({
 
       {step === 4 && (
         <div className="space-y-4">
-          <div className="border border-line p-5 text-sm">
-            <h4 className="mb-3 font-mono text-xs font-medium lowercase tracking-[0.06em] text-phosphor-ink">
+          <div className="rounded-xl border border-line bg-paper p-5 text-sm">
+            <h4 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
               Review your answers
             </h4>
             {show("full_name") && (
@@ -1121,7 +1173,7 @@ export function ApplicationForm({
               />
             )}
           </div>
-          <div className="border border-phosphor/25 p-4 text-sm text-ink-soft">
+          <div className="rounded-xl border border-phosphor/30 bg-phosphor/5 p-4 text-sm text-ink-soft">
             Submitting moves your application to{" "}
             <span className="text-ink">review</span>. You won't be charged
             anything yet — payment ({priceLabel}) only happens after we accept
@@ -1133,48 +1185,87 @@ export function ApplicationForm({
       {submitError && (
         <div
           role="alert"
-          className="mt-5 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-500"
+          className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-500"
         >
           {submitError}
         </div>
+      )}
+
+      {/* Live step feedback, armed by the first refused Next click: a
+          checklist of what's blocking, each entry jumping to its field, that
+          updates as they type and flips to a green all-clear at zero. */}
+      {attempted[step] && liveErrKeys.length > 0 && (
+        <div
+          role="alert"
+          className="mt-5 rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm"
+        >
+          <p className="flex items-center gap-1.5 font-medium text-red-600 dark:text-red-400">
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
+            {liveErrKeys.length === 1
+              ? "One thing needs fixing before you continue:"
+              : `${liveErrKeys.length} things need fixing before you continue:`}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {liveErrKeys.map((key) => (
+              <li key={key}>
+                <button
+                  type="button"
+                  onClick={() => jumpToField(key)}
+                  className="text-left text-red-600 underline decoration-red-400/50 underline-offset-2 hover:decoration-red-500 dark:text-red-400"
+                >
+                  {labelFor(key)}
+                </button>{" "}
+                <span className="text-ink-soft">— {liveErrs[key]}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {attempted[step] && liveErrKeys.length === 0 && step < STEPS.length && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-5 inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400"
+        >
+          <Check className="h-4 w-4" aria-hidden /> All set — hit Next to
+          continue.
+        </p>
       )}
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
         <SaveStatusIndicator status={save} />
         <div className="flex items-center gap-2">
           {step > 1 && (
-            <button
-              className={BTN_SECONDARY}
+            <Button
+              variant="secondary"
               type="button"
               onClick={() => setStep(step - 1)}
               disabled={submitPending}
             >
               Back
-            </button>
+            </Button>
           )}
           {step < STEPS.length ? (
-            <button
-              className={BTN_PRIMARY}
+            // Deliberately NOT disabled when the step is invalid: a dead
+            // button explains nothing (and its hover tooltip never existed
+            // on mobile). Clicking runs validation, surfaces the checklist
+            // above, focuses the first problem, and shakes to say "no".
+            <Button
               type="button"
               onClick={goNext}
-              disabled={submitPending || stepHasErrors(step)}
-              title={
-                stepHasErrors(step)
-                  ? "Complete required fields to continue"
-                  : undefined
-              }
+              disabled={submitPending}
+              className={shakeNext ? "animate-shake" : ""}
             >
               Next
-            </button>
+            </Button>
           ) : (
-            <button
-              className={BTN_PRIMARY}
+            <Button
               type="button"
               onClick={handleSubmit}
               disabled={submitPending}
             >
               {submitPending ? "Submitting…" : "Submit application"}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1185,21 +1276,22 @@ export function ApplicationForm({
 function SaveStatusIndicator({ status }: { status: SaveStatus }) {
   // Wrap in a polite live region so AT users hear "Saving draft…" /
   // "Draft saved" without us hijacking their focus.
-  // Text-only, mono, no icons and no spinner — the /apply surface is
-  // completely still; live copy in the polite region is the feedback.
   const body =
     status.kind === "saving" ? (
-      <span className="font-mono text-xs lowercase text-ink-soft">
-        Saving draft…
+      <span className="inline-flex items-center gap-1.5 text-xs text-ink-soft">
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Saving draft…
       </span>
     ) : status.kind === "saved" ? (
-      <span className="font-mono text-xs lowercase text-ink-soft">
-        Draft saved at {status.at.toLocaleTimeString()}
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500">
+        <Check className="h-3 w-3" aria-hidden /> Draft saved at{" "}
+        {status.at.toLocaleTimeString()}
       </span>
     ) : status.kind === "error" ? (
-      <span className="font-mono text-xs text-red-500">{status.message}</span>
+      <span className="inline-flex items-center gap-1.5 text-xs text-red-500">
+        <AlertCircle className="h-3 w-3" aria-hidden /> {status.message}
+      </span>
     ) : (
-      <span className="font-mono text-xs lowercase text-ink-faint">
+      <span className="text-xs text-ink-faint">
         Drafts autosave as you type.
       </span>
     );
@@ -1223,7 +1315,7 @@ function ReviewRow({
     <div
       className={`flex ${multiline ? "flex-col gap-1" : "items-baseline gap-3"} border-b border-line py-2 last:border-0`}
     >
-      <div className="font-mono text-xs lowercase tracking-[0.06em] text-ink-faint">
+      <div className="text-xs uppercase tracking-wider text-ink-faint">
         {label}
       </div>
       <div

@@ -2,16 +2,50 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
+import { reconcileStripe } from "@/lib/stripe-reconcile";
 import {
   postChannelMessage,
   refundEmbed,
   getDiscordSettings,
 } from "@/lib/discord";
 
+/**
+ * Pull every transaction Stripe knows about back into the platform.
+ *
+ * Stripe is the ledger of record; this replays its sessions and refunds
+ * through the same idempotent fulfillment the webhook uses. Run it after
+ * changing webhook configuration, after an outage, or once to backfill
+ * transactions that predate the webhook. Safe to run repeatedly.
+ *
+ * Announcements stay off: this is usually catching up on old money, and a
+ * student shouldn't get a "welcome aboard" email for last spring's
+ * payment. Rows, statuses, enrollments, and receipts are all still fixed.
+ */
+export async function reconcileStripeNow(input?: { days?: number }) {
+  await assertPermission("payments.manage");
+  const days = input?.days;
+  const summary = await reconcileStripe({
+    sinceUnix: days
+      ? Math.floor(Date.now() / 1000) - days * 86_400
+      : undefined,
+    silent: true,
+  });
+
+  await logAudit({
+    action: "payments.reconciled",
+    targetType: "stripe",
+    targetId: null,
+    payload: { window_days: days ?? null, ...summary },
+  });
+
+  revalidatePath("/admin/payments");
+  return summary;
+}
+
 export async function refundPayment(paymentId: string, reason?: string) {
-  await assertAdmin();
+  await assertPermission("payments.manage");
   const admin = createAdminClient();
   const { data: p, error: fetchErr } = await admin
     .from("payments")

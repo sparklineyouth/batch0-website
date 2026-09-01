@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { FieldError } from "@/components/ui/input";
 import { LocalTime } from "@/components/ui/local-time";
-import { createClient } from "@/lib/supabase/client";
 import {
   Upload,
   Download,
@@ -76,6 +75,9 @@ export function TeamDriveTab({
       return;
     }
     try {
+      // Deferred import keeps supabase-js out of the route's first-load JS;
+      // it's only needed here, at the moment an upload starts.
+      const { createClient } = await import("@/lib/supabase/client");
       for (const file of list) {
         setUploading(file.name);
         const { path, token } = await getTeamDriveUploadToken({

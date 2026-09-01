@@ -1,20 +1,36 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { getPassGrantForUser } from "@/lib/founder-pass";
+import { announceAcceptance } from "@/lib/admissions";
+import { markRebuildReviewedForUser } from "@/lib/founder-pass-perks";
+import { assertPermission } from "@/lib/server-guards";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { env } from "@/lib/env";
+import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
 import { syncMemberRoles, postChannelMessage, announcementEmbed, getDiscordSettings } from "@/lib/discord";
-import { DEFAULT_PRICE_CENTS } from "@/lib/pricing";
+
+export type StructuredFeedback = {
+  strongest?: string;
+  missing?: string;
+  nextStep?: string;
+  secondReview?: boolean | null;
+};
 
 export async function decideApplication(
   applicationId: string,
-  decision: "accepted" | "rejected",
+  decision: "accepted" | "rejected" | "waitlisted",
   notes: string,
+  // Structured rejection feedback (perk 3). Only meaningful when declining a
+  // pass holder; ignored on accept and for non-holders. The single-app review
+  // UI collects it for pass holders; bulk decisions pass it undefined and fall
+  // back to the free-text notes guarantee below.
+  feedback?: StructuredFeedback,
 ) {
-  const { userId: reviewerId } = await assertAdmin();
+  const { userId: reviewerId } = await assertPermission("applications.review");
   const admin = createAdminClient();
 
   // Fetch first so we can email + notify with full context. Note: we
@@ -30,16 +46,93 @@ export async function decideApplication(
     .maybeSingle();
   if (fetchErr || !app) throw new Error(fetchErr?.message ?? "Not found");
 
-  const { error } = await admin
+  // Founder-pass perk, enforced where it can't be forgotten: a pass promises
+  // "a real answer if it's a no" (app/pass/page.tsx), and a promise the admin
+  // can skip on a busy day isn't a promise — see the referral card post-mortem
+  // in that file. For pass holders the single-app UI collects STRUCTURED
+  // feedback (strongest / missing / next step); a bulk decision has none and
+  // must still carry a free-text note. Either way, a form-letter "no" to a pass
+  // holder is impossible.
+  // The grant, not just "do they hold one": the same read answers whether
+  // structured feedback is mandatory AND what the acceptance email should
+  // quote, and reading it twice would risk the two disagreeing.
+  const applicantGrant = await getPassGrantForUser(admin, (app as any).user_id);
+  const applicantHoldsPass = applicantGrant !== null;
+
+  const f = feedback ?? {};
+  const strongest = (f.strongest ?? "").trim();
+  const missing = (f.missing ?? "").trim();
+  const nextStep = (f.nextStep ?? "").trim();
+  const hasStructured = !!(strongest || missing || nextStep);
+
+  if (decision === "rejected" && applicantHoldsPass) {
+    if (hasStructured) {
+      if (!strongest || !missing || !nextStep) {
+        throw new Error(
+          "This applicant holds a founder pass. Its promise is a decline that " +
+            "explains itself — fill in what was strongest, what was missing, " +
+            "and the most useful next step before declining.",
+        );
+      }
+    } else if (!notes.trim()) {
+      throw new Error(
+        "This applicant holds a founder pass, which guarantees written " +
+          "feedback with a rejection. Write them feedback (it's sent to the " +
+          "applicant) before declining.",
+      );
+    }
+  }
+
+  // review_notes stays the single source the email + the applicant's existing
+  // surfaces read, so on a rejection with structured feedback we COMPOSE it
+  // from the parts. That keeps the feedback intact even on a database where the
+  // structured columns don't exist yet (the write below tolerates that), and
+  // means the rejection email carries the same words the dashboard shows.
+  const effectiveNotes =
+    decision === "rejected" && hasStructured
+      ? composeStructuredNotes({ strongest, missing, nextStep, notes, secondReview: f.secondReview })
+      : notes;
+
+  const baseUpdate = {
+    status: decision,
+    review_notes: effectiveNotes || null,
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: reviewerId,
+  };
+  const structuredUpdate =
+    decision === "rejected" && hasStructured
+      ? {
+          feedback_strongest: strongest || null,
+          feedback_missing: missing || null,
+          feedback_next_step: nextStep || null,
+          feedback_second_review:
+            typeof f.secondReview === "boolean" ? f.secondReview : null,
+        }
+      : {};
+
+  let { error } = await admin
     .from("applications")
-    .update({
-      status: decision,
-      review_notes: notes || null,
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: reviewerId,
-    })
+    .update({ ...baseUpdate, ...structuredUpdate })
     .eq("id", applicationId);
+  // Tolerate migration 0041 not being applied yet: a missing feedback_* column
+  // must never brick the decision. review_notes already carries the composed
+  // feedback, so retrying without the structured columns loses only the
+  // discrete display, not the words — the same fallback 0040 uses for
+  // redeemed_code.
+  if (error && /feedback_(strongest|missing|next_step|second_review)/i.test(error.message)) {
+    ({ error } = await admin
+      .from("applications")
+      .update(baseUpdate)
+      .eq("id", applicationId));
+  }
   if (error) throw new Error(error.message);
+
+  // A decision on a pass holder closes any outstanding seven-day rebuild — this
+  // decision IS the fresh review the rebuild earned. Best-effort / no-op when
+  // there's no rebuild.
+  if (applicantHoldsPass) {
+    await markRebuildReviewedForUser(admin, (app as any).user_id, reviewerId);
+  }
 
   await logAudit({
     action: `application.${decision}`,
@@ -50,8 +143,8 @@ export async function decideApplication(
         status: (app as any).status,
         review_notes: (app as any).review_notes,
       },
-      after: { status: decision, review_notes: notes || null },
-      notes: notes || null,
+      after: { status: decision, review_notes: effectiveNotes || null },
+      notes: effectiveNotes || null,
     },
   });
 
@@ -60,36 +153,91 @@ export async function decideApplication(
     const a = app as any;
     const cohort = Array.isArray(a.cohort) ? a.cohort[0] : a.cohort;
     const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
+    const listPriceCents = cohort?.price_cents ?? 13000;
     if (decision === "accepted") {
-      const t = Templates.applicationAccepted({
-        name: a.full_name ?? profile?.full_name ?? null,
-        cohortName: cohort?.name ?? "batch0",
-        priceCents: cohort?.price_cents ?? DEFAULT_PRICE_CENTS,
-      });
+      // Every acceptance — clicked here, or granted automatically by a virtual
+      // founder pass on submit — goes out through the one function in
+      // lib/admissions.ts. Holders pay less by their GRANT (tier plus any
+      // hand-set override, migrations 0055/0056) and checkout applies that
+      // server-side, so having two copies of "compose the acceptance" was one
+      // edit away from the email quoting a price Stripe doesn't charge.
+      await announceAcceptance(
+        admin,
+        {
+          id: a.id,
+          user_id: a.user_id,
+          full_name: a.full_name ?? null,
+          cohortName: cohort?.name ?? null,
+          listPriceCents,
+          applicantEmail: profile?.email ?? null,
+          applicantName: a.full_name ?? profile?.full_name ?? null,
+        },
+        applicantGrant,
+      );
+    } else if (decision === "waitlisted") {
+      const waitlistedName = a.full_name ?? profile?.full_name ?? null;
       if (profile?.email) {
-        await sendEmail({
+        await sendTemplated("application.waitlisted", {
           to: profile.email,
-          subject: t.subject,
-          html: t.html,
+          toName: waitlistedName,
+          userId: a.user_id,
+          vars: {
+            cohort_name: cohort?.name ?? "batch0",
+            review_notes: effectiveNotes || "",
+            application_status: "waitlisted",
+          },
+          fallback: () =>
+            Templates.applicationWaitlisted({
+              name: waitlistedName,
+              cohortName: cohort?.name ?? "batch0",
+              notes: effectiveNotes || null,
+            }),
+        });
+        await emitEmailEvent("application.waitlisted", {
+          email: profile.email,
+          name: waitlistedName,
+          userId: a.user_id,
+          vars: {
+            cohort_name: cohort?.name ?? "batch0",
+            review_notes: effectiveNotes || "",
+            application_status: "waitlisted",
+          },
+          dedupeSeed: `application.waitlisted:${a.id}`,
         });
       }
       await notify({
         userId: a.user_id,
-        type: "application_accepted",
-        title: "You're in",
-        body: `Welcome to ${cohort?.name ?? "batch0"}. Pay to lock in your seat.`,
+        type: "application_waitlisted",
+        title: "You're on the waitlist",
+        body: "Not a no — if a seat opens, you're first in line.",
         link: "/dashboard/application",
       });
     } else {
-      const t = Templates.applicationRejected({
-        name: a.full_name ?? profile?.full_name ?? null,
-        notes: notes || null,
-      });
+      const rejectedName = a.full_name ?? profile?.full_name ?? null;
       if (profile?.email) {
-        await sendEmail({
+        await sendTemplated("application.rejected", {
           to: profile.email,
-          subject: t.subject,
-          html: t.html,
+          toName: rejectedName,
+          userId: a.user_id,
+          vars: {
+            review_notes: effectiveNotes || "",
+            application_status: "rejected",
+          },
+          fallback: () =>
+            Templates.applicationRejected({
+              name: rejectedName,
+              notes: effectiveNotes || null,
+            }),
+        });
+        await emitEmailEvent("application.rejected", {
+          email: profile.email,
+          name: rejectedName,
+          userId: a.user_id,
+          vars: {
+            review_notes: effectiveNotes || "",
+            application_status: "rejected",
+          },
+          dedupeSeed: `application.rejected:${a.id}`,
         });
       }
       await notify({
@@ -104,37 +252,11 @@ export async function decideApplication(
     console.error("[applications] decide notify failed", err);
   }
 
-  // Discord side-effects (best-effort, only fire on accept). Wrapped
-  // so a missing migration 0008 (no discord_user_id column) just
-  // silently skips Discord — the accept itself stays atomic.
-  if (decision === "accepted") {
-    try {
-      const a = app as any;
-      const profile = Array.isArray(a.profile) ? a.profile[0] : a.profile;
-      const cohort = Array.isArray(a.cohort) ? a.cohort[0] : a.cohort;
-      const discord = await loadDiscordHandle(admin, a.user_id);
-      if (discord?.discord_user_id) {
-        await syncMemberRoles(
-          discord.discord_user_id,
-          (discord.role as any) ?? "student",
-        );
-      }
-      const settings = await getDiscordSettings();
-      if (settings.adminFeedChannelId) {
-        await postChannelMessage(settings.adminFeedChannelId, {
-          embeds: [
-            announcementEmbed({
-              title: `Accepted: ${a.full_name ?? profile?.full_name ?? profile?.email ?? "applicant"}`,
-              body: `Cohort: ${cohort?.name ?? "—"}`,
-              link: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/admin/applications/${applicationId}`,
-            }),
-          ],
-        });
-      }
-    } catch (err) {
-      console.error("[applications] discord sync failed", err);
-    }
-  }
+  // The Discord role sync and the staff-feed post used to live here as a
+  // separate `if (decision === "accepted")` block. They moved into
+  // announceAcceptance() with the email, because they are the same event: an
+  // acceptance that emails the student but never gives them the Discord role
+  // is a half-admission, and the auto-admit path needs both too.
 
   revalidatePath(`/admin/applications/${applicationId}`);
   revalidatePath("/admin/applications");
@@ -149,16 +271,18 @@ export async function decideApplication(
  * UI can surface "X succeeded, Y failed" without inventing its own
  * accounting.
  *
- * Skips applications that aren't in a decidable state ("submitted" or
- * "draft"). Already-decided rows are returned in `skipped` so the
- * reviewer knows they weren't silently no-op'd.
+ * Skips applications that aren't in a decidable state ("submitted",
+ * "draft", or "waitlisted" — waitlisted rows can be bulk-accepted when
+ * seats open, or bulk-rejected when the cohort fills). Already-decided
+ * rows are returned in `skipped` so the reviewer knows they weren't
+ * silently no-op'd.
  */
 export async function bulkDecideApplications(input: {
   applicationIds: string[];
-  decision: "accepted" | "rejected";
+  decision: "accepted" | "rejected" | "waitlisted";
   notes: string;
 }): Promise<{ succeeded: number; failed: number; skipped: number }> {
-  await assertAdmin();
+  await assertPermission("applications.review");
   if (!input.applicationIds.length) {
     return { succeeded: 0, failed: 0, skipped: 0 };
   }
@@ -178,7 +302,12 @@ export async function bulkDecideApplications(input: {
 
   const decidable = new Set(
     (existing ?? [])
-      .filter((a: any) => a.status === "submitted" || a.status === "draft")
+      .filter(
+        (a: any) =>
+          a.status === "submitted" ||
+          a.status === "draft" ||
+          a.status === "waitlisted",
+      )
       .map((a: any) => a.id as string),
   );
   const skipped = input.applicationIds.length - decidable.size;
@@ -213,7 +342,7 @@ export async function bulkDecideApplications(input: {
 }
 
 export async function reopenApplication(applicationId: string) {
-  await assertAdmin();
+  await assertPermission("applications.review");
   const admin = createAdminClient();
   const { error } = await admin
     .from("applications")
@@ -242,7 +371,7 @@ export async function waiveApplicationFee(
   applicationId: string,
   reason: string,
 ) {
-  const { userId: actorId } = await assertAdmin();
+  const { userId: actorId } = await assertPermission("charges.manage");
   const admin = createAdminClient();
 
   const { data: app, error: fetchErr } = await admin
@@ -338,6 +467,34 @@ export async function waiveApplicationFee(
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Fold the four structured feedback parts into the single review_notes string
+ * the rejection email and the applicant's dashboard fall back to. The dashboard
+ * renders the discrete columns when they exist; this text is what carries the
+ * feedback everywhere else (and on a pre-0041 database, everywhere).
+ */
+function composeStructuredNotes(args: {
+  strongest: string;
+  missing: string;
+  nextStep: string;
+  notes: string;
+  secondReview?: boolean | null;
+}): string {
+  const parts = [
+    `What was strongest:\n${args.strongest}`,
+    `What was missing:\n${args.missing}`,
+    `Most useful next step:\n${args.nextStep}`,
+  ];
+  if (args.secondReview === true) {
+    parts.push(
+      "You're eligible for another look — complete the seven-day build to earn a fresh review.",
+    );
+  }
+  const extra = args.notes.trim();
+  if (extra) parts.push(extra);
+  return parts.join("\n\n");
 }
 
 /**

@@ -1,13 +1,35 @@
-export type Role =
-  | "student"
-  | "admin"
-  | "mentor"
-  | "investor";
+/**
+ * The four roles that predate the roles table. Their slugs are load-bearing —
+ * code branches on them and they can't be renamed or deleted.
+ */
+export type BuiltInRole = "student" | "admin" | "mentor" | "investor";
+
+/**
+ * A role slug. Roles are rows in `public.app_roles` (migration 0048), so any
+ * lowercase slug is legal; the built-ins stay in the union so editors still
+ * autocomplete them and existing narrowing keeps working.
+ */
+export type Role = BuiltInRole | (string & {});
+
+/** A role as stored in `public.app_roles`. See lib/roles.ts. */
+export type AppRoleRow = {
+  slug: string;
+  label: string;
+  description: string | null;
+  permissions: string[];
+  home_path: string;
+  color: string;
+  is_system: boolean;
+  rank: number;
+  created_at: string;
+  updated_at: string;
+};
 
 export type ApplicationStatus =
   | "draft"
   | "submitted"
   | "accepted"
+  | "waitlisted"
   | "rejected"
   | "paid"
   | "enrolled"
@@ -105,6 +127,8 @@ export type Resource = {
   external_url: string | null;
   size_bytes: number | null;
   mime_type: string | null;
+  /** Visible to accepted students before their cohort starts (migration 0042). */
+  pre_cohort: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;

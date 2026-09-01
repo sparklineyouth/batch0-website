@@ -37,7 +37,7 @@ export function Ledger({
       : [
           [derived.cohortLabel || "Cohort", derived.cohortName],
           ["Dates", dates || "TBA"],
-          ["Format", "live, online · U.S. high schoolers"],
+          ["Format", "live, online · high schoolers 13–18"],
           ["Tuition", `${derived.priceLabel} · charged only if accepted`],
           ["Equity taken", "none"],
           ["Applications", applicationsValue],

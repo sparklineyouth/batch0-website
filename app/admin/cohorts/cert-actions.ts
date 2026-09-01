@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { issueCertificate } from "@/lib/cert";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
@@ -13,7 +13,7 @@ import { logAudit } from "@/lib/audit";
 export async function issueCohortCertificates(input: {
   cohortId: string;
 }): Promise<{ issued: number }> {
-  await assertAdmin();
+  await assertPermission("cohorts.manage");
   const admin = createAdminClient();
   const { data: rows } = await admin
     .from("enrollments")

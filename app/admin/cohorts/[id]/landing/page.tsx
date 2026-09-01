@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LandingForm } from "./landing-form";
 
@@ -12,7 +12,7 @@ export default async function CohortLandingPage({
 }: {
   params: { id: string };
 }) {
-  await requireAdmin();
+  await requirePermission("cohorts.manage");
   const admin = createAdminClient();
   const { data: cohort } = await admin
     .from("cohorts")

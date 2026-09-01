@@ -48,9 +48,9 @@ export default async function MentorTeamsPage() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
+                    <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
                       {t.name}
-                    </h3>
+                    </h2>
                     <p className="text-xs text-ink-faint">
                       {cohort?.name ?? ""} · {count ?? 0} member
                       {count === 1 ? "" : "s"}

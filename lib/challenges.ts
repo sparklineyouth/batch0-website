@@ -1,8 +1,12 @@
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  createAdminClient,
+  createPublicReadClient,
+} from "@/lib/supabase/admin";
 import {
   rowToChallenge,
   HTTP_URL_RE,
+  CHALLENGE_UPLOAD_PREFIX,
   SHORT_TEXT_MAX,
   LONG_TEXT_MAX,
   URL_MAX,
@@ -49,14 +53,21 @@ function fieldSchema(q: ChallengeQuestion): z.ZodTypeAny {
       const s = z.string().trim().max(LONG_TEXT_MAX, "That's too long");
       return req ? s.min(1, "Required") : s.optional().or(z.literal(""));
     }
-    case "url": {
+    case "url":
+    case "video": {
+      // Both accept a pasted http(s) link OR an uploaded file encoded as
+      // `upload:<path>` (see CHALLENGE_UPLOAD_PREFIX) — since every link field
+      // now offers an mp4 upload alongside the link. Both are plain strings.
       const s = z
         .string()
         .trim()
         .max(URL_MAX, "That's too long")
         .refine(
-          (v) => v === "" || HTTP_URL_RE.test(v),
-          "Must be a full URL starting with http:// or https://",
+          (v) =>
+            v === "" ||
+            HTTP_URL_RE.test(v) ||
+            v.startsWith(CHALLENGE_UPLOAD_PREFIX),
+          "Paste a full http:// or https:// link, or upload a video",
         );
       return req
         ? s.refine((v) => v.length > 0, "Required")
@@ -81,9 +92,12 @@ function fieldSchema(q: ChallengeQuestion): z.ZodTypeAny {
 // --- Reads (service-role, no-store, never throw) --------------------------
 
 /** The single active challenge (drives the hero marquee + apply page). */
+// Public read: same data for every visitor, so it goes through the cacheable
+// client. Using the no-store admin client here would force /challenges (and
+// anything else showing the marquee) to render per-request.
 export async function getActiveChallenge(): Promise<Challenge | null> {
   try {
-    const admin = createAdminClient();
+    const admin = createPublicReadClient();
     const { data } = await admin
       .from("challenges")
       .select("*")
@@ -137,7 +151,8 @@ export async function getPublicWinners(
   opts: { challengeSlug?: string; limit?: number } = {},
 ): Promise<PublicWinner[]> {
   try {
-    const admin = createAdminClient();
+    // Public, identical for every visitor — cacheable client, see above.
+    const admin = createPublicReadClient();
     let q = admin
       .from("challenge_winners_public")
       .select("*")

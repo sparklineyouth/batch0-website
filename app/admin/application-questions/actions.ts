@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import {
@@ -28,7 +28,7 @@ export async function saveApplicationQuestions(
   input: ApplicationQuestionsOverrides,
 ): Promise<ActionResult> {
   return runAction({ name: "saveApplicationQuestions" }, async () => {
-    await assertAdmin();
+    await assertPermission("applications.form");
 
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       throw new Error("Invalid questions payload");

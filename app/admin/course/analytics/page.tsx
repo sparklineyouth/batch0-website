@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 
 export const metadata = { title: "Course analytics · Admin" };
@@ -34,7 +34,7 @@ function classify(body: string): {
 }
 
 export default async function CourseAnalyticsPage() {
-  await requireAdmin();
+  await requirePermission("course.manage");
   const admin = createAdminClient();
 
   const [

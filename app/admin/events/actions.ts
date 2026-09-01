@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertStaff } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
@@ -28,7 +28,7 @@ export type EventInput = {
 };
 
 export async function saveEvent(input: EventInput, notify: boolean) {
-  await assertStaff();
+  await assertPermission("events.manage");
   const admin = createAdminClient();
   const payload = {
     cohort_id: input.cohort_id || null,
@@ -170,7 +170,7 @@ export async function saveEvent(input: EventInput, notify: boolean) {
 }
 
 export async function deleteEvent(id: string) {
-  await assertStaff();
+  await assertPermission("events.manage");
   const admin = createAdminClient();
   const { error } = await admin.from("events").delete().eq("id", id);
   if (error) throw new Error(error.message);

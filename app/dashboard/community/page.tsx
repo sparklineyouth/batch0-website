@@ -1,10 +1,9 @@
-import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { requireUser, getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { discordAvatarUrl, isDiscordEnabled } from "@/lib/discord";
 
@@ -14,9 +13,11 @@ export default async function CommunityPage() {
   const user = await requireUser();
   if (!(await isDiscordEnabled())) redirect("/dashboard");
   const supabase = createClient();
-  const [{ data: profile }, { data: settings }, { data: announcements }] =
+  // Profile comes from the request-cached getProfile() the layout already
+  // resolved — it carries the discord_* columns this page reads.
+  const [profile, { data: settings }, { data: announcements }] =
     await Promise.all([
-      supabase.from("profiles").select("*").eq("id", user.id).single(),
+      getProfile(),
       supabase
         .from("site_settings")
         .select("key, value")
@@ -89,13 +90,11 @@ export default async function CommunityPage() {
               </a>
             )
           ) : (
-            <Link href="/auth/discord/start">
-              <Button>Link Discord →</Button>
-            </Link>
+            <ButtonLink href="/auth/discord/start">Link Discord →</ButtonLink>
           )}
-          <Link href="/dashboard/settings">
-            <Button variant="ghost">Settings</Button>
-          </Link>
+          <ButtonLink href="/dashboard/settings" variant="ghost">
+            Settings
+          </ButtonLink>
         </div>
       </Card>
 

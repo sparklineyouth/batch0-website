@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { ResolveButton } from "./resolve-button";
@@ -8,7 +8,7 @@ import { ResolveButton } from "./resolve-button";
 export const metadata = { title: "At-risk · Admin" };
 
 export default async function InterventionsPage() {
-  await requireAdmin();
+  await requirePermission("interventions.manage");
   const admin = createAdminClient();
   const { data: rows } = await admin
     .from("at_risk_interventions")

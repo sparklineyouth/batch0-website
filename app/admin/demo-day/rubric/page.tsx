@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { RubricEditor } from "./rubric-editor";
 
 export const metadata = { title: "Demo Day rubric · Admin" };
 
 export default async function AdminDemoDayRubricPage() {
-  await requireAdmin();
+  await requirePermission("demoday.manage");
   const admin = createAdminClient();
   const [{ data: rows }, { data: cohorts }] = await Promise.all([
     admin

@@ -60,9 +60,9 @@ export default async function InvestorDemoDayPage() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
+                    <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
                       {t?.name}
-                    </h3>
+                    </h2>
                     {t?.tagline && (
                       <p className="mt-0.5 text-sm text-ink-soft">
                         {t.tagline}

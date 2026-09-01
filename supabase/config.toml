@@ -1,0 +1,30 @@
+# Marks this directory as the Supabase project root.
+#
+# Without it the CLI walks UP looking for a config and lands somewhere else
+# entirely — before this file existed, `supabase migration list` run from this
+# repo printed "Using workdir /Users/rishabhdagli" and an empty "Local" column,
+# because it resolved to a stray scaffold in the home directory. Every command
+# then needed an explicit --workdir to behave. Now `supabase db push` and
+# friends work from the project root the way you'd expect.
+#
+# Deliberately minimal: this project has no local Supabase stack: migrations
+# are written here and pushed to the linked remote (`supabase/.temp/`). There
+# is nothing to configure for `supabase start`, and inventing port numbers and
+# service settings for a stack nobody runs would be fiction. Add sections here
+# if local development ever becomes real.
+#
+# `/supabase` is listed in .vercelignore, so this costs the deploy nothing.
+#
+# Applying a migration:
+#   supabase db push --dry-run   # confirm the list is ONLY what you expect
+#   supabase db push
+#
+# Check state first with `supabase migration list` — every row should carry a
+# value in BOTH Local and Remote. A row with a Local value and a blank Remote
+# is genuinely pending. A row with a blank Local is a file you don't have.
+#
+# If a migration is already live but unrecorded (this happened to 0040-0048),
+# repair the history rather than pushing — a push would re-execute it:
+#   supabase migration repair --status applied 0040 0041 ...
+
+project_id = "batch0"

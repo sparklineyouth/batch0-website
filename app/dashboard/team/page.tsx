@@ -1,5 +1,6 @@
 import { requireUser, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { passHolderUserIds } from "@/lib/founder-pass";
 import { Card } from "@/components/ui/card";
 import { getMyTeam } from "@/lib/team";
 import { CreateTeamForm } from "./create-team-form";
@@ -33,6 +34,7 @@ export default async function TeamPage() {
       { data: files },
       { data: messages },
       { data: pitch },
+      passHolders,
     ] = await Promise.all([
       admin
         .from("team_members")
@@ -55,7 +57,7 @@ export default async function TeamPage() {
       admin
         .from("team_messages")
         .select(
-          "id, body, kind, created_at, author:profiles(full_name, email, role)",
+          "id, body, kind, created_at, author_id, author:profiles(full_name, email, role)",
         )
         .eq("team_id", team.id)
         .order("created_at", { ascending: true })
@@ -65,6 +67,7 @@ export default async function TeamPage() {
         .select("*")
         .eq("team_id", team.id)
         .maybeSingle(),
+      passHolderUserIds(admin),
     ]);
 
     return (
@@ -76,6 +79,7 @@ export default async function TeamPage() {
         files={(files ?? []) as any[]}
         messages={(messages ?? []) as any[]}
         pitch={pitch as any}
+        passHolderIds={[...passHolders]}
       />
     );
   }
@@ -95,6 +99,9 @@ export default async function TeamPage() {
       <h1 className="text-3xl font-bold tracking-tight">Team</h1>
       <p className="mt-1 text-sm text-ink-soft">
         Build your startup with up to 4 teammates from your cohort.
+        {access.preCohort
+          ? " You don't have to wait for kickoff — start a team now and invite anyone who's already enrolled."
+          : ""}
       </p>
 
       {(pendingForMe?.length ?? 0) > 0 && (

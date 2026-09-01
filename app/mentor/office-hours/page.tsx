@@ -9,31 +9,26 @@ export default async function MentorOfficeHoursPage() {
   const profile = await requireMentor();
   const admin = createAdminClient();
 
+  // Bookings ride along as an embed instead of a dependent second query.
+  // slot_id is unique on mentor_bookings, so PostgREST resolves this as
+  // to-one and hands back an object (or null) per slot.
   const { data: slots } = await admin
     .from("mentor_slots")
-    .select("*")
+    .select(
+      "*, mentor_bookings(id, slot_id, status, topic, student_id, recap_notes, recap_posted_at, student:profiles(full_name, email))",
+    )
     .eq("mentor_id", profile.id)
     .order("starts_at", { ascending: true });
 
-  const slotIds = (slots ?? []).map((s: any) => s.id);
-  const { data: bookings } = slotIds.length
-    ? await admin
-        .from("mentor_bookings")
-        .select(
-          "id, slot_id, status, topic, student_id, recap_notes, recap_posted_at, student:profiles(full_name, email)",
-        )
-        .in("slot_id", slotIds)
-    : { data: [] as any[] };
-
-  const bookingBySlot = new Map<string, any>();
-  for (const b of (bookings ?? []) as any[]) {
-    if (b.status !== "cancelled") bookingBySlot.set(b.slot_id, b);
-  }
-
-  const enriched = (slots ?? []).map((s: any) => ({
-    ...s,
-    booking: bookingBySlot.get(s.id) ?? null,
-  }));
+  // SlotsManager wants a `booking` field holding the live (non-cancelled)
+  // booking or null; normalize the embed shape defensively in case the
+  // schema cache serves it as an array.
+  const enriched = (slots ?? []).map((s: any) => {
+    const { mentor_bookings: raw, ...slot } = s;
+    const bookings = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    const booking = bookings.find((b: any) => b.status !== "cancelled") ?? null;
+    return { ...slot, booking };
+  });
 
   return (
     <div className="mx-auto max-w-3xl">

@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendEmail } from "@/lib/email/send";
+import { sendEmailBatch, type BatchItem } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { env } from "@/lib/env";
 import { formatWeekRange, isoWeekStart, mondayOf } from "@/lib/week";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Backstop: batch sends are one HTTP call per 100 recipients, but several
+// large cohorts in one run should still never hit the default limit.
+export const maxDuration = 60;
 
 /**
  * Weekly cohort digest — one email per active cohort, sent to every
@@ -132,20 +135,21 @@ export async function GET(req: Request) {
       upcomingEvents: upcoming,
     });
 
-    let sent = 0;
+    // One Resend batch call per ~100 recipients instead of a round trip
+    // per student. The batch helper retries a failed chunk one email at a
+    // time, so a single bad address can't sink the rest of the cohort.
+    const recipients: BatchItem[] = [];
     for (const e of enrollments ?? []) {
       const profile = Array.isArray((e as any).profile)
         ? (e as any).profile[0]
         : (e as any).profile;
       const email = profile?.email;
       if (!email) continue;
-      const res = await sendEmail({
-        to: email,
-        subject: t.subject,
-        html: t.html,
-      });
-      if (res.ok) sent++;
+      recipients.push({ to: email, subject: t.subject, html: t.html });
     }
+    const results =
+      recipients.length > 0 ? await sendEmailBatch(recipients) : [];
+    const sent = results.filter((r) => r.ok).length;
     totalEmailsSent += sent;
     perCohortSummary.push({
       cohort: c.name,

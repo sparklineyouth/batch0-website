@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { DemoDayDiscordThreadsButton } from "./discord-threads-button";
 
 export const metadata = { title: "Demo Day · Admin" };
 
 export default async function AdminDemoDayPage() {
-  await requireAdmin();
+  await requirePermission("demoday.manage");
   const admin = createAdminClient();
 
   const [
@@ -16,7 +16,6 @@ export default async function AdminDemoDayPage() {
     { data: submissions },
     { data: criteria },
     { data: scores },
-    { data: reactions },
     { data: cohortsForDiscord },
   ] = await Promise.all([
     admin
@@ -30,7 +29,6 @@ export default async function AdminDemoDayPage() {
     admin
       .from("demo_day_scores")
       .select("team_id, criterion_id, score, judge_id"),
-    admin.from("demo_day_reactions").select("team_id"),
     admin
       .from("cohorts")
       .select("id, name")
@@ -40,10 +38,21 @@ export default async function AdminDemoDayPage() {
   const subByTeam = new Map<string, any>(
     (submissions ?? []).map((s: any) => [s.team_id, s]),
   );
-  const reactByTeam = new Map<string, number>();
-  for (const r of (reactions ?? []) as any[]) {
-    reactByTeam.set(r.team_id, (reactByTeam.get(r.team_id) ?? 0) + 1);
-  }
+  // Reaction counts come from head-count queries, one per team — a live Demo
+  // Day writes thousands of reaction rows, and fetching them just to count in
+  // JS both transferred all of them and silently undercounted past PostgREST's
+  // 1000-row cap. Team count is small, so the fan-out is a handful of
+  // parallel count-only round trips.
+  const reactionCounts = await Promise.all(
+    ((teams ?? []) as any[]).map(async (t) => {
+      const { count } = await admin
+        .from("demo_day_reactions")
+        .select("id", { count: "exact", head: true })
+        .eq("team_id", t.id);
+      return [t.id as string, count ?? 0] as const;
+    }),
+  );
+  const reactByTeam = new Map<string, number>(reactionCounts);
   const critById = new Map<string, any>(
     (criteria ?? []).map((c: any) => [c.id, c]),
   );
@@ -96,11 +105,9 @@ export default async function AdminDemoDayPage() {
             Submission status, weighted leaderboard, and audience reactions.
           </p>
         </div>
-        <Link href="/admin/demo-day/rubric">
-          <Button variant="secondary" size="sm">
-            Edit rubric →
-          </Button>
-        </Link>
+        <ButtonLink href="/admin/demo-day/rubric" variant="secondary" size="sm">
+          Edit rubric →
+        </ButtonLink>
       </div>
 
       <Card className="mt-6 !p-0">

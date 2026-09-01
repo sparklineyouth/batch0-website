@@ -1,5 +1,17 @@
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getRegionalPrice, DEFAULT_PRICE_CENTS } from "@/lib/pricing";
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
+import {
+  createAdminClient,
+  createPublicReadClient,
+} from "@/lib/supabase/admin";
+import { getRegionalPrice } from "@/lib/pricing";
+import {
+  buildMetaDescription,
+  formatApplyBy,
+  formatDateSentence,
+} from "@/lib/seo-meta";
+
+export { META_DESCRIPTION_MAX } from "@/lib/seo-meta";
 
 // Single source of truth for public, admin-editable site facts (active
 // cohort + branding). The admin can change anything here from
@@ -26,6 +38,16 @@ export type SiteSettings = {
   demoDayDate: string | null;
   maintenanceMode: boolean;
   referralsEnabled: boolean;
+  /**
+   * Whether a founder pass holder may apply while `applicationsOpen` is false.
+   *
+   * Exists because `applicationsOpen` conflates two different states: "not
+   * open to the public yet" and "closed for good". Early access is only
+   * meaningful in the first, so this is the admin's switch for the pre-launch
+   * window — on before launch, off once the cohort genuinely ends. Without it
+   * the pass would be a permanent way into a finished cohort.
+   */
+  founderPassEarlyAccess: boolean;
 };
 
 export type SiteConfig = {
@@ -35,12 +57,21 @@ export type SiteConfig = {
   derived: {
     /** "Cohort 1" — falls back to "" if no number is set. */
     cohortLabel: string;
-    /** "Summer 2026" — the cohort's name (season label). */
+    /** "Fall 2026" — the cohort's name (season label). */
     cohortName: string;
-    /** "Cohort 1 · Summer 2026" — combined label with separator. */
+    /** "Cohort 1 · Fall 2026" — combined label with separator. */
     cohortHeadline: string;
     /** "Jun 15 → Jul 13" — date range, or "" if dates are missing. */
     dateRangeLabel: string;
+    /**
+     * "Sep 14 – Nov 13, 2026" — the same range with the year, en-dashed for
+     * prose. Exists separately from `dateRangeLabel` because that one uses a
+     * "→" glyph that reads as mojibake in a search result snippet.
+     * "" when dates are missing.
+     */
+    dateRangeSentence: string;
+    /** "Sep 10" — application deadline, short form. "" if none is set. */
+    applyByLabel: string;
     /** "97" — integer-rounded dollar price (no $ prefix), regional. */
     priceDollars: string;
     /** "$97" — convenience formatted price for the visitor's region. */
@@ -87,26 +118,43 @@ const FALLBACK_SETTINGS: SiteSettings = {
   demoDayDate: null,
   maintenanceMode: false,
   referralsEnabled: true,
+  // Fails CLOSED, unlike the other fallbacks here. If Supabase is unreachable
+  // we must not hand pass holders a way past a closed applications gate on the
+  // strength of a guess — "no early access" is the state that can't be wrong
+  // in a damaging direction.
+  founderPassEarlyAccess: false,
 };
 
 // Mirrors the real Cohort 1 row so a Supabase outage can't make the marketing
 // site display stale facts.
 //
-// This only helps if it actually matches the row — it had drifted to the
-// cohort's original Jul 30 → Sep 13 dates while the real row moved to
-// Aug 17 → Oct 18, so an outage would have shown dates 5 weeks out of date.
-// Re-check these against /admin/cohorts whenever the cohort row changes.
-// Last verified against the DB: 2026-07-14.
-const FALLBACK_COHORT: ActiveCohort = {
+// This constant has now drifted TWICE. It sat on the cohort's original
+// Jul 30 → Sep 13 dates after the row moved to Aug 17 → Oct 18, and it sat on
+// Aug 17 → Oct 18 after the row moved to Sep 14 → Nov 13. Both times the
+// stale value was also copied into a hardcoded `description` string in
+// app/layout.tsx, which is baked at build time — so production served
+// "Cohort 1 runs Jul 30–Sep 13" to Google while the page body said Sep 14.
+// A search snippet telling applicants the cohort already ended is the most
+// expensive bug on this site.
+//
+// The structural fix is in place now: no page hardcodes dates into metadata
+// any more. `generateMetadata` on / and /program reads this same record at
+// request time (see `metaDescription` below), so the snippet always tracks
+// the DB. This constant is now only the outage fallback it was meant to be.
+//
+// It can still drift, so `npm run seo-doctor` diffs it against the live row
+// and exits non-zero on mismatch. Run it whenever the cohort row changes.
+// Last verified: 2026-08-05.
+export const FALLBACK_COHORT: ActiveCohort = {
   id: "",
-  name: "Summer 2026",
+  name: "Fall 2026",
   cohortNumber: 1,
-  startsOn: "2026-08-17",
-  endsOn: "2026-10-18",
-  capacity: 100,
-  priceCents: DEFAULT_PRICE_CENTS,
+  startsOn: "2026-09-14",
+  endsOn: "2026-11-13",
+  capacity: 50,
+  priceCents: 12999,
   status: "upcoming",
-  applicationsCloseAt: "2026-08-10T23:59:00+00:00",
+  applicationsCloseAt: "2026-09-10T23:59:00+00:00",
 };
 
 function formatDateRange(startsOn: string | null, endsOn: string | null) {
@@ -123,6 +171,28 @@ function formatDateRange(startsOn: string | null, endsOn: string | null) {
     });
   };
   return `${fmt(startsOn)} → ${fmt(endsOn)}`;
+}
+
+/**
+ * The `<meta name="description">` for the marketing surface, built from the
+ * live cohort record rather than a build-time constant.
+ *
+ * Thin adapter only — the copy rules and the length budget live in
+ * lib/seo-meta.ts, which is import-free and unit-tested. `now` is threaded
+ * through so tests can pin the deadline logic.
+ */
+export function metaDescription(config: SiteConfig, now = new Date()): string {
+  // Read raw dates from the same record `derive` used, so the snippet can
+  // never disagree with the dates rendered on the page.
+  const c = config.cohort ?? FALLBACK_COHORT;
+  return buildMetaDescription({
+    cohortLabel: config.derived.cohortLabel,
+    startsOn: c.startsOn,
+    endsOn: c.endsOn,
+    applicationsCloseAt: c.applicationsCloseAt,
+    basePriceLabel: config.derived.basePriceLabel,
+    now,
+  });
 }
 
 function derive(
@@ -185,6 +255,8 @@ function derive(
     cohortName,
     cohortHeadline,
     dateRangeLabel: formatDateRange(c.startsOn, c.endsOn),
+    dateRangeSentence: formatDateSentence(c.startsOn, c.endsOn),
+    applyByLabel: formatApplyBy(c.applicationsCloseAt),
     priceDollars: String(dollars),
     priceLabel: `$${dollars}`,
     priceCents: regional.amountCents,
@@ -209,20 +281,117 @@ function derive(
  * pricing — see `lib/pricing.ts`. When omitted, the cohort's default
  * price is used.
  */
+/**
+ * Request-cached, but NOT cached across requests: this still reads through
+ * the no-store admin client, because the gating flags it carries
+ * (`applications_open`, `founder_pass_early_access`, `referrals_enabled`)
+ * decide what a signed-in person is allowed to do and must never be stale.
+ *
+ * The React cache matters because the /dashboard tree resolves this twice in
+ * one render — once in the layout for `referralsEnabled`, once in the page —
+ * and without it each resolution would repeat the same queries.
+ */
+const loadPrivateData = cache(() => loadSiteConfigData(createAdminClient()));
+
 export async function getSiteConfig(
   opts: { countryCode?: string | null } = {},
 ): Promise<SiteConfig> {
-  const countryCode = opts.countryCode ?? null;
-  const admin = createAdminClient();
+  // `loadPrivateData` above carries the React cache(), so the memoisation
+  // keys on nothing rather than on an options bag — `{ countryCode }`
+  // allocates a fresh object at every call site, and passing it through
+  // cache() directly would miss every time and make the whole thing a no-op.
+  //
+  // That memoisation is also what makes `generateMetadata` free: Next runs it
+  // and the page component in the same request, so `/` resolves the cohort
+  // once and both the meta description and the rendered page read that one
+  // result — no second round trip, and no chance of the snippet and the page
+  // body disagreeing because they queried at different moments. Country is
+  // applied per-request on top, since `derive()` is pure.
+  return assemble(await loadPrivateData(), opts.countryCode ?? null);
+}
 
-  const [settingsRes, pinnedIdRes] = await Promise.all([
+/**
+ * The same config, read through a cacheable client and memoised across
+ * requests. This is what public marketing pages call.
+ *
+ * Two things have to be true at once for a marketing page to prerender, and
+ * this function is one of them (the other is not touching cookies()):
+ *
+ *  1. The read must not be `no-store` — hence createPublicReadClient(). Do NOT
+ *     "fix" this by wrapping the no-store client in unstable_cache: the route
+ *     then prerenders, the DynamicServerError is thrown onto a *copy* of the
+ *     static-generation store where nothing reads it, postgrest swallows it as
+ *     a failed request, and getSiteConfig quietly returns FALLBACK_COHORT. You
+ *     get a green build serving hardcoded prices with the "N spots left" and
+ *     "Applications close in N days" signals silently gone.
+ *  2. unstable_cache gives it a tag, so an admin editing settings or a cohort
+ *     publishes immediately instead of waiting out `revalidate`. See
+ *     revalidateTag(SITE_CONFIG_TAG) in the admin actions.
+ *
+ * Country is applied per-request on top of the cached data — `derive()` is
+ * pure, so regional pricing costs nothing and isn't baked into the cache.
+ */
+export const SITE_CONFIG_TAG = "site-config";
+
+const loadPublicData = unstable_cache(
+  async () => loadSiteConfigData(createPublicReadClient()),
+  ["site-config-public"],
+  { revalidate: 300, tags: [SITE_CONFIG_TAG] },
+);
+
+export async function getPublicSiteConfig(
+  opts: { countryCode?: string | null } = {},
+): Promise<SiteConfig> {
+  const data = await loadPublicData();
+  if (!data.cohort && process.env.NODE_ENV === "production") {
+    // Loud on purpose. A null cohort here means the marketing site is serving
+    // FALLBACK_COHORT — dates and price hand-synced on a date in the past —
+    // and every other symptom of that is invisible.
+    console.error(
+      "[site-config] public read returned no cohort; marketing pages are on FALLBACK_COHORT",
+    );
+  }
+  return assemble(data, opts.countryCode ?? null);
+}
+
+type SiteConfigData = {
+  cohort: ActiveCohort | null;
+  settings: SiteSettings;
+  enrolledCount: number;
+};
+
+function assemble(
+  data: SiteConfigData,
+  countryCode: string | null,
+): SiteConfig {
+  return {
+    cohort: data.cohort,
+    settings: data.settings,
+    derived: derive(
+      data.cohort,
+      data.enrolledCount,
+      data.settings.applicationsOpen,
+      countryCode,
+    ),
+  };
+}
+
+async function loadSiteConfigData(
+  admin: ReturnType<typeof createAdminClient>,
+): Promise<SiteConfigData> {
+  // One parallel wave. The unfiltered settings scan already carries the
+  // active_cohort_id row, so the pinned id never needs a query of its own,
+  // and the fallback cohort candidate (next upcoming/active by start date)
+  // rides alongside with its enrollment count embedded. Only an admin pin
+  // pointing somewhere other than that candidate costs a second trip.
+  const [settingsRes, fallbackCohortRes] = await Promise.all([
     admin.from("site_settings").select("key, value"),
-    // We fetch the pinned cohort id separately so the cohort row query
-    // can be a single .single() call when it exists.
     admin
-      .from("site_settings")
-      .select("value")
-      .eq("key", "active_cohort_id")
+      .from("cohorts")
+      .select("*, enrollments(count)")
+      .in("status", ["upcoming", "active"])
+      .order("starts_on", { ascending: true, nullsFirst: false })
+      .limit(1)
       .maybeSingle(),
   ]);
 
@@ -256,11 +425,15 @@ export async function getSiteConfig(
       typeof raw.referrals_enabled === "boolean"
         ? raw.referrals_enabled
         : FALLBACK_SETTINGS.referralsEnabled,
+    founderPassEarlyAccess:
+      typeof raw.founder_pass_early_access === "boolean"
+        ? raw.founder_pass_early_access
+        : FALLBACK_SETTINGS.founderPassEarlyAccess,
   };
 
   const pinnedId =
-    typeof pinnedIdRes.data?.value === "string"
-      ? (pinnedIdRes.data!.value as string)
+    typeof raw.active_cohort_id === "string"
+      ? (raw.active_cohort_id as string)
       : null;
 
   // Resolve the active cohort: pinned id wins, otherwise the next
@@ -286,52 +459,25 @@ export async function getSiteConfig(
     };
   }
 
-  let cohort: ActiveCohort | null = null;
-  if (pinnedId) {
+  let cohortRow: any = fallbackCohortRes.data ?? null;
+  if (pinnedId && pinnedId !== cohortRow?.id) {
+    // A pin may point at a cohort of any status (that is the point of
+    // pinning), so the upcoming/active candidate can't stand in for it.
+    // A pin that resolves to nothing falls back to the candidate.
     const { data } = await admin
       .from("cohorts")
-      .select("*")
+      .select("*, enrollments(count)")
       .eq("id", pinnedId)
       .maybeSingle();
-    if (data) cohort = toCohort(data);
+    if (data) cohortRow = data;
   }
-  if (!cohort) {
-    const { data } = await admin
-      .from("cohorts")
-      .select("*")
-      .in("status", ["upcoming", "active"])
-      .order("starts_on", { ascending: true, nullsFirst: false })
-      .limit(1)
-      .maybeSingle();
-    if (data) cohort = toCohort(data);
-  }
+  const cohort = cohortRow ? toCohort(cohortRow) : null;
 
-  // Live enrollment count for the resolved active cohort. Cheap
-  // count(*) query — no per-row read. Returns 0 (rather than erroring)
-  // when there's no cohort or the count query fails for any reason.
-  let enrolledCount = 0;
-  if (cohort?.id) {
-    const { count } = await admin
-      .from("enrollments")
-      .select("id", { count: "exact", head: true })
-      .eq("cohort_id", cohort.id);
-    if (typeof count === "number") enrolledCount = count;
-  }
+  // Live enrollment count, read off the embedded count(*) aggregate — no
+  // per-row read. Reads as 0 (rather than erroring) when there's no
+  // cohort or the embed is missing for any reason.
+  const embeddedCount = cohortRow?.enrollments?.[0]?.count;
+  const enrolledCount = typeof embeddedCount === "number" ? embeddedCount : 0;
 
-  return {
-    // Expose the same cohort `derive()` uses: when the DB can't resolve one
-    // (outage, missing row), callers get FALLBACK_COHORT rather than null.
-    // Otherwise `cohort` and `derived` disagree during an outage and every
-    // raw-cohort consumer (status bar t-minus, hero facts, the front-page
-    // lead story's deadline) silently drops the application close date —
-    // the exact drift the fallback exists to prevent.
-    cohort: cohort ?? FALLBACK_COHORT,
-    settings,
-    derived: derive(
-      cohort,
-      enrolledCount,
-      settings.applicationsOpen,
-      countryCode,
-    ),
-  };
+  return { cohort, settings, enrolledCount };
 }

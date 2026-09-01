@@ -4,7 +4,7 @@ description: "Shipping and launching aren't the same thing. Here's how to plan a
 date: "2026-02-02"
 updated: "2026-02-02"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["product launch", "launch day", "launch plan", "shipping product", "student founder"]
 ---
 

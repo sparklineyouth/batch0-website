@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { runAction, type ActionResult } from "@/lib/action-result";
@@ -21,7 +21,7 @@ export async function updateIntroStatus(input: {
   adminNotes?: string | null;
 }): Promise<ActionResult> {
   return runAction({ name: "updateIntroStatus" }, async () => {
-    await assertAdmin();
+    await assertPermission("intros.manage");
     if (!ALLOWED.includes(input.status)) {
       throw new Error("Invalid status");
     }

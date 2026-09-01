@@ -1,20 +1,14 @@
 import "server-only";
+import { cache } from "react";
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
-import { unified } from "unified";
-import remarkParse from "remark-parse";
-import remarkGfm from "remark-gfm";
-import remarkSmartypants from "remark-smartypants";
-import remarkRehype from "remark-rehype";
-import rehypeSlug from "rehype-slug";
-import rehypeAutolinkHeadings from "rehype-autolink-headings";
-import rehypeExternalLinks from "rehype-external-links";
-import rehypeStringify from "rehype-stringify";
+import { renderMarkdown } from "@/lib/markdown";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import {
   AUTHORS,
   CATEGORIES,
+  LEGACY_AUTHOR_KEYS,
   type AuthorKey,
   type Category,
   type PostMeta,
@@ -22,6 +16,7 @@ import {
   readingTimeFor,
   formatPostDate,
 } from "@/lib/blog-shared";
+import { pickRelated } from "@/lib/seo-meta";
 
 // Hybrid blog. Posts come from two sources, merged into one namespace:
 //
@@ -64,6 +59,10 @@ function assertCategory(value: string, slug: string): Category {
 
 function assertAuthor(value: string, slug: string): AuthorKey {
   if (value in AUTHORS) return value as AuthorKey;
+  // A key that was renamed rather than removed — resolve it instead of
+  // throwing, so a post written under the old key keeps rendering.
+  const aliased = LEGACY_AUTHOR_KEYS[value];
+  if (aliased) return aliased;
   throw new Error(
     `Blog post "${slug}" has unknown author "${value}". Allowed: ${Object.keys(AUTHORS).join(", ")}`,
   );
@@ -98,6 +97,7 @@ function parseMeta(slug: string, raw: string): { meta: PostMeta; body: string } 
   const meta: PostMeta = {
     slug,
     title: String(data.title ?? "").trim(),
+    seoTitle: data.seoTitle ? String(data.seoTitle).trim() : undefined,
     description: String(data.description ?? "").trim(),
     date,
     updated: String(data.updated ?? date),
@@ -123,11 +123,31 @@ function getFilePostRaw(slug: string): string | null {
   return fs.readFileSync(file, "utf8");
 }
 
+/**
+ * Frontmatter for every committed post, parsed once per process.
+ *
+ * This used to read and gray-matter-parse all 135 files (~1.6 MB) on every
+ * call — and `getRelatedPosts` calls it on every single blog request, purely
+ * to pick three "keep reading" links. That was the dominant cost on the two
+ * worst-scoring pages in production.
+ *
+ * A module-level cache is safe here in a way it wouldn't be for DB rows: these
+ * are files committed to the repo, and the filesystem is read-only at runtime
+ * on Vercel. A new post means a new deploy, which means a new process. In dev
+ * the cache is skipped so editing a post shows up without a restart.
+ */
+let fileMetaCache: PostMeta[] | null = null;
+
 function getFilePostsMeta(): PostMeta[] {
-  return getFileSlugs().map((slug) => {
+  if (fileMetaCache && process.env.NODE_ENV === "production") {
+    return fileMetaCache;
+  }
+  const metas = getFileSlugs().map((slug) => {
     const raw = fs.readFileSync(path.join(BLOG_DIR, `${slug}.md`), "utf8");
     return parseMeta(slug, raw).meta;
   });
+  fileMetaCache = metas;
+  return metas;
 }
 
 // File-post metadata for the admin list (these are read-only in the UI — they
@@ -194,7 +214,9 @@ function blogReadClient() {
 // Fetch published DB posts. Wrapped in try/catch so the whole blog still
 // builds if the `blog_posts` table doesn't exist yet (migration not applied)
 // or Supabase is unreachable at build time — file posts always render.
-async function getPublishedRows(): Promise<BlogRow[]> {
+const getPublishedRows = cache(async function getPublishedRows(): Promise<
+  BlogRow[]
+> {
   try {
     const sb = blogReadClient();
     const { data, error } = await sb
@@ -210,7 +232,7 @@ async function getPublishedRows(): Promise<BlogRow[]> {
     console.error("[blog] blog_posts unavailable:", (e as Error).message);
     return [];
   }
-}
+});
 
 async function getPublishedRowBySlug(slug: string): Promise<BlogRow | null> {
   try {
@@ -234,7 +256,9 @@ async function getPublishedRowBySlug(slug: string): Promise<BlogRow | null> {
 
 // Metadata for every published post, newest first. Merges file + DB posts;
 // on slug collision the DB row wins.
-export async function getAllPostsMeta(): Promise<PostMeta[]> {
+export const getAllPostsMeta = cache(async function getAllPostsMeta(): Promise<
+  PostMeta[]
+> {
   const [rows, fileMetas] = await Promise.all([
     getPublishedRows(),
     Promise.resolve(getFilePostsMeta()),
@@ -243,7 +267,7 @@ export async function getAllPostsMeta(): Promise<PostMeta[]> {
   for (const m of fileMetas) bySlug.set(m.slug, m);
   for (const row of rows) bySlug.set(row.slug, rowToMeta(row)); // DB overrides
   return [...bySlug.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
-}
+});
 
 // Every renderable slug (file + published DB). Used by generateStaticParams.
 export async function getPostSlugs(): Promise<string[]> {
@@ -251,31 +275,24 @@ export async function getPostSlugs(): Promise<string[]> {
   return [...new Set([...getFileSlugs(), ...rows.map((r) => r.slug)])];
 }
 
-// Shared markdown → semantic-HTML pipeline. Heading anchors (slug +
-// self-link) give AI engines and readers stable deep links; smartypants
-// gives real typographic punctuation; external links get rel safety.
-const processor = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkSmartypants)
-  .use(remarkRehype)
-  .use(rehypeSlug)
-  .use(rehypeAutolinkHeadings, {
-    behavior: "wrap",
-    properties: { className: ["heading-anchor"] },
-  })
-  .use(rehypeExternalLinks, {
-    target: "_blank",
-    rel: ["noopener", "noreferrer"],
-  })
-  .use(rehypeStringify);
+// The markdown → semantic-HTML pipeline now lives in lib/markdown.ts so that
+// callers who only need to render a string (resource flows, the admin editor
+// preview) don't pull node:fs, gray-matter and supabase-js in with it.
+// Re-exported here so existing blog importers are unaffected and both sources
+// keep rendering through the same processor.
+export { renderMarkdown };
 
-export async function renderMarkdown(body: string): Promise<string> {
-  const file = await processor.process(body);
-  return String(file);
-}
-
-export async function getPostBySlug(slug: string): Promise<Post | null> {
+/**
+ * One post, rendered.
+ *
+ * React-cached because every post page resolves it twice — once in
+ * `generateMetadata`, once in the page body — and each resolution ran the
+ * whole unified markdown pipeline over the full article. The cache collapses
+ * that to one parse per request (and one per page during the static build).
+ */
+export const getPostBySlug = cache(async function getPostBySlug(
+  slug: string,
+): Promise<Post | null> {
   // DB posts override file posts on the same slug.
   const row = await getPublishedRowBySlug(slug);
   if (row) {
@@ -285,15 +302,53 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
   if (!raw) return null;
   const { meta, body } = parseMeta(slug, raw);
   return { meta, html: await renderMarkdown(body) };
-}
+});
 
-// Related posts: same category first, then most recent, excluding self.
+/**
+ * Related posts, scored by actual topical overlap.
+ *
+ * This used to be "same category first, then most recent". With 20–24 posts
+ * per category that meant every post in a category linked to the same three
+ * recent siblings: a few arbitrary posts collected every internal link, and
+ * genuinely related posts — nine separate pitch-deck guides, for instance —
+ * never linked to each other at all.
+ *
+ * Scoring lives in lib/seo-meta.ts (pure and unit-tested); see `pickRelated`
+ * for the weights and why ties break on slug rather than date.
+ */
 export async function getRelatedPosts(
   current: PostMeta,
   limit = 3,
 ): Promise<PostMeta[]> {
-  const all = (await getAllPostsMeta()).filter((p) => p.slug !== current.slug);
-  const sameCat = all.filter((p) => p.category === current.category);
-  const rest = all.filter((p) => p.category !== current.category);
-  return [...sameCat, ...rest].slice(0, limit);
+  return pickRelated(current, await getAllPostsMeta(), limit);
+}
+
+/** Every published post in a category, newest first. Powers the hub pages. */
+export async function getPostsByCategory(
+  category: Category,
+): Promise<PostMeta[]> {
+  return (await getAllPostsMeta()).filter((p) => p.category === category);
+}
+
+/**
+ * Posts to surface on the homepage.
+ *
+ * The homepage is the strongest page on the site — the most external links
+ * point at it, so it holds the most authority to pass on. Until now it linked
+ * to zero blog posts, so none of that reached the 135 guides, and the only
+ * route a crawler had into a given post was the flat index.
+ *
+ * That matters more than it sounds: an exact-phrase search for a post title
+ * that exists nowhere else on the internet currently returns nothing, which
+ * means Google hasn't indexed most of the blog. Links from the homepage are
+ * one of the strongest discovery signals available for fixing that.
+ *
+ * Uses the `featured` frontmatter flag, which had existed unused since the
+ * blog was built. Falls back to newest-first so the section is never empty
+ * if every flag is cleared.
+ */
+export async function getFeaturedPosts(limit = 6): Promise<PostMeta[]> {
+  const all = await getAllPostsMeta();
+  const featured = all.filter((p) => p.featured);
+  return (featured.length ? featured : all).slice(0, limit);
 }

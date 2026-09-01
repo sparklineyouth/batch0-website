@@ -4,7 +4,7 @@ description: "Free gets you users but no proof people will pay. Here's how to de
 date: "2026-02-28"
 updated: "2026-02-28"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["freemium", "free product", "paid vs free", "monetization", "pricing strategy"]
 ---
 

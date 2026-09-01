@@ -7,6 +7,9 @@ import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Backstop, mirroring stripe-reconcile: the daily scan pays a Stripe round
+// trip per customer, so give it room as customers reach the hundreds.
+export const maxDuration = 300;
 
 const EXPIRY_WINDOW_DAYS = 30;
 
@@ -60,33 +63,31 @@ export async function GET(req: Request) {
   let skippedNotExpiring = 0;
   let errors = 0;
 
-  for (const p of (profiles ?? []) as any[]) {
+  const scanProfile = async (p: any) => {
     scanned++;
-    if (!p.email || !p.stripe_customer_id) continue;
+    if (!p.email || !p.stripe_customer_id) return;
     if (p.last_card_expiring_notified_month === currentMonth) {
       skippedAlreadyNotified++;
-      continue;
+      return;
     }
 
     try {
       // Grab the customer's default payment method. `invoice_settings`
-      // is the authoritative pointer to the card Stripe will charge.
-      const customer = await stripe.customers.retrieve(p.stripe_customer_id);
+      // is the authoritative pointer to the card Stripe will charge;
+      // expanding it folds the payment-method fetch into the same
+      // Stripe round trip.
+      const customer = await stripe.customers.retrieve(p.stripe_customer_id, {
+        expand: ["invoice_settings.default_payment_method"],
+      });
       if (!customer || (customer as any).deleted) {
         skippedNoCard++;
-        continue;
+        return;
       }
-      const defaultId = (customer as any).invoice_settings
-        ?.default_payment_method as string | undefined;
-      if (!defaultId) {
-        skippedNoCard++;
-        continue;
-      }
-      const pm = await stripe.paymentMethods.retrieve(defaultId);
-      const card = (pm as any).card;
+      const pm = (customer as any).invoice_settings?.default_payment_method;
+      const card = pm?.card;
       if (!card?.exp_month || !card?.exp_year) {
         skippedNoCard++;
-        continue;
+        return;
       }
 
       // Cards expire at end-of-month, so a card flagged "08/26" is
@@ -102,7 +103,7 @@ export async function GET(req: Request) {
       // them but they'll never be silently fixed without a nudge.
       if (daysUntilExpiry > EXPIRY_WINDOW_DAYS) {
         skippedNotExpiring++;
-        continue;
+        return;
       }
 
       // Build the portal URL specifically for this customer so the
@@ -146,6 +147,15 @@ export async function GET(req: Request) {
       );
       errors++;
     }
+  };
+
+  // Profiles run a few at a time — comfortably inside Stripe's rate
+  // limits — and each carries its own try/catch so one bad customer
+  // record can't sink the rest of the scan.
+  const CONCURRENCY = 5;
+  const list = (profiles ?? []) as any[];
+  for (let i = 0; i < list.length; i += CONCURRENCY) {
+    await Promise.all(list.slice(i, i + CONCURRENCY).map(scanProfile));
   }
 
   return NextResponse.json({

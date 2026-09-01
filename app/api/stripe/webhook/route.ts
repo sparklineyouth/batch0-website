@@ -2,14 +2,29 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendEmail } from "@/lib/email/send";
-import { Templates } from "@/lib/email/templates";
-import { notify } from "@/lib/notifications";
-import { logAudit } from "@/lib/audit";
-import { postDiscordWebhook, syncMemberRoles, postChannelMessage, announcementEmbed, getDiscordSettings } from "@/lib/discord";
+import {
+  fulfillCheckoutSession,
+  handleChargeRefunded,
+  handlePaymentFailed,
+} from "@/lib/stripe-fulfillment";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+/**
+ * Events we act on. Anything else is acknowledged and ignored — Stripe
+ * accounts fan out a lot of noise, and a 200 keeps it out of the retry
+ * queue. Keep this list in sync with the endpoint's enabled events in the
+ * Stripe dashboard.
+ */
+const HANDLED = new Set([
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
+  "checkout.session.expired",
+  "payment_intent.payment_failed",
+  "charge.refunded",
+]);
 
 export async function POST(req: Request) {
   const sig = req.headers.get("stripe-signature");
@@ -32,12 +47,17 @@ export async function POST(req: Request) {
     );
   }
 
+  if (!HANDLED.has(event.type)) {
+    return NextResponse.json({ received: true, ignored: true });
+  }
+
   const admin = createAdminClient();
 
   // Idempotency with retry-safety: we "claim" the event by inserting a
   // row with completed_at=null, then "complete" it after all side
   // effects succeed. If we crash in the middle, the row sticks at the
-  // claimed state and Stripe's next delivery picks it back up.
+  // claimed state and Stripe's next delivery picks it back up. The
+  // handlers below are individually idempotent too, so a replay is safe.
   try {
     const { error: dedupeErr } = await admin
       .from("processed_stripe_events")
@@ -69,251 +89,47 @@ export async function POST(req: Request) {
 
   try {
     switch (event.type) {
-      case "checkout.session.completed": {
+      // The happy path, and its delayed-payment-method twin. Both mean
+      // "the money is ours"; fulfillCheckoutSession decides what that
+      // unlocks (tuition vs a fee/fine) and is safe to re-run.
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
-        const kind = session.metadata?.kind;
-        const userId = session.metadata?.user_id;
+        await fulfillCheckoutSession(session);
+        break;
+      }
 
-        // Branch 1: user_charge (fee or fine) checkout.
-        if (kind === "user_charge") {
-          const chargeId = session.metadata?.charge_id;
-          const piId =
-            typeof session.payment_intent === "string"
-              ? session.payment_intent
-              : session.payment_intent?.id ?? null;
-          if (chargeId) {
-            const { data: charge } = await admin
-              .from("user_charges")
-              .select("user_id, kind, description, amount_cents")
-              .eq("id", chargeId)
-              .single();
-            const receiptUrl = await fetchReceiptUrl(piId);
-            await admin
-              .from("user_charges")
-              .update({
-                status: "paid",
-                paid_at: new Date().toISOString(),
-                stripe_payment_intent_id: piId,
-                stripe_receipt_url: receiptUrl,
-              })
-              .eq("id", chargeId);
-            if (charge) {
-              await notify({
-                userId: charge.user_id,
-                type: "charge_paid",
-                title:
-                  (charge.kind === "fine" ? "Fine paid: " : "Fee paid: ") +
-                  charge.description,
-                body: `Amount: $${(charge.amount_cents / 100).toFixed(2)}`,
-                link: "/dashboard/billing",
-              });
-            }
-          }
-          break;
-        }
+      // A bank debit that looked fine at checkout later bounced.
+      case "checkout.session.async_payment_failed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await fulfillCheckoutSession(session, { forceState: "failed" });
+        break;
+      }
 
-        // Branch 2: application enrollment checkout (original flow).
-        const applicationId = session.metadata?.application_id;
-        const cohortId = session.metadata?.cohort_id || null;
-        if (!applicationId || !userId) break;
-
-        const paymentIntentId =
-          typeof session.payment_intent === "string"
-            ? session.payment_intent
-            : session.payment_intent?.id ?? null;
-
-        await admin
-          .from("applications")
-          .update({
-            status: "paid",
-            paid_at: new Date().toISOString(),
-            stripe_payment_intent_id: paymentIntentId,
-          })
-          .eq("id", applicationId);
-
-        const receiptUrl = await fetchReceiptUrl(paymentIntentId);
-        await admin
-          .from("payments")
-          .update({
-            status: "succeeded",
-            stripe_payment_intent_id: paymentIntentId,
-            stripe_receipt_url: receiptUrl,
-          })
-          .eq("stripe_session_id", session.id);
-
-        if (cohortId) {
-          await admin.from("enrollments").upsert(
-            {
-              user_id: userId,
-              cohort_id: cohortId,
-              application_id: applicationId,
-            },
-            { onConflict: "user_id,cohort_id" },
-          );
-          await admin
-            .from("applications")
-            .update({ status: "enrolled" })
-            .eq("id", applicationId);
-        }
-
-        // Receipt email + notification.
-        try {
-          // Use the safe column list so this still works if migration
-          // 0008 (discord_*) hasn't been applied yet.
-          const { data: profile } = await admin
-            .from("profiles")
-            .select("email, full_name, role")
-            .eq("id", userId)
-            .maybeSingle();
-          // Discord linkage is optional — if 0008 isn't applied this
-          // query throws "column does not exist" and we just skip.
-          let discordUserId: string | null = null;
-          try {
-            const { data: d, error: dErr } = await admin
-              .from("profiles")
-              .select("discord_user_id")
-              .eq("id", userId)
-              .maybeSingle();
-            if (!dErr && d) discordUserId = (d as any).discord_user_id ?? null;
-          } catch {
-            // ignore — column doesn't exist
-          }
-          if (discordUserId) {
-            await syncMemberRoles(
-              discordUserId,
-              (profile?.role as any) ?? "student",
-            ).catch(() => {});
-          }
-          let cohortName = "batch0";
-          if (cohortId) {
-            const { data: c } = await admin
-              .from("cohorts")
-              .select("name")
-              .eq("id", cohortId)
-              .maybeSingle();
-            cohortName = c?.name ?? cohortName;
-          }
-          const t = Templates.paymentReceipt({
-            name: profile?.full_name ?? null,
-            amountCents: session.amount_total ?? 0,
-            cohortName,
-          });
-          if (profile?.email) {
-            await sendEmail({
-              to: profile.email,
-              subject: t.subject,
-              html: t.html,
-            });
-          }
-          await notify({
-            userId,
-            type: "enrolled",
-            title: "You're enrolled",
-            body: `Welcome to ${cohortName}. Course access is unlocked.`,
-            link: "/dashboard/course",
-          });
-          // Trumpet new enrollments to the team Discord (best effort).
-          await postDiscordWebhook({
-            content: `🎉 **New enrollment** — ${profile?.full_name ?? "A new student"} just enrolled in **${cohortName}**!`,
-          });
-        } catch (err) {
-          console.error("[stripe webhook] receipt notify failed", err);
-        }
+      // The student opened Checkout and never finished. Close the ledger
+      // row out so it doesn't sit "pending" in their billing history for
+      // the rest of time.
+      case "checkout.session.expired": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await fulfillCheckoutSession(session, { forceState: "expired" });
         break;
       }
 
       case "payment_intent.payment_failed": {
-        const pi = event.data.object as Stripe.PaymentIntent;
-        await admin
-          .from("payments")
-          .update({ status: "failed" })
-          .eq("stripe_payment_intent_id", pi.id);
+        await handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
         break;
       }
 
       case "charge.refunded": {
-        const charge = event.data.object as Stripe.Charge;
-        const piId =
-          typeof charge.payment_intent === "string"
-            ? charge.payment_intent
-            : charge.payment_intent?.id;
-        if (piId) {
-          // The same payment intent can back either an enrollment
-          // (payments table) or a fee/fine (user_charges table). Cover
-          // both so a refund issued from the Stripe dashboard mirrors
-          // here either way.
-          const { data: payment } = await admin
-            .from("payments")
-            .select("id, user_id, application_id")
-            .eq("stripe_payment_intent_id", piId)
-            .maybeSingle();
-          await admin
-            .from("payments")
-            .update({ status: "refunded" })
-            .eq("stripe_payment_intent_id", piId);
-          if (payment?.application_id) {
-            await admin
-              .from("applications")
-              .update({ status: "accepted", paid_at: null })
-              .eq("id", payment.application_id);
-            await admin
-              .from("enrollments")
-              .delete()
-              .eq("application_id", payment.application_id);
-            if (payment.user_id) {
-              await notify({
-                userId: payment.user_id,
-                type: "payment_refunded",
-                title: "Payment refunded",
-                body: "Your enrollment payment was refunded. Reach out if this was unexpected.",
-                link: "/dashboard/billing",
-              });
-            }
-          }
-
-          // Also reflect on any matching user_charges row.
-          const { data: charge } = await admin
-            .from("user_charges")
-            .select("id, user_id, kind, description, amount_cents, status")
-            .eq("stripe_payment_intent_id", piId)
-            .maybeSingle();
-          if (charge && charge.status !== "refunded") {
-            await admin
-              .from("user_charges")
-              .update({
-                status: "refunded",
-                refunded_at: new Date().toISOString(),
-                stripe_refund_id:
-                  typeof charge === "object" && (event.data.object as any).refunds?.data?.[0]?.id
-                    ? (event.data.object as any).refunds.data[0].id
-                    : null,
-              })
-              .eq("id", charge.id);
-            await notify({
-              userId: charge.user_id,
-              type: "charge_refunded",
-              title: `${charge.kind === "fine" ? "Fine" : "Fee"} refunded: ${charge.description}`,
-              body: `$${(charge.amount_cents / 100).toFixed(2)} returned to your card.`,
-              link: "/dashboard/billing",
-            });
-          }
-        }
-        await logAudit({
-          action: "payment.refunded",
-          targetType: "payment_intent",
-          targetId: piId ?? null,
-          payload: { amount: charge.amount_refunded },
-        });
+        await handleChargeRefunded(event.data.object as Stripe.Charge);
         break;
       }
-
-      default:
-        break;
     }
   } catch (err: any) {
     // Leave processed_stripe_events.completed_at as null so Stripe's
     // next retry picks the event back up. Returning 500 also tells
     // Stripe to retry.
+    console.error("[stripe webhook] handler failed", event.type, err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 
@@ -331,30 +147,4 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ received: true });
-}
-
-/**
- * Resolves a Stripe-hosted receipt URL for a payment intent.
- *
- * The receipt URL lives on the underlying Charge object, not the
- * PaymentIntent itself, so we expand `latest_charge` and pull it off
- * there. Returns null on any error so the webhook never fails just
- * because the receipt URL couldn't be fetched — the inbox tolerates a
- * missing URL gracefully.
- */
-async function fetchReceiptUrl(
-  paymentIntentId: string | null,
-): Promise<string | null> {
-  if (!paymentIntentId) return null;
-  try {
-    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge"],
-    });
-    const latest = pi.latest_charge;
-    if (!latest || typeof latest === "string") return null;
-    return latest.receipt_url ?? null;
-  } catch (err) {
-    console.error("[stripe webhook] receipt url fetch failed", err);
-    return null;
-  }
 }

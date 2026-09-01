@@ -2,34 +2,38 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { changeUserRole } from "./actions";
+import { roleColorClasses } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
 import { getActionError } from "@/lib/action-error";
 
-const OPTIONS: Role[] = [
-  "student",
-  "mentor",
-  "investor",
-  "admin",
-];
+export type RoleOption = { slug: string; label: string; color: string };
 
-const COLORS: Record<Role, string> = {
-  student: "border-line text-ink-soft",
-  mentor: "border-emerald-500/40 text-emerald-700 dark:text-emerald-300",
-  investor: "border-purple-500/40 text-purple-700 dark:text-purple-300",
-  admin: "border-phosphor/50 text-phosphor-ink",
-};
-
+/**
+ * Inline role picker. Options come from `public.app_roles` via the page, so a
+ * role created at /admin/roles is assignable here the moment it exists.
+ */
 export function RoleSelect({
   userId,
   role,
+  options,
 }: {
   userId: string;
   role: Role;
+  options: RoleOption[];
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState<Role>(role);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
+
+  // A profile can point at a role that was just deleted, or one this page's
+  // options were filtered down from. Keep it selectable so the picker shows
+  // the truth rather than silently displaying the wrong role.
+  const known = options.some((o) => o.slug === current);
+  const list = known
+    ? options
+    : [...options, { slug: current, label: current, color: "slate" }];
+  const color = list.find((o) => o.slug === current)?.color ?? "slate";
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = e.target.value as Role;
@@ -55,11 +59,13 @@ export function RoleSelect({
         disabled={pending}
         onChange={onChange}
         aria-label="Change role"
-        className={`appearance-none rounded-full border bg-transparent px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-phosphor/40 ${COLORS[current]} ${pending ? "opacity-50" : ""}`}
+        className={`appearance-none rounded-full border bg-transparent px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-phosphor/40 ${roleColorClasses(
+          color,
+        )} ${pending ? "opacity-50" : ""}`}
       >
-        {OPTIONS.map((r) => (
-          <option key={r} value={r} className="bg-paper text-ink">
-            {r}
+        {list.map((r) => (
+          <option key={r.slug} value={r.slug} className="bg-paper text-ink">
+            {r.label}
           </option>
         ))}
       </select>

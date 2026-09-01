@@ -1,6 +1,6 @@
 ---
 title: "How to Build an MVP With No Code"
-description: "You don't need to code to build an MVP. Here's how to ship a working first version with no-code tools in a weekend, plus how to pick the right tool for your idea."
+description: "You don't need to code to build an MVP. How to ship a working first version with no-code tools in a weekend, and how to pick the right tool."
 date: "2026-03-31"
 updated: "2026-03-31"
 category: "Build"

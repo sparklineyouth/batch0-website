@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { CourseManager } from "./course-manager";
 
 export const metadata = { title: "Course · Admin" };
@@ -27,11 +26,9 @@ export default async function AdminCoursePage() {
             path here.
           </p>
         </div>
-        <Link href="/admin/course/analytics">
-          <Button variant="secondary" size="sm">
-            Analytics →
-          </Button>
-        </Link>
+        <ButtonLink href="/admin/course/analytics" variant="secondary" size="sm">
+          Analytics →
+        </ButtonLink>
       </div>
 
       <Card className="mt-6">

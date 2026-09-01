@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import {
   postChannelMessageWithId,
   startThreadFromMessage,
@@ -32,7 +32,7 @@ export type SpawnedThread = {
 export async function postDemoDayPitchThreads(
   cohortId: string,
 ): Promise<{ spawned: SpawnedThread[]; channelMissing: boolean }> {
-  await assertAdmin();
+  await assertPermission("demoday.manage");
   const settings = await getDiscordSettings();
   if (!settings.eventsChannelId) {
     return { spawned: [], channelMissing: true };

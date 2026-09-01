@@ -1,14 +1,14 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 export async function addReviewComment(input: {
   applicationId: string;
   body: string;
 }): Promise<void> {
-  const { userId } = await assertAdmin();
+  const { userId } = await assertPermission("applications.view");
   const body = input.body.trim();
   if (!body) throw new Error("Comment can't be empty.");
   if (body.length > 5000) throw new Error("Comment is too long (5000 max).");
@@ -42,7 +42,7 @@ export async function deleteReviewComment(input: {
   // Comments are part of an audit-style discussion thread; only the
   // original author can delete their own. Admins can hard-delete via the
   // DB if something egregious lands.
-  const { userId } = await assertAdmin();
+  const { userId } = await assertPermission("applications.view");
   const admin = createAdminClient();
   const { data: row } = await admin
     .from("application_review_comments")

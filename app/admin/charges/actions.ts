@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { sendEmail } from "@/lib/email/send";
 import { notify } from "@/lib/notifications";
@@ -22,7 +22,7 @@ export type ChargeInput = {
 };
 
 export async function issueCharge(input: ChargeInput) {
-  const { userId: actorId } = await assertAdmin();
+  const { userId: actorId } = await assertPermission("charges.manage");
   if (!input.description.trim()) throw new Error("Description required");
   if (!input.amountCents || input.amountCents < 50) {
     throw new Error("Amount must be at least 50 cents");
@@ -102,7 +102,7 @@ export async function issueCharge(input: ChargeInput) {
 }
 
 export async function waiveCharge(chargeId: string, reason: string) {
-  const { userId } = await assertAdmin();
+  const { userId } = await assertPermission("charges.manage");
   const admin = createAdminClient();
   const { data: existing, error: fetchErr } = await admin
     .from("user_charges")
@@ -144,7 +144,7 @@ export async function waiveCharge(chargeId: string, reason: string) {
 }
 
 export async function refundCharge(chargeId: string, reason?: string) {
-  const { userId } = await assertAdmin();
+  const { userId } = await assertPermission("charges.manage");
   const admin = createAdminClient();
   const { data: existing, error: fetchErr } = await admin
     .from("user_charges")
@@ -230,7 +230,7 @@ export async function refundCharge(chargeId: string, reason?: string) {
 }
 
 export async function cancelCharge(chargeId: string) {
-  await assertAdmin();
+  await assertPermission("charges.manage");
   const admin = createAdminClient();
   const { data: existing } = await admin
     .from("user_charges")
@@ -261,7 +261,7 @@ export async function bulkChargeAction(input: {
   action: BulkChargeAction;
   reason?: string;
 }): Promise<{ succeeded: number; failed: number; skipped: number }> {
-  await assertAdmin();
+  await assertPermission("charges.manage");
   if (input.chargeIds.length === 0) {
     return { succeeded: 0, failed: 0, skipped: 0 };
   }

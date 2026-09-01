@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 
 export const metadata = { title: "Mentor matchmaker · Admin" };
@@ -54,7 +54,7 @@ export default async function MentorMatchmakerPage({
 }: {
   searchParams: { team_id?: string };
 }) {
-  await requireAdmin();
+  await requirePermission("mentors.manage");
   const admin = createAdminClient();
   const teamId = searchParams.team_id ?? "";
 

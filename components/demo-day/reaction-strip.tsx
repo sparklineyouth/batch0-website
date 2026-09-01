@@ -17,7 +17,10 @@ export function ReactionStrip({
 
   // Light polling so counts on screen drift toward what the API has —
   // good enough for a 30-second pitch window without needing realtime.
+  // The interval carries a per-mount jitter so a room of viewers who all
+  // loaded the page together doesn't hit the API on the same tick.
   useEffect(() => {
+    const intervalMs = 4000 + Math.round(Math.random() * 1000 - 500);
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(
@@ -30,7 +33,7 @@ export function ReactionStrip({
       } catch {
         // swallow — transient network errors shouldn't spam the UI
       }
-    }, 4000);
+    }, intervalMs);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };

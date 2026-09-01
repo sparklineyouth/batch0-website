@@ -1,6 +1,6 @@
 ---
 title: "How to Write a Go-to-Market Plan (Beginner's Guide)"
-description: "A go-to-market plan answers who you're for, where they are, and how you'll reach them. Here's a beginner's GTM framework you can actually write in an afternoon."
+description: "A go-to-market plan answers who you're for, where they are, and how you'll reach them. A beginner's GTM framework you can write in an afternoon."
 date: "2026-05-01"
 updated: "2026-05-01"
 category: "Market"

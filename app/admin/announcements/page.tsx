@@ -4,7 +4,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { AnnouncementForm } from "./announcement-form";
 import { DeleteAnnouncementButton } from "./delete-button";
 import { getDiscordSettings } from "@/lib/discord";
-import type { Role } from "@/lib/types";
+import type { BuiltInRole } from "@/lib/types";
 
 export const metadata = { title: "Announcements · Admin" };
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export default async function AdminAnnouncementsPage() {
 
   // Roles the admin can ping — only show options where the role ID is
   // actually configured, otherwise the ping silently no-ops.
-  const ROLE_LABELS: { role: Role; label: string }[] = [
+  const ROLE_LABELS: { role: BuiltInRole; label: string }[] = [
     { role: "student", label: "Students" },
     { role: "mentor", label: "Mentors" },
     { role: "investor", label: "Investors" },

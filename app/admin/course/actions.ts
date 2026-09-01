@@ -1,11 +1,11 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertStaff } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 
 async function ensureAdmin() {
   // Course content writes are open to admins AND mentors.
-  await assertStaff();
+  await assertPermission("course.manage");
 }
 
 export type ModuleInput = {

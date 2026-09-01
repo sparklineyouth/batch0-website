@@ -20,13 +20,10 @@ function fmtBytes(n: number | null) {
 
 export default async function AdminResourcesPage() {
   const admin = createAdminClient();
-  const [{ data: resources }, { data: cohorts }] = await Promise.all([
-    admin
-      .from("resources")
-      .select("*, cohort:cohorts(name)")
-      .order("created_at", { ascending: false }),
-    admin.from("cohorts").select("id, name").order("starts_on"),
-  ]);
+  const { data: resources } = await admin
+    .from("resources")
+    .select("*, cohort:cohorts(name)")
+    .order("created_at", { ascending: false });
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -35,7 +32,13 @@ export default async function AdminResourcesPage() {
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Resources</h1>
           <p className="mt-1 text-sm text-ink-soft">
             Shared decks, templates, guides — visible to enrolled students in
-            the chosen cohort (or everyone, if left global).
+            the chosen cohort (or everyone, if left global). Mark a resource
+            pre-cohort to show it to accepted students before kickoff. For
+            interactive, personalized experiences, build a{" "}
+            <Link href="/admin/flows" className="underline">
+              pre-cohort flow
+            </Link>
+            .
           </p>
         </div>
         <Link
@@ -75,7 +78,14 @@ export default async function AdminResourcesPage() {
                     key={r.id}
                     className="border-b border-line last:border-0 hover:bg-wash"
                   >
-                    <td className="px-5 py-3 text-ink">{r.title}</td>
+                    <td className="px-5 py-3 text-ink">
+                      {r.title}
+                      {r.pre_cohort && (
+                        <span className="ml-2 rounded-full bg-phosphor/15 px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider text-phosphor-ink">
+                          Pre-cohort
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-ink-soft capitalize">
                       {r.category}
                     </td>
@@ -121,7 +131,6 @@ export default async function AdminResourcesPage() {
         Tip: leave Cohort empty to make a resource visible to every enrolled
         student, regardless of cohort.
       </p>
-      <div className="hidden">{cohorts?.length}</div>
     </div>
   );
 }

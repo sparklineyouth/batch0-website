@@ -4,12 +4,66 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/app/notifications/actions";
 import { formatRelativeTime } from "@/lib/format-time";
+
+/**
+ * supabase-js is by far this component's heaviest dependency, and the bell
+ * mounts in every authed layout — a static import would put ~63 kB gz of
+ * auth/realtime code into first-load JS for the entire app. Load it on
+ * demand instead. The promise is memoized because every call site wants the
+ * same browser client (createBrowserClient is itself a singleton).
+ */
+let supabasePromise: Promise<SupabaseClient> | null = null;
+function getSupabase(): Promise<SupabaseClient> {
+  if (!supabasePromise) {
+    const p = import("@/lib/supabase/client").then((m) => m.createClient());
+    // Don't memoize a failed chunk load (offline, deploy skew) — the bell's
+    // 60s safety poll should get to retry rather than replay the rejection.
+    p.catch(() => {
+      if (supabasePromise === p) supabasePromise = null;
+    });
+    supabasePromise = p;
+  }
+  return supabasePromise;
+}
+
+/**
+ * The signed-in user's id, de-duplicated across everything that asks at once.
+ *
+ * Two bells mount on every authed page — one in the sidebar, one in the mobile
+ * nav, both always mounted and merely CSS-hidden — and each of them calls
+ * `auth.getUser()` twice: once in load(), once when opening the realtime
+ * channel. That is four calls to GoTrue, and auth-js funnels them through a
+ * single shared lock, so they don't even overlap: they run end to end, each a
+ * full network round trip, before the badge can show a number.
+ *
+ * They all fire within a few milliseconds of mount, so joining the in-flight
+ * promise collapses four serialized round trips into one.
+ *
+ * Deliberately cleared once it settles rather than cached forever. A durable
+ * cache would outlive a sign-out inside the same SPA session and hand the next
+ * user the previous user's id; this only ever merges calls that were already
+ * in flight together, so it cannot go stale.
+ */
+let inFlightUserId: Promise<string | null> | null = null;
+function getUserId(supabase: SupabaseClient): Promise<string | null> {
+  if (!inFlightUserId) {
+    const p = supabase.auth
+      .getUser()
+      .then(({ data }) => data.user?.id ?? null)
+      .catch(() => null)
+      .finally(() => {
+        if (inFlightUserId === p) inFlightUserId = null;
+      });
+    inFlightUserId = p;
+  }
+  return inFlightUserId;
+}
 
 type Notification = {
   id: string;
@@ -65,18 +119,16 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
   // even though RLS already enforces it.
   async function load() {
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
+      const supabase = await getSupabase();
+      const userId = await getUserId(supabase);
+      if (!userId) {
         setItems([]);
         return;
       }
       const { data, error } = await supabase
         .from("notifications")
         .select("id, type, title, body, link, read_at, created_at")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(12);
       if (error) throw error;
@@ -94,22 +146,27 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
 
     // Live updates via Supabase Realtime — replaces the 60s poll. Falls
     // back to a slower poll in case Realtime isn't enabled on the project.
-    const supabase = createClient();
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    // The client arrives asynchronously (deferred chunk), so cleanup can't
+    // create one — capture the resolved handle for teardown instead.
+    let client: SupabaseClient | null = null;
+    let channel: RealtimeChannel | null = null;
     let userId: string | null = null;
 
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (cancelled || !user) return;
-      userId = user.id;
+      // If the chunk can't load, skip realtime — the safety interval keeps
+      // polling (and retrying the import) via load().
+      const supabase = await getSupabase().catch(() => null);
+      if (cancelled || !supabase) return;
+      client = supabase;
+      const uid = await getUserId(supabase);
+      if (cancelled || !uid) return;
+      userId = uid;
       // Unique topic per mount. The browser Supabase client is a singleton,
       // so a stable name like `notif-<id>` gets REUSED across React Strict
       // Mode's dev double-mount; adding postgres_changes callbacks to that
       // already-subscribed channel throws. A per-mount suffix guarantees a
       // fresh channel every time; cleanup removes it.
-      const topic = `notif-${user.id}-${uniqueSuffix()}`;
+      const topic = `notif-${uid}-${uniqueSuffix()}`;
       const ch = supabase
         .channel(topic)
         .on(
@@ -118,7 +175,7 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
             event: "INSERT",
             schema: "public",
             table: "notifications",
-            filter: `user_id=eq.${user.id}`,
+            filter: `user_id=eq.${uid}`,
           },
           (payload: any) => {
             const n = payload.new as Notification;
@@ -134,7 +191,7 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
             event: "UPDATE",
             schema: "public",
             table: "notifications",
-            filter: `user_id=eq.${user.id}`,
+            filter: `user_id=eq.${uid}`,
           },
           (payload: any) => {
             const n = payload.new as Notification;
@@ -165,7 +222,7 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
       // double-invoke in dev — reuses the same-named, already-subscribed
       // channel and re-adding postgres_changes callbacks throws
       // "cannot add ... callbacks after subscribe()".
-      if (channel) supabase.removeChannel(channel);
+      if (client && channel) client.removeChannel(channel);
     };
   }, []);
 
@@ -351,6 +408,7 @@ export function NotificationBell({ align = "right" }: { align?: Align } = {}) {
           <div className="border-t border-line bg-wash px-4 py-2.5">
             <Link
               href="/notifications"
+              prefetch={false}
               onClick={() => setOpen(false)}
               className="text-xs font-medium text-ink-soft transition hover:text-ink"
             >

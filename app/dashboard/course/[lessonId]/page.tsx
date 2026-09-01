@@ -19,58 +19,85 @@ export default async function LessonPage({
   const profile = await getProfile();
   const supabase = createClient();
 
-  const { data: lesson } = await supabase
-    .from("lessons")
-    .select("*, module:modules(*, cohort:cohorts(*))")
-    .eq("id", params.lessonId)
-    .maybeSingle();
-
-  if (!lesson) notFound();
-
   // Signed URLs for lesson assets are short-lived (10 min) and minted
   // server-side per request. Long-TTL URLs that leak into HTML source /
   // browser history / share sheets are a low-grade access leak; this
   // keeps the window tight while still being long enough to start a
   // video. The page is `force-dynamic` so every viewer gets a fresh URL.
   const SIGNED_URL_TTL = 60 * 10;
-  let videoUrl: string | null = lesson.video_url || null;
-  if (lesson.video_path) {
-    const adminCli = createAdminClient();
-    const { data } = await adminCli.storage
-      .from("course-videos")
-      .createSignedUrl(lesson.video_path, SIGNED_URL_TTL);
-    if (data?.signedUrl) videoUrl = data.signedUrl;
-  }
 
-  const materials: { title: string; url: string }[] = [];
-  if (Array.isArray(lesson.materials) && lesson.materials.length > 0) {
+  // All materials in one storage batch, keeping the authored order and
+  // skipping anything that fails to sign — same as minting one by one.
+  const signAssets = async (lesson: any) => {
+    let videoUrl: string | null = lesson.video_url || null;
+    const materials: { title: string; url: string }[] = [];
     const adminCli = createAdminClient();
-    for (const m of lesson.materials as any[]) {
-      if (!m?.path) continue;
-      const { data } = await adminCli.storage
-        .from("course-materials")
-        .createSignedUrl(m.path, SIGNED_URL_TTL);
-      if (data?.signedUrl) {
-        materials.push({ title: m.title || m.path, url: data.signedUrl });
-      }
+    const rawMaterials = Array.isArray(lesson.materials)
+      ? (lesson.materials as any[]).filter((m) => m?.path)
+      : [];
+    const [video, signed] = await Promise.all([
+      lesson.video_path
+        ? adminCli.storage
+            .from("course-videos")
+            .createSignedUrl(lesson.video_path, SIGNED_URL_TTL)
+        : null,
+      rawMaterials.length > 0
+        ? adminCli.storage
+            .from("course-materials")
+            .createSignedUrls(
+              rawMaterials.map((m) => m.path as string),
+              SIGNED_URL_TTL,
+            )
+        : null,
+    ]);
+    if (video?.data?.signedUrl) videoUrl = video.data.signedUrl;
+    const byPath = new Map<string, string>();
+    for (const item of signed?.data ?? []) {
+      if (item.path && item.signedUrl) byPath.set(item.path, item.signedUrl);
     }
-  }
+    for (const m of rawMaterials) {
+      const url = byPath.get(m.path);
+      if (url) materials.push({ title: m.title || m.path, url });
+    }
+    return { videoUrl, materials };
+  };
 
-  const { data: progress } = await supabase
-    .from("lesson_progress")
-    .select("watched_seconds, completed_at")
-    .eq("user_id", user.id)
-    .eq("lesson_id", lesson.id)
-    .maybeSingle();
+  // Progress and comments filter only on the route param + user, so they
+  // ride one batch with the lesson; the signed URLs chain off the lesson
+  // row inside the same batch instead of adding serial stages.
+  // Promise.resolve materializes the builder — a raw PostgREST builder
+  // re-runs its fetch on every .then(), and this one is consumed twice.
+  const lessonPromise = Promise.resolve(
+    supabase
+      .from("lessons")
+      .select("*, module:modules(week, title)")
+      .eq("id", params.lessonId)
+      .maybeSingle(),
+  );
+  const [{ data: lesson }, assets, { data: progress }, { data: commentRows }] =
+    await Promise.all([
+      lessonPromise,
+      lessonPromise.then(({ data: l }) =>
+        l ? signAssets(l) : { videoUrl: null, materials: [] },
+      ),
+      supabase
+        .from("lesson_progress")
+        .select("watched_seconds, completed_at")
+        .eq("user_id", user.id)
+        .eq("lesson_id", params.lessonId)
+        .maybeSingle(),
+      // Comments + author profile in a single embedded select.
+      supabase
+        .from("lesson_comments")
+        .select(
+          "id, user_id, parent_id, body, created_at, author:profiles(full_name, email, role)",
+        )
+        .eq("lesson_id", params.lessonId)
+        .order("created_at", { ascending: true }),
+    ]);
 
-  // Comments + author profile in a single embedded select.
-  const { data: commentRows } = await supabase
-    .from("lesson_comments")
-    .select(
-      "id, user_id, parent_id, body, created_at, author:profiles(full_name, email, role)",
-    )
-    .eq("lesson_id", lesson.id)
-    .order("created_at", { ascending: true });
+  if (!lesson) notFound();
+  const { videoUrl, materials } = assets;
   const comments = (commentRows ?? []).map((c: any) => ({
     ...c,
     author: Array.isArray(c.author) ? c.author[0] : c.author,

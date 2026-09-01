@@ -25,15 +25,31 @@ export default async function StudentOfficeHoursPage() {
 
   // Slots in the next 14 days, with their booking (if any), and the mentor's
   // name. Show open slots prominently; show the student's own bookings too.
+  // Past sessions filter only on the student, so they ride the same batch —
+  // the bookings-by-slot read below is the only one that needs the slot ids.
   const horizon = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: slots } = await admin
-    .from("mentor_slots")
-    .select(
-      "id, starts_at, ends_at, zoom_url, notes, mentor:profiles(id, full_name, email)",
-    )
-    .gte("starts_at", new Date().toISOString())
-    .lte("starts_at", horizon)
-    .order("starts_at", { ascending: true });
+  const [{ data: slots }, { data: pastBookings }] = await Promise.all([
+    admin
+      .from("mentor_slots")
+      .select(
+        "id, starts_at, ends_at, zoom_url, notes, mentor:profiles(id, full_name, email)",
+      )
+      .gte("starts_at", new Date().toISOString())
+      .lte("starts_at", horizon)
+      .order("starts_at", { ascending: true }),
+    // Past sessions the student has booked, ordered most-recent first.
+    // We need the recap copy + the mentor's name, so we join through the
+    // slot. Limit to 10 — past that, the noise dwarfs the signal.
+    admin
+      .from("mentor_bookings")
+      .select(
+        "id, topic, recap_notes, recap_posted_at, status, slot:mentor_slots(starts_at, mentor:profiles(full_name, email))",
+      )
+      .eq("student_id", user.id)
+      .neq("status", "cancelled")
+      .order("created_at", { ascending: false })
+      .limit(10),
+  ]);
 
   const slotIds = (slots ?? []).map((s: any) => s.id);
   const { data: bookings } = slotIds.length
@@ -60,18 +76,6 @@ export default async function StudentOfficeHoursPage() {
     };
   });
 
-  // Past sessions the student has booked, ordered most-recent first.
-  // We need the recap copy + the mentor's name, so we join through the
-  // slot. Limit to 10 — past that, the noise dwarfs the signal.
-  const { data: pastBookings } = await admin
-    .from("mentor_bookings")
-    .select(
-      "id, topic, recap_notes, recap_posted_at, status, slot:mentor_slots(starts_at, mentor:profiles(full_name, email))",
-    )
-    .eq("student_id", user.id)
-    .neq("status", "cancelled")
-    .order("created_at", { ascending: false })
-    .limit(10);
   const pastRows = (pastBookings ?? [])
     .map((b: any) => {
       const slot = Array.isArray(b.slot) ? b.slot[0] : b.slot;

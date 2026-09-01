@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { ChallengeEditor } from "../challenge-editor";
 
 export const metadata = { title: "New challenge · Admin" };
 
 export default async function NewChallengePage() {
-  await requireAdmin();
+  await requirePermission("challenges.manage");
   return (
     <div className="mx-auto max-w-3xl">
       <Link

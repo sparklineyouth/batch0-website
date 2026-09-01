@@ -33,9 +33,14 @@ export function ChargePayButton({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Button onClick={pay} disabled={loading} size="sm">
-        {loading ? "Redirecting…" : label}
+      <Button onClick={pay} disabled={loading} aria-busy={loading} size="sm">
+        {loading ? "Opening checkout…" : label}
       </Button>
+      {/* Stays disabled through the redirect — a second click here would
+          open a second Stripe session for the same charge. */}
+      {loading && (
+        <p className="text-xs text-ink-faint">Taking you to Stripe…</p>
+      )}
       {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );

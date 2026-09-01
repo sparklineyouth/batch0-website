@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -12,7 +12,7 @@ export default async function AuditTargetPage({
 }: {
   searchParams: { type?: string; id?: string };
 }) {
-  await requireAdmin();
+  await requirePermission("audit.view");
   const type = (searchParams.type ?? "").trim();
   const id = (searchParams.id ?? "").trim();
   if (!type || !id) {

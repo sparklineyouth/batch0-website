@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea, FieldError } from "@/components/ui/input";
 import { LocalTime } from "@/components/ui/local-time";
 import { Download, FileText, MessageSquare } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { getDownloadUrl } from "@/app/dashboard/files/actions";
 import { postFileFeedback } from "./actions";
 import { formatRelativeTime } from "@/lib/format-time";
@@ -62,6 +61,9 @@ export function FileFeedbackPanel({
     }
     let cancelled = false;
     (async () => {
+      // Deferred import keeps supabase-js out of the route's first-load JS;
+      // it's only needed for these post-mount feedback reads.
+      const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
       const { data } = await supabase
         .from("file_feedback")
@@ -102,6 +104,7 @@ export function FileFeedbackPanel({
         setBody("");
         router.refresh();
         // Re-fetch feedback list.
+        const { createClient } = await import("@/lib/supabase/client");
         const supabase = createClient();
         const { data } = await supabase
           .from("file_feedback")

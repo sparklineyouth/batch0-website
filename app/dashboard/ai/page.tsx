@@ -22,11 +22,14 @@ export default async function AiPage({
 }: {
   searchParams: { c?: string };
 }) {
-  const user = await requireUser();
-  const profile = await getProfile();
-
   // Gate access. Staff always gets in; students need an accepted+ application.
-  const allowed = profile ? await canUseAi(profile.role) : false;
+  // The gate rides the auth batch chained off the profile it needs — its
+  // capability/access lookups are request-cached and shared with the layout.
+  const profilePromise = getProfile();
+  const [user, allowed] = await Promise.all([
+    requireUser(),
+    profilePromise.then((p) => (p ? canUseAi(p.role) : false)),
+  ]);
   if (!allowed) {
     return <LockedView />;
   }
@@ -47,29 +50,39 @@ export default async function AiPage({
   }
 
   const supabase = createClient();
-  const [{ data: convos }, { data: profileRow }, usage] = await Promise.all([
+  const messagesFor = (conversationId: string) =>
     supabase
-      .from("ai_conversations")
-      .select("id, title, updated_at")
-      .order("updated_at", { ascending: false }),
-    supabase
-      .from("profiles")
-      .select("ai_context")
-      .eq("id", user.id)
-      .maybeSingle(),
-    getCurrentUsage(user.id),
-  ]);
+      .from("ai_messages")
+      .select("id, role, content, created_at")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true });
+
+  // When ?c= names the conversation (every sidebar click), its messages load
+  // in the same batch as the list; only the default-to-newest case has to
+  // wait for the list to know which conversation to fetch.
+  const [{ data: convos }, { data: profileRow }, usage, preloaded] =
+    await Promise.all([
+      supabase
+        .from("ai_conversations")
+        .select("id, title, updated_at")
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("profiles")
+        .select("ai_context")
+        .eq("id", user.id)
+        .maybeSingle(),
+      getCurrentUsage(user.id),
+      searchParams.c ? messagesFor(searchParams.c) : null,
+    ]);
 
   const list = convos ?? [];
   const selectedId = searchParams.c ?? list[0]?.id;
 
   let messages: any[] = [];
-  if (selectedId) {
-    const { data } = await supabase
-      .from("ai_messages")
-      .select("id, role, content, created_at")
-      .eq("conversation_id", selectedId)
-      .order("created_at", { ascending: true });
+  if (preloaded) {
+    messages = preloaded.data ?? [];
+  } else if (selectedId) {
+    const { data } = await messagesFor(selectedId);
     messages = data ?? [];
   }
 

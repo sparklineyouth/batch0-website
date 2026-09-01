@@ -1,9 +1,10 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
-import { renderMarkdown, listFileSlugs } from "@/lib/blog";
+import { listFileSlugs } from "@/lib/blog";
+import { renderMarkdown } from "@/lib/markdown";
 import {
   CATEGORIES,
   AUTHOR_KEYS,
@@ -75,7 +76,7 @@ function revalidateBlog(slug: string, previousSlug?: string) {
 export async function saveBlogPost(
   input: BlogPostInput,
 ): Promise<{ id: string; slug: string }> {
-  const { userId } = await assertAdmin();
+  const { userId } = await assertPermission("blog.manage");
   validate(input);
 
   const slug = input.slug.trim();
@@ -146,7 +147,7 @@ export async function saveBlogPost(
 }
 
 export async function deleteBlogPost(id: string) {
-  await assertAdmin();
+  await assertPermission("blog.manage");
   const admin = createAdminClient();
   const { data: existing } = await admin
     .from("blog_posts")
@@ -168,6 +169,6 @@ export async function deleteBlogPost(id: string) {
 // Live preview: render markdown through the exact same pipeline the public
 // post uses, so what the admin sees is what ships. Debounced on the client.
 export async function renderBlogPreview(body: string): Promise<string> {
-  await assertAdmin();
+  await assertPermission("blog.manage");
   return renderMarkdown(body || "");
 }

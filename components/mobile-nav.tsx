@@ -10,9 +10,11 @@ import {
   MENTOR_NAV_GROUPS,
   INVESTOR_NAV_GROUPS,
   STAFF_LINKS,
-  ENROLLED_ONLY_HREFS,
+  filterStudentNavItem,
+  filterAdminNavItem,
   type NavGroup,
 } from "@/lib/nav-config";
+import { can, canAccessAdmin, type Capabilities } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
 import { NotificationBell } from "@/components/notification-bell";
 
@@ -64,17 +66,22 @@ const LABEL_BY_KIND: Record<MobileNavKind, string | undefined> = {
 export function MobileNav({
   kind,
   role,
+  caps,
   aiAccess,
   discordEnabled,
   enrolled = true,
   referralsEnabled = true,
+  preCohort = false,
 }: {
   kind: MobileNavKind;
   role?: Role;
+  /** Viewer permissions. Drives admin nav filtering and the cross-panel links. */
+  caps?: Capabilities | null;
   aiAccess?: boolean;
   discordEnabled?: boolean;
   enrolled?: boolean;
   referralsEnabled?: boolean;
+  preCohort?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -143,29 +150,27 @@ export function MobileNav({
         const items = g.items
           .filter((it) => {
             if (kind === "student") {
-              if (it.href === "/dashboard/ai" && aiAccess === false) {
-                return false;
-              }
+              // Same predicate as the desktop sidebar — undefined flags
+              // mean "not restricted" for the optional props.
               if (
-                it.href === "/dashboard/community" &&
-                discordEnabled === false
+                !filterStudentNavItem(it, {
+                  aiAccess: aiAccess !== false,
+                  discordEnabled: discordEnabled !== false,
+                  referralsEnabled: referralsEnabled !== false,
+                  enrolled,
+                  preCohort,
+                })
               ) {
                 return false;
               }
-              if (
-                it.href === "/dashboard/referrals" &&
-                referralsEnabled === false
-              ) {
-                return false;
-              }
-              if (!enrolled && ENROLLED_ONLY_HREFS.has(it.href)) return false;
             }
             if (kind === "admin") {
-              // Admins keep the link visible when referrals are paused so
-              // they can audit historical referral data; the page itself
-              // shows a "paused" banner. Only filter it when explicitly
-              // turned off AND we want a totally clean nav — current
-              // policy is to keep it.
+              // Same permission predicate as the desktop sidebar, so the
+              // drawer shows exactly the pages this person can open.
+              // (Referrals stays visible whenever the permission is held
+              // even if referrals are paused — the page itself explains
+              // the pause and the historical data is still worth reading.)
+              if (!filterAdminNavItem(it, caps ?? null)) return false;
             }
             return true;
           })
@@ -176,10 +181,12 @@ export function MobileNav({
   }, [
     rawGroups,
     kind,
+    caps,
     aiAccess,
     discordEnabled,
     enrolled,
     referralsEnabled,
+    preCohort,
     query,
   ]);
 
@@ -191,14 +198,20 @@ export function MobileNav({
     [pathname, rawGroups],
   );
 
+  // Cross-panel links. Permission-driven when the layout passed capabilities
+  // down; the role comparison is the fallback for any caller that hasn't been
+  // updated, and matches what those roles could reach before roles became data.
   const extras: { href: string; label: string; icon: any }[] = [];
-  if (role === "admin" && kind !== "admin") extras.push(STAFF_LINKS.admin);
-  if ((role === "admin" || role === "mentor") && kind !== "mentor") {
-    extras.push(STAFF_LINKS.mentor);
-  }
-  if ((role === "admin" || role === "investor") && kind !== "investor") {
-    extras.push(STAFF_LINKS.investor);
-  }
+  const reachesAdmin = caps ? canAccessAdmin(caps) : role === "admin";
+  const reachesMentor = caps
+    ? can(caps, "mentor.panel")
+    : role === "admin" || role === "mentor";
+  const reachesInvestor = caps
+    ? can(caps, "investor.panel")
+    : role === "admin" || role === "investor";
+  if (reachesAdmin && kind !== "admin") extras.push(STAFF_LINKS.admin);
+  if (reachesMentor && kind !== "mentor") extras.push(STAFF_LINKS.mentor);
+  if (reachesInvestor && kind !== "investor") extras.push(STAFF_LINKS.investor);
 
   function toggleGroup(label: string) {
     setCollapsed((p) => ({ ...p, [label]: !p[label] }));
@@ -307,10 +320,14 @@ export function MobileNav({
                         {g.items.map((it) => {
                           const active = it.href === activeHref;
                           const Icon = it.icon;
+                          // prefetch={false}: authed dynamic routes +
+                          // staleTimes.dynamic=0 makes prefetched payloads
+                          // throwaway work — see components/sidebar-nav.tsx.
                           return (
                             <Link
                               key={it.href}
                               href={it.href}
+                              prefetch={false}
                               aria-current={active ? "page" : undefined}
                               className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition ${
                                 active
@@ -336,6 +353,7 @@ export function MobileNav({
                       <Link
                         key={it.href}
                         href={it.href}
+                        prefetch={false}
                         className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-phosphor-ink hover:bg-phosphor/10"
                       >
                         {Icon ? <Icon className="h-4 w-4" /> : null}

@@ -10,12 +10,15 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminReferralsPage() {
   const admin = createAdminClient();
-  const siteConfig = await getSiteConfig();
+  // Compute the leaderboard regardless of the toggle — when the feature is
+  // paused, historical data is still useful for admins (e.g. who recruited
+  // before the toggle was flipped). The banner makes the state clear. Since
+  // neither read depends on the other, they run together.
+  const [siteConfig, leaderboard] = await Promise.all([
+    getSiteConfig(),
+    computeReferralLeaderboard(admin, 50),
+  ]);
   const enabled = siteConfig.settings.referralsEnabled;
-  // Compute the leaderboard either way — when the feature is paused,
-  // historical data is still useful for admins (e.g. who recruited
-  // before the toggle was flipped). The banner makes the state clear.
-  const leaderboard = await computeReferralLeaderboard(admin, 50);
 
   const totals = leaderboard.reduce(
     (acc, r) => ({

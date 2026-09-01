@@ -7,7 +7,7 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
-import { Pencil, Trash2, Plus, Activity } from "lucide-react";
+import { Pencil, Trash2, Plus, Activity, Flag, Megaphone } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
 import { DEFAULT_PRICE_CENTS } from "@/lib/pricing";
 
@@ -136,11 +136,27 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
                 ${(c.price_cents / 100).toFixed(0)}
               </td>
               <td className="py-3"><StatusBadge status={c.status} /></td>
-              <td className="py-3 text-right">
+              <td className="py-3 text-right whitespace-nowrap">
+                <Link
+                  href={`/admin/cohorts/${c.id}/kickoff`}
+                  className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
+                  aria-label={`Edit kickoff page for ${c.name}`}
+                  title="Kickoff page"
+                >
+                  <Flag className="h-4 w-4" />
+                </Link>
+                <Link
+                  href={`/admin/cohorts/${c.id}/landing`}
+                  className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
+                  aria-label={`Edit landing page for ${c.name}`}
+                  title="Landing page"
+                >
+                  <Megaphone className="h-4 w-4" />
+                </Link>
                 <Link
                   href={`/admin/cohorts/${c.id}/health`}
                   className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
-                  aria-label="View health"
+                  aria-label={`View health for ${c.name}`}
                   title="Cohort health"
                 >
                   <Activity className="h-4 w-4" />
@@ -227,12 +243,13 @@ function CohortForm({
           <Input
             id="name"
             required
-            placeholder="Summer 2026"
+            placeholder="Fall 2026"
             value={c.name}
             onChange={(e) => setC({ ...c, name: e.target.value })}
           />
           <p className="mt-1 text-xs text-ink-faint">
-            Season label shown across the site (e.g. "Summer 2026").
+            Season label shown across the site (e.g. "Fall 2026") — match
+            the actual dates, or the whole site mislabels the cohort.
           </p>
         </div>
         <div>

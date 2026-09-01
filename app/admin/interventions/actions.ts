@@ -1,11 +1,11 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 export async function resolveIntervention(id: string) {
-  await assertAdmin();
+  await assertPermission("interventions.manage");
   const admin = createAdminClient();
   const { error } = await admin
     .from("at_risk_interventions")

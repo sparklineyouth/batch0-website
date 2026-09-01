@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 /**
@@ -16,7 +16,7 @@ import { logAudit } from "@/lib/audit";
  * Score = mean.
  */
 export async function aiScreenApplication(input: { applicationId: string }) {
-  await assertAdmin();
+  await assertPermission("applications.review");
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error("AI not configured (set ANTHROPIC_API_KEY).");
   }

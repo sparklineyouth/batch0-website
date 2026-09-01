@@ -1,3 +1,5 @@
+import { JsonLd, breadcrumbJsonLd, webPageJsonLd } from "@/lib/schema";
+
 export const metadata = {
   title: "Terms of Service · batch0",
   description: "The terms that govern batch0, the live online startup accelerator for U.S. high schoolers.",
@@ -100,6 +102,17 @@ export default function TermsPage() {
           hello@batch0.org
         </a>
       </p>
+
+      <JsonLd
+        data={webPageJsonLd({
+          path: "/terms",
+          name: "Terms of Service",
+          description:
+            "The terms that govern batch0, the live online startup accelerator for U.S. high schoolers.",
+          dateModified: "2026-05-12",
+        })}
+      />
+      <JsonLd data={breadcrumbJsonLd([{ name: "Terms", path: "/terms" }])} />
     </>
   );
 }

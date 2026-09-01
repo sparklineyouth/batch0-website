@@ -2,12 +2,16 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { RefundButton } from "./refund-button";
+import { SyncStripeButton } from "./sync-button";
 
 export const metadata = { title: "Payments · Admin" };
 
 const STATUSES = ["all", "succeeded", "pending", "failed", "refunded"] as const;
 type StatusFilter = (typeof STATUSES)[number];
+
+const PAGE_SIZE = 50;
 
 function fmtMoney(cents: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -16,36 +20,69 @@ function fmtMoney(cents: number, currency = "usd") {
   }).format(cents / 100);
 }
 
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw ?? "1");
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.floor(n);
+}
+
+/** Filter/pager links share one URL builder so a filter click always resets
+ *  the page and the pager always keeps the filters. */
+function hrefFor(status: StatusFilter, cohort: string, page = 1) {
+  const params = new URLSearchParams();
+  if (status !== "all") params.set("status", status);
+  if (cohort !== "all") params.set("cohort", cohort);
+  if (page > 1) params.set("page", String(page));
+  return `/admin/payments${params.toString() ? `?${params}` : ""}`;
+}
+
 export default async function AdminPaymentsPage({
   searchParams,
 }: {
-  searchParams: { status?: string; cohort?: string };
+  searchParams: { status?: string; cohort?: string; page?: string };
 }) {
   const admin = createAdminClient();
-
-  // Pull everything once; the dataset is small (one purchase per student).
-  const [{ data: payments }, { data: cohorts }] = await Promise.all([
-    admin
-      .from("payments")
-      .select("*, profile:profiles(email, full_name), cohort:cohorts(id, name)")
-      .order("created_at", { ascending: false }),
-    admin.from("cohorts").select("id, name").order("starts_on"),
-  ]);
-
-  const all = (payments ?? []) as any[];
 
   const statusFilter: StatusFilter = (STATUSES.find(
     (s) => s === searchParams.status,
   ) ?? "all") as StatusFilter;
   const cohortFilter = searchParams.cohort ?? "all";
+  const page = parsePage(searchParams.page);
+  const offset = (page - 1) * PAGE_SIZE;
 
-  const filtered = all.filter((p) => {
-    if (statusFilter !== "all" && p.status !== statusFilter) return false;
-    if (cohortFilter !== "all" && (p.cohort_id ?? "") !== cohortFilter) {
-      return false;
-    }
-    return true;
-  });
+  // The transaction table is filtered and paginated in SQL; the stat tiles and
+  // cohort breakdown come from a separate skinny scan (four columns) so they
+  // cover the whole ledger, not just the visible page or the active filter.
+  // The scan carries an explicit cap — past ~10k payments the tiles need to
+  // move to a SQL aggregate RPC instead of summing rows here.
+  let listQuery = admin
+    .from("payments")
+    .select(
+      "id, created_at, amount_cents, currency, status, stripe_payment_intent_id, stripe_session_id, profile:profiles(email, full_name), cohort:cohorts(id, name)",
+      { count: "exact" },
+    )
+    .order("created_at", { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1);
+  if (statusFilter !== "all") listQuery = listQuery.eq("status", statusFilter);
+  if (cohortFilter !== "all") {
+    listQuery = listQuery.eq("cohort_id", cohortFilter);
+  }
+
+  const [{ data: pageRows, count }, { data: statRows }, { data: cohorts }] =
+    await Promise.all([
+      listQuery,
+      admin
+        .from("payments")
+        .select("amount_cents, status, cohort_id, user_id")
+        .limit(10000),
+      admin.from("cohorts").select("id, name").order("starts_on"),
+    ]);
+
+  const filtered = (pageRows ?? []) as any[];
+  const all = (statRows ?? []) as any[];
+
+  const totalCount = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   const succeededAll = all.filter((p) => p.status === "succeeded");
   const refundedAll = all.filter((p) => p.status === "refunded");
@@ -64,14 +101,20 @@ export default async function AdminPaymentsPage({
   const pendingCount = all.filter((p) => p.status === "pending").length;
   const failedCount = all.filter((p) => p.status === "failed").length;
 
-  // Per-cohort breakdown — only count succeeded.
+  // Per-cohort breakdown — only count succeeded. Names come from the cohorts
+  // list rather than a per-row join; a payment whose cohort row is gone reads
+  // as "Unassigned", same as one that never had a cohort.
+  const cohortNameById = new Map(
+    (cohorts ?? []).map((c) => [c.id, c.name] as const),
+  );
   const byCohort = new Map<
     string,
     { name: string; gross: number; count: number }
   >();
   for (const p of succeededAll) {
     const id = p.cohort_id ?? "unassigned";
-    const name = p.cohort?.name ?? "Unassigned";
+    const name =
+      (p.cohort_id ? cohortNameById.get(p.cohort_id) : null) ?? "Unassigned";
     const cur = byCohort.get(id) ?? { name, gross: 0, count: 0 };
     cur.gross += p.amount_cents ?? 0;
     cur.count += 1;
@@ -90,12 +133,15 @@ export default async function AdminPaymentsPage({
             Stripe activity, revenue, and per-cohort breakdown.
           </p>
         </div>
-        <a
-          href="/api/admin/export/payments"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink-soft hover:border-ink/30 hover:bg-wash"
-        >
-          Export CSV
-        </a>
+        <div className="flex items-start gap-2">
+          <SyncStripeButton />
+          <a
+            href="/api/admin/export/payments"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink-soft hover:border-ink/30 hover:bg-ink/[0.04]"
+          >
+            Export CSV
+          </a>
+        </div>
       </div>
 
       {/* Stat tiles */}
@@ -165,14 +211,10 @@ export default async function AdminPaymentsPage({
         </span>
         {STATUSES.map((s) => {
           const active = statusFilter === s;
-          const params = new URLSearchParams();
-          if (s !== "all") params.set("status", s);
-          if (cohortFilter !== "all") params.set("cohort", cohortFilter);
-          const href = `/admin/payments${params.toString() ? `?${params}` : ""}`;
           return (
             <Link
               key={s}
-              href={href}
+              href={hrefFor(s, cohortFilter)}
               className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
                 active
                   ? "border-phosphor bg-phosphor/10 text-phosphor"
@@ -253,6 +295,45 @@ export default async function AdminPaymentsPage({
           </table>
         )}
       </Card>
+
+      {/* Pagination */}
+      <div className="mt-4 flex items-center justify-between text-xs text-ink-soft">
+        <span>
+          Page {page} of {totalPages} · showing{" "}
+          {Math.min(offset + 1, totalCount)}–
+          {Math.min(offset + PAGE_SIZE, totalCount)}
+        </span>
+        <div className="flex gap-1">
+          {page > 1 ? (
+            <Link
+              href={hrefFor(statusFilter, cohortFilter, page - 1)}
+              className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 hover:bg-wash"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Prev
+            </Link>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-ink-faint">
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Prev
+            </span>
+          )}
+          {page < totalPages ? (
+            <Link
+              href={hrefFor(statusFilter, cohortFilter, page + 1)}
+              className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 hover:bg-wash"
+            >
+              Next
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-ink-faint">
+              Next
+              <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -294,14 +375,8 @@ function CohortFilter({
 }: {
   cohorts: { id: string; name: string }[];
   selected: string;
-  status: string;
+  status: StatusFilter;
 }) {
-  function hrefFor(cohort: string) {
-    const params = new URLSearchParams();
-    if (status !== "all") params.set("status", status);
-    if (cohort !== "all") params.set("cohort", cohort);
-    return `/admin/payments${params.toString() ? `?${params}` : ""}`;
-  }
   const opts = [{ id: "all", name: "All" }, ...cohorts];
   return (
     <div className="flex flex-wrap gap-2">
@@ -310,7 +385,7 @@ function CohortFilter({
         return (
           <Link
             key={c.id}
-            href={hrefFor(c.id)}
+            href={hrefFor(status, c.id)}
             className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
               active
                 ? "border-phosphor bg-phosphor/10 text-phosphor"

@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 
 /**
@@ -15,7 +15,7 @@ import { logAudit } from "@/lib/audit";
  * to refresh after team data changes.
  */
 export async function generateTearSheet(input: { teamId: string }) {
-  await assertAdmin();
+  await assertPermission("teams.manage");
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error("AI not configured (set ANTHROPIC_API_KEY).");
   }

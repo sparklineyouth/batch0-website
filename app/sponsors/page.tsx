@@ -2,24 +2,46 @@ import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { TIERS } from "./tiers";
 import { SponsorContactForm } from "./sponsor-contact-form";
-import { getSiteConfig } from "@/lib/site-config";
-import { getProfile, roleHome } from "@/lib/auth";
+import { getPublicSiteConfig } from "@/lib/site-config";
+import {
+  SITE,
+  ORG_ID,
+  JsonLd,
+  breadcrumbJsonLd,
+  webPageJsonLd,
+} from "@/lib/schema";
 
 export const metadata = {
   title: "Fund Grants for High-School Founders — batch0",
   description:
     "Fund non-dilutive grants for high-school founders in batch0's founding cohort. Three tiers, every dollar disclosed.",
   alternates: { canonical: "/sponsors" },
+  openGraph: {
+    title: "Fund Grants for High-School Founders — batch0",
+    description:
+      "Sponsor non-dilutive grants for high-school founders in batch0's founding cohort. Three tiers, every dollar disclosed.",
+    url: `${SITE}/sponsors`,
+    siteName: "batch0",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image" as const,
+    title: "Fund Grants for High-School Founders — batch0",
+    description:
+      "Sponsor non-dilutive grants for high-school founders in batch0's founding cohort. Three tiers, every dollar disclosed.",
+  },
 };
 
-const WHY = [
+// Capacity is interpolated from the cohort record so this page can never
+// disagree with the homepage ledger about seat count.
+const why = (capacityLabel: string) => [
   {
     title: "Grants, not swag",
     body: "Sponsorship funds the non-dilutive grant pool awarded to standout students at demo day. You can name the grant you fund.",
   },
   {
     title: "Early talent",
-    body: "Cohort 1 seats up to 100 U.S. high schoolers, each building a real company. Meet them before recruiters do, as builders with work you can inspect.",
+    body: `Cohort 1 seats up to ${capacityLabel} high schoolers, each building a real company. Meet them before recruiters do, as builders with work you can inspect.`,
   },
   {
     title: "A straight ledger",
@@ -27,16 +49,17 @@ const WHY = [
   },
 ];
 
+// Pure marketing copy over the cohort record — nothing per-visitor.
+export const revalidate = 3600;
+
 export default async function SponsorsPage() {
-  const [config, profile] = await Promise.all([getSiteConfig(), getProfile()]);
-  const authedHome = profile ? roleHome(profile.role) : null;
+  const config = await getPublicSiteConfig();
 
   return (
-    <main className="min-h-screen bg-paper">
-      <Navbar
-        authedHome={authedHome}
-        cohortLabel={config.derived.cohortLabel || "the next cohort"}
-      />
+    // See app/page.tsx: <main> must not contain the navbar or footer.
+    <div className="min-h-screen bg-paper">
+      <Navbar cohortLabel={config.derived.cohortLabel || "the next cohort"} />
+      <main id="main-content" tabIndex={-1}>
 
       {/* Hero */}
       <section className="px-5 pb-14 pt-14 sm:px-6 sm:pt-20 md:pb-20 md:pt-24">
@@ -45,8 +68,8 @@ export default async function SponsorsPage() {
             Fund a high schooler&apos;s <span className="hl">first company</span>.
           </h1>
           <p className="mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft">
-            batch0 is a live, online accelerator for U.S. high
-            schoolers. Sponsorship pays for
+            batch0 is a live, online accelerator for high schoolers ages
+            13–18. Sponsorship pays for
             non-dilutive founder grants and keeps tuition at{" "}
             {config.derived.priceLabel} instead of the $3,000+ other programs
             charge. Cohort 1 runs{" "}
@@ -76,7 +99,7 @@ export default async function SponsorsPage() {
             What sponsorship buys
           </h2>
           <ul className="mt-10 grid gap-x-10 gap-y-8 md:grid-cols-3">
-            {WHY.map((w) => (
+            {why(config.derived.capacityLabel).map((w) => (
               <li key={w.title} className="border-t-2 border-phosphor pt-4">
                 <h3 className="text-[1.0625rem] font-semibold tracking-tight text-ink">
                   {w.title}
@@ -148,7 +171,45 @@ export default async function SponsorsPage() {
         </div>
       </section>
 
+      </main>
       <Footer config={config} />
-    </main>
+      <JsonLd
+        data={webPageJsonLd({
+          path: "/sponsors",
+          name: "Fund Grants for High-School Founders — batch0",
+          description:
+            "Sponsor non-dilutive grants for high-school founders in batch0's founding cohort. Three tiers, every dollar disclosed.",
+        })}
+      />
+      {/* The three tiers as a priced catalog, built from the same TIERS
+          array the page renders — prices and perks can't drift from what a
+          sponsor actually sees. These are sponsorships, not tuition, so
+          they hang off the org rather than the Course. */}
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "OfferCatalog",
+          "@id": `${SITE}/sponsors#tiers`,
+          name: "batch0 sponsorship tiers",
+          url: `${SITE}/sponsors#tiers`,
+          provider: { "@id": ORG_ID },
+          // Order is carried by the array itself — `position` is a ListItem
+          // property, not an Offer one, so adding it here would be invalid.
+          itemListElement: TIERS.map((t) => ({
+            "@type": "Offer",
+            name: t.name,
+            description: `${t.tagline} ${t.perks.join(". ")}.`,
+            price: t.price.replace(/[^0-9.]/g, ""),
+            priceCurrency: "USD",
+            category: "Sponsorship",
+            url: `${SITE}/sponsors#contact`,
+            availability: "https://schema.org/InStock",
+          })),
+        }}
+      />
+      <JsonLd
+        data={breadcrumbJsonLd([{ name: "Sponsors", path: "/sponsors" }])}
+      />
+    </div>
   );
 }

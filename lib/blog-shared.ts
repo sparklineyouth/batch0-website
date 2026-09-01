@@ -7,7 +7,7 @@
 // The canonical author roster. Posts reference an author by key; everything
 // else (display name, role, profile URL) is derived here so bylines and the
 // JSON-LD `author` node can never drift from each other.
-export type AuthorKey = "rishabh" | "taran" | "team";
+export type AuthorKey = "rishabh" | "shresht" | "team";
 
 export const AUTHORS: Record<
   AuthorKey,
@@ -18,8 +18,8 @@ export const AUTHORS: Record<
     role: "Co-founder, batch0",
     url: "https://batch0.org/#who-runs-this",
   },
-  taran: {
-    name: "Taran Bethi",
+  shresht: {
+    name: "Shresht Chopra",
     role: "Co-founder, batch0",
     url: "https://batch0.org/#who-runs-this",
   },
@@ -31,6 +31,21 @@ export const AUTHORS: Record<
 };
 
 export const AUTHOR_KEYS = Object.keys(AUTHORS) as AuthorKey[];
+
+/**
+ * Retired author keys, mapped to the key that replaced them.
+ *
+ * Code and database migrations do not land at the same instant. `assertAuthor`
+ * in lib/blog.ts *throws* on a key it doesn't recognise, so between deploying
+ * the `shresht` rename and running migration 0051 every DB-backed post still
+ * carrying `taran` would take the blog down — and the same window reopens on
+ * any rollback. Aliasing costs one lookup on the miss path and makes the
+ * rename order-independent in both directions, so it is worth keeping around
+ * rather than deleting once the migration lands.
+ */
+export const LEGACY_AUTHOR_KEYS: Record<string, AuthorKey> = {
+  taran: "shresht",
+};
 
 // The four build sprints double as the blog's topical spine, plus two
 // evergreen buckets. Keeping categories fixed (not free-form tags) gives the
@@ -45,9 +60,86 @@ export const CATEGORIES = [
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
+/** "Validate" → "validate". URL-safe, lowercase, stable. */
+export function categorySlug(category: Category | string): string {
+  return String(category).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+/** "Validate" → "/blog/category/validate". */
+export function categoryPath(category: Category | string): string {
+  return `/blog/category/${categorySlug(category)}`;
+}
+
+export function categoryFromSlug(slug: string): Category | null {
+  return (
+    CATEGORIES.find((c) => categorySlug(c) === slug.toLowerCase()) ?? null
+  );
+}
+
+/**
+ * Copy for each category hub. These pages exist so the 135 posts form six
+ * explicit topic clusters instead of one flat list: a hub page gives Google a
+ * single strong URL per theme, and gives every post in the cluster a link
+ * back to it. Descriptions are kept inside the meta-description budget.
+ */
+export const CATEGORY_COPY: Record<
+  Category,
+  { heading: string; blurb: string; description: string }
+> = {
+  Validate: {
+    heading: "Validating a startup idea",
+    blurb:
+      "Before you build anything, find out whether anyone actually wants it. Customer interviews, fake door tests, and the signals that tell you to keep going or stop.",
+    description:
+      "How to validate a startup idea as a high schooler: customer interviews, fake door tests, surveys that work, and telling a real signal from a polite one.",
+  },
+  Build: {
+    heading: "Building your first product",
+    blurb:
+      "Ship something real. No-code tools, MVPs, pricing, and the decisions that matter when you're building your first product with no budget and no team.",
+    description:
+      "How to build your first product as a student founder: no-code MVPs, AI tools, pricing, payments under 18, and what to build next versus what to cut.",
+  },
+  Market: {
+    heading: "Getting your first users",
+    blurb:
+      "Nobody finds you by accident. Distribution channels, cold outreach, launches, and how to get the first hundred people to care.",
+    description:
+      "How student founders get their first users: Reddit, Discord, TikTok, Product Hunt, cold email and DMs, waitlists, and picking one channel over ten.",
+  },
+  Pitch: {
+    heading: "Pitching and demo day",
+    blurb:
+      "The deck, the story, and the delivery. How judges actually score you, and how to sound like you know what you're talking about.",
+    description:
+      "How to pitch as a high school founder: deck structure, slide order, market size, the traction slide with no revenue, and how judges actually score you.",
+  },
+  Founders: {
+    heading: "Life as a teen founder",
+    blurb:
+      "School, parents, co-founders, money, and the parts nobody warns you about. The non-product problems that decide whether you keep going.",
+    description:
+      "The non-product side of being a teen founder: co-founders, parents, school balance, taxes and LLCs, burnout, and knowing when to quit or push.",
+  },
+  Playbook: {
+    heading: "Programs, competitions and funding",
+    blurb:
+      "Accelerators, pitch competitions, grants and scholarships. What's worth your time, what's a waste of money, and how to actually get in.",
+    description:
+      "Startup programs, competitions, grants and scholarships for high schoolers: which are worth your time and money, and how to get accepted.",
+  },
+};
+
 export type PostMeta = {
   slug: string;
   title: string;
+  /**
+   * Optional short title for the `<title>` tag only. Set this when `title`
+   * is over ~50 characters, so the headline can stay long and specific while
+   * the search result stays inside Google's ~60-character render budget.
+   * Never shown on the page — the `<h1>` always uses `title`.
+   */
+  seoTitle?: string;
   description: string;
   date: string; // ISO datePublished (YYYY-MM-DD)
   updated: string; // ISO dateModified (defaults to date)

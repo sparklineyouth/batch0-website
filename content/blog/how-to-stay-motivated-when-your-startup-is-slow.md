@@ -4,7 +4,7 @@ description: "Every founder hits the messy middle where progress stalls. Here's 
 date: "2026-02-03"
 updated: "2026-02-03"
 category: "Founders"
-author: "taran"
+author: "shresht"
 tags: ["founder motivation", "the messy middle", "staying motivated startup", "no traction yet", "founder discipline", "grinding through"]
 ---
 

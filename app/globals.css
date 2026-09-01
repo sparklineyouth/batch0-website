@@ -89,6 +89,20 @@
 }
 
 /* ============================================================================
+ * THE LIGHT THEME.
+ *
+ * Selected by BOTH `.theme-light` and `.paper`. main moved the site onto
+ * next-themes, whose provider maps light -> `theme-light`
+ * (components/theme-provider.tsx); `.paper` is kept alongside it so any
+ * markup still carrying the old class keeps working and nothing silently
+ * loses its light palette.
+ *
+ * These values are the MARKETING palette — warm cream, not main's pure
+ * #ffffff. The hero painting's day frame, the footer skyline scrim and
+ * every plate feather were tuned against this cream; on pure white the
+ * art reads cold and the plate edges come back. See the note in the
+ * summary: this also warms the product app's light mode.
+ *
  * PAPER — the light theme, a designed sibling (not an inversion). Warm
  * off-white pulled from the ink's stone warmth; near-black ink; chrome
  * amber recalibrated to burnt #8A5A00 (5.3:1 on this paper, AA — real
@@ -96,6 +110,7 @@
  * with dark text (11.5:1). The smolder ramp darkens: embers on paper.
  * html gets `paper` (and loses `dark`) — a hard cut, no fade.
  * ========================================================================= */
+.theme-light,
 .paper {
   --paper: 247 243 234;
   --wash: 239 233 219;
@@ -149,11 +164,22 @@
   --smolder-2: #8a5a00;
   --smolder-3: #b87a00;
   --smolder-4: #ffbb00;
+  /* main's light data-viz series, carried over verbatim so the admin
+   * dashboards keep the palette that was validated for them. */
+  --viz-apps: #eda100;
+  --viz-revenue: #1baf7a;
+  --viz-engagement: #2a78d6;
+  --viz-funnel-1: #6da7ec;
+  --viz-funnel-2: #3987e5;
+  --viz-funnel-3: #256abf;
+  --viz-funnel-4: #104281;
 }
 /* Tailwind alpha chrome that AA fails when blended on paper — pin the two
  * text-carrying steps to solid burnt values. Hairlines/ticks stay alpha
  * (decorative). */
+.theme-light .text-phosphor\/60,
 .paper .text-phosphor\/60 { color: #6e4a00; }
+.theme-light .text-phosphor\/40,
 .paper .text-phosphor\/40 { color: #8a5a00; }
 
 /* ============================================================================
@@ -167,7 +193,9 @@
  * ========================================================================= */
 .themed-night { display: block; }
 .themed-day { display: none; }
+.theme-light .themed-night,
 .paper .themed-night { display: none; }
+.theme-light .themed-day,
 .paper .themed-day { display: block; }
 
 /* ============================================================================
@@ -413,8 +441,122 @@
   color: rgb(var(--hero-ink-soft));
 }
 
+/* ── Data-viz tokens (admin dashboards) ──────────────────────────────────────
+ *
+ * Chart series colours, kept here beside the other theme tokens so light and
+ * dark swap from one place. Both sets were run through the data-viz palette
+ * validator against THIS app's card surface (`--wash`: #f7f7f5 light,
+ * #18181b dark) rather than picked by eye:
+ *
+ *   categorical (apps / revenue / engagement)
+ *     light  #eda100,#1baf7a,#2a78d6  — all-pairs CVD ΔE 9.1, normal 22.9
+ *     dark   #c98500,#199e70,#3987e5  — all-pairs CVD ΔE 8.4, normal 19.8
+ *   funnel ordinal ramp (one hue, deepening by stage)
+ *     light  #6da7ec→#104281  — light end 2.33:1 on the wash
+ *     dark   #cde2fb→#184f95  — dark end 2.19:1 on the wash
+ *
+ * Note the amber and aqua sit below 3:1 on the LIGHT wash. That is a known
+ * WARN, not an oversight: the relief rule applies, so every chart that uses
+ * them ships direct value labels and a table view and never leaves a value
+ * carried by colour alone. Re-run the validator before changing any hex.
+ *
+ * `--viz-warning` is the status colour and is deliberately NOT one of the
+ * series slots — a status colour must never impersonate a series. */
+:root {
+  --viz-apps: #eda100;
+  --viz-revenue: #1baf7a;
+  --viz-engagement: #2a78d6;
+  --viz-target: #898781;
+  --viz-warning: #d03b3b;
+  --viz-funnel-1: #6da7ec;
+  --viz-funnel-2: #3987e5;
+  --viz-funnel-3: #256abf;
+  --viz-funnel-4: #104281;
+}
+
+.dark {
+  --viz-apps: #c98500;
+  --viz-revenue: #199e70;
+  --viz-engagement: #3987e5;
+  --viz-target: #898781;
+  --viz-warning: #d03b3b;
+  --viz-funnel-1: #cde2fb;
+  --viz-funnel-2: #86b6ef;
+  --viz-funnel-3: #3987e5;
+  --viz-funnel-4: #184f95;
+}
+
+/* Re-pinned for subtrees that force light inside a dark document. */
+.theme-light {
+  --viz-apps: #eda100;
+  --viz-revenue: #1baf7a;
+  --viz-engagement: #2a78d6;
+  --viz-funnel-1: #6da7ec;
+  --viz-funnel-2: #3987e5;
+  --viz-funnel-3: #256abf;
+  --viz-funnel-4: #104281;
+}
+
+/* Arrow glyphs, repaired.
+ *
+ * next/font subsets IBM Plex Mono and VT323 to a latin `unicode-range` that
+ * carries U+2191/U+2193 (↑↓) but NOT U+2192/U+2190 (→←). So every arrow on
+ * the site — 98 of them, from "View all →" to the "← Back" links — missed
+ * both webfonts and landed on the generated metric-override fallback
+ * (`local("Arial")` at `size-adjust: 134.59%`). Measured at font-size 100px:
+ * every real Plex Mono glyph advances 60px, while → and ← advanced 134.59px.
+ * A proportional Arial arrow, 35% too wide, wrong baseline, wrong weight,
+ * sitting inside monospace text.
+ *
+ * This face claims ONLY the arrows block, and goes FIRST in the stacks in
+ * tailwind.config.ts. Font matching is per-character: every other codepoint
+ * finds nothing here and falls through to Plex Mono exactly as before, while
+ * → and ← match here and render from a real monospace face at natural width.
+ * `local()` only — no network cost, nothing to subset. If none of these are
+ * installed the character falls through to the old behaviour, so the worst
+ * case is today's rendering rather than a regression. */
+@font-face {
+  font-family: "Arrow Fallback";
+  /* PostScript / full names, NOT family names — Chrome's `local()` does not
+   * match on family, so `local("Menlo")` silently resolves to nothing while
+   * `local("Menlo-Regular")` resolves. Verified in-browser, one face at a
+   * time, by loading each name and measuring the → it produced:
+   *   Menlo          -> fail          Menlo-Regular    -> 60.21px
+   *   Consolas       -> (not on mac)  Monaco           -> 60.02px
+   *   Andale Mono    -> 60.02px       CourierNewPSMT   -> 60.02px
+   * Ordered mac → Windows → Linux → universal. Every entry is monospace and
+   * carries U+2190-21FF, so whichever one wins, the arrow lands on the same
+   * 60px advance as the surrounding IBM Plex Mono text. */
+  src: local("Menlo-Regular"), local("Monaco"), local("Consolas"),
+    local("DejaVuSansMono"), local("DejaVu Sans Mono"), local("LiberationMono"),
+    local("Liberation Mono"), local("CourierNewPSMT"), local("Courier New");
+  /* Exactly the codepoints Plex Mono's subset is missing, and no more.
+   * U+2191/U+2193 (↑↓) ARE in the subset and render correctly at 60px, so
+   * they are deliberately excluded here — widening this to U+2190-21FF pulls
+   * them onto Menlo too and makes two glyphs that were fine slightly
+   * inconsistent with the text around them. */
+  unicode-range: U+2190, U+2192, U+27F5-27F6;
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
+}
+
+html {
+  /* The marketing navbar is sticky at 57px — without this, every in-page
+   * anchor (/#faq from the navbar and the footer, /#who-runs-this) lands
+   * with its heading tucked underneath it. */
+  scroll-padding-top: 5rem;
+  /* Deliberately NOT `scroll-behavior: smooth`. It used to be set here and
+   * on <body>, and it silently broke fragment navigation outright: loading
+   * /#faq, or clicking the navbar's FAQ link, left the page at scrollY 0
+   * instead of the target. The homepage is ~5000px with staggered
+   * entrance animations, and the smooth scroll Chrome starts for a
+   * fragment gets cancelled before it arrives. Measured: `smooth` -> 0px,
+   * `auto` -> the correct 3244px. A jump that works beats a glide that
+   * doesn't. */
+  scroll-behavior: auto;
 }
 
 html,
@@ -423,10 +565,17 @@ body {
   color: var(--foreground);
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
-  scroll-behavior: smooth;
   /* No horizontal scroll on small screens. Any layout that genuinely
-   * needs it should scope its own inner overflow-x container. */
-  overflow-x: hidden;
+   * needs it should scope its own inner overflow-x container.
+   *
+   * `clip`, not `hidden`: `hidden` on one axis forces the other axis to
+   * compute to `auto`, which makes <body> a scroll container. Sticky
+   * children then resolve against a scrollport that never scrolls (the
+   * viewport does), so every `position: sticky` on the site silently
+   * stops sticking — the role sidebars and the marketing navbar. `clip`
+   * clips without creating a scroll container, so overflow-y stays
+   * `visible`. */
+  overflow-x: clip;
   /* Stop iOS Safari from auto-zooming when a sub-16px input is focused. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -453,7 +602,13 @@ body {
   *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+    /* Zeroing the duration alone is not enough: an animation with a delay and
+     * `fill-mode: both` still holds its 0% frame for the length of the delay.
+     * The hero staggers up to 280ms that way, so a reader who asked for no
+     * motion would sit and watch invisible text appear in sequence anyway. */
+    animation-delay: 0ms !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
   }
 }
 
@@ -549,6 +704,24 @@ a,
   color: #141414;
 }
 
+/* Auth-conditional chrome. The inline script in app/layout.tsx stamps
+ * `data-authed` on <html> before first paint (lib/auth-flag.ts), so both
+ * labels ship in the static HTML and CSS picks one — no React state, no
+ * hydration mismatch, and the element is sized by the string it actually
+ * shows rather than by the longer of the two. `display: none` (not
+ * `visibility: hidden`) is the point: a signed-in visitor must not see a
+ * "Dashboard" button padded out to the width of "Apply for Cohort 1", or a
+ * phantom gap where the "Log in" link used to be. */
+.when-authed {
+  display: none;
+}
+[data-authed] .when-authed {
+  display: revert;
+}
+[data-authed] .when-anon {
+  display: none;
+}
+
 /* ============================================================================
  * Marketing surface (DESIGN.md)
  * ============================================================================ */
@@ -556,7 +729,7 @@ a,
 /* The Cohort Ledger — the signature element. Mono rows with dotted
  * leaders, every value rendered from live site-config. */
 .ledger {
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: "Arrow Fallback", var(--font-mono), ui-monospace, monospace;
   font-size: 0.8125rem;
   line-height: 1.5;
 }
@@ -585,6 +758,18 @@ a,
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   padding: 0 0.12em;
+}
+
+/* Founder-pass ticket cursor (app/pass/founder-pass-ticket.tsx): the block
+ * cursor of the CRT the type system is drawn from. step-end so it snaps like
+ * a terminal rather than fading like a web page. The global reduced-motion
+ * rule above freezes it. */
+@keyframes pass-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+.pass-cursor {
+  animation: pass-blink 1.1s step-end infinite;
 }
 
 /* Hero load: the one orchestrated moment. Stagger helpers pair with the
@@ -803,7 +988,8 @@ a,
 .blog-prose h3,
 .blog-prose h4 {
   color: rgb(var(--ink));
-  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-family: "Arrow Fallback", var(--font-display), ui-sans-serif, system-ui,
+    sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.15;
@@ -885,7 +1071,7 @@ a,
   position: absolute;
   left: 0;
   top: 0;
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: "Arrow Fallback", var(--font-mono), ui-monospace, monospace;
   font-size: 0.85em;
   font-weight: 500;
   color: rgb(var(--phosphor-ink));
@@ -907,7 +1093,7 @@ a,
   color: rgb(var(--ink));
 }
 .blog-prose code {
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: "Arrow Fallback", var(--font-mono), ui-monospace, monospace;
   font-size: 0.9em;
   background: rgb(var(--wash));
   border: 1px solid rgb(var(--line));
@@ -941,9 +1127,43 @@ a,
   display: block;
   overflow-x: auto;
 }
+
+/* ── Product tables on a narrow screen ───────────────────────────────────────
+ *
+ * The admin, mentor and dashboard panels hold ~16 data tables (payments, audit,
+ * referrals, AI usage, the student record…) laid out for a desk. On a phone they
+ * are wider than the viewport, and because <body> carries `overflow-x: clip`
+ * they do not scroll — the columns past the fold are simply unreachable. That
+ * matters more now that the installed app links straight into these pages from
+ * its More screens.
+ *
+ * Same technique the blog prose above already uses, and it is a real CSS
+ * behaviour rather than a hack: `display: block` makes the <table> a block box
+ * that can scroll, while thead/tbody keep their internal table display types, so
+ * the browser generates an anonymous table box around the rows and the columns
+ * still align.
+ *
+ * Deliberately capped at 900px. Above that the panels have the room they were
+ * designed for, and `display: block` there would stop `w-full` tables from
+ * stretching their columns — a visible regression on the surface that is
+ * currently correct. Below it, a table you can scroll beats a table you cannot
+ * read.
+ *
+ * `overscroll-behavior-x: contain` stops a horizontal swipe that reaches the end
+ * of a table from chaining to the browser's back-gesture, which is a genuinely
+ * bad surprise mid-scroll on iOS. */
+@media (max-width: 900px) {
+  main table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 .blog-prose thead th {
   text-align: left;
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: "Arrow Fallback", var(--font-mono), ui-monospace, monospace;
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -998,3 +1218,55 @@ a,
   );
 }
 .px-shape-sm { --pxs: 4px; }
+
+/* Inputs / selects — dark surfaces become paper white with a hairline
+ * line border so the field reads as enclosed on the page. */
+.theme-light input,
+.theme-light textarea,
+.theme-light select {
+  background-color: #ffffff;
+  color: #141414;
+  border-color: #e4e4e1;
+}
+.theme-light input::placeholder,
+.theme-light textarea::placeholder { color: #6f6f6f; }
+.theme-light input:focus,
+.theme-light textarea:focus,
+.theme-light select:focus { border-color: rgba(140, 103, 0, 0.5); }
+
+/* Dividers used inside cards */
+.theme-light .divide-white\/15 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e4e4e1;
+}
+
+/* Sidebar/notification bell active state should keep the phosphor tint
+ * but with the corrected dark-amber accent. Already handled by the
+ * text-phosphor + bg-phosphor/X overrides above. */
+
+/* Buttons with bg-phosphor + shadow keep their hover state. The constant
+ * yellow fill (phosphor-200 = #FFD75C) is theme-invariant by design. */
+.theme-light .hover\:bg-phosphor-200:hover { background-color: #FFD75C; }
+
+/* Border variants used by secondary buttons on un-converted pages. Without
+ * the /40 rule the cohort page's "About batch0" button lost its border on
+ * hover in light mode (a white border on a white page). */
+.theme-light .hover\:border-white\/30:hover { border-color: rgba(20, 20, 20, 0.25); }
+.theme-light .hover\:border-white\/40:hover { border-color: rgba(20, 20, 20, 0.35); }
+
+/* The mobile-nav menu icon button uses border-white/10 + text-white/70.
+ * Already covered. */
+
+
+/* Refused-action shake: used by the apply form's Next button when a click
+ * is blocked by validation, so the "no" is felt as well as read. Respects
+ * reduced-motion. */
+@keyframes form-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-3px); }
+  40%, 60% { transform: translateX(3px); }
+}
+.animate-shake { animation: form-shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-shake { animation: none; }
+}

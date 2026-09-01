@@ -1,6 +1,6 @@
 ---
 title: "Positioning: How to Make People Care About Your Product"
-description: "Positioning is how you make the right person instantly get why your product is for them. Here's a simple framework to position your startup so people actually care."
+description: "Positioning is how you make the right person instantly get why your product is for them. A simple framework so people actually care."
 date: "2026-05-08"
 updated: "2026-05-08"
 category: "Market"

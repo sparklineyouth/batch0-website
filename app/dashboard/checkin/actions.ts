@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notifications";
 import { isoWeekStart } from "@/lib/week";
+import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
 import { getDiscordSettings, postChannelMessage } from "@/lib/discord";
 
 export type CheckinInput = {
@@ -39,13 +40,21 @@ export async function submitCheckin(input: CheckinInput) {
   // URL, so reject on the server too.
   const { data: enrollment } = await supabase
     .from("enrollments")
-    .select("cohort_id")
+    .select("cohort_id, cohort:cohorts(starts_on, status)")
     .eq("user_id", user.id)
     .maybeSingle();
   if (!enrollment) {
     throw new Error(
       "You need to be enrolled in a cohort to post a weekly check-in.",
     );
+  }
+  // Pre-cohort lockdown holds for direct server-action calls too — no
+  // check-ins (or #wins cross-posts) before the cohort kicks off.
+  const enrolledCohort = Array.isArray(enrollment.cohort)
+    ? enrollment.cohort[0]
+    : enrollment.cohort;
+  if (!enrolledCohort || !cohortHasStarted(enrolledCohort, todayISO())) {
+    throw new Error("Check-ins open when your cohort starts.");
   }
 
   const week_start = isoWeekStart();

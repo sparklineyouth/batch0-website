@@ -1,84 +1,58 @@
 "use client";
 import { track } from "@vercel/analytics";
+import { AuthLabel } from "@/components/auth-label";
 
 /**
- * THE SIGNATURE CTA — plain centered text inside a PIXELATED SHAPE: the
- * button's silhouette is drawn on the wordmark's block grid (stair-stepped
- * corners via .px-shape clip-path). No command prefix, no cursor, no
- * typing — the creativity is the shape. Two variants, one-line flip:
- *
- *   "filled" — solid amber pixel-shape, dark text (10.8:1 both themes)
- *   "clear"  — pixel-block amber border, transparent inside, theme ink
- *              text (chrome amber border: #FFBB00 dark / #8A5A00 paper)
- *
- * One component at two scales (hero/closing `full`, nav `sm`); key-press
- * physics; analytics unchanged.
+ * The one conversion action, with one name everywhere: "Apply for Cohort N".
+ * Client component so every instance fires the same analytics event; the
+ * form-submit end of the funnel fires "application_submitted" in
+ * app/apply/application-form.tsx.
  */
-const CTA_SHAPE: "filled" | "clear" = "filled";
-
 export function ApplyCta({
-  href = "/apply",
+  // /home, not /apply: middleware resolves it at the edge in one hop —
+  // signed-in visitors land on their own panel, everyone else on /apply.
+  // Defaulting here (rather than at each call site) is what stops one page
+  // from offering "Go to dashboard" up top and a dead-end "Apply" at the
+  // bottom. It stays a constant href, so callers stay prerenderable.
+  href = "/home",
   label,
+  signedInLabel = "Go to dashboard",
   location,
-  size = "full",
   variant = "primary",
   className = "",
 }: {
   href?: string;
-  /** Visible text AND accessible name, e.g. "apply for cohort 001". */
   label: string;
+  /**
+   * Shown instead of `label` once the browser confirms a session. Defaults on
+   * so no CTA can promise "Apply" to someone who already has an account. Only
+   * override `href` with an auth-neutral path — the point is to keep the page
+   * prerenderable, so the href must be right before hydration.
+   */
+  signedInLabel?: string;
+  /** Where on the page this CTA lives — e.g. "hero", "final-cta", "navbar". */
   location: string;
-  size?: "full" | "sm";
   variant?: "primary" | "secondary";
   className?: string;
 }) {
-  const sz =
-    size === "sm"
-      ? "px-shape-sm px-4 py-2 text-sm"
-      : "px-6 py-3.5 text-[15px]";
   const base =
-    "press inline-flex items-center justify-center font-mono font-semibold lowercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
-
-  if (variant === "secondary") {
-    return (
-      <a
-        href={href}
-        className={`${base} border border-line bg-paper px-5 py-3.5 font-medium text-ink hover:border-ink/30 ${className}`}
-        onClick={() => track("apply_click", { location })}
-      >
-        {label}
-      </a>
-    );
-  }
-
-  if (CTA_SHAPE === "clear") {
-    // outer amber layer + inset paper layer, both pixel-clipped → a border
-    // built from blocks. Text in the theme's ink.
-    const inset = size === "sm" ? 2.5 : 3;
-    return (
-      <a
-        href={href}
-        className={`${base} px-shape relative bg-phosphor hover:bg-phosphor/80 ${sz} ${className}`}
-        onClick={() => track("apply_click", { location })}
-      >
-        <span
-          aria-hidden
-          className="px-shape absolute bg-paper"
-          style={{ inset }}
-        />
-        <span className="relative text-ink">{label}</span>
-      </a>
-    );
-  }
-
-  // "filled" — solid amber pixel-shape, dark text
+    "press inline-flex items-center justify-center gap-2 rounded-md text-[15px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
+  const variants = {
+    primary: "bg-yellow-200 px-5 py-3.5 text-on-phosphor shadow-cta hover:bg-phosphor-200",
+    secondary:
+      "border border-line bg-paper px-5 py-3.5 font-medium text-ink hover:border-ink/30",
+  } as const;
   return (
     <a
       href={href}
-      className={`${base} px-shape bg-phosphor-fill text-on-phosphor hover:bg-phosphor-fill-hover ${sz} ${className}`}
+      className={`${base} ${variants[variant]} ${className}`}
       onClick={() => track("apply_click", { location })}
     >
-      {label}
+      {signedInLabel ? (
+        <AuthLabel signedOut={label} signedIn={signedInLabel} />
+      ) : (
+        label
+      )}
     </a>
   );
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { getChallengeById } from "@/lib/challenges";
 import { ChallengeEditor } from "../../challenge-editor";
@@ -14,7 +14,7 @@ export default async function EditChallengePage({
 }: {
   params: { id: string };
 }) {
-  await requireAdmin();
+  await requirePermission("challenges.manage");
   const challenge = await getChallengeById(params.id);
   if (!challenge) notFound();
 

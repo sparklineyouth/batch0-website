@@ -10,11 +10,19 @@ export default async function CoursePage() {
   const user = await requireUser();
   const supabase = createClient();
 
-  const { data: enrollment } = await supabase
-    .from("enrollments")
-    .select("*, cohort:cohorts(*)")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  // Progress filters only on the user, so it rides with the enrollment
+  // lookup — the modules query below is the only read that needs its result.
+  const [{ data: enrollment }, { data: progress }] = await Promise.all([
+    supabase
+      .from("enrollments")
+      .select("*, cohort:cohorts(*)")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("lesson_progress")
+      .select("lesson_id, completed_at")
+      .eq("user_id", user.id),
+  ]);
 
   if (!enrollment) {
     return (
@@ -38,16 +46,13 @@ export default async function CoursePage() {
     );
   }
 
+  // The index renders only the lesson list rows — descriptions, video
+  // paths, and materials jsonb stay behind on the per-lesson page.
   const { data: modules } = await supabase
     .from("modules")
-    .select("*, lessons:lessons(*)")
+    .select("*, lessons:lessons(id, title, position, duration_seconds)")
     .eq("cohort_id", enrollment.cohort_id)
     .order("position", { ascending: true });
-
-  const { data: progress } = await supabase
-    .from("lesson_progress")
-    .select("lesson_id, completed_at")
-    .eq("user_id", user.id);
 
   const completed = new Set(
     (progress ?? []).filter((p) => p.completed_at).map((p) => p.lesson_id),
@@ -92,7 +97,7 @@ export default async function CoursePage() {
                 <p className="text-xs font-medium uppercase tracking-wider text-phosphor-ink">
                   Week {m.week}
                 </p>
-                <h3 className="mt-1 text-lg font-semibold">{m.title}</h3>
+                <h2 className="mt-1 text-lg font-semibold">{m.title}</h2>
                 {m.summary && (
                   <p className="mt-1 text-sm text-ink-faint">{m.summary}</p>
                 )}

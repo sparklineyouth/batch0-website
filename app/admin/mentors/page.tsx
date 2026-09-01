@@ -14,11 +14,11 @@ export default async function AdminMentorsPage() {
         .select("id, email, full_name")
         .eq("role", "mentor")
         .order("created_at", { ascending: false }),
+      // The picker only renders id / name / email — no enrollment join; the
+      // per-student cohort fan-out was fetched and never read.
       admin
         .from("profiles")
-        .select(
-          "id, email, full_name, enrollments(cohort_id, cohort:cohorts(name))",
-        )
+        .select("id, email, full_name")
         .eq("role", "student")
         .order("created_at", { ascending: false }),
       admin

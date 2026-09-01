@@ -1,6 +1,6 @@
 ---
 title: "Does Entrepreneurship Help With College Applications?"
-description: "A real startup can be a standout extracurricular, but only if it shows initiative and results, not just a title. Here's how entrepreneurship actually helps college apps."
+description: "A real startup can be a standout extracurricular, but only if it shows initiative and results. How entrepreneurship actually helps college apps."
 date: "2026-05-15"
 updated: "2026-05-15"
 category: "Founders"

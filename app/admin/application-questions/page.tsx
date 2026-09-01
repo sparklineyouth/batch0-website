@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { getApplicationQuestions } from "@/lib/application-questions";
 import { QuestionEditor } from "./question-editor";
@@ -6,7 +6,7 @@ import { QuestionEditor } from "./question-editor";
 export const metadata = { title: "Application form · Admin" };
 
 export default async function AdminApplicationQuestionsPage() {
-  await requireAdmin();
+  await requirePermission("applications.form");
   const questions = await getApplicationQuestions();
 
   return (

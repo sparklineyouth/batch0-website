@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
 
@@ -27,6 +26,9 @@ export function SettingsForm({
     setProfileSaving(true);
     setProfileError(undefined);
     setProfileOk(false);
+    // Deferred import keeps supabase-js out of the route's first-load JS;
+    // it's only needed inside the submit handlers.
+    const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -50,6 +52,7 @@ export function SettingsForm({
     setPwSaving(true);
     setPwError(undefined);
     setPwOk(false);
+    const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
     const { error } = await supabase.auth.updateUser({ password });
     if (error) setPwError(error.message);

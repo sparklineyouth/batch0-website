@@ -26,6 +26,9 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  // Scopes the Tab trap to the panel, not the outer wrapper — the wrapper
+  // also holds the click-to-dismiss overlay, which must stay out of the cycle.
+  const panelRef = useRef<HTMLDivElement>(null);
   // Keep the latest onCancel/pending visible to event handlers without
   // putting them in the deps array — otherwise every parent re-render
   // (e.g. on each keystroke in a description input) re-runs the effect
@@ -37,8 +40,36 @@ export function ConfirmDialog({
 
   useEffect(() => {
     if (!open) return;
+    // Remember the opener so focus goes back to it on close. Without this a
+    // keyboard user gets dropped at the top of the document every time they
+    // dismiss a confirm. Mirrors components/mobile-nav.tsx.
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !pendingRef.current) onCancelRef.current();
+      if (e.key === "Escape" && !pendingRef.current) {
+        onCancelRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      // Trap Tab inside the panel. `select`/`textarea` are in the selector
+      // because admin dialogs pass form controls through `description`, and
+      // `:disabled` is excluded so the `pending` state (which disables every
+      // button here) can't leave the cycle pointing at unfocusable elements.
+      const root = panelRef.current;
+      if (!root) return;
+      const focusables = root.querySelectorAll<HTMLElement>(
+        'a, button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     // Move focus to the confirm button when the dialog opens, but only
@@ -51,6 +82,7 @@ export function ConfirmDialog({
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
+      previouslyFocused?.focus?.();
     };
   }, [open]);
 
@@ -66,10 +98,17 @@ export function ConfirmDialog({
       <button
         type="button"
         aria-label="Close"
+        // tabIndex={-1}: this is a full-viewport click target, so leaving it
+        // in the tab order gives every dialog a phantom stop covering the
+        // whole screen. The X button below is the keyboard-reachable close.
+        tabIndex={-1}
         onClick={() => !pending && onCancel()}
-        className="absolute inset-0 bg-ink/60"
+        className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
       />
-      <div className="relative w-full max-w-md rounded-2xl border border-line bg-paper p-6">
+      <div
+        ref={panelRef}
+        className="relative w-full max-w-md rounded-2xl border border-line bg-paper p-6 shadow-[0_30px_80px_-20px_rgba(20,20,20,0.25)]"
+      >
         <button
           type="button"
           aria-label="Close"

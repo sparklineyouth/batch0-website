@@ -1,6 +1,6 @@
 "use server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertStaff, assertSelf } from "@/lib/server-guards";
+import { assertPermission, assertSelf } from "@/lib/server-guards";
 
 const STAFF_BUCKETS = new Set([
   "course-videos",
@@ -37,7 +37,7 @@ export async function getUploadToken(
   let pathPrefix: string;
 
   if (STAFF_BUCKETS.has(bucket)) {
-    await assertStaff();
+    await assertPermission("course.manage");
     pathPrefix = safeSegment(folder || "misc");
   } else if (SELF_BUCKETS.has(bucket)) {
     const { userId } = await assertSelf();

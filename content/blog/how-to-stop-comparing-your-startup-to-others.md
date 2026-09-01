@@ -1,10 +1,10 @@
 ---
 title: "How to Stop Comparing Your Startup to Everyone Else's"
-description: "Watching other teen founders win on LinkedIn wrecks your head. Here's how to stop comparing your startup to others and run your own race without the anxiety."
+description: "Watching other teen founders win on LinkedIn wrecks your head. How to stop comparing your startup to others and run your own race."
 date: "2026-02-09"
 updated: "2026-02-09"
 category: "Founders"
-author: "taran"
+author: "shresht"
 tags: ["founder comparison", "linkedin envy", "teen founder anxiety", "run your own race", "social media founders", "comparison trap"]
 ---
 

@@ -213,10 +213,17 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
                   {g.items.map((it) => {
                     const active = it.href === activeHref;
                     const Icon = it.icon;
+                    // prefetch={false}: every nav item points at an authed
+                    // dynamic route, and experimental.staleTimes.dynamic is 0
+                    // (next.config.js) so the router discards prefetched
+                    // dynamic payloads on arrival. Each visible link would
+                    // otherwise cost a full middleware+layout render whose
+                    // result is thrown away; navigation itself is unaffected.
                     return (
                       <Link
                         key={it.href}
                         href={it.href}
+                        prefetch={false}
                         aria-current={active ? "page" : undefined}
                         className={`${SIDEBAR_ROW} ${active ? ACTIVE_ROW : ""}`}
                       >

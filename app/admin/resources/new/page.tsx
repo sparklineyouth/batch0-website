@@ -32,6 +32,7 @@ export default async function NewResourcePage() {
             external_url: null,
             size_bytes: null,
             mime_type: null,
+            pre_cohort: false,
           }}
           cohorts={cohorts ?? []}
         />

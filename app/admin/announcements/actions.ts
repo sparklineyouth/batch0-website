@@ -1,6 +1,8 @@
 "use server";
+import { revalidateTag } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertAdmin } from "@/lib/server-guards";
+import { cohortContentTag, GLOBAL_CONTENT_TAG } from "@/lib/app-cache";
+import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { sendEmail } from "@/lib/email/send";
 import { notifyMany } from "@/lib/notifications";
@@ -40,7 +42,7 @@ export type AnnouncementInput = {
 export async function broadcastAnnouncement(
   input: AnnouncementInput,
 ): Promise<{ recipients: number; discordPosted: boolean; announcementId: string | null }> {
-  const { userId: authorId } = await assertAdmin();
+  const { userId: authorId } = await assertPermission("announcements.manage");
   if (!input.title.trim() || !input.body.trim()) {
     throw new Error("Title and body are required.");
   }
@@ -183,6 +185,15 @@ export async function broadcastAnnouncement(
     }
   }
 
+  // The mobile app caches announcements per cohort for a minute
+  // (lib/app-cache.ts), and the whole point of sending one from a phone is that
+  // it lands now. Bust the exact scope this went to; the global tag covers the
+  // cohort-less "everyone" case and is also read by every cohort-scoped view.
+  revalidateTag(
+    input.cohortId ? cohortContentTag(input.cohortId) : GLOBAL_CONTENT_TAG,
+  );
+  if (input.cohortId) revalidateTag(GLOBAL_CONTENT_TAG);
+
   await logAudit({
     action: "announcement.sent",
     payload: {
@@ -211,7 +222,7 @@ function escape(s: string) {
 }
 
 export async function deleteAnnouncement(id: string) {
-  await assertAdmin();
+  await assertPermission("announcements.manage");
   const admin = createAdminClient();
   // Clear notifications that linked to this announcement so students
   // don't see a deep-link to a 404.
@@ -222,6 +233,9 @@ export async function deleteAnnouncement(id: string) {
     .like("link", `%a-${id}%`);
   const { error } = await admin.from("announcements").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  // Same reasoning as the send path: a deleted announcement must stop showing
+  // in the app immediately, not after the content cache expires.
+  revalidateTag(GLOBAL_CONTENT_TAG);
   await logAudit({
     action: "announcement.deleted",
     targetType: "announcement",

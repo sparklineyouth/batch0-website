@@ -30,16 +30,20 @@ export default async function AdminChargesPage({
 
   let q = admin
     .from("user_charges")
-    .select("*, profile:profiles!user_charges_user_id_fkey(email, full_name)")
+    .select(
+      "id, created_at, kind, amount_cents, description, status, user_id, profile:profiles!user_charges_user_id_fkey(email, full_name)",
+    )
     .order("created_at", { ascending: false });
   if (status !== "all") q = q.eq("status", status);
   if (userId) q = q.eq("user_id", userId);
-  const { data: charges } = await q;
 
-  const { data: profiles } = await admin
-    .from("profiles")
-    .select("id, email, full_name")
-    .order("created_at", { ascending: false });
+  const [{ data: charges }, { data: profiles }] = await Promise.all([
+    q,
+    admin
+      .from("profiles")
+      .select("id, email, full_name")
+      .order("created_at", { ascending: false }),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -53,7 +57,7 @@ export default async function AdminChargesPage({
         </div>
         <a
           href="/api/admin/export/charges"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink-soft hover:border-ink/30 hover:bg-wash"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink-soft hover:border-ink/30 hover:bg-ink/[0.04]"
         >
           Export CSV
         </a>

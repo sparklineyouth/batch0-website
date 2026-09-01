@@ -4,7 +4,7 @@ description: "You don't need to build anything to test an idea. Learn the concie
 date: "2026-02-04"
 updated: "2026-02-04"
 category: "Build"
-author: "taran"
+author: "shresht"
 tags: ["concierge mvp", "manual mvp", "wizard of oz", "test demand", "no code validation"]
 ---
 

@@ -78,5 +78,13 @@ module.exports = enableSentry
       hideSourceMaps: true,
       disableLogger: true,
       tunnelRoute: "/monitoring",
+      // Prod currently builds with no DSN, so zero Sentry JS ships. The day a
+      // DSN is set, the default client build would add ~35-40 kB gz to every
+      // page; this strips debug-only code paths ahead of that. Replay tree-
+      // shaking flags are deliberately NOT set — replaysOnErrorSampleRate is
+      // 1.0 in sentry.client.config.ts, so replay must stay in the bundle.
+      bundleSizeOptimizations: {
+        excludeDebugStatements: true,
+      },
     })
   : nextConfig;

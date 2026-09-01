@@ -28,11 +28,12 @@ export const env = {
   // when these aren't set, so local dev keeps working without a key.
   resendApiKey: process.env.RESEND_API_KEY,
   // The verified `From:` address Resend sends as. Must be on a domain
-  // you've verified in the Resend dashboard (e.g. "batch0
-  // <hello@batch0.org>"). Falls back to onboarding@resend.dev
-  // for first-run testing only.
-  resendFrom:
-    process.env.RESEND_FROM ?? "batch0 <onboarding@resend.dev>",
+  // verified in the Resend dashboard — batch0.org is, and its DKIM
+  // (resend._domainkey), SPF and the send.batch0.org MX are all published.
+  // The default is the real address rather than onboarding@resend.dev so a
+  // missing env var degrades to "correct sender" instead of "email from a
+  // stranger's domain".
+  resendFrom: process.env.RESEND_FROM ?? "batch0 <hello@batch0.org>",
   // Svix signing secret from the Resend webhooks dashboard. Looks like
   // "whsec_xxx". When unset, /api/resend/webhook returns 400 — we
   // refuse to ingest unsigned events because the table is service-role

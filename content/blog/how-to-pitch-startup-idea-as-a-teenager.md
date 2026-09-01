@@ -1,6 +1,6 @@
 ---
 title: "How to Pitch a Startup Idea as a Teenager"
-description: "A great pitch makes people feel the problem in 30 seconds, then shows you can solve it. Here's how to pitch a startup idea as a teenager, structure and delivery."
+description: "A great pitch makes people feel the problem in 30 seconds, then shows you can solve it. How to pitch a startup idea as a teenager."
 date: "2026-05-22"
 updated: "2026-05-22"
 category: "Pitch"

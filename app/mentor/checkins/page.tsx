@@ -16,13 +16,40 @@ export default async function MentorCheckinsPage({
   const week = searchParams.week || isoWeekStart();
   const cohortFilter = searchParams.cohort ?? "all";
 
-  const [{ data: cohorts }, { data: weeks }] = await Promise.all([
-    admin.from("cohorts").select("id, name").order("starts_on"),
-    admin
-      .from("student_checkins")
-      .select("week_start")
-      .order("week_start", { ascending: false }),
-  ]);
+  // The week picker only reaches back half a year. The table holds one row
+  // per student per week, so a full scan grows without bound while pills
+  // older than a cohort never get clicked — and PostgREST's 1000-row cap was
+  // already truncating the list silently past ~3 weeks of a full cohort.
+  const pickerFloor = isoWeekStart(
+    new Date(Date.now() - 26 * 7 * 24 * 60 * 60 * 1000),
+  );
+
+  // Feedback rides the check-ins query as an embed; both that query and the
+  // picker depend only on searchParams, so all three go out in one wave.
+  let q = admin
+    .from("student_checkins")
+    .select(
+      "id, week_start, accomplished, next_up, blockers, updated_at, user:profiles!student_checkins_user_id_fkey(id, email, full_name), cohort:cohorts(name, id), checkin_feedback(id, body, created_at, author:profiles(full_name, email))",
+    )
+    .eq("week_start", week)
+    .order("updated_at", { ascending: false })
+    .order("created_at", {
+      referencedTable: "checkin_feedback",
+      ascending: true,
+    });
+  if (cohortFilter !== "all") q = q.eq("cohort_id", cohortFilter);
+
+  const [{ data: cohorts }, { data: weeks }, { data: checkins }] =
+    await Promise.all([
+      admin.from("cohorts").select("id, name").order("starts_on"),
+      admin
+        .from("student_checkins")
+        .select("week_start")
+        .gte("week_start", pickerFloor)
+        .order("week_start", { ascending: false })
+        .limit(1000),
+      q,
+    ]);
 
   // Distinct weeks for the picker. Falls back to "this week" if there's
   // no data yet.
@@ -32,33 +59,6 @@ export default async function MentorCheckinsPage({
       ...(weeks ?? []).map((w: any) => w.week_start),
     ]),
   );
-
-  let q = admin
-    .from("student_checkins")
-    .select(
-      "id, week_start, accomplished, next_up, blockers, updated_at, user:profiles!student_checkins_user_id_fkey(id, email, full_name), cohort:cohorts(name, id)",
-    )
-    .eq("week_start", week)
-    .order("updated_at", { ascending: false });
-  if (cohortFilter !== "all") q = q.eq("cohort_id", cohortFilter);
-  const { data: checkins } = await q;
-
-  const ids = (checkins ?? []).map((c: any) => c.id);
-  const { data: feedbackRows } = ids.length
-    ? await admin
-        .from("checkin_feedback")
-        .select(
-          "id, checkin_id, body, created_at, author:profiles(full_name, email)",
-        )
-        .in("checkin_id", ids)
-        .order("created_at", { ascending: true })
-    : { data: [] };
-  const feedbackByCheckin = new Map<string, any[]>();
-  for (const f of (feedbackRows ?? []) as any[]) {
-    const arr = feedbackByCheckin.get(f.checkin_id) ?? [];
-    arr.push(f);
-    feedbackByCheckin.set(f.checkin_id, arr);
-  }
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -111,13 +111,14 @@ export default async function MentorCheckinsPage({
           (checkins ?? []).map((c: any) => {
             const user = Array.isArray(c.user) ? c.user[0] : c.user;
             const cohort = Array.isArray(c.cohort) ? c.cohort[0] : c.cohort;
+            const feedback = (c.checkin_feedback ?? []) as any[];
             return (
               <Card key={c.id}>
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <div>
-                    <h3 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
+                    <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
                       {user?.full_name ?? user?.email ?? "—"}
-                    </h3>
+                    </h2>
                     <p className="text-xs text-ink-faint">
                       {cohort?.name ?? "Unassigned cohort"} · Saved{" "}
                       <LocalTime value={c.updated_at} />
@@ -128,13 +129,13 @@ export default async function MentorCheckinsPage({
                 <ReadOnlyField label="Next up" value={c.next_up} />
                 <ReadOnlyField label="Blockers" value={c.blockers} />
 
-                {(feedbackByCheckin.get(c.id) ?? []).length > 0 && (
+                {feedback.length > 0 && (
                   <div className="mt-5 border-t border-line pt-4">
                     <div className="mb-2 font-mono text-xs uppercase tracking-wider text-phosphor-ink">
                       Feedback so far
                     </div>
                     <ul className="space-y-2">
-                      {(feedbackByCheckin.get(c.id) ?? []).map((f: any) => {
+                      {feedback.map((f: any) => {
                         const author = Array.isArray(f.author)
                           ? f.author[0]
                           : f.author;

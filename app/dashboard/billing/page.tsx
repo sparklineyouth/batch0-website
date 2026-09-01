@@ -5,6 +5,8 @@ import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { PortalButton } from "./portal-button";
 import { ChargePayButton } from "@/components/charge-pay-button";
+import { PaymentResult } from "@/components/payment-result";
+import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { Receipt } from "lucide-react";
 
 export const metadata = { title: "Billing · batch0" };
@@ -16,9 +18,22 @@ function fmtMoney(cents: number, currency = "usd") {
   }).format(cents / 100);
 }
 
-export default async function BillingPage() {
+export default async function BillingPage({
+  searchParams,
+}: {
+  searchParams: {
+    charge_paid?: string;
+    charge_canceled?: string;
+    session_id?: string;
+  };
+}) {
   const user = await requireUser();
   const supabase = createClient();
+
+  // Settle a just-completed Checkout against Stripe before reading the
+  // tables below, so a charge paid seconds ago shows as paid rather than
+  // sitting in "Outstanding" until the webhook catches up.
+  const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
   const [{ data: payments }, { data: profile }, { data: charges }] =
     await Promise.all([
@@ -63,6 +78,15 @@ export default async function BillingPage() {
           {hasStripeCustomer && <PortalButton />}
         </div>
       </div>
+
+      <PaymentResult result={payment} />
+
+      {searchParams.charge_canceled && !payment && (
+        <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">
+          Checkout canceled — nothing was charged. The balance below is
+          still payable whenever you're ready.
+        </div>
+      )}
 
       {pending.length > 0 && (
         <Card className="mt-6 border-amber-500/30 bg-amber-500/10">
@@ -113,7 +137,10 @@ export default async function BillingPage() {
         {(payments?.length ?? 0) === 0 && history.length === 0 ? (
           <p className="text-sm text-ink-soft">No payments yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          // The page body clips horizontal overflow, so a four-column table
+          // needs its own scroller or the Status column is lost at 375px.
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
                 <th className="pb-3">Date</th>
@@ -155,6 +182,7 @@ export default async function BillingPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>
