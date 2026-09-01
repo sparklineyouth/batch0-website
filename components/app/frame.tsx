@@ -1,3 +1,4 @@
+import * as React from "react";
 import Link from "next/link";
 import { TabBar, type Tab } from "./tab-bar";
 
@@ -88,11 +89,24 @@ export function AppHeader({
               {eyebrow}
             </p>
           )}
-          <h2 className="mt-1 truncate font-display text-[1.75rem] leading-none tracking-[-0.01em] text-ink">
+          {/* h1, not h2. Every screen in this app starts its heading outline
+              here, and Section below is h3 — with an h2 title the outline
+              began at level 2 and the announcement cards (also h2) came out
+              as siblings of the page title rather than children of it. */}
+          <h1 className="mt-1 truncate font-display text-[1.75rem] leading-none tracking-[-0.01em] text-ink">
             {title}
-          </h2>
+          </h1>
         </div>
-        {action}
+        {/* The size contract lives on the wrapper, not on each call site.
+            Row, Stat and ActionLink all state a minimum; `action` was a bare
+            slot, and every one of the four real call sites independently
+            landed on the same 36x32px icon button as a result. A floor here
+            fixes them all and stops the next one from repeating it. */}
+        {action && (
+          <div className="flex shrink-0 items-center [&>*]:inline-flex [&>*]:min-h-11 [&>*]:min-w-11 [&>*]:items-center [&>*]:justify-center">
+            {action}
+          </div>
+        )}
       </div>
     </header>
   );
@@ -110,22 +124,40 @@ export function Section({
   children,
 }: {
   title: string;
-  action?: { href: string; label: string };
+  /**
+   * Either a link (the common case, kept as a plain object so a call site
+   * can't accidentally ship an unstyled anchor) or arbitrary content — a
+   * count, a ratio, a rail. Charts and summary numbers belong in section
+   * headers and the object-only type made that unexpressible.
+   */
+  action?: { href: string; label: string } | React.ReactNode;
   children: React.ReactNode;
 }) {
+  const isLink =
+    action != null &&
+    typeof action === "object" &&
+    !React.isValidElement(action) &&
+    "href" in (action as object);
   return (
     <section className="mt-10 first:mt-0">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
           {title}
         </h3>
-        {action && (
+        {isLink ? (
+          // inline-flex with a real height: as a bare `display: inline` anchor
+          // this was ~26px of hit area including its padding, and the
+          // `a.press { min-height: 36px }` rule in globals.css is a no-op on a
+          // non-replaced inline box. This is the "Review →" affordance on the
+          // admin start screen, so it has to be a real target.
           <Link
-            href={action.href}
-            className="press -my-1 shrink-0 py-1 text-[13px] text-phosphor-ink hover:underline"
+            href={(action as { href: string }).href}
+            className="press -my-2 inline-flex shrink-0 items-center py-2 text-[13px] text-phosphor-ink hover:underline"
           >
-            {action.label} →
+            {(action as { label: string }).label} →
           </Link>
+        ) : (
+          action != null && <div className="shrink-0">{action as React.ReactNode}</div>
         )}
       </div>
       <div className="mt-4">{children}</div>
@@ -150,14 +182,31 @@ export function Empty({ children }: { children: React.ReactNode }) {
 export function Stat({
   label,
   value,
+  graphic,
   hint,
   href,
+  span,
   tone = "default",
 }: {
   label: string;
   value: string | number;
+  /**
+   * A visual that replaces the printed value — a Ring, a Spark.
+   *
+   * A separate slot rather than widening `value` to ReactNode on purpose:
+   * `value` owns the 34px / tabular-nums / leading-[0.95] typography that
+   * every tile in a `grid-cols-2` aligns to, and widening it would let one
+   * tile quietly opt out of that and desync the row. A graphic is a different
+   * thing in the same box, not a different kind of value.
+   *
+   * The graphic is responsible for printing the number itself — see viz.tsx,
+   * where every primitive carries its value in text as well as in the mark.
+   */
+  graphic?: React.ReactNode;
   hint?: string;
   href?: string;
+  /** Take the full width of a two-column grid. For a series, not a scalar. */
+  span?: boolean;
   tone?: "default" | "accent" | "warn";
 }) {
   const valueTone =
@@ -171,20 +220,35 @@ export function Stat({
       <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-faint">
         {label}
       </p>
-      {/* Fixed-width digits: these sit in a grid, and proportional numerals
-          make two tiles side by side look misaligned as the counts change. */}
-      <p
-        className={`mt-2.5 text-[2.125rem] font-semibold leading-[0.95] tracking-[-0.02em] tabular-nums ${valueTone}`}
-      >
-        {value}
-      </p>
+      {graphic ? (
+        <div className="mt-2.5">{graphic}</div>
+      ) : (
+        // Fixed-width digits: these sit in a grid, and proportional numerals
+        // make two tiles side by side look misaligned as the counts change.
+        //
+        // The size is clamped rather than fixed. The body face is IBM Plex
+        // Mono (tailwind.config.ts), so a glyph is ~0.6em: at 34px that is
+        // ~19.7px each, and a tile in a two-column grid has ~101px of content
+        // box at 320px. "$1,500" is six glyphs — it overflowed, and because
+        // `body { overflow-x: clip }` hides the scrollbar it collided with the
+        // neighbouring tile instead of scrolling. Deliberately NOT `truncate`:
+        // a clipped currency string reads as a plausible smaller number, which
+        // is worse than an ugly one. 24px at 320, 29px at 390, unchanged 34px
+        // from 453px up — so the 512px column and desktop are untouched.
+        <p
+          className={`mt-2.5 text-[clamp(1.5rem,7.5vw,2.125rem)] font-semibold leading-[0.95] tracking-[-0.02em] tabular-nums ${valueTone}`}
+        >
+          {value}
+        </p>
+      )}
       {hint && (
         <p className="mt-2 text-[11.5px] leading-snug text-ink-faint">{hint}</p>
       )}
     </>
   );
-  const cls =
-    "rounded-2xl border border-line bg-wash px-4 py-4 min-h-[7rem] flex flex-col justify-center";
+  const cls = `rounded-2xl border border-line bg-wash px-4 py-4 min-h-[7rem] flex flex-col justify-center${
+    span ? " col-span-2" : ""
+  }`;
   if (!href) return <div className={cls}>{body}</div>;
   return (
     <Link
@@ -217,6 +281,7 @@ export function Row({
   label,
   value,
   meta,
+  below,
   href,
   external,
   prefetch,
@@ -236,6 +301,16 @@ export function Row({
    * the Events list into hand-rolling its own row in the first place.
    */
   meta?: React.ReactNode;
+  /**
+   * Block-level content under the text — a Meter, a DotRail, a chip row.
+   *
+   * This exists because `meta` renders inside a `<p>` that also carries
+   * `truncate`. Putting a flex container in there is invalid nesting: the
+   * parser auto-closes the paragraph, so the server HTML and the client tree
+   * disagree and React throws a hydration mismatch — and `truncate` would clip
+   * the rail even if it parsed. Anything that isn't a run of text goes here.
+   */
+  below?: React.ReactNode;
   href?: string;
   /** Render an <a target="_blank"> instead of a <Link>. For off-site URLs. */
   external?: boolean;
@@ -269,6 +344,7 @@ export function Row({
             {meta}
           </p>
         )}
+        {below && <div className="mt-2">{below}</div>}
       </div>
       {right}
     </div>
@@ -337,7 +413,11 @@ export function ActionLink({
   children: React.ReactNode;
   size?: "sm" | "md";
 }) {
-  const h = size === "sm" ? "h-10 px-4 text-[13px]" : "h-12 px-5 text-[14px]";
+  // h-11, not h-10. The comment above says 44px is the floor and "these are 44
+  // and 48" — `sm` shipped at 40px, and `sm` is what both live student call
+  // sites use, so the one size that was actually below the stated floor was
+  // also the only one a student ever taps.
+  const h = size === "sm" ? "h-11 px-4 text-[13px]" : "h-12 px-5 text-[14px]";
   return (
     <Link
       href={href}

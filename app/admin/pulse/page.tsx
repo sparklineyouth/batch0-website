@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { BarChart, TrendLine, Funnel, Meter } from "@/components/admin/charts";
-import { isoWeekStart, mondayOf } from "@/lib/week";
+import { isoWeekStart, lastNWeeks } from "@/lib/week";
 import { thisMonthStartISODate } from "@/lib/ai/pricing";
 import {
   Inbox,
@@ -36,29 +36,6 @@ function daysAgo(n: number) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - n);
   return d;
-}
-
-// Last 8 ISO weeks, oldest → newest. Each "key" is the Monday ISO date.
-function lastNWeeks(n: number) {
-  const out: { key: string; label: string; start: Date; end: Date }[] = [];
-  const thisMonday = mondayOf(new Date());
-  for (let i = n - 1; i >= 0; i--) {
-    const start = new Date(thisMonday);
-    start.setUTCDate(start.getUTCDate() - i * 7);
-    const end = new Date(start);
-    end.setUTCDate(end.getUTCDate() + 7);
-    out.push({
-      key: start.toISOString().slice(0, 10),
-      label: start.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        timeZone: "UTC",
-      }),
-      start,
-      end,
-    });
-  }
-  return out;
 }
 
 export default async function PulsePage() {

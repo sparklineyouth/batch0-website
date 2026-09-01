@@ -1,4 +1,5 @@
 import * as React from "react";
+import { niceMax } from "@/lib/chart-scale";
 
 /**
  * Chart primitives for the admin dashboards.
@@ -127,17 +128,6 @@ function TableView({
       </div>
     </details>
   );
-}
-
-/** Rounded to a friendly step so the top gridline isn't an arbitrary number. */
-function niceMax(value: number): number {
-  if (value <= 0) return 1;
-  const mag = 10 ** Math.floor(Math.log10(value));
-  for (const step of [1, 2, 2.5, 5, 10]) {
-    const candidate = step * mag;
-    if (candidate >= value) return candidate;
-  }
-  return 10 * mag;
 }
 
 // ---------------------------------------------------------------------------
