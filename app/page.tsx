@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import Navbar from "@/components/navbar";
 import Hero from "@/components/hero";
-import VideoPlate from "@/components/video-plate";
 import Thesis from "@/components/thesis";
 import TheDeal from "@/components/the-deal";
 import HowItWorks from "@/components/how-it-works";
@@ -56,7 +55,6 @@ export default async function Home() {
           same (invisible) left margin and shares the 12-column grid.
           Alignment is felt through consistency, never drawn as a line. */}
       <div className="mx-auto max-w-[1100px] px-5 sm:px-6">
-        <VideoPlate />
         <Thesis />
         <TheDeal config={config} authedHome={authedHome} />
         <HowItWorks config={config} />

@@ -59,7 +59,7 @@ export default function TheDeal({
         <div className="col-span-12 md:col-span-4 md:col-start-9">
           <div className="mx-auto max-w-[20rem] md:mx-0">
             <TermsAnchor />
-            <Fig n="02" className="mt-5">
+            <Fig n="01" className="mt-5">
               the terms, in full
             </Fig>
           </div>
