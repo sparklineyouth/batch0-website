@@ -184,6 +184,25 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     variables: COMMON,
   },
   {
+    key: "broadcast.promo",
+    name: "40% off — enroll by September 9",
+    description:
+      "The tuition-sale invite. Send it from the composer to a hand-picked segment before the September 9 deadline — the copy leans on the deadline, so retire it once the promo ends (see lib/promo.ts). Prices and the deadline are variables so they can't drift from what the site charges.",
+    category: "broadcast",
+    subject: "{{first_name}}, batch0 tuition is 40% off — through {{deadline}}",
+    preheader: "Enroll before {{deadline}} and pay {{sale_price}}, not {{list_price}}.",
+    body_html:
+      "<h1>40% off, but not for long.</h1><p>Hi {{first_name}},</p><p>For a few more days, a seat at batch0 is <strong>{{sale_price}}</strong> instead of <strong>{{list_price}}</strong> — 40% off. It's the lowest tuition has ever been, and it ends <strong>{{deadline}}</strong>.</p><p>batch0 is a live, online startup accelerator built for high schoolers: you build a real company alongside a cohort, with mentors, weekly sessions, and a Demo Day at the end. Applying is free, and we never take equity — the tuition is the whole cost.</p><p>If you've been on the fence, this is the moment to jump. Lock in the 40% before {{deadline}} and you're set.</p>",
+    cta_label: "Claim 40% off",
+    cta_url: "{{site_url}}/apply",
+    variables: [
+      ...COMMON,
+      { key: "sale_price", label: "Sale price", example: "$78" },
+      { key: "list_price", label: "List price", example: "$129.99" },
+      { key: "deadline", label: "Offer deadline", example: "September 9" },
+    ],
+  },
+  {
     key: "broadcast.blank",
     name: "Blank branded email",
     description:
