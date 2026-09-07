@@ -1,6 +1,7 @@
 import {
   Home,
   FileText,
+  Percent,
   PlayCircle,
   CalendarDays,
   Sparkles,
@@ -305,6 +306,12 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
   {
     label: "Finance",
     items: [
+      {
+        href: "/admin/pricing",
+        label: "Pricing & revenue",
+        icon: Percent,
+        perm: "settings.manage",
+      },
       {
         href: "/admin/charges",
         label: "Fees & fines",

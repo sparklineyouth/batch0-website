@@ -519,6 +519,7 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/announcements", "announcements.manage"],
   ["/admin/charges", "charges.manage"],
   ["/admin/payments", "payments.view"],
+  ["/admin/pricing", "settings.manage"],
   ["/admin/pulse", "pulse.view"],
   ["/admin/interventions", "interventions.manage"],
   ["/admin/ai-usage", "ai_usage.view"],

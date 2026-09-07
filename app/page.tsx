@@ -51,7 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
   // whose title tag the offer actually needs to reach. Every other route keeps
   // the plain layout title, which is why an expiry can never strand the promo
   // on 130+ pages.
-  const promo = activePromo();
+  const promo = activePromo(new Date(), config.settings.promo);
   const description = promo
     ? promoMetaDescription(
         promo,

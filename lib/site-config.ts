@@ -5,7 +5,14 @@ import {
   createPublicReadClient,
 } from "@/lib/supabase/admin";
 import { getRegionalPrice } from "@/lib/pricing";
-import { activePromo, promoPriceCents, listPriceCents } from "@/lib/promo";
+import {
+  activePromo,
+  promoPriceCents,
+  listPriceCents,
+  resolvePromoConfig,
+  DEFAULT_PROMO_CONFIG,
+  type PromoConfig,
+} from "@/lib/promo";
 import {
   buildMetaDescription,
   formatApplyBy,
@@ -49,6 +56,14 @@ export type SiteSettings = {
    * the pass would be a permanent way into a finished cohort.
    */
   founderPassEarlyAccess: boolean;
+  /**
+   * The tuition promotion, admin-editable at /admin/pricing. Seeded from the
+   * constants in lib/promo.ts, so the site runs the same 10%-off push until an
+   * admin changes the percent, deadline, or master switch — after which every
+   * price surface (marketing, checkout, dashboards, the acceptance email)
+   * tracks this on the next request.
+   */
+  promo: PromoConfig;
 };
 
 export type SiteConfig = {
@@ -137,6 +152,9 @@ const FALLBACK_SETTINGS: SiteSettings = {
   // strength of a guess — "no early access" is the state that can't be wrong
   // in a damaging direction.
   founderPassEarlyAccess: false,
+  // The seed promo. A Supabase outage leaves the marketing site on the same
+  // sale it would otherwise show, rather than blanking the discount.
+  promo: DEFAULT_PROMO_CONFIG,
 };
 
 // Mirrors the real Cohort 1 row so a Supabase outage can't make the marketing
@@ -214,6 +232,7 @@ function derive(
   enrolledCount: number,
   applicationsOpen: boolean,
   countryCode: string | null,
+  promoConfig: PromoConfig,
 ): SiteConfig["derived"] {
   const c = cohort ?? FALLBACK_COHORT;
   const cohortLabel =
@@ -232,8 +251,8 @@ function derive(
   // and none of it has to be unwound by hand when the offer ends. Every label
   // below is derived from this single pair, so the site cannot advertise one
   // price and charge another.
-  const promo = activePromo();
-  const chargeCents = promoPriceCents(regional.amountCents);
+  const promo = activePromo(new Date(), promoConfig);
+  const chargeCents = promoPriceCents(regional.amountCents, new Date(), promoConfig);
   const dollars = Math.round(chargeCents / 100);
   const listDollars = Math.round(regional.amountCents / 100);
   const baseDollars = Math.round(baseCents / 100);
@@ -401,6 +420,7 @@ function assemble(
       data.enrolledCount,
       data.settings.applicationsOpen,
       countryCode,
+      data.settings.promo,
     ),
   };
 }
@@ -458,6 +478,14 @@ async function loadSiteConfigData(
       typeof raw.founder_pass_early_access === "boolean"
         ? raw.founder_pass_early_access
         : FALLBACK_SETTINGS.founderPassEarlyAccess,
+    // Resolved from the three promo_* rows in the same settings scan, so the
+    // marketing site pays no extra round-trip for it. Absent rows collapse to
+    // the seed config inside resolvePromoConfig().
+    promo: resolvePromoConfig({
+      promo_enabled: raw.promo_enabled,
+      promo_percent: raw.promo_percent,
+      promo_ends_at: raw.promo_ends_at,
+    }),
   };
 
   const pinnedId =

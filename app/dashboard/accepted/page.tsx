@@ -7,6 +7,7 @@ import { getStudentAccess } from "@/lib/access";
 import { Card } from "@/components/ui/card";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { promoPriceCents, listPriceCents } from "@/lib/promo";
+import { loadPromoConfig } from "@/lib/promo-settings";
 import {
   passDiscountCentsForUser,
 } from "@/lib/founder-pass";
@@ -65,7 +66,7 @@ export default async function AcceptedPage() {
   // The site-wide promotion, applied before the pass discount — the same order
   // app/api/stripe/checkout uses. Without it this page quotes list price while
   // Stripe charges the sale price.
-  const saleCents = promoPriceCents(regionalCents);
+  const saleCents = promoPriceCents(regionalCents, new Date(), await loadPromoConfig());
   // The discount is read off the holder's own tier and resolved against the
   // regional amount — the same call checkout makes, so this page and Stripe
   // can't disagree about what they owe.

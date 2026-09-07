@@ -97,6 +97,131 @@ const PROMO: Promo = {
 };
 
 /**
+ * The admin-editable shape of the promotion.
+ *
+ * The constants above (`PROMO_PERCENT`, `PROMO_ENDS_AT`) are now the SEED for
+ * this — the value the site runs on until an admin changes it at
+ * /admin/pricing. Once /admin/pricing writes a `promo_*` row into
+ * `site_settings`, `resolvePromoConfig()` turns those rows into one of these,
+ * and every price surface reads through the config-aware overloads below.
+ *
+ * This type carries no dates-as-strings magic and no DB access: this module
+ * stays dependency-free (it is imported by metadata builders that run during
+ * static generation), so the DB read lives in `lib/promo-settings.ts` and the
+ * marketing loader, and hands the plain object here.
+ */
+export type PromoConfig = {
+  /** Master switch. When false, no promo runs regardless of percent/date. */
+  enabled: boolean;
+  /** Whole-number percent off list price, 0–90. 0 means no discount. */
+  percent: number;
+  /**
+   * ISO instant the sale ends, or null for an open-ended promo with no
+   * deadline. A null deadline drops every "ends <date>" label to "".
+   */
+  endsAt: string | null;
+};
+
+/** The seed promo — what the site runs on before any admin override. */
+export const DEFAULT_PROMO_CONFIG: PromoConfig = {
+  enabled: true,
+  percent: PROMO_PERCENT,
+  endsAt: PROMO_ENDS_AT,
+};
+
+/** True when a config is byte-for-byte the seed, so we can use the legacy path. */
+export function isDefaultPromoConfig(c: PromoConfig): boolean {
+  return (
+    c.enabled === DEFAULT_PROMO_CONFIG.enabled &&
+    c.percent === DEFAULT_PROMO_CONFIG.percent &&
+    c.endsAt === DEFAULT_PROMO_CONFIG.endsAt
+  );
+}
+
+/**
+ * Turn raw `site_settings` values into a validated `PromoConfig`.
+ *
+ * Every field falls back to the seed when absent or malformed, so a missing
+ * row, a half-written one, or a bad hand-edit can never take the site to a
+ * nonsensical price. `percent` is clamped to 0–90 and rounded: a promo over
+ * 90% off is almost always a fat-fingered "9" that meant 9, and clamping is
+ * safer than charging near-zero. A `null` end date is honored (open-ended);
+ * only `undefined`/absent falls back to the seed deadline.
+ */
+export function resolvePromoConfig(raw: {
+  promo_enabled?: unknown;
+  promo_percent?: unknown;
+  promo_ends_at?: unknown;
+}): PromoConfig {
+  const enabled =
+    typeof raw.promo_enabled === "boolean"
+      ? raw.promo_enabled
+      : DEFAULT_PROMO_CONFIG.enabled;
+
+  let percent = DEFAULT_PROMO_CONFIG.percent;
+  const rawPercent =
+    typeof raw.promo_percent === "number"
+      ? raw.promo_percent
+      : typeof raw.promo_percent === "string" && raw.promo_percent.trim()
+        ? Number(raw.promo_percent)
+        : NaN;
+  if (Number.isFinite(rawPercent)) {
+    percent = Math.max(0, Math.min(90, Math.round(rawPercent)));
+  }
+
+  let endsAt: string | null = DEFAULT_PROMO_CONFIG.endsAt;
+  if (raw.promo_ends_at === null) {
+    endsAt = null;
+  } else if (typeof raw.promo_ends_at === "string" && raw.promo_ends_at.trim()) {
+    endsAt = Number.isNaN(new Date(raw.promo_ends_at).getTime())
+      ? DEFAULT_PROMO_CONFIG.endsAt
+      : raw.promo_ends_at;
+  }
+
+  return { enabled, percent, endsAt };
+}
+
+/**
+ * Deadline labels derived from an admin-set end date, in the brand's timezone.
+ *
+ * Formatted in America/New_York rather than UTC on purpose: `endsAt` is an
+ * instant like `2026-09-09T23:59:59-04:00`, whose UTC calendar date is already
+ * the 10th. The seed strings ("Sept 9") were hand-written against Eastern, and
+ * this keeps an admin-picked date reading as the day they picked. A null or
+ * unparseable date yields empty labels, which the UI renders as a promo with
+ * no deadline.
+ */
+export function formatPromoDeadlines(endsAt: string | null): {
+  short: string;
+  long: string;
+  validUntil: string;
+} {
+  if (!endsAt) return { short: "", long: "", validUntil: "" };
+  const d = new Date(endsAt);
+  if (Number.isNaN(d.getTime())) return { short: "", long: "", validUntil: "" };
+  const tz = "America/New_York";
+  return {
+    short: d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      timeZone: tz,
+    }),
+    long: d.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      timeZone: tz,
+    }),
+    // en-CA renders YYYY-MM-DD, the schema.org priceValidUntil format.
+    validUntil: d.toLocaleDateString("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: tz,
+    }),
+  };
+}
+
+/**
  * The promo if it is still running, otherwise null.
  *
  * IMPORTANT: this governs what the site *advertises*, not what Stripe charges.
@@ -104,9 +229,35 @@ const PROMO: Promo = {
  * revert on its own — when this returns null the marketing copy goes back to
  * list price, but the cohort row must be set back to 12999 by hand in
  * /admin/cohorts or checkout will keep charging the sale price.
+ *
+ * `config` is the admin-editable promo (from `site_settings`). Omitted — or
+ * exactly equal to the seed — it takes the legacy path with the hand-written
+ * "Sept 9" strings, so nothing about the site changes until an admin actually
+ * edits the promo at /admin/pricing.
  */
-export function activePromo(now: Date = new Date()): Promo | null {
-  return now.getTime() <= new Date(PROMO_ENDS_AT).getTime() ? PROMO : null;
+export function activePromo(
+  now: Date = new Date(),
+  config?: PromoConfig,
+): Promo | null {
+  if (!config || isDefaultPromoConfig(config)) {
+    return now.getTime() <= new Date(PROMO_ENDS_AT).getTime() ? PROMO : null;
+  }
+
+  if (!config.enabled || config.percent <= 0) return null;
+  if (config.endsAt) {
+    const end = new Date(config.endsAt).getTime();
+    // A NaN end date means the config is malformed; treat it as no deadline
+    // rather than instantly expiring (or crashing) the sale.
+    if (!Number.isNaN(end) && now.getTime() > end) return null;
+  }
+
+  const d = formatPromoDeadlines(config.endsAt);
+  return {
+    percent: config.percent,
+    shortDeadline: d.short,
+    longDeadline: d.long,
+    validUntil: d.validUntil,
+  };
 }
 
 /**
@@ -123,8 +274,12 @@ export function activePromo(now: Date = new Date()): Promo | null {
  * Returns `baseCents` unchanged once the promo has ended, which is what makes
  * expiry a no-op rather than a cleanup task.
  */
-export function promoPriceCents(baseCents: number, now: Date = new Date()): number {
-  const promo = activePromo(now);
+export function promoPriceCents(
+  baseCents: number,
+  now: Date = new Date(),
+  config?: PromoConfig,
+): number {
+  const promo = activePromo(now, config);
   if (!promo) return baseCents;
 
   // Fail safe against a list price that has already had the sale applied to
@@ -180,7 +335,11 @@ function discount(baseCents: number, percent: number): number {
  * thing after the name being searched for, but no longer the opening claim.
  */
 export function promoTitle(promo: Promo): string {
-  return `batch0 — ${promo.percent}% Off Until ${promo.shortDeadline} — Startup Accelerator`;
+  // An open-ended, admin-set promo has no deadline to name, so the "Until X"
+  // clause drops out rather than rendering "Off Until  —".
+  return promo.shortDeadline
+    ? `batch0 — ${promo.percent}% Off Until ${promo.shortDeadline} — Startup Accelerator`
+    : `batch0 — ${promo.percent}% Off Tuition — Startup Accelerator`;
 }
 
 /**
@@ -192,5 +351,10 @@ export function promoTitle(promo: Promo): string {
  * the offer is live.
  */
 export function promoMetaDescription(promo: Promo, salePrice: string, listPrice: string): string {
-  return `${promo.percent}% off until ${promo.longDeadline}: tuition is ${salePrice}, not ${listPrice}. batch0 is a live, online startup accelerator for high schoolers. Free to apply, no equity taken.`;
+  // "10% off until September 9:" when there's a deadline, "10% off:" for an
+  // open-ended admin promo — the colon and prices stay put either way.
+  const lead = promo.longDeadline
+    ? `${promo.percent}% off until ${promo.longDeadline}`
+    : `${promo.percent}% off`;
+  return `${lead}: tuition is ${salePrice}, not ${listPrice}. batch0 is a live, online startup accelerator for high schoolers. Free to apply, no equity taken.`;
 }

@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
 import { Pencil, Trash2, Plus, Activity, Flag, Megaphone } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
-import { activePromo, promoPriceCents } from "@/lib/promo";
+import { activePromo, promoPriceCents, type PromoConfig } from "@/lib/promo";
 
 type Cohort = CohortInput & {
   id: string;
@@ -27,7 +27,13 @@ const empty: CohortInput = {
   applications_close_at: null,
 };
 
-export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] }) {
+export function CohortsManager({
+  initialCohorts,
+  promoConfig,
+}: {
+  initialCohorts: Cohort[];
+  promoConfig: PromoConfig;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState<CohortInput | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -94,6 +100,7 @@ export function CohortsManager({ initialCohorts }: { initialCohorts: Cohort[] })
         onSave={save}
         pending={pending}
         error={error}
+        promoConfig={promoConfig}
       />
     );
   }
@@ -221,17 +228,20 @@ function CohortForm({
   onSave,
   pending,
   error,
+  promoConfig,
 }: {
   initial: CohortInput;
   onCancel: () => void;
   onSave: (c: CohortInput) => void;
   pending: boolean;
   error?: string;
+  promoConfig: PromoConfig;
 }) {
   const [c, setC] = useState<CohortInput>(initial);
   // Resolved once per render rather than per keystroke; the promo only changes
-  // at its deadline, and the editor is not open across it.
-  const promo = activePromo();
+  // at its deadline, and the editor is not open across it. The config comes
+  // from the admin-set promo so this preview matches what checkout will bill.
+  const promo = activePromo(new Date(), promoConfig);
   return (
     <form
       onSubmit={(e) => {
@@ -333,9 +343,14 @@ function CohortForm({
               className="mt-1.5 text-xs leading-relaxed text-ink-faint"
             >
               Enter <strong>list</strong> price. {promo.percent}% off is applied
-              automatically until {promo.longDeadline} — students are charged{" "}
+              automatically
+              {promo.longDeadline ? ` until ${promo.longDeadline}` : ""} —
+              students are charged{" "}
               <strong className="text-ink">
-                ${(promoPriceCents(c.price_cents) / 100).toFixed(0)}
+                $
+                {(
+                  promoPriceCents(c.price_cents, new Date(), promoConfig) / 100
+                ).toFixed(0)}
               </strong>
               {" "}at this list price.
             </p>

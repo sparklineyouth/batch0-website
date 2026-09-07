@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 import { promoPriceCents, listPriceCents } from "@/lib/promo";
+import { loadPromoConfig } from "@/lib/promo-settings";
 import { Templates } from "@/lib/email/templates";
 import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
@@ -70,8 +71,15 @@ export async function announceAcceptance(
   const cohortName = app.cohortName ?? "batch0";
   // The promo comes off before the pass discount, matching checkout. An
   // acceptance email that quotes list price while Stripe charges the sale
-  // price is the one mismatch a student is guaranteed to notice.
-  const saleCents = promoPriceCents(listPriceCents(app.listPriceCents));
+  // price is the one mismatch a student is guaranteed to notice. The percent
+  // and deadline are read from the same admin-set config checkout uses, so an
+  // edit at /admin/pricing reaches the email too.
+  const promoConfig = await loadPromoConfig();
+  const saleCents = promoPriceCents(
+    listPriceCents(app.listPriceCents),
+    new Date(),
+    promoConfig,
+  );
   const priceCents = Math.max(
     0,
     saleCents - (grant ? grantDiscountCents(grant, saleCents) : 0),

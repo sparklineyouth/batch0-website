@@ -7,6 +7,7 @@ import { Card, StatusBadge } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { promoPriceCents, listPriceCents } from "@/lib/promo";
+import { loadPromoConfig } from "@/lib/promo-settings";
 import { getPassGrantForUser } from "@/lib/founder-pass";
 import { grantDiscountCents } from "@/lib/founder-pass-tiers";
 import { getRebuildForUser, type Rebuild } from "@/lib/founder-pass-perks";
@@ -80,7 +81,7 @@ export default async function ApplicationPage({
   // The site-wide promotion, applied before the pass discount — the same order
   // app/api/stripe/checkout uses. Without it this page quotes list price while
   // Stripe charges the sale price.
-  const saleCents = promoPriceCents(regionalCents);
+  const saleCents = promoPriceCents(regionalCents, new Date(), await loadPromoConfig());
   // Mirror the checkout math (app/api/stripe/checkout) exactly — regional
   // price, then the tier's discount resolved against it — so the number on
   // this card is the number Stripe charges.

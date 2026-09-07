@@ -1,11 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { CohortsManager } from "./cohorts-manager";
+import { loadPromoConfig } from "@/lib/promo-settings";
 
 export const metadata = { title: "Cohorts · Admin" };
 
 export default async function AdminCohortsPage() {
   const admin = createAdminClient();
+  const promoConfig = await loadPromoConfig();
   // Order by cohort_number when the column exists (migration 0017),
   // otherwise fall back to chronological order so the page still
   // renders pre-migration.
@@ -26,7 +28,10 @@ export default async function AdminCohortsPage() {
       <p className="mt-1 text-sm text-ink-faint">Create and manage cohort runs.</p>
 
       <Card className="mt-6">
-        <CohortsManager initialCohorts={cohorts as any[] ?? []} />
+        <CohortsManager
+          initialCohorts={cohorts as any[] ?? []}
+          promoConfig={promoConfig}
+        />
       </Card>
     </div>
   );

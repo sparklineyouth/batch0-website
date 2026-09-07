@@ -10,6 +10,10 @@ import {
   promoPriceCents,
   promoTitle,
   promoMetaDescription,
+  resolvePromoConfig,
+  isDefaultPromoConfig,
+  DEFAULT_PROMO_CONFIG,
+  type PromoConfig,
 } from "./promo.ts";
 
 // A promotion is the rare feature whose failure mode is legal rather than
@@ -222,4 +226,75 @@ test("India keeps its own list price and its own discount", () => {
   assert.equal(listPriceCents(IN_LIST), IN_LIST);
   assert.equal(promoPriceCents(listPriceCents(IN_LIST), DURING), 10400);
   assert.equal(promoPriceCents(listPriceCents(IN_LIST), AFTER), IN_LIST);
+});
+
+
+// ---------------------------------------------------------------------------
+// The admin-editable promo config (site_settings -> resolvePromoConfig)
+// ---------------------------------------------------------------------------
+
+const US_LIST_CFG = 12999;
+
+test("an absent/empty config resolves to the seed and takes the legacy path", () => {
+  // The whole backward-compat guarantee: until an admin writes a promo_* row,
+  // resolvePromoConfig returns the seed, and the config-aware overloads behave
+  // byte-for-byte like the no-arg legacy path.
+  const cfg = resolvePromoConfig({});
+  assert.deepEqual(cfg, DEFAULT_PROMO_CONFIG);
+  assert.ok(isDefaultPromoConfig(cfg));
+  assert.equal(promoPriceCents(US_LIST_CFG, DURING, cfg), promoPriceCents(US_LIST_CFG, DURING));
+  assert.deepEqual(activePromo(DURING, cfg), activePromo(DURING));
+});
+
+test("an admin percent flows through to the charged price", () => {
+  const cfg = resolvePromoConfig({ promo_percent: 25 });
+  assert.equal(activePromo(DURING, cfg)?.percent, 25);
+  // 25% off $129.99, rounded to whole dollars -> $97.
+  assert.equal(promoPriceCents(US_LIST_CFG, DURING, cfg), 9700);
+});
+
+test("the master switch and a zero percent both turn the promo off", () => {
+  const off = resolvePromoConfig({ promo_enabled: false });
+  assert.equal(activePromo(DURING, off), null);
+  assert.equal(promoPriceCents(US_LIST_CFG, DURING, off), US_LIST_CFG);
+
+  const zero = resolvePromoConfig({ promo_percent: 0 });
+  assert.equal(activePromo(DURING, zero), null);
+  assert.equal(promoPriceCents(US_LIST_CFG, DURING, zero), US_LIST_CFG);
+});
+
+test("percent is clamped to 0-90 and rounded", () => {
+  assert.equal(resolvePromoConfig({ promo_percent: 250 }).percent, 90);
+  assert.equal(resolvePromoConfig({ promo_percent: -5 }).percent, 0);
+  assert.equal(resolvePromoConfig({ promo_percent: 12.6 }).percent, 13);
+  assert.equal(resolvePromoConfig({ promo_percent: "20" as unknown }).percent, 20);
+});
+
+test("an admin end date governs expiry", () => {
+  const cfg: PromoConfig = { enabled: true, percent: 30, endsAt: "2026-10-01T23:59:59-04:00" };
+  assert.ok(activePromo(new Date("2026-09-15T12:00:00-04:00"), cfg), "live before the date");
+  assert.equal(activePromo(new Date("2026-10-02T00:30:00-04:00"), cfg), null, "dead after the date");
+});
+
+test("a null end date is an open-ended promo with no deadline labels", () => {
+  const cfg = resolvePromoConfig({ promo_percent: 15, promo_ends_at: null });
+  assert.equal(cfg.endsAt, null);
+  const promo = activePromo(new Date("2030-01-01T00:00:00Z"), cfg);
+  assert.ok(promo, "open-ended promo never expires");
+  assert.equal(promo?.longDeadline, "");
+  assert.equal(promo?.shortDeadline, "");
+  // Title and description drop the deadline clause rather than rendering a gap.
+  assert.ok(!promoTitle(promo!).includes("Until"));
+  assert.match(promoMetaDescription(promo!, "$110", "$130"), /^15% off: tuition is \$110/);
+});
+
+test("a malformed end date falls back to the seed deadline", () => {
+  const cfg = resolvePromoConfig({ promo_ends_at: "not-a-date" });
+  assert.equal(cfg.endsAt, PROMO_ENDS_AT);
+});
+
+test("the double-discount guard still applies under an admin config", () => {
+  const cfg = resolvePromoConfig({ promo_percent: 40 });
+  // A base at the fixed $78 bad-row value is passed through, not cut again.
+  assert.equal(promoPriceCents(PROMO_SALE_PRICE_CENTS, DURING, cfg), PROMO_SALE_PRICE_CENTS);
 });

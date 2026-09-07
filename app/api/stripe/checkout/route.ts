@@ -6,6 +6,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { activePromo, promoPriceCents, listPriceCents } from "@/lib/promo";
+import { loadPromoConfig } from "@/lib/promo-settings";
 import { grantDiscountCents } from "@/lib/founder-pass-tiers";
 import { getPassGrantForUser } from "@/lib/founder-pass";
 import {
@@ -102,8 +103,18 @@ export async function POST(req: Request) {
   // Writing a sale into that row would mean a human has to remember to write
   // it back on September 10 — and until they did, Stripe would keep charging
   // the sale price with nothing on the site saying so. This expires itself.
-  const promo = activePromo();
-  const promoPriceCentsAmount = promoPriceCents(regional.amountCents);
+  // The admin-set promo (percent + deadline) comes from site_settings, the
+  // same record the marketing site reads through lib/site-config. Loading it
+  // here — rather than trusting the hardcoded seed — is what keeps the card
+  // charge equal to the price advertised after an admin edits the sale at
+  // /admin/pricing.
+  const promoConfig = await loadPromoConfig();
+  const promo = activePromo(new Date(), promoConfig);
+  const promoPriceCentsAmount = promoPriceCents(
+    regional.amountCents,
+    new Date(),
+    promoConfig,
+  );
   const promoDiscountCents = regional.amountCents - promoPriceCentsAmount;
 
   // Resolved against the PROMO price, not list, so a pass and a sale stack in
