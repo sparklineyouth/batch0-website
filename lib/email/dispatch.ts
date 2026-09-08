@@ -12,6 +12,7 @@ import {
   type TemplateRow,
 } from "@/lib/email/store";
 import { firstNameOf, type VariableValues } from "@/lib/email/vars";
+import { refreshTuitionVars } from "@/lib/email/pricing-vars";
 
 /**
  * The send path everything user-facing goes through.
@@ -395,6 +396,18 @@ export async function sendQueuedRow(
     let from: string | undefined;
     let replyTo: string | undefined;
 
+    // Resolve tuition tags against the CURRENT price, not the value frozen when
+    // this row was queued. A discount changed at /admin/pricing after a drip
+    // was scheduled reaches the mail that hasn't left yet — the same contract
+    // the template copy already has (it's re-fetched here too). A receipt's
+    // paid amount is preserved: refreshTuitionVars only rewrites `amount` for a
+    // still-unpaid applicant. See lib/email/pricing-vars.
+    const vars = await refreshTuitionVars(
+      admin,
+      row.variables ?? {},
+      row.user_id,
+    );
+
     if (row.template_id) {
       let tpl: TemplateRow | null;
       if (templateCache?.has(row.template_id)) {
@@ -410,7 +423,7 @@ export async function sendQueuedRow(
         });
         return false;
       }
-      const rendered = renderTemplate(toStoredTemplate(tpl), row.variables ?? {});
+      const rendered = renderTemplate(toStoredTemplate(tpl), vars);
       if (rendered.missing.length > 0) {
         await finish(admin, row.id, {
           status: "failed",
@@ -448,7 +461,7 @@ export async function sendQueuedRow(
         const adhoc = renderAdHoc({
           subject: row.subject_override,
           bodyHtml: row.html_override,
-          values: row.variables ?? {},
+          values: vars,
         });
         subject = adhoc.subject;
         html = adhoc.html;

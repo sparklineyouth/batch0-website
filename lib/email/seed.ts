@@ -159,14 +159,19 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       "Not sent by the app — build a drip on the “Application accepted” event and use this as a later step.",
     category: "lifecycle",
     subject: "Your batch0 seat is still open, {{first_name}}",
-    preheader: "A quick reminder to finish enrolling.",
+    preheader: "Pay {{amount}} to lock in your seat.",
     body_html:
-      "<p>Hi {{first_name}},</p><p>Your seat in <strong>{{cohort_name}}</strong> is still held, but it isn't locked in until the enrollment fee is paid. It takes a minute.</p><p>If something's in the way — timing, cost, anything — reply to this email and tell us. We'd rather sort it out than lose you.</p>",
+      "<p>Hi {{first_name}},</p><p>Your seat in <strong>{{cohort_name}}</strong> is still held, but it isn't locked in until the <strong>{{amount}}</strong> enrollment fee is paid. It takes a minute.</p><p>If something's in the way — timing, cost, anything — reply to this email and tell us. We'd rather sort it out than lose you.</p>",
     cta_label: "Finish enrolling",
     cta_url: "{{site_url}}/dashboard/accepted",
+    // `amount` is the live tuition, resolved when the nudge sends (not when the
+    // drip was queued), so it always quotes the current price — see
+    // lib/email/pricing-vars. Not required: if a recipient somehow has nothing
+    // to quote, the sentence still reads without a broken tag.
     variables: [
       ...COMMON,
       { key: "cohort_name", label: "Cohort name", example: "Cohort 1" },
+      { key: "amount", label: "Enrollment fee", example: "$117" },
     ],
   },
   {
@@ -206,16 +211,20 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     description:
       "The tuition-sale invite. Send it from the composer to a hand-picked segment before the September 9 deadline — the copy leans on the deadline, so retire it once the promo ends (see lib/promo.ts). Prices and the deadline are variables so they can't drift from what the site charges.",
     category: "broadcast",
-    subject: "{{first_name}}, batch0 tuition is 10% off — through {{deadline}}",
+    subject: "{{first_name}}, batch0 tuition is {{promo_percent}}% off — through {{deadline}}",
     preheader: "Enroll before {{deadline}} and pay {{sale_price}}, not {{list_price}}.",
     body_html:
-      "<h1>10% off, but not for long.</h1><p>Hi {{first_name}},</p><p>For a few more days, a seat at batch0 is <strong>{{sale_price}}</strong> instead of <strong>{{list_price}}</strong> — 10% off. It's the lowest tuition has ever been, and it ends <strong>{{deadline}}</strong>.</p><p>batch0 is a live, online startup accelerator built for high schoolers: you build a real company alongside a cohort, with mentors, weekly sessions, and a Demo Day at the end. Applying is free, and we never take equity — the tuition is the whole cost.</p><p>If you've been on the fence, this is the moment to jump. Lock in the 10% before {{deadline}} and you're set.</p>",
-    cta_label: "Claim 10% off",
+      "<h1>{{promo_percent}}% off, but not for long.</h1><p>Hi {{first_name}},</p><p>For a few more days, a seat at batch0 is <strong>{{sale_price}}</strong> instead of <strong>{{list_price}}</strong> — {{promo_percent}}% off. It's the lowest tuition has ever been, and it ends <strong>{{deadline}}</strong>.</p><p>batch0 is a live, online startup accelerator built for high schoolers: you build a real company alongside a cohort, with mentors, weekly sessions, and a Demo Day at the end. Applying is free, and we never take equity — the tuition is the whole cost.</p><p>If you've been on the fence, this is the moment to jump. Lock in the {{promo_percent}}% before {{deadline}} and you're set.</p>",
+    cta_label: "Claim {{promo_percent}}% off",
     cta_url: "{{site_url}}/apply",
+    // Percent, prices, and deadline are all resolved from the current promo at
+    // send time (lib/email/pricing-vars), so the copy can never advertise a
+    // discount the site isn't running.
     variables: [
       ...COMMON,
+      { key: "promo_percent", label: "Discount percent", example: "10" },
       { key: "sale_price", label: "Sale price", example: "$117" },
-      { key: "list_price", label: "List price", example: "$129.99" },
+      { key: "list_price", label: "List price", example: "$130" },
       { key: "deadline", label: "Offer deadline", example: "September 9" },
     ],
   },

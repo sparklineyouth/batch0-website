@@ -15,6 +15,7 @@ import { sendEmail, sendEmailBatch } from "@/lib/email/send";
 import { getTemplateById, toStoredTemplate } from "@/lib/email/store";
 import type { StoredTemplate } from "@/lib/email/render";
 import { baseVariables, enqueueEmail } from "@/lib/email/dispatch";
+import { currentPromoVars } from "@/lib/email/pricing-vars";
 import { resolveAudience, audienceAddresses, MAX_AUDIENCE } from "@/lib/email/audience";
 import { isAudienceSegment } from "@/lib/email/catalog";
 import { exampleValues, extractTags } from "@/lib/email/vars";
@@ -174,7 +175,14 @@ async function renderFor(
    */
   preloaded?: StoredTemplate | null,
 ) {
-  const vars = baseVariables({ email: person.email, name: person.name });
+  // Merge the current tuition tags so a price the copy quotes (a promo
+  // broadcast's {{sale_price}}, say) is the number the site charges right now,
+  // not one hand-typed into the draft. Recipient-independent, so the per-person
+  // loop stays cheap — getSiteConfig is request-memoized.
+  const vars = {
+    ...(await currentPromoVars()),
+    ...baseVariables({ email: person.email, name: person.name }),
+  };
   if (draft.templateId) {
     const stored = preloaded ?? (await loadStored(draft.templateId));
     if (!stored) return null;
