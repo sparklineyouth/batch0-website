@@ -5,6 +5,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/scheduled-accepts",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/weekly-digest",
       "schedule": "0 14 * * 1"
     },

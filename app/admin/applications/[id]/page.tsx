@@ -263,6 +263,8 @@ export default async function AdminApplicationDetail({
             nextStep: (app as any).feedback_next_step ?? "",
             secondReview: (app as any).feedback_second_review ?? null,
           }}
+          scheduledAcceptAt={(app as any).scheduled_accept_at ?? null}
+          scheduledAcceptNotes={(app as any).scheduled_accept_notes ?? null}
         />
       </Card>
 

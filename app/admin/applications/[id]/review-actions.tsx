@@ -2,13 +2,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Textarea, Label } from "@/components/ui/input";
+import { Input, Textarea, Label } from "@/components/ui/input";
 import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import {
   decideApplication,
   reopenApplication,
   waiveApplicationFee,
+  scheduleAcceptance,
+  cancelScheduledAcceptance,
 } from "./actions";
 import { getActionError } from "@/lib/action-error";
 
@@ -51,6 +53,8 @@ export function ReviewActions({
   priceLabel = "$130",
   passHolder = false,
   initialFeedback,
+  scheduledAcceptAt = null,
+  scheduledAcceptNotes = null,
 }: {
   applicationId: string;
   status: string;
@@ -66,9 +70,17 @@ export function ReviewActions({
     nextStep: string;
     secondReview: boolean | null;
   };
+  /** A parked acceptance (migration 0062): UTC ISO timestamp of when the
+   *  system will auto-accept, and the notes it will send. Null when nothing
+   *  is scheduled. */
+  scheduledAcceptAt?: string | null;
+  scheduledAcceptNotes?: string | null;
 }) {
   const router = useRouter();
-  const [notes, setNotes] = useState(initialNotes);
+  // While an acceptance is parked, review_notes is still empty (we haven't
+  // decided yet) — the notes live in scheduled_accept_notes. Seed the textarea
+  // from those so "with the notes below" reads true and a reschedule keeps them.
+  const [notes, setNotes] = useState(initialNotes || scheduledAcceptNotes || "");
   const [strongest, setStrongest] = useState(initialFeedback?.strongest ?? "");
   const [missing, setMissing] = useState(initialFeedback?.missing ?? "");
   const [nextStep, setNextStep] = useState(initialFeedback?.nextStep ?? "");
@@ -79,6 +91,12 @@ export function ReviewActions({
   const [error, setError] = useState<string | undefined>();
   const [confirmWaive, setConfirmWaive] = useState(false);
   const [waiveReason, setWaiveReason] = useState("");
+  // Whether the "schedule for later" row is expanded, and the datetime-local
+  // value the reviewer picked. datetime-local is a naive "2026-09-10T06:00"
+  // string in the browser's OWN timezone — we resolve it to an absolute UTC
+  // instant before sending, so 6am means 6am where the reviewer sits.
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState("");
 
   function applyTemplate(body: string) {
     // If the textarea is empty, drop the template in. Otherwise append on
@@ -99,6 +117,47 @@ export function ReviewActions({
             ? { strongest, missing, nextStep, secondReview }
             : undefined,
         );
+        router.refresh();
+      } catch (e: any) {
+        setError(getActionError(e));
+      }
+    });
+  }
+
+  function schedule() {
+    setError(undefined);
+    if (!scheduleAt) {
+      setError("Pick a date and time to auto-accept.");
+      return;
+    }
+    const picked = new Date(scheduleAt);
+    if (Number.isNaN(picked.getTime())) {
+      setError("That date and time didn't parse — pick again.");
+      return;
+    }
+    if (picked.getTime() <= Date.now()) {
+      setError("Pick a time in the future — to accept now, use Accept.");
+      return;
+    }
+    // Send an absolute UTC instant, resolved from the reviewer's local wall
+    // clock, so the server (which runs in UTC) fires at the intended moment.
+    const iso = picked.toISOString();
+    start(async () => {
+      try {
+        await scheduleAcceptance(applicationId, iso, notes);
+        setShowSchedule(false);
+        router.refresh();
+      } catch (e: any) {
+        setError(getActionError(e));
+      }
+    });
+  }
+
+  function cancelSchedule() {
+    setError(undefined);
+    start(async () => {
+      try {
+        await cancelScheduledAcceptance(applicationId);
         router.refresh();
       } catch (e: any) {
         setError(getActionError(e));
@@ -139,6 +198,25 @@ export function ReviewActions({
   const canWaive =
     !feeWaived &&
     (status === "accepted" || status === "submitted" || status === "draft");
+
+  // A parked acceptance only makes sense while the app is still undecided.
+  const hasSchedule = !!scheduledAcceptAt && !decided;
+  const scheduledLabel = scheduledAcceptAt
+    ? new Date(scheduledAcceptAt).toLocaleString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  // Floor "now" to the minute for the input's min= so the picker can't offer a
+  // moment already in the past by the time it renders.
+  const minLocal = (() => {
+    const d = new Date(Date.now() + 60_000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
 
   return (
     <div className="space-y-4">
@@ -220,6 +298,25 @@ export function ReviewActions({
         </div>
       )}
 
+      {/* A parked acceptance: shown while the app is still undecided so the
+          reviewer can see it's queued and back out. The cron fires it. */}
+      {hasSchedule && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/40 bg-amber-400/[0.06] px-3 py-2.5">
+          <p className="text-sm text-ink-soft">
+            <span aria-hidden>⏰</span> Auto-accepts{" "}
+            <strong className="text-ink">{scheduledLabel}</strong>
+            {scheduledAcceptNotes ? " — with the notes below." : "."}
+          </p>
+          <Button
+            variant="secondary"
+            onClick={cancelSchedule}
+            disabled={pending}
+          >
+            Cancel schedule
+          </Button>
+        </div>
+      )}
+
       {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
       <div className="flex flex-wrap gap-2">
         {!decided && (
@@ -244,6 +341,13 @@ export function ReviewActions({
               disabled={pending}
             >
               Reject
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setShowSchedule((s) => !s)}
+              disabled={pending}
+            >
+              {hasSchedule ? "Reschedule accept" : "Schedule accept…"}
             </Button>
           </>
         )}
@@ -274,6 +378,44 @@ export function ReviewActions({
           </p>
         )}
       </div>
+
+      {!decided && showSchedule && (
+        <div className="space-y-3 rounded-lg border border-line bg-wash p-4">
+          <div>
+            <p className="text-sm font-semibold text-ink">
+              Accept automatically, later
+            </p>
+            <p className="mt-0.5 text-xs text-ink-soft">
+              The system accepts this application at the time you pick, sending
+              the notes above. Until then it stays undecided, and a manual
+              decision cancels the schedule.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="schedule-at">Accept at (your local time)</Label>
+            <Input
+              id="schedule-at"
+              type="datetime-local"
+              min={minLocal}
+              value={scheduleAt}
+              disabled={pending}
+              onChange={(e) => setScheduleAt(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={schedule} disabled={pending}>
+              {pending ? "…" : "Schedule accept"}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setShowSchedule(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={confirmWaive}
