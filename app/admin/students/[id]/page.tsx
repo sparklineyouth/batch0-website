@@ -9,6 +9,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { RoleSelect } from "../role-select";
 import { ManagePanel } from "./manage-panel";
 import { discordAvatarUrl } from "@/lib/discord";
+import { displayEmail } from "@/lib/placeholder-email";
 import { getSiteConfig } from "@/lib/site-config";
 import { Meter } from "@/components/admin/charts";
 import { getStudentProgress } from "@/lib/progress";
@@ -139,9 +140,19 @@ export default async function AdminStudentDetail({
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
             {profile.full_name || "—"}
           </h1>
-          <p className="mt-1 text-sm text-ink-soft">{profile.email}</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            {displayEmail(profile.email) ?? (
+              <span className="text-ink-faint">No email on file</span>
+            )}
+          </p>
           <p className="mt-1 text-xs text-ink-faint">
             Joined <LocalTime value={profile.created_at} mode="date" />
+            {profile.grade && (
+              <>
+                {" · "}Grade{" "}
+                <span className="text-ink-soft">{profile.grade}</span>
+              </>
+            )}
             {referralsEnabled && (
               <>
                 {" · "}Referral code{" "}

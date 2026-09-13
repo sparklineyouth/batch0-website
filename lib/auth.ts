@@ -146,6 +146,7 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
     email: user.email ?? "",
     full_name: (user.user_metadata?.full_name as string | undefined) ?? null,
     role: "student",
+    grade: null,
     stripe_customer_id: null,
     referral_code: null,
     ai_context: null,

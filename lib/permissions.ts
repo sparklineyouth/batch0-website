@@ -501,6 +501,9 @@ export function canAccessAdmin(caps: Capabilities | null): boolean {
 export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ["/admin/applications", "applications.view"],
   ["/admin/application-questions", "applications.form"],
+  // More specific than /admin/students, so it wins the longest-prefix match:
+  // creating accounts + enrolments needs people.manage, not just people.view.
+  ["/admin/students/new", "people.manage"],
   ["/admin/students", "people.view"],
   ["/admin/progress", "people.view"],
   ["/admin/mentors", "mentors.manage"],
