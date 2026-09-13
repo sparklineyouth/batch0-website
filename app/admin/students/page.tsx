@@ -6,7 +6,9 @@ import { getAllRoles } from "@/lib/roles";
 import { can, covers } from "@/lib/permissions";
 import { StudentsBulkList } from "./bulk-list";
 import { PeopleSearch } from "./people-search";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ButtonLink } from "@/components/ui/button";
+import { isPlaceholderEmail } from "@/lib/placeholder-email";
+import { ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "People · Admin" };
@@ -154,12 +156,20 @@ export default async function AdminStudentsPage({
             )}
           </p>
         </div>
-        <a
-          href="/api/admin/export/people"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink hover:border-ink/30 hover:bg-ink/[0.04]"
-        >
-          Export CSV
-        </a>
+        <div className="flex items-center gap-2">
+          {can(caps, "people.manage") && (
+            <ButtonLink href="/admin/students/new" size="sm">
+              <UserPlus className="h-4 w-4" />
+              Add a person
+            </ButtonLink>
+          )}
+          <a
+            href="/api/admin/export/people"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-wash px-3 py-1.5 text-xs font-medium text-ink hover:border-ink/30 hover:bg-ink/[0.04]"
+          >
+            Export CSV
+          </a>
+        </div>
       </div>
 
       {/* Search by name or email. Server-side (DB ilike) so it spans the whole
@@ -235,7 +245,9 @@ export default async function AdminStudentsPage({
               : enrollment?.cohort;
             return {
               id: p.id,
-              email: p.email,
+              // Placeholder addresses (people added without an email) are
+              // internal plumbing — never show them.
+              email: isPlaceholderEmail(p.email) ? "" : p.email,
               full_name: p.full_name,
               role: p.role as Role,
               created_at: p.created_at,

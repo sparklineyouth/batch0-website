@@ -135,7 +135,9 @@ export function StudentsBulkList({
               )}
             </button>
             <div className="truncate text-ink">{p.full_name || "—"}</div>
-            <div className="truncate text-ink-soft">{p.email}</div>
+            <div className="truncate text-ink-soft">
+              {p.email || <span className="text-ink-faint">—</span>}
+            </div>
             <div>
               {canChangeRoles ? (
                 <RoleSelect

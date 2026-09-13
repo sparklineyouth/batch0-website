@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { viewerCan } from "@/lib/auth";
 import { toCsv, csvResponse } from "@/lib/csv";
+import { displayEmail } from "@/lib/placeholder-email";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET() {
   const rich = await admin
     .from("profiles")
     .select(
-      "id, email, full_name, role, referral_code, discord_user_id, discord_username, created_at, applications!applications_user_id_fkey(status), enrollments!enrollments_user_id_fkey(cohort:cohorts(name))",
+      "id, email, full_name, grade, role, referral_code, discord_user_id, discord_username, created_at, applications!applications_user_id_fkey(status), enrollments!enrollments_user_id_fkey(cohort:cohorts(name))",
     )
     .order("created_at", { ascending: false });
   if (rich.error && (rich.error as any).code === "42703") {
@@ -41,8 +42,9 @@ export async function GET() {
       : null;
     return [
       p.id,
-      p.email,
+      displayEmail(p.email) ?? "",
       p.full_name ?? "",
+      p.grade ?? "",
       p.role,
       p.referral_code ?? "",
       p.discord_user_id ?? "",
@@ -58,6 +60,7 @@ export async function GET() {
       "id",
       "email",
       "full_name",
+      "grade",
       "role",
       "referral_code",
       "discord_user_id",

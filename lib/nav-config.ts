@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Inbox,
   Users,
+  UserPlus,
   Calendar,
   Briefcase,
   BookOpen,
@@ -211,6 +212,12 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "People",
         icon: Users,
         perm: "people.view",
+      },
+      {
+        href: "/admin/students/new",
+        label: "Add a person",
+        icon: UserPlus,
+        perm: "people.manage",
       },
       {
         href: "/admin/mentors",

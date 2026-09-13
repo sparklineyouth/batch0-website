@@ -42,6 +42,8 @@ export type Profile = {
   email: string;
   full_name: string | null;
   role: Role;
+  /** School grade, free text (e.g. "10th"). Captured for admin-added people. */
+  grade: string | null;
   stripe_customer_id: string | null;
   referral_code: string | null;
   ai_context: Record<string, any> | null;
