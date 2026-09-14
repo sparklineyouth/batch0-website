@@ -257,6 +257,26 @@ ${env.siteUrl}`,
   }),
 
   /**
+   * "We need your phone number" — sent to students who were accepted before
+   * the application form asked for one. Points them at /dashboard/phone, where
+   * they add it (see app/dashboard/phone). Triggered by an admin from
+   * /admin/email/phone-request; nothing hangs off an automation event, so this
+   * is a plain compiled template with no catalog entry.
+   */
+  collectPhone: (args: { name?: string | null }) => ({
+    subject: "One quick thing — add your phone number",
+    html: layout({
+      preheader: "We need a phone number to reach you about the program.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">Add your phone number</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — you're in, and we're getting ready for the cohort. We collect a phone number for everyone so we can reach you about kickoff logistics and anything time-sensitive.</p>
+        <p>It takes a few seconds — just open the link below and enter your number.</p>
+      `,
+      cta: { url: `${env.siteUrl}/dashboard/phone`, label: "Add your phone number" },
+    }),
+  }),
+
+  /**
    * "Your Founder Pass feedback is ready" — sent when the team delivers a
    * feedback-credit request. The written feedback lives on the pass page (it's
    * often long and formatted), so this just points the holder to it.

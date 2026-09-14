@@ -16,6 +16,7 @@ import {
   type MergedQuestion,
 } from "@/lib/application-questions";
 import { REF_STORAGE_KEY, readRefFromLocation } from "@/lib/referral-code";
+import { isValidPhone } from "@/lib/phone";
 
 const STEPS = [
   { id: 1, title: "About you" },
@@ -37,6 +38,7 @@ type FormState = {
   school: string;
   city: string;
   country: string;
+  phone: string;
   parent_email: string;
   why_join: string;
   startup_idea: string;
@@ -98,6 +100,14 @@ function validateStep(
     if (!form.age) errs.age = "Required";
     else if (Number.isNaN(ageNum) || ageNum < 10 || ageNum > 25) {
       errs.age = "Enter a valid age (10–25)";
+    }
+    // Phone is a required core (never hidden, always required) — mirror the
+    // server SubmitSchema so the two agree on what a valid number is.
+    if (isVisible(cfg, "phone")) {
+      if (!form.phone.trim()) errs.phone = "Required";
+      else if (!isValidPhone(form.phone)) {
+        errs.phone = "Enter a valid phone number";
+      }
     }
     // Parent/guardian email is required for under-18 applicants —
     // mirrors the SubmitSchema rule and satisfies the parental-consent
@@ -210,6 +220,7 @@ export function ApplicationForm({
     school: defaults?.school ?? "",
     city: defaults?.city ?? "",
     country: defaults?.country ?? "",
+    phone: defaults?.phone ?? "",
     parent_email: defaults?.parent_email ?? "",
     why_join: defaults?.why_join ?? "",
     startup_idea: defaults?.startup_idea ?? "",
@@ -304,6 +315,7 @@ export function ApplicationForm({
     form.school,
     form.city,
     form.country,
+    form.phone,
     form.parent_email,
     form.why_join,
     form.startup_idea,
@@ -694,6 +706,30 @@ export function ApplicationForm({
               />
               {cfg.country.help && (
                 <p className="mt-1 text-xs text-ink-soft">{cfg.country.help}</p>
+              )}
+            </div>
+          )}
+          {show("phone") && (
+            <div className="md:col-span-2">
+              <Label htmlFor="phone" required={isRequired(cfg, "phone")}>
+                {cfg.phone.label} {reqMark("phone")}
+              </Label>
+              <Input
+                id="phone"
+                className={FIELD_CLASS}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                error={errFor("phone")}
+                value={form.phone}
+                onChange={(e) => set("phone", e.target.value)}
+                placeholder={cfg.phone.placeholder || undefined}
+                required={isRequired(cfg, "phone")}
+                aria-required={isRequired(cfg, "phone") || undefined}
+              />
+              <FieldError id="phone-error">{errFor("phone")}</FieldError>
+              {cfg.phone.help && (
+                <p className="mt-1 text-xs text-ink-soft">{cfg.phone.help}</p>
               )}
             </div>
           )}
@@ -1108,6 +1144,9 @@ export function ApplicationForm({
                   .filter(Boolean)
                   .join(", ")}
               />
+            )}
+            {show("phone") && (
+              <ReviewRow label={cfg.phone.label} value={form.phone} />
             )}
             {show("parent_email") && (
               <ReviewRow

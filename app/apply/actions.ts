@@ -12,6 +12,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { canBypassClosedApplications, hasFounderPass } from "@/lib/founder-pass";
 import { autoAdmitOnSubmit } from "@/lib/admissions";
 import { planReapply, selectCohortId } from "@/lib/reapply";
+import { isValidPhone, PHONE_MAX_LENGTH } from "@/lib/phone";
 import {
   postChannelMessage,
   applicationEmbed,
@@ -44,6 +45,12 @@ const SubmitSchema = z
     school: optionalString(160),
     city: optionalString(120),
     country: optionalString(120),
+    phone: z
+      .string()
+      .trim()
+      .min(1, "Required")
+      .max(PHONE_MAX_LENGTH)
+      .refine(isValidPhone, "Enter a valid phone number"),
     parent_email: z
       .string()
       .trim()
@@ -107,6 +114,7 @@ const DraftSchema = z.object({
   school: optionalString(160),
   city: optionalString(120),
   country: optionalString(120),
+  phone: optionalString(PHONE_MAX_LENGTH),
   parent_email: z
     .string()
     .trim()
@@ -304,6 +312,7 @@ async function upsertApplication(
     school: data.school || null,
     city: data.city || null,
     country: data.country || null,
+    phone: data.phone || null,
     parent_email: data.parent_email || null,
     why_join: data.why_join || null,
     startup_idea: data.startup_idea || null,

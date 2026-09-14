@@ -527,6 +527,7 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/interventions", "interventions.manage"],
   ["/admin/ai-usage", "ai_usage.view"],
   ["/admin/email/blast", "email.send"],
+  ["/admin/email/phone-request", "email.send"],
   ["/admin/email/templates", "email.templates"],
   ["/admin/email/automations", "email.automate"],
   ["/admin/email/compose", "email.send"],

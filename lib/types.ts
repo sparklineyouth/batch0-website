@@ -379,6 +379,7 @@ export type Application = {
   school: string | null;
   city: string | null;
   country: string | null;
+  phone: string | null;
   parent_email: string | null;
   why_join: string | null;
   startup_idea: string | null;

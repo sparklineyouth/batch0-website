@@ -137,6 +137,7 @@ export default async function AdminApplicationDetail({
           <Row label="Grade" value={app.grade} />
           <Row label="School" value={app.school} />
           <Row label="Location" value={[app.city, app.country].filter(Boolean).join(", ")} />
+          <Row label="Phone" value={app.phone} />
           <Row label="Parent email" value={app.parent_email} />
           <Row label="Hours/week" value={app.hours_per_week?.toString()} />
           <Row label="Team size" value={teamSizeAdminLabel(app.team_size)} />
