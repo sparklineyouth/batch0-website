@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: May 12, 2026
+        Last updated: September 13, 2026
       </p>
 
       <p>
@@ -29,7 +29,14 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Application info:</strong> what you submit on
-          /apply — age, grade, school, parent email, links.
+          /apply — age, grade, school, phone number, parent email, links.
+        </li>
+        <li>
+          <strong>Contact info:</strong> a phone number, so we can reach you
+          about your application and time-sensitive program logistics (e.g.
+          kickoff). Accepted students who applied before we collected it are
+          asked for it separately. We use it only to run the program — we don't
+          use it for marketing, and we never sell it.
         </li>
         <li>
           <strong>Payment info:</strong> we don't store your card. Stripe
@@ -55,6 +62,10 @@ export default function PrivacyPage() {
       <ul>
         <li>To run the application + payment + course flow.</li>
         <li>To send transactional emails about your account and the program.</li>
+        <li>
+          To contact you — by email or phone — about your application and
+          time-sensitive program logistics.
+        </li>
         <li>To improve the platform and protect against abuse.</li>
       </ul>
 
@@ -115,7 +126,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-05-12",
+          dateModified: "2026-09-13",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />
