@@ -49,6 +49,18 @@ node mcp/import-curriculum.mjs --apply  # apply the reviewed package
 
 Use a new versioned asset path when changing a published file. The MCP never overwrites an existing private object.
 
+## Approved session provisioning
+
+The approved Fall schedule is published: kickoff, eight subsequent Monday workshops, nine Thursday office hours, and the Friday Demo Day. The private `approved-schedule.md` and `approved-schedule.ics` exports reflect all 19 database records. Students use Events and its individual calendar downloads.
+
+`scripts/prepare-course-schedule.mts` previews by default. Applying requires both `--approved` and `--demo-format=staff-showcase`, plus the private approved proposal and existing environment configuration. It validates dates against the cohort and modules, handles Eastern daylight-saving time, refuses conflicting identities, creates private expiring rooms, writes before-images and receipts, and verifies the saved records. It sends no messages. A repeat run against the published schedule created zero rooms and changed zero events.
+
+```sh
+node scripts/prepare-course-schedule.mts --self-test
+node --env-file=.env.local scripts/prepare-course-schedule.mts
+node --env-file=.env.local scripts/prepare-course-schedule.mts --apply --approved --demo-format=staff-showcase
+```
+
 The original Week 1 module ID is `8f59cc82-e318-4165-90a0-5901b3d1c036`; its five lesson IDs are preserved to retain student progress and comments. A fresh MCP read on September 14 confirmed those lessons had no existing video URLs, video paths, or materials. The package intentionally has no fabricated video metadata: these are complete reading/workshop lessons. The main app must render Markdown descriptions and offer completion without an empty “video not uploaded” panel.
 
 ## Instructional boundaries
