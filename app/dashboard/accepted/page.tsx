@@ -32,7 +32,7 @@ export const metadata = { title: "You're in · batch0" };
  */
 export default async function AcceptedPage() {
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");
 
@@ -61,7 +61,7 @@ export default async function AcceptedPage() {
   // Mirror the checkout math exactly (regional price, then the founder-pass
   // discount) so the number here is the number Stripe charges.
   const basePriceCents = listPriceCents(app.cohort?.price_cents ?? 13000);
-  const country = getCountryFromHeaders(headers());
+  const country = getCountryFromHeaders(await headers());
   const regionalCents = getRegionalPrice(basePriceCents, country).amountCents;
   // The site-wide promotion, applied before the pass discount — the same order
   // app/api/stripe/checkout uses. Without it this page quotes list price while

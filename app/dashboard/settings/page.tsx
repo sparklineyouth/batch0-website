@@ -43,13 +43,14 @@ const STATUS_COPY: Record<string, string> = {
     "Discord unlinked here, but we couldn't reach Discord to take your batch0 roles off your account — they may still show in the server. Leaving the server clears them, or email hello@batch0.org and we'll do it.",
 };
 
-export default async function SettingsPage({
-  searchParams,
-}: {
-  searchParams: { discord?: string; discord_error?: string };
-}) {
+export default async function SettingsPage(
+  props: {
+    searchParams: Promise<{ discord?: string; discord_error?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
   // Profile comes from the request-cached getProfile() the layout already
   // resolved — it carries every column this page reads.
   const [profile, { data: settingRows }, discordEnabled] = await Promise.all([

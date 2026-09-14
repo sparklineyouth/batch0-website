@@ -141,7 +141,7 @@ export async function sendSettingsTest(): Promise<{
   message: string;
 }> {
   await assertPermission("email.settings");
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

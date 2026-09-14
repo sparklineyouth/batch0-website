@@ -341,7 +341,7 @@ export async function sendTestTemplate(
 ): Promise<{ ok: boolean; message: string }> {
   await assertPermission("email.templates");
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

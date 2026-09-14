@@ -6,11 +6,12 @@ import { ResourceForm } from "../resource-form";
 
 export const metadata = { title: "Edit resource · Admin" };
 
-export default async function EditResourcePage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function EditResourcePage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
   const [{ data: resource }, { data: cohorts }] = await Promise.all([
     admin

@@ -21,11 +21,12 @@ type CohortRow = {
   status: string | null;
 };
 
-export default async function CohortKickoffPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function CohortKickoffPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   // `cohorts.manage` — the same permission the landing editor and the cohort
   // list use. ADMIN_ROUTE_PERMISSIONS already maps the /admin/cohorts prefix to
   // it, so the middleware and the admin layout gate this route too, and no new

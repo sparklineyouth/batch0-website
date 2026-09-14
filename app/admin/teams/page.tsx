@@ -5,11 +5,12 @@ import { Plus, Globe, EyeOff } from "lucide-react";
 
 export const metadata = { title: "Teams · Admin" };
 
-export default async function AdminTeamsPage({
-  searchParams,
-}: {
-  searchParams: { cohort?: string };
-}) {
+export default async function AdminTeamsPage(
+  props: {
+    searchParams: Promise<{ cohort?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const admin = createAdminClient();
   const cohortFilter = searchParams.cohort ?? "all";
 

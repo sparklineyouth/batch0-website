@@ -61,11 +61,12 @@ function buildQuery(
   return s ? `/admin/audit?${s}` : "/admin/audit";
 }
 
-export default async function AuditLogPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function AuditLogPage(
+  props: {
+    searchParams: Promise<SearchParams>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const admin = createAdminClient();
 
   const action = searchParams.action?.trim() || undefined;

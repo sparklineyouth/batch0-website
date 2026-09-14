@@ -24,11 +24,12 @@ const AREA_ICON = {
  * this page exists to answer is "who has stalled?" — not "who is doing well".
  * A roster sorted alphabetically buries exactly the rows worth acting on.
  */
-export default async function AdminProgressPage({
-  searchParams,
-}: {
-  searchParams: { cohort?: string };
-}) {
+export default async function AdminProgressPage(
+  props: {
+    searchParams: Promise<{ cohort?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const admin = createAdminClient();
 
   const [{ data: cohorts }, { data: enrollments }] = await Promise.all([

@@ -52,11 +52,12 @@ async function devRoom() {
   return cached;
 }
 
-export default async function DevLiveRoomPage({
-  searchParams,
-}: {
-  searchParams: { role?: string };
-}) {
+export default async function DevLiveRoomPage(
+  props: {
+    searchParams: Promise<{ role?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   if (process.env.VERCEL_ENV === "production") notFound();
 
   if (!dailyConfigured()) {

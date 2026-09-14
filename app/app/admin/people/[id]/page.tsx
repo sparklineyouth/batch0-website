@@ -27,11 +27,12 @@ export const dynamic = "force-dynamic";
  * the time-sensitive decisions — application calls and announcements — not
  * every destructive button reachable from a thumb.
  */
-export default async function AdminAppPerson({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function AdminAppPerson(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
   const weekStart = isoWeekStart();
 

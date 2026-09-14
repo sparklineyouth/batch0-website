@@ -13,7 +13,7 @@ export async function postReceipt(input: {
   body: string;
   linkUrl: string | null;
 }): Promise<void> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -69,7 +69,7 @@ export async function postReceipt(input: {
 
 /** Delete a receipt — RLS allows your own rows, and admins for moderation. */
 export async function deleteReceipt(id: string): Promise<void> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

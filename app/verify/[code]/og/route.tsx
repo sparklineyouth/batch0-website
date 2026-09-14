@@ -9,10 +9,8 @@ export const runtime = "nodejs";
  * tooling (LinkedIn, etc.) when the verify URL is unfurled — and serves
  * as the canonical PNG of the certificate.
  */
-export async function GET(
-  _req: Request,
-  { params }: { params: { code: string } },
-) {
+export async function GET(_req: Request, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
   const admin = createAdminClient();
   const { data: cert } = await admin
     .from("certificates")

@@ -40,11 +40,12 @@ export function generateStaticParams() {
 
 export const dynamicParams = false;
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { category: string };
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ category: string }>;
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const category = categoryFromSlug(params.category);
   if (!category) return {};
   const copy = CATEGORY_COPY[category];
@@ -70,11 +71,12 @@ export async function generateMetadata({
   };
 }
 
-export default async function BlogCategoryPage({
-  params,
-}: {
-  params: { category: string };
-}) {
+export default async function BlogCategoryPage(
+  props: {
+    params: Promise<{ category: string }>;
+  }
+) {
+  const params = await props.params;
   const category = categoryFromSlug(params.category);
   if (!category) notFound();
 

@@ -15,7 +15,7 @@ export type CheckinInput = {
 };
 
 export async function submitCheckin(input: CheckinInput) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -134,7 +134,7 @@ export async function postCheckinFeedback(
   checkinId: string,
   body: string,
 ): Promise<void> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

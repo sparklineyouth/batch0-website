@@ -8,11 +8,12 @@ import type { Category, AuthorKey } from "@/lib/blog-shared";
 
 export const metadata = { title: "Edit post · Admin" };
 
-export default async function EditBlogPostPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function EditBlogPostPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
   const { data: post } = await admin
     .from("blog_posts")

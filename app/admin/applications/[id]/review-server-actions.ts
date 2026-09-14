@@ -25,7 +25,7 @@ export type ReviewInput = {
 
 export async function saveMyReview(input: ReviewInput) {
   await assertPermission("applications.view");
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

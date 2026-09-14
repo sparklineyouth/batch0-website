@@ -23,11 +23,12 @@ export const metadata = {
 // viewer.
 export const dynamic = "force-dynamic";
 
-export default async function EventLivePage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function EventLivePage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   await requireUser();
 
   // Who is asking and what they're asking for are independent questions, so
@@ -43,7 +44,7 @@ export default async function EventLivePage({
   // answer means the join gate and the visibility gate cannot disagree. A
   // viewer who isn't allowed gets no row, and therefore a 404 rather than a
   // hint that the event exists.
-  const supabase = createClient();
+  const supabase = await createClient();
   const [profile, caps, { data: event }] = await Promise.all([
     getProfile(),
     getCapabilities(),

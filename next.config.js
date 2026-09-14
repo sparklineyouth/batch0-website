@@ -11,15 +11,15 @@ const nextConfig = {
       dynamic: 0,
       static: 30,
     },
-    // The OG routes read these .ttf files from disk at runtime (lib/og-fonts).
-    // Tracing can't see a runtime readFile path, so the fonts would be left
-    // out of the serverless bundle and every social card would 500 in prod
-    // while working fine locally. Name them explicitly.
-    outputFileTracingIncludes: {
-      "/opengraph-image": ["./lib/og-fonts/**"],
-      "/blog/[slug]/opengraph-image": ["./lib/og-fonts/**"],
-      "/verify/[code]/og": ["./lib/og-fonts/**"],
-    },
+  },
+  // These routes read fonts from disk at runtime. Next 15 makes tracing
+  // configuration stable at the top level; leaving it in experimental
+  // would silently omit fonts from deployment bundles.
+  outputFileTracingIncludes: {
+    "/opengraph-image": ["./lib/og-fonts/**"],
+    "/start/opengraph-image": ["./lib/og-fonts/**"],
+    "/blog/[slug]/opengraph-image": ["./lib/og-fonts/**"],
+    "/verify/[code]/og": ["./lib/og-fonts/**"],
   },
   // Brand consolidation: batch0.org (apex) is canonical. Everything else the
   // project answers on folds into it, preserving the path so old deep links

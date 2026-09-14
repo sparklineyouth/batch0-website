@@ -16,11 +16,12 @@ import { ArrowLeft } from "lucide-react";
 
 export const metadata = { title: "Team · Investor" };
 
-export default async function InvestorTeamDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function InvestorTeamDetailPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const profile = await requireInvestor();
   const admin = createAdminClient();
 

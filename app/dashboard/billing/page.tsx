@@ -18,17 +18,18 @@ function fmtMoney(cents: number, currency = "usd") {
   }).format(cents / 100);
 }
 
-export default async function BillingPage({
-  searchParams,
-}: {
-  searchParams: {
-    charge_paid?: string;
-    charge_canceled?: string;
-    session_id?: string;
-  };
-}) {
+export default async function BillingPage(
+  props: {
+    searchParams: Promise<{
+      charge_paid?: string;
+      charge_canceled?: string;
+      session_id?: string;
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Settle a just-completed Checkout against Stripe before reading the
   // tables below, so a charge paid seconds ago shows as paid rather than

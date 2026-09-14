@@ -16,7 +16,7 @@ const VALID: InvestorInterestLevel[] = [
 
 async function ensureInvestorOrAdmin() {
   const { userId } = await assertSelf();
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")

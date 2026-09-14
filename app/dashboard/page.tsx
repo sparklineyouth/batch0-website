@@ -29,7 +29,7 @@ import { getSiteConfig } from "@/lib/site-config";
 
 export default async function DashboardHome() {
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
   const adminClient = createAdminClient();
 
   // One batch for everything that needs only the signed-in user. The profile

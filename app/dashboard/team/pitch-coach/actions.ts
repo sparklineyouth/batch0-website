@@ -18,7 +18,7 @@ export type PitchCoachInput = {
 export async function requestPitchCoach(input: PitchCoachInput): Promise<{
   feedbackId: string;
 }> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -6,11 +6,12 @@ import { FlowBuilder } from "../flow-builder";
 
 export const metadata = { title: "Edit flow · Admin" };
 
-export default async function EditFlowPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function EditFlowPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
   // Steps filter on the same id the flow row is looked up by, so all three
   // reads run together — a missing flow just yields zero steps and 404s.

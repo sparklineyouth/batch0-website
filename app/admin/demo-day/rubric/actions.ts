@@ -77,7 +77,7 @@ export async function submitScores(rows: ScoreInput[]) {
   const { userId } = await assertPermission("demoday.manage").catch(async () => {
     // Investors + mentors are also allowed by RLS; just fetch userId.
     const { createClient } = await import("@/lib/supabase/server");
-    const supa = createClient();
+    const supa = await createClient();
     const {
       data: { user },
     } = await supa.auth.getUser();

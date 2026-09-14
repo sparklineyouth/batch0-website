@@ -36,11 +36,12 @@ function hrefFor(status: StatusFilter, cohort: string, page = 1) {
   return `/admin/payments${params.toString() ? `?${params}` : ""}`;
 }
 
-export default async function AdminPaymentsPage({
-  searchParams,
-}: {
-  searchParams: { status?: string; cohort?: string; page?: string };
-}) {
+export default async function AdminPaymentsPage(
+  props: {
+    searchParams: Promise<{ status?: string; cohort?: string; page?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const admin = createAdminClient();
 
   const statusFilter: StatusFilter = (STATUSES.find(

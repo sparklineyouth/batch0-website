@@ -20,20 +20,22 @@ import { DeleteRole } from "./delete-role";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const role = await getRole(params.slug);
   return { title: `${role?.label ?? "Role"} · Admin` };
 }
 
-export default async function RoleDetailPage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function RoleDetailPage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const { caps } = await requirePermission("roles.manage");
   const [role, roles, counts] = await Promise.all([
     getRole(params.slug),

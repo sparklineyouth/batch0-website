@@ -11,14 +11,15 @@ import { renderLessonMarkdown } from "@/lib/lesson-content";
 
 export const dynamic = "force-dynamic";
 
-export default async function LessonPage({
-  params,
-}: {
-  params: { lessonId: string };
-}) {
+export default async function LessonPage(
+  props: {
+    params: Promise<{ lessonId: string }>;
+  }
+) {
+  const params = await props.params;
   const user = await requireUser();
   const profile = await getProfile();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Signed URLs for lesson assets are short-lived (10 min) and minted
   // server-side per request. Long-TTL URLs that leak into HTML source /

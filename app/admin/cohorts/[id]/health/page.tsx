@@ -44,11 +44,12 @@ function classifyRisk(
   return "ok";
 }
 
-export default async function CohortHealthPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function CohortHealthPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
 
   // Build the last N ISO-week buckets so we can render a heatmap row

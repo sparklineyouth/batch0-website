@@ -15,7 +15,7 @@ export async function saveFlowProgress(input: {
   /** Restarting clears completion; otherwise a finished flow stays finished. */
   restart?: boolean;
 }): Promise<void> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

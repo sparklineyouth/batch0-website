@@ -37,13 +37,14 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function ApplyPage({
-  searchParams,
-}: {
-  searchParams: { cohort?: string };
-}) {
+export default async function ApplyPage(
+  props: {
+    searchParams: Promise<{ cohort?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const admin = createAdminClient();
 
@@ -221,7 +222,7 @@ export default async function ApplyPage({
   const cohortName =
     selected?.name ?? settings.active_cohort_name ?? "the next cohort";
   const capacity = selected?.capacity ?? 24;
-  const country = getCountryFromHeaders(headers());
+  const country = getCountryFromHeaders(await headers());
   const regional = getRegionalPrice(
     listPriceCents(selected?.price_cents ?? 13000),
     country,

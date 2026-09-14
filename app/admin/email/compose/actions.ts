@@ -331,7 +331,7 @@ export async function sendTestCompose(
   const v = validateDraft(draft);
   if (!v.ok) return { ok: false, message: v.error };
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

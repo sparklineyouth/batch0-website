@@ -14,7 +14,7 @@ import {
  * (fee or fine). Webhook handler updates the charge row to 'paid'.
  */
 export async function POST(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

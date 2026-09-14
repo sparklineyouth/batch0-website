@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(invalid);
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase.auth.verifyOtp({
     type: type as EmailOtpType,
     token_hash: tokenHash,

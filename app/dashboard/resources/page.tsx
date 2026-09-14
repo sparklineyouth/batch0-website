@@ -55,7 +55,7 @@ export default async function DashboardResourcesPage() {
     );
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   let query = supabase
     .from("resources")
     .select("*, cohort:cohorts(name)")

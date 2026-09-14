@@ -7,11 +7,12 @@ import Footer from "@/components/footer";
 import { FounderPassBadge } from "@/components/founder-pass-badge";
 import { ExternalLink } from "lucide-react";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string; teamSlug: string };
-}) {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ slug: string; teamSlug: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
   const { data } = await admin
     .from("teams")
@@ -25,11 +26,12 @@ export async function generateMetadata({
   };
 }
 
-export default async function TeamProfile({
-  params,
-}: {
-  params: { slug: string; teamSlug: string };
-}) {
+export default async function TeamProfile(
+  props: {
+    params: Promise<{ slug: string; teamSlug: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
   const { data: cohort } = await admin
     .from("cohorts")

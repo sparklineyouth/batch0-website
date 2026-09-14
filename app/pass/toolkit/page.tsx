@@ -29,7 +29,7 @@ function toMarkdown(t: ToolkitTemplate): string {
 }
 
 export default async function ToolkitPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

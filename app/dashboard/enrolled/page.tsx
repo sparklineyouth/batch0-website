@@ -30,13 +30,14 @@ export const metadata = { title: "You're enrolled · batch0" };
  * rather than whenever the webhook happens to arrive. The page is also
  * stable to revisit later — any enrolled student can open it.
  */
-export default async function EnrolledPage({
-  searchParams,
-}: {
-  searchParams: { session_id?: string };
-}) {
+export default async function EnrolledPage(
+  props: {
+    searchParams: Promise<{ session_id?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Settle first: this is what turns "we'll get to it" into a confirmation
   // the student can trust, and it's what makes the enrolled-only gate

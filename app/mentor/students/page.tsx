@@ -5,11 +5,12 @@ import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = { title: "Students · Mentor" };
 
-export default async function MentorStudentsPage({
-  searchParams,
-}: {
-  searchParams: { cohort?: string };
-}) {
+export default async function MentorStudentsPage(
+  props: {
+    searchParams: Promise<{ cohort?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const admin = createAdminClient();
   const cohortFilter = searchParams.cohort ?? "all";
 

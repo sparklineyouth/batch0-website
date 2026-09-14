@@ -31,7 +31,7 @@ export default async function AnnouncementsPage() {
     );
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // RLS already gates which announcements the user can read; this
   // query intentionally has no .eq("cohort_id", ...) so admin sees all

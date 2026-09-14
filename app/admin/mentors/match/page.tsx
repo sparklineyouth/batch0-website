@@ -49,11 +49,12 @@ function score(
   return { score: s, reasons };
 }
 
-export default async function MentorMatchmakerPage({
-  searchParams,
-}: {
-  searchParams: { team_id?: string };
-}) {
+export default async function MentorMatchmakerPage(
+  props: {
+    searchParams: Promise<{ team_id?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePermission("mentors.manage");
   const admin = createAdminClient();
   const teamId = searchParams.team_id ?? "";

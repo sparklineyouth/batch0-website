@@ -36,10 +36,8 @@ function escapeIcs(s: string) {
     .replace(/\r\n|\r|\n/g, "\\n");
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: { id: string } },
-) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireUser();
   const profile = await getProfile();
   if (!profile) return new Response("Not found", { status: 404 });

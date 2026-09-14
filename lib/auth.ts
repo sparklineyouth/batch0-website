@@ -57,7 +57,7 @@ export async function roleHome(role: Role): Promise<string> {
  * silently persist blanks for a first-time user.
  */
 export const getUser = cache(async function getUser() {
-  const supabase = createClient();
+  const supabase = await createClient();
   let claims;
   try {
     // Same defence as lib/supabase/middleware.ts: @supabase/ssr base64url-
@@ -103,7 +103,7 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
   const user = await getUser();
   if (!user) return null;
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")

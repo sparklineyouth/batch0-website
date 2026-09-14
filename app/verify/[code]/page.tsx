@@ -21,11 +21,12 @@ const getCertByCode = cache(async (code: string) => {
   return data;
 });
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { code: string };
-}) {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ code: string }>;
+  }
+) {
+  const params = await props.params;
   const cert = await getCertByCode(params.code);
   if (!cert) return { title: "Certificate · batch0" };
   const user = Array.isArray(cert.user) ? cert.user[0] : cert.user;
@@ -37,11 +38,12 @@ export async function generateMetadata({
   };
 }
 
-export default async function VerifyCertificatePage({
-  params,
-}: {
-  params: { code: string };
-}) {
+export default async function VerifyCertificatePage(
+  props: {
+    params: Promise<{ code: string }>;
+  }
+) {
+  const params = await props.params;
   const cert = await getCertByCode(params.code);
   if (!cert) notFound();
   const user = Array.isArray(cert.user) ? cert.user[0] : cert.user;

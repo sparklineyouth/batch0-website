@@ -16,11 +16,12 @@ import { SubmissionReview } from "./submission-review";
 export const metadata = { title: "Submission · Admin" };
 export const dynamic = "force-dynamic";
 
-export default async function SubmissionDetailPage({
-  params,
-}: {
-  params: { id: string; submissionId: string };
-}) {
+export default async function SubmissionDetailPage(
+  props: {
+    params: Promise<{ id: string; submissionId: string }>;
+  }
+) {
+  const params = await props.params;
   await requirePermission("challenges.manage");
   const admin = createAdminClient();
 

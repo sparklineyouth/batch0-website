@@ -20,11 +20,12 @@ const getCohortBySlug = cache(async (slug: string) => {
   return data;
 });
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const cohort = await getCohortBySlug(params.slug);
   if (!cohort) return { title: "Cohort · batch0" };
   return {
@@ -41,11 +42,12 @@ export async function generateMetadata({
   };
 }
 
-export default async function CohortPage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function CohortPage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const cohort = await getCohortBySlug(params.slug);
   if (!cohort) notFound();
 

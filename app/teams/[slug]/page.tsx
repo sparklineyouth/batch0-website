@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { FounderPassBadge } from "@/components/founder-pass-badge";
 
-type Props = { params: { slug: string } };
+type Props = { params: Promise<{ slug: string }> };
 
 // One lookup shared by generateMetadata and the page body — React cache()
 // dedupes it within the request, so a view costs one round trip instead of
@@ -25,7 +25,8 @@ const getTeamBySlug = cache(async (slug: string) => {
   return data;
 });
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const team = await getTeamBySlug(params.slug);
   if (!team || !team.is_public) return { title: "Team · batch0" };
   const desc =
@@ -43,7 +44,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function PublicTeamPage({ params }: Props) {
+export default async function PublicTeamPage(props: Props) {
+  const params = await props.params;
   const team = await getTeamBySlug(params.slug);
   if (!team || !team.is_public) notFound();
 

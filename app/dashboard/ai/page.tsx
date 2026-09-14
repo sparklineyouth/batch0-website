@@ -17,11 +17,12 @@ import { Lock, Sparkles } from "lucide-react";
 
 export const metadata = { title: "AI co-founder · batch0" };
 
-export default async function AiPage({
-  searchParams,
-}: {
-  searchParams: { c?: string };
-}) {
+export default async function AiPage(
+  props: {
+    searchParams: Promise<{ c?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   // Gate access. Staff always gets in; students need an accepted+ application.
   // The gate rides the auth batch chained off the profile it needs — its
   // capability/access lookups are request-cached and shared with the layout.
@@ -49,7 +50,7 @@ export default async function AiPage({
     );
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const messagesFor = (conversationId: string) =>
     supabase
       .from("ai_messages")

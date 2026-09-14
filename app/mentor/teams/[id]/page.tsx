@@ -11,11 +11,12 @@ import { ArrowLeft } from "lucide-react";
 
 export const metadata = { title: "Team · Mentor" };
 
-export default async function MentorTeamDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function MentorTeamDetailPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   await requireMentor();
   const admin = createAdminClient();
 

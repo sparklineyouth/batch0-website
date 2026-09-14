@@ -19,7 +19,7 @@ export default async function StudentFilesPage() {
       />
     );
   }
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: files } = await supabase
     .from("student_files")

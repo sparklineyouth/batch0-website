@@ -19,11 +19,9 @@ export const dynamic = "force-dynamic";
  * it loaded, so a dashboard left open in a tab handed out links that were
  * already dead. Here the URL is always seconds old.
  */
-export async function GET(
-  _req: Request,
-  { params }: { params: { id: string } },
-) {
-  const supabase = createClient();
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

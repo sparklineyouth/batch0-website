@@ -10,11 +10,12 @@ import { RecapButton } from "@/app/admin/demo-day/recap-button";
 
 export const metadata = { title: "Edit team · Admin" };
 
-export default async function AdminTeamDetail({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function AdminTeamDetail(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
   const [
     { data: team },

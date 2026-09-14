@@ -17,11 +17,12 @@ const STATUSES = [
   "refunded",
 ] as const;
 
-export default async function AdminChargesPage({
-  searchParams,
-}: {
-  searchParams: { status?: string; user?: string };
-}) {
+export default async function AdminChargesPage(
+  props: {
+    searchParams: Promise<{ status?: string; user?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const admin = createAdminClient();
   // Empty string from `?status=` collapses to the "pending" landing
   // view; the "all" pill explicitly opts out of that with `?status=all`.

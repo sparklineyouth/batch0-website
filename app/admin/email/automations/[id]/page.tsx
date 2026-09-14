@@ -12,18 +12,20 @@ import type { AutomationInput } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: { params: { id: string } }) {
+export async function generateMetadata(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const a = await getAutomation(params.id);
   return {
     title: a ? `${a.name} · Email automations · Admin` : "Email automation · Admin",
   };
 }
 
-export default async function AutomationPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function AutomationPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const a = await getAutomation(params.id);
   if (!a) notFound();
 

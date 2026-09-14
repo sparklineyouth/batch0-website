@@ -15,10 +15,11 @@ export async function generateStaticParams() {
 }
 
 export default async function BlogPostOgImage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
+  const params = await paramsPromise;
   const post = await getPostBySlug(params.slug);
   const title = post?.meta.title ?? "batch0 Blog";
   const category = post?.meta.category ?? "Playbook";

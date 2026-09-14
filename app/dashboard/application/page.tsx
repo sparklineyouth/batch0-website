@@ -21,18 +21,19 @@ import { Zap } from "lucide-react";
 
 export const metadata = { title: "Application · batch0" };
 
-export default async function ApplicationPage({
-  searchParams,
-}: {
-  searchParams: {
-    submitted?: string;
-    canceled?: string;
-    paid?: string;
-    session_id?: string;
-  };
-}) {
+export default async function ApplicationPage(
+  props: {
+    searchParams: Promise<{
+      submitted?: string;
+      canceled?: string;
+      paid?: string;
+      session_id?: string;
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Landing back from Stripe Checkout. Settle the session against Stripe
   // BEFORE reading the application row: the webhook is asynchronous and
@@ -76,7 +77,7 @@ export default async function ApplicationPage({
 
   const holdsPass = passGrant !== null;
   const basePriceCents = listPriceCents(app.cohort?.price_cents ?? 13000);
-  const country = getCountryFromHeaders(headers());
+  const country = getCountryFromHeaders(await headers());
   const regionalCents = getRegionalPrice(basePriceCents, country).amountCents;
   // The site-wide promotion, applied before the pass discount — the same order
   // app/api/stripe/checkout uses. Without it this page quotes list price while

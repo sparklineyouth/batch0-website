@@ -23,11 +23,9 @@ function escapeIcs(s: string) {
     .replace(/\n/g, "\\n");
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: { id: string } },
-) {
-  const supabase = createClient();
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const { data: event } = await supabase
     .from("events")
     .select("*")

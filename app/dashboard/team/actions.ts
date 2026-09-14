@@ -847,7 +847,7 @@ export async function getTeamDriveDownloadUrl(input: {
   if (!file) throw new Error("Not found.");
 
   // Allow members + staff + investors to download (read RLS allows them).
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

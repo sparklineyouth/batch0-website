@@ -7,11 +7,12 @@ import { LandingForm } from "./landing-form";
 
 export const metadata = { title: "Cohort landing · Admin" };
 
-export default async function CohortLandingPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function CohortLandingPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   await requirePermission("cohorts.manage");
   const admin = createAdminClient();
   const { data: cohort } = await admin

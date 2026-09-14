@@ -14,11 +14,12 @@ function pct(num: number, denom: number) {
   return Math.round((num * 100) / denom);
 }
 
-export default async function StudentProgressPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function StudentProgressPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   await requireMentor();
   const admin = createAdminClient();
 

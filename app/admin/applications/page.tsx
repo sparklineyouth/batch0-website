@@ -27,16 +27,17 @@ function parsePage(raw: string | undefined): number {
   return Math.floor(n);
 }
 
-export default async function AdminApplicationsPage({
-  searchParams,
-}: {
-  searchParams: {
-    status?: string;
-    sort?: string;
-    referred?: string;
-    page?: string;
-  };
-}) {
+export default async function AdminApplicationsPage(
+  props: {
+    searchParams: Promise<{
+      status?: string;
+      sort?: string;
+      referred?: string;
+      page?: string;
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const admin = createAdminClient();
   const status = searchParams.status;
   const raw = searchParams.sort;

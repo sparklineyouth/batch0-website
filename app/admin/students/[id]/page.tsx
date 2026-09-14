@@ -52,11 +52,12 @@ function ProgressStat({
   );
 }
 
-export default async function AdminStudentDetail({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function AdminStudentDetail(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   // Progress is its own module because it spans five tables; see lib/progress.ts.
   const progress = await getStudentProgress(params.id);
 

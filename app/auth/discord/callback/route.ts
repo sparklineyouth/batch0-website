@@ -52,7 +52,7 @@ export async function GET(req: Request) {
 
   // Confirm the same Supabase user is still in session — prevents
   // confused-deputy account hijack via stolen callback URL.
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

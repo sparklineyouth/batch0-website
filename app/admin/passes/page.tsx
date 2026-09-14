@@ -155,7 +155,7 @@ export default async function AdminPassesPage() {
   // wrong, so it should be the one you don't have to type.
   const {
     data: { user },
-  } = await createClient().auth.getUser();
+  } = await (await createClient()).auth.getUser();
   let selfEmail = env.contactEmail;
   if (user) {
     const { data: me } = await admin

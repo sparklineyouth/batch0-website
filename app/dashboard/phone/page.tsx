@@ -14,7 +14,7 @@ export const metadata = { title: "Your phone number · batch0" };
  */
 export default async function PhonePage() {
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: app } = await supabase
     .from("applications")

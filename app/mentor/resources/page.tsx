@@ -23,7 +23,7 @@ export default async function MentorResourcesPage() {
   // RLS on `resources` already grants read to staff (mentor + admin), so
   // the user-scoped supabase client is fine.
   await requireMentor();
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: resources } = await supabase
     .from("resources")
     .select("*, cohort:cohorts(name)")

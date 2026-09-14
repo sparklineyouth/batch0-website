@@ -146,11 +146,12 @@ const PERKS: Perk[] = [
   },
 ];
 
-export default async function PassPage({
-  searchParams,
-}: {
-  searchParams: { code?: string };
-}) {
+export default async function PassPage(
+  props: {
+    searchParams: Promise<{ code?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   // Whether this visit came from a virtual pass's "Redeem your pass" link.
   // Only the PRESENCE of the parameter is read here — the value is never
   // looked up server-side, because a page that resolved a code before anyone
@@ -162,7 +163,7 @@ export default async function PassPage({
   // the generic heading; the golden card and its own copy carry that case,
   // since only the client can see the stashed code.
   const arrivingWithCode = typeof searchParams?.code === "string" && searchParams.code.length > 0;
-  const supabase = createClient();
+  const supabase = await createClient();
   // Site config depends on nothing per-user, so it starts before the auth
   // round trip and lands in the same wave as the pass read.
   const configPromise = getSiteConfig();

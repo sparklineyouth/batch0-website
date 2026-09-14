@@ -20,7 +20,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
     "@daily-co/daily-js": "^0.92.2",
-    "@next/third-parties": "^14.2.15",
+    "@next/third-parties": "15.5.25",
     "@sentry/nextjs": "^10.52.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.1",
@@ -28,11 +28,11 @@
     "@vercel/speed-insights": "^2.0.0",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.468.0",
-    "next": "14.2.15",
+    "next": "15.5.25",
     "next-themes": "^0.4.6",
     "nodemailer": "^9.1.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-external-links": "^3.0.0",
     "rehype-sanitize": "^6.0.0",
@@ -51,8 +51,8 @@
   "devDependencies": {
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "autoprefixer": "^10.4.20",
     "playwright": "^1.61.1",
     "png-to-ico": "^3.0.2",
@@ -60,5 +60,10 @@
     "sharp": "^0.35.3",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.28"
+    }
   }
 }

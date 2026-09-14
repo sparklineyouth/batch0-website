@@ -46,7 +46,7 @@ export default async function StudentEventsPage() {
       />
     );
   }
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const nowDate = new Date();
   const now = nowDate.toISOString();

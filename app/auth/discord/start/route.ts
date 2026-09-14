@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * callback can re-tie the link to the right account.
  */
 export async function GET(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

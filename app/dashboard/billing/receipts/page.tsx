@@ -31,13 +31,14 @@ type Row = {
   refunded: boolean;
 };
 
-export default async function ReceiptsPage({
-  searchParams,
-}: {
-  searchParams: { year?: string };
-}) {
+export default async function ReceiptsPage(
+  props: {
+    searchParams: Promise<{ year?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const [{ data: payments }, { data: charges }] = await Promise.all([
     supabase

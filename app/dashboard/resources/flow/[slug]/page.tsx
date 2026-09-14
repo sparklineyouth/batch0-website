@@ -28,11 +28,12 @@ async function renderStepMarkdown(body: string): Promise<string> {
   return html;
 }
 
-export default async function FlowPage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function FlowPage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const user = await requireUser();
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");
@@ -41,7 +42,7 @@ export default async function FlowPage({
   // lets staff open drafts).
   if (!access.enrolled) redirect("/dashboard/resources");
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: flow } = await supabase
     .from("flows")
     .select("id, slug, title, tagline, stage, status, est_minutes")

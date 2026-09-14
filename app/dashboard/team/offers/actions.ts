@@ -8,12 +8,12 @@ import { Templates } from "@/lib/email/templates";
 import { logAudit } from "@/lib/audit";
 import { renderSafeDoc } from "@/lib/safe-doc";
 
-function ip(): string | null {
+async function ip(): Promise<string | null> {
   // Vercel proxies the originating address as the first hop in
   // x-forwarded-for. Falls back to x-real-ip behind other proxies.
   // We trim to the first comma-separated entry to avoid logging the
   // entire proxy chain (which can be PII-leaky and useless for audit).
-  const h = headers();
+  const h = await headers();
   const xff = h.get("x-forwarded-for");
   if (xff) return xff.split(",")[0]?.trim() ?? null;
   return h.get("x-real-ip") ?? null;
@@ -31,7 +31,7 @@ export type CreateOfferInput = {
 };
 
 export async function createOffer(input: CreateOfferInput): Promise<string> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -68,7 +68,7 @@ export async function createOffer(input: CreateOfferInput): Promise<string> {
   });
 
   const now = new Date().toISOString();
-  const signerIp = ip();
+  const signerIp = await ip();
   const { data: offer, error } = await admin
     .from("safe_offers")
     .insert({
@@ -136,7 +136,7 @@ export async function counterSignOffer(args: {
   offerId: string;
   signatureName: string;
 }): Promise<void> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -163,7 +163,7 @@ export async function counterSignOffer(args: {
   if (!membership) throw new Error("You're not on this team");
 
   const now = new Date().toISOString();
-  const signerIp = ip();
+  const signerIp = await ip();
   const { error } = await admin
     .from("safe_offers")
     .update({
@@ -210,7 +210,7 @@ export async function counterSignOffer(args: {
 }
 
 export async function declineOffer(offerId: string, reason: string | null) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -257,7 +257,7 @@ export async function declineOffer(offerId: string, reason: string | null) {
 }
 
 export async function withdrawOffer(offerId: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

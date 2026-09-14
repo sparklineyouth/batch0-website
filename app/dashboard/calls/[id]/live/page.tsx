@@ -16,11 +16,12 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function CallLivePage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function CallLivePage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   await requireUser();
   const profile = await getProfile();
   if (!profile) notFound();

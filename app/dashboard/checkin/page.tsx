@@ -21,7 +21,7 @@ export default async function CheckinPage() {
       />
     );
   }
-  const supabase = createClient();
+  const supabase = await createClient();
   const weekStart = isoWeekStart();
 
   // Current week + up to 8 prior weeks in one read: check-ins are written

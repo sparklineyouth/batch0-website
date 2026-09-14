@@ -48,7 +48,7 @@ const getActor = cache(async function getActor(): Promise<{
   role: Role;
   caps: Capabilities;
 }> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

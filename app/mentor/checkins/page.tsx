@@ -7,11 +7,12 @@ import { isoWeekStart, formatWeekRange } from "@/lib/week";
 
 export const metadata = { title: "Check-ins · Mentor" };
 
-export default async function MentorCheckinsPage({
-  searchParams,
-}: {
-  searchParams: { week?: string; cohort?: string };
-}) {
+export default async function MentorCheckinsPage(
+  props: {
+    searchParams: Promise<{ week?: string; cohort?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const admin = createAdminClient();
   const week = searchParams.week || isoWeekStart();
   const cohortFilter = searchParams.cohort ?? "all";

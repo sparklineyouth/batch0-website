@@ -24,7 +24,7 @@ const DEFAULTS: SiteSettingsInput = {
 
 export default async function AdminSettingsPage() {
   const admin = createAdminClient();
-  const supabase = createClient();
+  const supabase = await createClient();
   const user = await requireUser();
   const [{ data: rows }, { data: cohorts }, { data: profile }] =
     await Promise.all([

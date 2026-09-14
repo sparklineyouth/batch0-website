@@ -52,7 +52,7 @@ type EventGate = {
  * questions is exactly eligibility to see the event.
  */
 async function gateEvent(eventId: string): Promise<EventGate | null> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data } = await supabase
     .from("events")
     .select("id, starts_at, ends_at, live_mode")

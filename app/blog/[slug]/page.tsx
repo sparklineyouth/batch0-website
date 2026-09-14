@@ -40,11 +40,12 @@ export async function generateStaticParams() {
 // is cached from then on.
 export const revalidate = 3600;
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const post = await getPostBySlug(params.slug);
   if (!post) return {};
   const { meta } = post;
@@ -78,11 +79,12 @@ export async function generateMetadata({
   };
 }
 
-export default async function BlogPostPage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function BlogPostPage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const post = await getPostBySlug(params.slug);
   if (!post) notFound();
   const { meta, html } = post;

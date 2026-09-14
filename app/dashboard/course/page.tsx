@@ -8,7 +8,7 @@ export const metadata = { title: "Course · batch0" };
 
 export default async function CoursePage() {
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Progress filters only on the user, so it rides with the enrollment
   // lookup — the modules query below is the only read that needs its result.

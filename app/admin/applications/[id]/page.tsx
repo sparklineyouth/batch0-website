@@ -17,11 +17,12 @@ import { Share2, Hammer, ExternalLink } from "lucide-react";
 
 export const metadata = { title: "Review application · Admin" };
 
-export default async function AdminApplicationDetail({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function AdminApplicationDetail(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const admin = createAdminClient();
   const { profile: viewer } = await requirePermission("applications.view");
   const [{ data: app }, { data: comments }, siteConfig, { data: reviews }] =

@@ -37,7 +37,7 @@ export async function isEnrolled(role?: Role | null): Promise<boolean> {
   if (await isStaffPreview(role)) return true;
   const user = await getUser();
   if (!user) return false;
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data } = await supabase
     .from("enrollments")
     .select("id")

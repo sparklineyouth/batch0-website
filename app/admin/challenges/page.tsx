@@ -13,11 +13,12 @@ export const revalidate = 0;
 
 const FILTERS = ["all", "draft", "active", "closed", "archived"];
 
-export default async function AdminChallengesPage({
-  searchParams,
-}: {
-  searchParams: { status?: string };
-}) {
+export default async function AdminChallengesPage(
+  props: {
+    searchParams: Promise<{ status?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePermission("challenges.manage");
   const admin = createAdminClient();
   const status = searchParams.status;

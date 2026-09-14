@@ -11,7 +11,7 @@ export const metadata = { title: "Outstanding fine · batch0" };
 
 export default async function PayFinePage() {
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: fines } = await supabase
     .from("user_charges")
     .select("*")

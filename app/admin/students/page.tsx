@@ -26,11 +26,12 @@ function parsePage(raw: string | undefined): number {
   return Math.floor(n);
 }
 
-export default async function AdminStudentsPage({
-  searchParams,
-}: {
-  searchParams: { role?: string; page?: string; q?: string };
-}) {
+export default async function AdminStudentsPage(
+  props: {
+    searchParams: Promise<{ role?: string; page?: string; q?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const { caps } = await requirePermission("people.view");
   const admin = createAdminClient();
 

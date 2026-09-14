@@ -12,13 +12,14 @@ export const revalidate = 0;
 
 const FILTERS = ["all", "submitted", "shortlisted", "funded", "rejected"];
 
-export default async function ChallengeSubmissionsPage({
-  params,
-  searchParams,
-}: {
-  params: { id: string };
-  searchParams: { status?: string };
-}) {
+export default async function ChallengeSubmissionsPage(
+  props: {
+    params: Promise<{ id: string }>;
+    searchParams: Promise<{ status?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   await requirePermission("challenges.manage");
   const admin = createAdminClient();
   const status = searchParams.status;

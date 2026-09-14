@@ -7,11 +7,12 @@ import type { InvestorInterestLevel } from "@/lib/types";
 
 export const metadata = { title: "Teams · Investor" };
 
-export default async function InvestorTeamsPage({
-  searchParams,
-}: {
-  searchParams: { cohort?: string };
-}) {
+export default async function InvestorTeamsPage(
+  props: {
+    searchParams: Promise<{ cohort?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const profile = await requireInvestor();
   const admin = createAdminClient();
   const cohortFilter = searchParams.cohort ?? "all";

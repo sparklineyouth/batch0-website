@@ -46,7 +46,7 @@ export async function requestPasswordReset(
   // Two limits, because they stop different things: the per-email one stops
   // someone using us to flood a stranger's inbox, the per-IP one stops a
   // script walking a list of addresses. Both fail open (see lib/rate-limit).
-  const ip = headers().get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
   const [byEmail, byIp] = await Promise.all([
     checkRateLimit({
       kind: "password-reset:email",

@@ -8,11 +8,12 @@ import { OfferActions } from "./offer-actions";
 
 export const metadata = { title: "SAFE offer · Team" };
 
-export default async function TeamOfferPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function TeamOfferPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const user = await requireUser();
   const admin = createAdminClient();
 

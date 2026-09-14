@@ -50,7 +50,7 @@ const MESSAGES: Record<Exclude<RedeemResult, { ok: true }>["reason"], string> = 
 export async function redeemPassAction(
   rawCode: string,
 ): Promise<RedeemActionResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -63,8 +63,8 @@ export async function redeemPassAction(
   // actions get headers() instead. x-forwarded-for is a client-settable
   // header, so this is a spend-more-effort speed bump, not an identity —
   // which is why the per-account limit exists alongside it.
-  const fwd = headers().get("x-forwarded-for");
-  const ip = fwd ? fwd.split(",")[0].trim() : headers().get("x-real-ip");
+  const fwd = (await headers()).get("x-forwarded-for");
+  const ip = fwd ? fwd.split(",")[0].trim() : (await headers()).get("x-real-ip");
 
   const admin = createAdminClient();
   const result = await redeemPass(admin, {
@@ -125,7 +125,7 @@ export type ProfileActionResult =
 export async function updatePassProfileAction(
   input: UpdateProfileInput,
 ): Promise<ProfileActionResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -162,7 +162,7 @@ export async function redeemFeedbackCreditAction(input: {
   detail: string;
   linkUrl?: string | null;
 }): Promise<FeedbackActionResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -221,7 +221,7 @@ export async function submitRebuildAction(input: {
   summary: string;
   linkUrl?: string | null;
 }): Promise<RebuildActionResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -9,7 +9,7 @@ export const metadata = { title: "Notifications · batch0" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // The list needs only the user id, so it loads alongside the back-link's
   // home resolution (profile → role home) instead of behind it.

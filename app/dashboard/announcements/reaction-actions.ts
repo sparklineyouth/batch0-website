@@ -15,7 +15,7 @@ export async function toggleReaction(input: {
   emoji: Emoji;
 }) {
   if (!EMOJIS.includes(input.emoji)) throw new Error("Invalid emoji.");
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

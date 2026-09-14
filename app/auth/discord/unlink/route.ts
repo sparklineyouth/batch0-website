@@ -62,7 +62,7 @@ export async function POST(req: Request) {
   const origin = resolveOrigin(req);
   const back = backTo(origin);
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();

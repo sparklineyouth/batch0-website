@@ -22,7 +22,7 @@ export async function savePhoneAction(
   _prev: SavePhoneResult | null,
   formData: FormData,
 ): Promise<SavePhoneResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -24,13 +24,14 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function ChallengePage({
-  params,
-  searchParams,
-}: {
-  params: { slug: string };
-  searchParams: { ref?: string };
-}) {
+export default async function ChallengePage(
+  props: {
+    params: Promise<{ slug: string }>;
+    searchParams: Promise<{ ref?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   // The challenge itself is public — this is a top-of-funnel page, so a
   // logged-out visitor must be able to read the whole thing. Only the
   // entry form needs an account; they get a sign-in CTA in its place.

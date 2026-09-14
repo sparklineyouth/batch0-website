@@ -23,11 +23,12 @@ const PAGE_SIZE = 40;
  * key. Every one of those is a better outcome than as-you-type on a spotty
  * connection.
  */
-export default async function AdminAppPeople({
-  searchParams,
-}: {
-  searchParams: { q?: string };
-}) {
+export default async function AdminAppPeople(
+  props: {
+    searchParams: Promise<{ q?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePermission("people.view");
   const admin = createAdminClient();
   const q = (searchParams.q ?? "").trim();

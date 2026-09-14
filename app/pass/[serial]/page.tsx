@@ -69,11 +69,12 @@ async function getPublicPass(serialParam: string): Promise<PublicPass | null> {
   };
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { serial: string };
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ serial: string }>;
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const pass = await getPublicPass(params.serial);
   if (!pass) return { title: "Founder Pass — batch0" };
   const label = formatSerial(pass.serial);
@@ -84,11 +85,12 @@ export async function generateMetadata({
   };
 }
 
-export default async function PublicPassPage({
-  params,
-}: {
-  params: { serial: string };
-}) {
+export default async function PublicPassPage(
+  props: {
+    params: Promise<{ serial: string }>;
+  }
+) {
+  const params = await props.params;
   const [pass, config] = await Promise.all([
     getPublicPass(params.serial),
     getSiteConfig(),

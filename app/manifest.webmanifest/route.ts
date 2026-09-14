@@ -31,8 +31,8 @@ import { isAppHost } from "@/lib/app-host";
  */
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  const onAppHost = isAppHost(headers().get("host"));
+export async function GET() {
+  const onAppHost = isAppHost((await headers()).get("host"));
   const startUrl = onAppHost ? "/" : "/app";
 
   return Response.json(

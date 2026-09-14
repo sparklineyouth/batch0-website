@@ -17,7 +17,7 @@ export default async function AdminLayout({
   // the same predicate before we ever get here); this is the server-side
   // backstop for anything that reaches a page without passing middleware —
   // a server-side redirect, a rewrite, or a route the matcher misses.
-  const path = headers().get("x-pathname") ?? "/admin";
+  const path = (await headers()).get("x-pathname") ?? "/admin";
   if (!canViewAdminPath(caps, path)) {
     redirect("/admin");
   }

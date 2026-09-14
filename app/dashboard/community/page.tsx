@@ -12,7 +12,7 @@ export const metadata = { title: "Community · batch0" };
 export default async function CommunityPage() {
   const user = await requireUser();
   if (!(await isDiscordEnabled())) redirect("/dashboard");
-  const supabase = createClient();
+  const supabase = await createClient();
   // Profile comes from the request-cached getProfile() the layout already
   // resolved — it carries the discord_* columns this page reads.
   const [profile, { data: settings }, { data: announcements }] =

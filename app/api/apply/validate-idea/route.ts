@@ -32,7 +32,7 @@ function tokens(t: string): string[] {
  * token overlap with the current draft, plus a short LLM critique.
  */
 export async function POST(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

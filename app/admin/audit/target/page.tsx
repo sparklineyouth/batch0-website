@@ -7,11 +7,12 @@ import { LocalTime } from "@/components/ui/local-time";
 export const metadata = { title: "Audit history · Admin" };
 export const dynamic = "force-dynamic";
 
-export default async function AuditTargetPage({
-  searchParams,
-}: {
-  searchParams: { type?: string; id?: string };
-}) {
+export default async function AuditTargetPage(
+  props: {
+    searchParams: Promise<{ type?: string; id?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePermission("audit.view");
   const type = (searchParams.type ?? "").trim();
   const id = (searchParams.id ?? "").trim();

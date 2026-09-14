@@ -90,7 +90,7 @@ export async function getChallengeUploadToken(input: {
   slug: string;
   filename: string;
 }): Promise<ChallengeUploadToken> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -152,7 +152,7 @@ export async function submitChallengeApplication(
   _prev: ChallengeSubmitResult | null,
   formData: FormData,
 ): Promise<ChallengeSubmitResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

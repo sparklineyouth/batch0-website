@@ -7,11 +7,12 @@ import { QueuedEmailEditor } from "./edit-form";
 export const metadata = { title: "Edit queued email · Admin" };
 export const dynamic = "force-dynamic";
 
-export default async function QueuedEmailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function QueuedEmailPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const [{ caps }, res] = await Promise.all([
     requireActor(),
     loadQueuedEmail(params.id),

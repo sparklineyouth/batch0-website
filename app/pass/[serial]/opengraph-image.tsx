@@ -15,10 +15,11 @@ export const contentType = "image/png";
 const PHOSPHOR = "#FFBB00";
 
 export default async function PassOpengraphImage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { serial: string };
+  params: Promise<{ serial: string }>;
 }) {
+  const params = await paramsPromise;
   const admin = createAdminClient();
   const serial = /^\d{1,6}$/.test(params.serial)
     ? Number.parseInt(params.serial, 10)

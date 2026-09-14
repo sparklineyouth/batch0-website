@@ -6,16 +6,18 @@ import type { TemplateInput } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: { params: { id: string } }) {
+export async function generateMetadata(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const t = await getTemplateById(params.id);
   return { title: t ? `${t.name} · Email templates · Admin` : "Email template · Admin" };
 }
 
-export default async function EmailTemplatePage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function EmailTemplatePage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const t = await getTemplateById(params.id);
   if (!t) notFound();
 

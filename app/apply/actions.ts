@@ -155,7 +155,7 @@ type ActionResult = {
 /** The admin-pinned active cohort, or null. Not validated as open here — the
  *  caller only ever looks it up inside a list that already is. */
 async function getPinnedCohortId(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
 ): Promise<string | null> {
   const { data: setting } = await supabase
     .from("site_settings")
@@ -168,7 +168,7 @@ async function getPinnedCohortId(
 }
 
 async function getActiveCohortId(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
 ): Promise<string | null> {
   const { data: open } = await supabase
     .from("cohorts")
@@ -182,7 +182,7 @@ async function upsertApplication(
   formData: FormData,
   submit: boolean,
 ): Promise<ActionResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
@@ -508,7 +508,7 @@ export async function saveDraftAction(
   // Throttle draft saves — without this, a runaway autosave loop or a
   // bot hammering the form burns DB writes + audit log + revalidation.
   // 30/min per user covers normal typing comfortably.
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -556,7 +556,7 @@ export async function attachReferralCodeAction(code: string) {
   const cfg = await getSiteConfig();
   if (!cfg.settings.referralsEnabled) return { ok: false };
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

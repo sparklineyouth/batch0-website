@@ -31,7 +31,7 @@ export async function postLessonComment(args: {
     }
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   // RLS will block if not enrolled; insert via the user-scoped client
   // so the policy is enforced.
   const { error } = await supabase.from("lesson_comments").insert({
@@ -54,7 +54,7 @@ export async function deleteLessonComment(commentId: string) {
     .single();
   if (!existing) throw new Error("Not found");
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
