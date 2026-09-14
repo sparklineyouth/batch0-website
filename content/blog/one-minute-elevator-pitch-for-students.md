@@ -2,7 +2,7 @@
 title: "How to Write a 60-Second Elevator Pitch"
 description: "You bump into someone who could help. Here's how to write a 60-second elevator pitch that explains your startup and lands the ask before the door opens."
 date: "2026-02-16"
-updated: "2026-02-16"
+updated: "2026-09-14"
 category: "Pitch"
 author: "rishabh"
 tags: ["elevator pitch", "60 second pitch", "one minute pitch", "networking pitch", "verbal pitch"]
@@ -77,6 +77,6 @@ You use the 60-second version when you don't have slides and you don't have long
 
 For anything longer or more formal, you'll want the deck-backed version instead — the thinking behind that lives in [how to pitch a startup idea as a teenager](/blog/how-to-pitch-startup-idea-as-a-teenager). But the 60-second pitch is the one to keep loaded at all times, because you never get to schedule the moment someone useful asks what you do.
 
-If you want structured reps at saying this out loud to real people, that's a big part of what we do at batch0. Across four one-week sprints — Validate, Build, Market, Pitch — you build a real company and pitch it live at demo day, so by the end you've said your pitch to actual humans dozens of times. You can [see how the program works](/program); applying is free, you only pay the $130 tuition if you get in, and we never take equity.
+If you want structured reps at saying this out loud to real people, that's a big part of what we do at batch0. Across four two-week sprints — Validate, Build, Market, Pitch — you build a real company and pitch it live at demo day, so by the end you've said your pitch to actual humans dozens of times. You can [see how the program works](/program); applying is free, you only pay tuition if you get in, and we never take equity.
 
 Write your five sentences tonight. Say them out loud until you stop reading them. Then the next time someone who could help you asks what you're working on, you won't freeze — you'll have exactly one good minute ready to go.

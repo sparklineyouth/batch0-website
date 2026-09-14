@@ -2,7 +2,7 @@
 title: "How to Prepare for Demo Day"
 description: "Demo day rewards preparation, not talent. A week-by-week plan to get your pitch, your demo, and your nerves ready before it counts."
 date: "2026-06-16"
-updated: "2026-06-16"
+updated: "2026-09-14"
 category: "Pitch"
 author: "team"
 tags: ["demo day", "pitch practice", "presentation", "startup competition", "preparation"]
@@ -14,7 +14,7 @@ Most people get this wrong by treating demo day like a test they can cram for th
 
 ## What is demo day?
 
-**Demo day is the final event of an accelerator or competition where founders present their startup to an audience of judges, mentors, investors, and peers, usually in a short, timed pitch.** At batch0, it's the close of the four-week program — the point of everything you validated, built, and marketed in the sprints before it.
+**Demo day is the final event of an accelerator or competition where founders present their startup to an audience of judges, mentors, investors, and peers, usually in a short, timed pitch.** At batch0, it's the close of the nine-week program — the point of everything you validated, built, and marketed in the sprints before it.
 
 The format is almost always the same: a fixed time limit (often 3 to 5 minutes), a slide deck or live product demo, and then questions. What changes is how ready you are when the clock starts.
 
@@ -109,7 +109,7 @@ Run this list the morning of, before anyone's watching:
 5. Test your camera, mic, and internet 30 minutes early if it's on Zoom.
 6. Do one full quiet run-through, then stop and breathe.
 
-If your demo day is online, treat the tech check as part of the pitch. Since batch0 runs entirely on Zoom, that means joining early, sharing your screen once to confirm it works, and knowing exactly which window you'll present.
+If your demo day is online, treat the tech check as part of the pitch. For batch0, open your cohort's event link from the dashboard. That means joining early, sharing your screen once to confirm it works, and knowing exactly which window you'll present.
 
 ## What demo day prep is not
 

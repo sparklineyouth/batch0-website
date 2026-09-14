@@ -2,7 +2,7 @@
 title: "How to Build and Run a Startup for Basically $0"
 description: "You can run a real product on free tiers alone. Here's a stack of free tools for hosting, database, email, and analytics to launch without spending money."
 date: "2026-02-12"
-updated: "2026-02-12"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["free tier", "build for free", "startup stack", "free hosting", "student startup"]
@@ -88,4 +88,4 @@ Building for $0 isn't about being broke. It's about being fast and honest. When 
 
 The tools will never be the reason you didn't start. Money won't be the reason. The only thing between you and a live product this weekend is deciding to do it.
 
-If you want people around you while you do it — deadlines, mentors, and a live demo day at the end — that's exactly what batch0 is built for. You build a real company across four one-week sprints, and [applying is free](/apply). Or read more about how the [program](/program) works first.
+If you want people around you while you do it — deadlines, mentors, and a live demo day at the end — that's exactly what batch0 is built for. You build a real company across four two-week sprints, and [applying is free](/apply). Or read more about how the [program](/program) works first.

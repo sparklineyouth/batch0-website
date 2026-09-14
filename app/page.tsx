@@ -120,6 +120,15 @@ export default async function Home() {
             proof the teaching is good before they see the number. It also gives
             the blog its only link from the site's strongest page. */}
         <FeaturedGuides posts={featured} total={allPosts.length} />
+        <section className="border-y border-line bg-wash px-5 py-10 sm:px-6" aria-labelledby="starter-kit-title">
+          <div className="mx-auto flex max-w-[1100px] flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 id="starter-kit-title" className="text-xl font-semibold">Try your first founder exercise.</h2>
+              <p className="mt-2 max-w-xl text-sm text-ink-soft">Choose a problem, plan a customer interview, and decide what to test. Our free starter kit gives you a worksheet and a guided reading path.</p>
+            </div>
+            <a href="/start?utm_source=homepage&utm_medium=owned&utm_campaign=founder_starter_kit" className="inline-flex shrink-0 items-center justify-center rounded-lg bg-phosphor px-5 py-3 text-sm font-semibold text-black hover:opacity-90">Get the free starter kit →</a>
+          </div>
+        </section>
         <Pricing config={config} />
         <FAQ config={config} />
         <CTA config={config} />

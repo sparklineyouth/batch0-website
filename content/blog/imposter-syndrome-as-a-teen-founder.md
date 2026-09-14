@@ -2,7 +2,7 @@
 title: "Feeling Like a Fraud as a Teen Founder"
 description: "Imposter syndrome hits young founders hard when adults take you seriously. Why you feel like a fake, and how to keep going anyway."
 date: "2026-02-01"
-updated: "2026-02-01"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["imposter syndrome founder", "teen founder confidence", "feeling like a fraud", "young entrepreneur mindset", "founder self doubt", "confidence in business"]
@@ -80,7 +80,7 @@ A lot of imposter syndrome isn't about you at all. It's about the highlight reel
 
 Mute or unfollow accounts that make you feel small instead of motivated; that's basic hygiene, not weakness. And when you're comparing yourself constantly, [how to stop comparing your startup to everyone else's](/blog/how-to-stop-comparing-your-startup-to-others) is worth a read.
 
-The best cure for comparison is a room of other builders at your level. When you see other teens sweating the same doubts, shipping the same rough MVPs, and stumbling through the same first interviews, the fraud story falls apart. That's a big part of why a cohort-based program like [batch0](/program) works: you build a real company across four one-week sprints alongside people who feel exactly like you do, which makes it obvious that feeling unqualified is just the entry fee, not a verdict.
+The best cure for comparison is a room of other builders at your level. When you see other teens sweating the same doubts, shipping the same rough MVPs, and stumbling through the same first interviews, the fraud story falls apart. That's a big part of why a cohort-based program like [batch0](/program) works: you build a real company across four two-week sprints alongside people who feel exactly like you do, which makes it obvious that feeling unqualified is just the entry fee, not a verdict.
 
 ## Keep going before you feel ready
 

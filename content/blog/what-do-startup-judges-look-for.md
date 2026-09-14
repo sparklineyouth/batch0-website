@@ -2,7 +2,7 @@
 title: "What Startup Competition Judges Actually Look For"
 description: "Understand what startup competition judges look for behind the rubric — the signals that decide winners — so you present the evidence that moves scores."
 date: "2026-02-12"
-updated: "2026-02-12"
+updated: "2026-09-14"
 category: "Playbook"
 author: "team"
 tags: ["startup judges", "judging criteria", "what judges want", "pitch scoring", "competition insight"]
@@ -71,4 +71,4 @@ Losing pitches usually aren't bad ideas — they're good ideas that leak points 
 
 Judges bet on evidence, not effort. So before your next competition, ask the question they'll be asking: *what proof can I put on stage that a real person wants this?* Then go get it — the interviews, the signups, the preorders — because that's the work no amount of money or polish can fake.
 
-That's the shape of the four one-week sprints at [batch0](/program): Validate, Build, Market, Pitch. By demo day you're not describing a hope — you're showing what happened when real people met your product, with mentors helping you turn it into a score-moving story. If a deadline is what gets you moving, [apply here](/apply) — applying is free, and you only pay tuition if you get in. For the mechanics, read [how pitch competition judges actually score you](/blog/how-pitch-judges-score) next.
+That's the shape of the four two-week sprints at [batch0](/program): Validate, Build, Market, Pitch. By demo day you're not describing a hope — you're showing what happened when real people met your product, with mentors helping you turn it into a score-moving story. If a deadline is what gets you moving, [apply here](/apply) — applying is free, and you only pay tuition if you get in. For the mechanics, read [how pitch competition judges actually score you](/blog/how-pitch-judges-score) next.

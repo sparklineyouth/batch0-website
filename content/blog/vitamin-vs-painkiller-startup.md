@@ -2,7 +2,7 @@
 title: "Vitamin or Painkiller? Why It Decides If People Buy"
 description: "Painkiller products get bought, vitamins get ignored. Here is how to tell if your startup idea is a painkiller people actually need or a nice-to-have."
 date: "2026-02-21"
-updated: "2026-02-21"
+updated: "2026-09-14"
 category: "Validate"
 author: "rishabh"
 tags: ["painkiller vs vitamin", "must have", "demand validation", "problem intensity", "teen founders"]
@@ -80,6 +80,6 @@ If nobody bites, you have your answer while it is still cheap to change course. 
 
 Ask one blunt question: is anyone out there right now, without me, actively trying to solve this? If yes, you probably have a painkiller, and your job is to get in front of them faster than anyone else. If no, sharpen the idea into a real pain or move on to one that has teeth.
 
-This is the muscle we build in the Validate sprint at [batch0](/program). In one week, students go from a fuzzy idea to hard evidence about whether real people will pay, before writing a line of code. If you want structure, deadlines, and people pushing you to test instead of just build, [applying is free](/apply) and tuition only kicks in if you get in.
+This is the muscle we build in the Validate sprint at [batch0](/program). During the two-week sprint, students go from a fuzzy idea to hard evidence about whether real people will pay, before writing a line of code. If you want structure, deadlines, and people pushing you to test instead of just build, [applying is free](/apply) and tuition only kicks in if you get in.
 
 Get this call right and everything downstream, the building, the marketing, the pitch, gets ten times easier. Get it wrong and you will be marketing a vitamin nobody remembers to take.

@@ -2,7 +2,7 @@
 title: "How to Size Your Market Without Faking a Huge Number"
 description: "A believable market size beats a fake $10B one. Here's how to build a market size slide with TAM, SAM, and SOM that judges won't laugh at."
 date: "2026-02-08"
-updated: "2026-02-08"
+updated: "2026-09-14"
 category: "Pitch"
 author: "rishabh"
 tags: ["market size slide", "TAM SAM SOM", "market sizing", "pitch deck market", "addressable market"]
@@ -80,4 +80,4 @@ Do not read the slide number by number. Say the story instead: "There are about 
 
 Every number on this slide should trace back to something real — a source, an interview, or a stated assumption a judge could check. If you can't defend a figure when someone asks "where's that from," cut it or fix it. A smaller, honest market you can explain always beats a huge one you can't.
 
-If you want feedback on your actual numbers before you present, that's the kind of thing you get inside [the batch0 program](/program), where you build a real company over four weeks and pitch it live to judges who've seen this slide done well and done badly. When you're ready, keep going with the [rest of the deck](/blog/pitch-deck-slide-order-that-works) and the [questions judges will throw at you](/blog/how-to-answer-investor-questions).
+If you want feedback on your actual numbers before you present, that's the kind of thing you get inside [the batch0 program](/program), where you build a real company over nine weeks and pitch it live to judges who've seen this slide done well and done badly. When you're ready, keep going with the [rest of the deck](/blog/pitch-deck-slide-order-that-works) and the [questions judges will throw at you](/blog/how-to-answer-investor-questions).

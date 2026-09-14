@@ -2,7 +2,7 @@
 title: "How to Write Product Copy That Doesn't Sound Like a Robot"
 description: "The words on your product matter as much as the code. Here's how to write clear headlines, buttons, and descriptions that make people understand and buy."
 date: "2026-02-14"
-updated: "2026-02-14"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["product copy", "copywriting", "microcopy", "ux writing", "conversion copy"]
@@ -98,4 +98,4 @@ Run those five steps and average copy becomes good copy. It's editing, not talen
 
 Clear beats clever, specific beats vague, and human beats impressive. The moment you stop trying to sound like a big company and start writing the way you'd explain your product to a friend, your copy gets better and strangers start understanding what you built. Write the draft badly, edit it honestly, then read it out loud one more time.
 
-If you want to practice this on a real product with people who'll edit your words alongside you, that's exactly what you'd do in the Build week of [the batch0 program](/program): write the copy, put it in front of real users, and rewrite based on what actually lands.
+If you want to practice this on a real product with people who'll edit your words alongside you, that's exactly what you'd do in the Build sprint of [the batch0 program](/program): write the copy, put it in front of real users, and rewrite based on what actually lands.

@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const when = derived.dateRangeSentence
     ? ` ${derived.cohortLabel || "Next cohort"}: ${derived.dateRangeSentence}.`
     : "";
-  const description = `Inside batch0 week by week: kickoff, four build sprints, live sessions on Zoom, and a live demo day.${when}`;
+  const description = `Inside batch0 week by week: kickoff, four build sprints, live online sessions, and a live demo day.${when}`;
 
   return {
     title: PROGRAM_TITLE,
@@ -76,6 +76,18 @@ const DETAIL: Record<string, string[]> = {
   ],
 };
 
+const WEEKLY_OUTCOMES = [
+  ["Kickoff", "A project brief, a customer problem, and a realistic weekly work plan."],
+  ["Validate · learn", "Customer interview questions, observation notes, and a clear problem hypothesis."],
+  ["Validate · test", "A small demand experiment, an evidence log, and a revised Lean Canvas."],
+  ["Build · scope", "One essential user journey, an MVP plan, and a testable prototype."],
+  ["Build · ship", "A usable first version, user-test findings, and a pricing and cost model."],
+  ["Market · position", "A specific audience, a competitive comparison, and a clear product message."],
+  ["Market · distribute", "A small distribution experiment, a measured funnel, and a plan for the next users."],
+  ["Pitch · prepare", "An evidence-based deck, a concise pitch, and a reliable demo."],
+  ["Pitch · demonstrate", "A rehearsed demo-day presentation, an honest retrospective, and a 30-day plan."],
+];
+
 // Prerendered with ISR, same shape as the homepage: the server renders the
 // base price and <RegionalPrice> swaps the label client-side for visitors
 // whose clock says India — the geo header this page used to read served
@@ -118,12 +130,12 @@ export default async function ProgramPage() {
     "@type": "CourseInstance",
     "@id": `${SITE}/program#cohort-${cohort.cohortNumber ?? 1}`,
     name: derived.cohortHeadline || cohortLabel,
-    // Live sessions run on Zoom, so the instance is fully virtual and the
+    // Live sessions run online, so the instance is fully virtual and the
     // location is the platform itself.
     courseMode: "Online",
     location: {
       "@type": "VirtualLocation",
-      name: "Zoom",
+      name: "Batch0 live sessions",
     },
     instructor: FOUNDERS,
     inLanguage: "en-US",
@@ -223,14 +235,32 @@ export default async function ProgramPage() {
               sprints — Validate, Build, Market, Pitch. Each sprint is one
               taught week followed by a build week where you apply it to your
               own company with feedback, and the cohort closes with demo day.
-              Plan for 5–10 focused hours a week; live sessions run on Zoom
-              (U.S. Eastern time, recorded if you miss one), and the exact
-              weekly calendar is published before kickoff.
+              Plan for 5–10 focused hours a week. Live sessions run inside
+              Batch0 on U.S. Eastern time. Enrolled students find session
+              links and calendar downloads in Events, and lessons and
+              workbooks in Course.
             </p>
           </div>
           <div className="md:col-span-5 md:pl-6 md:pt-2">
             <Ledger config={config} className="border-t border-line pt-6 md:border-t-0 md:pt-0" />
           </div>
+        </div>
+      </section>
+
+      <section className="border-t border-line bg-wash px-5 py-16 sm:px-6" aria-labelledby="weekly-plan">
+        <div className="mx-auto max-w-[1100px]">
+          <h2 id="weekly-plan" className="font-display text-3xl font-bold">Your nine-week path</h2>
+          <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-ink-soft">Each week includes readings, exercises, a workbook, and a concrete outcome. Work on one project throughout; the goal is useful evidence and progress, not finishing a pile of links.</p>
+          <ol className="mt-8 grid gap-4 md:grid-cols-3">
+            {WEEKLY_OUTCOMES.map(([title, outcome], index) => (
+              <li key={title} className="rounded-xl border border-line bg-paper p-5">
+                <p className="font-mono text-xs uppercase text-ink-faint">Week {index + 1}</p>
+                <h3 className="mt-2 font-semibold">{title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">{outcome}</p>
+              </li>
+            ))}
+          </ol>
+          <a href="/start" className="link-ink mt-7 inline-block text-sm font-medium">Try the free founder starter kit →</a>
         </div>
       </section>
 

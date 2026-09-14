@@ -2,7 +2,7 @@
 title: "How to Pitch a Startup Idea as a Teenager"
 description: "A great pitch makes people feel the problem in 30 seconds, then shows you can solve it. How to pitch a startup idea as a teenager."
 date: "2026-05-22"
-updated: "2026-05-22"
+updated: "2026-09-14"
 category: "Pitch"
 author: "rishabh"
 tags: ["pitching", "pitch", "startup pitch", "public speaking", "demo day"]
@@ -84,6 +84,6 @@ Storytelling is the layer that makes structure land, so it's worth studying [the
 
 A clean two-minute pitch takes most people a few focused days to write and a couple of weeks of practice to deliver well. Not months. The writing is fast once your idea has real proof behind it; the delivery is just reps.
 
-If you want reps in front of real judges instead of your bedroom mirror, batch0's four-week accelerator ends with a live demo day where you pitch what you built. When you're ready to prepare for that moment specifically, [how to prepare for demo day](/blog/demo-day-preparation-guide) is the next thing to read.
+If you want reps in front of real judges instead of your bedroom mirror, batch0's nine-week accelerator ends with a live demo day where you pitch what you built. When you're ready to prepare for that moment specifically, [how to prepare for demo day](/blog/demo-day-preparation-guide) is the next thing to read.
 
 The version of you that has pitched ten times is unrecognizable from the one who's never done it. So the real answer to "how do I get good at pitching" is boring and true: pitch, get feedback, fix one thing, pitch again.

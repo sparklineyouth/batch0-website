@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
-import { CheckCircle2, PlayCircle, Lock } from "lucide-react";
+import { CheckCircle2, BookOpen, Lock } from "lucide-react";
 
 export const metadata = { title: "Course · batch0" };
 
@@ -17,6 +17,8 @@ export default async function CoursePage() {
       .from("enrollments")
       .select("*, cohort:cohorts(*)")
       .eq("user_id", user.id)
+      .order("enrolled_at", { ascending: false })
+      .limit(1)
       .maybeSingle(),
     supabase
       .from("lesson_progress")
@@ -117,7 +119,7 @@ export default async function CoursePage() {
                       {completed.has(l.id) ? (
                         <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                       ) : (
-                        <PlayCircle className="h-5 w-5 shrink-0 text-ink-faint" />
+                        <BookOpen className="h-5 w-5 shrink-0 text-ink-faint" />
                       )}
                       <span className="flex-1 text-sm">{l.title}</span>
                       {l.duration_seconds && (

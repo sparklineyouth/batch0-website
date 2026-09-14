@@ -2,7 +2,7 @@
 title: "How to Do Competitive Analysis Without Overthinking It"
 description: "Competitive analysis isn't a giant spreadsheet. It's finding how customers solve the problem today and where the gap is. A fast way to do it."
 date: "2026-05-12"
-updated: "2026-05-12"
+updated: "2026-09-14"
 category: "Market"
 author: "team"
 tags: ["competitive analysis", "competitors", "market research", "positioning", "strategy"]
@@ -94,7 +94,7 @@ Competitive analysis isn't a standalone chore. It sits between finding a problem
 
 You start upstream by [finding a problem worth solving](/blog/how-to-find-a-startup-problem-worth-solving). Competitive analysis then tells you whether that problem is already solved well enough that nobody would switch, or whether there's a real gap. If there's a gap, it points you straight at your wedge and your positioning. If there's no gap, better to learn that now than after building for three months.
 
-At batch0, the market week works exactly this way: you don't research competitors to write a report, you do it to sharpen who you're for and why they'd pick you. The output is a sentence and a decision, not a deck.
+At batch0, the Market sprint works exactly this way: you don't research competitors to write a report, you do it to sharpen who you're for and why they'd pick you. The output is a sentence and a decision, not a deck.
 
 ## How long should this take?
 

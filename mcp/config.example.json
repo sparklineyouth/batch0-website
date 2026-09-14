@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "batch0": {
+      "command": "node",
+      "args": ["/absolute/path/to/batch0-website/mcp/dist/index.js"]
+    }
+  }
+}

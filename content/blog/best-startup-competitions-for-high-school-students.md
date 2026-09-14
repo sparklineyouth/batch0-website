@@ -2,7 +2,7 @@
 title: "The Best Startup Competitions for High School Students"
 description: "Startup competitions are a low-risk way to test your idea and win money. What to look for in a competition, and how to actually win one."
 date: "2026-06-23"
-updated: "2026-06-23"
+updated: "2026-09-14"
 category: "Playbook"
 author: "team"
 tags: ["startup competitions", "business plan competition", "pitch competition", "high school", "contests"]
@@ -79,7 +79,7 @@ And a competition is not the same as an accelerator, even though many end in a p
 
 The strongest competition entries usually aren't built the week before. They come out of a longer process where you validated an idea, built something, and got a little traction first. That's the whole reason accelerators produce good demo-day pitches: the pitch is the last step, not the first.
 
-batch0 runs on exactly that shape. It's four one-week sprints, Validate, Build, Market, then Pitch, ending in a live demo day. By the time you're on the mic, you've already talked to customers and shipped something, so the pitch is describing real work instead of a hypothetical. You can use that same sequence on your own before any competition: validate, build a scrappy version, get proof, then pitch.
+batch0 runs on exactly that shape. It's four two-week sprints, Validate, Build, Market, then Pitch, ending in a live demo day. By the time you're on the mic, you've already talked to customers and shipped something, so the pitch is describing real work instead of a hypothetical. You can use that same sequence on your own before any competition: validate, build a scrappy version, get proof, then pitch.
 
 ## What to do next
 

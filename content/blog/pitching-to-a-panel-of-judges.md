@@ -2,7 +2,7 @@
 title: "How to Pitch to a Panel of Judges"
 description: "Pitching to a panel is different from pitching one person. Here's how to read a judging panel, where to look, and how to win a room of five."
 date: "2026-02-26"
-updated: "2026-02-26"
+updated: "2026-09-14"
 category: "Pitch"
 author: "rishabh"
 tags: ["pitch to judges", "judging panel", "pitch competition judges", "eye contact panel", "read the room"]
@@ -70,6 +70,6 @@ And if two judges start disagreeing about your business, stay out of the crossfi
 
 Nothing prepares you for five faces except five faces. Round up parents, teammates, a teacher, anyone, and have them sit in a row and stare at you while you pitch. Ask two of them to interrupt with hard questions. It'll feel awkward, and that's the point; the awkwardness is what you're training your nervous system to tolerate. Solid [rehearsal](/blog/how-to-rehearse-a-pitch) is the difference between a pitch that sounds memorized and one that sounds like you.
 
-Then get real reps in front of real judges. That's the whole design of [batch0's program](/program): you build a real company across four one-week sprints and pitch it at a live demo day in front of an actual panel, not your bedroom mirror. The first time you pitch a real panel shouldn't be the pitch that counts, so make that first one somewhere safe. Applying is [free](/apply); you only pay tuition if you get in.
+Then get real reps in front of real judges. That's the whole design of [batch0's program](/program): you build a real company across four two-week sprints and pitch it at a live demo day in front of an actual panel, not your bedroom mirror. The first time you pitch a real panel shouldn't be the pitch that counts, so make that first one somewhere safe. Applying is [free](/apply); you only pay tuition if you get in.
 
 The founders who win panels aren't the ones with the flashiest slides. They're the ones who look five strangers in the eye one at a time, tell a story those strangers can retell, and stay calm when someone pushes. That's a learnable skill, and the only way to learn it is to stand in front of a panel and do it. So go build something worth pitching, then go find a panel to pitch it to.

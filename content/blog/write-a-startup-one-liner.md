@@ -2,7 +2,7 @@
 title: "How to Write a One-Liner for Your Startup"
 description: "A great startup one-liner explains what you do in a single breath. Here's a formula for writing one that people repeat instead of forget."
 date: "2026-02-10"
-updated: "2026-02-10"
+updated: "2026-09-14"
 category: "Pitch"
 author: "rishabh"
 tags: ["startup one-liner", "elevator pitch", "one sentence pitch", "positioning line", "startup tagline"]
@@ -14,7 +14,7 @@ This is the sentence you say when a judge asks "so what do you do?" It's the fir
 
 ## Why your one-liner matters more than you think
 
-You will say this sentence more than any other sentence about your company. To classmates, to a teacher who wants to help, to a stranger at a competition, to a parent deciding whether to fund your $130 tuition. Each time, you have about five seconds before the listener decides whether to lean in or nod politely and change the subject.
+You will say this sentence more than any other sentence about your company. To classmates, to a teacher who wants to help, to a stranger at a competition, to a parent deciding whether to fund your program tuition. Each time, you have about five seconds before the listener decides whether to lean in or nod politely and change the subject.
 
 A weak one-liner forces you to explain twice. A strong one makes the listener ask a question, which means they're curious, which means you're now having a real conversation instead of a monologue. The goal of a one-liner isn't to describe everything. It's to earn the next sentence.
 
@@ -73,6 +73,6 @@ Once you have it, this sentence earns its keep everywhere. It's the opening line
 
 Your one-liner will also change, and that's normal. As you run [customer interviews](/blog/customer-interviews-beginners-guide) and hear the exact words people use to describe their problem, steal those words. The best one-liners aren't invented at a desk; they're overheard. When a user describes your product back to you better than you described it to them, that's your new one-liner. Write it down.
 
-If you want to pressure-test yours against real people and sharpen it alongside everything else in your pitch, that's a lot of what happens inside [batch0's four-week program](/program) during the Pitch sprint. You'll say your line dozens of times to real humans and watch it get tighter every time. But you don't need us to start. Grab one of the formulas above, write the ugly version tonight, and cut it down until a stranger can repeat it back. When they can, you're done.
+If you want to pressure-test yours against real people and sharpen it alongside everything else in your pitch, that's a lot of what happens inside [batch0's nine-week program](/program) during the Pitch sprint. You'll say your line dozens of times to real humans and watch it get tighter every time. But you don't need us to start. Grab one of the formulas above, write the ugly version tonight, and cut it down until a stranger can repeat it back. When they can, you're done.
 
 Ready to build something worth writing a one-liner about? [Apply to batch0](/apply) for free, and only pay if you're accepted.

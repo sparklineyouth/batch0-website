@@ -2,7 +2,7 @@
 title: "Vibe Coding: Building an App With AI When You Can't Code"
 description: "AI code tools let non-programmers build real apps by describing them. How vibe coding works, where it breaks, and how to ship something usable."
 date: "2026-02-26"
-updated: "2026-02-26"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["vibe coding", "ai app builder", "no code app", "lovable", "cursor"]
@@ -75,4 +75,4 @@ None of that means you can't ship — it means your first version should dodge t
 
 You don't need permission, a computer science class, or a co-founder who codes. Pick Lovable or Bolt, open it tonight, and describe the smallest useful version of your idea in one sentence. Build small, test every step, save what works, and get it in front of five real people by the weekend. That loop — build, test, watch, fix — is the entire game, and AI just handed you the keys.
 
-When you want structure, deadlines, and mentors who'll keep you shipping instead of spiraling in a broken build, that's what the four one-week sprints of the [batch0 program](/program) are for. Applying is free, and you only pay tuition if you get in — [apply here](/apply). Now close this tab and go describe your app to an AI.
+When you want structure, deadlines, and mentors who'll keep you shipping instead of spiraling in a broken build, that's what the four two-week sprints of the [batch0 program](/program) are for. Applying is free, and you only pay tuition if you get in — [apply here](/apply). Now close this tab and go describe your app to an AI.

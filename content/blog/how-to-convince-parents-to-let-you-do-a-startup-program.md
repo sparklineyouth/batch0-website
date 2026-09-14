@@ -3,7 +3,7 @@ title: "How to Convince Skeptical Parents to Let You Join a Startup Program"
 seoTitle: "How to Get Parents to Say Yes to a Startup Program"
 description: "Parents worry a startup program is a distraction or a scam. Here's how to make the case, answer their real objections, and get a yes on your accelerator."
 date: "2026-02-11"
-updated: "2026-02-11"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["convince parents startup program", "parent objections", "startup accelerator permission", "teen program cost", "getting parents on board", "parent buy-in"]
@@ -31,7 +31,7 @@ The fastest way to kill the "is this a scam" fear is to walk in having already i
 
 Do this before the conversation:
 
-1. **Find out exactly what it costs, and when.** Is there an application fee? Is tuition charged up front, or only if you're accepted? A trustworthy program is upfront about money. (batch0, for example, is free to apply to, and the $130 tuition is only charged if you get in.)
+1. **Find out exactly what it costs, and when.** Is there an application fee? Is tuition charged up front, or only if you're accepted? A trustworthy program is upfront about money. (batch0, for example, is free to apply to, and tuition is only charged if you get in.)
 2. **Check whether they take equity.** A program that wants a slice of a company you haven't built yet is a red flag for a 16-year-old. No-equity programs are the safe default.
 3. **Read what actually happens week to week.** If you can't explain what you'll be doing on a given day, you can't defend it. Skim [what actually happens inside a startup accelerator](/blog/what-happens-in-a-startup-accelerator) so you can describe it in plain terms.
 4. **Compare it to the alternatives.** Line it up against a summer job, another camp, or a free program. [How to choose a teen startup program that isn't a waste of money](/blog/how-to-choose-a-teen-startup-program) gives you the checklist to do this honestly.
@@ -45,9 +45,9 @@ You don't win this with enthusiasm. You win it by having a calm, honest answer r
 | Their objection | What they're really asking | An honest answer |
 |---|---|---|
 | "It's probably a scam." | Are these people trustworthy? | "I checked. Free to apply, tuition only if accepted, and they don't take any ownership of my company." |
-| "Your grades will slip." | Will this hurt school? | "It's four one-week sprints with set hours. Here's the schedule and how I'll protect finals week." |
+| "Your grades will slip." | Will this hurt school? | "The Fall cohort has a kickoff week and four two-week sprints. Here's the published schedule and how I'll protect schoolwork." |
 | "What if it goes nowhere?" | Will you be crushed if it fails? | "Most first companies fail. I keep the skills either way — talking to customers, building, pitching." |
-| "Why does it cost money?" | Is this a smart use of the budget? | "It's $130, and only if I get accepted. That's less than most sports or test-prep, and I learn more." |
+| "Why does it cost money?" | Is this a smart use of the budget? | "Here's the current tuition and our total budget. Payment is only due if I get accepted; let's compare the cost with the actual work and feedback I'd receive." |
 | "You can just watch YouTube." | Why pay for structure? | "I've tried. I never finish. A deadline and a live demo day are what actually make me build." |
 | "Is this instead of college?" | Is this a detour from your future? | "No. It's an extracurricular that might help my applications, not a replacement for them." |
 

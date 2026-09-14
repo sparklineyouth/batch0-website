@@ -2,7 +2,7 @@
 title: "How to Write About Your Startup on College Applications"
 description: "A startup can make a great college essay or a bragging one. Here's how to write about your business on applications, even if it failed or made no money."
 date: "2026-02-21"
-updated: "2026-02-21"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["startup college essay", "college application activities", "writing about your business", "common app startup", "admissions essay", "extracurricular startup"]
@@ -93,7 +93,7 @@ The strong version has a person in it, a number in it, and a specific turn of th
 
 No. Plenty of the strongest essays come from one student, a free tool, and a real problem they chased for a few months. You can start this weekend without permission or money, and the honest work is what matters, not the logo on it.
 
-That said, a structured program can force the parts most students skip — talking to customers, shipping on a deadline, tracking numbers you'll want later. [batch0](/program) runs four one-week sprints (Validate, Build, Market, Pitch) that end in a live demo day, which is a fast way to generate the concrete moments and metrics that make an application specific. Applying is free, so it costs nothing to see if it fits; you can [apply here](/apply) and start building something you'll actually want to write about.
+That said, a structured program can force the parts most students skip — talking to customers, shipping on a deadline, tracking numbers you'll want later. [batch0](/program) runs four two-week sprints (Validate, Build, Market, Pitch) that end in a live demo day, which is a fast way to generate the concrete moments and metrics that make an application specific. Applying is free, so it costs nothing to see if it fits; you can [apply here](/apply) and start building something you'll actually want to write about.
 
 ## What to do next
 

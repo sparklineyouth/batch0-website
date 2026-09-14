@@ -2,7 +2,7 @@
 title: "What Is a Fake Door Test and How to Run One"
 description: "A fake door test measures real demand for a product you have not built yet. Here is how to run one as a student founder in a weekend."
 date: "2026-02-25"
-updated: "2026-02-25"
+updated: "2026-09-14"
 category: "Validate"
 author: "rishabh"
 tags: ["fake door test", "smoke test", "demand testing", "validation", "landing page test"]
@@ -79,6 +79,6 @@ A fake door only works if you don't cheat it. Watch for these:
 
 The fake door is a Validate move, the first sprint of building any real company. You run it before you write code, before you design a full product, before you tell everyone you're launching. It's the cheapest way to hear "yes" or "no" from the market while it still costs you almost nothing to change your mind.
 
-Running these tests on your own idea, with feedback from people who've done it, is exactly what the first week of the [batch0 program](/program) is built around. You come in with an idea and leave the Validate sprint knowing whether real strangers actually want it, before you've sunk a semester into building. If that's the loop you want to run for real, you can [apply for free](/apply) and only pay tuition if you get in.
+Running these tests on your own idea, with feedback from people who've done it, is exactly what the Validate sprint of the [batch0 program](/program) is built around. You come in with an idea and leave the Validate sprint knowing whether real strangers actually want it, before you've sunk a semester into building. If that's the loop you want to run for real, you can [apply for free](/apply) and only pay tuition if you get in.
 
 For now, though, you don't need any of that to start. Pick one door. Set your number. Put it in front of strangers this weekend. Let the clicks tell you the truth.

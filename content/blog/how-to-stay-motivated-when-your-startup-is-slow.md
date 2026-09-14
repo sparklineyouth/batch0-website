@@ -2,7 +2,7 @@
 title: "How to Stay Motivated When Nothing Is Working Yet"
 description: "Every founder hits the messy middle where progress stalls. Here's how young founders stay motivated during the slow grind before any traction shows up."
 date: "2026-02-03"
-updated: "2026-02-03"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["founder motivation", "the messy middle", "staying motivated startup", "no traction yet", "founder discipline", "grinding through"]
@@ -77,4 +77,4 @@ The slow, unglamorous middle is the entire game. Anyone can be excited on day on
 
 Motivation will come and go, and you don't need it every day. What you need is a goal small enough to hit this week, a way to see the effort you're putting in, and a reason to show up tomorrow. Build the system and let it carry you.
 
-If grinding alone in the quiet is what's wearing you down, that's the strongest argument for structure. A program like [batch0](/program) compresses the grind into four one-week sprints with deadlines, feedback, and other founders in the same fog, so the slow middle has guardrails instead of silence. You can [apply for free](/apply) and only pay tuition if you get in. Either way, the move today is the same: pick one tiny goal, do the first action, and don't break the chain.
+If grinding alone in the quiet is what's wearing you down, that's the strongest argument for structure. A program like [batch0](/program) compresses the grind into four two-week sprints with deadlines, feedback, and other founders in the same fog, so the slow middle has guardrails instead of silence. You can [apply for free](/apply) and only pay tuition if you get in. Either way, the move today is the same: pick one tiny goal, do the first action, and don't break the chain.

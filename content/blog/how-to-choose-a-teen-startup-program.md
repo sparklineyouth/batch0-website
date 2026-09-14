@@ -3,7 +3,7 @@ title: "How to Choose a Teen Startup Program That Isn't a Waste of Money"
 seoTitle: "How to Choose a Teen Startup Program"
 description: "Some teen startup programs are worth it; many aren't. Here's a checklist of green flags and red flags to judge any program before you pay a single dollar."
 date: "2026-07-02"
-updated: "2026-07-02"
+updated: "2026-09-14"
 category: "Playbook"
 author: "team"
 tags: ["teen startup program", "summer program", "how to choose", "red flags", "entrepreneurship program"]
@@ -66,7 +66,7 @@ There's no single right number, but the shape of a fair price is knowable. Free 
 
 Cost alone doesn't tell you quality. A $5,000 program can be prestige theater; a modest one can be genuinely rigorous. What matters is the ratio of price to what you build and learn, and whether the price is honest from the start.
 
-For reference on the transparent end: batch0 charges $130, and only if you're accepted — applying is free, and reduced regional pricing kicks in automatically in select countries. No equity, ever. That's the kind of clarity to demand from anyone asking for your money, whatever the number is. If you're mapping the landscape, this [2026 guide to accelerator programs for high schoolers](/blog/startup-accelerator-programs-for-high-schoolers) compares formats and price ranges.
+For reference on the transparent end: batch0 lists its [current cohort tuition](/program) and charges only if you're accepted — applying is free, and reduced regional pricing kicks in automatically in select countries. No equity, ever. That's the kind of clarity to demand from anyone asking for your money, whatever the number is. If you're mapping the landscape, this [2026 guide to accelerator programs for high schoolers](/blog/startup-accelerator-programs-for-high-schoolers) compares formats and price ranges.
 
 ## What a good program is not
 

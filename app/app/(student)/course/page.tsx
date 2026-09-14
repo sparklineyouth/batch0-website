@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, Circle, Lock, PlayCircle } from "lucide-react";
+import { CheckCircle2, Circle, Lock, BookOpen } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -214,7 +214,7 @@ export default async function StudentAppCourse() {
                                     {Math.round(l.duration_seconds / 60)}m
                                   </span>
                                 )}
-                                <PlayCircle className="h-[18px] w-[18px] text-ink-faint" />
+                                <BookOpen className="h-[18px] w-[18px] text-ink-faint" />
                               </div>
                             }
                           />

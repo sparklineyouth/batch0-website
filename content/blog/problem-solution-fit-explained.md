@@ -2,7 +2,7 @@
 title: "Problem-Solution Fit: Are You Building the Right Thing?"
 description: "Problem-solution fit means you've proven a real problem exists and people will use your fix. How to know when you have it, and when you don't."
 date: "2026-04-07"
-updated: "2026-04-07"
+updated: "2026-09-14"
 category: "Validate"
 author: "team"
 tags: ["problem solution fit", "product market fit", "validation", "lean startup", "early stage"]
@@ -107,4 +107,4 @@ Not having fit is normal. It's the default state of every early idea. The mistak
 
 If the problem is real but your solution misses, keep the problem and change the solution. The pain was the valuable discovery. If the problem itself is soft — no workarounds, no urgency, polite shrugs — go find a sharper problem. That's not failure, it's the process working, and it's cheaper to learn it now than after months of building.
 
-Getting from a raw idea to confirmed fit is exactly what the first week of an accelerator like [batch0](/program) is built around: a Validate sprint where you pressure-test the problem before you touch the build. If you want the full method for stress-testing an idea on your own, read [how to validate a startup idea in high school](/blog/how-to-validate-startup-idea-high-school) next — it walks through the exact tests that turn a hunch into evidence.
+Getting from a raw idea to confirmed fit is exactly what the Validate sprint at [batch0](/program) is built around: two weeks where you pressure-test the problem before you touch the build. If you want the full method for stress-testing an idea on your own, read [how to validate a startup idea in high school](/blog/how-to-validate-startup-idea-high-school) next — it walks through the exact tests that turn a hunch into evidence.

@@ -2,7 +2,7 @@
 title: "The Mom Test: How to Ask Questions That Get Honest Answers"
 description: "People lie to be nice, which ruins your customer interviews. The Mom Test shows teen founders how to ask questions that get real, honest answers."
 date: "2026-02-13"
-updated: "2026-02-13"
+updated: "2026-09-14"
 category: "Validate"
 author: "rishabh"
 tags: ["the mom test", "customer interviews", "interview questions", "validation", "honest feedback"]
@@ -101,4 +101,4 @@ Start small. Write down five questions you want to ask, then rewrite any that a 
 
 When you're ready to turn these rules into a full call, pair this with our [beginner's guide to customer interviews](/blog/customer-interviews-beginners-guide) for a complete script, and figure out [how many customer interviews are actually enough](/blog/how-many-customer-interviews-are-enough) so you don't interview forever to avoid building.
 
-At batch0, the first of our four one-week sprints is Validate, and this is exactly the muscle we drill: talking to real humans and hearing the truth before you spend a dollar building. If you want a live cohort and mentors pushing you to get honest answers instead of nice ones, [take a look at the program](/program). Applying is free, and you only pay tuition if you get in. Ask better questions, and the answers will tell you what to build.
+At batch0, the first of our four two-week sprints is Validate, and this is exactly the muscle we drill: talking to real humans and hearing the truth before you spend a dollar building. If you want a live cohort and mentors pushing you to get honest answers instead of nice ones, [take a look at the program](/program). Applying is free, and you only pay tuition if you get in. Ask better questions, and the answers will tell you what to build.

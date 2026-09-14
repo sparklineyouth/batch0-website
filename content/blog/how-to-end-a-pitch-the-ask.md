@@ -2,7 +2,7 @@
 title: "How to End a Pitch and Make the Ask"
 description: "A weak closing wastes a great pitch. Here's how to end a pitch with a clear ask and a line that judges remember after you sit down."
 date: "2026-02-06"
-updated: "2026-02-06"
+updated: "2026-09-14"
 category: "Pitch"
 author: "rishabh"
 tags: ["pitch closing", "the ask", "call to action", "pitch ending", "closing line"]
@@ -74,4 +74,4 @@ The ending deserves an outsized share of your rehearsal time. Run just the last 
 
 You don't need funding, a co-founder, or a fancy deck to nail this. Know your ask, write one good line, and practice stopping on time. It's free, and it's the highest-leverage 20 seconds in your whole pitch.
 
-If you want a real room to try it in, [batch0](/program) runs four one-week sprints and ends with a live demo day where you make an actual ask to real judges. Applying is free, and you only pay tuition if you get in. [Apply here](/apply) when you're ready to pitch something you built.
+If you want a real room to try it in, [batch0](/program) runs four two-week sprints and ends with a live demo day where you make an actual ask to real judges. Applying is free, and you only pay tuition if you get in. [Apply here](/apply) when you're ready to pitch something you built.

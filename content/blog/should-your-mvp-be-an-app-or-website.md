@@ -2,7 +2,7 @@
 title: "Should Your MVP Be an App or a Website?"
 description: "An app store submission can waste weeks you don't have. How to decide between a mobile app and a web app for your first product."
 date: "2026-02-16"
-updated: "2026-02-16"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["app vs website", "mobile app", "web app", "mvp platform", "pwa"]
@@ -82,4 +82,4 @@ That's it. The platform choice should take an afternoon, not a week, because it'
 
 The trap to avoid is spending your whole build sprint arguing platform instead of testing the idea. Your goal in [the Build week of an accelerator](/program) is to get something real in front of users fast. A link does that. An app store submission stuck in review does not.
 
-Pick the option that lets you learn the most this week — for most of you, that's a website. Get it in front of people, watch what happens, and let real usage tell you whether an app is ever worth building. When you're ready to build alongside mentors and other student founders, [apply to batch0](/apply) — it's free to apply, and you'll ship a real product across four one-week sprints.
+Pick the option that lets you learn the most this week — for most of you, that's a website. Get it in front of people, watch what happens, and let real usage tell you whether an app is ever worth building. When you're ready to build alongside mentors and other student founders, [apply to batch0](/apply) — it's free to apply, and you'll ship a real product across four two-week sprints.

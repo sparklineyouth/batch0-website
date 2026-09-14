@@ -2,7 +2,7 @@
 title: "How to Get Your First 10 Customers as a Student Founder"
 description: "Your first 10 customers come from doing things that don't scale: going where they already are and asking directly. Here's the channel-by-channel playbook."
 date: "2026-04-24"
-updated: "2026-04-24"
+updated: "2026-09-14"
 category: "Market"
 author: "shresht"
 tags: ["first customers", "early traction", "distribution", "growth", "student founders"]
@@ -96,6 +96,6 @@ If the targeting is right but the ask still flops, the issue is often your pitch
 
 Landing 10 real customers by hand is a week or two of focused effort, not a semester. Building the list of 30 is an afternoon. Messaging them is a few days of sending and following up. The conversations and tweaks run alongside.
 
-The trick is treating it as a countable task, not a mood. Ten names, ten asks, ten follow-ups. This is also exactly the work you'd do in the Market week of an accelerator like batch0, where the point is to get real people using the thing, not to admire a chart.
+The trick is treating it as a countable task, not a mood. Ten names, ten asks, ten follow-ups. This is also exactly the work you'd do in the Market sprint of an accelerator like batch0, where the point is to get real people using the thing, not to admire a chart.
 
 When you've got your first handful, don't stop to celebrate the number. Get on the phone with them. What you hear next — the complaints, the "I wish it did," the one person who won't shut up about it — is the map for your next 10.

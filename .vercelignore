@@ -15,3 +15,7 @@
 # 9.7MB of graphify knowledge-graph output. Not gitignored historically, so
 # it would otherwise be uploaded on every `vercel --prod` from a working copy.
 /graphify-out
+.env.production.local
+mcp/
+content/course-launch/
+content/promotion/

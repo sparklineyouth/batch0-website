@@ -85,6 +85,7 @@ const FALLBACK_HOME: Record<string, string> = {
 const PUBLIC_STATIC_PREFIXES = [
   "/",
   "/program",
+  "/start",
   "/blog",
   "/privacy",
   "/terms",

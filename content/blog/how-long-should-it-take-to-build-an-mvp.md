@@ -2,7 +2,7 @@
 title: "How Long Should It Take to Build Your First MVP?"
 description: "If your MVP is taking months, something is wrong. Here's a realistic timeline for building a first version as a student and how to cut scope to hit it."
 date: "2026-02-10"
-updated: "2026-02-10"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["mvp timeline", "build an mvp", "scope cutting", "shipping fast", "mvp scope"]
@@ -27,7 +27,7 @@ The honest answer depends on what you're building and how you build it. But for 
 
 Notice the last row. A [concierge MVP](/blog/concierge-mvp-do-it-manually) — where you deliver the service manually instead of automating it — is almost always the fastest way to test whether people actually want the thing. If your idea is "an app that matches students with tutors," you don't need an app. You need a spreadsheet, some DMs, and a weekend. That's a legitimate MVP, and it's often smarter than three weeks of coding.
 
-batch0 runs its Build sprint as a single week for exactly this reason. When you have a hard deadline, you make hard cuts. When you have "all the time in the world," you gold-plate a product nobody has confirmed they want.
+batch0 runs its Build sprint over two weeks for exactly this reason. When you have a hard deadline, you make hard cuts. When you have "all the time in the world," you gold-plate a product nobody has confirmed they want.
 
 ## Why does an MVP take longer than you think?
 
@@ -80,6 +80,6 @@ The goal of an MVP isn't to impress anyone. It's to learn fast and cheap. Every 
 
 Give yourself two weeks, max, for a first MVP. Write the one-line promise. Build the single feature that keeps it. Fake or park everything else. Then get it in front of strangers and let their reactions — not your feature ideas — tell you what to build next.
 
-If setting that kind of deadline for yourself is hard, that's exactly what a structured program is for. batch0's [four-week program](/program) gives you one week each to validate, build, market, and pitch — a real clock that forces the cuts most founders won't make alone. If you want that pressure and a room full of people building alongside you, [apply here](/apply) — it's free to apply, and you only pay tuition if you get in.
+If setting that kind of deadline for yourself is hard, that's exactly what a structured program is for. batch0's [nine-week program](/program) starts with a kickoff week, then gives you two weeks each to validate, build, market, and pitch — a real clock that forces the cuts most founders won't make alone. If you want that pressure and a room full of people building alongside you, [apply here](/apply) — it's free to apply, and you only pay tuition if you get in.
 
 Your MVP is not a monument. It's a question you're asking the world. Ask it this month, not next semester.

@@ -2,7 +2,7 @@
 title: "How to Know When to Quit Your Startup (and When to Push)"
 description: "Deciding when to quit a startup is harder than starting one. The honest signals that tell a young founder to pivot, push on, or walk away."
 date: "2026-02-23"
-updated: "2026-02-23"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["when to quit a startup", "pivot or persevere", "young founder decisions", "startup quitting", "sunk cost", "founder burnout"]
@@ -73,6 +73,6 @@ That last step is the pro move. Deciding *now* what future failure looks like re
 
 If you decide to walk away, do it cleanly and proudly. Tell the people who supported you. Write down what you learned, because those lessons are the real product of a first startup. Then start the next thing with sharper instincts. Quitting a dead idea to chase a live one isn't giving up. It's how good founders operate. Our guide on [what to do when your first startup fails](/blog/dealing-with-failure-as-a-young-founder) walks through exactly how to reset.
 
-And if you're reading this because you're in the fog and can't tell whether your idea is alive or dead, that clarity is hard to find alone. Getting real feedback from people who've seen a hundred teen startups is often the fastest way out. That's a big part of what a structured program does: at [batch0](/program) you build a real company across four one-week sprints and get honest, outside eyes on your idea before you sink another month into it. Applying is free. Whether you push or pivot, the goal is the same, to spend your limited hours on something that's actually going somewhere.
+And if you're reading this because you're in the fog and can't tell whether your idea is alive or dead, that clarity is hard to find alone. Getting real feedback from people who've seen a hundred teen startups is often the fastest way out. That's a big part of what a structured program does: at [batch0](/program) you build a real company across four two-week sprints and get honest, outside eyes on your idea before you sink another month into it. Applying is free. Whether you push or pivot, the goal is the same, to spend your limited hours on something that's actually going somewhere.
 
 The best founders aren't the ones who never quit. They're the ones who quit the right things at the right time, so they have energy left for the thing that finally works.

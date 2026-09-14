@@ -3,7 +3,7 @@ title: "Startup Accelerator Programs for High Schoolers: A 2026 Guide"
 seoTitle: "Startup Accelerator Programs for High Schoolers"
 description: "A 2026 guide to startup accelerator programs for high schoolers: what they offer, what to look for, the red flags, and how to choose one."
 date: "2026-06-12"
-updated: "2026-06-12"
+updated: "2026-09-14"
 category: "Playbook"
 featured: true
 author: "team"
@@ -70,9 +70,9 @@ For a full breakdown of what a startup actually costs to start as a teenager (sp
 
 ## Where does batch0 fit in?
 
-To be transparent about our own program: [batch0](/program) is a live, fully online accelerator for U.S. high schoolers ages 13 to 18. It runs as four one-week build sprints — Validate, Build, Market, then Pitch — and ends with a live demo day. Everything happens on Zoom, so you join from anywhere in the country.
+To be transparent about our own program: [batch0](/program) is a live, fully online accelerator for high schoolers ages 13 to 18. The Fall 2026 cohort runs September 14–November 13, with a kickoff week followed by four two-week build sprints — Validate, Build, Market, then Pitch — and a live demo day. Session links and course materials are available through the cohort dashboard; check the published schedule in your time zone.
 
-On the terms that matter for the filter above: applying is free, and tuition is $130 charged only if you're accepted. Reduced regional pricing applies automatically in select countries. batch0 takes no equity, ever — you keep 100% of your company, your work, and your IP. At demo day, standout students may be offered a non-dilutive batch0 grant, decided purely on merit; it's never guaranteed, and tuition never buys it.
+On the terms that matter for the filter above: applying is free, and the [current cohort tuition](/program) is charged only if you're accepted. Reduced regional pricing applies automatically in select countries. batch0 takes no equity, ever — you keep 100% of your company, your work, and your IP. At demo day, standout students may be offered a non-dilutive batch0 grant, decided purely on merit; it's never guaranteed, and tuition never buys it.
 
 We're one option, not the only one. Apply the same table to us that you'd apply to anyone else. That's the point of the table.
 

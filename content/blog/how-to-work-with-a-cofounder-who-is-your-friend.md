@@ -2,7 +2,7 @@
 title: "When Your Co-Founder Is Also Your Best Friend"
 description: "Building a startup with a close friend can save the friendship or wreck it. How teen co-founders divide roles, handle conflict, and stay friends."
 date: "2026-02-13"
-updated: "2026-02-13"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["cofounder friendship", "friend cofounder conflict", "teen cofounder roles", "working with friends", "cofounder communication", "startup friendship"]
@@ -80,6 +80,6 @@ Don't overthink whether you're "compatible." Run a small real project together a
 3. **Set the weekly check-in.** Put it on both calendars now.
 4. **Ship it, then debrief honestly.** Did they do what they said? Was it energizing or draining? How did the first hard conversation go?
 
-If it clicks, you've got the rarest thing in startups: a trusted partner you actually like. If you're not sure you need a second person, read [how to find a co-founder in high school](/blog/how-to-find-a-cofounder-in-high-school) and be honest about whether "my best friend" is the right pick or just the easy one. And if you want structure, deadlines, and mentors to run all this inside, the [batch0 program](/program) puts teen teams through exactly these four weeks together. Applying is free; you [apply here](/apply) and only pay tuition if you get in.
+If it clicks, you've got the rarest thing in startups: a trusted partner you actually like. If you're not sure you need a second person, read [how to find a co-founder in high school](/blog/how-to-find-a-cofounder-in-high-school) and be honest about whether "my best friend" is the right pick or just the easy one. And if you want structure, deadlines, and mentors to run all this inside, the [batch0 program](/program) puts teen teams through a kickoff week and four two-week sprints together. Applying is free; you [apply here](/apply) and only pay tuition if you get in.
 
 The friendship isn't the risk. The unsaid things are. Say them, and you keep both.

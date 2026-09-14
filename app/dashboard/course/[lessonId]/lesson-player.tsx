@@ -17,6 +17,7 @@ export function LessonPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [completed, setCompleted] = useState(initialCompleted);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const lastSavedRef = useRef(0);
 
   // Persist watch progress every ~10 seconds
@@ -56,39 +57,39 @@ export function LessonPlayer({
 
   async function markComplete() {
     setSaving(true);
-    let createClient;
+    setError(null);
     try {
       // The lazy chunk load can fail (offline, deploy skew) where the old
       // static import couldn't; release the button so the click can retry.
-      ({ createClient } = await import("@/lib/supabase/client"));
-    } catch {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("Sign in again to save your progress.");
+      }
+      const { error: saveError } = await supabase.from("lesson_progress").upsert(
+        {
+          user_id: user.id,
+          lesson_id: lessonId,
+          watched_seconds: Math.floor(videoRef.current?.currentTime ?? 0),
+          completed_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,lesson_id" },
+      );
+      if (saveError) throw new Error("Your progress could not be saved. Please try again.");
+      setCompleted(true);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Your progress could not be saved. Please try again.");
+    } finally {
       setSaving(false);
-      return;
     }
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setSaving(false);
-      return;
-    }
-    await supabase.from("lesson_progress").upsert(
-      {
-        user_id: user.id,
-        lesson_id: lessonId,
-        watched_seconds: Math.floor(videoRef.current?.currentTime ?? 0),
-        completed_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,lesson_id" },
-    );
-    setCompleted(true);
-    setSaving(false);
-    router.refresh();
   }
 
   return (
     <div>
-      <div className="overflow-hidden rounded-2xl border border-line bg-paper aspect-video">
-        {videoUrl ? (
+      {videoUrl && (
+        <div className="overflow-hidden rounded-2xl border border-line bg-paper aspect-video">
           <video
             ref={videoRef}
             src={videoUrl}
@@ -96,24 +97,21 @@ export function LessonPlayer({
             className="h-full w-full"
             playsInline
           />
-        ) : (
-          <div className="flex h-full items-center justify-center text-ink-faint text-sm">
-            No video uploaded yet.
-          </div>
-        )}
-      </div>
+        </div>
+      )}
       <div className="mt-4 flex items-center justify-between">
         {completed ? (
           <span className="inline-flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
             <CheckCircle2 className="h-4 w-4" /> Completed
           </span>
         ) : (
-          <span className="text-sm text-ink-faint">Mark this lesson complete when you finish.</span>
+          <span className="text-sm text-ink-faint">{videoUrl ? "Mark this lesson complete when you finish." : "Finish the reading and exercises, then save your progress."}</span>
         )}
         <Button onClick={markComplete} disabled={saving || completed} variant={completed ? "secondary" : "primary"}>
           {completed ? "Completed" : saving ? "Saving…" : "Mark complete"}
         </Button>
       </div>
+      {error && <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

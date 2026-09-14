@@ -2,7 +2,7 @@
 title: "Positioning: How to Make People Care About Your Product"
 description: "Positioning is how you make the right person instantly get why your product is for them. A simple framework so people actually care."
 date: "2026-05-08"
-updated: "2026-05-08"
+updated: "2026-09-14"
 category: "Market"
 author: "rishabh"
 tags: ["positioning", "messaging", "marketing", "differentiation", "branding"]
@@ -100,6 +100,6 @@ If you notice your homepage, your pitch, and your product description all say sl
 
 Drafting your position takes about an hour. Getting it right takes a few conversations with real people who fit your target customer, so you can hear whether your "for whom" and "against what" match how they actually think.
 
-The test is simple: read your positioning statement to five people who fit your target customer. If they nod and say "yeah, I'd want that," you're close. If they squint and ask what you mean, keep sharpening. batch0 runs four one-week build sprints, and the Market sprint spends its full week on exactly this kind of work, because a clear position is what turns a working product into one people actually pick.
+The test is simple: read your positioning statement to five people who fit your target customer. If they nod and say "yeah, I'd want that," you're close. If they squint and ask what you mean, keep sharpening. batch0 runs four two-week build sprints, and the Market sprint gives you two weeks for exactly this kind of work, because a clear position is what turns a working product into one people actually pick.
 
 Once your position holds up, the next move is turning it into a first impression that converts. Head to [how to build a landing page that converts](/blog/build-landing-page-that-converts) and write the headline straight from the statement you just made.

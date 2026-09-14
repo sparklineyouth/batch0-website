@@ -2,7 +2,7 @@
 title: "How to Find a Mentor as a High School Founder"
 description: "The right mentor can save a young founder months of mistakes. Here's how to find, cold-email, and actually keep a startup mentor as a high schooler."
 date: "2026-02-15"
-updated: "2026-02-15"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["startup mentor", "finding a mentor", "cold email mentor", "high school founder", "advisor for teens", "mentorship"]
@@ -82,6 +82,6 @@ You'll also get advice you disagree with. That's normal. A mentor gives you inpu
 
 If all of this sounds like a lot of cold emailing for uncertain results, there's a reason structured programs exist. The entire point is to hand you mentors who are already committed to helping you, on a schedule, without you having to convince anyone.
 
-That's how batch0 is built: over four one-week sprints, real mentors review your validation, your build, your marketing, and your pitch. Applying is free, and you only pay if you get in. If you'd rather build than chase replies, [apply here](/apply) and let the mentorship come to you.
+That's how batch0 is built: over four two-week sprints, real mentors review your validation, your build, your marketing, and your pitch. Applying is free, and you only pay if you get in. If you'd rather build than chase replies, [apply here](/apply) and let the mentorship come to you.
 
 Either way, the principle holds. Mentors back founders who are already moving. So go make something small and real this week, then find the one person who knows more than you about the exact wall you just hit, and ask them one good question. That's how it starts.

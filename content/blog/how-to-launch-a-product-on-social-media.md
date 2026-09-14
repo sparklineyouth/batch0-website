@@ -2,7 +2,7 @@
 title: "How to Actually Launch Your Product (Not Just Ship It)"
 description: "Shipping and launching aren't the same thing. Here's how to plan a real product launch as a student founder so people actually show up on day one."
 date: "2026-02-02"
-updated: "2026-02-02"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["product launch", "launch day", "launch plan", "shipping product", "student founder"]
@@ -83,6 +83,6 @@ A launch is not the finish line. It's the first day you have real users instead 
 
 You don't get one launch. You get to launch over and over. Every new feature, every milestone, every number worth celebrating is a reason to point your audience at your product again. Founders who treat "launch" as a single make-or-break day put unbearable pressure on it. Founders who treat it as a repeatable motion just keep showing up, and compounding wins.
 
-This is the muscle we build inside batch0. Across four one-week sprints — Validate, Build, Market, Pitch — you build an audience while you build the product, then launch it to real people and pitch at a live demo day. If you want a structured push with mentors and a deadline forcing you to actually launch instead of endlessly tweaking, [take a look at the program](/program) or [apply for free](/apply) — you only pay tuition if you get in.
+This is the muscle we build inside batch0. Across four two-week sprints — Validate, Build, Market, Pitch — you build an audience while you build the product, then launch it to real people and pitch at a live demo day. If you want a structured push with mentors and a deadline forcing you to actually launch instead of endlessly tweaking, [take a look at the program](/program) or [apply for free](/apply) — you only pay tuition if you get in.
 
 Your product deserves better than a quiet deploy at 11pm. Build the audience first. Pick one channel. Set a date. Launch it like the event it is.

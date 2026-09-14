@@ -2,7 +2,7 @@
 title: "Why Good Ideas Are Killing Your Startup"
 description: "The hardest founder skill is saying no to good ideas so you can finish one. How young founders beat shiny-object syndrome and actually ship."
 date: "2026-02-07"
-updated: "2026-02-07"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["shiny object syndrome", "founder focus", "saying no", "startup discipline", "idea overload", "finishing projects"]
@@ -76,7 +76,7 @@ This is the same muscle behind [knowing when to quit versus push through](/blog/
 
 The constraints you complain about are your advantage here. Limited hours, no budget, school eating most of your week: you literally cannot run three projects at once, so the choice is made for you. Say you've got eight hours a week around homework and a part-time job. Eight hours moves one project forward. Split across three ideas, it keeps all three permanently stuck at the starting line. The math forces focus, and that's a gift.
 
-A working setup: one project, one finish line, one parking-lot note, and a habit of writing new ideas down instead of chasing them. When school gets brutal, protect the focus by shrinking the project, not by swapping it. And if you keep starting things and never finishing, the fix might be structure. That's a big part of why a program like [batch0](/program) runs as four one-week sprints with a hard demo day at the end. A deadline you can't quietly slip past often turns an idea-hopper into someone who ships.
+A working setup: one project, one finish line, one parking-lot note, and a habit of writing new ideas down instead of chasing them. When school gets brutal, protect the focus by shrinking the project, not by swapping it. And if you keep starting things and never finishing, the fix might be structure. That's a big part of why a program like [batch0](/program) runs as four two-week sprints with a hard demo day at the end. A deadline you can't quietly slip past often turns an idea-hopper into someone who ships.
 
 ## The bottom line
 

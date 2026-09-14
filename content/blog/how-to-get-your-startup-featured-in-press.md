@@ -2,7 +2,7 @@
 title: "How to Get Your Startup Featured in the News as a Teenager"
 description: "Press coverage builds trust and traffic, and a teen founder angle is a real hook. Here's how to get your startup featured in local and online news."
 date: "2026-02-01"
-updated: "2026-02-01"
+updated: "2026-09-14"
 category: "Market"
 author: "team"
 tags: ["press coverage", "media outreach", "pr for startups", "local news", "publicity"]
@@ -89,4 +89,4 @@ When someone says yes, over-prepare. Reply fast, answer clearly, and give them t
 
 When the article runs, amplify it. Share it everywhere, add a "Featured in" logo to your site, and screenshot it for your [pitch deck's traction slide](/blog/traction-slide-with-no-revenue). Press is one of the strongest credibility signals you can put in front of judges, customers, or a program's admissions team.
 
-Getting covered is a real, teachable marketing skill, and it's exactly what you practice with feedback during batch0's Market week. If you want structured reps at building traction and telling your story, look at [the program](/program) or just [apply](/apply). Applying is free, and the teen-founder angle you'd use to pitch a reporter is the same one that makes your company worth building in the first place.
+Getting covered is a real, teachable marketing skill, and it's exactly what you practice with feedback during batch0's Market sprint. If you want structured reps at building traction and telling your story, look at [the program](/program) or just [apply](/apply). Applying is free, and the teen-founder angle you'd use to pitch a reporter is the same one that makes your company worth building in the first place.

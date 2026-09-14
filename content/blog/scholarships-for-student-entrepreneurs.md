@@ -3,7 +3,7 @@ title: "Scholarships for Student Entrepreneurs Who Started a Business"
 seoTitle: "Scholarships for Student Entrepreneurs"
 description: "Some scholarships reward building a company, not just grades. Here are scholarships for student entrepreneurs and how to frame your startup to win them."
 date: "2026-02-12"
-updated: "2026-02-12"
+updated: "2026-09-14"
 category: "Playbook"
 author: "team"
 tags: ["scholarships for student entrepreneurs", "entrepreneurship scholarships", "college money for founders", "student business", "startup scholarships"]
@@ -74,7 +74,7 @@ A realistic path on a part-time budget:
 4. **Get one person to pay or commit.** That single transaction changes your entire essay.
 5. **Track what happened** so you have real numbers to write about later.
 
-That is enough to qualify for most founder-story scholarships and to write honestly about it. If you want a structured way to go from zero to a working company with people watching over your shoulder, that is exactly what [the batch0 program](/program) is built for: four one-week sprints where you validate, build, market, and pitch a real business, ending in a live demo day. You come out with the exact story these scholarships reward.
+That is enough to qualify for most founder-story scholarships and to write honestly about it. If you want a structured way to go from zero to a working company with people watching over your shoulder, that is exactly what [the batch0 program](/program) is built for: four two-week sprints where you validate, build, market, and pitch a real business, ending in a live demo day. You come out with the exact story these scholarships reward.
 
 ## Does this help with regular college admissions too?
 

@@ -2,7 +2,7 @@
 title: "Why 'My Friends Love It' Is Not Validation"
 description: "Everyone you know said your idea is great, so why is that not validation? Here is why friends and family feedback misleads first-time founders."
 date: "2026-02-19"
-updated: "2026-02-19"
+updated: "2026-09-14"
 category: "Validate"
 author: "rishabh"
 tags: ["false validation", "friends and family", "validation bias", "customer discovery", "teen founders"]
@@ -70,4 +70,4 @@ The good news is the fix is free and fast. Talking to ten real strangers costs n
 
 So the next time someone you know tells you your idea is amazing, smile, say thanks, and mentally weight it at zero. Then go find one stranger who has the problem and ask what they actually do about it today. That answer, not your friend's compliment, is where your real company starts.
 
-At batch0, the first of our four one-week sprints is Validate, and killing false validation is the exact muscle we drill: getting you in front of real customers and teaching you to hear the truth before you spend a single hour building. If you want a live cohort and mentors pushing you to collect evidence instead of applause, [take a look at the program](/program) or [apply for free](/apply). Applying costs nothing, and you only pay tuition if you get in. Chase behavior, not praise, and your idea will finally tell you whether it's real.
+At batch0, the first of our four two-week sprints is Validate, and killing false validation is the exact muscle we drill: getting you in front of real customers and teaching you to hear the truth before you spend a single hour building. If you want a live cohort and mentors pushing you to collect evidence instead of applause, [take a look at the program](/program) or [apply for free](/apply). Applying costs nothing, and you only pay tuition if you get in. Chase behavior, not praise, and your idea will finally tell you whether it's real.

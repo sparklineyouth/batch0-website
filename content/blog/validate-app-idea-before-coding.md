@@ -2,7 +2,7 @@
 title: "How to Validate an App Idea Before You Write Code"
 description: "Coding an app first is the classic mistake. Here is how to validate an app idea before you write code so you do not waste months building it."
 date: "2026-02-05"
-updated: "2026-02-05"
+updated: "2026-09-14"
 category: "Validate"
 author: "rishabh"
 tags: ["app idea validation", "before coding", "mvp", "demand testing", "teen founders"]
@@ -77,6 +77,6 @@ You have earned the right to build when you have evidence, not enthusiasm: stran
 
 Even then, do not jump to a full app. Your first version should be the smallest thing that delivers the core result, which for many ideas is not an app at all, it is [a website before an app](/blog/should-your-mvp-be-an-app-or-website). And you can likely build it with [free no-code tools](/blog/best-no-code-tools-for-students) instead of writing code from scratch, which keeps you fast and cheap even after validation.
 
-Running this exact loop, on your own idea, with people who have done it before, is what the first week of the [batch0 program](/program) is built around. You come in with an app idea and leave the Validate sprint knowing whether real strangers want it, before you have sunk a semester into building it. Applying is free and you only pay tuition if you get in, so you can [apply here](/apply) without risking anything to find out.
+Running this exact loop, on your own idea, with people who have done it before, is what the Validate sprint of the [batch0 program](/program) is built around. You come in with an app idea and leave the Validate sprint knowing whether real strangers want it, before you have sunk a semester into building it. Applying is free and you only pay tuition if you get in, so you can [apply here](/apply) without risking anything to find out.
 
 For now, you do not need any of that to start. Pick your idea. Find 10 people who have the problem. Set your pass number. Put a fake door in front of strangers this weekend, and let what they do, not what they say, tell you whether to open your code editor at all.

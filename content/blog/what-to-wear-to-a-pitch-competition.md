@@ -2,7 +2,7 @@
 title: "What to Wear to a Pitch Competition or Demo Day"
 description: "Wondering what to wear to a pitch competition as a high schooler? Here's how to dress so you look credible without looking like you're playing dress-up."
 date: "2026-02-20"
-updated: "2026-02-20"
+updated: "2026-09-14"
 category: "Pitch"
 author: "rishabh"
 tags: ["what to wear pitch", "pitch competition outfit", "demo day dress code", "presentation attire", "student founder"]
@@ -65,7 +65,7 @@ Here's the honest truth from the other side of the table: your outfit gets you t
 
 So spend your real energy where the points are. Nail your opening, tighten your [pitch deck](/blog/how-to-write-pitch-deck-high-school-competition), and practice until the words feel like yours instead of a script. If you find yourself obsessing over shoes at midnight, that's usually nerves looking for something to control. Redirect it. Do one more run-through of your first thirty seconds. That's the thing that moves the needle.
 
-If you want reps in a room where the whole point is building a real company and pitching it live, that's exactly what happens at [batch0](/program) — four one-week sprints ending in a live demo day, where you'll practice all of this for real instead of guessing. Applying is [free](/apply), and you only pay tuition if you get in.
+If you want reps in a room where the whole point is building a real company and pitching it live, that's exactly what happens at [batch0](/program) — four two-week sprints ending in a live demo day, where you'll practice all of this for real instead of guessing. Applying is [free](/apply), and you only pay tuition if you get in.
 
 ## The night-before checklist
 

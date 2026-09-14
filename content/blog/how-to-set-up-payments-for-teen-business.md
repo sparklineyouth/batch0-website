@@ -2,7 +2,7 @@
 title: "How to Accept Payments When You're Under 18"
 description: "Stripe, PayPal, and most processors require 18+. How a teen founder can actually collect money using a parent, an LLC, or a workaround."
 date: "2026-02-08"
-updated: "2026-02-08"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["accept payments", "stripe under 18", "collect money", "teen business", "payment processor"]
@@ -71,4 +71,4 @@ This is genuinely the smart move for a first product because it removes the paym
 
 Accepting payments is a solved problem. The hard part was never the checkout button — it's having something people actually want to buy. If you're spending your energy on payment processors before you've confirmed demand, you're optimizing the wrong thing. Nail the product and the customer first, then wire up the money in an afternoon.
 
-At [batch0](/program), that's exactly the order we run it: over four one-week sprints — Validate, Build, Market, Pitch — you figure out what to build and who wants it before you ever worry about a checkout page. Applying is free, and we only charge tuition if you're accepted, so you can [apply here](/apply) without spending a cent to find out. Get the demand right, and setting up payments becomes the easy part.
+At [batch0](/program), that's exactly the order we run it: over four two-week sprints — Validate, Build, Market, Pitch — you figure out what to build and who wants it before you ever worry about a checkout page. Applying is free, and we only charge tuition if you're accepted, so you can [apply here](/apply) without spending a cent to find out. Get the demand right, and setting up payments becomes the easy part.

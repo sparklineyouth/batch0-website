@@ -2,7 +2,7 @@
 title: "Should Your Teen Startup Run Paid Ads?"
 description: "Paid ads feel like real marketing, but they usually waste a first founder's money. Here's when a teen startup should and shouldn't run paid ads."
 date: "2026-02-09"
-updated: "2026-02-09"
+updated: "2026-09-14"
 category: "Market"
 author: "team"
 tags: ["paid ads", "facebook ads", "customer acquisition cost", "growth", "marketing budget"]
@@ -53,12 +53,12 @@ If you've hit the bar above and want to test paid ads, treat it like an experime
 1. **Pick one clear goal.** Not "grow." Something like "get 20 people to my email signup page" or "get 3 people to buy." A single number.
 2. **Send traffic to one page.** Ads should point at a landing page built to do one thing. Two links or a cluttered page ruins the test.
 3. **Make one ad, not five.** Use your best-performing organic post as the ad. You already know it works with real people.
-4. **Set a hard cap.** Budget $20 total, $5 a day for four days. Put the exact number in your phone. When it's gone, it's gone.
-5. **Target narrowly.** One age range, one or two interests, one location. Broad targeting on a tiny budget shows your ad to nobody in particular.
-6. **Measure cost per action.** Divide spend by results. $20 got 4 email signups? That's $5 per signup. Now you have a real CAC estimate.
-7. **Decide with the number.** If $5 buys a signup and each signup is worth more than $5 to you over time, ads might scale. If $20 bought nothing, stop — the problem is the offer, not the budget.
+4. **Set a real total cap.** An average daily budget is not a total spending cap: Google Ads can charge up to twice the average daily amount on a given day for most campaigns. Where available, select a campaign total budget with explicit start and end dates. Google currently supports total budgets for new Search campaigns, among other formats. Check the cap in the account before enabling the campaign; "$5/day for four days" does not reliably cap spend at $20. See Google's [spending limits](https://support.google.com/google-ads/answer/1704443?hl=en) and [campaign total budget guidance](https://support.google.com/google-ads/answer/10486938?hl=en).
+5. **Choose a specific audience and intent.** For a small search experiment, start with a tightly relevant query and geography. Avoid unrelated broad keywords. Do not upload student contact lists or rely on personalized advertising to reach minors; Google [disables ad personalization on known under-18 accounts](https://support.google.com/adspolicy/answer/12205906?hl=en).
+6. **Measure the action you actually bought.** If $20 gets four email signups, that is $5 per signup, not a $5 customer acquisition cost. CAC requires paying customers; distinguish a click, a lead, a qualified application, and a payment.
+7. **Treat the result as a small experiment.** A handful of clicks cannot establish reliable conversion rates. Set your stop rule beforehand, examine whether the traffic matches your audience, and count actual paid conversions separately from leads. Zero sales from a tiny sample does not prove the offer can never work.
 
-That's it. You spent the cost of a lunch and walked away with a real data point instead of a vague feeling.
+Give ads time to be reviewed before any time-sensitive launch: Google says most ads are reviewed within one business day, and some take longer. A campaign created on kickoff day is not a reliable same-day acquisition plan. See the [ad review process](https://support.google.com/google-ads/answer/1722120).
 
 ## Free channels that usually beat ads at your stage
 
@@ -78,4 +78,4 @@ Each of these has a full playbook: [getting your first users from TikTok](/blog/
 
 Run paid ads when you have a product people already buy, a message that already works organically, and a rough sense of what a customer is worth. Until then, ads are an expensive way to avoid the harder, more valuable work of validation and organic distribution. Your unfair advantage as a young founder isn't a budget — it's time, energy, and the ability to talk to people directly in ways big companies can't.
 
-If you want structured help turning that hustle into a real go-to-market plan — and a demo day where you pitch what you built — that's exactly what the four-week [batch0 program](/program) is built around. The Market sprint covers this material with feedback on your actual startup. When you're ready, [apply for free](/apply). And if you're mapping out your full launch strategy, start with [how to write a go-to-market plan](/blog/go-to-market-plan-beginners) — ads are one small line in that plan, not the plan itself.
+If you want structured help turning that hustle into a real go-to-market plan — and a demo day where you pitch what you built — that's exactly what the [batch0 program](/program) is built around. The Market sprint covers this material with feedback on your actual startup. When you're ready, [apply for free](/apply). Start with the [free founder starter kit](/start), or map out your launch with [how to write a go-to-market plan](/blog/go-to-market-plan-beginners).

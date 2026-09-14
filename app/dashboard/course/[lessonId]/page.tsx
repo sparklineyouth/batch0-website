@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { LessonPlayer } from "./lesson-player";
 import { Comments } from "./comments";
 import { ArrowLeft, FileText } from "lucide-react";
+import { renderLessonMarkdown } from "@/lib/lesson-content";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,7 @@ export default async function LessonPage({
   const lessonPromise = Promise.resolve(
     supabase
       .from("lessons")
-      .select("*, module:modules(week, title)")
+      .select("*, module:modules(week, title, cohort_id)")
       .eq("id", params.lessonId)
       .maybeSingle(),
   );
@@ -97,6 +98,18 @@ export default async function LessonPage({
     ]);
 
   if (!lesson) notFound();
+  const lessonHtml = lesson.description ? await renderLessonMarkdown(lesson.description) : null;
+  const { data: syllabus } = await supabase
+    .from("modules")
+    .select("week, position, lessons(id, title, position)")
+    .eq("cohort_id", lesson.module.cohort_id)
+    .order("week", { ascending: true })
+    .order("position", { ascending: true });
+  const sequence = (syllabus ?? []).flatMap((m: any) =>
+    [...(m.lessons ?? [])].sort((a: any, b: any) => a.position - b.position),
+  );
+  const lessonIndex = sequence.findIndex((l: any) => l.id === lesson.id);
+  const nextLesson = lessonIndex >= 0 ? sequence[lessonIndex + 1] : null;
   const { videoUrl, materials } = assets;
   const comments = (commentRows ?? []).map((c: any) => ({
     ...c,
@@ -121,10 +134,15 @@ export default async function LessonPage({
         <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">
           {lesson.title}
         </h1>
-        {lesson.description && (
-          <p className="mt-2 text-ink-soft">{lesson.description}</p>
-        )}
       </div>
+
+      {lessonHtml && (
+        <article
+          aria-label="Lesson and exercises"
+          className="blog-prose mt-8 max-w-none"
+          dangerouslySetInnerHTML={{ __html: lessonHtml }}
+        />
+      )}
 
       <div className="mt-6">
         <LessonPlayer
@@ -156,7 +174,12 @@ export default async function LessonPage({
           </ul>
         </Card>
       )}
-
+      {nextLesson && (
+        <Link href={`/dashboard/course/${nextLesson.id}`} className="mt-8 block rounded-xl border border-line p-5 text-sm hover:bg-wash">
+          <span className="block text-xs uppercase tracking-wider text-ink-faint">Next lesson</span>
+          <span className="mt-1 block font-medium text-phosphor-ink">{nextLesson.title} →</span>
+        </Link>
+      )}
 
       <Card className="mt-8">
         <Comments

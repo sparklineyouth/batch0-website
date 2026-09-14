@@ -2,7 +2,7 @@
 title: "How to Build a Waitlist Before You Launch"
 description: "A waitlist tests demand and gives you launch-day users for free. Here's how to build a waitlist before you launch, and how to keep it warm."
 date: "2026-02-17"
-updated: "2026-02-17"
+updated: "2026-09-14"
 category: "Market"
 author: "team"
 tags: ["waitlist", "pre-launch", "demand validation", "landing page", "early access"]
@@ -80,4 +80,4 @@ Sequence it: email the waitlist, watch what they do, fix the obvious breakage, *
 
 You can have a live waitlist page by tonight. Write one clear headline, add one email field, pick one place your target person already hangs out, and send the link. Then watch your two numbers — visitors and signups — and email the people who join. That loop is a complete demand experiment, and it costs nothing but a few hours.
 
-If you'd rather run this loop with structure, deadlines, and people who've done it, that's exactly what the Market sprint inside [the batch0 program](/program) is built for — you'll go from a page to real signups to a launch in a single focused week. When you're ready, [applying is free](/apply), and you only pay if you're accepted.
+If you'd rather run this loop with structure, deadlines, and people who've done it, that's exactly what the Market sprint inside [the batch0 program](/program) is built for — you'll go from a page to real signups to a launch during the two-week sprint. When you're ready, [applying is free](/apply), and you only pay if you're accepted.

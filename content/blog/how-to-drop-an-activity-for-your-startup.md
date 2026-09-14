@@ -2,7 +2,7 @@
 title: "Should You Quit a Sport or Club to Build Your Startup?"
 description: "Time is the real constraint in high school. Here's how to decide whether to drop a sport, club, or job to make room for your startup, without regret."
 date: "2026-02-05"
-updated: "2026-02-05"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["quitting activities", "time tradeoffs", "startup vs extracurriculars", "high school time management", "dropping a club", "opportunity cost"]
@@ -54,7 +54,7 @@ The mistake I see most is deciding based on how busy you feel *right now*. This 
 
 Instead, look at your calendar across the whole year. Sports have seasons. Clubs have crunch weeks and dead weeks. If your sport is only in-season for ten weeks, maybe you don't quit it, you just accept the startup moves slowly for those ten weeks and speeds up after. A season ending is not the same as a startup dying.
 
-This matters even more if you're eyeing something structured. A program like [batch0's four-week accelerator](/program) runs in defined sprints, so you can line it up with a gap in your schedule (summer, or a quiet stretch of the semester) instead of trying to cram it on top of your busiest month.
+This matters even more if you're eyeing something structured. A program like [batch0's nine-week accelerator](/program) runs in defined sprints, so you can line it up with a gap in your schedule (summer, or a quiet stretch of the semester) instead of trying to cram it on top of your busiest month.
 
 ## Do this before you quit anything
 

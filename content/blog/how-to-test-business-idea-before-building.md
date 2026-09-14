@@ -2,7 +2,7 @@
 title: "How to Test a Business Idea Before You Build It"
 description: "Test a business idea in a weekend without building the product: landing pages, fake doors, pre-sales, and concierge tests. How each one works."
 date: "2026-03-27"
-updated: "2026-03-27"
+updated: "2026-09-14"
 category: "Validate"
 author: "shresht"
 tags: ["test business idea", "idea validation", "smoke test", "landing page test", "pre-selling"]
@@ -91,7 +91,7 @@ Match the test to the question you're stuck on.
 3. **"What does the product need to do, exactly?"** Run a concierge test so you learn the details by hand.
 4. **"Will people use the full experience?"** Run a Wizard of Oz test once you know there's demand.
 
-You can also chain them: landing page to confirm demand, then a pre-sale to confirm willingness to pay, then concierge to nail the details. That's the whole first week of the [Validate sprint at batch0](/program), where you run these tests on your own idea with feedback before you build anything.
+You can also chain them: landing page to confirm demand, then a pre-sale to confirm willingness to pay, then concierge to nail the details. That's the focus of the two-week [Validate sprint at batch0](/program), where you run these tests on your own idea with feedback before you build anything.
 
 ## Common mistakes that fake a pass
 

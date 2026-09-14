@@ -2,7 +2,7 @@
 title: "How to Break Up With a Co-Founder"
 description: "Co-founder breakups are brutal, especially in high school. How to part ways cleanly, handle equity, and protect the friendship."
 date: "2026-02-19"
-updated: "2026-02-19"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["cofounder breakup", "leaving a cofounder", "cofounder conflict", "founder divorce", "cofounder disagreement", "startup partnership ends"]
@@ -84,6 +84,6 @@ Sometimes, once your co-founder is gone, you realize you don't want to keep goin
 
 But plenty of great companies were built by the founder who stayed. If the idea still has legs and *you* still have the fire, keep going solo or [find a new co-founder](/blog/how-to-find-a-cofounder-in-high-school) who matches your pace. Being on your own for a stretch is just a season.
 
-If you're rebuilding after a split, the [batch0 program](/program) runs you through four one-week sprints — Validate, Build, Market, Pitch — with mentors who've watched dozens of teams navigate exactly this. It's free to apply, and you only pay tuition if you get in. [Apply here](/apply) when you're ready to keep building.
+If you're rebuilding after a split, the [batch0 program](/program) runs you through four two-week sprints — Validate, Build, Market, Pitch — with mentors who've watched dozens of teams navigate exactly this. It's free to apply, and you only pay tuition if you get in. [Apply here](/apply) when you're ready to keep building.
 
 Breakups feel like the end of the story. Usually they're just a rough chapter. Handle it fast, handle it fair, write it down — then get back to the work.

@@ -3,7 +3,7 @@ title: "Hackathon vs. Accelerator: What's the Difference for Students?"
 seoTitle: "Hackathon vs. Accelerator for Students"
 description: "Hackathons and accelerators sound similar but produce very different results. Here's the difference and which one fits where you are as a student founder."
 date: "2026-02-08"
-updated: "2026-02-08"
+updated: "2026-09-14"
 category: "Playbook"
 author: "team"
 tags: ["hackathon vs accelerator", "student hackathon", "accelerator", "weekend build", "program comparison"]
@@ -25,7 +25,7 @@ What a hackathon does not do: it doesn't ask if anyone wants the thing. You coul
 
 An accelerator is a program — weeks, not hours — designed to move you from "I have an idea" to "I have a small real company." Instead of one frantic weekend, you work in stages. You talk to real people about the problem, you build a minimum version, you try to get actual users, and you learn to pitch what you made.
 
-That staged structure is the whole difference. At [batch0](/program), for example, students go through four one-week sprints — Validate, Build, Market, Pitch — and end at a live demo day pitching a company they actually built. The Validate week alone forces you to do something no hackathon ever will: find out whether the problem is real before you write a line of code. (If you're new to that idea, start with [how to validate a startup idea in high school](/blog/how-to-validate-startup-idea-high-school).)
+That staged structure is the whole difference. At [batch0](/program), for example, students go through four two-week sprints — Validate, Build, Market, Pitch — and end at a live demo day pitching a company they actually built. The Validate sprint alone forces you to do something no hackathon ever will: find out whether the problem is real before you write a line of code. (If you're new to that idea, start with [how to validate a startup idea in high school](/blog/how-to-validate-startup-idea-high-school).)
 
 An accelerator costs more time and sometimes money, but it hands you something a hackathon can't: proof that people want what you're building, and the skills to keep going after the program ends.
 
@@ -70,7 +70,7 @@ If you're on a part-time-job budget with no funding — which describes basicall
 - **Got an idea and a few weeks?** Do an accelerator. It's the difference between a project and a company.
 - **Not sure which programs are legit?** Read [how to choose a teen startup program that isn't a waste of money](/blog/how-to-choose-a-teen-startup-program) before you pay for anything, and if the program is paid, sanity-check it against [free vs. paid startup programs](/blog/free-vs-paid-startup-programs-teens).
 
-One more note on money, since it matters at your age: a good accelerator shouldn't gate you out because you're broke. Applying to batch0 is free, and the $130 tuition only applies if you're accepted — no equity, no catch. If money is the thing holding you back, that's worth knowing before you rule it out.
+One more note on money, since it matters at your age: a good accelerator shouldn't gate you out because you're broke. Applying to batch0 is free, and tuition only applies if you're accepted — no equity taken. If money is the thing holding you back, that's worth knowing before you rule it out.
 
 ## The bottom line
 

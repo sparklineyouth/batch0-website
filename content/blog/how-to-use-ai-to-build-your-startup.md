@@ -2,7 +2,7 @@
 title: "How to Use AI Tools to Build Your Startup Faster"
 description: "AI can write code, copy, and designs for you. How a high school founder should actually use AI tools to build a product without shipping slop."
 date: "2026-02-20"
-updated: "2026-02-20"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["ai tools", "build with ai", "ai for founders", "chatgpt for startups", "ai coding"]
@@ -70,7 +70,7 @@ You've got school, maybe a job, maybe a sport. You don't have unlimited hours. H
 - **Thursday:** Have AI draft the copy and a launch message. Rewrite both in your voice.
 - **Friday:** Put it in front of one real user. Bring their feedback back on Monday.
 
-That loop — decide, build, ship, learn — is the entire job of a founder. AI just makes each step faster. This is exactly the rhythm you'll run inside [batch0's four one-week sprints](/program), where you build a real company from Validate to Pitch with people who've done it before.
+That loop — decide, build, ship, learn — is the entire job of a founder. AI just makes each step faster. This is exactly the rhythm you'll run inside [batch0's four two-week sprints](/program), where you build a real company from Validate to Pitch with people who've done it before.
 
 ## The one rule that keeps you from shipping slop
 

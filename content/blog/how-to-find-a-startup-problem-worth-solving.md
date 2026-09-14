@@ -2,7 +2,7 @@
 title: "How to Find a Startup Problem Worth Solving"
 description: "The best startup ideas start with a problem, not a product. How to find problems worth solving by mining your own life and communities."
 date: "2026-03-10"
-updated: "2026-03-10"
+updated: "2026-09-14"
 category: "Validate"
 author: "shresht"
 tags: ["startup ideas", "finding a problem", "problem discovery", "teen entrepreneurship", "business ideas"]
@@ -111,4 +111,4 @@ It's also not permanent. Your first problem is a starting bet, not a marriage. P
 
 Finding a problem worth chasing is a few days of paying close attention, not a lightning bolt. Run the 12 prompts, pick three candidates, and have five real conversations. By the end of a week you'll usually have one problem that keeps coming up, and one that clearly doesn't, and that's exactly the clarity you want.
 
-Once you've got a problem that survives contact with real people, the next move is to design a cheap test before you build anything. That's covered in [how to test a business idea before you build it](/blog/how-to-test-business-idea-before-building). If you'd rather do all of this with structure and live feedback, the first week of the [batch0 program](/program) is built entirely around finding and validating a real problem before you write a line of code. Either way, the order stays the same: problem first, solution second.
+Once you've got a problem that survives contact with real people, the next move is to design a cheap test before you build anything. That's covered in [how to test a business idea before you build it](/blog/how-to-test-business-idea-before-building). If you'd rather do all of this with structure and live feedback, the Validate sprint of the [batch0 program](/program) is built entirely around finding and validating a real problem before you write a line of code. Either way, the order stays the same: problem first, solution second.

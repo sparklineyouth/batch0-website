@@ -2,7 +2,7 @@
 title: "23 Real Business Ideas for High School Students"
 description: "23 realistic business ideas high schoolers can start now, from service businesses to software, with what makes each work and who your first customer is."
 date: "2026-03-13"
-updated: "2026-03-13"
+updated: "2026-09-14"
 category: "Validate"
 featured: true
 author: "team"
@@ -110,4 +110,4 @@ And they are not a substitute for talking to customers. The idea matters far les
 
 Pick one idea. Write down the first five people you'll offer it to by name. Message or talk to all five in the next seven days and ask for a real commitment, money, a deposit, or a booked time.
 
-If two or three say yes, you have something worth building on. If nobody does, you learned that in a week for free, which is the whole point. That loop, pick, offer, listen, adjust, is exactly what the four one-week build sprints at [batch0](/program) are designed to run you through with feedback at every step. But you don't need permission or a program to start it. You need one idea and five names, and you have both right now.
+If two or three say yes, you have something worth building on. If nobody does, you learned that in a week for free, which is the whole point. That loop, pick, offer, listen, adjust, is exactly what the four two-week build sprints at [batch0](/program) are designed to run you through with feedback at every step. But you don't need permission or a program to start it. You need one idea and five names, and you have both right now.

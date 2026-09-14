@@ -29,11 +29,11 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "How much time does it take?",
-      a: "Plan for 5–10 focused hours a week, the way you would a serious extracurricular. Each week has one live cohort session plus mentor office hours — scheduled on U.S. Eastern time and recorded if you have to miss one — and the rest is you building toward that week's deliverable. The exact weekly calendar is published before kickoff.",
+      a: "Plan for 5–10 focused hours a week, the way you would a serious extracurricular. Each week has one live cohort session plus office hours, scheduled on U.S. Eastern time, and the rest is you building toward that week's deliverable. Session links and calendar downloads are in Events; readings and workbooks are in Course. If you miss a session, use the course materials and ask the team about catching up.",
     },
     {
       q: "Is it really fully online?",
-      a: `Yes. Sessions, feedback, and demo day all happen live on Zoom${dates ? `. ${cohort} runs ${dates}` : ""}. You can join from anywhere; sessions are scheduled on U.S. Eastern time.`,
+      a: `Yes. Sessions, feedback, and demo day happen online, with live sessions inside Batch0${dates ? `. ${cohort} runs ${dates}` : ""}. You can join from anywhere; sessions are scheduled on U.S. Eastern time.`,
     },
     {
       q: "Who are the mentors?",

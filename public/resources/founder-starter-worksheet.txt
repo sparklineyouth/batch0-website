@@ -1,0 +1,145 @@
+BATCH0 — FOUNDER STARTER WORKSHEET
+Free companion to https://batch0.org/start
+Version: September 14, 2026
+
+Use this in any notes app. Share the blank worksheet freely with attribution.
+Your answers belong to you. This file does not submit or upload your answers.
+About one hour to prepare your plan; do the real-world tests afterward.
+
+Project working name:
+Date:
+Review partner (classmate, teammate, or club advisor):
+
+1. PROBLEM — 10 MINUTES
+
+One specific type of person:
+The job they are trying to do:
+When the problem occurs:
+Their current workaround:
+What that costs (time, money, or missed outcome):
+Three people I can reach who might have this problem:
+
+Problem statement:
+[Specific person] struggles to [job] when [situation]. Today they
+[workaround], which costs [time, money, or missed outcome].
+
+What I know from observation:
+What I am assuming:
+What evidence would make me change my mind:
+
+2. CUSTOMER CONVERSATIONS — 15 MINUTES TO PREPARE
+
+Five potential interviewees (use initials in shared documents):
+1.
+2.
+3.
+4.
+5.
+
+Invitation:
+I'm learning how [audience] handles [job]. Could you walk me through your
+last experience for 15 minutes? I'm looking to understand the problem.
+No need to try or buy anything.
+
+Questions:
+- Tell me about the last time this happened.
+- Walk me through what you did.
+- What was the hardest part?
+- What did it cost you in time, money, or missed opportunities?
+- What have you already tried to improve it?
+
+Interview note template (copy once per conversation):
+Participant initials / date:
+Recent incident:
+Current workaround:
+Frequency and cost:
+Exact quote (only if permission to retain/share as needed):
+What the person actually did:
+My interpretation, separate from the facts:
+Follow-up I have permission to make:
+
+Get permission before recording. Keep contact details and sensitive
+information out of shared notes. Follow school/program rules for contact.
+Compliments and hypothetical purchase promises are weak evidence.
+
+3. SMALLEST HONEST TEST — 15 MINUTES
+
+Riskiest assumption:
+Audience:
+Observable action I am testing:
+Small experiment (manual service, prototype, or clearly labeled pilot):
+What the prototype actually does today:
+What is not built yet:
+Test participants and recruitment method:
+Cash budget (start at $0):
+Time budget:
+Test deadline:
+
+Decision rule, written BEFORE results:
+Continue if:
+Change direction if:
+Stop if:
+
+Results log:
+Invited:
+Tried:
+Completed the core task:
+Returned / asked to use it again:
+Paid (only actual payments; describe refunds separately):
+What I observed:
+What this small sample cannot tell me:
+Next decision:
+
+4. FIRST USERS AND PRICE — 10 MINUTES
+
+One channel where the exact audience already spends time:
+Why those people have this problem:
+Community permission or introduction needed:
+Small first invitation:
+I’m testing [solution] for [audience]. It currently does [real capability].
+Would you try [small next step] and tell me where it breaks?
+
+Track actions, not impressions:
+Invitations:
+Replies:
+Trials:
+Repeat use:
+Paying customers:
+
+Price hypothesis (not a proven willingness to pay):
+What it costs to serve one customer:
+One reason someone might pay:
+How I will test the price honestly:
+
+5. ONE-MINUTE PITCH — 10 MINUTES
+
+We help [audience] do [job].
+Today they [workaround].
+Our current prototype [real capability].
+We tested [experiment] with [actual sample size].
+We observed [actual evidence, including disappointing results].
+We still need to learn [open question].
+Our next step is [test + date].
+We need [one concrete request].
+
+No traction yet? Say that. Describe the planned test instead.
+Never invent users, revenue, testimonials, partnerships, or funding.
+
+MY NEXT SEVEN DAYS
+
+First conversation date:
+Smallest-test deadline:
+Evidence review date:
+Person who will challenge my reasoning:
+One thing I am deliberately not building yet:
+
+MORE HELP
+
+Full kit and guides: https://batch0.org/start
+Program and current tuition: https://batch0.org/program
+Parents' questions: https://batch0.org/#faq
+Already enrolled: https://batch0.org/dashboard/course
+
+batch0 is a live, online accelerator for high schoolers, ages 13–18.
+Applying is free. Tuition is charged only if accepted. No equity taken;
+funding is never guaranteed. See the program page for current details.

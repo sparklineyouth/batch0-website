@@ -2,7 +2,7 @@
 title: "Do You Pay Taxes on Money You Make From a Teen Business?"
 description: "If your high school startup earns money, you may owe taxes even as a minor. Here's how teen business income, the $400 rule, and a 1099 actually work."
 date: "2026-02-11"
-updated: "2026-02-11"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["teen business taxes", "self employment tax", "1099 minor", "student income tax", "teen entrepreneur money", "hobby income"]
@@ -94,4 +94,4 @@ For the bigger money picture, [how much money do you need to start a business in
 
 If your teen business earns money, taxes are part of the deal. Clear $400 in profit and you file. Track expenses so you're taxed on profit, not revenue. Expect self-employment tax before income tax. Save your 1099s, set aside a chunk, and pull a parent in. Do those five things and the subject shrinks from scary to routine.
 
-Handling money like a real founder, tax part included, is exactly the muscle you build inside [the batch0 program](/program), where you take a company from idea to a live demo day pitch across four one-week sprints. You don't need any of this figured out to [apply](/apply); applying is free, and you'll pick it up as you build.
+Handling money like a real founder, tax part included, is exactly the muscle you build inside [the batch0 program](/program), where you take a company from idea to a live demo day pitch across four two-week sprints. You don't need any of this figured out to [apply](/apply); applying is free, and you'll pick it up as you build.

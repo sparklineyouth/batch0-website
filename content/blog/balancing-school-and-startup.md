@@ -2,7 +2,7 @@
 title: "How to Balance School and a Startup Without Burning Out"
 description: "You can run a startup and stay on top of school if you protect your time and cut scope, not sleep. How student founders balance both without burning out."
 date: "2026-05-26"
-updated: "2026-05-26"
+updated: "2026-09-14"
 category: "Founders"
 author: "shresht"
 tags: ["time management", "balance", "burnout", "student founders", "productivity"]
@@ -60,7 +60,7 @@ Batching turns ten small interruptions into two clean blocks. You'll get more do
 
 The school year is for slow, steady progress. Summer and long breaks are when you sprint. That's when you have full days and no problem sets hanging over you.
 
-Structured programs lean into this on purpose. batch0 runs as four one-week build sprints over the summer, which is exactly when high schoolers have the room to go deep without wrecking their grades. Plan your biggest pushes for when school isn't competing for the same hours.
+Structured programs give you dates to plan around. The Fall 2026 batch0 cohort runs September 14–November 13: a kickoff week followed by four two-week build sprints. It overlaps the school term, so check the published sessions against homework, exams, and other commitments before joining. Plan your biggest pushes for when you can protect the time.
 
 ### 7. Protect sleep and grades like they're non-negotiable
 

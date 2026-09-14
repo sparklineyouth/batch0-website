@@ -2,7 +2,7 @@
 title: "How to Get Your First 100 Email Subscribers With No Audience"
 description: "An email list is the one channel you own, and you can start from zero. Here's how to get your first 100 email subscribers with no audience."
 date: "2026-02-11"
-updated: "2026-02-11"
+updated: "2026-09-14"
 category: "Market"
 author: "team"
 tags: ["email list", "newsletter growth", "lead magnet", "audience building", "owned channel"]
@@ -88,6 +88,6 @@ Every email should either be useful or make them feel included. When you finally
 
 Don't expect 100 overnight. A realistic path: 20 to 30 from your hand-recruited list in week one, another 30 to 40 from communities and content over the next two or three weeks, and the rest from referrals and momentum. Getting to 100 in a month is very doable if you show up consistently. What kills lists isn't lack of talent — it's quitting after a slow week.
 
-At batch0, that Market sprint is one full week where you go from "no audience" to real signups with feedback the whole way through. If you want that structure and a room full of other founders doing the same thing, take a look at [the program](/program) or [apply](/apply) — it's free to apply, and you only pay tuition if you're accepted.
+At batch0, the two-week Market sprint is where you work toward going from "no audience" to real signups with feedback the whole way through. If you want that structure and a room full of other founders doing the same thing, take a look at [the program](/program) or [apply](/apply) — it's free to apply, and you only pay tuition if you're accepted.
 
 Start today. Write down 10 names, pick one specific offer, and send the first message before you close this tab.

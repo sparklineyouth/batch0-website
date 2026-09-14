@@ -2,7 +2,7 @@
 title: "What to Do When Your First Startup Fails"
 description: "Most first startups fail, and that's not the end. How to process a failed startup, pull out the real lessons, and start again stronger."
 date: "2026-06-30"
-updated: "2026-06-30"
+updated: "2026-09-14"
 category: "Founders"
 author: "rishabh"
 tags: ["failure", "resilience", "learning", "startup lessons", "young founders"]
@@ -102,6 +102,6 @@ Watch for these. They're the difference between a failure that teaches you and o
 
 Not long. A week or two to process, one honest afternoon on the post-mortem, and then you're clear to go again. You don't need a year off. You need better inputs.
 
-The whole reason [starting a company in high school](/blog/why-start-a-company-in-high-school) is such a good deal is that the stakes are tiny and the lessons are permanent. You have almost nothing to lose and years to compound what you learn. A structured program like [batch0](/program) exists partly because failing inside four one-week sprints, with feedback, beats failing alone over six silent months.
+The whole reason [starting a company in high school](/blog/why-start-a-company-in-high-school) is such a good deal is that the stakes are tiny and the lessons are permanent. You have almost nothing to lose and years to compound what you learn. A structured program like [batch0](/program) exists partly because failing inside four two-week sprints, with feedback, beats failing alone over six silent months.
 
 So write the post-mortem. Keep the lessons. Pick your next problem with clearer eyes. The founders you admire didn't skip this step. They just did it earlier than everyone else and kept showing up.

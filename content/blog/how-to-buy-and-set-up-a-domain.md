@@ -2,7 +2,7 @@
 title: "How to Pick and Buy a Domain for Your Startup"
 description: "Your domain is the first thing people judge. Here's how to choose a good name, buy a domain cheaply, and connect it to your site without overpaying."
 date: "2026-02-18"
-updated: "2026-02-18"
+updated: "2026-09-14"
 category: "Build"
 author: "shresht"
 tags: ["buy a domain", "domain name", "startup name", "dns setup", "custom domain"]
@@ -95,4 +95,4 @@ Some hosts do it even faster: you point your domain's **nameservers** at the hos
 
 A last piece of advice: buy your domain early, even before your site is finished. Good names get taken, and $12 is cheap insurance to lock in the one you want. Point it at a [landing page that collects emails](/blog/build-landing-page-that-converts) while you build the real thing, so the moment you're ready to tell people about your company, the address already works.
 
-Picking and buying a domain is one of the smallest, cheapest steps in starting a company, and it's one of the first things that makes your startup feel real. At [batch0](/program), students go from an idea to a live company across four one-week sprints, and getting your own domain is usually the moment it clicks that this is actually happening. If you're ready to build something real with a team that pushes you, [apply here](/apply). Applying is free, and you only pay if you get in.
+Picking and buying a domain is one of the smallest, cheapest steps in starting a company, and it's one of the first things that makes your startup feel real. At [batch0](/program), students go from an idea to a live company across four two-week sprints, and getting your own domain is usually the moment it clicks that this is actually happening. If you're ready to build something real with a team that pushes you, [apply here](/apply). Applying is free, and you only pay if you get in.
