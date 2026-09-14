@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // Admin-editable application questions.
 //
 // The application form (app/apply/application-form.tsx) has a FIXED skeleton
-// of 16 fields. Each field maps 1:1 to a column on the `applications` table.
+// of 17 fields. Each field maps 1:1 to a column on the `applications` table.
 // Admins can edit the *content* of each question — the label, help text,
 // placeholder, whether it's required, whether it's hidden, and (for the
 // team_size choice field) the option LABELS. Admins CANNOT add, remove,
@@ -67,6 +67,7 @@ export type MergedQuestion = QuestionConfig;
 export const REQUIRED_CORE_KEYS = [
   "full_name",
   "age",
+  "phone",
   "why_join",
   "team_size",
 ] as const;
@@ -134,6 +135,15 @@ export const QUESTION_FIELDS: readonly QuestionConfig[] = Object.freeze([
     help: "",
     placeholder: "",
     required: false,
+    hidden: false,
+  },
+  {
+    key: "phone",
+    type: "text",
+    label: "Phone number",
+    help: "So we can reach you about your application and the program.",
+    placeholder: "+1 (555) 123-4567",
+    required: true,
     hidden: false,
   },
   {

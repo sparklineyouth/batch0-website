@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, FileText, Workflow, Send, Inbox, Settings } from "lucide-react";
+import { BarChart3, FileText, Workflow, Send, Inbox, Settings, Phone } from "lucide-react";
 import type { Capabilities, Permission } from "@/lib/permissions";
 import { can } from "@/lib/permissions";
 
@@ -23,6 +23,7 @@ const TABS: { href: string; label: string; icon: typeof BarChart3; perm: Permiss
   { href: "/admin/email/templates", label: "Templates", icon: FileText, perm: "email.templates" },
   { href: "/admin/email/automations", label: "Automations", icon: Workflow, perm: "email.automate" },
   { href: "/admin/email/compose", label: "Compose", icon: Send, perm: "email.send" },
+  { href: "/admin/email/phone-request", label: "Phone requests", icon: Phone, perm: "email.send" },
   { href: "/admin/email/outbox", label: "Outbox", icon: Inbox, perm: "email.view" },
   { href: "/admin/email/settings", label: "Settings", icon: Settings, perm: "email.settings" },
 ];
