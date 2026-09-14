@@ -5,7 +5,12 @@ import { stripe } from "@/lib/stripe";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
-import { activePromo, promoPriceCents, listPriceCents } from "@/lib/promo";
+import {
+  activePromo,
+  promoPriceCents,
+  listPriceCents,
+  rowHoldsListPrice,
+} from "@/lib/promo";
 import { loadPromoConfig } from "@/lib/promo-settings";
 import { grantDiscountCents } from "@/lib/founder-pass-tiers";
 import { getPassGrantForUser } from "@/lib/founder-pass";
@@ -78,7 +83,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const basePriceCents = listPriceCents(app.cohort?.price_cents ?? 13000);
+  const rowPriceCents = app.cohort?.price_cents ?? 13000;
+  const basePriceCents = listPriceCents(rowPriceCents);
   const cohortName = app.cohort?.name ?? "batch0 cohort";
   const stripePriceId: string | null = app.cohort?.stripe_price_id ?? null;
 
@@ -128,8 +134,21 @@ export async function POST(req: Request) {
   // The promo is a discount like any other here — without this it would be
   // advertised on the page and then silently NOT applied at checkout for
   // every full-price U.S. applicant, which is the worst possible failure.
+  //
+  // It also can't be trusted when the cohort row is NOT list price: the fixed
+  // Price object is built from `cohorts.price_cents` as-is (syncStripePrice in
+  // /admin/cohorts), so the known $78 sale-price row produced a $78 Price that
+  // `listPriceCents()` never repairs. Once the promo expires, `promoDiscountCents`
+  // is 0 and the guard below would otherwise bill that stale $78 Price under a
+  // $130 headline — the exact bug this catches by falling through to price_data,
+  // which charges the repaired list price (`priceCents`). Redundant once the row
+  // is set back to 12999 and its Price re-synced; retire with `listPriceCents()`.
   const usePriceId =
-    stripePriceId && !regional.isRegional && !passDiscountCents && !promoDiscountCents;
+    stripePriceId &&
+    rowHoldsListPrice(rowPriceCents) &&
+    !regional.isRegional &&
+    !passDiscountCents &&
+    !promoDiscountCents;
 
   // Always use the canonical site URL — never a request-controlled
   // header. The Origin header is attacker-controllable and would let a

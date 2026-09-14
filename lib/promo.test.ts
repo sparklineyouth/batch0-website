@@ -6,6 +6,7 @@ import {
   PROMO_LIST_PRICE_CENTS,
   PROMO_SALE_PRICE_CENTS,
   listPriceCents,
+  rowHoldsListPrice,
   activePromo,
   promoPriceCents,
   promoTitle,
@@ -226,6 +227,18 @@ test("India keeps its own list price and its own discount", () => {
   assert.equal(listPriceCents(IN_LIST), IN_LIST);
   assert.equal(promoPriceCents(listPriceCents(IN_LIST), DURING), 10400);
   assert.equal(promoPriceCents(listPriceCents(IN_LIST), AFTER), IN_LIST);
+});
+
+test("rowHoldsListPrice flags the $78 row so checkout won't bill its stale Price", () => {
+  // The checkout route only takes the fixed-Stripe-Price fast path when this is
+  // true, because that Price object is built from cohorts.price_cents as-is. The
+  // $78 sale-price row produced a $78 Price that listPriceCents never repairs;
+  // after the promo expires the fast path would otherwise bill $78 under a $130
+  // headline. Guarding on this keeps that row on the price_data path (= $130).
+  assert.equal(rowHoldsListPrice(PROMO_SALE_PRICE_CENTS), false);
+  for (const cents of [PROMO_LIST_PRICE_CENTS, US_LIST, IN_LIST, 13000, 5000, 0]) {
+    assert.equal(rowHoldsListPrice(cents), true);
+  }
 });
 
 

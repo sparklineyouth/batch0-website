@@ -79,6 +79,25 @@ export function listPriceCents(rowCents: number): number {
   return rowCents === PROMO_SALE_PRICE_CENTS ? PROMO_LIST_PRICE_CENTS : rowCents;
 }
 
+/**
+ * Whether a `cohorts.price_cents` row already holds list price — i.e.
+ * `listPriceCents()` did not have to repair it.
+ *
+ * The fixed Stripe Price object (`syncStripePrice` in the cohorts admin) is
+ * created from `price_cents` AS-IS, so it only reflects list price when this is
+ * true. When the row is the known $78 sale-price artifact, that Price object is
+ * stale ($78), and the checkout route must NOT bill it — it has to fall through
+ * to the ad-hoc `price_data` path, which charges the repaired list price. This
+ * is why expiry alone left checkout charging $78 under a $130 headline: the row
+ * was repaired everywhere the price is COMPUTED, but the fixed Stripe Price was
+ * built from the bad row and never revisited.
+ *
+ * Retire alongside `listPriceCents()` once the row is back to 12999.
+ */
+export function rowHoldsListPrice(rowCents: number): boolean {
+  return listPriceCents(rowCents) === rowCents;
+}
+
 export type Promo = {
   percent: number;
   /** "Sept 9" — the deadline, for a title tag with ~60 characters to spend. */
