@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { buildSystemPrompt } from "@/lib/ai/system-prompt";
+import { buildCurriculumContext, buildSystemPrompt } from "@/lib/ai/system-prompt";
+import { resolveAiTeamContext } from "@/lib/ai/team-context";
 import { env } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { applyUsage, isOverHardCap } from "@/lib/ai/usage";
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
     { data: history },
     { data: enrollments },
     { data: application },
-    { data: membership },
+    { data: memberships, error: membershipError },
     { data: recentCheckins },
   ] = await Promise.all([
     supabase
@@ -122,9 +123,7 @@ export async function POST(req: Request) {
     admin
       .from("team_members")
       .select("team_id")
-      .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle(),
+      .eq("user_id", user.id),
     admin
       .from("student_checkins")
       .select("week_start, accomplished, next_up, blockers")
@@ -223,9 +222,15 @@ export async function POST(req: Request) {
   const latestCheckin = (recentCheckins ?? [])[0] ?? null;
   const checkinHistory = (recentCheckins ?? []).slice(1);
 
-  // Resolve the team context: a conversation may be pinned to a team via
-  // team_id, otherwise we fall back to the user's current membership.
-  const teamId = convo.team_id ?? membership?.team_id ?? null;
+  // Conversations are self-editable under RLS. A pinned team_id is not an
+  // authorization grant, and a former member must not retain team retrieval.
+  if (membershipError) {
+    return new Response(JSON.stringify({ error: "Couldn't verify team access. Try again shortly." }), { status: 503 });
+  }
+  const teamId = resolveAiTeamContext(convo.team_id, (memberships ?? []).map((m) => m.team_id));
+  if (convo.team_id && !teamId) {
+    return new Response(JSON.stringify({ error: "You no longer have access to this conversation's team. Start a new conversation." }), { status: 403 });
+  }
 
   // The cohort whose curriculum feeds the corpus below. Exactly one
   // enrollment pins it; zero or several resolve nothing rather than
@@ -252,21 +257,21 @@ export async function POST(req: Request) {
       if (!teamId) return;
       const [{ data: team }, { count }, { data: pitch }, { data: tMsgs }] =
         await Promise.all([
-          admin
+          supabase
             .from("teams")
             .select("name, tagline, description")
             .eq("id", teamId)
             .maybeSingle(),
-          admin
+          supabase
             .from("team_members")
             .select("id", { count: "exact", head: true })
             .eq("team_id", teamId),
-          admin
+          supabase
             .from("pitch_submissions")
             .select("submitted_at")
             .eq("team_id", teamId)
             .maybeSingle(),
-          admin
+          supabase
             .from("team_messages")
             .select(
               "body, created_at, kind, author:profiles(full_name)",
@@ -309,22 +314,14 @@ export async function POST(req: Request) {
       // in the cohort.
       try {
         if (!cohortId) return;
-        const { data: mods } = await admin
+        const { data: mods, error } = await supabase
           .from("modules")
-          .select("week, title, summary, lessons:lessons(title, summary)")
+          .select("week, title, summary, lessons:lessons(title, description, position)")
           .eq("cohort_id", cohortId)
           .order("week", { ascending: true });
+        if (error) throw error;
         if (mods && mods.length > 0) {
-          const lines: string[] = ["# batch0 curriculum"];
-          for (const m of mods as any[]) {
-            lines.push(`\n## Week ${m.week}: ${m.title}`);
-            if (m.summary) lines.push(m.summary);
-            const lessons = Array.isArray(m.lessons) ? m.lessons : [];
-            for (const l of lessons) {
-              lines.push(`- ${l.title}${l.summary ? ` — ${l.summary}` : ""}`);
-            }
-          }
-          curriculumCorpus = lines.join("\n");
+          curriculumCorpus = buildCurriculumContext(mods);
         }
       } catch (err) {
         console.error("[ai-chat] curriculum corpus build failed", err);
@@ -513,4 +510,3 @@ export async function POST(req: Request) {
     },
   });
 }
-
