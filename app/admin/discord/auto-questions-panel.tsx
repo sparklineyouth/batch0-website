@@ -16,7 +16,9 @@ export function AutoQuestionsPanel({ initial }: { initial: AutomaticQuestionSnap
     startTransition(async () => {
       try {
         const result=await saveAutomaticQuestions({enabled,excludedChannelIds:excluded.split(/[\s,]+/).filter(Boolean),dailyBudgetDollars:Number(daily),lifetimeBudgetDollars:Number(total)});
-        setSnapshot(result);
+        if(!result.ok) {setMessage(result.error);return;}
+        if(!result.data) {setMessage("Could not refresh the saved settings.");return;}
+        setSnapshot(result.data);
         setMessage(enabled ? "Automatic answers enabled. Only new questions will be considered." : "Automatic answers paused.");
       } catch(error) { setMessage(error instanceof Error ? error.message : "Could not save automatic answers."); }
     });
@@ -47,7 +49,7 @@ export function AutoQuestionsPanel({ initial }: { initial: AutomaticQuestionSnap
     <div className="mt-4 flex flex-wrap gap-2">
       <button disabled={pending || !snapshot.available} onClick={()=>save(!snapshot.enabled)} className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper disabled:opacity-50">{pending ? "Working…" : snapshot.enabled ? "Pause automatic answers" : "Enable automatic answers"}</button>
       <button disabled={pending || !snapshot.available} onClick={()=>save(snapshot.enabled)} className="rounded-lg border border-line px-4 py-2 text-sm disabled:opacity-50">Save limits and exclusions</button>
-      <button disabled={pending} onClick={()=>{ setMessage(""); startTransition(async()=>{try{setMessage(await checkAutomaticQuestionConnection());}catch(error){setMessage(error instanceof Error?error.message:"Connection check failed.");}}); }} className="rounded-lg border border-line px-4 py-2 text-sm disabled:opacity-50">Check connection</button>
+      <button disabled={pending} onClick={()=>{ setMessage(""); startTransition(async()=>{try{const result=await checkAutomaticQuestionConnection();setMessage(result.ok ? result.data ?? "Connection check complete." : result.error);}catch{setMessage("Connection check failed. Please try again.");}}); }} className="rounded-lg border border-line px-4 py-2 text-sm disabled:opacity-50">Check connection</button>
     </div>
     {message && <p role="status" aria-live="polite" className="mt-3 text-sm text-ink">{message}</p>}
   </section>;
