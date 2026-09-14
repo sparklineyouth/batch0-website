@@ -7,8 +7,10 @@ The local MCP server lets a trusted assistant read Batch0 course operations and 
 From the website repository:
 
 ```sh
-npm ci --prefix mcp
-npm test --prefix mcp
+cd mcp
+npm ci
+npm test
+cd ..
 node mcp/dist/cli.js batch0_status
 ```
 
@@ -52,7 +54,7 @@ Run `node mcp/dist/index.js --help` for startup help. Normal server stdout carri
 | `batch0_get_record` | Full record and SHA-256 update hash. For `cohort_kickoff`, `id` means the cohort UUID. |
 | `batch0_upsert_content` | Preview/apply up to 25 modules, lessons, and resources; no deletions. |
 | `batch0_save_kickoff` | Preview/apply the kickoff page's copy, timing label, join link, agenda, checklist, and note. |
-| `batch0_upload_material` | Preview/upload original UTF-8 `.md`, `.txt`, `.csv`, `.json`, or static printable `.html` into private storage. |
+| `batch0_upload_material` | Preview/upload original UTF-8 text/HTML source or base64-encoded PDF into private storage. |
 
 Every input object rejects unknown keys. Tool schemas carry field constraints. Read tools paginate with `limit` (1–100), `offset`, `total`, and `next_offset`. Use `cohort_id` for modules/resources/events, `module_id` for lessons, and `global_only` for unscoped content. `include_content: true` returns full records plus update hashes. A large response fails clearly instead of truncating content silently; reduce the page size.
 
@@ -109,7 +111,7 @@ BATCH0_MCP_ALLOW_WRITES=true node mcp/dist/cli.js batch0_upsert_content /absolut
 
 Missing optional fields preserve existing values. Passing `null` explicitly clears a nullable field. Existing rows require a current hash even if the proposed values are unchanged. Moving a record to a different cohort/module is intentionally unsupported. New records with a duplicate title in the same scope are rejected instead of silently duplicating content.
 
-Uploads are limited to 200,000 characters and 400,000 UTF-8 bytes, private buckets `course-materials`/`resources`, and storage prefixes `mcp/`/`course-launch/`. They never overwrite an existing object. For a revised material use a new versioned path, then update the content reference. Printable HTML is parsed and rejects active elements, event handlers, remote assets, and CSS imports/URLs; it accepts static text, tables, and print CSS. No source URL is downloaded; cite external resources with HTTPS links instead of copying their copyrighted contents.
+Text uploads are limited to 200,000 characters and 400,000 UTF-8 bytes; PDF uploads to 2 MiB decoded. Both use private buckets `course-materials`/`resources`, and storage prefixes `mcp/`/`course-launch/`. They never overwrite an existing object. For a revised material use a new versioned path, then update the content reference. HTML source is parsed and rejects active elements, event handlers, remote assets, and CSS imports/URLs; it accepts static text, tables, and print CSS. Supabase intentionally serves HTML as plain text, so use PDF for a workbook students can view and print in the browser. Supply `pdf_base64` instead of `text` with a `.pdf` path. The PDF envelope must have a supported header and final EOF marker; explicit active actions and embedded files are rejected. This is not a malware scanner: upload original PDFs generated from the reviewed teaching materials. No source URL is downloaded; cite external resources with HTTPS links instead of copying their copyrighted contents.
 
 ### Kickoff page
 
@@ -132,5 +134,9 @@ This tool changes the kickoff **page**, not an event or room. Scheduling hosted 
 ## Validation
 
 `npm test --prefix mcp` covers a real SDK client/server stdio round trip against an isolated HTTP fixture, tool discovery and input schemas, pagination, safe defaults, references, duplicate prevention, stale hashes, partial failures, private upload semantics, kickoff links, and audit privacy. Live `batch0_status` was additionally verified read-only on the configured project on 2026-09-14.
+
+Storage behavior: [Supabase files and HTML restrictions](https://supabase.com/docs/guides/storage/quickstart#files).
+
+Ten stable, read-only assistant evaluation cases with wholly synthetic public-safe data and their isolated fixture server are available under `mcp/evaluations/`. Expected answers are verified through 23 paginated tool reads. This verifies the cases, not an external model score.
 
 Protocol references: [official TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), [stdio transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio), and [tools specification](https://modelcontextprotocol.io/specification/2026-07-28/server/tools).

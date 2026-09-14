@@ -22,3 +22,7 @@ out/*.stl
 # Knowledge-graph output from the graphify skill. Regenerable, ~10MB, and
 # nothing in the app reads it — it should never enter the repo or a deploy.
 graphify-out/
+
+# Paid course source, instructor material, manifests, and printable workbooks.
+# This repository is public; publish these through private course storage.
+content/course-launch/

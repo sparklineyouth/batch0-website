@@ -1,0 +1,266 @@
+{
+  "cohorts": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "name": "Example Makers",
+      "starts_on": "2026-10-19",
+      "ends_on": "2026-11-06",
+      "status": "upcoming",
+      "capacity": 10,
+      "price_cents": 0
+    }
+  ],
+  "modules": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "week": 1,
+      "title": "Week 1 \u2014 Observe a Paper Bridge",
+      "summary": "Explore: compare simple paper bridge shapes.",
+      "position": 0,
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "week": 2,
+      "title": "Week 2 \u2014 Make and Measure",
+      "summary": "Make: fold a small bridge and measure its span.",
+      "position": 1,
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000003",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "week": 3,
+      "title": "Week 3 \u2014 Share the Experiment",
+      "summary": "Present: describe the measurements and limitations.",
+      "position": 2,
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "lessons": [
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "module_id": "20000000-0000-4000-8000-000000000001",
+      "title": "Sketch two shapes",
+      "description": "Draw two bridge shapes on scrap paper.",
+      "video_path": null,
+      "video_url": null,
+      "duration_seconds": 60,
+      "materials": [
+        {
+          "title": "observe.pdf",
+          "path": "mcp/example/observe.pdf"
+        }
+      ],
+      "position": 0,
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000002",
+      "module_id": "20000000-0000-4000-8000-000000000001",
+      "title": "Watch a folding example",
+      "description": "Compare the example fold with your sketch.",
+      "video_path": null,
+      "video_url": "https://example.com/demo-video",
+      "duration_seconds": 120,
+      "materials": [
+        {
+          "title": "observe.pdf",
+          "path": "mcp/example/observe.pdf"
+        }
+      ],
+      "position": 1,
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000003",
+      "module_id": "20000000-0000-4000-8000-000000000001",
+      "title": "Name one question",
+      "description": "Write one question that your experiment can answer.",
+      "video_path": null,
+      "video_url": null,
+      "duration_seconds": 180,
+      "materials": [],
+      "position": 2,
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000004",
+      "module_id": "20000000-0000-4000-8000-000000000002",
+      "title": "Fold a small bridge",
+      "description": "Make a bridge from one sheet of paper.",
+      "video_path": null,
+      "video_url": null,
+      "duration_seconds": 240,
+      "materials": [
+        {
+          "title": "build.pdf",
+          "path": "mcp/example/build.pdf"
+        }
+      ],
+      "position": 0,
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000005",
+      "module_id": "20000000-0000-4000-8000-000000000002",
+      "title": "Record a measurement",
+      "description": "Measure the bridge span and record the result.",
+      "video_path": null,
+      "video_url": null,
+      "duration_seconds": 300,
+      "materials": [
+        {
+          "title": "measurements.csv",
+          "path": "mcp/example/measurements.csv"
+        }
+      ],
+      "position": 1,
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000006",
+      "module_id": "20000000-0000-4000-8000-000000000003",
+      "title": "Explain your result",
+      "description": "Write a short explanation of the observed result.",
+      "video_path": null,
+      "video_url": null,
+      "duration_seconds": 360,
+      "materials": [
+        {
+          "title": "share.pdf",
+          "path": "mcp/example/share.pdf"
+        }
+      ],
+      "position": 0,
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "resources": [
+    {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "category": "templates",
+      "title": "Example observation sheet",
+      "description": "Synthetic observation template.",
+      "storage_path": "mcp/example/observe.pdf",
+      "external_url": null,
+      "pre_cohort": true
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000002",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "category": "templates",
+      "title": "Example building sheet",
+      "description": "Synthetic building template.",
+      "storage_path": "mcp/example/build.pdf",
+      "external_url": null,
+      "pre_cohort": false
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000003",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "category": "readings",
+      "title": "Example background reading",
+      "description": "A reserved example domain; not an actual reading recommendation.",
+      "storage_path": null,
+      "external_url": "https://example.com/reading",
+      "pre_cohort": true
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000004",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "category": "tools",
+      "title": "Example measuring tool",
+      "description": "A placeholder tool entry.",
+      "storage_path": null,
+      "external_url": "https://example.com/tool",
+      "pre_cohort": false
+    }
+  ],
+  "events": [
+    {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "type": "office_hours",
+      "title": "Week 1 questions",
+      "description": "Synthetic event for read-only MCP evaluation; no actual meeting exists.",
+      "starts_at": "2026-10-23T00:00:00.000Z",
+      "ends_at": "2026-10-23T00:30:00.000Z",
+      "location": "Example only",
+      "zoom_url": null,
+      "recording_url": null,
+      "visibility": "enrolled",
+      "live_mode": "external",
+      "daily_room_name": null,
+      "daily_room_url": null
+    },
+    {
+      "id": "50000000-0000-4000-8000-000000000002",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "type": "workshop",
+      "title": "Week 2 workshop: Make and Measure",
+      "description": "Synthetic event for read-only MCP evaluation; no actual meeting exists.",
+      "starts_at": "2026-10-27T00:00:00.000Z",
+      "ends_at": "2026-10-27T01:00:00.000Z",
+      "location": "Example only",
+      "zoom_url": null,
+      "recording_url": null,
+      "visibility": "enrolled",
+      "live_mode": "external",
+      "daily_room_name": null,
+      "daily_room_url": null
+    },
+    {
+      "id": "50000000-0000-4000-8000-000000000003",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "type": "workshop",
+      "title": "Week 3 workshop: Share the Experiment",
+      "description": "Synthetic event for read-only MCP evaluation; no actual meeting exists.",
+      "starts_at": "2026-11-03T01:00:00.000Z",
+      "ends_at": "2026-11-03T02:00:00.000Z",
+      "location": "Example only",
+      "zoom_url": null,
+      "recording_url": null,
+      "visibility": "enrolled",
+      "live_mode": "external",
+      "daily_room_name": null,
+      "daily_room_url": null
+    },
+    {
+      "id": "50000000-0000-4000-8000-000000000004",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "type": "office_hours",
+      "title": "Week 3 questions",
+      "description": "Synthetic event for read-only MCP evaluation; no actual meeting exists.",
+      "starts_at": "2026-11-06T01:00:00.000Z",
+      "ends_at": "2026-11-06T01:30:00.000Z",
+      "location": "Example only",
+      "zoom_url": null,
+      "recording_url": null,
+      "visibility": "enrolled",
+      "live_mode": "external",
+      "daily_room_name": null,
+      "daily_room_url": null
+    },
+    {
+      "id": "50000000-0000-4000-8000-000000000005",
+      "cohort_id": "10000000-0000-4000-8000-000000000001",
+      "type": "demo_day",
+      "title": "Example experiment presentations",
+      "description": "Synthetic event for read-only MCP evaluation; no actual meeting exists.",
+      "starts_at": "2026-11-07T01:00:00.000Z",
+      "ends_at": "2026-11-07T02:00:00.000Z",
+      "location": "Example only",
+      "zoom_url": null,
+      "recording_url": null,
+      "visibility": "enrolled",
+      "live_mode": "external",
+      "daily_room_name": null,
+      "daily_room_url": null
+    }
+  ],
+  "cohort_kickoff": []
+}

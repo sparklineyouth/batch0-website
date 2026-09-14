@@ -1,0 +1,52 @@
+[
+  {
+    "id": 1,
+    "question": "In the synthetic Example Makers dataset, compare lesson counts across every module. Which module has the largest number of lessons? Return its exact title.",
+    "answer": "Week 1 — Observe a Paper Bridge"
+  },
+  {
+    "id": 2,
+    "question": "Find the example cohort whose start date is October 19, 2026. Locate its first-week module, then count the lessons assigned to that module. Return only the count.",
+    "answer": "3"
+  },
+  {
+    "id": 3,
+    "question": "For Example Makers, count the reading resources available before the cohort starts. Exclude tools and templates. Return only the count.",
+    "answer": "1"
+  },
+  {
+    "id": 4,
+    "question": "In the synthetic Example Makers schedule, how many elapsed UTC hours separate the first workshop from the presentation event (type demo_day)? Account for the daylight-saving transition. Return the integer hour count.",
+    "answer": "265"
+  },
+  {
+    "id": 5,
+    "question": "Across every lesson in Example Makers, count the lesson-to-PDF material associations. Count an attachment once per lesson even if the same worksheet is reused. Exclude CSV associations. Return only the count.",
+    "answer": "4"
+  },
+  {
+    "id": 6,
+    "question": "Across all Example Makers modules, how many lessons contain written content while having neither an external video URL nor a private video path? Return only the count.",
+    "answer": "5"
+  },
+  {
+    "id": 7,
+    "question": "Find the earliest Example Makers office-hours event, determine its module week from the cohort start date, and return the exact corresponding module title.",
+    "answer": "Week 1 — Observe a Paper Bridge"
+  },
+  {
+    "id": 8,
+    "question": "Find the presentation-phase module by reading the module summaries, then find its workshop. Return the workshop start as the exact UTC ISO timestamp from the event record.",
+    "answer": "2026-11-03T01:00:00.000Z"
+  },
+  {
+    "id": 9,
+    "question": "For Example Makers, count distinct private storage paths among template resources. Exclude external readings/tools and do not count duplicate paths twice. Return only the count.",
+    "answer": "2"
+  },
+  {
+    "id": 10,
+    "question": "For the Example Makers cohort, how many separate teaching items exist if every lesson and every resource counts once, while modules and events do not count? Return only the total.",
+    "answer": "10"
+  }
+]

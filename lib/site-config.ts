@@ -176,17 +176,17 @@ const FALLBACK_SETTINGS: SiteSettings = {
 //
 // It can still drift, so `npm run seo-doctor` diffs it against the live row
 // and exits non-zero on mismatch. Run it whenever the cohort row changes.
-// Last verified: 2026-08-05.
+// Last verified: 2026-09-14.
 export const FALLBACK_COHORT: ActiveCohort = {
   id: "",
   name: "Fall 2026",
   cohortNumber: 1,
   startsOn: "2026-09-14",
   endsOn: "2026-11-13",
-  capacity: 50,
-  priceCents: 12999,
-  status: "upcoming",
-  applicationsCloseAt: "2026-09-10T23:59:00+00:00",
+  capacity: 16,
+  priceCents: 7800,
+  status: "active",
+  applicationsCloseAt: "2026-09-14T23:59:00+00:00",
 };
 
 function formatDateRange(startsOn: string | null, endsOn: string | null) {

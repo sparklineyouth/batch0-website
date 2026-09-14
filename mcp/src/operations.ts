@@ -134,18 +134,30 @@ export class Operations {
   }
   async upload(input: unknown): Promise<Row> {
     const p = uploadSchema.parse(input);
-    if (p.path.endsWith('.html')) validatePrintableHtml(p.text);
-    const size = Buffer.byteLength(p.text, 'utf8');
-    if (size > 400_000) throw new Error('Material exceeds 400,000 UTF-8 bytes. Split it into smaller files.');
-    const sha256 = createHash('sha256').update(p.text).digest('hex');
+    let content: string | Buffer<ArrayBuffer>;
+    if (p.pdf_base64 !== undefined) {
+      if (p.pdf_base64.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(p.pdf_base64)) throw new Error('PDF input must be valid standard padded base64 with no whitespace.');
+      content = Buffer.from(p.pdf_base64, 'base64');
+      if (content.length > 2 * 1024 * 1024) throw new Error('PDF exceeds 2 MiB. Export a smaller original PDF.');
+      if (!/^%PDF-(?:1\.[0-7]|2\.0)[\r\n]/.test(content.subarray(0, 10).toString('ascii')) || !/%%EOF[\x00\x09\x0a\x0c\x0d\x20]*$/.test(content.subarray(-1024).toString('ascii'))) throw new Error('PDF must have a supported %PDF header and final %%EOF marker.');
+      // Reject explicit active actions/attachments. This is an envelope guard,
+      // not a malware scanner: upload only locally generated teaching PDFs.
+      if (/\/(?:JavaScript|JS|Launch|EmbeddedFile|RichMedia|SubmitForm)(?=[\x00\x09\x0a\x0c\x0d\x20()<>{}\[\]\/%]|$)/.test(content.toString('latin1'))) throw new Error('PDF contains an active action or embedded file. Export a static printable PDF.');
+    } else {
+      content = p.text!;
+      if (p.path.endsWith('.html')) validatePrintableHtml(content);
+      if (Buffer.byteLength(content, 'utf8') > 400_000) throw new Error('Material exceeds 400,000 UTF-8 bytes. Split it into smaller files.');
+    }
+    const size = Buffer.byteLength(content);
+    const sha256 = createHash('sha256').update(content).digest('hex');
     const result = { bucket: p.bucket, path: p.path, size_bytes: size, sha256 };
     if (p.dry_run) return { dry_run: true, ...result };
     if (!this.client.config.writesEnabled) throw new Error('Writes are disabled. Start with BATCH0_MCP_ALLOW_WRITES=true after reviewing the upload.');
     const operationId = randomUUID();
     await appendAudit(this.client.config.auditPath, { phase: 'intent', operation_id: operationId, action: 'material_upload', reason: p.reason, ...result });
     const ext = p.path.split('.').at(-1);
-    const mime = ext === 'html' ? 'text/html' : ext === 'json' ? 'application/json' : ext === 'csv' ? 'text/csv' : ext === 'md' ? 'text/markdown' : 'text/plain';
-    await this.client.request(`/storage/v1/object/${p.bucket}/${p.path.split('/').map(encodeURIComponent).join('/')}`, { method: 'POST', headers: { 'Content-Type': `${mime}; charset=utf-8`, 'x-upsert': 'false' }, body: p.text });
+    const mime = ext === 'pdf' ? 'application/pdf' : ext === 'html' ? 'text/html' : ext === 'json' ? 'application/json' : ext === 'csv' ? 'text/csv' : ext === 'md' ? 'text/markdown' : 'text/plain';
+    await this.client.request(`/storage/v1/object/${p.bucket}/${p.path.split('/').map(encodeURIComponent).join('/')}`, { method: 'POST', headers: { 'Content-Type': ext === 'pdf' ? mime : `${mime}; charset=utf-8`, 'x-upsert': 'false' }, body: content });
     await appendAudit(this.client.config.auditPath, { phase: 'complete', operation_id: operationId, action: 'material_upload', ...result });
     return { success: true, dry_run: false, operation_id: operationId, ...result, mime_type: mime, note: 'Private storage object. Reference this path in lesson materials or a resource; this tool never makes it public.' };
   }
@@ -163,7 +175,7 @@ export const definitions = {
   batch0_list_records: { title: 'List Batch0 content', schema: listSchema, method: 'list', read: true, description: 'Paginated read of cohorts, modules, lessons, resources, or events. Returns rows, total, and next_offset. Use include_content for full records plus update hashes.' },
   batch0_get_record: { title: 'Read one Batch0 record', schema: getSchema, method: 'get', read: true, description: 'Read a complete allowlisted content record and its current SHA-256 hash. Use that hash as expected_hash for an intentional update.' },
   batch0_upsert_content: { title: 'Preview or apply Batch0 content', schema: upsertSchema, method: 'upsert', read: false, description: 'Validate or apply up to 25 modules, lessons, and resources. Defaults to dry_run=true. Stable UUIDs, existing-row hashes, strict fields, reference checks, and local audit guard writes. Sequential, not transactional; never deletes or sends notifications.' },
-  batch0_upload_material: { title: 'Upload original teaching material', schema: uploadSchema, method: 'upload', read: false, description: 'Preview or upload original UTF-8 Markdown, text, CSV, JSON, or strictly static printable HTML to private course-materials/resources under mcp/ or course-launch/. No overwrites or remote downloads. Defaults to dry run. Return includes path, bytes, and digest.' },
+  batch0_upload_material: { title: 'Upload original teaching material', schema: uploadSchema, method: 'upload', read: false, description: 'Preview or upload original UTF-8 Markdown, text, CSV, JSON, strictly static HTML, or original base64 PDF to private course-materials/resources under mcp/ or course-launch/. No overwrites or remote downloads. Defaults to dry run. Return includes path, bytes, and digest.' },
 } as const;
 export type ToolName = keyof typeof definitions;
 export async function invoke(operations: Operations, name: string, input: unknown): Promise<Row> {

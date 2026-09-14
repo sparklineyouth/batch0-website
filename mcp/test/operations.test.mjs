@@ -96,3 +96,19 @@ test('network redirects are forbidden and API errors never echo upstream secrets
   await assert.rejects(client.list('modules',new URLSearchParams()),error=>error.message.includes('HTTP 401')&&!error.message.includes('secret-key'));
   assert.equal(options.redirect,'error');assert.ok(options.signal instanceof AbortSignal);
 });
+test('PDF upload accepts original binary PDF and preserves private MIME/bytes',async t=>{
+  const h=await harness(t);const pdf=Buffer.from('%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n');
+  const input={bucket:'course-materials',path:'course-launch/worksheet.pdf',pdf_base64:pdf.toString('base64'),reason,dry_run:false};
+  const r=await h.ops.upload(input);assert.equal(r.success,true);assert.equal(r.size_bytes,pdf.length);assert.equal(r.mime_type,'application/pdf');
+  const req=mutations(h)[0];assert.equal(req.headers['Content-Type'],'application/pdf');assert.equal(req.headers['x-upsert'],'false');assert.deepEqual(req.body,pdf);
+});
+test('PDF upload rejects text/binary mismatch, mixed inputs, invalid/oversize base64, and active PDF actions',async t=>{
+  const h=await harness(t);const pdf=Buffer.from('%PDF-1.7\n%%EOF\n').toString('base64');const base={bucket:'resources',path:'mcp/test.pdf',reason};
+  for(const extra of [{text:'Hello'},{pdf_base64:pdf,text:'Hello'},{pdf_base64:'@@not base64@@'},{pdf_base64:'YWJj'},{pdf_base64:Buffer.alloc(2*1024*1024+1,32).toString('base64')},{pdf_base64:Buffer.from('%PDF-1.7\n/JavaScript (bad)\n%%EOF\n').toString('base64')},{pdf_base64:Buffer.from('%PDF-1.7\nNo EOF').toString('base64')},{pdf_base64:pdf,path:'mcp/test.html'}]) await assert.rejects(h.ops.upload({...base,...extra}));
+  assert.equal(mutations(h).length,0);
+});
+test('PDF guard uses PDF name delimiters, not JavaScript word boundaries in compressed bytes',async t=>{
+  const h=await harness(t);
+  const pdf=Buffer.concat([Buffer.from('%PDF-1.7\nstream\n/JS'),Buffer.from([0xcb,0xc3]),Buffer.from('\nendstream\n%%EOF\n')]);
+  const r=await h.ops.upload({bucket:'resources',path:'mcp/compressed-fixture.pdf',pdf_base64:pdf.toString('base64'),reason});assert.equal(r.dry_run,true);
+});

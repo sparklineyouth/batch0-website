@@ -39,11 +39,15 @@ export const upsertSchema = z.object({
 export type Change = z.infer<typeof change>;
 export const uploadSchema = z.object({
   bucket: z.enum(['course-materials', 'resources']),
-  path: path.refine(value => (value.startsWith('mcp/') || value.startsWith('course-launch/')) && /\.(md|txt|csv|json|html)$/.test(value), 'MCP uploads must use mcp/ or course-launch/ and end in .md, .txt, .csv, .json, or .html'),
-  text: z.string().min(1).max(200_000).describe('Original UTF-8 teaching material; HTML must be static printable text/CSS with no active or fetching content. Maximum 200,000 characters.'),
+  path: path.refine(value => (value.startsWith('mcp/') || value.startsWith('course-launch/')) && /\.(md|txt|csv|json|html|pdf)$/.test(value), 'MCP uploads must use mcp/ or course-launch/ and end in .md, .txt, .csv, .json, .html, or .pdf'),
+  text: z.string().min(1).max(200_000).optional().describe('Original UTF-8 teaching material; HTML must be static printable text/CSS with no active or fetching content. Use exactly one of text or pdf_base64. HTML is served as plain text by Supabase; use PDF for printable browser viewing.'),
+  pdf_base64: z.string().min(1).max(2_796_204).optional().describe('Standard padded base64 of an original PDF, at most 2 MiB decoded. Only valid with a .pdf path and without text. Not a URL or file path.'),
   dry_run: z.boolean().default(true),
   reason: z.string().trim().min(8).max(400),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if ((value.text === undefined) === (value.pdf_base64 === undefined)) ctx.addIssue({ code: 'custom', message: 'Supply exactly one of text or pdf_base64.' });
+  if (value.path.endsWith('.pdf') !== (value.pdf_base64 !== undefined)) ctx.addIssue({ code: 'custom', message: 'PDF bytes require a .pdf path; text requires a text/HTML path.' });
+});
 
 const safeHref = z.string().max(2048).refine(value => /^\/(?!\/)[^\s\\]*$/.test(value) || (value.startsWith('https://') && url.safeParse(value).success), 'Use a site-relative path or HTTPS URL');
 export const kickoffSchema = z.object({
