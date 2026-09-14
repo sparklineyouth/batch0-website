@@ -6,6 +6,8 @@ import { EnableToggle } from "./enable-toggle";
 import { OpsPanel } from "./ops-panel";
 import { BootstrapPanel } from "./bootstrap-panel";
 import { AdminMyDiscordLinkCard } from "./my-link-card";
+import { AutoQuestionsPanel } from "./auto-questions-panel";
+import { automaticQuestionSnapshot } from "@/lib/discord-auto-runtime";
 import { requireUser } from "@/lib/auth";
 import {
   isDiscordEnabled,
@@ -188,6 +190,8 @@ export default async function AdminDiscordPage() {
       <div className="mt-6">
         <EnableToggle initial={enabled} />
       </div>
+
+      <AutoQuestionsPanel initial={await automaticQuestionSnapshot()} />
 
       <div className="mt-6">
         <AdminMyDiscordLinkCard

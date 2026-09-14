@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/discord-auto-questions",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/email-queue",
       "schedule": "*/5 * * * *"
     },

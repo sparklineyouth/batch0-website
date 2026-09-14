@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/*.test.ts",
+    "test:discord-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-discord-auto-db.mts",
     "seo-doctor": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seo-doctor.mts",
     "onshape-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/onshape-doctor.mts",
     "mint-cards": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/mint-cards.mts",
@@ -49,6 +50,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "19.3.0",
