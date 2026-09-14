@@ -1,6 +1,6 @@
 # Automatic Discord question replies
 
-Prepared September 14, 2026. The answer policy, provider adapter, worker, durable state interface, and admin controls are implemented locally. The release owner is integrating and verifying the combined release; deployment approval is still pending. This document does not establish that production polling is enabled.
+Implemented September 14, 2026 in [PR #300](https://github.com/sparklineyouth/batch0-website/pull/300). Migration 0067 is installed; its readback confirmed zero jobs/spend, anonymous access denied, and automatic replies disabled. The feature requires the repository's review and a production deployment before activation. This document does not establish that production polling is enabled.
 
 ## Behavior and boundaries
 
@@ -40,9 +40,9 @@ A valid model response can still decline to answer. Invalid JSON, empty answers,
 
 ## Admin operation and release checks
 
-Controls live under **Admin → Discord → Automatic question answers** (`/admin/discord`) and require `discord.manage`. Save actions are rejected outside the production deployment. The release owner is still verifying the integrated interface and database migration; check deployment status before enabling it.
+Controls live under **Admin → Discord → Automatic question answers** (`/admin/discord`) and require `discord.manage`. Save actions are rejected outside the production deployment. Check the pull request and deployment status before enabling it.
 
-1. Select **Check connection**, which is read-only. Confirm the configured guild, bot identity, message permissions, Message Content intent, AI key, scheduled-job secret, and available storage. Review **Excluded channel or category IDs** before enabling; a discovered channel is not automatically an appropriate destination. Enabling explicitly requests the limited Message Content intent if absent, preserving existing application flags; Discord may require a Developer Portal change instead.
+1. Select **Check connection**, which reads Discord identity/permissions and uses a free synthetic token-counting request to verify model access. It generates no answer and reads no message history. Confirm the bot identity, message permissions, Message Content intent, model access, scheduled-job secret, and available storage. Review **Excluded channel or category IDs** before enabling. Enabling requests the limited Message Content intent if absent, preserving existing application flags; Discord may require a Developer Portal change instead.
 2. Set **Daily AI limit (USD)** and **Total AI limit (USD)**, then **Save limits and exclusions**. Confirm usage includes pending reservations. Pausing or redeploying must not erase spend, delivery records, or source-message dedupe.
 3. Review the activation timestamp and polling cursors. Enabling or resuming must not trigger replies across historical conversations. The ten-minute freshness window intentionally leaves older questions for people to handle.
 4. Select **Enable automatic answers** only after durable state, cron authentication, and duplicate-run protection pass verification. The main Discord integration must also be enabled. `/api/cron/discord-auto-questions` rejects requests without the scheduled-job bearer secret; its authenticated `?check=1` mode only checks prerequisites. Preview cron runs cannot scan messages, spend, or send.

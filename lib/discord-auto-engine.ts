@@ -56,7 +56,7 @@ export async function runDiscordAutoQuestions(args: {
     if(!state.effectiveEnabled || !state.activationAt || !state.activationSnowflake) { report.status="paused"; return report; }
     const health=await args.transport.health();
     if(health.applicationId !== args.applicationId || health.botId !== health.applicationId) throw new DiscordTransportError("configuration","Discord application mismatch");
-    if(!health.messageContentEnabled) {report.status="message_content_required";errorCode=report.status;return report;}
+    if(!health.messageContentEnabled) {report.status="message_content_required";errorCode=report.status;report.errors++;return report;}
     const discovery=await args.transport.discoverChannels();
     const eligible=(channel: DiscordReadableChannel, current: DiscordAutoState)=>channel.canReply && !channel.archived && !channel.locked && !isExcludedDiscordChannel(channel.id,current.excludedChannelIds,discovery.channels);
     const channels=discovery.channels.filter(channel=>eligible(channel,state));

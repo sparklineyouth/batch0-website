@@ -4,7 +4,7 @@ import { createDiscordAutoStore } from "./discord-auto-store.ts";
 import { DiscordAutoTransport, DiscordTransportError } from "./discord-auto-transport.ts";
 import { createDiscordAutoAnswerer } from "./discord-auto-ai.ts";
 import { runDiscordAutoQuestions } from "./discord-auto-engine.ts";
-import { DISCORD_AUTO_MODEL } from "./discord-auto-policy.ts";
+import { DISCORD_AUTO_MODEL, DISCORD_AUTO_RESERVATION_MICROUSD } from "./discord-auto-policy.ts";
 
 export type AutomaticQuestionSnapshot = {
   available: boolean; enabled: boolean; effectiveEnabled: boolean;
@@ -19,7 +19,7 @@ export async function automaticQuestionSnapshot(): Promise<AutomaticQuestionSnap
       excludedChannelIds:s.excludedChannelIds,dailyBudgetMicrousd:s.dailyBudgetMicrousd,lifetimeBudgetMicrousd:s.lifetimeBudgetMicrousd,
       todayMicrousd:s.dailySpentMicrousd+s.dailyReservedMicrousd,totalMicrousd:s.lifetimeSpentMicrousd+s.lifetimeReservedMicrousd,
       lastRunAt:s.lastRunFinishedAt,
-      notice:s.lastError ? `Last run needs attention: ${s.lastError.replaceAll("_"," ")}. Check the connection before resuming.` : !s.masterEnabled ? "The main Discord switch is paused." : s.lastRunSummary.backlog ? "A busy channel exceeded the scan limit. Recent questions will be checked on the next run." : ""};
+      notice:s.lastError ? `Last run needs attention: ${s.lastError.replaceAll("_"," ")}. Check the connection before resuming.` : !s.masterEnabled ? "The main Discord switch is paused." : s.lifetimeBudgetMicrousd-s.lifetimeSpentMicrousd-s.lifetimeReservedMicrousd<DISCORD_AUTO_RESERVATION_MICROUSD ? "The remaining total AI budget is too low for another answer." : s.dailyBudgetMicrousd-s.dailySpentMicrousd-s.dailyReservedMicrousd<DISCORD_AUTO_RESERVATION_MICROUSD || s.dailyCalls>=s.maxRepliesPerDay ? "The daily AI limit has been reached. New answers resume when the UTC day resets." : s.lastRunSummary.backlog ? "A busy channel exceeded the scan limit. Recent questions will be checked on the next run." : ""};
   } catch {
     return {available:false,enabled:false,effectiveEnabled:false,excludedChannelIds:[],dailyBudgetMicrousd:250_000,lifetimeBudgetMicrousd:5_000_000,todayMicrousd:0,totalMicrousd:0,lastRunAt:null,notice:"Automatic answer storage is unavailable. Answers stay paused until setup is complete."};
   }

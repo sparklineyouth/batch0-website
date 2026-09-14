@@ -15,7 +15,8 @@ export async function GET(request: Request) {
     // Deployment validation can inspect prerequisites without scanning messages,
     // reserving money, changing cursors, or sending anything.
     const report=new URL(request.url).searchParams.get("check")==="1" ? await automaticQuestionHealth() : await runAutomaticQuestionCron();
-    return Response.json(report,{headers:{"Cache-Control":"no-store"}});
+    const failed="errors" in report && typeof report.errors==="number" && report.errors>0;
+    return Response.json(report,{status:failed ? 503 : 200,headers:{"Cache-Control":"no-store"}});
   } catch {
     console.error("[discord-auto] scheduled run failed; no request/source contents logged");
     return Response.json({error:"Automatic question answering needs attention"},{status:503});
