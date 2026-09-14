@@ -2,6 +2,13 @@
 
 Prepared September 14, 2026. This is an operator handoff, not evidence that every operational checkbox is complete. Check runtime status, live database records, and delivered-message logs before marking anything done.
 
+## Current owner decisions
+
+- **Schedule:** the owner approved the 18-session cohort schedule. Publication is in progress; verify all 18 event records and calendar dates after the write completes before reporting the schedule as published. The Events page is the source for actual appointments, including the daylight-saving change; curriculum week labels alone are not appointments.
+- **Communications: KEEP DRAFTS.** Prepared reminders and Discord announcements must remain drafts. Schedule approval does not authorize sending or scheduling these messages. Keep **Notify** off when publishing or editing events, and do not drain the email queue as part of this release.
+- **Promotion:** the owner set a **$100 total ceiling**, conditional on a positive return. There is no demonstrated acquisition economics or way to guarantee that return. The chosen spend remains **$0**; the implemented promotion is the public starter kit, referral paths, sharing controls, and prepared organic copy. The ceiling is not an instruction to launch a campaign.
+- **Demo Day:** use a staff-hosted live showcase of submitted three-minute demos, PDF decks, and supporting evidence, with moderated written Q&A. Students may instead submit written narration for the host to read. No student camera, open microphone, new administrative access, or paid video feature is required.
+
 ## Decision: spend $0 on new ads for this kickoff
 
 Protect the students already joining. The immediate bottleneck is a reliable event, access, useful course material, and responsive support. A new cold-traffic campaign hours before kickoff has no demonstrated acquisition economics or guaranteed delivery window. That is a judgment about this launch, not a claim that advertising can never work.
@@ -10,7 +17,7 @@ Google says most ads are reviewed within one business day and some take longer. 
 
 An average daily budget can spend up to twice that amount on a day for most campaigns. Google now supports campaign total budgets for new Search campaigns and several other formats, with a fixed campaign cap. Do not treat `$5/day for four days` as a $20 lifetime cap. [Average daily spending](https://support.google.com/google-ads/answer/1704443?hl=en), [campaign total budgets](https://support.google.com/google-ads/answer/10486938?hl=en), [supported formats](https://support.google.com/google-ads/answer/15137812?hl=en)
 
-If a future paid experiment is approved, use one Search campaign with a real total budget and start/end dates, a narrow relevant keyword group, and a tested application conversion. Keep the campaign paused until the budget owner approves the exact total. No retargeting or student-list uploads: this product serves minors and its privacy policy says analytics is not used to build advertising profiles. Google also disables personalized advertising for known under-18 accounts. [Google teen protections](https://support.google.com/adspolicy/answer/12205906?hl=en)
+Any future experiment within the owner's conditional ceiling needs a real total budget and start/end dates, a narrow relevant keyword group, and a tested application conversion. The return condition is currently unsupported, so no campaign is launched. No retargeting or student-list uploads: this product serves minors and its privacy policy says analytics is not used to build advertising profiles. Google also disables personalized advertising for known under-18 accounts. [Google teen protections](https://support.google.com/adspolicy/answer/12205906?hl=en)
 
 Measure cost per **paid enrollment**, with application and acceptance conversion rates as separate steps. A $5 email signup is not a $5 customer. Break-even maximum acquisition cost must be below collected tuition minus payment fees, refunds, support time, and delivery costs. No profitable CAC target can honestly be declared from tuition alone.
 
@@ -74,7 +81,7 @@ The inspected room has **no recording enabled**, and the environment does not en
 
 ### Recipient and withdrawal check before any reminder
 
-No new reminder, email, Discord post, or scheduled send is authorized by this checklist. The prepared drafts stay unsent until the owner approves the actual audience and message.
+The owner's current instruction is **KEEP DRAFTS** for reminders and Discord announcements. Publishing the approved 18-session schedule must not send or schedule them. A later explicit change to that instruction is needed before using a reviewed audience and message.
 
 - [ ] Start with the **current cohort's enrollment roster**, then review pending withdrawal/refund/support conversations separately. A person can request withdrawal by email while their database status still looks enrolled. The read snapshot found no withdrawn application among the current enrolled rows, which does not resolve those conversations.
 - [ ] Exclude withdrawn students and anyone explicitly asking to stop participation/contact from kickoff and promotional batches. Resolve ambiguous access/payment cases individually; do not promise enrolled access to accepted-but-unpaid applicants.
@@ -114,6 +121,17 @@ The current **Refund latest payment** action refunds the most recent succeeded p
 | T+15 min | Post a concise recap, next steps, and verified next event; link a recording only if one exists and sharing is appropriate | Students who missed the session can catch up |
 
 This is a suggested run-of-show, not a claim about a meeting duration or a promise that the platform records automatically. Keep the actual session inside the scheduled time.
+
+## Demo Day submission and hosting checklist
+
+The approved delivery format works with the existing private broadcast: staff present student-supplied material and moderate written Q&A. It does not promise student-controlled live screen sharing. Keep the course material and frozen import manifest unchanged; the published event describes this delivery format.
+
+- [ ] Publish the submission deadline as **Wednesday, November 11, 2026, 8:00 p.m. U.S. Eastern (EST)**. Students upload a three-minute demo or written narration, their PDF deck, and supporting evidence through **Files**, then identify those filenames and any relevant project links in **Check-in**. Avoid posting raw private interview data. Files currently accepts up to 100 MB per file; compress a larger demo or use the written narration alternative.
+- [ ] Use the **November 12 office hours** for rehearsal and material checks. Verify the exact appointment time in Events. Staff open the actual submitted files, check permissions, confirm pronunciations and the student's intended claims, and agree the running order.
+- [ ] Test host playback with a second listener, including shared audio. If a demo's audio cannot be delivered clearly, use the submitted narration and deck. Download the teaching copies ahead of the session and keep private student files and question queues outside the shared window.
+- [ ] Keep the audience in the existing viewer role. Explain that questions go through the private Q&A and selected questions/answers are read by staff. A student can provide an answer in writing without turning on a microphone or camera. Do not grant `events.manage` or provider-owner credentials to make a student presentation work.
+- [ ] Before the showcase, confirm that each student is comfortable with the submitted material being shown to the cohort. Treat a later recording/replay as a separate choice covered by the recording checklist; submission does not automatically authorize public promotion.
+- [ ] Afterward, record feedback and next steps. Announcements and recap messages remain drafts under the current communication instruction; do not treat the event's completion as send authorization.
 
 ## Verification record
 
