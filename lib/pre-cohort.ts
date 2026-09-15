@@ -54,6 +54,10 @@ export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
   // channel we control was dark for exactly that window, while the sidebar
   // hid the tab so nobody could tell it existed.
   "/dashboard/announcements",
+  // Discussions too, for the same reason in the other direction: the weeks
+  // before day one are when an enrolled student has the most questions for
+  // the team and nowhere else on the site to ask them.
+  "/dashboard/discussions",
   "/dashboard/team",
   // 1:1 calls stay open before kickoff. An enrolled student is invited to a
   // getting-to-know-you interview in exactly this window — the request lives
@@ -82,6 +86,7 @@ const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/resources",
   "/dashboard/community",
   "/dashboard/announcements",
+  "/dashboard/discussions",
   "/dashboard/team",
   "/dashboard/calls",
   "/dashboard/billing",
