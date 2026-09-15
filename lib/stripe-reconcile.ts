@@ -92,22 +92,30 @@ async function resolvePendingRows(
   silent: boolean,
 ) {
   const admin = createAdminClient();
-  const [{ data: payments }, { data: charges }] = await Promise.all([
-    admin
-      .from("payments")
-      .select("stripe_session_id")
-      .eq("status", "pending")
-      .not("stripe_session_id", "is", null),
-    admin
-      .from("user_charges")
-      .select("stripe_session_id")
-      .eq("status", "pending")
-      .not("stripe_session_id", "is", null),
-  ]);
+  const [{ data: payments }, { data: charges }, { data: tickets }] =
+    await Promise.all([
+      admin
+        .from("payments")
+        .select("stripe_session_id")
+        .eq("status", "pending")
+        .not("stripe_session_id", "is", null),
+      admin
+        .from("user_charges")
+        .select("stripe_session_id")
+        .eq("status", "pending")
+        .not("stripe_session_id", "is", null),
+      // A Demo Day ticket someone opened Checkout for but that never came
+      // back paid. "sent" is its pending state.
+      admin
+        .from("demo_day_tickets")
+        .select("stripe_session_id")
+        .eq("status", "sent")
+        .not("stripe_session_id", "is", null),
+    ]);
 
   const ids = Array.from(
     new Set(
-      [...(payments ?? []), ...(charges ?? [])]
+      [...(payments ?? []), ...(charges ?? []), ...(tickets ?? [])]
         .map((r: any) => r.stripe_session_id as string)
         .filter(Boolean),
     ),
@@ -148,6 +156,7 @@ async function walkSessions(
       // else in the Stripe account is none of our business.
       const ours =
         session.metadata?.kind === "user_charge" ||
+        session.metadata?.kind === "demo_day_ticket" ||
         !!session.metadata?.application_id;
       if (!ours) continue;
       try {

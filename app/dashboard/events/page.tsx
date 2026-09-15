@@ -38,7 +38,10 @@ export default async function StudentEventsPage() {
   await requireUser();
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");
-  if (!access.enrolled) {
+  // A paid Demo Day ticket opens this page without enrollment. What such a
+  // viewer then SEES is decided by the events RLS policy (migration 0070):
+  // the Demo Day event for their ticket's cohort, and nothing else.
+  if (!access.enrolled && !access.demoDayTicket) {
     return (
       <LockedFeature
         title="Events"
@@ -79,7 +82,9 @@ export default async function StudentEventsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Events</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        Demo Day, office hours, workshops.
+        {access.enrolled
+          ? "Demo Day, office hours, workshops."
+          : "Your Demo Day ticket is confirmed — the event is below."}
       </p>
 
       {liveNow.length > 0 && (

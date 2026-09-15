@@ -72,6 +72,7 @@ export function MobileNav({
   enrolled = true,
   referralsEnabled = true,
   preCohort = false,
+  demoDayTicket = false,
 }: {
   kind: MobileNavKind;
   role?: Role;
@@ -82,6 +83,7 @@ export function MobileNav({
   enrolled?: boolean;
   referralsEnabled?: boolean;
   preCohort?: boolean;
+  demoDayTicket?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -159,6 +161,7 @@ export function MobileNav({
                   referralsEnabled: referralsEnabled !== false,
                   enrolled,
                   preCohort,
+                  demoDayTicket,
                 })
               ) {
                 return false;
@@ -187,6 +190,7 @@ export function MobileNav({
     enrolled,
     referralsEnabled,
     preCohort,
+    demoDayTicket,
     query,
   ]);
 

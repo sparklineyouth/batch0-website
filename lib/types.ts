@@ -86,6 +86,39 @@ export type UserCharge = {
   stripe_refund_id: string | null;
 };
 
+export type DemoDayTicketStatus = "sent" | "paid" | "cancelled" | "refunded";
+
+/**
+ * A paid Demo-Day-only ticket, sent by an admin to an email address at a
+ * price of their choosing (migration 0070). Keyed by `token` for the public
+ * pay page; `user_id` is a best-effort match to a batch0 account.
+ */
+export type DemoDayTicket = {
+  id: string;
+  token: string;
+  email: string;
+  name: string | null;
+  user_id: string | null;
+  cohort_id: string | null;
+  amount_cents: number;
+  note: string | null;
+  status: DemoDayTicketStatus;
+  stripe_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_receipt_url: string | null;
+  stripe_refund_id: string | null;
+  refund_reason: string | null;
+  created_by: string | null;
+  cancelled_by: string | null;
+  refunded_by: string | null;
+  created_at: string;
+  updated_at: string;
+  sent_at: string | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  refunded_at: string | null;
+};
+
 export type Cohort_Slug = { slug: string };
 
 export type Notification = {

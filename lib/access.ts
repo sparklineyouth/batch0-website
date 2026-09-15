@@ -77,6 +77,13 @@ export type StudentAccess = {
   /** Name of that cohort, when pre-cohort. */
   cohortName: string | null;
   /**
+   * Holds a PAID Demo Day ticket (migration 0070) — someone sent a link for
+   * Demo Day only, and they paid it. Not enrollment: it opens exactly one
+   * door, the Events page, where the events RLS policy shows them the Demo
+   * Day event and nothing else. Staff read as true so they can preview.
+   */
+  demoDayTicket: boolean;
+  /**
    * The cohort this student is currently tied to — the soonest not-yet-started
    * one, or the most recently started one when they're all underway. Unlike
    * `cohortStartsOn` / `cohortName` above (which stay pre-cohort-only, because
@@ -130,20 +137,31 @@ export const loadAccessRows = cache(async function loadAccessRows() {
   const user = await getUser();
   if (!user) return null;
   const admin = createAdminClient();
-  const [{ data: enrollments }, { data: app }] = await Promise.all([
-    admin
-      .from("enrollments")
-      .select("cohort_id, cohort:cohorts(name, starts_on, status)")
-      .eq("user_id", user.id),
-    admin
-      .from("applications")
-      .select("status, cohort_id, cohort:cohorts(name, starts_on, status)")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-  return { enrollments, app };
+  const [{ data: enrollments }, { data: app }, { data: ticket }] =
+    await Promise.all([
+      admin
+        .from("enrollments")
+        .select("cohort_id, cohort:cohorts(name, starts_on, status)")
+        .eq("user_id", user.id),
+      admin
+        .from("applications")
+        .select("status, cohort_id, cohort:cohorts(name, starts_on, status)")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      // Rides in the same parallel batch: a third serial wave here would put
+      // a blank frame in front of every dashboard visitor to answer a
+      // question that's "no" for almost all of them.
+      admin
+        .from("demo_day_tickets")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("status", "paid")
+        .limit(1)
+        .maybeSingle(),
+    ]);
+  return { enrollments, app, demoDayTicket: !!ticket };
 });
 
 /**
@@ -160,6 +178,7 @@ export const getStudentAccess = cache(async function getStudentAccess(
       applicationStatus: null,
       role,
       staff: true,
+      demoDayTicket: true,
       cohortId: null,
       ...NO_PRE_COHORT,
     };
@@ -171,11 +190,12 @@ export const getStudentAccess = cache(async function getStudentAccess(
       applicationStatus: null,
       role,
       staff: false,
+      demoDayTicket: false,
       cohortId: null,
       ...NO_PRE_COHORT,
     };
   }
-  const { enrollments, app } = rows;
+  const { enrollments, app, demoDayTicket } = rows;
   const enrolled = (enrollments?.length ?? 0) > 0;
   const applicationStatus = (app?.status as ApplicationStatus) ?? null;
   const accepted = isAcceptedStatus(applicationStatus);
@@ -226,6 +246,7 @@ export const getStudentAccess = cache(async function getStudentAccess(
     applicationStatus,
     role,
     staff: false,
+    demoDayTicket,
     preCohort,
     cohortStartsOn,
     cohortName,

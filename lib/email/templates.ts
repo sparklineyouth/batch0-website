@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { emailLayout as layout, escapeEmail as escape } from "@/lib/email/layout";
+import { formatTicketAmount as fmtTicketMoney } from "@/lib/demo-day-ticket-input";
 
 // The shell and the escaper live in lib/email/layout.ts so the compiled
 // templates below and the admin-authored ones in `email_templates` render
@@ -275,6 +276,107 @@ ${env.siteUrl}`,
       cta: { url: `${env.siteUrl}/dashboard/phone`, label: "Add your phone number" },
     }),
   }),
+
+  /**
+   * "Here's your Demo Day ticket" — an admin sent this person a paid link for
+   * Demo Day only, at a price they chose (lib/demo-day-tickets.ts). The button
+   * is the whole email: it opens the public pay page, which needs no account.
+   * The URL is printed underneath as well, as for the password reset — a
+   * ticket the recipient can't open is a refund conversation.
+   */
+  demoDayTicketInvite: (args: {
+    name?: string | null;
+    amountCents: number;
+    payUrl: string;
+    note?: string | null;
+    /** "Saturday, November 14, 2026 at 1:00 PM ET", or null if not set yet. */
+    when?: string | null;
+    cohortName?: string | null;
+  }) => {
+    const amount = fmtTicketMoney(args.amountCents);
+    return {
+      subject: `Your batch0 Demo Day ticket — ${amount}`,
+      html: layout({
+        preheader: `A ${amount} ticket to Demo Day${args.when ? ` on ${args.when}` : ""}. Pay to confirm your spot.`,
+        body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">You're invited to Demo Day</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — the batch0 team has set aside a ticket for you to <strong>Demo Day</strong>${
+          args.cohortName ? ` (${escape(args.cohortName)})` : ""
+        }${args.when ? `, <strong>${escape(args.when)}</strong>` : ""}. It's the day every team pitches what they built.</p>
+        <p>This is a ticket to Demo Day only — not enrollment in the cohort. Your ticket is <strong>${amount}</strong>. Pay below to confirm your spot; you don't need a batch0 account.</p>
+        ${
+          args.note
+            ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">${escape(args.note).replace(/\n/g, "<br>")}</p>`
+            : ""
+        }
+      `,
+        cta: { url: args.payUrl, label: `Pay ${amount} & confirm` },
+        footNote: `Button not working? Paste this into your browser:<br><a href="${args.payUrl}" style="color:#ffbb00;text-decoration:none">${args.payUrl}</a>`,
+      }),
+      text: `You're invited to batch0 Demo Day${args.when ? ` — ${args.when}` : ""}.
+
+This is a ticket to Demo Day only, not the cohort. Your ticket is ${amount}. Pay here to confirm your spot (no account needed):
+
+${args.payUrl}
+${args.note ? `\n${args.note}\n` : ""}
+${env.siteUrl}`,
+    };
+  },
+
+  /**
+   * "You're confirmed" — Stripe captured the ticket payment
+   * (lib/stripe-fulfillment). Carries whatever is known about the day; the
+   * joining details are often filled in later, so the copy promises a
+   * follow-up rather than a link it doesn't have.
+   */
+  demoDayTicketConfirmed: (args: {
+    name?: string | null;
+    amountCents: number;
+    when?: string | null;
+    cohortName?: string | null;
+    location?: string | null;
+    externalUrl?: string | null;
+    /** The email matched a batch0 account: the event is on their dashboard. */
+    hasAccount: boolean;
+    receiptUrl?: string | null;
+  }) => {
+    const amount = fmtTicketMoney(args.amountCents);
+    const details = [
+      args.when ? `<p style="margin:0 0 6px 0"><strong>When:</strong> ${escape(args.when)}</p>` : "",
+      args.location ? `<p style="margin:0 0 6px 0"><strong>Where:</strong> ${escape(args.location)}</p>` : "",
+      args.externalUrl
+        ? `<p style="margin:0 0 6px 0"><strong>Join link:</strong> <a href="${args.externalUrl}" style="color:#ffbb00;text-decoration:none">${escape(args.externalUrl)}</a></p>`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("");
+    return {
+      subject: "You're confirmed for batch0 Demo Day",
+      html: layout({
+        preheader: `Payment of ${amount} received — you're on the list.`,
+        body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">You're confirmed</h1>
+        <p>We received your payment of <strong>${amount}</strong>${args.name ? `, ${escape(args.name)}` : ""}. You're on the list for <strong>Demo Day</strong>${
+          args.cohortName ? ` (${escape(args.cohortName)})` : ""
+        }.</p>
+        ${details ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid rgba(255,255,255,0.1);border-radius:10px">${details}</div>` : ""}
+        <p style="color:#bbb">${
+          args.hasAccount
+            ? "Since this email is on a batch0 account, the event also shows up under Events on your dashboard."
+            : args.externalUrl
+              ? "Keep this email — the join link above is your way in."
+              : "We'll email you the joining details before the day."
+        }</p>
+      `,
+        cta: args.hasAccount
+          ? { url: `${env.siteUrl}/dashboard/events`, label: "See it on your dashboard" }
+          : undefined,
+        footNote: args.receiptUrl
+          ? `Receipt: <a href="${args.receiptUrl}" style="color:#ffbb00;text-decoration:none">${args.receiptUrl}</a>`
+          : undefined,
+      }),
+    };
+  },
 
   /**
    * "Your Founder Pass feedback is ready" — sent when the team delivers a

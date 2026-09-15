@@ -24,6 +24,7 @@ import {
   CalendarDays,
   GraduationCap,
   Handshake,
+  Ticket,
 } from "lucide-react";
 import { getSiteConfig } from "@/lib/site-config";
 
@@ -268,6 +269,30 @@ export default async function DashboardHome() {
               <ChargePayButton chargeId={f.id} />
             </div>
           ))}
+        </section>
+      )}
+
+      {/* A paid Demo Day ticket without an enrollment: the one thing this
+          person came here for is the event, so point straight at it. Enrolled
+          students already have Events in the nav. */}
+      {access.demoDayTicket && !access.enrolled && (
+        <section className="mt-8">
+          <Link
+            href="/dashboard/events"
+            className="press group flex items-center gap-3 rounded-xl border border-phosphor/30 bg-phosphor/[0.08] px-5 py-4 hover:border-phosphor/50"
+          >
+            <Ticket className="h-5 w-5 shrink-0 text-phosphor-ink" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-ink">
+                You&rsquo;re confirmed for Demo Day
+              </p>
+              <p className="mt-0.5 text-xs text-ink-soft">
+                Your ticket is paid. The event, its time and how to join are
+                under Events.
+              </p>
+            </div>
+            <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint group-hover:text-ink-soft" />
+          </Link>
         </section>
       )}
 

@@ -69,6 +69,7 @@ export default async function DashboardLayout({
         enrolled={enrolled}
         referralsEnabled={referralsEnabled}
         preCohort={preCohort}
+        demoDayTicket={access.demoDayTicket}
       />
       <div className="flex flex-1 flex-col">
         <MobileNav
@@ -80,6 +81,7 @@ export default async function DashboardLayout({
           enrolled={enrolled}
           referralsEnabled={referralsEnabled}
           preCohort={preCohort}
+          demoDayTicket={access.demoDayTicket}
         />
         <main id="main-content" tabIndex={-1} className="flex-1 px-5 py-6 md:px-10 md:py-10">{children}</main>
       </div>

@@ -161,6 +161,12 @@ export type StudentNavContext = {
   referralsEnabled: boolean;
   enrolled: boolean;
   preCohort: boolean;
+  /**
+   * Holds a paid Demo Day ticket (lib/access.ts). Opens the Events link for
+   * someone who isn't enrolled — the one enrolled-only page a ticket buys.
+   * Optional so older callers keep their exact behaviour.
+   */
+  demoDayTicket?: boolean;
 };
 
 /**
@@ -187,6 +193,10 @@ export function filterStudentNavItem(
   if (item.href === "/dashboard/ai") return ctx.aiAccess;
   if (item.href === "/dashboard/community") return ctx.discordEnabled;
   if (item.href === "/dashboard/referrals") return ctx.referralsEnabled;
+  // A paid Demo Day ticket opens Events and nothing else. Checked before the
+  // enrolled-only hiding so a ticket holder who never enrolled can find the
+  // one page their ticket is for.
+  if (item.href === "/dashboard/events" && ctx.demoDayTicket) return true;
   if (!ctx.enrolled && ENROLLED_ONLY_HREFS.has(item.href)) {
     return false;
   }
