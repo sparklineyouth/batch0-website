@@ -43,6 +43,21 @@ function fromLocal(local: string): string {
   return new Date(local).toISOString();
 }
 
+/**
+ * Default start for a new event: the coming Sunday at the next round hour —
+ * today, only when today is already Sunday. Events run on Sundays, so
+ * defaulting to right now just hands the admin a weekday to correct.
+ */
+function comingSundayStart(): string {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  // getDay(): Sunday is 0. Roll forward to the next Sunday, staying on today
+  // when today is already Sunday.
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  return d.toISOString();
+}
+
 export function EventsManager({
   events,
   cohorts,
@@ -107,7 +122,7 @@ export function EventsManager({
               type: "demo_day",
               title: "",
               description: "",
-              starts_at: new Date().toISOString(),
+              starts_at: comingSundayStart(),
               ends_at: null,
               location: null,
               zoom_url: "",

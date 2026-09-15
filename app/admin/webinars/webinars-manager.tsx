@@ -418,17 +418,17 @@ function ScheduleForm({
 }
 
 /**
- * The coming Saturday at the next round hour — today, only when today is
- * already Saturday. Webinars run on Saturdays, so pre-filling a weekday just
+ * The coming Sunday at the next round hour — today, only when today is
+ * already Sunday. Webinars run on Sundays, so pre-filling another weekday just
  * gives the admin a day they'd have to correct every time.
  */
 function defaultStart(): string {
   const d = new Date();
   d.setMinutes(0, 0, 0);
   d.setHours(d.getHours() + 1);
-  // getDay(): Sunday is 0, Saturday is 6. Roll forward to the next Saturday,
-  // staying on today when today is already Saturday.
-  d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7));
+  // getDay(): Sunday is 0. Roll forward to the next Sunday, staying on today
+  // when today is already Sunday.
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
