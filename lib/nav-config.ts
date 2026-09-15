@@ -320,6 +320,12 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: Megaphone,
         perm: "announcements.manage",
       },
+      {
+        href: "/admin/discussions",
+        label: "Discussions",
+        icon: MessageCircleQuestion,
+        perm: "discussions.manage",
+      },
     ],
   },
   {
@@ -426,12 +432,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "Moderation",
         icon: ShieldCheck,
         perm: "moderation.manage",
-      },
-      {
-        href: "/admin/discussions",
-        label: "Discussions",
-        icon: MessageCircleQuestion,
-        perm: "discussions.manage",
       },
       {
         href: "/admin/discord",
