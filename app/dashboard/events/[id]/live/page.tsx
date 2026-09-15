@@ -3,7 +3,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser, getProfile, getCapabilities } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { dailyConfigured, mintToken } from "@/lib/daily";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  createRoom,
+  dailyConfigured,
+  mintToken,
+  roomIsLive,
+} from "@/lib/daily";
 import { canJoin, joinState, DEFAULT_EVENT_MINUTES, type LiveRole } from "@/lib/live";
 import {
   listQuestionsForEvent,
@@ -114,35 +120,78 @@ export default async function EventLivePage(
         new Date(ev.starts_at).getTime() + DEFAULT_EVENT_MINUTES * 60_000,
       );
 
-  // Minting a token is an HTTP call to Daily; seeding the Q&A panel is a query
-  // against our own database. Neither needs the other's answer, and running
-  // them together takes the slower of the two off the critical path instead of
-  // adding it to the total.
+  // Seeding the Q&A panel is a query against our own database and needs
+  // nothing from Daily, so it is kicked off first and awaited last: the room
+  // check and the token mint below are HTTP calls to Daily, and this takes
+  // the slower side off the critical path instead of adding to it.
   //
   // The Q&A seed keeps the audience-privacy split from the first paint: the
   // host gets the whole queue, a viewer only ever gets their own questions —
   // the same rule the panel's polling enforces, so nothing is briefly visible
   // that then disappears.
+  const questionsPromise =
+    role === "host"
+      ? listQuestionsForEvent(ev.id)
+      : profile
+        ? listQuestionsForAsker(ev.id, profile.id)
+        : Promise.resolve([]);
+  // It is awaited in the Promise.all below, where a failure still fails the
+  // page. This just keeps a rejection that lands while the Daily round trip
+  // is in flight from being "unhandled" in the meantime.
+  questionsPromise.catch(() => {});
+
+  // The stored room can be dead. Daily deletes a room at its `exp` — the
+  // event's end time as it was when the room was made — so a webinar moved to
+  // a later date (the Sunday reschedule in migration 0069, or any edit that
+  // predates saveEvent re-stamping the room) still points at a room Daily has
+  // reaped. Minting a token for it succeeds server-side; the only symptom is
+  // the browser failing to connect, with no way for the row to heal. So the
+  // same recovery the 1:1 call page uses: a name that no longer resolves is
+  // replaced by a fresh room, claimed with a compare-and-set so two people
+  // arriving at once converge on one room rather than two.
+  let roomName: string = ev.daily_room_name;
+  let roomUrl: string = ev.daily_room_url;
+  if (!(await roomIsLive(roomName, end))) {
+    const admin = createAdminClient();
+    const fresh = await createRoom({
+      namePrefix: ev.title || "event",
+      mode: "webinar",
+      expiresAt: new Date(end.getTime() + 2 * 60 * 60 * 1000),
+      enableRecording: true,
+    });
+    await admin
+      .from("events")
+      .update({ daily_room_name: fresh.name, daily_room_url: fresh.url })
+      .eq("id", ev.id)
+      // Replace only the exact dead value we saw — if someone else has
+      // already swapped in a live room, theirs stands and ours is orphaned
+      // and expires on its own.
+      .eq("daily_room_name", roomName);
+    const { data: settled } = await admin
+      .from("events")
+      .select("daily_room_name, daily_room_url")
+      .eq("id", ev.id)
+      .maybeSingle();
+    roomName = (settled as any)?.daily_room_name ?? fresh.name;
+    roomUrl = (settled as any)?.daily_room_url ?? fresh.url;
+  }
+
   const [token, initialQuestions] = await Promise.all([
     mintToken({
-      roomName: ev.daily_room_name,
+      roomName,
       userId: profile?.id ?? "unknown",
       userName: profile?.full_name || "Guest",
       role,
       // Slightly past the end so the call can overrun, but not open-ended.
       expiresAt: new Date(end.getTime() + 60 * 60 * 1000),
     }),
-    role === "host"
-      ? listQuestionsForEvent(ev.id)
-      : profile
-        ? listQuestionsForAsker(ev.id, profile.id)
-        : Promise.resolve([]),
+    questionsPromise,
   ]);
 
   return (
     <LiveRoom
       title={ev.title}
-      roomUrl={ev.daily_room_url}
+      roomUrl={roomUrl}
       token={token}
       role={role}
       backHref="/dashboard/events"

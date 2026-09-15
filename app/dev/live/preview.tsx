@@ -163,7 +163,7 @@ export function LivePreview() {
                   .filter((e) => ["e-soon", "e-later"].includes(e.id))
                   .map((e) => ({ ...e, visibility: "staff" }))}
                 past={[{ ...mocks.pastEvent, visibility: "enrolled" }]}
-                cohorts={[{ id: "c1", name: "Cohort 1" }]}
+                cohorts={[{ id: "c1", name: "Cohort 1", startsOn: "2026-09-14" }]}
               />
             </div>
           )}

@@ -206,10 +206,19 @@ export async function createRoom({
  * and unjoinable — treating that as live would hand out a token for a room
  * nobody can enter, which is the whole failure this guards against.
  *
+ * `until` is the instant the room has to survive to — a session's end, for a
+ * caller about to hand out tokens for the whole session. Defaults to now. A
+ * room that is alive this minute but expires before the session ends would
+ * eject everyone mid-sentence (`eject_at_room_exp`), which from the audience's
+ * side is indistinguishable from the room having been gone all along.
+ *
  * A 404 is the answer "no", not an error. Every other status is a real
  * failure and propagates, exactly as room creation would.
  */
-export async function roomIsLive(name: string): Promise<boolean> {
+export async function roomIsLive(
+  name: string,
+  until: Date = new Date(),
+): Promise<boolean> {
   let room: { config?: { exp?: number } };
   try {
     room = await call(`/rooms/${encodeURIComponent(name)}`);
@@ -219,7 +228,35 @@ export async function roomIsLive(name: string): Promise<boolean> {
   }
   const exp = room.config?.exp;
   // A room created without an `exp` never expires on its own.
-  return exp === undefined || exp * 1000 > Date.now();
+  return exp === undefined || exp * 1000 > until.getTime();
+}
+
+/**
+ * Move a room's `exp` to follow a rescheduled session.
+ *
+ * A room is created with `exp` = the session's end plus a grace window, and
+ * Daily deletes it then. That is the right cleanup — until the event is moved
+ * later: the row keeps the room's name, the room keeps its old `exp`, and on
+ * the new date the join page mints tokens for a room Daily already reaped.
+ * So a reschedule re-stamps the room instead.
+ *
+ * Returns false when the room is already gone (404) — the caller should make
+ * a new one — and propagates every other failure, as creation would.
+ */
+export async function updateRoomExpiry(
+  name: string,
+  expiresAt: Date,
+): Promise<boolean> {
+  try {
+    await call(`/rooms/${encodeURIComponent(name)}`, {
+      method: "POST",
+      body: { properties: { exp: unix(expiresAt) } },
+    });
+    return true;
+  } catch (err) {
+    if (err instanceof DailyError && err.status === 404) return false;
+    throw err;
+  }
 }
 
 export async function deleteRoom(name: string): Promise<void> {

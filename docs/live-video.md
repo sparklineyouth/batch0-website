@@ -176,6 +176,13 @@ One server module, `lib/daily.ts`, mirroring how `lib/discord.ts` wraps Discord:
 - `createRoom({ name, mode, expiresAt })` → `POST https://api.daily.co/v1/rooms`
 - `mintToken({ room, userId, userName, isOwner, expiresAt })` → `POST /meeting-tokens`
 - `deleteRoom(name)`
+- `roomIsLive(name, until?)` → `GET /rooms/:name` — does the stored room still
+  exist, and does its `exp` outlast the session? Both join pages ask before
+  minting, and replace a dead room, because a token for a reaped room mints
+  fine and only fails in the browser.
+- `updateRoomExpiry(name, expiresAt)` → `POST /rooms/:name` — re-stamps `exp`
+  when an event is re-saved, so moving a webinar to a later date moves its room
+  with it instead of leaving one that expires on the old date.
 - Every function no-ops or throws a typed error when `DAILY_API_KEY` is unset, so
   an unconfigured environment degrades to "hosting unavailable" rather than 500s.
 
@@ -189,6 +196,13 @@ system to drift out of sync.
 Also set `exp` on both room and token (end time + a grace window) with
 `eject_at_token_exp`, so links die on their own instead of becoming permanent
 open doors.
+
+**Webinars are on Sundays.** One a week, on the Sunday that closes each cohort
+week, named `Week N Webinar` (lib/webinar-schedule.ts). The scheduler at
+`/admin/webinars` offers a list of upcoming Sundays rather than a free date
+picker, and pre-fills the name from the pick; the full editor at `/admin/events`
+is the escape hatch for anything else. Migration `0069` moved the existing
+webinars onto that cadence.
 
 ### 4b. Webinars
 
