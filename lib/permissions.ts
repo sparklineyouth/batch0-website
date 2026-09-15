@@ -63,6 +63,7 @@ export const PERMISSION_KEYS = [
   "referrals.view",
   "passes.manage",
   "moderation.manage",
+  "discussions.manage",
   "discord.manage",
   "audit.view",
   "settings.manage",
@@ -297,6 +298,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: "moderation.manage",
         label: "Moderate",
         description: "Review reported content and act on it.",
+      },
+      {
+        key: "discussions.manage",
+        label: "Answer student questions",
+        description:
+          "Read and reply to private questions students send the team, and moderate cohort discussions.",
+        sensitive: true,
       },
       {
         key: "discord.manage",
@@ -538,6 +546,7 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/passes", "passes.manage"],
   ["/admin/pass-requests", "passes.manage"],
   ["/admin/moderation", "moderation.manage"],
+  ["/admin/discussions", "discussions.manage"],
   ["/admin/discord", "discord.manage"],
   ["/admin/audit", "audit.view"],
   ["/admin/settings", "settings.manage"],

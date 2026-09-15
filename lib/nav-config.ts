@@ -19,6 +19,8 @@ import {
   ScrollText,
   Handshake,
   MessagesSquare,
+  MessageSquareText,
+  MessageCircleQuestion,
   Star,
   Megaphone,
   CheckCircle,
@@ -98,6 +100,11 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
   {
     label: "Workspace",
     items: [
+      {
+        href: "/dashboard/discussions",
+        label: "Discussions",
+        icon: MessageSquareText,
+      },
       { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
       { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
       { href: "/dashboard/ai", label: "AI co-founder", icon: Sparkles },
@@ -135,6 +142,11 @@ export const ENROLLED_ONLY_HREFS = new Set<string>([
   // visible to them anyway, which read as "the team has said nothing"
   // rather than "this unlocks when you enroll".
   "/dashboard/announcements",
+  // Same reasoning: a cohort discussion board is scoped to the cohort the
+  // student is enrolled in, and a private question to the team is a thing
+  // an enrolled student does. RLS (migration 0068) returns nothing for an
+  // applicant either way.
+  "/dashboard/discussions",
   "/dashboard/checkin",
   "/dashboard/office-hours",
   "/dashboard/events",
@@ -414,6 +426,12 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "Moderation",
         icon: ShieldCheck,
         perm: "moderation.manage",
+      },
+      {
+        href: "/admin/discussions",
+        label: "Discussions",
+        icon: MessageCircleQuestion,
+        perm: "discussions.manage",
       },
       {
         href: "/admin/discord",

@@ -250,6 +250,7 @@ try {
     ["Fees &amp; fines", "charges.manage"],
     ["Audit log", "audit.view"],
     ["Moderation", "moderation.manage"],
+    ["Discussions", "discussions.manage"],
     ["Discord", "discord.manage"],
   ];
   for (const [label, perm] of NAV_LABELS) {
