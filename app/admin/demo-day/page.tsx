@@ -105,9 +105,14 @@ export default async function AdminDemoDayPage() {
             Submission status, weighted leaderboard, and audience reactions.
           </p>
         </div>
-        <ButtonLink href="/admin/demo-day/rubric" variant="secondary" size="sm">
-          Edit rubric →
-        </ButtonLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <ButtonLink href="/admin/demo-day/tickets" variant="secondary" size="sm">
+            Tickets →
+          </ButtonLink>
+          <ButtonLink href="/admin/demo-day/rubric" variant="secondary" size="sm">
+            Edit rubric →
+          </ButtonLink>
+        </div>
       </div>
 
       <Card className="mt-6 !p-0">

@@ -20,6 +20,7 @@ export function StudentSidebar({
   enrolled,
   referralsEnabled,
   preCohort,
+  demoDayTicket = false,
 }: {
   role: Role;
   caps?: Capabilities | null;
@@ -28,6 +29,7 @@ export function StudentSidebar({
   enrolled: boolean;
   referralsEnabled: boolean;
   preCohort: boolean;
+  demoDayTicket?: boolean;
 }) {
   // Permission-driven when the layout passed capabilities down. The role
   // comparison stays as the fallback so any caller that hasn't been updated
@@ -52,6 +54,7 @@ export function StudentSidebar({
             referralsEnabled,
             enrolled,
             preCohort,
+            demoDayTicket,
           })
         }
       />

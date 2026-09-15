@@ -36,7 +36,7 @@ export default async function BillingPage(
   // sitting in "Outstanding" until the webhook catches up.
   const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
-  const [{ data: payments }, { data: profile }, { data: charges }] =
+  const [{ data: payments }, { data: profile }, { data: charges }, { data: tickets }] =
     await Promise.all([
       supabase
         .from("payments")
@@ -53,11 +53,21 @@ export default async function BillingPage(
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
+      // Demo Day tickets that matched this account (RLS: own rows only). Only
+      // the ones that moved money belong in a payment history; an unpaid
+      // ticket lives in the holder's inbox, not here.
+      supabase
+        .from("demo_day_tickets")
+        .select("id, amount_cents, status, paid_at, created_at, stripe_receipt_url")
+        .eq("user_id", user.id)
+        .in("status", ["paid", "refunded"])
+        .order("paid_at", { ascending: false }),
     ]);
 
   const hasStripeCustomer = Boolean(profile?.stripe_customer_id);
   const pending = (charges ?? []).filter((c: any) => c.status === "pending");
   const history = (charges ?? []).filter((c: any) => c.status !== "pending");
+  const ticketHistory = (tickets ?? []) as any[];
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -135,7 +145,9 @@ export default async function BillingPage(
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Payment history
         </h2>
-        {(payments?.length ?? 0) === 0 && history.length === 0 ? (
+        {(payments?.length ?? 0) === 0 &&
+        history.length === 0 &&
+        ticketHistory.length === 0 ? (
           <p className="text-sm text-ink-soft">No payments yet.</p>
         ) : (
           // The page body clips horizontal overflow, so a four-column table
@@ -178,6 +190,35 @@ export default async function BillingPage(
                   </td>
                   <td className="py-3">
                     <StatusBadge status={c.status} />
+                  </td>
+                </tr>
+              ))}
+              {ticketHistory.map((t: any) => (
+                <tr key={t.id} className="border-b border-line last:border-0">
+                  <td className="py-3 text-ink-soft">
+                    <LocalTime value={t.paid_at ?? t.created_at} />
+                  </td>
+                  <td className="py-3 text-ink-soft">
+                    Demo Day ticket
+                    {t.stripe_receipt_url && (
+                      <>
+                        {" · "}
+                        <a
+                          href={t.stripe_receipt_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-phosphor-ink hover:underline"
+                        >
+                          receipt
+                        </a>
+                      </>
+                    )}
+                  </td>
+                  <td className="py-3 text-ink-soft">
+                    {fmtMoney(t.amount_cents)}
+                  </td>
+                  <td className="py-3">
+                    <StatusBadge status={t.status} />
                   </td>
                 </tr>
               ))}

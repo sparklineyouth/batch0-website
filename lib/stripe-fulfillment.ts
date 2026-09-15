@@ -33,6 +33,13 @@ import {
   syncMemberRoles,
 } from "@/lib/discord";
 import { cohortHasStarted, fmtDateOnly, todayISO } from "@/lib/pre-cohort";
+import {
+  findProfileByEmail,
+  getDemoDayDetails,
+  TICKET_CONFIRMED_TEMPLATE,
+} from "@/lib/demo-day-tickets";
+import { formatTicketAmount } from "@/lib/demo-day-ticket-input";
+import type { DemoDayTicket } from "@/lib/types";
 
 /**
  * What a Checkout Session means for the student, right now.
@@ -50,7 +57,11 @@ export type PaymentState =
   | "expired"
   | "unknown";
 
-export type FulfillmentKind = "enrollment" | "user_charge" | "unknown";
+export type FulfillmentKind =
+  | "enrollment"
+  | "user_charge"
+  | "demo_day_ticket"
+  | "unknown";
 
 export type FulfillmentResult = {
   kind: FulfillmentKind;
@@ -149,6 +160,9 @@ export async function fulfillCheckoutSession(
   if (session.metadata?.kind === "user_charge") {
     return fulfillUserCharge(session, state, opts);
   }
+  if (session.metadata?.kind === "demo_day_ticket") {
+    return fulfillDemoDayTicket(session, state, opts);
+  }
   if (session.metadata?.application_id) {
     return fulfillEnrollment(session, state, opts);
   }
@@ -175,6 +189,34 @@ export async function syncCheckoutSession(
     return await fulfillCheckoutSession(session);
   } catch (err) {
     console.error("[stripe] session sync failed", sessionId, err);
+    return UNKNOWN;
+  }
+}
+
+/**
+ * The ticket-page twin of syncCheckoutSession. A Demo Day ticket is paid
+ * without an account, so there is no signed-in user to check the session
+ * against; the ticket itself — reached only through its secret token — is
+ * the identity. The session must name that exact ticket before anything is
+ * written, so a session id pasted onto someone else's ticket URL reports
+ * nothing.
+ */
+export async function syncDemoDayTicketSession(
+  sessionId: string,
+  ticketId: string,
+): Promise<FulfillmentResult> {
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) return UNKNOWN;
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (
+      session.metadata?.kind !== "demo_day_ticket" ||
+      session.metadata?.ticket_id !== ticketId
+    ) {
+      return UNKNOWN;
+    }
+    return await fulfillCheckoutSession(session);
+  } catch (err) {
+    console.error("[stripe] ticket session sync failed", sessionId, err);
     return UNKNOWN;
   }
 }
@@ -610,6 +652,173 @@ async function fulfillUserCharge(
 }
 
 // ---------------------------------------------------------------------------
+// Demo Day tickets (demo_day_tickets)
+// ---------------------------------------------------------------------------
+
+async function fulfillDemoDayTicket(
+  session: Stripe.Checkout.Session,
+  state: PaymentState,
+  opts: FulfillOptions = {},
+): Promise<FulfillmentResult> {
+  const admin = createAdminClient();
+  const ticketId = session.metadata?.ticket_id;
+  const amountCents = session.amount_total ?? null;
+  if (!ticketId) return { ...UNKNOWN, state, amountCents };
+
+  const { data } = await admin
+    .from("demo_day_tickets")
+    .select("*")
+    .eq("id", ticketId)
+    .maybeSingle();
+  const ticket = data as DemoDayTicket | null;
+  if (!ticket) return { ...UNKNOWN, state, amountCents };
+
+  const base: FulfillmentResult = {
+    kind: "demo_day_ticket",
+    state,
+    receiptUrl: ticket.stripe_receipt_url,
+    amountCents: amountCents ?? ticket.amount_cents,
+    description: "Demo Day ticket",
+  };
+
+  // A failed or expired checkout leaves the ticket exactly as it was: still
+  // sent, still payable from the same link. Nothing to write.
+  if (state !== "paid") return base;
+
+  const paymentIntentId = paymentIntentIdOf(session);
+  const receiptUrl = await fetchReceiptUrl(paymentIntentId);
+  const wasSent = ticket.status === "sent";
+
+  // The email may have joined batch0 since the invite went out — or the admin
+  // may have typed it before the person ever signed up. Match again now, so a
+  // holder who IS signed in sees the event on their dashboard (events RLS,
+  // migration 0070). Best-effort: a ticket never depends on an account.
+  const userId =
+    ticket.user_id ?? (await findProfileByEmail(ticket.email))?.id ?? null;
+
+  // Guard on `sent` so a redelivered event can never resurrect a ticket an
+  // admin has since cancelled or refunded.
+  await admin
+    .from("demo_day_tickets")
+    .update({
+      status: "paid",
+      paid_at: new Date().toISOString(),
+      stripe_payment_intent_id: paymentIntentId,
+      stripe_receipt_url: receiptUrl,
+      user_id: userId,
+    })
+    .eq("id", ticketId)
+    .eq("status", "sent");
+
+  if (wasSent) {
+    if (!opts.silent) {
+      await announceTicketPaid({ ...ticket, user_id: userId }, receiptUrl);
+    }
+    await logAudit({
+      action: "demo_day_ticket.paid",
+      targetType: "demo_day_ticket",
+      targetId: ticket.id,
+      payload: {
+        email: ticket.email,
+        amount_cents: ticket.amount_cents,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: paymentIntentId,
+      },
+    });
+  } else if (ticket.status === "paid") {
+    if (receiptUrl) {
+      // Already settled — still worth backfilling the receipt link.
+      await admin
+        .from("demo_day_tickets")
+        .update({ stripe_receipt_url: receiptUrl })
+        .eq("id", ticketId)
+        .is("stripe_receipt_url", null);
+    }
+  } else {
+    // Money arrived for a ticket that was cancelled or refunded in the
+    // meantime — a Checkout tab left open past the admin's click. The guard
+    // above correctly left the row alone, but the charge is real, so make
+    // it impossible to miss: the admin refunds it from Stripe.
+    console.error(
+      "[stripe] payment for a closed Demo Day ticket",
+      JSON.stringify({ ticketId, status: ticket.status, paymentIntentId }),
+    );
+    await logAudit({
+      action: "demo_day_ticket.paid_after_close",
+      targetType: "demo_day_ticket",
+      targetId: ticket.id,
+      payload: {
+        status: ticket.status,
+        amount_cents: amountCents,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: paymentIntentId,
+      },
+    });
+  }
+
+  return { ...base, receiptUrl: receiptUrl ?? base.receiptUrl };
+}
+
+/**
+ * Confirmation email (+ an in-app note when the email is on an account),
+ * fired once when the ticket first becomes paid. Best-effort, like
+ * announceEnrollment: a flaky mailer must not make Stripe retry a payment
+ * we've already banked.
+ */
+async function announceTicketPaid(
+  ticket: DemoDayTicket,
+  receiptUrl: string | null,
+) {
+  try {
+    const details = await getDemoDayDetails(ticket.cohort_id);
+    const amount = formatTicketAmount(ticket.amount_cents);
+    const detailLines = [
+      details.location ? `Where: ${details.location}` : "",
+      details.externalUrl ? `Join link: ${details.externalUrl}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    await sendTemplated(TICKET_CONFIRMED_TEMPLATE, {
+      to: ticket.email,
+      toName: ticket.name,
+      userId: ticket.user_id,
+      vars: {
+        amount,
+        demo_day_when: details.when ?? "",
+        cohort_name: details.cohortName ?? "",
+        demo_day_details: detailLines,
+      },
+      // One confirmation per ticket, however the fulfilment arrived —
+      // webhook, retry, or the pay page settling on return from Checkout.
+      dedupeKey: `demo-day-ticket-confirmed:${ticket.id}`,
+      fallback: () =>
+        Templates.demoDayTicketConfirmed({
+          name: ticket.name,
+          amountCents: ticket.amount_cents,
+          when: details.when,
+          cohortName: details.cohortName,
+          location: details.location,
+          externalUrl: details.externalUrl,
+          hasAccount: !!ticket.user_id,
+          receiptUrl,
+        }),
+    });
+    if (ticket.user_id) {
+      await notify({
+        userId: ticket.user_id,
+        type: "demo_day_ticket_paid",
+        title: "You're confirmed for Demo Day",
+        body: `Ticket paid: ${amount}. The event is under Events.`,
+        link: "/dashboard/events",
+        dedupeKey: `demo_day_ticket_paid:${ticket.id}`,
+      });
+    }
+  } catch (err) {
+    console.error("[stripe] ticket announce failed", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Failure paths
 // ---------------------------------------------------------------------------
 
@@ -714,6 +923,42 @@ export async function handleChargeRefunded(
         });
       }
     }
+
+    // And on a Demo Day ticket. A full refund takes the ticket back — the
+    // events policy keys on status = 'paid', so the holder's dashboard access
+    // goes with it. Partial refunds are recorded in Stripe only; the ticket
+    // is still good.
+    const { data: ticket } = await admin
+      .from("demo_day_tickets")
+      .select("id, user_id, status")
+      .eq("stripe_payment_intent_id", piId)
+      .maybeSingle();
+    if (ticket && ticket.status !== "refunded") {
+      if (full) {
+        changed = true;
+        await admin
+          .from("demo_day_tickets")
+          .update({
+            status: "refunded",
+            refunded_at: new Date().toISOString(),
+            stripe_refund_id: refundId,
+          })
+          .eq("id", ticket.id)
+          .eq("status", "paid");
+      }
+      if (ticket.user_id && !opts.silent) {
+        await notify({
+          userId: ticket.user_id,
+          type: "demo_day_ticket_refunded",
+          title: full
+            ? "Demo Day ticket refunded"
+            : "Demo Day ticket partially refunded",
+          body: `$${(charge.amount_refunded / 100).toFixed(2)} returned to your card.`,
+          link: "/dashboard/billing",
+          dedupeKey: `refund:${refundId ?? piId}`,
+        });
+      }
+    }
   }
 
   if (changed || !opts.silent) {
@@ -739,6 +984,11 @@ export async function handlePaymentFailed(pi: Stripe.PaymentIntent) {
   const applicationId = pi.metadata?.application_id ?? null;
   const userId = pi.metadata?.user_id ?? null;
   const isCharge = pi.metadata?.kind === "user_charge";
+
+  // A Demo Day ticket has no pending ledger row to close, and its holder may
+  // have no account to notify: Checkout already showed them the decline, and
+  // the link in their inbox is still live to try again.
+  if (pi.metadata?.kind === "demo_day_ticket") return;
 
   // The ledger row is created at session-create time and only learns its
   // payment intent id on success, so a declined attempt has to be matched

@@ -410,12 +410,23 @@ export default async function AdminStudentDetail(
           <div className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
             Fees & fines
           </div>
-          <Link
-            href={`/admin/charges?user=${profile.id}`}
-            className="text-xs text-phosphor-ink hover:underline"
-          >
-            Issue a charge →
-          </Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link
+              href={`/admin/demo-day/tickets?${new URLSearchParams({
+                email: displayEmail(profile.email) ?? "",
+                name: profile.full_name ?? "",
+              }).toString()}`}
+              className="text-xs text-phosphor-ink hover:underline"
+            >
+              Send a Demo Day ticket →
+            </Link>
+            <Link
+              href={`/admin/charges?user=${profile.id}`}
+              className="text-xs text-phosphor-ink hover:underline"
+            >
+              Issue a charge →
+            </Link>
+          </div>
         </div>
         {(charges?.length ?? 0) === 0 ? (
           <p className="px-5 pb-5 text-sm text-ink-soft">No charges.</p>

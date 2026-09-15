@@ -52,6 +52,8 @@ export function StatusBadge({ status }: { status: string }) {
     withdrawn: "bg-wash text-ink-faint",
     succeeded: "bg-emerald-400/15 text-emerald-300",
     pending: "bg-amber-400/15 text-amber-300",
+    // A Demo Day ticket that's out but unpaid — the same "waiting" tone.
+    sent: "bg-amber-400/15 text-amber-300",
     failed: "bg-red-400/15 text-red-300",
     refunded: "bg-wash text-ink-soft",
     upcoming: "bg-blue-400/15 text-blue-300",

@@ -229,6 +229,53 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     ],
   },
   {
+    key: "demo_day.ticket_invite",
+    name: "Demo Day ticket",
+    description:
+      "Sent when an admin sends someone a paid Demo-Day-only ticket (/admin/demo-day/tickets). Edit the copy freely, but leave the button pointed at {{pay_url}} — that link is the ticket. The date and note aren't always known, so keep their {{tag|fallback}} form.",
+    category: "transactional",
+    subject: "Your batch0 Demo Day ticket — {{amount}}",
+    preheader: "A {{amount}} ticket to Demo Day. Pay to confirm your spot.",
+    body_html:
+      "<h1>You're invited to Demo Day</h1><p>Hi {{first_name}} — the batch0 team has set aside a ticket for you to <strong>Demo Day</strong>, {{demo_day_when|date to be announced}}. It's the day every team pitches what they built.</p><p>This is a ticket to Demo Day only — not enrollment in the cohort. Your ticket is <strong>{{amount}}</strong>. Pay below to confirm your spot; you don't need a batch0 account.</p><p><em>{{note|We'd love to have you there.}}</em></p>",
+    cta_label: "Pay {{amount}} & confirm",
+    cta_url: "{{pay_url}}",
+    variables: [
+      ...COMMON,
+      { key: "amount", label: "Ticket price", example: "$25", required: true },
+      {
+        key: "pay_url",
+        label: "Payment link",
+        example: "https://batch0.org/demo-day/ticket/…",
+        required: true,
+      },
+      { key: "demo_day_when", label: "Demo Day date/time", example: "Saturday, November 14, 2026 at 1:00 PM ET" },
+      { key: "cohort_name", label: "Cohort name", example: "Cohort 1" },
+      { key: "note", label: "Note from the team", example: "Would love to have you there." },
+    ],
+  },
+  {
+    key: "demo_day.ticket_confirmed",
+    name: "Demo Day ticket confirmed",
+    description: "Sent when Stripe confirms a Demo Day ticket payment.",
+    category: "transactional",
+    subject: "You're confirmed for batch0 Demo Day",
+    preheader: "Payment of {{amount}} received — you're on the list.",
+    body_html:
+      "<h1>You're confirmed</h1><p>We received your payment of <strong>{{amount}}</strong>, {{first_name}}. You're on the list for <strong>Demo Day</strong>, {{demo_day_when|date to be announced}}.</p><p>{{demo_day_details|We'll email you the joining details before the day.}}</p>",
+    variables: [
+      ...COMMON,
+      { key: "amount", label: "Amount paid", example: "$25", required: true },
+      { key: "demo_day_when", label: "Demo Day date/time", example: "Saturday, November 14, 2026 at 1:00 PM ET" },
+      { key: "cohort_name", label: "Cohort name", example: "Cohort 1" },
+      {
+        key: "demo_day_details",
+        label: "Where / how to join",
+        example: "Where: 123 Main St. Join link: https://zoom.us/j/…",
+      },
+    ],
+  },
+  {
     key: "broadcast.blank",
     name: "Blank branded email",
     description:
