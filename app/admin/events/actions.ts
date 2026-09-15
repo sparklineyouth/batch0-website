@@ -12,7 +12,12 @@ import {
   getDiscordSettings,
   buttonRow,
 } from "@/lib/discord";
-import { createRoom, deleteRoom, dailyConfigured } from "@/lib/daily";
+import {
+  createRoom,
+  deleteRoom,
+  updateRoomExpiry,
+  dailyConfigured,
+} from "@/lib/daily";
 import { DEFAULT_EVENT_MINUTES, type LiveMode } from "@/lib/live";
 import { env } from "@/lib/env";
 
@@ -79,6 +84,28 @@ export async function saveEvent(input: EventInput, notify: boolean) {
   // who is looking at the form, not to twenty students at 7pm.
   let roomName = input.daily_room_name ?? null;
   let roomUrl = input.daily_room_url ?? null;
+
+  // A hosted event that already has a room is being re-saved — most likely
+  // with a new time. The room was stamped with the OLD end time as its `exp`,
+  // and Daily deletes it then, so the room must follow the schedule or the
+  // webinar opens on the new date to a room that no longer exists. If Daily
+  // has already reaped it, drop the name and fall through to create a fresh
+  // one below. Anything else Daily says here is not worth failing the save
+  // over: the join page also re-checks the room and heals a dead one.
+  if (input.live_mode === "hosted" && roomName) {
+    try {
+      const stillThere = await updateRoomExpiry(
+        roomName,
+        roomExpiry(input.starts_at, input.ends_at),
+      );
+      if (!stillThere) {
+        roomName = null;
+        roomUrl = null;
+      }
+    } catch (err) {
+      console.error("[events] could not move room expiry", err);
+    }
+  }
 
   if (input.live_mode === "hosted" && !roomName) {
     if (!dailyConfigured()) {

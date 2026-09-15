@@ -9,11 +9,27 @@ import { LiveDot } from "@/components/live/call-stage";
 import { getActionError } from "@/lib/action-error";
 import { saveEvent } from "@/app/admin/events/actions";
 import { canJoin, joinState, relativeTime, type LiveEvent } from "@/lib/live";
+import {
+  isSunday,
+  localDateTime,
+  localHhmm,
+  upcomingSundays,
+  webinarTitle,
+  webinarWeek,
+} from "@/lib/webinar-schedule";
 import { Plus, Pencil, Video, Radio } from "lucide-react";
 
 type Webinar = LiveEvent & { visibility: string };
+type Cohort = { id: string; name: string; startsOn: string | null };
 
 const DURATIONS = [30, 45, 60, 90, 120];
+
+/** How far ahead the Sunday picker looks. A quarter is plenty; anything
+ *  further is a plan, not a schedule. */
+const SUNDAYS_AHEAD = 13;
+
+/** When no earlier webinar exists to copy the time from. */
+const FALLBACK_TIME = "12:00";
 
 const VISIBILITIES = [
   {
@@ -33,10 +49,16 @@ const VISIBILITIES = [
  * Schedule and review webinars.
  *
  * The form deliberately asks less than the full event editor: a webinar needs
- * a title, a time, a length, and who may watch. Everything else an event can
- * carry — cohort, location, recording URL, Discord cross-post — is still one
+ * a title, a Sunday, a time, a length, and who may watch. Everything else an
+ * event can carry — location, recording URL, Discord cross-post — is still one
  * click away in /admin/events, and pre-filling this form with all of it would
- * bury the four fields that actually matter.
+ * bury the fields that actually matter.
+ *
+ * Webinars are on Sundays, full stop (lib/webinar-schedule.ts). The date
+ * field is therefore a list of upcoming Sundays rather than a free picker:
+ * the rule is enforced by what the form can express, not by an error after
+ * the fact — though `schedule` re-checks anyway, since a rule that lives only
+ * in a dropdown is one refactor away from gone.
  */
 export function WebinarsManager({
   live,
@@ -47,26 +69,43 @@ export function WebinarsManager({
   live: Webinar[];
   upcoming: Webinar[];
   past: Webinar[];
-  cohorts: { id: string; name: string }[];
+  cohorts: Cohort[];
 }) {
   const router = useRouter();
   const [composing, setComposing] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
 
+  // "Same time as last week." The most useful default for a weekly series is
+  // whatever the series already runs at; the next upcoming one is the best
+  // witness, then whatever is live, then the most recent past one.
+  const sample = upcoming[0] ?? live[0] ?? past[0];
+  const defaultTime = sample
+    ? localHhmm(new Date(sample.startsAt))
+    : FALLBACK_TIME;
+
   function schedule(draft: {
     title: string;
     description: string;
-    startsLocal: string;
+    sunday: string;
+    time: string;
     durationMinutes: number;
     visibility: string;
     cohortId: string | null;
     notify: boolean;
   }) {
     setError(undefined);
-    const startsAt = new Date(draft.startsLocal);
+    const startsAt = localDateTime(draft.sunday, draft.time);
     if (Number.isNaN(startsAt.getTime())) {
       setError("That start time isn't valid.");
+      return;
+    }
+    if (!isSunday(startsAt)) {
+      setError("Webinars are on Sundays only.");
+      return;
+    }
+    if (startsAt.getTime() < Date.now()) {
+      setError("That Sunday's start time has already passed.");
       return;
     }
     start(async () => {
@@ -102,6 +141,7 @@ export function WebinarsManager({
     return (
       <ScheduleForm
         cohorts={cohorts}
+        defaultTime={defaultTime}
         onSubmit={schedule}
         onCancel={() => setComposing(false)}
         pending={pending}
@@ -126,8 +166,9 @@ export function WebinarsManager({
           <Radio className="mx-auto h-6 w-6 text-ink-faint" />
           <p className="mt-3 text-sm text-ink">No webinars yet.</p>
           <p className="mx-auto mt-1 max-w-sm text-xs text-ink-faint">
-            Schedule one as <strong>Staff only</strong> first — you can walk
-            through the whole thing without a single student seeing it.
+            They run on Sundays. Schedule one as <strong>Staff only</strong>{" "}
+            first — you can walk through the whole thing without a single
+            student seeing it.
           </p>
         </div>
       ) : (
@@ -254,16 +295,19 @@ function Row({ webinar: w }: { webinar: Webinar }) {
 
 function ScheduleForm({
   cohorts,
+  defaultTime,
   onSubmit,
   onCancel,
   pending,
   error,
 }: {
-  cohorts: { id: string; name: string }[];
+  cohorts: Cohort[];
+  defaultTime: string;
   onSubmit: (d: {
     title: string;
     description: string;
-    startsLocal: string;
+    sunday: string;
+    time: string;
     durationMinutes: number;
     visibility: string;
     cohortId: string | null;
@@ -273,15 +317,27 @@ function ScheduleForm({
   pending: boolean;
   error?: string;
 }) {
-  const [title, setTitle] = useState("");
+  // Computed once: the list must not shift under the admin mid-form if
+  // midnight passes while it is open.
+  const [sundays] = useState(() => upcomingSundays(new Date(), SUNDAYS_AHEAD));
+  const [sunday, setSunday] = useState(sundays[0]);
+  const [time, setTime] = useState(defaultTime);
   const [description, setDescription] = useState("");
-  const [startsLocal, setStartsLocal] = useState(defaultStart());
   const [duration, setDuration] = useState(60);
   // Staff-only by default: the safe rehearsal, one dropdown away from going
   // live to students. Defaulting the other way makes the first mistake public.
   const [visibility, setVisibility] = useState("staff");
   const [cohortId, setCohortId] = useState<string>(cohorts[0]?.id ?? "");
   const [notify, setNotify] = useState(false);
+
+  // The name follows the Sunday — "Week 3 Webinar" — until the admin types
+  // one of their own, after which the pick stops touching it. A title the
+  // form silently rewrote after someone edited it is worse than no default.
+  const cohort = cohorts.find((c) => c.id === cohortId) ?? cohorts[0];
+  const weekOf = (ymd: string) => webinarWeek(ymd, cohort?.startsOn);
+  const suggested = webinarTitle(sunday, weekOf(sunday));
+  const [customTitle, setCustomTitle] = useState<string | null>(null);
+  const title = customTitle ?? suggested;
 
   const hint = VISIBILITIES.find((v) => v.value === visibility)?.hint;
 
@@ -294,9 +350,21 @@ function ScheduleForm({
         <Input
           required
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Fundraising 101"
+          onChange={(e) => setCustomTitle(e.target.value)}
+          placeholder={suggested}
         />
+        {customTitle !== null && customTitle !== suggested && (
+          <p className="mt-1.5 text-xs text-ink-faint">
+            Suggested:{" "}
+            <button
+              type="button"
+              onClick={() => setCustomTitle(null)}
+              className="text-phosphor-ink hover:underline"
+            >
+              {suggested}
+            </button>
+          </p>
+        )}
       </div>
 
       <div>
@@ -309,13 +377,27 @@ function ScheduleForm({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div>
-          <Label>Starts</Label>
+          <Label>Sunday</Label>
+          <Select value={sunday} onChange={(e) => setSunday(e.target.value)}>
+            {sundays.map((ymd) => {
+              const week = weekOf(ymd);
+              return (
+                <option key={ymd} value={ymd}>
+                  {sundayLabel(ymd)}
+                  {week !== null ? ` · Week ${week}` : ""}
+                </option>
+              );
+            })}
+          </Select>
+        </div>
+        <div>
+          <Label>Time</Label>
           <Input
-            type="datetime-local"
-            value={startsLocal}
-            onChange={(e) => setStartsLocal(e.target.value)}
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
           />
         </div>
         <div>
@@ -399,7 +481,8 @@ function ScheduleForm({
             onSubmit({
               title,
               description,
-              startsLocal,
+              sunday,
+              time,
               durationMinutes: duration,
               visibility,
               cohortId: cohortId || null,
@@ -417,18 +500,11 @@ function ScheduleForm({
   );
 }
 
-/**
- * The coming Sunday at the next round hour — today, only when today is
- * already Sunday. Webinars run on Sundays, so pre-filling another weekday just
- * gives the admin a day they'd have to correct every time.
- */
-function defaultStart(): string {
-  const d = new Date();
-  d.setMinutes(0, 0, 0);
-  d.setHours(d.getHours() + 1);
-  // getDay(): Sunday is 0. Roll forward to the next Sunday, staying on today
-  // when today is already Sunday.
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** "Sun, Sep 20" — the Sunday as the admin's own calendar shows it. */
+function sundayLabel(ymd: string): string {
+  return localDateTime(ymd, "12:00").toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }

@@ -40,7 +40,13 @@ export default async function AdminWebinarsPage() {
       .eq("live_mode", "hosted")
       .order("starts_at", { ascending: false })
       .limit(100),
-    admin.from("cohorts").select("id, name").order("starts_on"),
+    // Newest first, so the form defaults to the cohort that is actually
+    // running rather than the first one ever created. `starts_on` is what
+    // turns a Sunday into "Week 3" for the webinar's name.
+    admin
+      .from("cohorts")
+      .select("id, name, starts_on")
+      .order("starts_on", { ascending: false, nullsFirst: false }),
   ]);
 
   // `live_mode` arrives with migration 0058. Until it is applied the filter
@@ -148,7 +154,11 @@ export default async function AdminWebinarsPage() {
           live={live}
           upcoming={upcoming}
           past={past}
-          cohorts={(cohorts ?? []) as { id: string; name: string }[]}
+          cohorts={(cohorts ?? []).map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            startsOn: c.starts_on ?? null,
+          }))}
         />
       </Card>
     </Shell>
@@ -162,8 +172,9 @@ function Shell({ children }: { children: React.ReactNode }) {
         Webinars
       </h1>
       <p className="mt-1 text-sm text-ink-faint">
-        Live sessions you host on batch0 — your camera and screen, students
-        watching. They can&rsquo;t see each other or how many are here.{" "}
+        Live sessions you host on batch0, every Sunday — your camera and
+        screen, students watching. They can&rsquo;t see each other or how many
+        are here.{" "}
         <Link
           href="/admin/events"
           className="text-phosphor-ink hover:underline"
