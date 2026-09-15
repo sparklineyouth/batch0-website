@@ -499,6 +499,33 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }),
 
   /**
+   * The team answered a private question a student asked at
+   * /dashboard/discussions. Sent only for admin-visibility threads — a reply
+   * on a cohort discussion is an in-app notification, not an email, or every
+   * lively thread would become a mailbox flood.
+   */
+  discussionReply: (args: {
+    name?: string | null;
+    title: string;
+    replierName: string;
+    reply: string;
+    threadUrl: string;
+  }) => ({
+    subject: `Re: ${args.title}`,
+    html: layout({
+      preheader: args.reply.slice(0, 120),
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.replierName)} replied to your question</h1>
+        ${args.name ? `<p>Hi ${escape(args.name)},</p>` : ""}
+        <p style="margin:12px 0;color:#8b949e;font-size:13px">You asked: <strong style="color:#e7e7e7">${escape(args.title)}</strong></p>
+        <div style="margin:16px 0;padding:14px 16px;border-left:3px solid #ffbb00;background:rgba(255,255,255,0.04);white-space:pre-wrap">${escape(args.reply)}</div>
+        <p style="color:#8b949e;font-size:13px">Only you and the batch0 team can see this thread. Reply on the site if you have a follow-up.</p>
+      `,
+      cta: { url: args.threadUrl, label: "Open the thread" },
+    }),
+  }),
+
+  /**
    * Weekly "students who went quiet" digest for mentors + admins.
    * Lists each at-risk student with the assigned mentor's name (or a
    * placeholder when unassigned) so the recipient knows whose turn it

@@ -11,7 +11,9 @@ import {
   GraduationCap,
   CreditCard,
   CheckCircle,
+  MessageCircleQuestion,
 } from "lucide-react";
+import { countQuestionsNeedingReply } from "@/lib/discussions";
 
 export const metadata = { title: "Admin · batch0" };
 
@@ -31,6 +33,7 @@ export default async function AdminOverview() {
   const seeApplications = can(caps, "applications.view");
   const seePeople = can(caps, "people.view");
   const seeRevenue = can(caps, "payments.view");
+  const seeDiscussions = can(caps, "discussions.manage");
 
   const admin = createAdminClient();
 
@@ -42,6 +45,7 @@ export default async function AdminOverview() {
     { data: paymentsData },
     { data: chargesData },
     { data: recentApps },
+    openQuestions,
   ] = await Promise.all([
     seeApplications
       ? admin.from("applications").select("id", { count: "exact", head: true })
@@ -85,6 +89,7 @@ export default async function AdminOverview() {
           .order("created_at", { ascending: false })
           .limit(8)
       : { data: null },
+    seeDiscussions ? countQuestionsNeedingReply() : Promise.resolve(0),
   ]);
 
   const enrollmentRevenueCents = (paymentsData ?? []).reduce(
@@ -97,24 +102,39 @@ export default async function AdminOverview() {
   );
   const revenueCents = enrollmentRevenueCents + chargesRevenueCents;
 
-  const inboxItems = seeApplications
-    ? [
-        {
-          icon: Inbox,
-          label: "Pending review",
-          count: pendingApps ?? 0,
-          href: "/admin/applications?status=submitted",
-          tone: (pendingApps ?? 0) > 0 ? "phosphor" : "muted",
-        },
-        {
-          icon: CreditCard,
-          label: "Awaiting payment",
-          count: acceptedApps ?? 0,
-          href: "/admin/applications?status=accepted",
-          tone: (acceptedApps ?? 0) > 0 ? "phosphor" : "muted",
-        },
-      ]
-    : [];
+  const inboxItems = [
+    ...(seeApplications
+      ? [
+          {
+            icon: Inbox,
+            label: "Pending review",
+            count: pendingApps ?? 0,
+            href: "/admin/applications?status=submitted",
+            tone: (pendingApps ?? 0) > 0 ? "phosphor" : "muted",
+          },
+          {
+            icon: CreditCard,
+            label: "Awaiting payment",
+            count: acceptedApps ?? 0,
+            href: "/admin/applications?status=accepted",
+            tone: (acceptedApps ?? 0) > 0 ? "phosphor" : "muted",
+          },
+        ]
+      : []),
+    // A student's private question waiting on the team is as actionable as
+    // an application waiting on review, so it sits in the same row.
+    ...(seeDiscussions
+      ? [
+          {
+            icon: MessageCircleQuestion,
+            label: "Questions awaiting reply",
+            count: openQuestions,
+            href: "/admin/discussions",
+            tone: openQuestions > 0 ? "phosphor" : "muted",
+          },
+        ]
+      : []),
+  ];
 
   const metrics = [
     seeApplications && {
@@ -168,7 +188,7 @@ export default async function AdminOverview() {
 
       {/* Inbox row — actionable counts, not vanity stats. */}
       {inboxItems.length > 0 && (
-        <section className="mt-8 grid gap-3 md:grid-cols-2">
+        <section className="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {inboxItems.map((it) => (
             <Link
               key={it.label}
