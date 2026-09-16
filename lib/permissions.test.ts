@@ -60,6 +60,36 @@ test("the wildcard reaches every admin route", () => {
   }
 });
 
+test("both scholarship keys are admin-area, so neither may be granted to mentor", () => {
+  // Migration 0071 deliberately grants nothing. This pins why: either key on
+  // its own opens the whole admin panel, so the obvious-looking "let mentors
+  // see a student's scholarship credits" grant would also hand every mentor
+  // the payments page and the audit log. Same shape as the calls.invite
+  // near-miss above — except calls.invite was caught by being listed in
+  // NON_ADMIN, and these two must NOT be, because they really do gate
+  // /admin/scholarships.
+  for (const perm of ["scholarships.view", "scholarships.manage"] as const) {
+    const caps = capabilitiesFrom("custom", [perm]);
+    assert.equal(canAccessAdmin(caps), true, `${perm} is an admin-area key`);
+  }
+
+  // The route itself opens on `view`, exactly like /admin/payments opens on
+  // payments.view rather than payments.manage. `manage` is a write key: it
+  // makes the award and refund buttons work, and is meant to be held
+  // alongside `view`, not instead of it.
+  const awarder = capabilitiesFrom("custom", ["scholarships.manage"]);
+  assert.equal(canViewAdminPath(awarder, "/admin/scholarships"), false);
+
+  // A read-only reviewer reaches the scholarship area and nothing else.
+  const reviewer = capabilitiesFrom("reviewer", ["scholarships.view"]);
+  assert.equal(canViewAdminPath(reviewer, "/admin/scholarships"), true);
+  assert.equal(canViewAdminPath(reviewer, "/admin/scholarships/applications"), true);
+  assert.equal(canViewAdminPath(reviewer, "/admin/payments"), false);
+  assert.equal(canViewAdminPath(reviewer, "/admin/roles"), false);
+  // Reading the queue must not imply being able to award or refund.
+  assert.equal(can(reviewer, "scholarships.manage"), false);
+});
+
 test("a signed-out viewer reaches nothing", () => {
   assert.equal(canAccessAdmin(null), false);
   assert.equal(canViewAdminPath(null, "/admin"), false);

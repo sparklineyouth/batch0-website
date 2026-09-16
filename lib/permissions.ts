@@ -62,6 +62,8 @@ export const PERMISSION_KEYS = [
   "email.settings",
   "referrals.view",
   "passes.manage",
+  "scholarships.view",
+  "scholarships.manage",
   "moderation.manage",
   "discussions.manage",
   "discord.manage",
@@ -229,6 +231,19 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: "payments.manage",
         label: "Manage payments",
         description: "Refund charges and re-run Stripe reconciliation.",
+        sensitive: true,
+      },
+      {
+        key: "scholarships.view",
+        label: "View scholarships",
+        description:
+          "Read the scholarship catalog and every student's scholarship application.",
+      },
+      {
+        key: "scholarships.manage",
+        label: "Award scholarships",
+        description:
+          "Create scholarships and decide applications — including issuing a refund to a student who has already paid tuition.",
         sensitive: true,
       },
     ],
@@ -545,6 +560,12 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/referrals", "referrals.view"],
   ["/admin/passes", "passes.manage"],
   ["/admin/pass-requests", "passes.manage"],
+  // Read-gated, not write-gated: the whole scholarship area opens on
+  // `scholarships.view`, and every mutation inside it re-asserts
+  // `scholarships.manage`. That split is what makes a read-only reviewer role
+  // possible — someone who reads the queue and discusses it without being able
+  // to hand out tuition or refund a card.
+  ["/admin/scholarships", "scholarships.view"],
   ["/admin/moderation", "moderation.manage"],
   ["/admin/discussions", "discussions.manage"],
   ["/admin/discord", "discord.manage"],

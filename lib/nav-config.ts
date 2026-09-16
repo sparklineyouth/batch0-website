@@ -39,6 +39,7 @@ import {
   Video,
   Workflow,
   LineChart,
+  GraduationCap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
@@ -116,6 +117,15 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
     label: "Account",
     items: [
       { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
+      // Deliberately NOT in ENROLLED_ONLY_HREFS: scholarships open at the
+      // ACCEPTED stage, which is exactly the window where someone decides
+      // whether they can afford to enroll at all. Hiding the tab until after
+      // they've paid would hide it from the people it exists for.
+      {
+        href: "/dashboard/scholarships",
+        label: "Scholarships",
+        icon: GraduationCap,
+      },
       { href: "/dashboard/referrals", label: "Refer friends", icon: Star },
       { href: "/dashboard/settings", label: "Settings", icon: Settings },
     ],
@@ -352,6 +362,18 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "Payments",
         icon: CreditCard,
         perm: "payments.view",
+      },
+      {
+        href: "/admin/scholarships/applications",
+        label: "Scholarship queue",
+        icon: Inbox,
+        perm: "scholarships.view",
+      },
+      {
+        href: "/admin/scholarships",
+        label: "Scholarships",
+        icon: GraduationCap,
+        perm: "scholarships.view",
       },
     ],
   },

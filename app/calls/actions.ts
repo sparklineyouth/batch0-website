@@ -235,6 +235,29 @@ export async function cancelInvite(id: string) {
     }
   }
 
+  // Hand a learner's-scholarship credit back when the call it paid for is
+  // cancelled. The credit was spent at SCHEDULE time (scheduleInterviewRequest),
+  // so a cancelled call would otherwise silently consume one of three without
+  // the student ever having spoken to anyone.
+  //
+  // Best-effort and tolerant: a database where 0071 hasn't run has no such
+  // requests, and a failure here must not block a cancellation that has already
+  // torn down the room.
+  try {
+    const { data: linked } = await admin
+      .from("interview_requests")
+      .select("id, scholarship_application_id")
+      .eq("call_invite_id", id)
+      .maybeSingle();
+    const scholarshipAppId = (linked as any)?.scholarship_application_id ?? null;
+    if (scholarshipAppId) {
+      const { refundCallCredit } = await import("@/lib/scholarships");
+      await refundCallCredit(admin, scholarshipAppId);
+    }
+  } catch (err) {
+    console.error("[calls] scholarship credit refund failed", err);
+  }
+
   await logAudit({
     action: "call_invite.cancelled",
     targetType: "call_invite",

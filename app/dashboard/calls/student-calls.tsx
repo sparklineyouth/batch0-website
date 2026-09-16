@@ -7,6 +7,10 @@ import { getActionError } from "@/lib/action-error";
 import { respondToInvite } from "@/app/calls/actions";
 import type { CallInvite } from "@/lib/live";
 import type { InterviewRequest } from "@/lib/interview-requests";
+import {
+  ScholarshipCallCard,
+  type ScholarshipCallState,
+} from "@/components/scholarship-call-card";
 
 /**
  * The student's side: invites addressed to them.
@@ -20,10 +24,13 @@ export function StudentCalls({
   invites,
   interviewRequest = null,
   showInterviewRequest = false,
+  scholarshipCall = null,
 }: {
   invites: CallInvite[];
   interviewRequest?: InterviewRequest | null;
   showInterviewRequest?: boolean;
+  /** Set only when the student holds a learner's scholarship. */
+  scholarshipCall?: ScholarshipCallState | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -59,6 +66,12 @@ export function StudentCalls({
 
       {error && (
         <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>
+      )}
+
+      {scholarshipCall && (
+        <div className="mt-8">
+          <ScholarshipCallCard state={scholarshipCall} />
+        </div>
       )}
 
       {showInterviewRequest && (

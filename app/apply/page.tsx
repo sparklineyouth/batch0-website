@@ -13,7 +13,8 @@ import {
 } from "@/lib/reapply";
 import { ApplicationForm } from "./application-form";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
-import { getApplicationQuestions } from "@/lib/application-questions";
+import { getApplicationForm } from "@/lib/application-questions";
+import { getScholarshipInterestQuestions } from "@/lib/scholarships";
 import { listPriceCents } from "@/lib/promo";
 
 export const metadata = {
@@ -53,7 +54,8 @@ export default async function ApplyPage(
     pass,
     { data: settingsRows },
     { data: openCohorts },
-    questions,
+    form,
+    scholarshipQuestions,
   ] = await Promise.all([
     // EVERY application, newest first — not just the latest. The newest row is
     // what decides which form to show, but the whole history is what decides
@@ -83,8 +85,15 @@ export default async function ApplyPage(
       .select("id, name, capacity, price_cents, starts_on")
       .in("status", ["upcoming", "active"])
       .order("starts_on", { ascending: true }),
-    getApplicationQuestions(),
+    getApplicationForm(),
+    getScholarshipInterestQuestions(),
   ]);
+
+  // The 17 column-backed fields and the admin's own additions are two
+  // different things to the form — one renders through the bespoke layout,
+  // the other through the generic renderer — so they're handed over apart.
+  const questions = form.builtins;
+  const customQuestions = form.custom;
 
   const settings: Record<string, any> = {};
   for (const r of settingsRows ?? []) settings[r.key] = r.value;
@@ -355,6 +364,8 @@ export default async function ApplyPage(
             priceLabel={`$${priceDollars}`}
             cohortId={selectedId}
             questions={questions}
+            customQuestions={customQuestions}
+            scholarshipQuestions={scholarshipQuestions}
           />
         </div>
         <div className="mt-10">

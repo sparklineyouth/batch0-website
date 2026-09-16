@@ -11,6 +11,8 @@ import { loadPromoConfig } from "@/lib/promo-settings";
 import {
   passDiscountCentsForUser,
 } from "@/lib/founder-pass";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { scholarshipDiscountCentsForUser } from "@/lib/scholarships";
 import { fmtDateOnly, isAcceptedStatus } from "@/lib/pre-cohort";
 import { PayButton } from "../application/pay-button";
 import {
@@ -20,6 +22,7 @@ import {
   PartyPopper,
   Rocket,
   Zap,
+  GraduationCap,
 } from "lucide-react";
 
 export const metadata = { title: "You're in · batch0" };
@@ -75,7 +78,18 @@ export default async function AcceptedPage() {
     user.id,
     saleCents,
   );
-  const priceCents = Math.max(0, saleCents - passDiscountCents);
+  const afterPassCents = Math.max(0, saleCents - passDiscountCents);
+  // Scholarship award last, exactly as in app/api/stripe/checkout/route.ts.
+  // Read through the service-role client because scholarship_applications has
+  // no write policy and its read policy would otherwise make "no award" and
+  // "RLS said no" indistinguishable — the same argument app/pass/page.tsx makes.
+  const scholarshipDiscountCents = await scholarshipDiscountCentsForUser(
+    createAdminClient(),
+    user.id,
+    app.cohort_id ?? null,
+    afterPassCents,
+  );
+  const priceCents = Math.max(0, afterPassCents - scholarshipDiscountCents);
   const price = `$${(priceCents / 100).toFixed(0)}`;
 
   const cohortName = app.cohort?.name ?? "batch0";
@@ -115,6 +129,14 @@ export default async function AcceptedPage() {
             <Zap className="h-3.5 w-3.5" />
             Founder pass applied — $
             {(passDiscountCents / 100).toFixed(0)} off tuition.
+          </p>
+        )}
+        {scholarshipDiscountCents > 0 && (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-phosphor-ink">
+            <GraduationCap className="h-3.5 w-3.5" />
+            Scholarship applied — $
+            {(scholarshipDiscountCents / 100).toFixed(0)} off tuition. Nothing
+            to enter; it's already in the price above.
           </p>
         )}
         <div className="mt-5">

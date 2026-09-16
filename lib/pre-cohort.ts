@@ -67,6 +67,11 @@ export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
   // app/dashboard/calls/page.tsx).
   "/dashboard/calls",
   "/dashboard/billing",
+  // Scholarships are applied for after acceptance and after enrolment, and
+  // the weeks before day one are the whole of that second window — an
+  // enrolled student waiting on kickoff still needs to reach the form, and an
+  // awarded one needs to see their mentor-call credits.
+  "/dashboard/scholarships",
   "/dashboard/referrals",
   "/dashboard/settings",
 ]);
@@ -90,6 +95,7 @@ const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/team",
   "/dashboard/calls",
   "/dashboard/billing",
+  "/dashboard/scholarships",
   "/dashboard/referrals",
   "/dashboard/settings",
   "/dashboard/pay-fine",

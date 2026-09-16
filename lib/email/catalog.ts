@@ -47,6 +47,13 @@ const APPLICATION_VARS: VariableDef[] = [
   { key: "review_notes", label: "Reviewer notes", example: "Strong technical founder." },
 ];
 
+const SCHOLARSHIP_VARS: VariableDef[] = [
+  { key: "scholarship_name", label: "Scholarship name", example: "Need-based grant" },
+  { key: "scholarship_kind", label: "Kind", example: "need" },
+  { key: "award_summary", label: "What it's worth", example: "$50 off tuition" },
+  { key: "cohort_name", label: "Cohort name", example: "Cohort 1" },
+];
+
 /**
  * Only events that a call site actually fires belong here. An event listed but
  * never emitted is worse than a missing one: an admin builds an automation on
@@ -92,6 +99,32 @@ export const EMAIL_EVENTS: EmailEventDef[] = [
     description: "A reviewer declines an applicant.",
     group: "Applications",
     variables: APPLICATION_VARS,
+  },
+  {
+    key: "scholarship.submitted",
+    label: "Scholarship application submitted",
+    description: "A student submits an application for a scholarship.",
+    group: "Scholarships",
+    variables: SCHOLARSHIP_VARS,
+  },
+  {
+    key: "scholarship.awarded",
+    label: "Scholarship awarded",
+    description:
+      "A reviewer awards a scholarship — money or mentor calls. `award_summary` says which.",
+    group: "Scholarships",
+    variables: [
+      ...SCHOLARSHIP_VARS,
+      { key: "amount", label: "Award amount", example: "$50" },
+      { key: "calls", label: "Mentor calls granted", example: "3" },
+    ],
+  },
+  {
+    key: "scholarship.declined",
+    label: "Scholarship declined",
+    description: "A reviewer declines a scholarship application.",
+    group: "Scholarships",
+    variables: SCHOLARSHIP_VARS,
   },
   {
     key: "payment.succeeded",

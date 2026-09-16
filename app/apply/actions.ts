@@ -13,6 +13,14 @@ import { canBypassClosedApplications, hasFounderPass } from "@/lib/founder-pass"
 import { autoAdmitOnSubmit } from "@/lib/admissions";
 import { planReapply, selectCohortId } from "@/lib/reapply";
 import { isValidPhone, PHONE_MAX_LENGTH } from "@/lib/phone";
+import { getVisibleCustomQuestions } from "@/lib/application-questions";
+import { getScholarshipInterestQuestions } from "@/lib/scholarships";
+import {
+  checkAnswers,
+  readAnswers,
+  CUSTOM_PREFIX,
+  SCHOLARSHIP_PREFIX,
+} from "@/lib/question-schema";
 import {
   postChannelMessage,
   applicationEmbed,
@@ -204,6 +212,55 @@ async function upsertApplication(
     };
   }
 
+  // The admin-authored questions (migration 0071). These arrive under their own
+  // prefixes and so are invisible to the zod schemas above, which strip unknown
+  // keys — deliberately, since the schemas describe the 17 column-backed fields
+  // and nothing else. Validated separately against the live question config,
+  // which is the only thing that knows what an admin has added since deploy.
+  //
+  // `partial` on the draft path for the same reason the zod DraftSchema is
+  // loose: /apply autosaves every few seconds, and enforcing "required" on a
+  // half-typed form would make autosave fail continuously.
+  const [customQuestions, scholarshipQuestions] = await Promise.all([
+    getVisibleCustomQuestions(),
+    getScholarshipInterestQuestions(),
+  ]);
+
+  const customCheck = checkAnswers(
+    customQuestions,
+    readAnswers(customQuestions, raw, CUSTOM_PREFIX),
+    { partial: !submit },
+  );
+  const scholarshipCheck = checkAnswers(
+    scholarshipQuestions,
+    readAnswers(scholarshipQuestions, raw, SCHOLARSHIP_PREFIX),
+    { partial: !submit },
+  );
+
+  if (!customCheck.ok || !scholarshipCheck.ok) {
+    // Field errors are keyed by the POSTED name so the form can highlight the
+    // right input — the client keys its error map the same way.
+    const fieldErrors: Record<string, string> = {};
+    if (!customCheck.ok) {
+      for (const [id, msg] of Object.entries(customCheck.errors)) {
+        fieldErrors[`${CUSTOM_PREFIX}__${id}`] = msg;
+      }
+    }
+    if (!scholarshipCheck.ok) {
+      for (const [id, msg] of Object.entries(scholarshipCheck.errors)) {
+        fieldErrors[`${SCHOLARSHIP_PREFIX}__${id}`] = msg;
+      }
+    }
+    return {
+      ok: false,
+      error: "Please fix the highlighted fields.",
+      fieldErrors,
+    };
+  }
+
+  const customAnswers = customCheck.ok ? customCheck.answers : {};
+  const scholarshipAnswers = scholarshipCheck.ok ? scholarshipCheck.answers : {};
+
   if (submit) {
     // Block submit if applications are closed.
     const { data: openSetting } = await supabase
@@ -333,6 +390,12 @@ async function upsertApplication(
     linkedin_url: data.linkedin_url || null,
     resume_url: data.resume_url || null,
     portfolio_url: data.portfolio_url || null,
+    // Migration 0071. Kept in two blobs rather than one because a reviewer
+    // reads them for different reasons: "extra question the admin added" and
+    // "this person is telling us cost is a problem" are different kinds of
+    // fact, and merging them would bury the second in the first.
+    custom_answers: customAnswers,
+    scholarship_answers: scholarshipAnswers,
   };
   // Don't blow away an existing referral_code with undefined on later saves.
   if (payload.referral_code === undefined) delete (payload as any).referral_code;

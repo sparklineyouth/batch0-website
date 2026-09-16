@@ -4,6 +4,9 @@ import { getInterviewRequestForStudent } from "@/lib/interview-requests";
 import { getStudentAccess } from "@/lib/access";
 import type { Role } from "@/lib/types";
 import { StudentCalls } from "./student-calls";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { callCreditsForUser } from "@/lib/scholarships";
+import type { ScholarshipCallState } from "@/components/scholarship-call-card";
 
 export const metadata = { title: "1:1 calls · batch0" };
 
@@ -11,10 +14,30 @@ export default async function StudentCallsPage() {
   await requireUser();
   const profile = await getProfile();
   const access = await getStudentAccess((profile?.role as Role) ?? "student");
-  const [invites, interviewRequest] = await Promise.all([
+  const [invites, interviewRequest, callAward] = await Promise.all([
     profile ? listInvitesForInvitee(profile.id) : Promise.resolve([]),
     profile ? getInterviewRequestForStudent(profile.id) : Promise.resolve(null),
+    // The learner's-scholarship balance (migration 0071). Read through the
+    // service-role client: scholarship_applications has no write policy, and
+    // its read policy would otherwise make "no award" and "RLS said no"
+    // indistinguishable — a student's own credits silently reading as absent
+    // is exactly the failure this card exists to prevent.
+    profile
+      ? callCreditsForUser(createAdminClient(), profile.id)
+      : Promise.resolve(null),
   ]);
+
+  const scholarshipCall: ScholarshipCallState | null = callAward
+    ? {
+        scholarshipName: callAward.scholarshipName,
+        granted: callAward.credits.granted,
+        remaining: callAward.credits.remaining,
+        // One open ask at a time (interview_requests_one_open_per_student,
+        // migration 0061) — so the card says so rather than letting them hit
+        // a duplicate-key error they can't interpret.
+        hasOpenRequest: interviewRequest?.status === "requested",
+      }
+    : null;
 
   // The getting-to-know-you request is a pre-kickoff onboarding step for
   // enrolled students, so the form to ask only shows to an enrolled student
@@ -34,6 +57,7 @@ export default async function StudentCallsPage() {
       invites={invites}
       interviewRequest={interviewRequest}
       showInterviewRequest={showInterviewRequest}
+      scholarshipCall={scholarshipCall}
     />
   );
 }

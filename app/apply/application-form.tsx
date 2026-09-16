@@ -17,6 +17,19 @@ import {
 } from "@/lib/application-questions";
 import { REF_STORAGE_KEY, readRefFromLocation } from "@/lib/referral-code";
 import { isValidPhone } from "@/lib/phone";
+import {
+  CustomQuestionFields,
+  seedAnswers,
+  type AnswerState,
+} from "@/components/forms/custom-question-fields";
+import {
+  checkAnswers,
+  readAnswers,
+  formatAnswer,
+  CUSTOM_PREFIX,
+  SCHOLARSHIP_PREFIX,
+  type CustomQuestion,
+} from "@/lib/question-schema";
 
 const STEPS = [
   { id: 1, title: "About you" },
@@ -92,6 +105,11 @@ function validateStep(
   step: number,
   form: FormState,
   cfg: QuestionMap,
+  // The admin-authored questions live on step 3. Optional so the three call
+  // sites that only care about the built-in fields don't have to thread them.
+  extra?: AnswerState,
+  customQs: readonly CustomQuestion[] = [],
+  scholarshipQs: readonly CustomQuestion[] = [],
 ): Record<string, string> {
   const errs: Record<string, string> = {};
   if (step === 1) {
@@ -162,13 +180,43 @@ function validateStep(
     } else if (Number.isNaN(sizeNum) || sizeNum < 1 || sizeNum > 5) {
       errs.team_size = "Pick a team size";
     }
+
+    // Admin-added questions and the scholarship block. Validated through the
+    // SAME functions the server action uses, against the same question list —
+    // so the client can't pass something the server then rejects, which on a
+    // four-step wizard means bouncing the applicant back with no visible cause.
+    if (extra) {
+      for (const [qs, prefix] of [
+        [customQs, CUSTOM_PREFIX],
+        [scholarshipQs, SCHOLARSHIP_PREFIX],
+      ] as const) {
+        if (qs.length === 0) continue;
+        const checked = checkAnswers(qs, readAnswers(qs, extra, prefix));
+        if (!checked.ok) {
+          for (const [id, msg] of Object.entries(checked.errors)) {
+            errs[`${prefix}__${id}`] = msg;
+          }
+        }
+      }
+    }
   }
   return errs;
 }
 
-function buildFormData(form: FormState, cohortId?: string | null) {
+function buildFormData(
+  form: FormState,
+  cohortId?: string | null,
+  extra?: AnswerState,
+) {
   const fd = new FormData();
   for (const [k, v] of Object.entries(form)) fd.append(k, v);
+  // Admin-authored answers, already keyed by their posted name. An unticked
+  // checkbox is stored as "" and skipped here, which is exactly what a real
+  // checkbox does — readAnswers() on the server turns the absence back into
+  // `false`.
+  for (const [k, v] of Object.entries(extra ?? {})) {
+    if (v !== "") fd.append(k, v);
+  }
   if (cohortId) fd.append("cohort_id", cohortId);
   return fd;
 }
@@ -185,6 +233,8 @@ export function ApplicationForm({
   priceLabel = "$130",
   cohortId = null,
   questions,
+  customQuestions,
+  scholarshipQuestions,
 }: {
   defaults: Application | null;
   email: string;
@@ -197,8 +247,19 @@ export function ApplicationForm({
    *  hidden + team_size option labels). Resolved server-side; falls back
    *  to code defaults per key if omitted. */
   questions?: MergedQuestion[];
+  /** Admin-added questions beyond the 17 built-ins (migration 0071).
+   *  Answered into applications.custom_answers. */
+  customQuestions?: CustomQuestion[];
+  /** The shared scholarship-interest block, shown to every applicant.
+   *  Answered into applications.scholarship_answers. */
+  scholarshipQuestions?: CustomQuestion[];
 }) {
   const cfg = useMemo(() => buildConfig(questions), [questions]);
+  const customQs = useMemo(() => customQuestions ?? [], [customQuestions]);
+  const scholarshipQs = useMemo(
+    () => scholarshipQuestions ?? [],
+    [scholarshipQuestions],
+  );
 
   const [step, setStep] = useState(1);
   const [submitPending, startSubmit] = useTransition();
@@ -233,6 +294,23 @@ export function ApplicationForm({
     portfolio_url: defaults?.portfolio_url ?? "",
   });
 
+  // The admin-authored answers, kept apart from FormState because FormState is
+  // a fixed struct mirroring the 17 columns and these are an open set. Keyed by
+  // the POSTED field name (prefix__id) so what's in state is literally what
+  // goes into FormData — no second mapping to get wrong.
+  const [extra, setExtra] = useState<AnswerState>(() => ({
+    ...seedAnswers(
+      customQuestions ?? [],
+      CUSTOM_PREFIX,
+      (defaults as any)?.custom_answers,
+    ),
+    ...seedAnswers(
+      scholarshipQuestions ?? [],
+      SCHOLARSHIP_PREFIX,
+      (defaults as any)?.scholarship_answers,
+    ),
+  }));
+
   // Pick up a referral code stashed at signup (or from ?ref= here).
   // We use a dedicated server action so we don't blow away every other
   // field on the existing draft by sending only the referral_code key.
@@ -258,9 +336,25 @@ export function ApplicationForm({
     formRef.current = form;
   }, [form]);
 
+  // Same always-current ref trick as formRef: the autosave timer closes over
+  // whatever these held when it was scheduled, so without this an answer typed
+  // in the last 1.5s would be dropped from the draft save.
+  const extraRef = useRef(extra);
+  useEffect(() => {
+    extraRef.current = extra;
+  }, [extra]);
+
   function set<K extends keyof FormState>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
     setFieldErrors((e) => ({ ...e, [k]: "" }));
+  }
+
+  /** The same contract as set(), for the admin-authored questions. `name` is
+   *  already the posted field name, so it matches the key the server returns
+   *  errors under and the highlight clears on the first keystroke. */
+  function setExtraAnswer(name: string, v: string) {
+    setExtra((prev) => ({ ...prev, [name]: v }));
+    setFieldErrors((e) => ({ ...e, [name]: "" }));
   }
 
   // Autosave: debounce 1.5s after the last keystroke. The initial mount
@@ -282,7 +376,7 @@ export function ApplicationForm({
       try {
         const result = await saveDraftAction(
           null,
-          buildFormData(formRef.current, cohortId),
+          buildFormData(formRef.current, cohortId, extraRef.current),
         );
         if (result.ok) {
           setSave({ kind: "saved", at: new Date() });
@@ -334,7 +428,7 @@ export function ApplicationForm({
       if (!dirtyRef.current) return;
       dirtyRef.current = false;
       // Fire-and-forget; we don't await on unload.
-      saveDraftAction(null, buildFormData(formRef.current, cohortId));
+      saveDraftAction(null, buildFormData(formRef.current, cohortId, extraRef.current));
     };
     const onVis = () => document.visibilityState === "hidden" && flush();
     window.addEventListener("beforeunload", flush);
@@ -367,7 +461,7 @@ export function ApplicationForm({
   }
 
   function goNext() {
-    const errs = validateStep(step, form, cfg);
+    const errs = validateStep(step, form, cfg, extra, customQs, scholarshipQs);
     setAttempted((a) => ({ ...a, [step]: true }));
     if (Object.keys(errs).length > 0) {
       setFieldErrors((prev) => ({ ...prev, ...errs }));
@@ -383,7 +477,7 @@ export function ApplicationForm({
     // Run validation across every step before submit.
     const errs: Record<string, string> = {};
     for (let s = 1; s <= STEPS.length; s++) {
-      Object.assign(errs, validateStep(s, form, cfg));
+      Object.assign(errs, validateStep(s, form, cfg, extra, customQs, scholarshipQs));
     }
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
@@ -391,7 +485,7 @@ export function ApplicationForm({
       // Jump to the first step with an error.
       let firstErrorStep = step;
       for (const s of [1, 2, 3] as const) {
-        if (Object.keys(validateStep(s, form, cfg)).length > 0) {
+        if (Object.keys(validateStep(s, form, cfg, extra, customQs, scholarshipQs)).length > 0) {
           firstErrorStep = s;
           setStep(s);
           break;
@@ -400,7 +494,7 @@ export function ApplicationForm({
       setSubmitError("Please fix the highlighted fields.");
       // Defer the scroll/focus until the step has actually rendered.
       setTimeout(
-        () => focusFirstError(validateStep(firstErrorStep, form, cfg)),
+        () => focusFirstError(validateStep(firstErrorStep, form, cfg, extra, customQs, scholarshipQs)),
         80,
       );
       return;
@@ -409,7 +503,7 @@ export function ApplicationForm({
     startSubmit(async () => {
       const result = await submitApplicationAction(
         null,
-        buildFormData(form, cohortId),
+        buildFormData(form, cohortId, extra),
       );
       if (!result.ok) {
         setSubmitError(result.error);
@@ -420,12 +514,12 @@ export function ApplicationForm({
   }
 
   const stepHasErrors = (s: number) =>
-    Object.keys(validateStep(s, form, cfg)).length > 0;
+    Object.keys(validateStep(s, form, cfg, extra, customQs, scholarshipQs)).length > 0;
 
   // Live validation for the current step — only once the user has tried to
   // continue. Merged with server-reported errors per field, so a message
   // vanishes the moment the fix lands and reappears if they re-break it.
-  const liveErrs = attempted[step] ? validateStep(step, form, cfg) : {};
+  const liveErrs = attempted[step] ? validateStep(step, form, cfg, extra, customQs, scholarshipQs) : {};
   const liveErrKeys = Object.keys(liveErrs);
   const errFor = (key: string) => fieldErrors[key] || liveErrs[key] || "";
 
@@ -1113,6 +1207,50 @@ export function ApplicationForm({
               {errFor("team_size")}
             </FieldError>
           </div>
+
+          {/* Admin-added questions (migration 0071). Rendered as their own
+              block at the end rather than interleaved with the built-ins,
+              because the built-in fields above sit in hand-built layouts with
+              conditional logic — there is no generic slot to drop into. */}
+          {customQs.filter((q) => !q.hidden).length > 0 && (
+            <div className="space-y-4 border-t border-line pt-6">
+              <CustomQuestionFields
+                questions={customQs}
+                prefix={CUSTOM_PREFIX}
+                values={extra}
+                onChange={setExtraAnswer}
+                errors={liveErrs}
+                fieldClassName={FIELD_CLASS}
+              />
+            </div>
+          )}
+
+          {/* The shared scholarship block. Asked of everyone, before anyone is
+              accepted, so it can only flag interest — the questions that
+              decide an award live on the scholarship itself and are asked
+              later, at /dashboard/scholarships. */}
+          {scholarshipQs.filter((q) => !q.hidden).length > 0 && (
+            <div className="space-y-4 rounded-xl border border-line bg-paper p-5">
+              <div>
+                <h4 className="font-mono text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
+                  Scholarships
+                </h4>
+                <p className="mt-1 text-xs text-ink-soft">
+                  batch0 offers scholarships, and answering here doesn't commit
+                  you to anything. If you're accepted, you'll be able to apply
+                  for them properly from your dashboard.
+                </p>
+              </div>
+              <CustomQuestionFields
+                questions={scholarshipQs}
+                prefix={SCHOLARSHIP_PREFIX}
+                values={extra}
+                onChange={setExtraAnswer}
+                errors={liveErrs}
+                fieldClassName={FIELD_CLASS}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1211,6 +1349,26 @@ export function ApplicationForm({
                 multiline
               />
             )}
+            {/* Admin-added and scholarship answers, read back through the same
+                formatter the admin review queue uses — so an applicant checking
+                their work sees the option LABEL they picked, not the stored
+                value, exactly as the reviewer will. */}
+            {[
+              ...customQs.map((q) => [q, CUSTOM_PREFIX] as const),
+              ...scholarshipQs.map((q) => [q, SCHOLARSHIP_PREFIX] as const),
+            ]
+              .filter(([q]) => !q.hidden)
+              .map(([q, prefix]) => {
+                const answers = readAnswers([q], extra, prefix);
+                return (
+                  <ReviewRow
+                    key={`${prefix}__${q.id}`}
+                    label={q.label}
+                    value={formatAnswer(q, answers)}
+                    multiline={q.type === "textarea"}
+                  />
+                );
+              })}
           </div>
           <div className="rounded-xl border border-phosphor/30 bg-phosphor/5 p-4 text-sm text-ink-soft">
             Submitting moves your application to{" "}

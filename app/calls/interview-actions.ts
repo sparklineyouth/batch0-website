@@ -8,6 +8,10 @@ import {
   listInterviewTeamIds,
 } from "@/lib/interview-requests";
 import { logAudit } from "@/lib/audit";
+import {
+  spendCallCredit,
+  scholarshipApplicationIdForRequest,
+} from "@/lib/scholarships";
 import { notify, notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
@@ -244,11 +248,39 @@ export async function scheduleInterviewRequest(input: {
     throw new Error(updErr.message);
   }
 
+  // A learner's-scholarship call spends one credit — HERE, not when the
+  // student asked. A request the team never picks up costs them nothing, which
+  // is the only fair reading of a grant of "three calls". spendCallCredit is
+  // conditional on a credit being left, so two staff scheduling the same
+  // student's requests at once can't overspend the grant.
+  //
+  // Read tolerantly (see lib/scholarships.ts) so this whole block is a no-op on
+  // a database where 0071 hasn't run, rather than breaking the ordinary
+  // getting-to-know-you interview it shares an action with.
+  const scholarshipAppId = await scholarshipApplicationIdForRequest(admin, req.id);
+  if (scholarshipAppId) {
+    const spent = await spendCallCredit(admin, scholarshipAppId);
+    if (!spent) {
+      // Out of credits, or the award was revoked between request and schedule.
+      // The call still happens — it is booked, and un-booking it over an
+      // accounting detail would be worse for the student and the mentor than
+      // letting the balance read zero. Logged so it is visible.
+      console.warn(
+        "[interview] scholarship credit not spent (none left or award gone)",
+        { requestId: req.id, scholarshipAppId },
+      );
+    }
+  }
+
   await logAudit({
     action: "interview_request.scheduled",
     targetType: "interview_request",
     targetId: req.id,
-    payload: { call_invite_id: inviteId, starts_at: startsAt.toISOString() },
+    payload: {
+      call_invite_id: inviteId,
+      starts_at: startsAt.toISOString(),
+      scholarship_application_id: scholarshipAppId,
+    },
   });
 
   // Tell the student, both in-app and by email — same shape as a staff-sent

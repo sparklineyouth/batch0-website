@@ -14,6 +14,7 @@ import {
 import { loadPromoConfig } from "@/lib/promo-settings";
 import { grantDiscountCents } from "@/lib/founder-pass-tiers";
 import { getPassGrantForUser } from "@/lib/founder-pass";
+import { scholarshipDiscountCentsForUser } from "@/lib/scholarships";
 import {
   getOrCreateStripeCustomer,
   stripeErrorMessage,
@@ -128,7 +129,24 @@ export async function POST(req: Request) {
   const passDiscountCents = passGrant
     ? grantDiscountCents(passGrant, promoPriceCentsAmount)
     : 0;
-  const priceCents = Math.max(0, promoPriceCentsAmount - passDiscountCents);
+  const afterPassCents = Math.max(0, promoPriceCentsAmount - passDiscountCents);
+
+  // Scholarship award (migration 0071), applied LAST in the stack — after the
+  // regional price, the promo and the founder pass. That ordering is what makes
+  // "50% off" mean half of what this student would actually have been billed,
+  // and what stops a full-ride pass plus a scholarship from producing a
+  // negative balance (the helper caps at the remaining amount).
+  //
+  // Resolved server-side from the student's own awarded row, never from the
+  // request, for the same reason the founder-pass discount is: a discount the
+  // client can ask for is a discount anyone can have. Fails closed to 0.
+  const scholarshipDiscountCents = await scholarshipDiscountCentsForUser(
+    admin,
+    user.id,
+    app.cohort_id ?? null,
+    afterPassCents,
+  );
+  const priceCents = Math.max(0, afterPassCents - scholarshipDiscountCents);
   // A fixed Stripe Price can't carry the discounted amount, so any discount
   // forces the ad-hoc price_data path (same mechanics as regional pricing).
   // The promo is a discount like any other here — without this it would be
@@ -148,6 +166,7 @@ export async function POST(req: Request) {
     rowHoldsListPrice(rowPriceCents) &&
     !regional.isRegional &&
     !passDiscountCents &&
+    !scholarshipDiscountCents &&
     !promoDiscountCents;
 
   // Always use the canonical site URL — never a request-controlled
@@ -188,6 +207,9 @@ export async function POST(req: Request) {
                     passDiscountCents
                       ? `Includes your $${(passDiscountCents / 100).toFixed(0)} founder pass discount.`
                       : "",
+                    scholarshipDiscountCents
+                      ? `Includes your $${(scholarshipDiscountCents / 100).toFixed(0)} scholarship award.`
+                      : "",
                   ]
                     .filter(Boolean)
                     .join(" "),
@@ -202,6 +224,7 @@ export async function POST(req: Request) {
         country: country ?? "",
         regional_pricing: regional.isRegional ? "1" : "0",
         founder_pass_discount_cents: String(passDiscountCents),
+        scholarship_discount_cents: String(scholarshipDiscountCents),
       },
       payment_intent_data: {
         metadata: {

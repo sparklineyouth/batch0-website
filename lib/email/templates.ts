@@ -900,4 +900,268 @@ One account, one pass — the code stops working the moment it's claimed.`,
       },
     }),
   }),
+
+  // -------------------------------------------------------------------------
+  // Scholarships (migration 0071, lib/scholarships.ts)
+  //
+  // Five emails covering one decision each. The awarded case is split in two
+  // because a money award and a mentor-call award have nothing in common past
+  // the word "congratulations": one changes what the student pays and needs to
+  // say exactly how, the other changes what they get and needs to say how to
+  // book it. One template trying to do both would hedge on every line.
+  // -------------------------------------------------------------------------
+
+  /**
+   * "We've got it" — the student submitted a scholarship application. No
+   * decision, no timeline promised beyond what the admin configured: a
+   * scholarship reply that over-promises a date is worse than one that
+   * doesn't, because the applicant is usually deciding whether to enroll.
+   */
+  scholarshipReceived: (args: {
+    name?: string | null;
+    scholarshipName: string;
+    awardSummary: string;
+  }) => ({
+    subject: `We got your ${args.scholarshipName} application`,
+    html: layout({
+      preheader: `Your application for the ${args.scholarshipName} is in.`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">Application received</h1>
+        <p>Thanks${args.name ? `, ${escape(args.name)}` : ""} — your application for the <strong>${escape(args.scholarshipName)}</strong> (${escape(args.awardSummary)}) is in front of us.</p>
+        <p>We read these by hand, so it takes a few days. You'll get an email either way — you don't need to check back.</p>
+        <p style="color:#bbb">One scholarship per student, so hold off on applying to another until you hear from us.</p>
+      `,
+      cta: {
+        url: `${env.siteUrl}/dashboard/scholarships`,
+        label: "See your application",
+      },
+    }),
+    text: `We got your ${args.scholarshipName} application.
+
+It's in front of us now. We read these by hand, so it takes a few days — you'll get an email either way.
+
+${env.siteUrl}/dashboard/scholarships`,
+  }),
+
+  /**
+   * "You got it" — a money award. The copy MUST distinguish the two
+   * fulfilment paths, because the student's next action differs completely:
+   * someone who hasn't paid sees a lower price at checkout and does nothing,
+   * while someone who has already paid is getting money back and should be
+   * told when and to where. Guessing wrong here produces a support ticket in
+   * both directions.
+   */
+  scholarshipAwarded: (args: {
+    name?: string | null;
+    scholarshipName: string;
+    awardSummary: string;
+    amountCents: number;
+    /** They'd already paid: this is a refund, not a discount. */
+    refund: boolean;
+    note?: string | null;
+  }) => {
+    const amount = `$${(args.amountCents / 100).toFixed(args.amountCents % 100 === 0 ? 0 : 2)}`;
+    return {
+      subject: `You got the ${args.scholarshipName}`,
+      html: layout({
+        preheader: args.refund
+          ? `${amount} is coming back to your card.`
+          : `${amount} off your batch0 tuition.`,
+        body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">You got it</h1>
+        <p>Congratulations${args.name ? `, ${escape(args.name)}` : ""} — you've been awarded the <strong>${escape(args.scholarshipName)}</strong>: <strong>${escape(args.awardSummary)}</strong>.</p>
+        ${
+          args.refund
+            ? `<p><strong>${amount}</strong> is being refunded to the card you paid with. Refunds usually land in 5–10 business days depending on your bank. Your spot in the cohort is unchanged — nothing about your enrollment moves.</p>`
+            : `<p>Your tuition is now <strong>${amount} lower</strong>. You don't need to enter a code: the new price is already applied when you go to pay.</p>`
+        }
+        ${
+          args.note
+            ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">${escape(args.note).replace(/\n/g, "<br>")}</p>`
+            : ""
+        }
+      `,
+        cta: {
+          url: args.refund
+            ? `${env.siteUrl}/dashboard/billing`
+            : `${env.siteUrl}/dashboard/accepted`,
+          label: args.refund ? "See your billing" : "Go to checkout",
+        },
+      }),
+      text: `You got the ${args.scholarshipName} — ${args.awardSummary}.
+
+${
+  args.refund
+    ? `${amount} is being refunded to the card you paid with, usually within 5-10 business days. Your enrollment is unchanged.`
+    : `Your tuition is now ${amount} lower. The new price is already applied at checkout — no code needed.`
+}
+${args.note ? `\n${args.note}\n` : ""}
+${env.siteUrl}/dashboard/scholarships`,
+    };
+  },
+
+  /**
+   * "You got it" — the learner's scholarship. No money changes hands, so the
+   * entire job of this email is to make the student actually book the calls.
+   * An unredeemed grant helps nobody, and mentor time set aside and never used
+   * is the failure mode this scholarship exists to avoid.
+   */
+  scholarshipAwardedCalls: (args: {
+    name?: string | null;
+    scholarshipName: string;
+    calls: number;
+    note?: string | null;
+  }) => {
+    const n = args.calls;
+    const callWord = n === 1 ? "call" : "calls";
+    return {
+      subject: `You got the ${args.scholarshipName} — ${n} extra mentor ${callWord}`,
+      html: layout({
+        preheader: `${n} extra 1:1 ${callWord} with a batch0 mentor, yours to book.`,
+        body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">You got it</h1>
+        <p>Congratulations${args.name ? `, ${escape(args.name)}` : ""} — you've been awarded the <strong>${escape(args.scholarshipName)}</strong>: <strong>${n} extra 1:1 mentor ${callWord}</strong>, on top of everything else in the program.</p>
+        <p>These are yours to book whenever you want them. Pick a time that suits you and tell us what you want to dig into — the more specific the topic, the more useful the ${callWord} ${n === 1 ? "is" : "are"}.</p>
+        <p style="color:#bbb">They don't expire during the cohort, but they also don't do anything sitting unused. Book the first one this week.</p>
+        ${
+          args.note
+            ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">${escape(args.note).replace(/\n/g, "<br>")}</p>`
+            : ""
+        }
+      `,
+        cta: {
+          url: `${env.siteUrl}/dashboard/scholarships`,
+          label: `Book your first ${callWord === "calls" ? "call" : callWord}`,
+        },
+      }),
+      text: `You got the ${args.scholarshipName} — ${n} extra 1:1 mentor ${callWord}.
+
+They're yours to book whenever you want them. Be specific about the topic and they'll be worth far more.
+
+${env.siteUrl}/dashboard/scholarships`,
+    };
+  },
+
+  /**
+   * "Not this time." Sent for every decline, because silence on a scholarship
+   * application is uniquely bad: the student is often waiting on the answer to
+   * decide whether they can enroll at all, and a no they can act on beats a
+   * maybe they can't. Says plainly that it doesn't affect their place.
+   */
+  scholarshipDeclined: (args: {
+    name?: string | null;
+    scholarshipName: string;
+    note?: string | null;
+    /** True when another scholarship is still open to them. */
+    canReapply: boolean;
+  }) => ({
+    subject: `Your ${args.scholarshipName} application`,
+    html: layout({
+      preheader: "We couldn't award this one — your place is unaffected.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">About your scholarship application</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — we read your application for the <strong>${escape(args.scholarshipName)}</strong> carefully, and we weren't able to award it this time.</p>
+        <p><strong>This doesn't change your place at batch0.</strong> Your application and your spot in the cohort are exactly where they were.</p>
+        ${
+          args.note
+            ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">${escape(args.note).replace(/\n/g, "<br>")}</p>`
+            : ""
+        }
+        ${
+          args.canReapply
+            ? `<p>There are other scholarships open to you — it's worth a look.</p>`
+            : ""
+        }
+        <p style="color:#bbb">If cost is what's standing between you and the program, reply to this email and tell us. We'd rather hear it than lose you over it.</p>
+      `,
+      cta: args.canReapply
+        ? {
+            url: `${env.siteUrl}/dashboard/scholarships`,
+            label: "See other scholarships",
+          }
+        : undefined,
+    }),
+    text: `We read your ${args.scholarshipName} application carefully, and we weren't able to award it this time.
+
+This doesn't change your place at batch0.
+${args.note ? `\n${args.note}\n` : ""}
+If cost is what's standing between you and the program, reply and tell us — we'd rather hear it than lose you over it.`,
+  }),
+
+  /**
+   * "The money's on its way back." Sent only once the Stripe partial refund
+   * actually succeeds, never when it is merely queued — a refund email that
+   * arrives before the refund does is the one thing worse than no email.
+   */
+  scholarshipRefunded: (args: {
+    name?: string | null;
+    scholarshipName: string;
+    amountCents: number;
+    receiptUrl?: string | null;
+  }) => {
+    const amount = `$${(args.amountCents / 100).toFixed(args.amountCents % 100 === 0 ? 0 : 2)}`;
+    return {
+      subject: `${amount} refunded — ${args.scholarshipName}`,
+      html: layout({
+        preheader: `${amount} is on its way back to your card.`,
+        body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">${amount} is on its way back</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — we've refunded <strong>${amount}</strong> to the card you paid your batch0 tuition with, as your <strong>${escape(args.scholarshipName)}</strong> award.</p>
+        <p>Most banks show it within 5–10 business days. It'll appear as a refund against the original charge rather than as a new payment.</p>
+        <p style="color:#bbb"><strong>Your enrollment is unchanged.</strong> You're still in the cohort — this is a partial refund of tuition, not a cancellation.</p>
+      `,
+        cta: {
+          url: `${env.siteUrl}/dashboard/billing`,
+          label: "See your billing",
+        },
+        footNote: args.receiptUrl
+          ? `Original receipt: <a href="${args.receiptUrl}" style="color:#ffbb00;text-decoration:none">${args.receiptUrl}</a>`
+          : undefined,
+      }),
+      text: `${amount} refunded - ${args.scholarshipName}.
+
+We've refunded ${amount} to the card you paid tuition with. Most banks show it within 5-10 business days.
+
+Your enrollment is unchanged - you're still in the cohort.
+
+${env.siteUrl}/dashboard/billing`,
+    };
+  },
+
+  /**
+   * "You should apply for this." An admin nudging a specific student toward a
+   * specific scholarship. Exists because the students most likely to need the
+   * need-based award are the least likely to ask for it.
+   */
+  scholarshipInvite: (args: {
+    name?: string | null;
+    scholarshipName: string;
+    awardSummary: string;
+    slug: string;
+    note?: string | null;
+  }) => ({
+    subject: `A batch0 scholarship you should look at`,
+    html: layout({
+      preheader: `${args.scholarshipName} — ${args.awardSummary}.`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">This one's worth a look</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — someone on the batch0 team thought the <strong>${escape(args.scholarshipName)}</strong> (${escape(args.awardSummary)}) might be a fit for you.</p>
+        <p>It takes a few minutes to apply. Being invited isn't the same as being awarded, but it does mean a human here thinks you have a real shot.</p>
+        ${
+          args.note
+            ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">${escape(args.note).replace(/\n/g, "<br>")}</p>`
+            : ""
+        }
+      `,
+      cta: {
+        url: `${env.siteUrl}/dashboard/scholarships/${encodeURIComponent(args.slug)}`,
+        label: "Apply for it",
+      },
+    }),
+    text: `A batch0 scholarship you should look at: ${args.scholarshipName} - ${args.awardSummary}.
+
+It takes a few minutes to apply.
+${args.note ? `\n${args.note}\n` : ""}
+${env.siteUrl}/dashboard/scholarships/${args.slug}`,
+  }),
 };

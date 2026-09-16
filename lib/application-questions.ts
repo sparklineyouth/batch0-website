@@ -1,20 +1,52 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  normalizeQuestions,
+  visibleQuestions,
+  type CustomQuestion,
+} from "@/lib/question-schema";
 
 // ---------------------------------------------------------------------------
 // Admin-editable application questions.
 //
-// The application form (app/apply/application-form.tsx) has a FIXED skeleton
-// of 17 fields. Each field maps 1:1 to a column on the `applications` table.
-// Admins can edit the *content* of each question — the label, help text,
-// placeholder, whether it's required, whether it's hidden, and (for the
-// team_size choice field) the option LABELS. Admins CANNOT add, remove,
-// reorder, or change field keys / types / option values — those are load-
-// bearing for the DB mapping and the server-side SubmitSchema.
+// There are two kinds of question on /apply, and the difference is not
+// cosmetic — it's where the answer goes:
 //
-// Overrides live in a single `site_settings` row (key = 'application_questions',
-// value = jsonb), mirroring how getSiteConfig reads site_settings. On read we
-// deep-merge overrides onto the code defaults for KNOWN keys only and ignore
-// anything unexpected, so a malformed / stale config can never break /apply.
+//   BUILT-IN (17 of them)  Each maps 1:1 to a COLUMN on `applications`. Their
+//                          keys, types and option VALUES are frozen, because
+//                          the column mapping and the server-side SubmitSchema
+//                          are built on them. An admin can edit every piece of
+//                          content — label, help, placeholder, required — and
+//                          can REMOVE one, which takes it off the form and
+//                          stops collecting it while leaving every answer
+//                          already in that column readable. Removal is
+//                          `hidden`, never a DROP COLUMN: past applications
+//                          keep their data.
+//
+//   CUSTOM (any number)    Added by an admin, answered into the
+//                          `applications.custom_answers` jsonb blob keyed by
+//                          question id (migration 0071). These can be added,
+//                          edited, reordered and genuinely deleted, because
+//                          nothing structural hangs off them.
+//
+// The five server-authoritative cores (full_name, age, phone, why_join,
+// team_size) are locked in both directions — never optional, never removed.
+// SubmitSchema enforces them, so an admin hiding one would only produce
+// submissions the server then rejects, with nothing on screen explaining why.
+//
+// STORAGE. One `site_settings` row (key = 'application_questions'), mirroring
+// how getSiteConfig reads site_settings. The value is a v2 object:
+//
+//   { version: 2, builtins: { [key]: QuestionOverride }, custom: Question[] }
+//
+// A bare `{ [key]: QuestionOverride }` — the v1 shape, which is what is in the
+// database today — is read as `builtins` with no custom questions, so this
+// change needs no data migration and an older build reading a v2 row simply
+// ignores the keys it doesn't know.
+//
+// Every read is tolerant: unknown keys, malformed entries and a completely
+// unparseable row all degrade to "use the code defaults" rather than throwing.
+// /apply is the top of the funnel; it does not get to 500 because of a bad
+// config write.
 // ---------------------------------------------------------------------------
 
 export type QuestionFieldType =
@@ -307,37 +339,113 @@ function mergeField(
 
 export type ApplicationQuestionsOverrides = Record<string, QuestionOverride>;
 
+/** The `site_settings.application_questions` value, v2. */
+export type ApplicationQuestionsConfig = {
+  version: 2;
+  builtins: ApplicationQuestionsOverrides;
+  custom: CustomQuestion[];
+};
+
+export const APPLICATION_QUESTIONS_SETTING = "application_questions";
+
 /**
- * Resolve the full set of application questions: code defaults deep-merged with
- * admin overrides from `site_settings.application_questions`. Never throws —
- * returns the defaults on any read/parse error so /apply can't be broken by a
- * malformed config. Reads via the service-role client (like getSiteConfig).
+ * Parse the stored value, accepting both the v2 object and the bare v1 map.
+ *
+ * Tolerant at every branch — this runs on /apply's render path. The worst
+ * outcome of a malformed row must be "the form looks like the code defaults",
+ * never an exception.
  */
-export async function getApplicationQuestions(): Promise<MergedQuestion[]> {
-  let overrides: ApplicationQuestionsOverrides = {};
+export function parseQuestionsConfig(raw: unknown): ApplicationQuestionsConfig {
+  const empty: ApplicationQuestionsConfig = {
+    version: 2,
+    builtins: {},
+    custom: [],
+  };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return empty;
+
+  const obj = raw as Record<string, unknown>;
+  // v2: an explicit envelope.
+  const isV2 =
+    obj.version === 2 ||
+    Object.prototype.hasOwnProperty.call(obj, "builtins") ||
+    Object.prototype.hasOwnProperty.call(obj, "custom");
+
+  // v1 (what's in the database today): the bare override map, no envelope.
+  const builtinSource = isV2 ? obj.builtins : obj;
+  const builtins: ApplicationQuestionsOverrides = {};
+  if (builtinSource && typeof builtinSource === "object" && !Array.isArray(builtinSource)) {
+    for (const [key, val] of Object.entries(builtinSource as Record<string, unknown>)) {
+      // Known keys only. An override naming a field this build doesn't have —
+      // left behind by a rollback, say — is ignored rather than rendered.
+      if (VALID_KEYS.has(key) && val && typeof val === "object") {
+        builtins[key] = val as QuestionOverride;
+      }
+    }
+  }
+
+  return {
+    version: 2,
+    builtins,
+    custom: isV2 ? normalizeQuestions(obj.custom) : [],
+  };
+}
+
+async function readQuestionsConfig(): Promise<ApplicationQuestionsConfig> {
   try {
     const admin = createAdminClient();
     const { data } = await admin
       .from("site_settings")
       .select("value")
-      .eq("key", "application_questions")
+      .eq("key", APPLICATION_QUESTIONS_SETTING)
       .maybeSingle();
-    const raw = data?.value;
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      // Keep only known keys; ignore anything unexpected.
-      for (const [key, val] of Object.entries(
-        raw as Record<string, unknown>,
-      )) {
-        if (VALID_KEYS.has(key) && val && typeof val === "object") {
-          overrides[key] = val as QuestionOverride;
-        }
-      }
-    }
+    return parseQuestionsConfig(data?.value);
   } catch (err) {
     // Swallow — defaults are a safe fallback. Log for observability.
     console.error("[application-questions] read failed:", err);
-    overrides = {};
+    return { version: 2, builtins: {}, custom: [] };
   }
+}
 
-  return QUESTION_FIELDS.map((base) => mergeField(base, overrides[base.key]));
+/**
+ * The 17 built-in questions, code defaults deep-merged with admin overrides.
+ *
+ * Returns ALL of them, including ones an admin has removed — callers filter on
+ * `hidden` themselves, because the admin editor needs to render a removed
+ * field in order to offer putting it back.
+ */
+export async function getApplicationQuestions(): Promise<MergedQuestion[]> {
+  const config = await readQuestionsConfig();
+  return QUESTION_FIELDS.map((base) => mergeField(base, config.builtins[base.key]));
+}
+
+export type ApplicationForm = {
+  /** All 17, merged. Includes removed ones — check `hidden`. */
+  builtins: MergedQuestion[];
+  /** Admin-added questions, in the order the admin arranged them. */
+  custom: CustomQuestion[];
+};
+
+/**
+ * Everything /apply and the admin editor need, in one read.
+ *
+ * The form renders `builtins` through its existing bespoke layout (the fields
+ * sit in hand-built sections with conditional logic, e.g. parent_email
+ * appearing only under 18) and then renders `custom` as its own section. That
+ * is why custom questions carry an order among themselves but are not
+ * interleaved with the built-ins: the built-in layout is not a generic list,
+ * and pretending it is would break the grid pairs and the conditional fields.
+ */
+export async function getApplicationForm(): Promise<ApplicationForm> {
+  const config = await readQuestionsConfig();
+  return {
+    builtins: QUESTION_FIELDS.map((base) =>
+      mergeField(base, config.builtins[base.key]),
+    ),
+    custom: config.custom,
+  };
+}
+
+/** Just the custom questions an applicant should actually be shown. */
+export async function getVisibleCustomQuestions(): Promise<CustomQuestion[]> {
+  return visibleQuestions((await readQuestionsConfig()).custom);
 }

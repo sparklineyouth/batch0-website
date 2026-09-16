@@ -275,6 +275,187 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       },
     ],
   },
+  // --- Scholarships (migration 0071, lib/scholarships.ts) -------------------
+  //
+  // Every optional tag below is written in {{tag|fallback}} form on purpose.
+  // sendTemplated falls back to the COMPILED template whenever a tag marked
+  // `required` has no value, so marking something required that isn't always
+  // known would silently make the admin's edits stop applying for exactly the
+  // students whose emails differ most.
+  {
+    key: "scholarship.received",
+    name: "Scholarship application received",
+    description:
+      "Sent the moment a student submits a scholarship application. Deliberately promises no decision date — students are usually deciding whether they can afford to enroll, and a missed date is worse than no date.",
+    category: "transactional",
+    subject: "We got your {{scholarship_name}} application",
+    preheader: "Your application for the {{scholarship_name}} is in.",
+    body_html:
+      "<h1>Application received</h1><p>Thanks {{first_name}} — your application for the <strong>{{scholarship_name}}</strong> ({{award_summary}}) is in front of us.</p><p>We read these by hand, so it takes a few days. You'll get an email either way — you don't need to check back.</p><p>One scholarship per student, so hold off on applying to another until you hear from us.</p>",
+    cta_label: "See your application",
+    cta_url: "{{site_url}}/dashboard/scholarships",
+    variables: [
+      ...COMMON,
+      {
+        key: "scholarship_name",
+        label: "Scholarship name",
+        example: "Need-based grant",
+        required: true,
+      },
+      {
+        key: "award_summary",
+        label: "What it's worth",
+        example: "$50 off tuition",
+        required: true,
+      },
+    ],
+  },
+  {
+    key: "scholarship.awarded",
+    name: "Scholarship awarded (money)",
+    description:
+      "Sent when a money scholarship is awarded. {{fulfillment_line}} is the load-bearing tag: it says either 'your tuition is lower at checkout' or 'this amount is being refunded to your card', depending on whether the student had already paid. Keep it in the body — without it the email can't tell them what actually happens next.",
+    category: "transactional",
+    subject: "You got the {{scholarship_name}}",
+    preheader: "{{amount}} toward your batch0 tuition.",
+    body_html:
+      "<h1>You got it</h1><p>Congratulations {{first_name}} — you've been awarded the <strong>{{scholarship_name}}</strong>: <strong>{{award_summary}}</strong>.</p><p>{{fulfillment_line}}</p><p><em>{{note|We're glad you're here.}}</em></p>",
+    cta_label: "See your scholarship",
+    cta_url: "{{site_url}}/dashboard/scholarships",
+    variables: [
+      ...COMMON,
+      {
+        key: "scholarship_name",
+        label: "Scholarship name",
+        example: "Need-based grant",
+        required: true,
+      },
+      {
+        key: "award_summary",
+        label: "What it's worth",
+        example: "$50 off tuition",
+        required: true,
+      },
+      { key: "amount", label: "Award amount", example: "$50", required: true },
+      {
+        key: "fulfillment_line",
+        label: "Discount-or-refund sentence",
+        example:
+          "Your tuition is now $50 lower. The new price is already applied at checkout.",
+        required: true,
+      },
+      { key: "note", label: "Note from the team", example: "Loved your answers." },
+    ],
+  },
+  {
+    key: "scholarship.awarded_calls",
+    name: "Scholarship awarded (mentor calls)",
+    description:
+      "Sent when the learner's scholarship is awarded. Its whole job is getting the student to actually book — mentor time set aside and never used is the failure mode this scholarship exists to avoid.",
+    category: "transactional",
+    subject: "You got the {{scholarship_name}} — {{calls}} extra mentor calls",
+    preheader: "{{calls}} extra 1:1 calls with a batch0 mentor, yours to book.",
+    body_html:
+      "<h1>You got it</h1><p>Congratulations {{first_name}} — you've been awarded the <strong>{{scholarship_name}}</strong>: <strong>{{calls}} extra 1:1 mentor calls</strong>, on top of everything else in the program.</p><p>These are yours to book whenever you want them. The more specific the topic, the more useful they are.</p><p>They don't expire during the cohort, but they also don't do anything sitting unused. Book the first one this week.</p><p><em>{{note|Make them count.}}</em></p>",
+    cta_label: "Book your first call",
+    cta_url: "{{site_url}}/dashboard/scholarships",
+    variables: [
+      ...COMMON,
+      {
+        key: "scholarship_name",
+        label: "Scholarship name",
+        example: "Learner's scholarship",
+        required: true,
+      },
+      { key: "calls", label: "Number of calls", example: "3", required: true },
+      { key: "note", label: "Note from the team", example: "Make them count." },
+    ],
+  },
+  {
+    key: "scholarship.declined",
+    name: "Scholarship declined",
+    description:
+      "Sent for every decline. Silence here is uniquely bad — the student is often waiting on this answer to decide whether they can enroll at all. Keep the line about their place being unaffected.",
+    category: "transactional",
+    subject: "Your {{scholarship_name}} application",
+    preheader: "We couldn't award this one — your place is unaffected.",
+    body_html:
+      "<h1>About your scholarship application</h1><p>Hi {{first_name}} — we read your application for the <strong>{{scholarship_name}}</strong> carefully, and we weren't able to award it this time.</p><p><strong>This doesn't change your place at batch0.</strong> Your application and your spot in the cohort are exactly where they were.</p><p><em>{{note|We had more strong applications than spots.}}</em></p><p>If cost is what's standing between you and the program, reply to this email and tell us. We'd rather hear it than lose you over it.</p>",
+    cta_label: "See other scholarships",
+    cta_url: "{{site_url}}/dashboard/scholarships",
+    variables: [
+      ...COMMON,
+      {
+        key: "scholarship_name",
+        label: "Scholarship name",
+        example: "Merit award",
+        required: true,
+      },
+      {
+        key: "note",
+        label: "Note from the reviewer",
+        example: "We had more strong applications than spots this round.",
+      },
+    ],
+  },
+  {
+    key: "scholarship.refunded",
+    name: "Scholarship refund issued",
+    description:
+      "Sent only once the Stripe partial refund actually succeeds — never when it's merely queued. Keep the line about enrollment being unchanged: a refund email that reads like a cancellation causes real panic.",
+    category: "transactional",
+    subject: "{{amount}} refunded — {{scholarship_name}}",
+    preheader: "{{amount}} is on its way back to your card.",
+    body_html:
+      "<h1>{{amount}} is on its way back</h1><p>Hi {{first_name}} — we've refunded <strong>{{amount}}</strong> to the card you paid your batch0 tuition with, as your <strong>{{scholarship_name}}</strong> award.</p><p>Most banks show it within 5–10 business days. It'll appear as a refund against the original charge rather than as a new payment.</p><p><strong>Your enrollment is unchanged.</strong> You're still in the cohort — this is a partial refund of tuition, not a cancellation.</p>",
+    cta_label: "See your billing",
+    cta_url: "{{site_url}}/dashboard/billing",
+    variables: [
+      ...COMMON,
+      { key: "amount", label: "Refund amount", example: "$50", required: true },
+      {
+        key: "scholarship_name",
+        label: "Scholarship name",
+        example: "Need-based grant",
+        required: true,
+      },
+    ],
+  },
+  {
+    key: "scholarship.invite",
+    name: "Scholarship invitation",
+    description:
+      "An admin nudging one student toward one scholarship. Exists because the students most likely to need the need-based award are the least likely to ask for it. Leave the button pointed at {{apply_url}}.",
+    category: "lifecycle",
+    subject: "A batch0 scholarship you should look at",
+    preheader: "{{scholarship_name}} — {{award_summary}}.",
+    body_html:
+      "<h1>This one's worth a look</h1><p>Hi {{first_name}} — someone on the batch0 team thought the <strong>{{scholarship_name}}</strong> ({{award_summary}}) might be a fit for you.</p><p>It takes a few minutes to apply. Being invited isn't the same as being awarded, but it does mean a human here thinks you have a real shot.</p><p><em>{{note|Worth your time.}}</em></p>",
+    cta_label: "Apply for it",
+    cta_url: "{{apply_url}}",
+    variables: [
+      ...COMMON,
+      {
+        key: "scholarship_name",
+        label: "Scholarship name",
+        example: "Need-based grant",
+        required: true,
+      },
+      {
+        key: "award_summary",
+        label: "What it's worth",
+        example: "$50 off tuition",
+        required: true,
+      },
+      {
+        key: "apply_url",
+        label: "Application link",
+        example: "https://batch0.org/dashboard/scholarships/need-based-grant",
+        required: true,
+      },
+      { key: "note", label: "Note from the team", example: "Worth your time." },
+    ],
+  },
   {
     key: "broadcast.blank",
     name: "Blank branded email",

@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import { Toggle } from "@/components/ui/toggle";
 import { getActionError } from "@/lib/action-error";
+import { QuestionListEditor } from "@/components/admin/question-list-editor";
 import {
   isRequiredCore,
   type MergedQuestion,
   type ApplicationQuestionsOverrides,
 } from "@/lib/application-questions";
+import type { CustomQuestion } from "@/lib/question-schema";
 import { saveApplicationQuestions } from "./actions";
 
 type DraftField = {
@@ -35,9 +37,7 @@ function toDraft(q: MergedQuestion): DraftField {
   };
 }
 
-function toOverrides(
-  fields: DraftField[],
-): ApplicationQuestionsOverrides {
+function toOverrides(fields: DraftField[]): ApplicationQuestionsOverrides {
   const out: ApplicationQuestionsOverrides = {};
   for (const f of fields) {
     out[f.key] = {
@@ -58,26 +58,33 @@ function toOverrides(
   return out;
 }
 
-export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
-  const [fields, setFields] = useState<DraftField[]>(() =>
-    initial.map(toDraft),
-  );
+/**
+ * The /apply form editor: the 17 built-in fields plus the admin's own
+ * questions, saved together in one action.
+ *
+ * One save button for both on purpose. They are one form to the applicant, and
+ * a partial save — a new question added but a label edit lost — is worse than
+ * a rejected one.
+ */
+export function QuestionEditor({
+  initial,
+  initialCustom,
+}: {
+  initial: MergedQuestion[];
+  initialCustom: CustomQuestion[];
+}) {
+  const [fields, setFields] = useState<DraftField[]>(() => initial.map(toDraft));
+  const [custom, setCustom] = useState<CustomQuestion[]>(initialCustom);
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   function update(index: number, patch: Partial<DraftField>) {
-    setFields((prev) =>
-      prev.map((f, i) => (i === index ? { ...f, ...patch } : f)),
-    );
+    setFields((prev) => prev.map((f, i) => (i === index ? { ...f, ...patch } : f)));
     setSaved(false);
   }
 
-  function updateOption(
-    fieldIndex: number,
-    value: number,
-    label: string,
-  ) {
+  function updateOption(fieldIndex: number, value: number, label: string) {
     setFields((prev) =>
       prev.map((f, i) =>
         i === fieldIndex
@@ -98,7 +105,10 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
     setError(undefined);
     start(async () => {
       try {
-        const res = await saveApplicationQuestions(toOverrides(fields));
+        const res = await saveApplicationQuestions({
+          builtins: toOverrides(fields),
+          custom,
+        });
         if (!res.ok) {
           setError(res.error);
           return;
@@ -110,24 +120,55 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
     });
   }
 
+  const removedCount = fields.filter((f) => f.hidden).length;
+
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-8">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Built-in questions</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          These seventeen are stored in their own database columns, so their
+          type and what they store can't change — but you can rewrite any of
+          them, and remove the ones you don't want. Removing takes a question
+          off the form and stops collecting it;{" "}
+          <strong className="text-ink">answers already given are kept</strong>{" "}
+          and stay readable in the review queue.
+          {removedCount > 0 && (
+            <>
+              {" "}
+              <span className="text-amber-300">
+                {removedCount} currently removed.
+              </span>
+            </>
+          )}
+        </p>
+      </div>
+
       {fields.map((field, i) => {
         const core = isRequiredCore(field.key);
         return (
           <section
             key={field.key}
-            className="rounded-xl border border-white/10 bg-black/20 p-4"
+            className={`rounded-xl border p-4 ${
+              field.hidden
+                ? "border-line/60 bg-wash/40 opacity-70"
+                : "border-line bg-wash"
+            }`}
           >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <code className="text-xs font-medium text-white/45">
-                {field.key}
-              </code>
-              <span className="text-[11px] uppercase tracking-wider text-white/40">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <code className="text-xs font-medium text-ink-soft">{field.key}</code>
+              <span className="text-[11px] uppercase tracking-wider text-ink-faint">
                 {field.type}
-                {core && " · required core"}
+                {core && " · can't be removed"}
               </span>
             </div>
+
+            {field.hidden && (
+              <p className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-300">
+                Removed from the form. Past answers are untouched — turn this
+                back on and it collects again.
+              </p>
+            )}
 
             <div className="space-y-4">
               <div>
@@ -153,15 +194,11 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
 
               {field.type !== "radiogroup" && (
                 <div>
-                  <Label htmlFor={`${field.key}-placeholder`}>
-                    Placeholder
-                  </Label>
+                  <Label htmlFor={`${field.key}-placeholder`}>Placeholder</Label>
                   <Input
                     id={`${field.key}-placeholder`}
                     value={field.placeholder}
-                    onChange={(e) =>
-                      update(i, { placeholder: e.target.value })
-                    }
+                    onChange={(e) => update(i, { placeholder: e.target.value })}
                     placeholder="Optional placeholder text."
                   />
                 </div>
@@ -170,25 +207,20 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
               {field.options.length > 0 && (
                 <div>
                   <Label>Option labels</Label>
-                  <p className="mb-2 text-xs text-white/40">
+                  <p className="mb-2 text-xs text-ink-faint">
                     You can rename each choice, but not add, remove, or change
                     what it stores.
                   </p>
                   <div className="space-y-2">
                     {field.options.map((opt) => (
-                      <div
-                        key={opt.value}
-                        className="flex items-center gap-2"
-                      >
-                        <span className="w-8 shrink-0 text-center text-xs text-white/40">
+                      <div key={opt.value} className="flex items-center gap-2">
+                        <span className="w-8 shrink-0 text-center text-xs text-ink-faint">
                           {opt.value}
                         </span>
                         <Input
                           aria-label={`Label for option ${opt.value}`}
                           value={opt.label}
-                          onChange={(e) =>
-                            updateOption(i, opt.value, e.target.value)
-                          }
+                          onChange={(e) => updateOption(i, opt.value, e.target.value)}
                         />
                       </div>
                     ))}
@@ -202,28 +234,51 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
                   description={
                     core
                       ? "This field is always required."
-                      : "Applicants must fill this in."
+                      : field.hidden
+                        ? "Not collected while removed."
+                        : "Applicants must fill this in."
                   }
                   checked={field.required}
-                  disabled={core}
+                  disabled={core || field.hidden}
                   onChange={(v) => update(i, { required: v })}
                 />
                 <Toggle
-                  label="Hidden"
+                  label="Remove from form"
                   description={
                     core
-                      ? "This field can't be hidden."
-                      : "Remove this field from the form."
+                      ? "The application can't work without this one."
+                      : "Stops collecting it. Existing answers are kept."
                   }
                   checked={field.hidden}
                   disabled={core}
-                  onChange={(v) => update(i, { hidden: v })}
+                  onChange={(v) =>
+                    update(i, { hidden: v, required: v ? false : field.required })
+                  }
                 />
               </div>
             </div>
           </section>
         );
       })}
+
+      <div className="border-t border-line pt-8">
+        <h2 className="text-lg font-semibold text-ink">Your questions</h2>
+        <p className="mb-4 mt-1 text-sm text-ink-soft">
+          Anything else you want to ask. These are yours to add, reorder and
+          delete — their answers are stored alongside the application rather
+          than in a column of their own. They appear in a section of their own
+          at the end of the form, in the order below.
+        </p>
+        <QuestionListEditor
+          questions={custom}
+          onChange={(next) => {
+            setCustom(next);
+            setSaved(false);
+          }}
+          reservedIds={fields.map((f) => f.key)}
+          emptyHint="No extra questions yet. Add one and it shows up at the end of the application."
+        />
+      </div>
 
       {error && (
         <p className="rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-xs text-red-300">
@@ -233,7 +288,7 @@ export function QuestionEditor({ initial }: { initial: MergedQuestion[] }) {
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Save questions"}
+          {pending ? "Saving…" : "Save the application form"}
         </Button>
         {saved && <span className="text-xs text-emerald-300">Saved.</span>}
       </div>
