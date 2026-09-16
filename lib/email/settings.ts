@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { env } from "@/lib/env";
 import { decryptSecret } from "@/lib/email/secret";
+import { isMissingTable } from "@/lib/email/store";
 
 /**
  * The single `email_settings` row, plus the defaults it falls back to.
@@ -26,8 +27,24 @@ export type EmailSettings = {
   smtpPassword: string | null;
   automationsPaused: boolean;
   maxSendsPerRun: number;
-  /** False when the table is missing — the UI shows a "run the migration" note. */
+  /**
+   * False only when `email_settings` itself is absent — the UI shows a "run the
+   * migration" note. Strictly the table, not the read: this used to be false
+   * for *any* failed query, so a Supabase gateway timeout reported itself to
+   * the cron log as "Email tables not found — run migration 0052" and sent the
+   * operator hunting for a migration that had been applied for weeks.
+   */
   configured: boolean;
+  /**
+   * Set when the row could not be read for some reason other than the table
+   * being absent — a Supabase timeout, a Cloudflare 525 on the API gateway.
+   *
+   * Callers about to *send* must treat this as an unknown transport and wait,
+   * not fall back to the env defaults: on a site configured for SMTP, those
+   * defaults are a different transport and a different From address, so the
+   * degraded path would put the wrong sender on real mail.
+   */
+  readError: string | null;
 };
 
 /** What the settings page is allowed to see. No secret, by construction. */
@@ -52,6 +69,7 @@ function defaults(): EmailSettings {
     automationsPaused: false,
     maxSendsPerRun: 200,
     configured: false,
+    readError: null,
   };
 }
 
@@ -75,7 +93,11 @@ export function invalidateEmailSettings() {
 export async function getEmailSettings(): Promise<EmailSettings> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
   const value = await loadEmailSettings();
-  cache = { at: Date.now(), value };
+  // A failed read is not a settings state worth holding onto. Caching it would
+  // make every send for the next thirty seconds use the env defaults, which on
+  // an SMTP-configured site means real mail leaving from the wrong sender —
+  // and it would stretch one blip into a half-minute of them.
+  if (!value.readError) cache = { at: Date.now(), value };
   return value;
 }
 
@@ -88,7 +110,16 @@ async function loadEmailSettings(): Promise<EmailSettings> {
       .select("*")
       .eq("id", true)
       .maybeSingle();
-    if (error || !data) return base;
+    if (error) {
+      // The missing table is the only error that actually means "0052 hasn't
+      // run". A timeout is a failed read of a table that exists.
+      if (isMissingTable(error)) return base;
+      return { ...base, configured: true, readError: error.message };
+    }
+    // 0052 seeds the row, so no row means a hand-restored database. The table
+    // is there, so the defaults *are* the settings — not a degraded state, and
+    // not something to stop sending over.
+    if (!data) return { ...base, configured: true };
     return {
       transport: data.transport === "smtp" ? "smtp" : "resend",
       fromName: data.from_name || base.fromName,
@@ -102,9 +133,17 @@ async function loadEmailSettings(): Promise<EmailSettings> {
       automationsPaused: Boolean(data.automations_paused),
       maxSendsPerRun: data.max_sends_per_run ?? base.maxSendsPerRun,
       configured: true,
+      readError: null,
     };
-  } catch {
-    return base;
+  } catch (err: any) {
+    // Reaching here means the client or the decrypt threw, not that the table
+    // is absent — so `configured` stays true and the reason is carried instead
+    // of being flattened into a migration notice.
+    return {
+      ...base,
+      configured: true,
+      readError: err?.message ?? "email settings read failed",
+    };
   }
 }
 

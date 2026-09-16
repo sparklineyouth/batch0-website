@@ -11,79 +11,10 @@ import {
   SCHOLARSHIP_KIND_BLURBS,
   MAX_MENTOR_CALLS,
 } from "@/lib/scholarship-award";
-import { saveScholarship, type ScholarshipInput } from "./actions";
-
-export type ScholarshipFormValues = ScholarshipInput;
-
-/** An ISO timestamp as a <input type="datetime-local"> value, in local time. */
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-export function emptyScholarshipForm(): ScholarshipFormValues {
-  return {
-    id: null,
-    slug: "",
-    name: "",
-    kind: "need",
-    tagline: "",
-    description: "",
-    awardType: "discount",
-    awardDollars: "",
-    awardPercent: "",
-    mentorCalls: "3",
-    seats: "",
-    opensAt: "",
-    closesAt: "",
-    eligibleStages: ["accepted", "enrolled"],
-    enabled: true,
-    sortIndex: "100",
-  };
-}
-
-export function scholarshipToForm(s: {
-  id: string;
-  slug: string;
-  name: string;
-  kind: string;
-  tagline: string | null;
-  description: string | null;
-  terms: {
-    awardType: string;
-    amountCents: number;
-    percent: number | null;
-    mentorCalls: number;
-  };
-  seats: number | null;
-  opensAt: string | null;
-  closesAt: string | null;
-  eligibleStages: string[];
-  enabled: boolean;
-  sortIndex: number;
-}): ScholarshipFormValues {
-  return {
-    id: s.id,
-    slug: s.slug,
-    name: s.name,
-    kind: s.kind,
-    tagline: s.tagline ?? "",
-    description: s.description ?? "",
-    awardType: s.terms.awardType,
-    awardDollars: s.terms.amountCents ? String(s.terms.amountCents / 100) : "",
-    awardPercent: s.terms.percent === null ? "" : String(s.terms.percent),
-    mentorCalls: String(s.terms.mentorCalls || 3),
-    seats: s.seats === null ? "" : String(s.seats),
-    opensAt: toLocalInput(s.opensAt),
-    closesAt: toLocalInput(s.closesAt),
-    eligibleStages: s.eligibleStages,
-    enabled: s.enabled,
-    sortIndex: String(s.sortIndex),
-  };
-}
+import { saveScholarship } from "./actions";
+// The seeds live in ./form-values, not here: the server pages *call* them, and
+// a "use client" export is only ever a client reference on the server.
+import type { ScholarshipFormValues } from "./form-values";
 
 export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues }) {
   const router = useRouter();

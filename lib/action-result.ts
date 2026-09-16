@@ -1,3 +1,5 @@
+import { unstable_rethrow } from "next/navigation";
+
 /**
  * Standard return shape for server actions that can fail with a
  * user-meaningful error.
@@ -25,6 +27,9 @@ export type ActionContext = {
  * structured failure result. Logs the underlying error server-side so
  * it shows up in Vercel function logs / Sentry regardless of whether
  * the client sees the (already structured) message.
+ *
+ * Framework control-flow errors are the one exception: they are
+ * re-thrown, not converted. See the catch block.
  */
 export async function runAction<T>(
   ctx: ActionContext,
@@ -34,6 +39,16 @@ export async function runAction<T>(
     const data = await fn();
     return { ok: true, data };
   } catch (err: any) {
+    // `redirect()` and `notFound()` signal by throwing, so a guard that
+    // redirects — `requireUser()` sending a signed-out student to /login
+    // — lands here and, without this, is reported back as an ordinary
+    // failure: the user reads the literal string "NEXT_REDIRECT" and the
+    // navigation never happens. Next's own predicate is what to use
+    // rather than matching the digest ourselves, because the set of
+    // shapes it throws (and their digests) changes between releases —
+    // 15.x already emits "NEXT_HTTP_ERROR_FALLBACK;404" for notFound()
+    // rather than the "NEXT_NOT_FOUND" older code looked for.
+    unstable_rethrow(err);
     const message =
       err instanceof Error && err.message
         ? err.message

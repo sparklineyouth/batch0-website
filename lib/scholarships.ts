@@ -97,6 +97,13 @@ export type ScholarshipApplication = {
   answers: Record<string, unknown>;
   stageAtApply: EligibleStage | null;
   awardCents: number;
+  /**
+   * The percentage granted, snapshotted at award time (0072). `null` means the
+   * award is the flat `awardCents` figure — which is what a per-student
+   * override records. `undefined` means the column isn't there yet, and is a
+   * different answer from null: see scholarshipDiscountCentsForUser.
+   */
+  awardPercent: number | null | undefined;
   credits: CallCredits;
   fulfillment: Fulfillment;
   refundedCents: number;
@@ -186,6 +193,12 @@ export function mapScholarshipApplication(
         ? row.stage_at_apply
         : null,
     awardCents: normalizeCents(row.award_cents),
+    // Keyed on presence, not just on the value: every read of this table is a
+    // `select("*")`, so a row from a database where 0072 hasn't run carries no
+    // award_percent key at all, and "we don't know" has to stay tellable apart
+    // from the null that records a flat award.
+    awardPercent:
+      "award_percent" in row ? normalizePercent(row.award_percent) : undefined,
     credits: callCredits(row.mentor_calls_awarded, row.mentor_calls_used),
     fulfillment: asFulfillment(row.fulfillment),
     refundedCents: normalizeCents(row.refunded_cents),
@@ -208,6 +221,26 @@ export function mapScholarshipApplication(
  */
 function isMissingTable(error: { message?: string } | null): boolean {
   return !!error && /does not exist|schema cache/i.test(error.message ?? "");
+}
+
+/**
+ * True when a write was rejected because the column isn't there yet.
+ *
+ * Narrower sibling of isMissingTable, for the same reason: `award_percent`
+ * arrives in 0072 and awarding must keep working in the window before it is
+ * applied. PostgREST rejects an unknown column with PGRST204 before the
+ * statement reaches Postgres; 42703 is Postgres's own code for it, which
+ * surfaces when the schema cache is warm but the column isn't there. Mirrors
+ * isUnknownColumn in app/api/resend/webhook/route.ts.
+ */
+function isMissingColumn(
+  error: { code?: string; message?: string } | null,
+): boolean {
+  if (!error) return false;
+  if (error.code === "PGRST204" || error.code === "42703") return true;
+  return /column .* does not exist|could not find the .* column/i.test(
+    error.message ?? "",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -339,10 +372,11 @@ export async function getAwardForUser(
  * founder-pass discount applied — a scholarship is the last discount in the
  * stack. See the ordering note in app/api/stripe/checkout/route.ts.
  *
- * Reads the amount snapshotted on the award rather than recomputing from the
- * catalog, EXCEPT for a percentage award, which has to be resolved against the
- * price actually being charged. Editing the catalog must never change what a
- * student was already told they had won.
+ * Reads the terms snapshotted on the award rather than the catalog: a flat
+ * award is its `awardCents`, and a percentage award is its `awardPercent`
+ * resolved against the price actually being charged, because a share of
+ * tuition can only become cents at the till. Editing the catalog must never
+ * change what a student was already told they had won.
  *
  * Fails CLOSED to 0 on any error: the failure mode of a bad read here is
  * charging someone full price, which is a refundable support ticket. The
@@ -363,8 +397,26 @@ export async function scholarshipDiscountCentsForUser(
     if (held.app.fulfillment === "refunded" || held.app.fulfillment === "refund_due") {
       return 0;
     }
-    if (held.scholarship.terms.percent !== null) {
-      return awardDiscountCents(held.scholarship.terms, priceCents);
+    // The snapshot decides — but only one that is actually THERE. Absent
+    // (0072 not applied yet, so `undefined`) is not the same answer as null:
+    // null records a flat award, while absent means the row never got to say,
+    // and the honest fallback for that is what this did before 0072 — resolve
+    // the catalog's percentage against the live price. Do not simplify absent
+    // into the flat branch below: award_cents for a percentage award was
+    // snapshotted against the cohort LIST price, so clamping it to the price
+    // would hand a regionally-priced student holding a 50% award their entire
+    // tuition.
+    const percent =
+      held.app.awardPercent === undefined
+        ? held.scholarship.terms.percent
+        : held.app.awardPercent;
+    if (percent !== null) {
+      // amountCents is overridden alongside percent so the catalog's flat
+      // figure can't leak back in through the spread.
+      return awardDiscountCents(
+        { ...held.scholarship.terms, percent, amountCents: held.app.awardCents },
+        priceCents,
+      );
     }
     return Math.max(0, Math.min(normalizeCents(priceCents), held.app.awardCents));
   } catch (err) {
@@ -644,16 +696,23 @@ async function loadRecipient(
   admin: SupabaseClient,
   userId: string,
 ): Promise<Recipient> {
-  const { data } = await admin
+  const { data, error } = await admin
     .from("profiles")
-    .select("email, contact_email, full_name")
+    .select("email, full_name")
     .eq("id", userId)
     .maybeSingle();
+  // `profiles.email` is the only address this product holds — there is no
+  // per-student contact address (`contact_email` is a site_settings key: the
+  // address students write TO). Logged rather than swallowed, because every
+  // send site is gated on `to.email`: a failed read here reads as "this
+  // student has no email" and silently drops their award, decline and refund
+  // mail rather than failing somewhere a person would notice.
+  if (error) {
+    console.error("[scholarships] recipient lookup failed:", error.message);
+  }
   const row = (data ?? {}) as Record<string, any>;
-  // contact_email wins where it's set (migration 0034): it's the address the
-  // student asked us to actually use.
   return {
-    email: row.contact_email || row.email || null,
+    email: row.email || null,
     fullName: row.full_name ?? null,
   };
 }
@@ -872,22 +931,47 @@ export async function awardScholarship(args: {
     refundedCents: app.refundedCents,
   });
 
-  const { error: updateErr } = await admin
-    .from("scholarship_applications")
-    .update({
-      status: "awarded",
-      award_cents: awardCents,
-      mentor_calls_awarded: normalizeMentorCalls(terms.mentorCalls),
-      fulfillment,
-      decision_note: args.note?.trim() || null,
-      reviewed_by: args.reviewerId,
-      reviewed_at: now.toISOString(),
-      decided_at: now.toISOString(),
-    })
-    .eq("id", app.id)
-    // Conditional so two reviewers pressing Award at the same moment can't
-    // both succeed and double-count a seat.
-    .in("status", ["submitted", "under_review", "declined"]);
+  const decided = {
+    status: "awarded",
+    award_cents: awardCents,
+    mentor_calls_awarded: normalizeMentorCalls(terms.mentorCalls),
+    fulfillment,
+    decision_note: args.note?.trim() || null,
+    reviewed_by: args.reviewerId,
+    reviewed_at: now.toISOString(),
+    decided_at: now.toISOString(),
+  };
+
+  const record = (values: Record<string, unknown>) =>
+    admin
+      .from("scholarship_applications")
+      .update(values)
+      .eq("id", app.id)
+      // Conditional, AND its result is checked below. Both halves matter: the
+      // predicate scopes to THIS row, so all it can stop is two reviewers
+      // deciding the same application — and only because an empty result is
+      // then treated as a loss. Two reviewers awarding two DIFFERENT
+      // applications for the last seat both still succeed: the seat count was
+      // read before this write and nothing in 0071 constrains it.
+      .in("status", ["submitted", "under_review", "declined"])
+      .select("id")
+      .maybeSingle();
+
+  // Snapshotting the resolved PERCENTAGE next to the cents figure (0072) is
+  // what keeps checkout and the refund button off the live catalog. An
+  // override has already nulled `percent` above, so a reviewer's flat number
+  // persists as a flat award rather than reverting to a share of tuition.
+  let { data: updated, error: updateErr } = await record({
+    ...decided,
+    award_percent: terms.awardType === "discount" ? terms.percent : null,
+  });
+  // 0072 is applied by hand, after the deploy that needs it. While the column
+  // is absent, record the award without the snapshot rather than refusing to
+  // award at all — scholarshipDiscountCentsForUser falls back to the catalog
+  // percentage in exactly that window, which is the pre-0072 behaviour.
+  if (updateErr && isMissingColumn(updateErr)) {
+    ({ data: updated, error: updateErr } = await record(decided));
+  }
 
   if (updateErr) {
     if (/duplicate key|unique constraint/i.test(updateErr.message)) {
@@ -899,6 +983,16 @@ export async function awardScholarship(args: {
     }
     console.error("[scholarships] award failed:", updateErr.message);
     return { ok: false, error: "Couldn't record that award. Try again." };
+  }
+  // Nothing matched: someone else decided this application between the read at
+  // the top of this function and here. Returning before announceAward is the
+  // point — the loser of that race must not send a second award email.
+  if (!updated) {
+    return {
+      ok: false,
+      error:
+        "Someone else just decided this application — reload to see where it landed.",
+    };
   }
 
   await announceAward({
@@ -1259,6 +1353,19 @@ export async function issueScholarshipRefund(args: {
   if (scholarship.terms.awardType !== "discount") {
     return { ok: false, error: "This scholarship grants mentor calls, not money." };
   }
+  // The refund is the award_cents snapshot, and that figure is only a refund
+  // basis for an award made AFTER the student paid. An award granted before
+  // they paid was snapshotted against the cohort list price and has already
+  // come off their checkout, so refunding it too would hand them the same
+  // money twice. The UI only offers the button in 'refund_due', but this
+  // action takes a bare application id and is callable on its own.
+  if (app.fulfillment !== "refund_due") {
+    return {
+      ok: false,
+      error:
+        "No refund is owed on this award — it came off their checkout price instead.",
+    };
+  }
 
   const payment = await tuitionPayment(admin, app.userId, app.cohortId);
   if (!payment) {
@@ -1275,10 +1382,16 @@ export async function issueScholarshipRefund(args: {
     };
   }
 
-  // Recomputed from the payment rather than trusted from award_cents, so a
-  // refund can never exceed the charge it is issued against.
+  // The snapshot is what gets refunded: award_cents was already computed
+  // against this student's own payment at award time, and it is the figure
+  // they were emailed and the reviewer is looking at. Re-resolving the
+  // catalog's percentage here instead would pay out whatever the scholarship
+  // says TODAY, ignoring a per-student override and any later catalog edit.
+  // `percent: null` is what makes the snapshot authoritative; awardRefundCents
+  // still caps at paid minus already-refunded, so the charge can never be
+  // exceeded.
   const amountCents = awardRefundCents(
-    { ...scholarship.terms, amountCents: app.awardCents, percent: scholarship.terms.percent },
+    { ...scholarship.terms, amountCents: app.awardCents, percent: null },
     payment.amountCents,
     app.refundedCents,
   );

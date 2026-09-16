@@ -23,7 +23,11 @@ import {
   type AwardType,
   type EligibleStage,
 } from "@/lib/scholarship-award";
-import { validateQuestionList, normalizeQuestions } from "@/lib/question-schema";
+import {
+  validateQuestionList,
+  MAX_QUESTIONS,
+  type CustomQuestion,
+} from "@/lib/question-schema";
 
 const LIST = "/admin/scholarships";
 const QUEUE = "/admin/scholarships/applications";
@@ -432,20 +436,62 @@ export async function inviteToScholarshipAction(input: {
   });
 }
 
-/** Save one scholarship's questions from its own edit page. */
+/**
+ * Coerce the editor's payload into the canonical shape and validate it —
+ * the same two steps as cleanCustom in app/admin/application-questions.
+ *
+ * Coerce, don't normalize. normalizeQuestions is the tolerant READ path: it
+ * silently drops a question it can't parse, which on a save path means a
+ * punctuation-only label or the 41st question vanishes and the admin is told
+ * the save worked. Validation has to see the raw list to report the error
+ * written for exactly that mistake.
+ */
+function cleanQuestions(input: unknown, what: string): CustomQuestion[] {
+  const list = Array.isArray(input) ? input : [];
+  if (list.length > MAX_QUESTIONS) {
+    throw new Error(`${what}: too many questions (max ${MAX_QUESTIONS}).`);
+  }
+
+  const coerced: CustomQuestion[] = list.map((raw: any) => ({
+    id: typeof raw?.id === "string" ? raw.id.trim() : "",
+    type: raw?.type,
+    label: typeof raw?.label === "string" ? raw.label.trim() : "",
+    help: typeof raw?.help === "string" ? raw.help : "",
+    placeholder: typeof raw?.placeholder === "string" ? raw.placeholder : "",
+    required: raw?.required === true,
+    hidden: raw?.hidden === true,
+    options: Array.isArray(raw?.options)
+      ? raw.options.map((o: any) => ({
+          value: typeof o?.value === "string" ? o.value.trim() : "",
+          label: typeof o?.label === "string" ? o.label.trim() : "",
+        }))
+      : [],
+  }));
+
+  // Fills any blank id in place, so `coerced` is what has to be stored.
+  const err = validateQuestionList(coerced);
+  if (err) throw new Error(`${what}: ${err}`);
+  return coerced;
+}
+
+/**
+ * Save one scholarship's questions from its own edit page.
+ *
+ * Returns the list as stored so the panel can adopt any id derived here — a
+ * client still holding `id: ""` would re-derive a different key from a
+ * reworded label on the next save and orphan the answers already collected.
+ */
 export async function saveQuestionsForScholarship(
   scholarshipId: string,
   input: unknown,
-): Promise<ActionResult> {
+): Promise<ActionResult<CustomQuestion[]>> {
   return runAction({ name: "saveQuestionsForScholarship" }, async () => {
     await assertPermission("scholarships.manage");
     const admin = createAdminClient();
     const scholarship = await getScholarshipById(admin, scholarshipId);
     if (!scholarship) throw new Error("That scholarship doesn't exist.");
 
-    const questions = normalizeQuestions(input);
-    const err = validateQuestionList(questions);
-    if (err) throw new Error(err);
+    const questions = cleanQuestions(input, `"${scholarship.name}"`);
 
     const { error } = await admin
       .from("scholarships")
@@ -461,5 +507,6 @@ export async function saveQuestionsForScholarship(
     });
     revalidatePath(`${LIST}/${scholarshipId}`);
     revalidatePath(`/dashboard/scholarships/${scholarship.slug}`);
+    return questions;
   });
 }

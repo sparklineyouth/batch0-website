@@ -5,7 +5,8 @@ import { can } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { getScholarshipById, describeAward } from "@/lib/scholarships";
-import { ScholarshipForm, scholarshipToForm } from "../scholarship-form";
+import { ScholarshipForm } from "../scholarship-form";
+import { scholarshipToForm } from "../form-values";
 import { ScholarshipQuestionsPanel } from "./questions-panel";
 
 export const dynamic = "force-dynamic";

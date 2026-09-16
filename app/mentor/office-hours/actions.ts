@@ -1,21 +1,15 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertSelf } from "@/lib/server-guards";
+import { assertSelf, assertStaff } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
 
-async function assertMentorOrAdmin(userId: string) {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
-  if (!data || (data.role !== "mentor" && data.role !== "admin")) {
-    throw new Error("Forbidden");
-  }
-  return data.role as string;
-}
+// The three mentor-side mutations below gate on assertStaff(), i.e. on the
+// `mentor.panel` permission — the same key app/mentor/layout.tsx uses to let
+// the page render. Gating the writes on the `mentor`/`admin` role slugs
+// instead meant every button on a page a custom role could legitimately open
+// threw "Forbidden". bookSlot and cancelBooking stay on assertSelf: they
+// authorise on row ownership, not on staff status.
 
 export async function createSlot(input: {
   startsAt: string;
@@ -23,8 +17,7 @@ export async function createSlot(input: {
   zoomUrl?: string;
   notes?: string;
 }) {
-  const { userId } = await assertSelf();
-  await assertMentorOrAdmin(userId);
+  const { userId } = await assertStaff();
 
   const starts = new Date(input.startsAt);
   const ends = new Date(input.endsAt);
@@ -50,8 +43,7 @@ export async function createSlot(input: {
 }
 
 export async function deleteSlot(input: { slotId: string }) {
-  const { userId } = await assertSelf();
-  await assertMentorOrAdmin(userId);
+  const { userId } = await assertStaff();
   const admin = createAdminClient();
   const { data: slot } = await admin
     .from("mentor_slots")
@@ -133,8 +125,7 @@ export async function saveBookingRecap(input: {
   bookingId: string;
   body: string;
 }) {
-  const { userId } = await assertSelf();
-  await assertMentorOrAdmin(userId);
+  const { userId } = await assertStaff();
   const admin = createAdminClient();
 
   const { data: booking } = await admin

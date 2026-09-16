@@ -382,7 +382,18 @@ export async function getSiteConfig(
 export const SITE_CONFIG_TAG = "site-config";
 
 const loadPublicData = unstable_cache(
-  async () => loadSiteConfigData(createPublicReadClient()),
+  async () => {
+    const data = await loadSiteConfigData(createPublicReadClient());
+    // Throw rather than return, because unstable_cache stores whatever this
+    // resolves to for the full `revalidate`. A degraded config is exactly the
+    // thing that must not be stored: one Supabase timeout would otherwise pin
+    // the marketing site to FALLBACK_COHORT's hardcoded price for five
+    // minutes, across every region that sampled it, and re-log on every hit —
+    // which is what the 42 identical errors in production actually were. A
+    // rejected promise isn't cached, so the next request retries immediately.
+    if (data.readError) throw new Error(data.readError);
+    return data;
+  },
   ["site-config-public"],
   { revalidate: 300, tags: [SITE_CONFIG_TAG] },
 );
@@ -390,13 +401,34 @@ const loadPublicData = unstable_cache(
 export async function getPublicSiteConfig(
   opts: { countryCode?: string | null } = {},
 ): Promise<SiteConfig> {
-  const data = await loadPublicData();
+  let data: SiteConfigData;
+  try {
+    data = await loadPublicData();
+  } catch (err: any) {
+    // Caught here and not left to the boundary: the read failing is not a
+    // reason to 500 a marketing page, and letting it throw during static
+    // generation would turn a transient blip into a failed build.
+    data = {
+      cohort: null,
+      settings: FALLBACK_SETTINGS,
+      enrolledCount: 0,
+      readError: err?.message ?? "site config read failed",
+    };
+  }
+
   if (!data.cohort && process.env.NODE_ENV === "production") {
     // Loud on purpose. A null cohort here means the marketing site is serving
     // FALLBACK_COHORT — dates and price hand-synced on a date in the past —
     // and every other symptom of that is invisible.
+    //
+    // The two cases read differently because they need different actions: a
+    // failed read is an outage that will clear itself, while a clean read with
+    // no cohort means nobody has published one and no amount of waiting fixes
+    // it. The old message asserted the second and was usually the first.
     console.error(
-      "[site-config] public read returned no cohort; marketing pages are on FALLBACK_COHORT",
+      data.readError
+        ? `[site-config] public read failed; marketing pages are on FALLBACK_COHORT: ${data.readError}`
+        : "[site-config] public read returned no upcoming or active cohort; marketing pages are on FALLBACK_COHORT",
     );
   }
   return assemble(data, opts.countryCode ?? null);
@@ -406,6 +438,15 @@ type SiteConfigData = {
   cohort: ActiveCohort | null;
   settings: SiteSettings;
   enrolledCount: number;
+  /**
+   * Set when a read failed, as opposed to succeeding and finding nothing.
+   *
+   * Both collapse to the same shape — `cohort: null`, fallback settings — and
+   * keeping them apart is the difference between "no cohort is published" and
+   * "Supabase timed out". The public loader also refuses to cache a config
+   * carrying one of these; see loadPublicData.
+   */
+  readError: string | null;
 };
 
 function assemble(
@@ -517,16 +558,26 @@ async function loadSiteConfigData(
   }
 
   let cohortRow: any = fallbackCohortRes.data ?? null;
+  // Collected rather than thrown: a marketing page still has to render, and
+  // every field above already has a fallback. What the callers need is to know
+  // the difference, which is what this carries out.
+  let readError: string | null =
+    fallbackCohortRes.error?.message ?? settingsRes.error?.message ?? null;
+
   if (pinnedId && pinnedId !== cohortRow?.id) {
     // A pin may point at a cohort of any status (that is the point of
     // pinning), so the upcoming/active candidate can't stand in for it.
     // A pin that resolves to nothing falls back to the candidate.
-    const { data } = await admin
+    const { data, error } = await admin
       .from("cohorts")
       .select("*, enrollments(count)")
       .eq("id", pinnedId)
       .maybeSingle();
     if (data) cohortRow = data;
+    // A *failed* pin read is not "the pin resolves to nothing" — silently
+    // standing in the candidate cohort here would publish the wrong dates and
+    // the wrong price under the admin's pin, which is worse than degrading.
+    else if (error) readError ??= error.message;
   }
   const cohort = cohortRow ? toCohort(cohortRow) : null;
 
@@ -536,5 +587,5 @@ async function loadSiteConfigData(
   const embeddedCount = cohortRow?.enrollments?.[0]?.count;
   const enrolledCount = typeof embeddedCount === "number" ? embeddedCount : 0;
 
-  return { cohort, settings, enrolledCount };
+  return { cohort, settings, enrolledCount, readError };
 }

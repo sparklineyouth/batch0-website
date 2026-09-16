@@ -12,10 +12,16 @@ const SILENT_WEEKS_THRESHOLD = 2;
  * Auto-create an office-hours nudge for any student who has missed
  * 2+ consecutive check-ins. Writes:
  *   - one notification per assigned mentor ("nudge this student"),
- *     deep-linked to the student's profile
+ *     deep-linked to the student's profile, carrying a dedupe key so the
+ *     notifications table itself refuses a second copy
  *   - one row in at_risk_interventions keyed by (student_id, week_start)
  *     so the cron stays idempotent — a student already flagged this
- *     week is skipped on subsequent runs
+ *     week is skipped on subsequent runs, whether we read the flag up
+ *     front or learn it from the unique key mid-loop
+ *
+ * Idempotency is the whole contract here, so the run ABORTS rather than
+ * proceeds when it can't read this week's existing flags: a mentor nudged
+ * twice about the same student stops reading the nudges.
  *
  * The recipient (the mentor) can then propose a slot through the
  * existing office-hours flow. This cron doesn't book a slot itself —
@@ -47,7 +53,7 @@ export async function GET(req: Request) {
   }
   const cohortIds = activeCohorts.map((c) => c.id);
 
-  const [{ data: enrollments }, { data: recentCheckins }, { data: assignments }, { data: existingInterventions }] =
+  const [{ data: enrollments }, { data: recentCheckins }, { data: assignments }, { data: existingInterventions, error: interventionsErr }] =
     await Promise.all([
       admin
         .from("enrollments")
@@ -65,6 +71,19 @@ export async function GET(req: Request) {
         .select("student_id")
         .eq("week_start", currentWeek),
     ]);
+
+  // This one read IS the idempotency. Swallowing its error and carrying on
+  // with an empty set doesn't degrade gracefully — it re-processes every
+  // student already flagged this week, and the DB can only stop the duplicate
+  // intervention row, not the duplicate mentor nudge. So a failed read ends the
+  // run; the next Monday tick (or a manual re-run) is a full retry.
+  if (interventionsErr) {
+    console.error("[at-risk-intervene] intervention read failed", interventionsErr);
+    return NextResponse.json(
+      { ok: false, error: "intervention read failed" },
+      { status: 500 },
+    );
+  }
 
   const alreadyFlagged = new Set(
     (existingInterventions ?? []).map((r: any) => r.student_id),
@@ -104,8 +123,12 @@ export async function GET(req: Request) {
     const mentorId = mentorByStudent.get(e.user_id) ?? null;
     const profile = Array.isArray(e.user) ? e.user[0] : e.user;
 
-    // Idempotency: insert with the unique (student_id, week_start) key;
-    // we ignore the row that already exists.
+    // Idempotency: the unique (student_id, week_start) key is what decides
+    // whether this student has already been flagged this week, so a 23505 is
+    // not a failure — it is the answer "already handled", and it has to skip
+    // the nudge below as well. Matching on the message text used to let a
+    // duplicate fall THROUGH to the notification, which is how one bad read
+    // sent every mentor a second identical nudge.
     const { error: insErr } = await admin
       .from("at_risk_interventions")
       .insert({
@@ -114,13 +137,22 @@ export async function GET(req: Request) {
         missed_weeks: SILENT_WEEKS_THRESHOLD,
         reason: `No check-ins for ${SILENT_WEEKS_THRESHOLD}+ weeks`,
       });
-    if (insErr && !insErr.message.includes("duplicate")) {
-      console.error("[at-risk-intervene] insert failed", insErr);
+    if (insErr) {
+      if ((insErr as any).code !== "23505") {
+        console.error("[at-risk-intervene] insert failed", insErr);
+      }
       continue;
     }
+    // Remember the flag in-process too: enrollments are unique per (user,
+    // cohort), so a student in two simultaneously-active cohorts comes round
+    // this loop once per enrollment, and leaving that to the unique key means
+    // spending an insert to learn what we already know.
+    alreadyFlagged.add(e.user_id);
 
     // Notify the assigned mentor (in-app). Falls back to all cohort
-    // admins when the student has no mentor.
+    // admins when the student has no mentor. Keyed like checkin-nudge so
+    // notifications' partial unique index is the last line of defence if a
+    // re-run ever gets this far.
     if (mentorId) {
       await admin.from("notifications").insert({
         user_id: mentorId,
@@ -128,6 +160,7 @@ export async function GET(req: Request) {
         title: `${profile?.full_name ?? "A student"} needs a nudge`,
         body: "They've missed two check-ins. Want to offer office hours?",
         link: `/mentor/students/${e.user_id}`,
+        dedupe_key: `intervention:${e.user_id}:${currentWeek}`,
       });
     } else {
       const { data: admins } = await admin
@@ -142,6 +175,7 @@ export async function GET(req: Request) {
           title: `${profile?.full_name ?? "A student"} needs a mentor`,
           body: "Unassigned student missed two check-ins. Assign a mentor and offer office hours.",
           link: `/admin/students/${e.user_id}`,
+          dedupe_key: `intervention:${e.user_id}:${currentWeek}`,
         });
       }
     }

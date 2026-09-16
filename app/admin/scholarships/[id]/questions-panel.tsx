@@ -58,6 +58,13 @@ export function ScholarshipQuestionsPanel({
           setError(res.error);
           return;
         }
+        // Adopt the stored list. A question can be saved with a blank id
+        // (Safari and Firefox don't blur a label input when a <button> is
+        // clicked) and the server derives the permanent jsonb key; this state
+        // is what the next save sends, and revalidatePath won't reset it. Left
+        // holding "" it would re-derive a different key from a reworded label
+        // and orphan every answer filed under the first one.
+        if (res.data) setQuestions(res.data);
         setSaved(true);
       } catch (err: any) {
         setError(getActionError(err));
@@ -74,6 +81,7 @@ export function ScholarshipQuestionsPanel({
           setSaved(false);
         }}
         emptyHint="No extra questions yet. Without any, applying is a single button — which is right for some scholarships."
+        disabled={pending}
       />
 
       {error && (

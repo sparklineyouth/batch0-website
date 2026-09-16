@@ -185,11 +185,16 @@ async function putSetting(key: string, value: unknown) {
  * Written as one action rather than one per question so the whole form is
  * saved atomically — a partial save that added a question but lost a label
  * edit would be worse than a rejected one.
+ *
+ * Returns the custom questions as stored, ids and all, for the editor to adopt.
+ * Only the built-ins are keyed by something the client already knows; a custom
+ * question's id may have been derived here, and the client has to end up
+ * holding that exact key — see validateQuestionList.
  */
 export async function saveApplicationQuestions(input: {
   builtins: ApplicationQuestionsOverrides;
   custom: unknown;
-}): Promise<ActionResult> {
+}): Promise<ActionResult<CustomQuestion[]>> {
   return runAction({ name: "saveApplicationQuestions" }, async () => {
     await assertPermission("applications.form");
 
@@ -218,6 +223,7 @@ export async function saveApplicationQuestions(input: {
 
     revalidatePath("/apply");
     revalidatePath(PATH);
+    return config.custom;
   });
 }
 
@@ -227,10 +233,12 @@ export async function saveApplicationQuestions(input: {
  * Separate setting, separate action, because this block is asked BEFORE anyone
  * is accepted and can therefore only flag interest — the real, scholarship-
  * specific questions live on the scholarship itself and are saved below.
+ *
+ * Returns the list as stored so the editor can adopt any id derived here.
  */
 export async function saveScholarshipInterestQuestions(
   input: unknown,
-): Promise<ActionResult> {
+): Promise<ActionResult<CustomQuestion[]>> {
   return runAction({ name: "saveScholarshipInterestQuestions" }, async () => {
     await assertPermission("applications.form");
     const questions = cleanCustom(input, "Scholarship questions");
@@ -243,6 +251,7 @@ export async function saveScholarshipInterestQuestions(
 
     revalidatePath("/apply");
     revalidatePath(PATH);
+    return questions;
   });
 }
 
@@ -253,11 +262,13 @@ export async function saveScholarshipInterestQuestions(
  * questions decide who gets money, so editing them is a scholarship power, not
  * a form-editing one. The two sections sit on the same admin page for
  * convenience; they do not share a permission.
+ *
+ * Returns the list as stored so the editor can adopt any id derived here.
  */
 export async function saveScholarshipQuestions(
   scholarshipId: string,
   input: unknown,
-): Promise<ActionResult> {
+): Promise<ActionResult<CustomQuestion[]>> {
   return runAction({ name: "saveScholarshipQuestions" }, async () => {
     await assertPermission("scholarships.manage");
 
@@ -283,6 +294,7 @@ export async function saveScholarshipQuestions(
     revalidatePath(PATH);
     revalidatePath("/admin/scholarships");
     revalidatePath(`/dashboard/scholarships/${scholarship.slug}`);
+    return questions;
   });
 }
 

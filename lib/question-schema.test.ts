@@ -124,6 +124,37 @@ test("normalizeQuestion fills defaults and dedupes option values", () => {
   assert.equal(out.hidden, false);
 });
 
+test("normalizeQuestions derives a missing id instead of dropping the question", () => {
+  // Legacy tolerance for rows already in the database: both save paths fill a
+  // blank id before writing now, but a row stored before they did must still
+  // read under the key it would have been given rather than vanish from the
+  // form. Everything else malformed still goes, id or no id.
+  const out = normalizeQuestions([
+    { type: "text", label: "Why now?" },
+    { id: "9bad", type: "text", label: "Leading digit" },
+    { id: "ok", type: "wat", label: "Bad type" },
+    { id: "pick", type: "select", label: "Pick", options: [] },
+  ]);
+  assert.deepEqual(
+    out.map((x) => x.id),
+    ["why_now"],
+  );
+});
+
+test("a derived id never steals one held further down the list", () => {
+  // The entry below hasn't been parsed yet when the first one gets its id, so
+  // its claim has to be read straight off the raw list — otherwise both take
+  // `why_now` and one of them is dropped as a duplicate.
+  const out = normalizeQuestions([
+    { type: "text", label: "Why now?" },
+    { id: "why_now", type: "text", label: "Why now, really?" },
+  ]);
+  assert.deepEqual(
+    out.map((x) => x.id),
+    ["why_now_2", "why_now"],
+  );
+});
+
 test("normalizeQuestions drops duplicates and caps the list", () => {
   const raw = [
     { id: "a", type: "text", label: "A" },
@@ -213,11 +244,94 @@ test("validateQuestionDraft rejects required + removed", () => {
   assert.match(String(validateQuestionDraft(bad, [])), /can't also be required/);
 });
 
+test("validateQuestionDraft doesn't claim an id is taken when it isn't", () => {
+  // Reachable with a blank id when the save path's fill hasn't run — it is
+  // exported for a single draft — and "every numbered variant is taken" would
+  // then send the admin off rewording a question that was fine.
+  const free = String(validateQuestionDraft(q({ id: "", label: "Why now?" }), []));
+  assert.match(free, /field id must start with a letter/);
+  assert.doesNotMatch(free, /taken/);
+
+  // Genuinely exhausted: the base and every suffix up to the ceiling are gone.
+  const taken = [
+    "why_now",
+    ...Array.from({ length: 49 }, (_, i) => `why_now_${i + 2}`),
+  ];
+  assert.match(
+    String(validateQuestionDraft(q({ id: "", label: "Why now?" }), taken)),
+    /every numbered variant of it are taken/,
+  );
+});
+
 test("validateQuestionList reports the first problem across the list", () => {
   assert.equal(validateQuestionList([q({ id: "a" }), q({ id: "b" })]), null);
   assert.match(
     String(validateQuestionList([q({ id: "a" }), q({ id: "a" })])),
     /unique/,
+  );
+});
+
+// --- the save path fills a blank id, and only a blank one -------------------
+//
+// The bug these cover: macOS Safari and Firefox don't focus a <button> on
+// click, so the editor's blur never fires and a new question reaches the save
+// path with id "". It has to come back with the key it was stored under, and
+// a key that already exists has to survive a reworded label untouched.
+
+test("validateQuestionList fills a blank id from the label, in place", () => {
+  // In place because the caller stores the very array it validated — a copy
+  // would be checked and thrown away, and the row would land with no key.
+  const list = [q({ id: "", label: "Why now?" })];
+  assert.equal(validateQuestionList(list), null);
+  assert.equal(list[0].id, "why_now");
+});
+
+test("validateQuestionList never rewrites an id that already exists", () => {
+  // The invariant the whole module is built around: that id is the jsonb key
+  // every answer collected so far is filed under, so rewording the label must
+  // leave it alone. Rewriting it orphans the answers silently.
+  const list = [q({ id: "why_now", label: "Why this, now?" })];
+  assert.equal(validateQuestionList(list), null);
+  assert.equal(list[0].id, "why_now");
+});
+
+test("validateQuestionList gives two blank rows with one label distinct ids", () => {
+  const list = [
+    q({ id: "", label: "Why now?" }),
+    q({ id: "", label: "Why now?" }),
+  ];
+  assert.equal(validateQuestionList(list), null);
+  assert.deepEqual(
+    list.map((x) => x.id),
+    ["why_now", "why_now_2"],
+  );
+});
+
+test("a filled id never steals one held further down the list", () => {
+  // The second question is live — answers exist under `why_now`. The new row
+  // above it has to take the suffix, not the key in use.
+  const list = [
+    q({ id: "", label: "Why now?" }),
+    q({ id: "why_now", label: "Why now, really?" }),
+  ];
+  assert.equal(validateQuestionList(list), null);
+  assert.deepEqual(
+    list.map((x) => x.id),
+    ["why_now_2", "why_now"],
+  );
+});
+
+test("validateQuestionList explains a label no id can be built from", () => {
+  // Both of these used to be silently DROPPED by the scholarship save path,
+  // which normalized before it validated and then reported success — so the
+  // admin lost the question and never saw either message.
+  assert.match(
+    String(validateQuestionList([q({ id: "", label: "???" })])),
+    /no letter or number in this label/,
+  );
+  assert.match(
+    String(validateQuestionList([q({ id: "", label: "" })])),
+    /needs a label/,
   );
 });
 

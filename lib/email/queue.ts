@@ -8,7 +8,7 @@ import {
   skipReasonFor,
 } from "@/lib/email/conditions";
 import { isMissingTable, type TemplateRow } from "@/lib/email/store";
-import { parseCron, wasDue, CronParseError } from "@/lib/email/cron";
+import { parseCron, cronMatches, CronParseError, type ParsedCron } from "@/lib/email/cron";
 import { resolveAudience, audienceAddresses } from "@/lib/email/audience";
 import { isAudienceSegment } from "@/lib/email/catalog";
 
@@ -31,6 +31,11 @@ import { isAudienceSegment } from "@/lib/email/catalog";
 const MAX_ATTEMPTS = 3;
 // Exponential-ish backoff between retries, in minutes.
 const RETRY_DELAY_MINUTES = [5, 30];
+// How long a row may sit claimed as `sending` before the drain treats the
+// invocation that claimed it as gone. Comfortably past both the 60s function
+// ceiling and the five-minute cron interval, so reclaiming can never take a
+// row out from under a live send.
+const STRANDED_CLAIM_MINUTES = 10;
 
 export type DrainReport = {
   scheduledFired: number;
@@ -60,6 +65,14 @@ export async function drainEmailQueue(): Promise<DrainReport> {
     report.errors.push("Email tables not found — run migration 0052.");
     return report;
   }
+  // Settings read but unreadable: skip the tick rather than drain on the env
+  // defaults, which would send this batch from the wrong transport if the site
+  // is on SMTP. The next tick is five minutes out and the rows keep their
+  // place in the outbox, so waiting costs nothing.
+  if (settings.readError) {
+    report.errors.push(`Email settings unavailable: ${settings.readError}`);
+    return report;
+  }
 
   // Scheduled fan-out runs even when paused would be wrong: paused means "no
   // mail leaves", and queueing a week of Monday digests to release in a burst
@@ -85,16 +98,30 @@ export async function drainEmailQueue(): Promise<DrainReport> {
       try {
         const parsed = parseCron(automation.schedule_cron ?? "");
         const last = automation.last_run_at ? new Date(automation.last_run_at) : null;
-        if (!wasDue(parsed, last, now)) continue;
+        const dueMinute = dueMinuteFor(parsed, last, now);
+        if (dueMinute === null) continue;
 
-        const queued = await fanOutScheduled(automation, now);
+        const queued = await fanOutScheduled(automation, now, dueMinute);
         report.queued += queued;
         report.scheduledFired++;
 
-        await admin
+        // The clock is stamped AFTER the fan-out on purpose. Because the
+        // dedupe key names the due minute, a second fan-out of the same
+        // occurrence collapses on the dedupe index, so an invocation killed
+        // halfway through is healed by the next tick writing only the rows
+        // that are missing. Claiming the run first would instead leave that
+        // remainder stamped as done and silently unsent — duplicates traded
+        // for a whole audience quietly not getting their mail.
+        const { error: stampError } = await admin
           .from("email_automations")
           .update({ last_run_at: now.toISOString(), last_error: null })
           .eq("id", automation.id);
+        if (stampError) {
+          // Worth surfacing: the fan-out itself is idempotent now, but an
+          // automation whose clock never advances re-fans-out on every tick
+          // for the whole catch-up window.
+          report.errors.push(`${automation.name}: run not recorded — ${stampError.message}`);
+        }
       } catch (err: any) {
         const message =
           err instanceof CronParseError
@@ -104,10 +131,16 @@ export async function drainEmailQueue(): Promise<DrainReport> {
         // Stamp last_run_at anyway. A broken automation that never advances
         // its clock re-fails on every tick and fills the error list; the
         // failure is already recorded on the row for the admin to see.
-        await admin
-          .from("email_automations")
-          .update({ last_run_at: now.toISOString(), last_error: message })
-          .eq("id", automation.id);
+        // Guarded on its own because a throw here escapes this handler and
+        // takes every automation after this one down with it.
+        try {
+          await admin
+            .from("email_automations")
+            .update({ last_run_at: now.toISOString(), last_error: message })
+            .eq("id", automation.id);
+        } catch {
+          /* the failure itself is already in the report */
+        }
       }
     }
   } catch (err: any) {
@@ -116,6 +149,45 @@ export async function drainEmailQueue(): Promise<DrainReport> {
 
   // ---- Pass 2: retries ---------------------------------------------------
   try {
+    // Reclaim rows stranded in `sending`. A claim is only ever unwound by the
+    // process that made it, so an invocation that dies mid-batch — the 60s
+    // ceiling, a provider call with no timeout on it — leaves rows nothing
+    // will touch again: the due pass below only looks at `pending`, the retry
+    // pass at `failed`, and the admin's retry button refuses a `sending` row.
+    //
+    // They land in `failed` rather than straight back in `pending` because a
+    // strand can also mean the mail WAS delivered and only the result write
+    // died (dispatch's finish() logs that and moves on). Nothing on the row
+    // tells the two apart — status and provider_id are written together — so
+    // any reclaim risks a second copy to a real person. Routing through
+    // `failed` puts that risk behind the retry ladder below: attempt-bounded
+    // by MAX_ATTEMPTS, spaced by RETRY_DELAY_MINUTES, and carrying a reason
+    // the outbox shows. The trade is deliberate — a rare, attributable
+    // duplicate instead of either a silent instant re-send or mail that never
+    // arrives at all.
+    //
+    // No attempts filter here on purpose: a row at the attempt cap still has
+    // to leave `sending` so it shows up as a failure someone can act on.
+    const { data: reclaimed } = await admin
+      .from("email_outbox")
+      .update({
+        status: "failed",
+        last_error:
+          "Stranded mid-send — the drain that claimed this row died before recording a result",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("status", "sending")
+      .lt(
+        "updated_at",
+        new Date(Date.now() - STRANDED_CLAIM_MINUTES * 60_000).toISOString(),
+      )
+      .select("id");
+    if (reclaimed && reclaimed.length > 0) {
+      console.error(
+        `[email/queue] reclaimed ${reclaimed.length} row(s) stranded in sending`,
+      );
+    }
+
     const { data: retryable } = await admin
       .from("email_outbox")
       .select("id, attempts, updated_at")
@@ -251,6 +323,37 @@ function groupBy<T>(rows: T[], key: (row: T) => string): [string, T[]][] {
 }
 
 /**
+ * Which due minute does this schedule owe, if any? Null when nothing is due.
+ *
+ * `wasDue` answers yes/no, but the fan-out needs the occurrence's identity,
+ * not just its existence: the dedupe key has to name the minute the cron came
+ * due, or a fan-out that runs twice for one occurrence keys the second attempt
+ * on a later minute and writes a whole second audience instead of colliding
+ * with the first. The window walked here is deliberately the same one `wasDue`
+ * walks — same exclusive `after`, same catch-up cap — so the two can't
+ * disagree about whether something is owed.
+ *
+ * Newest-first, returning the most recent match rather than the oldest: a
+ * schedule finer than the drain interval can match several minutes in the
+ * window, and the oldest of those falls out of the window as `now` advances,
+ * which would hand the following tick a different stamp for the same work.
+ */
+function dueMinuteFor(
+  parsed: ParsedCron,
+  after: Date | null,
+  now: Date,
+  maxCatchUpMinutes = 60 * 24,
+): number | null {
+  const end = Math.floor(now.getTime() / 60000);
+  const startFrom = after ? Math.floor(after.getTime() / 60000) + 1 : end;
+  const start = Math.max(startFrom, end - maxCatchUpMinutes);
+  for (let m = end; m >= start; m--) {
+    if (cronMatches(parsed, new Date(m * 60000))) return m;
+  }
+  return null;
+}
+
+/**
  * Decide send/skip for every claimed row, in a bounded number of queries.
  *
  * The per-row version cost two queries each — one for the step, one for the
@@ -317,13 +420,21 @@ async function gateRows(
 /**
  * Queue one scheduled automation's steps for its whole audience.
  *
- * The dedupe key pins each send to the run's UTC minute, so two ticks racing
- * on the same due minute (a retried cron invocation, an overlapping manual
- * run) produce one email per person, not two.
+ * The dedupe key pins each send to the occurrence it belongs to — the UTC
+ * minute the cron came due, which the drainer passes as `dueMinute` — not to
+ * the minute this fan-out happens to run. That's what makes a second pass over
+ * one occurrence free: a retried cron invocation, a manual drain overlapping a
+ * tick, or a fan-out killed after 1500 of 2400 rows all collapse onto the same
+ * keys and produce one email per person, not two.
+ *
+ * With no `dueMinute` there is no occurrence to name and the key falls back to
+ * the invocation minute, which only dedupes callers landing inside the same
+ * UTC minute. That's the "Run now" button's contract, not the cron's.
  */
 export async function fanOutScheduled(
   automation: any,
   now: Date,
+  dueMinute?: number,
 ): Promise<number> {
   const audience = automation.audience ?? {};
   const segment = isAudienceSegment(audience.segment) ? audience.segment : "students";
@@ -333,7 +444,7 @@ export async function fanOutScheduled(
     includeParents: Boolean(audience.includeParents),
   });
   const addresses = audienceAddresses(members, Boolean(audience.includeParents));
-  const runStamp = Math.floor(now.getTime() / 60_000);
+  const runStamp = dueMinute ?? Math.floor(now.getTime() / 60_000);
 
   const steps = [...(automation.steps ?? [])]
     .filter((s: any) => s.enabled)

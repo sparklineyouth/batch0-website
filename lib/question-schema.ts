@@ -17,7 +17,8 @@
 // IMPORT-FREE ON PURPOSE. `npm test` runs lib/*.test.ts through Node's native
 // type stripping, which cannot resolve `@/` path aliases, and the admin editor
 // imports this into a client component. No Supabase, no next/headers, no env.
-// Everything here is a pure function over plain data.
+// Everything here is a pure function over plain data, with one documented
+// exception: validateQuestionList fills a blank id in place.
 // ---------------------------------------------------------------------------
 
 /**
@@ -82,11 +83,11 @@ export type QuestionOption = {
  * One admin-authored question.
  *
  * `id` is the jsonb key the answer is filed under, so it is effectively
- * permanent: changing it orphans every answer already collected. The admin
- * editor derives it from the first label and then never offers to change it,
- * which is why `slugifyQuestionId` below has to produce something readable
- * rather than a uuid — an orphaned answer blob is far easier to read back
- * when its keys say `biggest_risk` instead of `q_7f3a`.
+ * permanent: changing it orphans every answer already collected. It is derived
+ * from the label while the question is still new and never offered for editing
+ * after that, which is why `slugifyQuestionId` below has to produce something
+ * readable rather than a uuid — an orphaned answer blob is far easier to read
+ * back when its keys say `biggest_risk` instead of `q_7f3a`.
  */
 export type CustomQuestion = {
   id: string;
@@ -207,6 +208,18 @@ function str(v: unknown, max: number): string {
   return typeof v === "string" ? v.slice(0, max) : "";
 }
 
+/**
+ * Read one string field off a not-yet-parsed entry.
+ *
+ * Needed by normalizeQuestions below, which has to look at an entry's label
+ * before normalizeQuestion has agreed to parse it at all.
+ */
+function rawString(raw: unknown, key: string): string {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
+  const v = (raw as Record<string, unknown>)[key];
+  return typeof v === "string" ? v.trim() : "";
+}
+
 function asQuestionType(v: unknown): QuestionType | null {
   return typeof v === "string" && (QUESTION_TYPES as readonly string[]).includes(v)
     ? (v as QuestionType)
@@ -269,13 +282,32 @@ export function normalizeQuestion(raw: unknown): CustomQuestion | null {
 /**
  * Parse a stored question list, dropping anything malformed and any duplicate
  * id. Always returns an array — never throws, for the reason above.
+ *
+ * An entry whose ONLY problem is a missing id gets one derived from its label
+ * instead of being dropped. That is legacy tolerance for rows already in the
+ * database, not a save-path safeguard: both save paths now fill a blank id
+ * through validateQuestionList before writing, so nothing stores an id-less
+ * row any more. The derivation is the same one validateQuestionList applies,
+ * so a legacy row still reads under the key it would have been given.
  */
 export function normalizeQuestions(raw: unknown): CustomQuestion[] {
   if (!Array.isArray(raw)) return [];
+  // Every id claimed anywhere in the list, including entries further down that
+  // haven't been parsed yet — a derived id must not steal one of theirs.
+  const taken = raw.map((entry) => rawString(entry, "id")).filter(Boolean);
   const out: CustomQuestion[] = [];
   const seen = new Set<string>();
   for (const entry of raw) {
-    const q = normalizeQuestion(entry);
+    let q = normalizeQuestion(entry);
+    if (!q && !rawString(entry, "id")) {
+      const derived = uniqueQuestionId(rawString(entry, "label"), taken);
+      // "" is uniqueQuestionId giving up. Leave the entry dropped rather than
+      // invent a permanent jsonb key out of a label with nothing in it.
+      if (derived) {
+        q = normalizeQuestion({ ...(entry as object), id: derived });
+        if (q) taken.push(q.id);
+      }
+    }
     if (!q || seen.has(q.id)) continue;
     seen.add(q.id);
     out.push(q);
@@ -307,6 +339,28 @@ export function validateQuestionDraft(
   q: CustomQuestion,
   otherIds: readonly string[],
 ): string | null {
+  // A blank id usually means the LABEL is the problem: the save path fills a
+  // blank id from the label before it gets here, so the only ones that survive
+  // are the ones no label could name. Saying so beats the id-shape message
+  // below, which would blame the admin for an id they never typed and the
+  // editor promised to write for them.
+  //
+  // Only the two failures fillBlankQuestionIds actually hits are claimed here.
+  // This function is exported for a single draft, so it can be reached without
+  // that fill having run at all — and "every numbered variant is taken" would
+  // then be a fabrication that sends the admin off rewording a question that
+  // was fine. Anything else falls through to the id-shape message.
+  if (!q.id) {
+    const label = q.label.trim();
+    if (!label) return "Every question needs a label.";
+    const base = slugifyQuestionId(label);
+    if (!base) {
+      return `"${label}": there's no letter or number in this label to build a field id from. Add a word to it.`;
+    }
+    if (!uniqueQuestionId(label, otherIds)) {
+      return `"${label}": the field id "${base}" and every numbered variant of it are taken. Reword this question.`;
+    }
+  }
   if (!QUESTION_ID_PATTERN.test(q.id)) {
     return `"${q.label || q.id}": the field id must start with a letter and use only lowercase letters, numbers and underscores.`;
   }
@@ -368,14 +422,62 @@ export function validateQuestionDraft(
 }
 
 /**
+ * Give every id-less question in the list a key derived from its label.
+ *
+ * MUTATES the questions in place. That is the point: both save paths validate
+ * the very array they go on to store, so filling the id here is what puts the
+ * derived key in the database — a copy would be validated and thrown away.
+ *
+ * Typed as a mutable array for that reason. `readonly CustomQuestion[]` read as
+ * a promise not to touch the input, which this function has never kept — it
+ * doesn't stop the `q.id =` below, it only hides it from the caller, and a
+ * caller who believed it and passed a frozen array would get a TypeError
+ * thrown from inside a server action.
+ *
+ * One pass over the whole list rather than one question at a time, so two
+ * blank rows carrying the same label get `why_now` and `why_now_2` instead of
+ * both taking `why_now` and one of them being dropped as a duplicate the next
+ * time the list is read.
+ */
+function fillBlankQuestionIds(questions: CustomQuestion[]): void {
+  const taken = questions.map((q) => q.id).filter(Boolean);
+  for (const q of questions) {
+    // An id that exists is the jsonb key answers are already filed under. Only
+    // a blank one may be written, and only once.
+    if (q.id) continue;
+    const id = uniqueQuestionId(q.label, taken);
+    // "" is uniqueQuestionId giving up — nothing usable in the label, or the
+    // collision ceiling. Leave it blank so validateQuestionDraft can say which
+    // it was, rather than inventing a key that outlives the mistake.
+    if (!id) continue;
+    q.id = id;
+    taken.push(id);
+  }
+}
+
+/**
  * Validate a whole list an admin is saving. Returns the first problem, or null.
+ *
+ * Blank ids are filled from their labels first, IN PLACE — hence the mutable
+ * parameter type. The editor derives the id when the label input loses focus,
+ * but macOS Safari and Firefox don't focus a <button> on click and implicit
+ * form submission doesn't blur either, so "type the label, click Save" arrives
+ * here with the id still blank on the commonest browsers — and rejecting it
+ * would show the admin an error about an id they were told they didn't have to
+ * write.
+ *
+ * Whatever this fills in is now the permanent jsonb key, so every save action
+ * hands the validated list back to its editor to adopt. A client that kept
+ * `id: ""` after a successful save would derive a SECOND key from a reworded
+ * label on the next one and orphan every answer filed under the first.
  */
 export function validateQuestionList(
-  questions: readonly CustomQuestion[],
+  questions: CustomQuestion[],
 ): string | null {
   if (questions.length > MAX_QUESTIONS) {
     return `Too many questions (max ${MAX_QUESTIONS}).`;
   }
+  fillBlankQuestionIds(questions);
   const ids = questions.map((q) => q.id);
   for (let i = 0; i < questions.length; i += 1) {
     const others = ids.filter((_, j) => j !== i);
@@ -637,7 +739,9 @@ export function formatAnswer(
 
 /**
  * An empty question, ready for the admin editor's "Add question" button.
- * `id` is left blank: the editor fills it from the first label typed.
+ * `id` is left blank: it is derived from the label — in the editor when the
+ * label input loses focus, and again on the save path, which is the derivation
+ * that actually has to happen.
  */
 export function blankQuestion(type: QuestionType = "text"): CustomQuestion {
   return {

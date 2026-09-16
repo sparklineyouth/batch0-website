@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
-import {
-  ScholarshipForm,
-  emptyScholarshipForm,
-} from "../scholarship-form";
+import { ScholarshipForm } from "../scholarship-form";
+import { emptyScholarshipForm } from "../form-values";
 
 export const metadata = { title: "New scholarship · Admin" };
 export const dynamic = "force-dynamic";

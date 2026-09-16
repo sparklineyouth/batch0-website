@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireMentor } from "@/lib/auth";
+import { requireMentor, getCapabilities } from "@/lib/auth";
+import { canAccessAdmin } from "@/lib/permissions";
+import { assertMentorCanAccessStudent } from "@/lib/mentor-scope";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { ArrowLeft, BookOpen, CheckCircle, MessageSquare, Rocket, FolderOpen } from "lucide-react";
@@ -20,10 +22,35 @@ export default async function StudentProgressPage(
   }
 ) {
   const params = await props.params;
-  await requireMentor();
-  const admin = createAdminClient();
-
   const studentId = params.id;
+  const mentor = await requireMentor();
+  // Request-cached alongside the guard above, so this is not a second read.
+  const caps = await getCapabilities();
+
+  // Cohort isolation, and it has to come before the reads below — the student
+  // id arrives in the URL, so those reads (email, check-in prose, every
+  // uploaded file) are the leak, and `mentor.panel` on its own says nothing
+  // about whether this student is the viewer's. Admin-area viewers keep the
+  // program-wide view they already have in /admin; everyone else must share a
+  // cohort with the student. Out of scope reads as a 404 rather than a 403 so
+  // the page doesn't confirm that a student in another cohort exists.
+  if (!canAccessAdmin(caps)) {
+    try {
+      await assertMentorCanAccessStudent({
+        callerId: mentor.id,
+        // requireMentor() has already proved the permission; the guard still
+        // branches on the role slug, so pass the role it means by "mentor"
+        // rather than the viewer's own, which may be a custom role that an
+        // admin granted mentor.panel.
+        callerRole: "mentor",
+        studentId,
+      });
+    } catch {
+      notFound();
+    }
+  }
+
+  const admin = createAdminClient();
 
   // Each select names only what its card renders — several of these tables
   // carry wide rows (profiles.ai_context, check-in prose) the page never

@@ -2,6 +2,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertPermission } from "@/lib/server-guards";
+import { canAccessAdmin } from "@/lib/permissions";
+import { assertMentorCanAccessStudent } from "@/lib/mentor-scope";
 import { notify } from "@/lib/notifications";
 import { isoWeekStart } from "@/lib/week";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
@@ -134,24 +137,21 @@ export async function postCheckinFeedback(
   checkinId: string,
   body: string,
 ): Promise<void> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
+  // /mentor is gated on `mentor.panel`, so the write names the same permission
+  // rather than the `mentor`/`admin` slugs — a custom role an admin granted it
+  // at /admin/roles sees this form and has to be able to submit it.
+  const { userId, caps } = await assertPermission("mentor.panel");
 
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Empty feedback");
   if (trimmed.length > 4000) throw new Error("Feedback too long");
 
+  const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, full_name")
-    .eq("id", user.id)
+    .select("full_name")
+    .eq("id", userId)
     .maybeSingle();
-  if (!profile || (profile.role !== "mentor" && profile.role !== "admin")) {
-    throw new Error("Forbidden");
-  }
 
   const admin = createAdminClient();
   const { data: checkin } = await admin
@@ -161,9 +161,23 @@ export async function postCheckinFeedback(
     .maybeSingle();
   if (!checkin) throw new Error("Check-in not found");
 
+  // Feedback is a write onto a student's record and a notification into their
+  // inbox, so it carries the same cohort tie the student detail page and file
+  // feedback require. Admin-area viewers stay program-wide.
+  if (!canAccessAdmin(caps)) {
+    await assertMentorCanAccessStudent({
+      callerId: userId,
+      // mentor.panel is proved above; the guard still branches on the role
+      // slug, so pass the role it means by "mentor" rather than the viewer's
+      // own, which may be a custom role holding the permission.
+      callerRole: "mentor",
+      studentId: checkin.user_id,
+    });
+  }
+
   const { error } = await admin.from("checkin_feedback").insert({
     checkin_id: checkinId,
-    author_id: user.id,
+    author_id: userId,
     body: trimmed,
   });
   if (error) throw new Error(error.message);
@@ -171,7 +185,7 @@ export async function postCheckinFeedback(
   await notify({
     userId: checkin.user_id,
     type: "checkin_feedback",
-    title: `${profile.full_name ?? "Your mentor"} left feedback on your check-in`,
+    title: `${profile?.full_name ?? "Your mentor"} left feedback on your check-in`,
     body: trimmed.slice(0, 200),
     link: "/dashboard/checkin",
   });

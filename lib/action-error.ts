@@ -1,3 +1,5 @@
+import { unstable_rethrow } from "next/navigation";
+
 /**
  * Client-side helper for surfacing server-action errors safely.
  *
@@ -19,11 +21,24 @@
  *
  * Also logs the original error to the browser console so it stays
  * available for in-DevTools debugging.
+ *
+ * Framework control-flow errors are the one exception: they are
+ * re-thrown, not turned into a string. See the first line of the body.
  */
 export function getActionError(
   err: unknown,
   fallback = "Something went wrong. Please try again.",
 ): string {
+  // An action that redirects rejects its client-side promise with a
+  // control-flow Error whose message is the literal "NEXT_REDIRECT"
+  // (notFound() arrives as the digest "NEXT_HTTP_ERROR_FALLBACK;404"),
+  // precisely so RedirectBoundary can catch it further up. Every `catch`
+  // in the app funnels through this helper, so stringifying one here both
+  // shows the student "NEXT_REDIRECT" in the form's error slot and
+  // swallows the navigation. Next's own predicate rather than matching the
+  // digest ourselves, because the shapes it throws change between
+  // releases — the same reason lib/action-result.ts uses it server-side.
+  unstable_rethrow(err);
   if (typeof window !== "undefined") {
     // Log full error client-side so devs / power users can see the
     // digest in the browser console even when the UI hides the

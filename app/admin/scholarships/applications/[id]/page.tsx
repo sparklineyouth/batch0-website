@@ -32,13 +32,19 @@ export default async function ScholarshipApplicationPage(props: {
   const canManage = can(viewer.caps, "scholarships.manage");
 
   const admin = createAdminClient();
-  const { data: row } = await admin
+  const { data: row, error } = await admin
     .from("scholarship_applications")
     .select(
-      "*, scholarship:scholarships(*), student:profiles!scholarship_applications_user_id_fkey(full_name, email, contact_email)",
+      "*, scholarship:scholarships(*), student:profiles!scholarship_applications_user_id_fkey(full_name, email)",
     )
     .eq("id", id)
     .maybeSingle();
+  // A read that FAILED is not an application that doesn't exist. Folding the
+  // two together is how a bad column name in this select turned every row in
+  // the queue into a 404 with nothing logged anywhere.
+  if (error) {
+    throw new Error(`[scholarships] application read failed: ${error.message}`);
+  }
   if (!row) notFound();
 
   const app = mapScholarshipApplication(row as Record<string, any>);
@@ -268,6 +274,6 @@ function normalizeStudent(raw: unknown): { name: string; email: string } {
   const row = (s ?? {}) as Record<string, any>;
   return {
     name: row.full_name || row.email || "A student",
-    email: row.contact_email || row.email || "",
+    email: row.email || "",
   };
 }

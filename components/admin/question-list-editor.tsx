@@ -34,12 +34,29 @@ export function QuestionListEditor({
   /** Ids that already exist elsewhere on the same form — kept unique against them. */
   reservedIds = [],
   emptyHint = "No extra questions yet.",
+  /**
+   * Freeze the rows while a save is in flight.
+   *
+   * Not cosmetic. On success the parent adopts the list the action returns, so
+   * that the id the database assigned to a new question is the id the editor
+   * holds from then on. Anything typed between the click and the response is
+   * not in that list and is discarded by the adoption — the admin would watch
+   * their words revert under a green "Saved." Freezing removes the window
+   * instead of trying to merge across it, which is the only option that can't
+   * end with two keys for one question.
+   */
+  disabled = false,
 }: {
   questions: CustomQuestion[];
   onChange: (next: CustomQuestion[]) => void;
   reservedIds?: string[];
   emptyHint?: string;
+  disabled?: boolean;
 }) {
+  // Scopes the document-level listener below to this editor's own rows: two
+  // instances share the page on /admin/application-questions.
+  const rootRef = React.useRef<HTMLFieldSetElement>(null);
+
   function patch(index: number, next: Partial<CustomQuestion>) {
     onChange(questions.map((q, i) => (i === index ? { ...q, ...next } : q)));
   }
@@ -51,19 +68,77 @@ export function QuestionListEditor({
    * collected is filed under, so renaming the label of a live question must
    * not orphan its answers. This is the single most consequential rule in the
    * editor and the reason the id is shown on screen rather than hidden.
+   *
+   * Deliberately on blur and not on each keystroke. Deriving it as the admin
+   * typed froze the id at whatever the first character slugified to — "What's
+   * the biggest risk?" was filed under `w` — because the very next keystroke
+   * saw a non-empty id and took the frozen branch. Blur means the label is
+   * whole by the time we look at it.
+   *
+   * Not the guarantee, though: macOS Safari and Firefox don't focus a <button>
+   * on click, so clicking Save right after typing fires no blur at all, and
+   * Enter inside the /apply form submits without one either. Two things cover
+   * that. The effect below commits on pointerdown, which fires whether or not
+   * the button takes focus. And every parent's save action fills a still-blank
+   * id (validateQuestionList) and RETURNS the list it stored for the parent to
+   * adopt, so even a save that leaves here with `id: ""` ends with the client
+   * holding the key the database now has — which is what stops the next label
+   * edit from deriving a second key and orphaning the answers under the first.
+   * What blur buys on top is the <code> above showing the real key while the
+   * wording is still editable.
    */
-  function setLabel(index: number, label: string) {
+  function commitId(index: number) {
     const q = questions[index];
-    if (q.id) {
-      patch(index, { label });
-      return;
-    }
+    if (q.id || !q.label.trim()) return;
     const taken = [
       ...reservedIds,
       ...questions.filter((_, i) => i !== index).map((x) => x.id),
     ].filter(Boolean);
-    patch(index, { label, id: uniqueQuestionId(label, taken) });
+    const id = uniqueQuestionId(q.label, taken);
+    if (id) patch(index, { id });
   }
+
+  // Registered once, so it has to reach the CURRENT commitId rather than the
+  // one closed over by the render that installed it.
+  const commitIdRef = React.useRef(commitId);
+  React.useEffect(() => {
+    commitIdRef.current = commitId;
+  });
+
+  /**
+   * Commit a blank id when the pointer goes down somewhere else.
+   *
+   * The blur above is the ordinary path; this is the one that survives a
+   * browser that never fires it. macOS Safari and Firefox don't make a
+   * <button> mouse-focusable, so clicking Save moves no focus and blurs no
+   * input — pointerdown fires regardless, in the capture phase, before the
+   * click handler that reads the list.
+   *
+   * On the document rather than on this editor's own container because the
+   * Save button belongs to the parent and sits outside it. Scoped back down by
+   * only ever committing the row whose own label input is focused: exactly the
+   * row blur would have committed, and nothing else. A pointer landing
+   * somewhere is no evidence that some other row's half-typed label is
+   * finished, and an id derived from half a label is permanent.
+   */
+  React.useEffect(() => {
+    function settleFocusedLabel(e: PointerEvent) {
+      const root = rootRef.current;
+      const active = document.activeElement;
+      if (!root || !active || !root.contains(active)) return;
+      const attr = active.getAttribute("data-question-label");
+      if (attr === null) return;
+      const index = Number(attr);
+      if (!Number.isInteger(index)) return;
+      // A pointer landing inside the input being typed in — placing the
+      // caret, selecting a word — is not the label settling.
+      if (e.target instanceof Node && active.contains(e.target)) return;
+      commitIdRef.current(index);
+    }
+    document.addEventListener("pointerdown", settleFocusedLabel, true);
+    return () =>
+      document.removeEventListener("pointerdown", settleFocusedLabel, true);
+  }, []);
 
   function setType(index: number, type: QuestionType) {
     const nowHasOptions = hasOptions(type);
@@ -132,18 +207,31 @@ export function QuestionListEditor({
   }
 
   return (
-    <div className="space-y-4">
+    // A <fieldset disabled> rather than a `disabled` on each control: the
+    // attribute propagates to every form element inside it by spec, so an
+    // input added here later cannot quietly miss the freeze. Preflight already
+    // strips a fieldset's default margin, padding and border, so it lays out
+    // as the plain block this was before; min-w-0 undoes the one behaviour it
+    // does bring of its own, a min-inline-size that refuses to shrink.
+    <fieldset
+      ref={rootRef}
+      disabled={disabled}
+      aria-busy={disabled}
+      className="min-w-0 space-y-4"
+    >
       {questions.length === 0 && (
         <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-xs text-ink-soft">
           {emptyHint}
         </p>
       )}
 
+      {/* Keyed by position, never by q.id: the id is data this editor itself
+          fills in, and a key that changes identity part-way through an edit
+          remounts the row and throws away the focused input. Position is safe
+          here because the row holds no state of its own — every value below
+          reads out of questions[i]. */}
       {questions.map((q, i) => (
-        <section
-          key={`${q.id || "new"}-${i}`}
-          className="rounded-xl border border-line bg-wash p-4"
-        >
+        <section key={i} className="rounded-xl border border-line bg-wash p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <code className="text-xs font-medium text-ink-soft">
               {q.id || <span className="italic">id set from the label</span>}
@@ -192,8 +280,12 @@ export function QuestionListEditor({
                 <Label htmlFor={`q-${i}-label`}>Question</Label>
                 <Input
                   id={`q-${i}-label`}
+                  // Read back off document.activeElement by the pointerdown
+                  // listener above: which row's label is being typed in.
+                  data-question-label={i}
                   value={q.label}
-                  onChange={(e) => setLabel(i, e.target.value)}
+                  onChange={(e) => patch(i, { label: e.target.value })}
+                  onBlur={() => commitId(i)}
                   placeholder="What's the biggest risk to your project?"
                 />
               </div>
@@ -306,6 +398,6 @@ export function QuestionListEditor({
           That's the maximum of {MAX_QUESTIONS} questions.
         </p>
       )}
-    </div>
+    </fieldset>
   );
 }

@@ -81,6 +81,16 @@ export function ScholarshipQuestionsEditor({
           setError(res.error);
           return;
         }
+        // Adopt the stored list, so this state holds exactly the ids the
+        // database does. A question saved with a blank id got its permanent
+        // jsonb key derived on the server; keeping "" here would send it again
+        // next save and re-derive a different key from a reworded label,
+        // orphaning the answers already collected under the first one.
+        const stored = res.data;
+        if (stored) {
+          if (isShared) setShared(stored);
+          else setPerScholarship((prev) => ({ ...prev, [target]: stored }));
+        }
         setSaved(true);
       } catch (err: any) {
         setError(getActionError(err));
@@ -157,6 +167,7 @@ export function ScholarshipQuestionsEditor({
             ? "No shared scholarship questions. Add one and it appears for every applicant."
             : "No extra questions on this scholarship yet."
         }
+        disabled={pending}
       />
 
       {error && (

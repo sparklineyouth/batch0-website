@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireMentor, getCapabilities } from "@/lib/auth";
+import { canAccessAdmin } from "@/lib/permissions";
+import { mentorScope, mentorScopeFilter } from "@/lib/mentor-scope";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { CheckinFeedbackForm } from "./feedback-form";
@@ -13,9 +16,30 @@ export default async function MentorCheckinsPage(
   }
 ) {
   const searchParams = await props.searchParams;
+  const mentor = await requireMentor();
+  // Request-cached alongside the guard above, so this is not a second read.
+  const caps = await getCapabilities();
   const admin = createAdminClient();
   const week = searchParams.week || isoWeekStart();
   const cohortFilter = searchParams.cohort ?? "all";
+
+  // Every listed row renders a CheckinFeedbackForm, and posting feedback is
+  // guarded by lib/mentor-scope.ts — so unscoped, this page read out the
+  // check-in prose of every cohort and offered a form the write then refuses.
+  // Same scope as that guard: the cohorts the viewer holds a
+  // mentor_assignments row in, plus any student assigned to them directly (an
+  // assignment may carry no cohort). Admin-area viewers keep the program-wide
+  // list, exactly as on /mentor/students.
+  //
+  // The two agree on the rule but not on where the cohort comes from: a row
+  // carries the cohort_id copied onto it when the student saved it, while the
+  // guard reads the student's live enrollments. A student moved between cohorts
+  // after saving can still land on the wrong side of that, and the guard —
+  // never this list — is what decides whether the write lands.
+  const scope = canAccessAdmin(caps)
+    ? null
+    : await mentorScope(admin, mentor.id);
+  const scopeFilter = scope ? mentorScopeFilter(scope) : null;
 
   // The week picker only reaches back half a year. The table holds one row
   // per student per week, so a full scan grows without bound while pills
@@ -26,7 +50,8 @@ export default async function MentorCheckinsPage(
   );
 
   // Feedback rides the check-ins query as an embed; both that query and the
-  // picker depend only on searchParams, so all three go out in one wave.
+  // picker depend only on searchParams and the scope resolved above, so all
+  // three go out in one wave.
   let q = admin
     .from("student_checkins")
     .select(
@@ -39,18 +64,35 @@ export default async function MentorCheckinsPage(
       ascending: true,
     });
   if (cohortFilter !== "all") q = q.eq("cohort_id", cohortFilter);
+  // The cohort pill can only ever narrow this: the scope is ANDed on top, so a
+  // hand-typed `?cohort=` for someone else's cohort still returns nothing.
+  if (scopeFilter) q = q.or(scopeFilter);
 
-  const [{ data: cohorts }, { data: weeks }, { data: checkins }] =
-    await Promise.all([
-      admin.from("cohorts").select("id, name").order("starts_on"),
-      admin
-        .from("student_checkins")
-        .select("week_start")
-        .gte("week_start", pickerFloor)
-        .order("week_start", { ascending: false })
-        .limit(1000),
-      q,
-    ]);
+  // Same scope on the picker — a week pill built from other cohorts' check-ins
+  // leads to a page that renders "no check-ins" and reads like a bug.
+  let weeksQuery = admin
+    .from("student_checkins")
+    .select("week_start")
+    .gte("week_start", pickerFloor)
+    .order("week_start", { ascending: false })
+    .limit(1000);
+  if (scopeFilter) weeksQuery = weeksQuery.or(scopeFilter);
+
+  // A mentor with no assignments at all is in scope for nobody, so skip both
+  // reads rather than run them wide.
+  const blocked = scope !== null && scopeFilter === null;
+  const [{ data: cohorts }, weeksRes, checkinsRes] = await Promise.all([
+    admin.from("cohorts").select("id, name").order("starts_on"),
+    blocked ? null : weeksQuery,
+    blocked ? null : q,
+  ]);
+  const weeks = weeksRes?.data ?? null;
+  const checkins = checkinsRes?.data ?? null;
+
+  // The pills must not advertise cohorts this page won't list anyone from.
+  const visibleCohorts = (cohorts ?? []).filter(
+    (c: any) => !scope || scope.cohortIds.includes(c.id),
+  );
 
   // Distinct weeks for the picker. Falls back to "this week" if there's
   // no data yet.
@@ -91,7 +133,7 @@ export default async function MentorCheckinsPage(
           label="All"
           active={cohortFilter === "all"}
         />
-        {(cohorts ?? []).map((c: any) => (
+        {visibleCohorts.map((c: any) => (
           <Pill
             key={c.id}
             href={`/mentor/checkins?week=${week}&cohort=${c.id}`}

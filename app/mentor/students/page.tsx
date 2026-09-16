@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireMentor, getCapabilities } from "@/lib/auth";
+import { canAccessAdmin } from "@/lib/permissions";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -11,8 +13,21 @@ export default async function MentorStudentsPage(
   }
 ) {
   const searchParams = await props.searchParams;
+  const mentor = await requireMentor();
+  // Request-cached alongside the guard above, so this is not a second read.
+  const caps = await getCapabilities();
   const admin = createAdminClient();
   const cohortFilter = searchParams.cohort ?? "all";
+
+  // "Students enrolled in your cohorts" below has to be true: unscoped, this
+  // table listed every enrolled student in the program and handed out a link
+  // to each one's detail page. The scope mirrors lib/mentor-scope.ts, which is
+  // what that page enforces — the cohorts the viewer holds a mentor_assignments
+  // row in, plus any student assigned to them directly (an assignment may
+  // carry no cohort). Admin-area viewers keep the program-wide list.
+  const scope = canAccessAdmin(caps)
+    ? null
+    : await mentorScope(admin, mentor.id);
 
   // The completed-lesson column only needs a number per student, so it rides
   // the enrollments query as a filtered count embed instead of a second
@@ -29,13 +44,35 @@ export default async function MentorStudentsPage(
   if (cohortFilter !== "all") {
     enrollmentsQuery = enrollmentsQuery.eq("cohort_id", cohortFilter);
   }
+  // Both halves of the scope sit on `enrollments`, so they apply as one OR on
+  // top of whatever the cohort pill asked for. Either half can be empty and
+  // PostgREST rejects an empty `in.()`, so only the halves with ids go in.
+  const scopeFilter = scope
+    ? [
+        scope.cohortIds.length
+          ? `cohort_id.in.(${scope.cohortIds.join(",")})`
+          : null,
+        scope.studentIds.length
+          ? `user_id.in.(${scope.studentIds.join(",")})`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(",")
+    : null;
+  if (scopeFilter) enrollmentsQuery = enrollmentsQuery.or(scopeFilter);
 
-  const [{ data: cohorts }, { data: enrollments }] = await Promise.all([
+  const [{ data: cohorts }, enrolled] = await Promise.all([
     admin.from("cohorts").select("id, name").order("starts_on"),
-    enrollmentsQuery,
+    // A mentor with no assignments at all is in scope for nobody, so skip the
+    // read rather than run it wide.
+    scope && !scopeFilter ? null : enrollmentsQuery,
   ]);
 
-  const rows = (enrollments ?? []) as any[];
+  const rows = (enrolled?.data ?? []) as any[];
+  // The pills must not advertise cohorts the table won't list anyone from.
+  const visibleCohorts = (cohorts ?? []).filter(
+    (c: any) => !scope || scope.cohortIds.includes(c.id),
+  );
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -49,7 +86,7 @@ export default async function MentorStudentsPage(
           Cohort
         </span>
         <Filter href="/mentor/students" label="All" active={cohortFilter === "all"} />
-        {(cohorts ?? []).map((c: any) => (
+        {visibleCohorts.map((c: any) => (
           <Filter
             key={c.id}
             href={`/mentor/students?cohort=${c.id}`}
@@ -107,6 +144,29 @@ export default async function MentorStudentsPage(
       </Card>
     </div>
   );
+}
+
+/**
+ * Which cohorts and which individual students one mentor may list. Read once
+ * per render and applied to both the table and the cohort pills.
+ */
+async function mentorScope(
+  admin: ReturnType<typeof createAdminClient>,
+  mentorId: string,
+): Promise<{ cohortIds: string[]; studentIds: string[] }> {
+  const { data: assignments } = await admin
+    .from("mentor_assignments")
+    .select("student_id, cohort_id")
+    .eq("mentor_id", mentorId);
+  const rows = (assignments ?? []) as any[];
+  return {
+    cohortIds: [
+      ...new Set(
+        rows.map((a) => a.cohort_id as string | null).filter((id): id is string => !!id),
+      ),
+    ],
+    studentIds: [...new Set(rows.map((a) => a.student_id as string))],
+  };
 }
 
 function Filter({

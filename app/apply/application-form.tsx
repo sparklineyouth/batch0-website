@@ -400,7 +400,10 @@ export function ApplicationForm({
       }
     }, 1500);
     return () => clearTimeout(timer);
-    // Keying the effect on form serialized ensures any change schedules a save.
+    // Every editable surface has to be listed here or its keystrokes never
+    // schedule a save: the 17 built-in fields, plus `extra` for the
+    // admin-authored and scholarship-interest answers. `extra` only changes
+    // identity when setExtraAnswer runs, so it costs no spurious saves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     form.full_name,
@@ -420,6 +423,7 @@ export function ApplicationForm({
     form.linkedin_url,
     form.resume_url,
     form.portfolio_url,
+    extra,
   ]);
 
   // Save on unload / tab hidden so a closed tab keeps the latest draft.

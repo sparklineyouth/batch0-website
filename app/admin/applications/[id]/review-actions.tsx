@@ -199,8 +199,13 @@ export function ReviewActions({
     !feeWaived &&
     (status === "accepted" || status === "submitted" || status === "draft");
 
-  // A parked acceptance only makes sense while the app is still undecided.
-  const hasSchedule = !!scheduledAcceptAt && !decided;
+  // A parked acceptance only makes sense while the app is still undecided —
+  // except on an `accepted` row, where the cron puts the schedule BACK when it
+  // accepted the student but couldn't confirm the announcement went out
+  // (app/api/cron/scheduled-accepts). That retry sends another acceptance email
+  // each time it runs, so it has to be visible and cancellable from here.
+  const hasSchedule =
+    !!scheduledAcceptAt && (!decided || status === "accepted");
   const scheduledLabel = scheduledAcceptAt
     ? new Date(scheduledAcceptAt).toLocaleString(undefined, {
         weekday: "short",
@@ -299,13 +304,25 @@ export function ReviewActions({
       )}
 
       {/* A parked acceptance: shown while the app is still undecided so the
-          reviewer can see it's queued and back out. The cron fires it. */}
+          reviewer can see it's queued and back out. The cron fires it — and on
+          an already-accepted row the same schedule means the cron is retrying
+          the announcement, so the copy says which of the two this is. */}
       {hasSchedule && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/40 bg-amber-400/[0.06] px-3 py-2.5">
           <p className="text-sm text-ink-soft">
-            <span aria-hidden>⏰</span> Auto-accepts{" "}
-            <strong className="text-ink">{scheduledLabel}</strong>
-            {scheduledAcceptNotes ? " — with the notes below." : "."}
+            <span aria-hidden>⏰</span>{" "}
+            {status === "accepted" ? (
+              <>
+                Accepted, but the announcement never confirmed — the system is
+                retrying the acceptance email. Cancel to stop it.
+              </>
+            ) : (
+              <>
+                Auto-accepts{" "}
+                <strong className="text-ink">{scheduledLabel}</strong>
+                {scheduledAcceptNotes ? " — with the notes below." : "."}
+              </>
+            )}
           </p>
           <Button
             variant="secondary"

@@ -113,6 +113,14 @@ export function QuestionEditor({
           setError(res.error);
           return;
         }
+        // Adopt the stored list. A new question can reach the server with a
+        // blank id (Safari and Firefox don't blur a label input when a
+        // <button> is clicked), the server derives the permanent jsonb key,
+        // and this state — not revalidatePath, which can't reset a useState —
+        // is what the NEXT save sends. Left holding "" it would derive a
+        // second key from a reworded label and orphan every answer already
+        // filed under the first.
+        if (res.data) setCustom(res.data);
         setSaved(true);
       } catch (err: any) {
         setError(getActionError(err));
@@ -277,6 +285,7 @@ export function QuestionEditor({
           }}
           reservedIds={fields.map((f) => f.key)}
           emptyHint="No extra questions yet. Add one and it shows up at the end of the application."
+          disabled={pending}
         />
       </div>
 

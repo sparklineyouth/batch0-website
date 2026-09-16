@@ -1,6 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { requireActor } from "@/lib/server-guards";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
@@ -27,10 +27,14 @@ export type SaveOutcome =
 /**
  * Save or submit the student's own scholarship application.
  *
- * `requireUser()` rather than a permission: this is a student acting on their
- * own row. The user id comes from the session and is never read from the
- * payload — lib/scholarships.ts scopes every write by it, so no shape of
- * request lets someone apply as somebody else.
+ * `requireActor()` rather than a permission: this is a student acting on their
+ * own row. Not `requireUser()` from lib/auth — that rides getClaims, so a
+ * deleted or globally-signed-out account would keep writing here for up to an
+ * hour; both actions below take the getUser() round trip instead, so
+ * revocation is immediate (see lib/server-guards.ts). The user id comes from
+ * the session and is never read from the payload — lib/scholarships.ts scopes
+ * every write by it, so no shape of request lets someone apply as somebody
+ * else.
  *
  * Eligibility, seat counts and the one-scholarship-per-student rule are all
  * re-checked inside saveScholarshipApplication. A server action is its own
@@ -44,20 +48,20 @@ export async function saveScholarshipApplicationAction(input: {
   submit: boolean;
 }): Promise<ActionResult<SaveOutcome>> {
   return runAction({ name: "saveScholarshipApplication" }, async () => {
-    const user = await requireUser();
+    const { userId } = await requireActor();
 
     // Same shape of limit as the /apply draft autosave (30/min): a form that
     // saves as you type needs headroom, but not unbounded headroom.
     const rl = await checkRateLimit({
       kind: "scholarship-save",
-      identifier: user.id,
+      identifier: userId,
       limit: 30,
       windowSeconds: 60,
     });
     if (!rl.ok) throw new Error("Too many saves. Give it a moment.");
 
     const result = await saveScholarshipApplication({
-      userId: user.id,
+      userId,
       slug: input.slug,
       answers: input.answers,
       submit: input.submit,
@@ -85,9 +89,9 @@ export async function withdrawScholarshipApplicationAction(
   applicationId: string,
 ): Promise<ActionResult> {
   return runAction({ name: "withdrawScholarshipApplication" }, async () => {
-    const user = await requireUser();
+    const { userId } = await requireActor();
     const result = await withdrawScholarshipApplication({
-      userId: user.id,
+      userId,
       applicationId,
     });
     if (!result.ok) throw new Error(result.error);
