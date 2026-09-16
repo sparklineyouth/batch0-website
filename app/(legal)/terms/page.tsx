@@ -11,7 +11,7 @@ export default function TermsPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Terms of Service</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: May 12, 2026
+        Last updated: September 15, 2026
       </p>
 
       <p>
@@ -38,9 +38,10 @@ export default function TermsPage() {
 
       <h2>Payments</h2>
       <p>
-        batch0 charges a one-time enrollment fee per cohort. All payments
-        are processed by Stripe. Prices are listed in USD. See our{" "}
-        <a href="/refund-policy">refund policy</a> for refund terms.
+        batch0 charges a one-time enrollment fee per cohort. Payments are
+        processed by Stripe or PayPal. Prices are listed in USD. Except as
+        stated in our <a href="/refund-policy">refund policy</a>, all
+        payments are final; by paying, you agree to that policy.
       </p>
 
       <h2>Acceptable use</h2>
@@ -109,7 +110,7 @@ export default function TermsPage() {
           name: "Terms of Service",
           description:
             "The terms that govern batch0, the live online startup accelerator for U.S. high schoolers.",
-          dateModified: "2026-05-12",
+          dateModified: "2026-09-15",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Terms", path: "/terms" }])} />
