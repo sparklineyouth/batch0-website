@@ -467,12 +467,19 @@ function LessonForm({
       </div>
 
       <div>
-        <Label>Description</Label>
+        <Label>Lesson (Markdown)</Label>
         <Textarea
-          rows={3}
+          rows={14}
           value={l.description ?? ""}
           onChange={(e) => setL({ ...l, description: e.target.value })}
         />
+        <p className="mt-1.5 text-xs text-ink-faint">
+          Students see this rendered as the written lesson, above the video (if
+          any) and the Mark-complete button. Headings, lists, tables, and links
+          all work; the seeded lessons use <span className="font-mono">## Goal</span>,
+          {" "}<span className="font-mono">### Do it now</span> (a numbered list) and{" "}
+          <span className="font-mono">### Check yourself</span>.
+        </p>
       </div>
 
       {/* Video upload */}

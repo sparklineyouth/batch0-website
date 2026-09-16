@@ -54,6 +54,10 @@ export default async function CoursePage() {
     .from("modules")
     .select("*, lessons:lessons(id, title, position, duration_seconds)")
     .eq("cohort_id", enrollment.cohort_id)
+    // Week first, then position: a week can hold more than one module (Week 1
+    // has its core lessons and a field guide), and this is the order the
+    // lesson page's "Next lesson" chain walks — the two must agree.
+    .order("week", { ascending: true })
     .order("position", { ascending: true });
 
   const completed = new Set(
