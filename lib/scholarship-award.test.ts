@@ -3,33 +3,55 @@ import assert from "node:assert/strict";
 import {
   awardDiscountCents,
   awardRefundCents,
+  awardTypeOf,
   callCredits,
   canAward,
   canBookCall,
   checkEligibility,
   describeAward,
+  describeMoney,
   formatMoney,
   fulfillmentFor,
+  hasAnyPerk,
+  hasMoney,
   normalizeCents,
   normalizeMentorCalls,
   normalizePercent,
+  normalizePerks,
+  perkAiAllowanceMultiplier,
+  perkSummaries,
   stageOf,
+  AI_BOOST_MULTIPLIER,
+  AWARD_PERK_DEFS,
+  MAX_DEMO_DAY_TICKETS,
+  MAX_FEEDBACK_CREDITS,
   MAX_MENTOR_CALLS,
+  NO_PERKS,
   type ApplicantState,
+  type AwardPerks,
   type AwardTerms,
   type ScholarshipOffer,
 } from "./scholarship-award.ts";
 
 const NOW = new Date("2026-09-15T12:00:00Z");
 
+function perks(over: Partial<AwardPerks> = {}): AwardPerks {
+  return { ...NO_PERKS, ...over };
+}
+
+/** Money terms by default; pass `amountCents: 0` for a perks-only award. */
 function terms(over: Partial<AwardTerms> = {}): AwardTerms {
   return {
-    awardType: "discount",
     amountCents: 5000,
     percent: null,
-    mentorCalls: 0,
+    perks: NO_PERKS,
     ...over,
   };
+}
+
+/** The old "mentor_calls" award: no money, N calls. */
+function callsOnly(n: number): AwardTerms {
+  return terms({ amountCents: 0, perks: perks({ mentorCalls: n }) });
 }
 
 function offer(over: Partial<ScholarshipOffer> = {}): ScholarshipOffer {
@@ -106,9 +128,19 @@ test("awardDiscountCents is zero once the balance is already zero", () => {
   assert.equal(awardDiscountCents(terms({ amountCents: 5000 }), 0), 0);
 });
 
-test("awardDiscountCents is zero for a calls-only award", () => {
-  const t = terms({ awardType: "mentor_calls", mentorCalls: 3, amountCents: 5000 });
-  assert.equal(awardDiscountCents(t, 13000), 0);
+test("awardDiscountCents is zero for a perks-only award", () => {
+  assert.equal(awardDiscountCents(callsOnly(3), 13000), 0);
+  assert.equal(
+    awardDiscountCents(terms({ amountCents: 0, perks: perks({ aiBoost: true }) }), 13000),
+    0,
+  );
+});
+
+test("money and perks stack: the discount is unchanged by the perks beside it", () => {
+  const both = terms({ amountCents: 5000, perks: perks({ mentorCalls: 3, aiBoost: true }) });
+  assert.equal(awardDiscountCents(both, 13000), 5000);
+  assert.equal(awardRefundCents(both, 13000), 5000);
+  assert.equal(fulfillmentFor(both, { hasPaid: false }), "discount");
 });
 
 // --- refund -----------------------------------------------------------------
@@ -129,9 +161,8 @@ test("awardRefundCents is zero when nothing was paid", () => {
   assert.equal(awardRefundCents(terms({ percent: 50 }), 0), 0);
 });
 
-test("awardRefundCents is zero for a calls-only award", () => {
-  const t = terms({ awardType: "mentor_calls", mentorCalls: 3 });
-  assert.equal(awardRefundCents(t, 13000), 0);
+test("awardRefundCents is zero for a perks-only award", () => {
+  assert.equal(awardRefundCents(callsOnly(3), 13000), 0);
 });
 
 // --- fulfillment ------------------------------------------------------------
@@ -145,8 +176,8 @@ test("fulfillmentFor routes money by whether they've paid", () => {
   );
 });
 
-test("fulfillmentFor leaves a calls award alone", () => {
-  const t = terms({ awardType: "mentor_calls", mentorCalls: 3 });
+test("fulfillmentFor leaves a perks-only award alone", () => {
+  const t = callsOnly(3);
   assert.equal(fulfillmentFor(t, { hasPaid: true }), "none");
   assert.equal(fulfillmentFor(t, { hasPaid: false }), "none");
 });
@@ -162,14 +193,110 @@ test("formatMoney drops cents on whole dollars", () => {
 test("describeAward reads naturally", () => {
   assert.equal(describeAward(terms({ amountCents: 5000 })), "$50 off tuition");
   assert.equal(describeAward(terms({ percent: 50 })), "50% off tuition");
+  assert.equal(describeAward(callsOnly(3)), "3 extra mentor calls");
+  assert.equal(describeAward(callsOnly(1)), "1 extra mentor call");
+});
+
+test("describeAward lists money first, then every perk, in roster order", () => {
+  const t = terms({
+    amountCents: 5000,
+    perks: perks({ mentorCalls: 2, feedbackCredits: 1, demoDayTickets: 3, aiBoost: true }),
+  });
   assert.equal(
-    describeAward(terms({ awardType: "mentor_calls", mentorCalls: 3 })),
-    "3 extra mentor calls",
+    describeAward(t),
+    "$50 off tuition · 2 extra mentor calls · 1 feedback credit · 3 Demo Day guest tickets · AI co-founder boost",
   );
+  // Perks only: no money phrase, no leading separator.
   assert.equal(
-    describeAward(terms({ awardType: "mentor_calls", mentorCalls: 1 })),
-    "1 extra mentor call",
+    describeAward(terms({ amountCents: 0, perks: perks({ feedbackCredits: 2, aiBoost: true }) })),
+    "2 feedback credits · AI co-founder boost",
   );
+  assert.equal(describeMoney(callsOnly(1)), null);
+  assert.equal(describeMoney(terms({ percent: 25 })), "25% off tuition");
+});
+
+// --- perks (0074) ------------------------------------------------------------
+
+test("every perk in the roster has a field on AwardPerks and a ceiling the DB agrees with", () => {
+  for (const d of AWARD_PERK_DEFS) {
+    assert.ok(d.key in NO_PERKS, `${d.key} has no field on AwardPerks`);
+    assert.ok(d.label.length > 0);
+    assert.ok(d.blurb.length > 0);
+    if (d.kind === "count") {
+      assert.ok(d.max >= 1);
+      assert.ok(d.unit.length > 0);
+    }
+  }
+  // Keep in lockstep with the check constraints in 0071/0074.
+  const maxOf = (key: string) => {
+    const d = AWARD_PERK_DEFS.find((p) => p.key === key);
+    return d && d.kind === "count" ? d.max : -1;
+  };
+  assert.equal(maxOf("mentorCalls"), MAX_MENTOR_CALLS);
+  assert.equal(maxOf("feedbackCredits"), MAX_FEEDBACK_CREDITS);
+  assert.equal(maxOf("demoDayTickets"), MAX_DEMO_DAY_TICKETS);
+  assert.equal(MAX_MENTOR_CALLS, 20);
+  assert.equal(MAX_FEEDBACK_CREDITS, 10);
+  assert.equal(MAX_DEMO_DAY_TICKETS, 10);
+});
+
+test("normalizePerks clamps to the ceilings and never over-grants on junk", () => {
+  assert.deepEqual(normalizePerks(null), NO_PERKS);
+  assert.deepEqual(normalizePerks(undefined), NO_PERKS);
+  assert.deepEqual(normalizePerks({}), NO_PERKS);
+  // A row read straight off the database.
+  assert.deepEqual(
+    normalizePerks({ mentorCalls: 3, feedbackCredits: 2, demoDayTickets: 1, aiBoost: true }),
+    { mentorCalls: 3, feedbackCredits: 2, demoDayTickets: 1, aiBoost: true },
+  );
+  // Over the ceiling lands ON the ceiling — the constraint would reject more.
+  assert.equal(normalizePerks({ mentorCalls: 999 }).mentorCalls, MAX_MENTOR_CALLS);
+  assert.equal(normalizePerks({ feedbackCredits: 50 }).feedbackCredits, MAX_FEEDBACK_CREDITS);
+  assert.equal(normalizePerks({ demoDayTickets: 50 }).demoDayTickets, MAX_DEMO_DAY_TICKETS);
+  // Junk lands on nothing, never on a ceiling.
+  assert.equal(normalizePerks({ mentorCalls: "lots" }).mentorCalls, 0);
+  assert.equal(normalizePerks({ mentorCalls: Number.NaN }).mentorCalls, 0);
+  assert.equal(normalizePerks({ mentorCalls: -4 }).mentorCalls, 0);
+  assert.equal(normalizePerks({ mentorCalls: null }).mentorCalls, 0);
+  // Numeric strings from a form box are fine; fractions are whole calls.
+  assert.equal(normalizePerks({ mentorCalls: "4" }).mentorCalls, 4);
+  assert.equal(normalizePerks({ mentorCalls: 2.9 }).mentorCalls, 2);
+  // The flag is strictly boolean true — "true" the string is not a boost.
+  assert.equal(normalizePerks({ aiBoost: "true" }).aiBoost, false);
+  assert.equal(normalizePerks({ aiBoost: 1 }).aiBoost, false);
+  assert.equal(normalizePerks({ aiBoost: true }).aiBoost, true);
+});
+
+test("hasMoney and hasAnyPerk are the two halves awardTypeOf sums", () => {
+  assert.equal(hasMoney(terms()), true);
+  assert.equal(hasMoney(terms({ amountCents: 0, percent: 10 })), true);
+  assert.equal(hasMoney(terms({ amountCents: 0 })), false);
+  assert.equal(hasAnyPerk(NO_PERKS), false);
+  assert.equal(hasAnyPerk(perks({ aiBoost: true })), true);
+
+  assert.equal(awardTypeOf(terms()), "discount");
+  assert.equal(awardTypeOf(callsOnly(2)), "perks");
+  assert.equal(awardTypeOf(terms({ perks: perks({ demoDayTickets: 1 }) })), "both");
+  // Worth nothing reads as "discount" only so the type stays total — the form
+  // and the constraint refuse it before it's ever stored.
+  assert.equal(awardTypeOf(terms({ amountCents: 0 })), "discount");
+});
+
+test("perkSummaries prints each granted perk once, singular where it's one", () => {
+  assert.deepEqual(perkSummaries(NO_PERKS), []);
+  assert.deepEqual(perkSummaries(perks({ mentorCalls: 1 })), ["1 extra mentor call"]);
+  assert.deepEqual(
+    perkSummaries(perks({ mentorCalls: 3, feedbackCredits: 1, demoDayTickets: 2, aiBoost: true })),
+    ["3 extra mentor calls", "1 feedback credit", "2 Demo Day guest tickets", "AI co-founder boost"],
+  );
+});
+
+test("the AI boost multiplier is 1 for everyone who doesn't hold it", () => {
+  assert.equal(perkAiAllowanceMultiplier(null), 1);
+  assert.equal(perkAiAllowanceMultiplier(undefined), 1);
+  assert.equal(perkAiAllowanceMultiplier(NO_PERKS), 1);
+  assert.equal(perkAiAllowanceMultiplier(perks({ aiBoost: true })), AI_BOOST_MULTIPLIER);
+  assert.ok(AI_BOOST_MULTIPLIER > 1);
 });
 
 // --- stage ------------------------------------------------------------------

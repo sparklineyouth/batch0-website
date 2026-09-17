@@ -14,17 +14,23 @@ import {
 import {
   awardDiscountCents,
   awardRefundCents,
+  awardTypeOf,
   callCredits,
   canAward,
   checkEligibility,
   describeAward,
   formatMoney,
   fulfillmentFor,
+  hasAnyPerk,
+  hasMoney,
   normalizeCents,
   normalizeMentorCalls,
   normalizePercent,
+  normalizePerks,
+  perkSummaries,
   stageOf,
   type ApplicantState,
+  type AwardPerks,
   type AwardTerms,
   type CallCredits,
   type Eligibility,
@@ -33,8 +39,9 @@ import {
   type ScholarshipAppStatus,
   type ScholarshipKind,
   type ScholarshipOffer,
-  type AwardType,
 } from "@/lib/scholarship-award";
+import { mintTicketToken, getDemoDayDetails } from "@/lib/demo-day-tickets";
+import { normalizeTicketEmail, TICKET_NAME_MAX } from "@/lib/demo-day-ticket-input";
 
 // ---------------------------------------------------------------------------
 // Scholarships — the database side. Migration 0071.
@@ -62,6 +69,8 @@ export const SCHOLARSHIP_AWARDED_CALLS_TEMPLATE = "scholarship.awarded_calls";
 export const SCHOLARSHIP_DECLINED_TEMPLATE = "scholarship.declined";
 export const SCHOLARSHIP_REFUNDED_TEMPLATE = "scholarship.refunded";
 export const SCHOLARSHIP_INVITE_TEMPLATE = "scholarship.invite";
+/** The complimentary Demo Day ticket a scholarship holder sends a guest (0074). */
+export const GUEST_TICKET_TEMPLATE = "demo_day.guest_ticket";
 
 /** The `site_settings` key holding the shared scholarship block on /apply. */
 export const SCHOLARSHIP_INTEREST_SETTING = "scholarship_interest_questions";
@@ -105,6 +114,13 @@ export type ScholarshipApplication = {
    */
   awardPercent: number | null | undefined;
   credits: CallCredits;
+  /**
+   * Every perk granted, snapshotted at award time (0071 for the calls, 0074
+   * for the rest). `perks.mentorCalls` equals `credits.granted`; the balance
+   * for calls lives on `credits`, and for the other perks is derived by the
+   * readers that fulfil them (see feedbackCreditBalance, guestTicketBalance).
+   */
+  perks: AwardPerks;
   fulfillment: Fulfillment;
   refundedCents: number;
   stripeRefundId: string | null;
@@ -116,10 +132,6 @@ export type ScholarshipApplication = {
 
 function asKind(v: unknown): ScholarshipKind {
   return v === "merit" || v === "learner" ? v : "need";
-}
-
-function asAwardType(v: unknown): AwardType {
-  return v === "mentor_calls" ? "mentor_calls" : "discount";
 }
 
 function asStatus(v: unknown): ScholarshipAppStatus {
@@ -158,11 +170,18 @@ export function mapScholarship(row: Record<string, any>): Scholarship {
     kind: asKind(row.kind),
     tagline: row.tagline ?? null,
     description: row.description ?? null,
+    // award_type is not read: it's a derived summary (awardTypeOf) and the
+    // terms are the truth. Absent perk columns (0074 not applied) read as no
+    // perks — the under-grant direction, never the over-grant.
     terms: {
-      awardType: asAwardType(row.award_type),
       amountCents: normalizeCents(row.award_cents),
       percent: normalizePercent(row.award_percent),
-      mentorCalls: normalizeMentorCalls(row.mentor_calls),
+      perks: normalizePerks({
+        mentorCalls: row.mentor_calls,
+        feedbackCredits: row.perk_feedback_credits,
+        demoDayTickets: row.perk_demo_day_tickets,
+        aiBoost: row.perk_ai_boost,
+      }),
     },
     seats: typeof row.seats === "number" ? row.seats : null,
     opensAt: row.opens_at ?? null,
@@ -200,6 +219,12 @@ export function mapScholarshipApplication(
     awardPercent:
       "award_percent" in row ? normalizePercent(row.award_percent) : undefined,
     credits: callCredits(row.mentor_calls_awarded, row.mentor_calls_used),
+    perks: normalizePerks({
+      mentorCalls: row.mentor_calls_awarded,
+      feedbackCredits: row.feedback_credits_awarded,
+      demoDayTickets: row.demo_day_tickets_awarded,
+      aiBoost: row.ai_boost_awarded,
+    }),
     fulfillment: asFulfillment(row.fulfillment),
     refundedCents: normalizeCents(row.refunded_cents),
     stripeRefundId: row.stripe_refund_id ?? null,
@@ -391,7 +416,14 @@ export async function scholarshipDiscountCentsForUser(
   try {
     const held = await getAwardForUser(client, userId, cohortId);
     if (!held) return 0;
-    if (held.scholarship.terms.awardType !== "discount") return 0;
+    // No money on the award: nothing recorded on it, and none on the catalog
+    // either (the catalog only decides for a pre-0072 row with no snapshot).
+    // A perks-only award reads 0 here; a money award keeps its snapshot even
+    // if the scholarship is later edited to carry no money.
+    const snapshotMoney =
+      held.app.awardCents > 0 ||
+      (held.app.awardPercent !== undefined && held.app.awardPercent !== null);
+    if (!snapshotMoney && !hasMoney(held.scholarship.terms)) return 0;
     // Already refunded (or being refunded) against a completed payment — the
     // money has moved once and must not move again as a discount.
     if (held.app.fulfillment === "refunded" || held.app.fulfillment === "refund_due") {
@@ -919,12 +951,12 @@ export async function awardScholarship(args: {
   // checkout re-resolves a percentage against the real price at the till, so
   // this figure is a record and a display value, not the final word.
   const listPrice = hasPaid ? payment.amountCents : await cohortPriceCents(admin, app.cohortId);
-  const awardCents =
-    terms.awardType === "discount"
-      ? hasPaid
-        ? awardRefundCents(terms, payment.amountCents, app.refundedCents)
-        : awardDiscountCents(terms, listPrice)
-      : 0;
+  const money = hasMoney(terms);
+  const awardCents = money
+    ? hasPaid
+      ? awardRefundCents(terms, payment.amountCents, app.refundedCents)
+      : awardDiscountCents(terms, listPrice)
+    : 0;
 
   const fulfillment = fulfillmentFor(terms, {
     hasPaid,
@@ -934,12 +966,19 @@ export async function awardScholarship(args: {
   const decided = {
     status: "awarded",
     award_cents: awardCents,
-    mentor_calls_awarded: normalizeMentorCalls(terms.mentorCalls),
+    mentor_calls_awarded: normalizeMentorCalls(terms.perks.mentorCalls),
     fulfillment,
     decision_note: args.note?.trim() || null,
     reviewed_by: args.reviewerId,
     reviewed_at: now.toISOString(),
     decided_at: now.toISOString(),
+  };
+  // The rest of the perks (0074), snapshotted for the same reason the calls
+  // are: the catalog can be edited next month, the award can't.
+  const perkSnapshot = {
+    feedback_credits_awarded: terms.perks.feedbackCredits,
+    demo_day_tickets_awarded: terms.perks.demoDayTickets,
+    ai_boost_awarded: terms.perks.aiBoost,
   };
 
   const record = (values: Record<string, unknown>) =>
@@ -963,13 +1002,22 @@ export async function awardScholarship(args: {
   // persists as a flat award rather than reverting to a share of tuition.
   let { data: updated, error: updateErr } = await record({
     ...decided,
-    award_percent: terms.awardType === "discount" ? terms.percent : null,
+    ...perkSnapshot,
+    award_percent: money ? terms.percent : null,
   });
-  // 0072 is applied by hand, after the deploy that needs it. While the column
-  // is absent, record the award without the snapshot rather than refusing to
-  // award at all — scholarshipDiscountCentsForUser falls back to the catalog
-  // percentage in exactly that window, which is the pre-0072 behaviour.
+  // 0072 and 0074 are applied by hand, after the deploy that needs them. While
+  // a column is absent, record the award without the snapshots rather than
+  // refusing to award at all — scholarshipDiscountCentsForUser falls back to
+  // the catalog percentage in exactly that window (the pre-0072 behaviour),
+  // and the perk readers fall back to "nothing extra" until 0074 lands. Said
+  // out loud, because the second fallback under-grants a real promise.
   if (updateErr && isMissingColumn(updateErr)) {
+    if (hasAnyPerk(terms.perks)) {
+      console.error(
+        "[scholarships] award recorded without its perk snapshot — run migration 0074_scholarship_perks.sql:",
+        updateErr.message,
+      );
+    }
     ({ data: updated, error: updateErr } = await record(decided));
   }
 
@@ -1034,27 +1082,42 @@ async function announceAward(args: {
 }) {
   const admin = createAdminClient();
   const summary = describeAward(args.terms);
-  const isCalls = args.terms.awardType === "mentor_calls";
+  const money = hasMoney(args.terms);
+  const perks = perkSummaries(args.terms.perks);
+  const calls = normalizeMentorCalls(args.terms.perks.mentorCalls);
+  // The perks as one sentence, for the money email to append and the perks
+  // email to lead with. Empty when the award is money alone, so the money
+  // template's `{{perks_line}}` renders as nothing rather than as a stray
+  // "It also comes with:".
+  const perksLine = perks.length
+    ? `${money ? "It also comes with" : "That's"}: ${perks.join(", ")}. Everything is on your scholarship page.`
+    : "";
 
   try {
     const to = await loadRecipient(admin, args.userId);
     if (to.email) {
-      if (isCalls) {
-        const calls = normalizeMentorCalls(args.terms.mentorCalls);
+      if (!money) {
+        // Perks only. The template key predates 0074 and is still called
+        // "awarded_calls" — renaming a key would orphan every copy admins
+        // have edited — but its copy now leads with the whole award.
         await sendTemplated(SCHOLARSHIP_AWARDED_CALLS_TEMPLATE, {
           to: to.email,
           toName: to.fullName,
           userId: args.userId,
           vars: {
             scholarship_name: args.scholarship.name,
+            award_summary: summary,
+            perks_line: perksLine,
             calls: String(calls),
             note: args.note ?? "",
           },
           dedupeKey: `scholarship-awarded:${args.applicationId}`,
           fallback: () =>
-            Templates.scholarshipAwardedCalls({
+            Templates.scholarshipAwardedPerks({
               name: to.fullName,
               scholarshipName: args.scholarship.name,
+              awardSummary: summary,
+              perks,
               calls,
               note: args.note,
             }),
@@ -1076,6 +1139,7 @@ async function announceAward(args: {
             award_summary: summary,
             amount,
             fulfillment_line: fulfillmentLine,
+            perks_line: perksLine,
             note: args.note ?? "",
           },
           dedupeKey: `scholarship-awarded:${args.applicationId}`,
@@ -1086,6 +1150,7 @@ async function announceAward(args: {
               awardSummary: summary,
               amountCents: args.awardCents,
               refund: args.refund,
+              perks,
               note: args.note,
             }),
         });
@@ -1100,8 +1165,9 @@ async function announceAward(args: {
           scholarship_name: args.scholarship.name,
           scholarship_kind: args.scholarship.kind,
           award_summary: summary,
-          amount: isCalls ? "" : formatMoney(args.awardCents),
-          calls: isCalls ? String(normalizeMentorCalls(args.terms.mentorCalls)) : "",
+          amount: money ? formatMoney(args.awardCents) : "",
+          calls: calls > 0 ? String(calls) : "",
+          perks_line: perksLine,
           cohort_name: (await cohortName(admin, args.cohortId)) ?? "",
         },
       });
@@ -1276,20 +1342,43 @@ export async function revokeScholarshipAward(args: {
       error: `This student has already used ${app.credits.used} of their mentor calls. Revoking would leave the record wrong.`,
     };
   }
+  // Same rule for a guest ticket that already went out: the guest holds a
+  // real ticket, and the row that funded it is the only record of why.
+  const ticketsSent = (await guestTicketsSent(admin, [app.id])).get(app.id) ?? 0;
+  if (ticketsSent > 0) {
+    return {
+      ok: false,
+      error: `This student has already sent ${ticketsSent} Demo Day guest ${ticketsSent === 1 ? "ticket" : "tickets"} on this award. Cancel those tickets from the Demo Day page first.`,
+    };
+  }
 
-  const { error } = await admin
+  const reset = {
+    status: "under_review",
+    award_cents: 0,
+    mentor_calls_awarded: 0,
+    fulfillment: "none",
+    decision_note: args.note?.trim() || app.decisionNote,
+    reviewed_by: args.reviewerId,
+    decided_at: null,
+  };
+  let { error } = await admin
     .from("scholarship_applications")
     .update({
-      status: "under_review",
-      award_cents: 0,
-      mentor_calls_awarded: 0,
-      fulfillment: "none",
-      decision_note: args.note?.trim() || app.decisionNote,
-      reviewed_by: args.reviewerId,
-      decided_at: null,
+      ...reset,
+      feedback_credits_awarded: 0,
+      demo_day_tickets_awarded: 0,
+      ai_boost_awarded: false,
     })
     .eq("id", app.id)
     .eq("status", "awarded");
+  // 0074 not applied yet: there is no perk snapshot to reset.
+  if (error && isMissingColumn(error)) {
+    ({ error } = await admin
+      .from("scholarship_applications")
+      .update(reset)
+      .eq("id", app.id)
+      .eq("status", "awarded"));
+  }
 
   if (error) {
     console.error("[scholarships] revoke failed:", error.message);
@@ -1350,8 +1439,10 @@ export async function issueScholarshipRefund(args: {
   if (app.stripeRefundId) {
     return { ok: false, error: "This award has already been refunded." };
   }
-  if (scholarship.terms.awardType !== "discount") {
-    return { ok: false, error: "This scholarship grants mentor calls, not money." };
+  // The award's own snapshot, not the catalog: money was granted iff the
+  // award recorded some. A perks-only scholarship records none.
+  if (app.awardCents <= 0 && !hasMoney(scholarship.terms)) {
+    return { ok: false, error: "This scholarship grants perks, not money." };
   }
   // The refund is the award_cents snapshot, and that figure is only a refund
   // basis for an award made AFTER the student paid. An award granted before
@@ -1577,13 +1668,260 @@ export async function callCreditsForUser(
 ): Promise<{ applicationId: string; scholarshipName: string; credits: CallCredits } | null> {
   const held = await getAwardForUser(client, userId);
   if (!held) return null;
-  if (held.scholarship.terms.awardType !== "mentor_calls") return null;
+  // The snapshot decides, not the catalog: a scholarship edited to drop its
+  // calls after the award must not take back calls already granted.
   if (held.app.credits.granted <= 0) return null;
   return {
     applicationId: held.app.id,
     scholarshipName: held.scholarship.name,
     credits: held.app.credits,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The other perks (0074): what a holder was granted, and the guest tickets.
+// ---------------------------------------------------------------------------
+
+export type HeldPerks = {
+  applicationId: string;
+  scholarshipName: string;
+  /** Everything snapshotted on the award, calls included. */
+  perks: AwardPerks;
+};
+
+/**
+ * The perks on the student's live award, or null if they hold none.
+ *
+ * The one read every fulfilment site uses — the feedback-credit ceiling, AI
+ * billing, the guest-ticket sender, the dashboard — so they can't disagree
+ * about what someone was granted. Reads the SNAPSHOT on the award, never the
+ * catalog, for the reason callCreditsForUser gives. Fails closed to null on
+ * any error: a perk that can't be read is a perk not granted, never one
+ * granted by accident.
+ */
+export async function scholarshipPerksForUser(
+  client: SupabaseClient,
+  userId: string,
+): Promise<HeldPerks | null> {
+  try {
+    const held = await getAwardForUser(client, userId);
+    if (!held || !hasAnyPerk(held.app.perks)) return null;
+    return {
+      applicationId: held.app.id,
+      scholarshipName: held.scholarship.name,
+      perks: held.app.perks,
+    };
+  } catch (err) {
+    console.error("[scholarships] perks read failed:", err);
+    return null;
+  }
+}
+
+export type GuestTicketBalance = {
+  granted: number;
+  sent: number;
+  remaining: number;
+  /** The tickets already sent on this award, newest first. */
+  tickets: Array<{ id: string; email: string; name: string | null; sentAt: string }>;
+};
+
+/**
+ * Guest tickets sent per award, from the tickets that actually exist.
+ *
+ * Cancelled tickets hand the slot back — the admin cancelling one from the
+ * Demo Day page is the way to let a student re-send to a corrected address.
+ * Reads as zero on a database where 0074 hasn't run (no column to filter on).
+ */
+async function guestTicketsSent(
+  client: SupabaseClient,
+  applicationIds: string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (applicationIds.length === 0) return out;
+  try {
+    const { data, error } = await client
+      .from("demo_day_tickets")
+      .select("scholarship_application_id")
+      .in("scholarship_application_id", applicationIds)
+      .neq("status", "cancelled");
+    if (error || !data) return out;
+    for (const row of data as Array<{ scholarship_application_id: string }>) {
+      const id = row.scholarship_application_id;
+      out.set(id, (out.get(id) ?? 0) + 1);
+    }
+  } catch {
+    // Column absent. No tickets counted; the balance reads as unspent, and
+    // the sender below refuses on the same missing column before inserting.
+  }
+  return out;
+}
+
+/** The student's guest-ticket balance on their live award, or null. */
+export async function guestTicketBalance(
+  client: SupabaseClient,
+  userId: string,
+): Promise<(GuestTicketBalance & { applicationId: string }) | null> {
+  const held = await scholarshipPerksForUser(client, userId);
+  if (!held || held.perks.demoDayTickets <= 0) return null;
+  const { data } = await client
+    .from("demo_day_tickets")
+    .select("id, email, name, created_at, status")
+    .eq("scholarship_application_id", held.applicationId)
+    .neq("status", "cancelled")
+    .order("created_at", { ascending: false });
+  const tickets = ((data ?? []) as any[]).map((t) => ({
+    id: t.id as string,
+    email: t.email as string,
+    name: (t.name as string | null) ?? null,
+    sentAt: t.created_at as string,
+  }));
+  const granted = held.perks.demoDayTickets;
+  return {
+    applicationId: held.applicationId,
+    granted,
+    sent: tickets.length,
+    remaining: Math.max(0, granted - tickets.length),
+    tickets,
+  };
+}
+
+export type GuestTicketResult =
+  | { ok: true; remaining: number }
+  | { ok: false; error: string };
+
+/**
+ * Send one complimentary Demo Day ticket to a guest, on the student's award.
+ *
+ * The ticket is an ordinary demo_day_tickets row inserted already PAID at $0
+ * (migration 0074 relaxes the amount check for exactly this), tagged with the
+ * award so it counts against the grant. From there it is a ticket like any
+ * other: the guest gets the confirmed-style email with the event details, the
+ * events policy admits them if the address is on a batch0 account, and staff
+ * see it on the Demo Day ticket list and can cancel it.
+ *
+ * Race-guarded optimistically: the balance is checked before the insert and
+ * re-counted after, and an insert that overshot the grant is deleted again.
+ * Two clicks in the same instant can't leave a student with more tickets than
+ * they were granted.
+ */
+export async function sendScholarshipGuestTicket(args: {
+  userId: string;
+  guestEmail: string;
+  guestName?: string | null;
+}): Promise<GuestTicketResult> {
+  const admin = createAdminClient();
+  const held = await scholarshipPerksForUser(admin, args.userId);
+  if (!held || held.perks.demoDayTickets <= 0) {
+    return { ok: false, error: "Your scholarship doesn't include guest tickets." };
+  }
+
+  const email = normalizeTicketEmail(args.guestEmail);
+  if (!email) return { ok: false, error: "That doesn't look like an email address." };
+  const name = (args.guestName ?? "").trim().slice(0, TICKET_NAME_MAX) || null;
+
+  const balanceBefore = await guestTicketBalance(admin, args.userId);
+  if (!balanceBefore || balanceBefore.remaining <= 0) {
+    return {
+      ok: false,
+      error: `You've sent all ${held.perks.demoDayTickets} of your guest tickets.`,
+    };
+  }
+  if (balanceBefore.tickets.some((t) => t.email === email)) {
+    return { ok: false, error: `${email} already has a ticket from you.` };
+  }
+
+  const { data: award } = await admin
+    .from("scholarship_applications")
+    .select("cohort_id")
+    .eq("id", held.applicationId)
+    .maybeSingle();
+  const cohortId = ((award as any)?.cohort_id as string | null) ?? null;
+
+  // A guest who already has a batch0 account sees the event on their
+  // dashboard (events policy, 0070). Best-effort, like the paid path.
+  const { data: guestProfile } = await admin
+    .from("profiles")
+    .select("id")
+    .ilike("email", email)
+    .limit(1)
+    .maybeSingle();
+
+  const now = new Date().toISOString();
+  const { data: inserted, error: insertErr } = await admin
+    .from("demo_day_tickets")
+    .insert({
+      token: mintTicketToken(),
+      email,
+      name,
+      user_id: (guestProfile as any)?.id ?? null,
+      cohort_id: cohortId,
+      amount_cents: 0,
+      note: null,
+      status: "paid",
+      paid_at: now,
+      sent_at: now,
+      created_by: args.userId,
+      scholarship_application_id: held.applicationId,
+    })
+    .select("id")
+    .single();
+  if (insertErr || !inserted) {
+    if (insertErr && isMissingColumn(insertErr)) {
+      return {
+        ok: false,
+        error: "Guest tickets aren't switched on yet — the team needs to run migration 0074.",
+      };
+    }
+    console.error("[scholarships] guest ticket insert failed:", insertErr?.message);
+    return { ok: false, error: "Couldn't send that ticket. Try again." };
+  }
+
+  // Re-count. If a concurrent send got in first and this one overshot the
+  // grant, take it back before anyone is emailed about it.
+  const after = (await guestTicketsSent(admin, [held.applicationId])).get(held.applicationId) ?? 0;
+  if (after > held.perks.demoDayTickets) {
+    await admin.from("demo_day_tickets").delete().eq("id", inserted.id);
+    return {
+      ok: false,
+      error: `You've sent all ${held.perks.demoDayTickets} of your guest tickets.`,
+    };
+  }
+
+  try {
+    const [details, host] = await Promise.all([
+      getDemoDayDetails(cohortId),
+      loadRecipient(admin, args.userId),
+    ]);
+    await sendTemplated(GUEST_TICKET_TEMPLATE, {
+      to: email,
+      toName: name,
+      userId: (guestProfile as any)?.id ?? null,
+      vars: {
+        host_name: host.fullName ?? "a batch0 founder",
+        demo_day_when: details.when ?? "",
+        demo_day_where: details.location ?? "",
+        cohort_name: details.cohortName ?? "",
+        join_url: details.externalUrl ?? "",
+      },
+      dedupeKey: `guest-ticket:${inserted.id}`,
+      fallback: () =>
+        Templates.demoDayGuestTicket({
+          name,
+          hostName: host.fullName,
+          when: details.when,
+          location: details.location,
+          externalUrl: details.externalUrl,
+          cohortName: details.cohortName,
+          hasAccount: !!(guestProfile as any)?.id,
+        }),
+    });
+  } catch (err) {
+    // The ticket exists either way — the admin list shows it and can resend
+    // the confirmation from there. Don't undo a real grant over a mail hiccup.
+    console.error("[scholarships] guest ticket email failed:", err);
+  }
+
+  return { ok: true, remaining: Math.max(0, held.perks.demoDayTickets - after) };
 }
 
 /**

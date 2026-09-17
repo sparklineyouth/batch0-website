@@ -15,6 +15,8 @@ import {
 import {
   awardRefundCents,
   awardDiscountCents,
+  hasMoney,
+  perkSummaries,
   SCHOLARSHIP_KIND_LABELS,
 } from "@/lib/scholarship-award";
 import { formatAnswer } from "@/lib/question-schema";
@@ -138,24 +140,25 @@ export default async function ScholarshipApplicationPage(props: {
           changes what the decision MEANS — awarding someone who has already
           paid is a refund, and a reviewer should know that before reading. */}
       <Card className="mt-6">
-        <h2 className="text-sm font-medium text-ink">Money</h2>
+        <h2 className="text-sm font-medium text-ink">Money &amp; perks</h2>
         <dl className="mt-3 space-y-2 text-sm">
           <Row
             label="Tuition paid"
             value={hasPaid ? formatMoney(paidCents) : "Not yet"}
           />
-          {scholarship?.terms.awardType === "discount" && (
+          {scholarship && hasMoney(scholarship.terms) && (
             <Row
               label={hasPaid ? "Refund if awarded" : "Discount if awarded"}
               value={projected > 0 ? formatMoney(projected) : "—"}
             />
           )}
-          {scholarship?.terms.awardType === "mentor_calls" && (
-            <Row
-              label="Grants"
-              value={`${scholarship.terms.mentorCalls} mentor calls`}
-            />
-          )}
+          {/* What the catalog promises today, before an award — once awarded,
+              the snapshot rows below are the truth. */}
+          {scholarship &&
+            app.status !== "awarded" &&
+            perkSummaries(scholarship.terms.perks).map((line) => (
+              <Row key={line} label="Grants" value={line} />
+            ))}
           {app.refundedCents > 0 && (
             <Row label="Already refunded" value={formatMoney(app.refundedCents)} />
           )}
@@ -165,11 +168,23 @@ export default async function ScholarshipApplicationPage(props: {
               value={`${app.credits.used} used of ${app.credits.granted}`}
             />
           )}
+          {app.perks.feedbackCredits > 0 && (
+            <Row label="Feedback credits" value={`${app.perks.feedbackCredits} granted`} />
+          )}
+          {app.perks.demoDayTickets > 0 && (
+            <Row
+              label="Demo Day guest tickets"
+              value={`${app.perks.demoDayTickets} granted — sent ones are on the Demo Day ticket list`}
+            />
+          )}
+          {app.perks.aiBoost && <Row label="AI co-founder boost" value="On" />}
         </dl>
         <p className="mt-3 text-xs text-ink-faint">
-          {hasPaid
-            ? "They've already paid, so a money award is issued as a partial refund against that charge — a separate, deliberate step after awarding. Their enrollment is unaffected."
-            : "They haven't paid yet, so a money award comes off their checkout automatically. Nothing to issue by hand."}
+          {scholarship && !hasMoney(scholarship.terms)
+            ? "No money on this one — awarding grants the perks straight to their account, and each one is redeemed from their scholarship page."
+            : hasPaid
+              ? "They've already paid, so a money award is issued as a partial refund against that charge — a separate, deliberate step after awarding. Their enrollment is unaffected."
+              : "They haven't paid yet, so a money award comes off their checkout automatically. Nothing to issue by hand."}
         </p>
       </Card>
 
@@ -238,7 +253,7 @@ export default async function ScholarshipApplicationPage(props: {
             applicationId={app.id}
             status={app.status}
             fulfillment={app.fulfillment}
-            awardType={scholarship?.terms.awardType ?? "discount"}
+            hasMoney={scholarship ? hasMoney(scholarship.terms) : false}
             projectedCents={projected}
             awardCents={app.awardCents}
             refundedCents={app.refundedCents}

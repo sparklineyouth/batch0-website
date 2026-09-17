@@ -1,4 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { scholarshipPerksForUser } from "@/lib/scholarships";
+import { perkAiAllowanceMultiplier } from "@/lib/scholarship-award";
 import {
   thisMonthStartISODate,
   computeOverageCents,
@@ -19,6 +21,22 @@ const EMPTY: UsageRow = {
   billed_cents: 0,
   month_start: "",
 };
+
+/**
+ * The free-allowance multiplier this user's scholarship award carries — 1
+ * for everyone else. One read, shared by the overage math below and the
+ * usage meter on /dashboard/ai, so the two can't disagree about where the
+ * free band ends. Reads as 1 on any error: a database hiccup must widen
+ * nothing and narrow nothing, just bill at the standard rate.
+ */
+export async function aiAllowanceMultiplier(userId: string): Promise<number> {
+  try {
+    const held = await scholarshipPerksForUser(createAdminClient(), userId);
+    return perkAiAllowanceMultiplier(held?.perks);
+  } catch {
+    return 1;
+  }
+}
 
 /** Reads the user's usage for the current calendar month. */
 export async function getCurrentUsage(userId: string): Promise<UsageRow> {
@@ -52,9 +70,16 @@ export async function applyUsage(args: {
 }): Promise<{ usage: UsageRow; chargedCents: number }> {
   const admin = createAdminClient();
   const month = thisMonthStartISODate();
-  const before = await getCurrentUsage(args.userId);
+  const [before, freeMultiplier] = await Promise.all([
+    getCurrentUsage(args.userId),
+    aiAllowanceMultiplier(args.userId),
+  ]);
 
-  const overage = computeOverageCents({ before, delta: args.delta });
+  const overage = computeOverageCents({
+    before,
+    delta: args.delta,
+    freeMultiplier,
+  });
 
   const next: UsageRow = {
     input_tokens: before.input_tokens + args.delta.input_tokens,

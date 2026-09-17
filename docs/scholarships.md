@@ -1,32 +1,42 @@
 # Scholarships
 
-Three kinds of scholarship, two ways of paying one out, applied for after
-acceptance **or** after enrolment.
+Three kinds of scholarship, applied for after acceptance **or** after
+enrolment. Each one carries **money off tuition, a set of perks, or both** —
+ticked per scholarship on the form.
 
-| Kind | What it's for | Pays out as |
+| Kind | What it's for | Typically carries |
 |---|---|---|
 | **Need-based** | Money, decided on financial circumstances | Tuition discount or refund |
-| **Merit** | Money, decided on extra questions you write | Tuition discount or refund |
-| **Learner's** | Students who'll use mentor time | N extra 1:1 mentor calls |
+| **Merit** | Money, decided on extra questions you write | Tuition discount or refund, often with perks |
+| **Learner's** | Students who'll use mentor time and tools | Perks only |
 
-`kind` is a label. **`award_type` is what decides the payout**, so a merit
-scholarship that grants mentor calls is creatable without a deploy.
+`kind` is a label. **The terms decide the payout** — the money half and the
+perks half are independent, so a merit scholarship that grants mentor calls
+instead of (or as well as) money is creatable without a deploy. `award_type`
+on the row is a derived summary (`discount` / `perks` / `both`) the code
+writes on every save; never set it by hand.
 
 ## Before you start
 
-Migration `0071_scholarships.sql` must be applied. Paste it into the Supabase
-SQL editor or `supabase db push` from the repo root. It's idempotent — a
-double-paste is harmless.
+Migrations `0071_scholarships.sql`, `0072_scholarship_award_percent.sql` and
+`0074_scholarship_perks.sql` must be applied, in that order. Paste each into
+the Supabase SQL editor or `supabase db push` from the repo root. They're
+idempotent — a double-paste is harmless.
 
 Then click **Restore built-in templates** at `/admin/email/templates` to make
-the six scholarship emails editable. Until you do, they still send: every one
-falls back to a compiled version in `lib/email/templates.ts`.
+the scholarship emails editable. Until you do, they still send: every one
+falls back to a compiled version in `lib/email/templates.ts`. If you restored
+them before 0074, restore again: the money award gained `{{perks_line}}`, the
+old "mentor calls" award now covers every perks-only award, and there is a new
+`demo_day.guest_ticket`.
 
 ## Setting one up
 
-1. `/admin/scholarships` → **New scholarship**. Name it, pick what it pays out,
-   pick who can apply (accepted, enrolled, or both), optionally cap the seats
-   and set an open/close window.
+1. `/admin/scholarships` → **New scholarship**. Name it, then under **What
+   it's worth** tick what it carries: **Money off tuition** (a flat amount or
+   a percentage) and any of the perks below, each with a "how many". Pick who
+   can apply (accepted, enrolled, or both), optionally cap the seats and set
+   an open/close window.
 2. Save, then add its questions on the same page — or from the
    **Scholarship questions** section of `/admin/application-questions`, which
    has a dropdown for every scholarship plus the shared block.
@@ -84,9 +94,47 @@ an award from a past cohort. A pending application elsewhere also blocks — els
 someone could queue up five and take whichever landed first, and the seat counts
 would stop meaning anything.
 
+## Perks
+
+Four perks, each a checkbox on the scholarship form (migration 0074). A perk
+is **snapshotted onto the award** at decision time, like the money, so editing
+the catalog later can't change what a student was told they'd won. The
+roster lives in `AWARD_PERK_DEFS` (`lib/scholarship-award.ts`); every entry is
+a number some code actually reads. Where each one bites:
+
+| Perk | Granted as | Redeemed | Counted from |
+|---|---|---|---|
+| **Extra 1:1 mentor calls** (1–20) | `mentor_calls_awarded` | `/dashboard/calls`, as before | `mentor_calls_used`, spent when the team schedules |
+| **Feedback credits** (1–10) | `feedback_credits_awarded` | The feedback form on `/dashboard/scholarships` | `founder_pass_feedback_requests` — one pool with any founder-pass credits |
+| **Demo Day guest tickets** (1–10) | `demo_day_tickets_awarded` | A "send a ticket" form on `/dashboard/scholarships` | `demo_day_tickets` rows tagged `scholarship_application_id` |
+| **AI co-founder boost** | `ai_boost_awarded` | Nothing to do — the free band widens | Read by `lib/ai/usage.ts` on every billed message |
+
+**Feedback credits** share the founder-pass pool. `feedbackCreditBalance` and
+the ceiling in `createFeedbackRequest` (`lib/founder-pass-perks.ts`) sum the
+pass tier's credits and the scholarship's, and count every non-declined
+request once against that total — a student holding both simply has more.
+
+**Guest tickets** are real `demo_day_tickets` rows inserted already `paid` at
+`$0` with no Stripe ids (0074 relaxes the amount check for exactly this). The
+guest gets `demo_day.guest_ticket` naming the founder who sent it; the events
+policy admits them if the address is on a batch0 account; the admin list at
+`/admin/demo-day/tickets` shows a **Guest** badge and offers **Revoke** in
+place of Refund. Revoking hands the slot back to the student. A duplicate
+address on the same award is refused, and the sender re-counts after
+inserting so two clicks can't overshoot the grant.
+
+**The AI boost** doubles `MONTHLY_FREE_*_TOKENS` for the holder
+(`AI_BOOST_MULTIPLIER`). `aiAllowanceMultiplier` is read by both the overage
+math and the usage meter, so the bar the student watches and the point they
+start being billed are the same number.
+
+**Revoking an award** is refused once any perk has been used — a scheduled
+call, a sent guest ticket — for the same reason it's refused after a refund:
+the record of what happened would be wrong.
+
 ## Mentor-call credits
 
-A learner's-scholarship call is an ordinary `interview_requests` row with
+A scholarship-funded call is an ordinary `interview_requests` row with
 `scholarship_application_id` set, so it lands in the team's existing queue at
 `/admin/calls` and rides the existing `call_invites` / Daily plumbing.
 
@@ -157,11 +205,12 @@ Six keys, all editable at `/admin/email/templates`:
 | Key | When |
 |---|---|
 | `scholarship.received` | They submit |
-| `scholarship.awarded` | Money award — says discount *or* refund |
-| `scholarship.awarded_calls` | Learner's grant |
+| `scholarship.awarded` | Any award with money — says discount *or* refund, and lists perks in `{{perks_line}}` |
+| `scholarship.awarded_calls` | Any perks-only award (the key predates 0074; the copy covers every perk) |
 | `scholarship.declined` | Every decline, always |
 | `scholarship.refunded` | Only once the Stripe refund actually succeeds |
 | `scholarship.invite` | An admin nudges one student toward one scholarship |
+| `demo_day.guest_ticket` | A guest, when a scholarship holder sends them a ticket |
 
 Three automation events fire alongside them: `scholarship.submitted`,
 `scholarship.awarded`, `scholarship.declined`.
@@ -195,17 +244,19 @@ npm test                        # includes question-schema + scholarship-award
 npm run test:scholarships-db    # executes migration 0071 in PGlite
 ```
 
-`test:scholarships-db` runs the **real** migration file against an in-process
-Postgres and asserts the constraints do what their comments claim — the
-one-award index, the award-shape check, the cascade, the `set null` on
-interview requests. Worth running before pasting the migration anywhere, since
-that step is done by hand.
+`test:scholarships-db` runs the **real** migration files (0071 and 0074)
+against an in-process Postgres and asserts the constraints do what their
+comments claim — the one-award index, the award-shape check, the cascade, the
+`set null` on interview requests and guest tickets, and that 0074 rewrites a
+legacy learner's grant without tripping the constraint it replaces. Worth
+running before pasting a migration anywhere, since that step is done by hand.
 
 ## Files
 
 | | |
 |---|---|
 | `supabase/migrations/0071_scholarships.sql` | Schema |
+| `supabase/migrations/0074_scholarship_perks.sql` | Perks: catalog columns, award snapshots, $0 guest tickets |
 | `lib/scholarship-award.ts` | Arithmetic + eligibility. Pure, tested, import-free |
 | `lib/scholarships.ts` | Everything that touches the database |
 | `lib/question-schema.ts` | The admin-authored question type system. Pure, tested |
