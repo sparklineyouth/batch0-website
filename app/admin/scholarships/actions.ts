@@ -13,14 +13,16 @@ import {
   getScholarshipById,
 } from "@/lib/scholarships";
 import {
+  awardTypeOf,
+  hasAnyPerk,
+  hasMoney,
   normalizeCents,
   normalizePercent,
-  normalizeMentorCalls,
+  normalizePerks,
   SCHOLARSHIP_KINDS,
-  AWARD_TYPES,
   ELIGIBLE_STAGES,
+  type AwardTerms,
   type ScholarshipKind,
-  type AwardType,
   type EligibleStage,
 } from "@/lib/scholarship-award";
 import {
@@ -34,6 +36,19 @@ const QUEUE = "/admin/scholarships/applications";
 
 const SLUG_RE = /^[a-z][a-z0-9-]{1,47}$/;
 
+/**
+ * Name the migration a save is missing, rather than echoing PostgREST's
+ * "column does not exist". Migrations here are pasted by hand after the
+ * deploy that needs them, so this is a to-do, not a bug.
+ */
+function explainSchemaError(message: string): string {
+  if (!/does not exist|schema cache/i.test(message)) return message;
+  if (/perk_|scholarships_award_type/i.test(message)) {
+    return "Perks aren't switched on in the database yet — run migration 0074_scholarship_perks.sql first.";
+  }
+  return "The scholarships table isn't there yet — run migration 0071 first.";
+}
+
 export type ScholarshipInput = {
   id?: string | null;
   slug: string;
@@ -41,10 +56,26 @@ export type ScholarshipInput = {
   kind: string;
   tagline: string;
   description: string;
-  awardType: string;
+  /**
+   * The money half. `money` is the "Money off tuition" tick; the two boxes
+   * under it are read only while it's on, so an unticked-but-filled box can't
+   * smuggle a discount onto a perks-only scholarship.
+   */
+  money: boolean;
   awardDollars: string;
   awardPercent: string;
+  /**
+   * The perks (0074). Each count perk is a tick plus a "how many" box, read
+   * the same way: the count only counts while its box is ticked. Kept as
+   * strings straight from the inputs; parsed once, here.
+   */
+  mentorCallsOn: boolean;
   mentorCalls: string;
+  feedbackCreditsOn: boolean;
+  feedbackCredits: string;
+  demoDayTicketsOn: boolean;
+  demoDayTickets: string;
+  aiBoost: boolean;
   seats: string;
   opensAt: string;
   closesAt: string;
@@ -87,30 +118,48 @@ function buildRow(input: ScholarshipInput) {
     ? (input.kind as ScholarshipKind)
     : "need";
 
-  const awardType: AwardType = (AWARD_TYPES as readonly string[]).includes(
-    input.awardType,
-  )
-    ? (input.awardType as AwardType)
-    : "discount";
-
   // Dollars in the form, cents in the column. Done here rather than in the
   // client so a hand-posted payload can't smuggle in a cents figure that the
-  // form would have shown as a thousand-fold larger number.
+  // form would have shown as a thousand-fold larger number. Both boxes read
+  // as empty while "Money off tuition" is unticked.
+  const money = input.money === true;
   const dollars = Number(input.awardDollars);
-  const awardCents = Number.isFinite(dollars) ? normalizeCents(dollars * 100) : 0;
-  const awardPercent = normalizePercent(input.awardPercent);
-  const mentorCalls = normalizeMentorCalls(input.mentorCalls);
-
-  // Mirrors the scholarships_award_shape check constraint. A discount worth
-  // nothing, or a calls award granting none, is a form that wastes an
-  // applicant's time — caught here so the admin sees why.
-  if (awardType === "discount" && awardCents <= 0 && awardPercent === null) {
+  const awardCents =
+    money && Number.isFinite(dollars) ? normalizeCents(dollars * 100) : 0;
+  const awardPercent = money ? normalizePercent(input.awardPercent) : null;
+  if (money && awardCents <= 0 && awardPercent === null) {
     throw new Error(
-      "A tuition scholarship needs an amount or a percentage — otherwise it's worth nothing.",
+      "Money off tuition needs an amount or a percentage — otherwise it's worth nothing.",
     );
   }
-  if (awardType === "mentor_calls" && mentorCalls <= 0) {
-    throw new Error("A mentor-call scholarship needs at least one call.");
+
+  // The perks (0074). A count perk only counts while ticked; a ticked one with
+  // nothing in the box is an unfinished thought, not "none" — saving it would
+  // quietly drop the perk the admin meant to add, so say so instead.
+  const perks = normalizePerks({
+    mentorCalls: input.mentorCallsOn ? input.mentorCalls : 0,
+    feedbackCredits: input.feedbackCreditsOn ? input.feedbackCredits : 0,
+    demoDayTickets: input.demoDayTicketsOn ? input.demoDayTickets : 0,
+    aiBoost: input.aiBoost === true,
+  });
+  if (input.mentorCallsOn && perks.mentorCalls <= 0) {
+    throw new Error("Extra mentor calls is ticked — say how many.");
+  }
+  if (input.feedbackCreditsOn && perks.feedbackCredits <= 0) {
+    throw new Error("Feedback credits is ticked — say how many.");
+  }
+  if (input.demoDayTicketsOn && perks.demoDayTickets <= 0) {
+    throw new Error("Demo Day guest tickets is ticked — say how many.");
+  }
+
+  // Mirrors the scholarships_award_shape check constraint: a scholarship
+  // worth nothing is a form that wastes an applicant's time — caught here so
+  // the admin sees why rather than a constraint name.
+  const terms: AwardTerms = { amountCents: awardCents, percent: awardPercent, perks };
+  if (!hasMoney(terms) && !hasAnyPerk(perks)) {
+    throw new Error(
+      "A scholarship has to be worth something — tick money off tuition, at least one perk, or both.",
+    );
   }
 
   const stages = (input.eligibleStages ?? []).filter((s): s is EligibleStage =>
@@ -147,13 +196,17 @@ function buildRow(input: ScholarshipInput) {
     kind,
     tagline: input.tagline?.trim() || null,
     description: input.description?.trim() || null,
-    award_type: awardType,
-    // Keep both columns honest: a calls award stores no money, and a
-    // percentage award stores no flat amount. Leaving stale values behind is
-    // how a scholarship ends up describing itself two ways.
-    award_cents: awardType === "discount" && awardPercent === null ? awardCents : 0,
-    award_percent: awardType === "discount" ? awardPercent : null,
-    mentor_calls: awardType === "mentor_calls" ? mentorCalls : 0,
+    // Derived, never chosen: the summary the catalog groups on.
+    award_type: awardTypeOf(terms),
+    // Keep both columns honest: a percentage award stores no flat amount, and
+    // an unticked money box stores nothing. Leaving stale values behind is how
+    // a scholarship ends up describing itself two ways.
+    award_cents: awardPercent === null ? awardCents : 0,
+    award_percent: awardPercent,
+    mentor_calls: perks.mentorCalls,
+    perk_feedback_credits: perks.feedbackCredits,
+    perk_demo_day_tickets: perks.demoDayTickets,
+    perk_ai_boost: perks.aiBoost,
     seats: seatsNum === null ? null : Math.floor(seatsNum),
     opens_at: opensAt ? opensAt.toISOString() : null,
     closes_at: closesAt ? closesAt.toISOString() : null,
@@ -182,7 +235,7 @@ export async function saveScholarship(
         if (/duplicate key|unique/i.test(error.message)) {
           throw new Error(`The slug "${row.slug}" is already taken.`);
         }
-        throw new Error(error.message);
+        throw new Error(explainSchemaError(error.message));
       }
       await logAudit({
         action: "scholarship.updated",
@@ -205,12 +258,7 @@ export async function saveScholarship(
       if (/duplicate key|unique/i.test(error.message)) {
         throw new Error(`The slug "${row.slug}" is already taken.`);
       }
-      if (/does not exist|schema cache/i.test(error.message)) {
-        throw new Error(
-          "The scholarships table isn't there yet — run migration 0071 first.",
-        );
-      }
-      throw new Error(error.message);
+      throw new Error(explainSchemaError(error.message));
     }
 
     await logAudit({

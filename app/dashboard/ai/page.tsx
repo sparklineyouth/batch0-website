@@ -7,11 +7,8 @@ import { AiChat } from "./ai-chat";
 import { ConversationList } from "./conversation-list";
 import { ContextEditor } from "./context-editor";
 import { UsageMeter } from "./usage-meter";
-import { getCurrentUsage } from "@/lib/ai/usage";
-import {
-  MONTHLY_FREE_INPUT_TOKENS,
-  MONTHLY_FREE_OUTPUT_TOKENS,
-} from "@/lib/ai/pricing";
+import { getCurrentUsage, aiAllowanceMultiplier } from "@/lib/ai/usage";
+import { freeAllowance } from "@/lib/ai/pricing";
 import { env } from "@/lib/env";
 import { Lock, Sparkles } from "lucide-react";
 
@@ -61,7 +58,7 @@ export default async function AiPage(
   // When ?c= names the conversation (every sidebar click), its messages load
   // in the same batch as the list; only the default-to-newest case has to
   // wait for the list to know which conversation to fetch.
-  const [{ data: convos }, { data: profileRow }, usage, preloaded] =
+  const [{ data: convos }, { data: profileRow }, usage, preloaded, boost] =
     await Promise.all([
       supabase
         .from("ai_conversations")
@@ -74,7 +71,12 @@ export default async function AiPage(
         .maybeSingle(),
       getCurrentUsage(user.id),
       searchParams.c ? messagesFor(searchParams.c) : null,
+      // A scholarship award with the AI boost (migration 0074) widens the
+      // free band. Read through the same helper the billing path uses so
+      // the meter and the bill agree.
+      aiAllowanceMultiplier(user.id),
     ]);
+  const free = freeAllowance(boost);
 
   const list = convos ?? [];
   const selectedId = searchParams.c ?? list[0]?.id;
@@ -98,8 +100,9 @@ export default async function AiPage(
           inputTokens={usage.input_tokens}
           outputTokens={usage.output_tokens}
           billedCents={usage.billed_cents}
-          freeInput={MONTHLY_FREE_INPUT_TOKENS}
-          freeOutput={MONTHLY_FREE_OUTPUT_TOKENS}
+          freeInput={free.input}
+          freeOutput={free.output}
+          boosted={boost > 1}
         />
         <Card className="!p-0">
           <details className="group">

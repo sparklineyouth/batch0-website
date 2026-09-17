@@ -8,14 +8,25 @@ import {
   loadScholarshipCards,
   describeAward,
   formatMoney,
+  guestTicketBalance,
   type ScholarshipCard,
+  type GuestTicketBalance,
 } from "@/lib/scholarships";
+import {
+  feedbackCreditBalance,
+  getFeedbackRequestForUser,
+  type FeedbackRequest,
+} from "@/lib/founder-pass-perks";
 import {
   SCHOLARSHIP_KIND_LABELS,
   SCHOLARSHIP_KIND_BLURBS,
+  AI_BOOST_MULTIPLIER,
+  hasMoney,
 } from "@/lib/scholarship-award";
-import { GraduationCap, Video, Coins } from "lucide-react";
+import { GraduationCap, Video, Coins, MessageSquare, Ticket, Sparkles } from "lucide-react";
 import { WithdrawButton } from "./withdraw-button";
+import { FeedbackCredit } from "@/app/pass/feedback-credit";
+import { GuestTicketSender } from "./guest-ticket-sender";
 
 export const metadata = { title: "Scholarships · batch0" };
 export const dynamic = "force-dynamic";
@@ -45,6 +56,17 @@ export default async function ScholarshipsPage() {
   );
 
   const award = cards.find((c) => c.mine?.status === "awarded") ?? null;
+
+  // The perks on the award are redeemed from this page, so their balances
+  // load here — only the ones the award actually carries, and only when it
+  // does. Each read is scoped to the signed-in user.
+  const perks = award?.mine?.perks;
+  const [credits, feedbackRequest, guests] = await Promise.all([
+    perks && perks.feedbackCredits > 0 ? feedbackCreditBalance(admin, user.id) : null,
+    perks && perks.feedbackCredits > 0 ? getFeedbackRequestForUser(admin, user.id) : null,
+    perks && perks.demoDayTickets > 0 ? guestTicketBalance(admin, user.id) : null,
+  ]);
+
   const open = cards.filter(
     (c) => c.eligibility.ok && !c.mine,
   );
@@ -70,7 +92,14 @@ export default async function ScholarshipsPage() {
         </Card>
       )}
 
-      {award && award.mine && <AwardCard card={award} />}
+      {award && award.mine && (
+        <AwardCard
+          card={award}
+          credits={credits}
+          feedbackRequest={feedbackRequest}
+          guests={guests}
+        />
+      )}
 
       {mine.length > 0 && (
         <section className="mt-10">
@@ -139,11 +168,29 @@ function KindIcon({ kind }: { kind: string }) {
   return <Icon className="h-4 w-4 text-phosphor-ink" aria-hidden />;
 }
 
-/** The headline block for a student who actually holds an award. */
-function AwardCard({ card }: { card: ScholarshipCard }) {
+/**
+ * The headline block for a student who actually holds an award: the money, if
+ * any, then one block per perk the award carries — each with its balance and
+ * the way to redeem it, right here. A perk with no block is a perk that
+ * quietly goes unused, which is the failure mode this page exists to prevent.
+ */
+function AwardCard({
+  card,
+  credits,
+  feedbackRequest,
+  guests,
+}: {
+  card: ScholarshipCard;
+  credits: { total: number; spent: number; remaining: number } | null;
+  feedbackRequest: FeedbackRequest | null;
+  guests: (GuestTicketBalance & { applicationId: string }) | null;
+}) {
   const { scholarship, mine } = card;
   if (!mine) return null;
-  const isCalls = scholarship.terms.awardType === "mentor_calls";
+  // The award's own snapshot, not the catalog: money was granted iff the award
+  // recorded some, and each perk iff it was stamped on the award.
+  const money = mine.awardCents > 0 || hasMoney(scholarship.terms);
+  const { perks } = mine;
 
   return (
     <Card className="mt-8 border-phosphor/40 bg-phosphor/5">
@@ -154,23 +201,7 @@ function AwardCard({ card }: { card: ScholarshipCard }) {
         </h2>
       </div>
 
-      {isCalls ? (
-        <>
-          <p className="mt-2 text-sm text-ink-soft">
-            <strong className="text-ink">
-              {mine.credits.remaining} of {mine.credits.granted}
-            </strong>{" "}
-            extra mentor {mine.credits.granted === 1 ? "call" : "calls"} left to
-            book. They don't expire during the cohort — but they also don't do
-            anything sitting unused.
-          </p>
-          <div className="mt-4">
-            <ButtonLink href="/dashboard/calls">
-              {mine.credits.remaining > 0 ? "Book a call" : "See your calls"}
-            </ButtonLink>
-          </div>
-        </>
-      ) : (
+      {money && (
         <>
           <p className="mt-2 text-sm text-ink-soft">
             {mine.fulfillment === "refunded" ? (
@@ -214,7 +245,93 @@ function AwardCard({ card }: { card: ScholarshipCard }) {
           {mine.decisionNote}
         </p>
       )}
+
+      {/* ---- The perks, one block each. */}
+      {perks.mentorCalls > 0 && (
+        <PerkBlock
+          icon={Video}
+          title={`Extra mentor ${perks.mentorCalls === 1 ? "call" : "calls"}`}
+          subtitle={`${mine.credits.remaining} of ${mine.credits.granted} left to book. They don't expire during the cohort — but they also don't do anything sitting unused.`}
+        >
+          <ButtonLink href="/dashboard/calls" size="sm">
+            {mine.credits.remaining > 0 ? "Book a call" : "See your calls"}
+          </ButtonLink>
+        </PerkBlock>
+      )}
+
+      {perks.feedbackCredits > 0 && (
+        <PerkBlock
+          icon={MessageSquare}
+          title={`Feedback ${perks.feedbackCredits === 1 ? "credit" : "credits"}`}
+          subtitle={
+            credits
+              ? credits.remaining > 0
+                ? `${credits.remaining} of ${credits.total} left — a focused, written review from the team of the thing you're stuck on. One at a time.`
+                : `All ${credits.total} used. A focused, written review of the thing you're stuck on.`
+              : "A focused, written review from the team of the thing you're stuck on."
+          }
+        >
+          <FeedbackCredit request={feedbackRequest} />
+        </PerkBlock>
+      )}
+
+      {perks.demoDayTickets > 0 && (
+        <PerkBlock
+          icon={Ticket}
+          title={`Demo Day guest ${perks.demoDayTickets === 1 ? "ticket" : "tickets"}`}
+          subtitle={
+            guests
+              ? guests.remaining > 0
+                ? `${guests.remaining} of ${guests.granted} left to send. A guest gets a real ticket by email — nothing to pay — and sees the event details there.`
+                : `All ${guests.granted} sent. Ask the team if you need one changed.`
+              : "Send a real ticket to family or friends by email — nothing to pay."
+          }
+        >
+          <GuestTicketSender
+            remaining={guests?.remaining ?? 0}
+            sent={guests?.tickets ?? []}
+          />
+        </PerkBlock>
+      )}
+
+      {perks.aiBoost && (
+        <PerkBlock
+          icon={Sparkles}
+          title="AI co-founder boost"
+          subtitle={`${AI_BOOST_MULTIPLIER}× the free monthly AI allowance before anything is billed. Already on — the meter on the AI page shows the wider band.`}
+        >
+          <ButtonLink href="/dashboard/ai" size="sm" variant="secondary">
+            Open the AI co-founder
+          </ButtonLink>
+        </PerkBlock>
+      )}
     </Card>
+  );
+}
+
+/** One redeemable perk on the award card: what it is, where it stands, the action. */
+function PerkBlock({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: typeof Video;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mt-5 border-t border-phosphor/20 pt-4">
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-phosphor-ink" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          <p className="mt-0.5 text-xs text-ink-soft">{subtitle}</p>
+        </div>
+      </div>
+      <div className="mt-3 pl-7">{children}</div>
+    </div>
   );
 }
 

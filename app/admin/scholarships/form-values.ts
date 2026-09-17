@@ -33,10 +33,19 @@ export function emptyScholarshipForm(): ScholarshipFormValues {
     kind: "need",
     tagline: "",
     description: "",
-    awardType: "discount",
+    // Money on by default — it's what most scholarships are — with every perk
+    // off. The "how many" boxes carry a sensible number so ticking a perk
+    // never lands on an empty box the save then refuses.
+    money: true,
     awardDollars: "",
     awardPercent: "",
+    mentorCallsOn: false,
     mentorCalls: "3",
+    feedbackCreditsOn: false,
+    feedbackCredits: "1",
+    demoDayTicketsOn: false,
+    demoDayTickets: "2",
+    aiBoost: false,
     seats: "",
     opensAt: "",
     closesAt: "",
@@ -54,10 +63,14 @@ export function scholarshipToForm(s: {
   tagline: string | null;
   description: string | null;
   terms: {
-    awardType: string;
     amountCents: number;
     percent: number | null;
-    mentorCalls: number;
+    perks: {
+      mentorCalls: number;
+      feedbackCredits: number;
+      demoDayTickets: number;
+      aiBoost: boolean;
+    };
   };
   seats: number | null;
   opensAt: string | null;
@@ -66,6 +79,8 @@ export function scholarshipToForm(s: {
   enabled: boolean;
   sortIndex: number;
 }): ScholarshipFormValues {
+  const money = s.terms.percent !== null || s.terms.amountCents > 0;
+  const { perks } = s.terms;
   return {
     id: s.id,
     slug: s.slug,
@@ -73,10 +88,19 @@ export function scholarshipToForm(s: {
     kind: s.kind,
     tagline: s.tagline ?? "",
     description: s.description ?? "",
-    awardType: s.terms.awardType,
+    money,
     awardDollars: s.terms.amountCents ? String(s.terms.amountCents / 100) : "",
     awardPercent: s.terms.percent === null ? "" : String(s.terms.percent),
-    mentorCalls: String(s.terms.mentorCalls || 3),
+    // A perk reads as ticked when the row carries it; an unticked box keeps
+    // the same default number the empty form would, so ticking it later
+    // starts somewhere sensible.
+    mentorCallsOn: perks.mentorCalls > 0,
+    mentorCalls: String(perks.mentorCalls || 3),
+    feedbackCreditsOn: perks.feedbackCredits > 0,
+    feedbackCredits: String(perks.feedbackCredits || 1),
+    demoDayTicketsOn: perks.demoDayTickets > 0,
+    demoDayTickets: String(perks.demoDayTickets || 2),
+    aiBoost: perks.aiBoost,
     seats: s.seats === null ? "" : String(s.seats),
     opensAt: toLocalInput(s.opensAt),
     closesAt: toLocalInput(s.closesAt),

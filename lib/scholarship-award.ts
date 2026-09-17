@@ -20,10 +20,10 @@
  *
  *   need    — money off tuition, decided on financial circumstances.
  *   merit   — money off tuition, decided on the answers to extra questions.
- *   learner — no money; a grant of extra 1:1 mentor calls.
+ *   learner — no money; a grant of perks (extra 1:1 mentor calls and the like).
  *
- * The kind is deliberately NOT what decides the payout: `award_type` is. A
- * merit scholarship that grants mentor calls instead of money is a perfectly
+ * The kind is deliberately NOT what decides the payout: the terms are. A merit
+ * scholarship that grants mentor calls instead of money is a perfectly
  * reasonable thing to want, and hard-wiring kind→payout would make it
  * impossible to create without a deploy.
  */
@@ -48,16 +48,219 @@ export const SCHOLARSHIP_KIND_BLURBS: Readonly<
 > = Object.freeze({
   need: "Tuition support based on what your family can afford.",
   merit: "Tuition support based on what you've built and what you answer.",
-  learner: "Extra 1:1 mentor calls for students who'll use them.",
+  learner: "Extra mentor time and tools for students who'll use them.",
 });
 
-/** How an award is paid out. */
-export type AwardType = "discount" | "mentor_calls";
+/**
+ * A one-word summary of what an award pays out — DERIVED from the terms, never
+ * chosen on its own (see awardTypeOf). Stored on the row for the catalog's
+ * grouping and for older readers; the terms are the source of truth.
+ *
+ *   discount — money off tuition and nothing else.
+ *   perks    — no money: one or more of the perks below.
+ *   both     — money off tuition AND perks.
+ *
+ * "mentor_calls" is what a perks-only scholarship was called before 0074,
+ * when the only perk was mentor calls. Rows still carrying it read as "perks".
+ */
+export type AwardType = "discount" | "perks" | "both";
 
 export const AWARD_TYPES: readonly AwardType[] = Object.freeze([
   "discount",
-  "mentor_calls",
+  "perks",
+  "both",
 ]);
+
+// ---------------------------------------------------------------------------
+// Perks — the things a scholarship can carry that aren't money (0074)
+// ---------------------------------------------------------------------------
+
+/**
+ * The perks a scholarship can carry, each ticked on or off per scholarship and
+ * stackable with a tuition discount or offered on their own.
+ *
+ * Every field is a number or a flag some code actually reads — mentor calls by
+ * the call-request path, feedback credits by the credit ceiling, guest tickets
+ * by the ticket sender, the boost by AI billing. AWARD_PERK_DEFS names where
+ * each one bites.
+ */
+export type AwardPerks = {
+  /** Extra 1:1 mentor calls, spent when the team schedules one. */
+  mentorCalls: number;
+  /** Written feedback credits — the same pool a founder pass draws on. */
+  feedbackCredits: number;
+  /** Complimentary Demo Day tickets the student can send to guests. */
+  demoDayTickets: number;
+  /** Multiplies the AI co-founder's free monthly allowance. */
+  aiBoost: boolean;
+};
+
+export type AwardPerkKey = keyof AwardPerks;
+
+export const NO_PERKS: Readonly<AwardPerks> = Object.freeze({
+  mentorCalls: 0,
+  feedbackCredits: 0,
+  demoDayTickets: 0,
+  aiBoost: false,
+});
+
+export const MAX_MENTOR_CALLS = 20;
+export const MAX_FEEDBACK_CREDITS = 10;
+export const MAX_DEMO_DAY_TICKETS = 10;
+
+/**
+ * How much the AI boost multiplies the free monthly token allowance by. Read
+ * by lib/ai/usage.ts when billing overage and by the usage meter, so the
+ * number a student sees and the number they're billed against agree.
+ */
+export const AI_BOOST_MULTIPLIER = 2;
+
+export type AwardPerkDef =
+  | {
+      key: "mentorCalls" | "feedbackCredits" | "demoDayTickets";
+      kind: "count";
+      label: string;
+      /** One line for the admin form: what ticking this actually does. */
+      blurb: string;
+      /** Singular noun for the "how many" box. */
+      unit: string;
+      /** Ceiling. Keep in lockstep with the check constraints in 0074. */
+      max: number;
+    }
+  | {
+      key: "aiBoost";
+      kind: "flag";
+      label: string;
+      blurb: string;
+    };
+
+/**
+ * The roster the admin form renders as checkboxes, in display order. A
+ * "count" perk asks how many once ticked; a "flag" perk is on or off.
+ *
+ * Adding one means: a column in a migration (on scholarships AND the awarded
+ * snapshot on scholarship_applications), a field on AwardPerks, a case in
+ * normalizePerks / perkSummaries below, and — the part that matters — a reader
+ * somewhere that fulfils it.
+ */
+export const AWARD_PERK_DEFS: readonly AwardPerkDef[] = Object.freeze([
+  {
+    key: "mentorCalls",
+    kind: "count",
+    label: "Extra 1:1 mentor calls",
+    blurb:
+      "Booked by the student from their calls page. A credit is spent when the team schedules the call, and comes back if it's cancelled.",
+    unit: "call",
+    max: MAX_MENTOR_CALLS,
+  },
+  {
+    key: "feedbackCredits",
+    kind: "count",
+    label: "Feedback credits",
+    blurb:
+      "Focused, written reviews from the team of the thing they're stuck on — the same credit a founder pass carries, redeemed from their scholarship page.",
+    unit: "credit",
+    max: MAX_FEEDBACK_CREDITS,
+  },
+  {
+    key: "demoDayTickets",
+    kind: "count",
+    label: "Demo Day guest tickets",
+    blurb:
+      "Complimentary tickets the student sends to family or friends by email. Each one is a real ticket in the Demo Day ticket list.",
+    unit: "ticket",
+    max: MAX_DEMO_DAY_TICKETS,
+  },
+  {
+    key: "aiBoost",
+    kind: "flag",
+    label: "AI co-founder boost",
+    blurb: `${AI_BOOST_MULTIPLIER}× the free monthly AI allowance before any overage is billed.`,
+  },
+]);
+
+const PERK_DEF_BY_KEY: ReadonlyMap<string, AwardPerkDef> = new Map(
+  AWARD_PERK_DEFS.map((d) => [d.key, d]),
+);
+
+export function awardPerkDef(key: string): AwardPerkDef | undefined {
+  return PERK_DEF_BY_KEY.get(key);
+}
+
+/** Perks as they arrive — a form payload, a database row — before checking. */
+export type AwardPerksInput = {
+  mentorCalls?: unknown;
+  feedbackCredits?: unknown;
+  demoDayTickets?: unknown;
+  aiBoost?: unknown;
+};
+
+/** A non-negative whole number clamped to a ceiling; 0 for junk. */
+function clampCount(value: unknown, max: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(max, Math.floor(n));
+}
+
+/**
+ * Coerce whatever arrived into an AwardPerks safe to store and to render.
+ *
+ * Junk lands on "no perk", never on a ceiling: a stray string in the mentor
+ * calls box must not hand someone twenty calls. Counts are clamped to the
+ * same ceilings the 0074 check constraints enforce, so a write that passed
+ * through here can never be rejected by the database for being too large.
+ */
+export function normalizePerks(
+  input: AwardPerksInput | null | undefined,
+): AwardPerks {
+  return {
+    mentorCalls: clampCount(input?.mentorCalls, MAX_MENTOR_CALLS),
+    feedbackCredits: clampCount(input?.feedbackCredits, MAX_FEEDBACK_CREDITS),
+    demoDayTickets: clampCount(input?.demoDayTickets, MAX_DEMO_DAY_TICKETS),
+    aiBoost: input?.aiBoost === true,
+  };
+}
+
+export function hasAnyPerk(perks: AwardPerks): boolean {
+  return (
+    perks.mentorCalls > 0 ||
+    perks.feedbackCredits > 0 ||
+    perks.demoDayTickets > 0 ||
+    perks.aiBoost
+  );
+}
+
+/**
+ * Each granted perk as a short phrase, in roster order — "3 extra mentor
+ * calls", "1 feedback credit", "2 Demo Day guest tickets", "AI co-founder
+ * boost". Empty when nothing is granted. Cards, emails and the review screen
+ * all print from this so they can't describe the same award three ways.
+ */
+export function perkSummaries(perks: AwardPerks): string[] {
+  const out: string[] = [];
+  const n = (count: number, one: string, many: string) =>
+    count === 1 ? `1 ${one}` : `${count} ${many}`;
+  if (perks.mentorCalls > 0) {
+    out.push(n(perks.mentorCalls, "extra mentor call", "extra mentor calls"));
+  }
+  if (perks.feedbackCredits > 0) {
+    out.push(n(perks.feedbackCredits, "feedback credit", "feedback credits"));
+  }
+  if (perks.demoDayTickets > 0) {
+    out.push(
+      n(perks.demoDayTickets, "Demo Day guest ticket", "Demo Day guest tickets"),
+    );
+  }
+  if (perks.aiBoost) out.push("AI co-founder boost");
+  return out;
+}
+
+/** What to multiply the free monthly AI allowance by: 1 without the boost. */
+export function perkAiAllowanceMultiplier(
+  perks: AwardPerks | null | undefined,
+): number {
+  return perks?.aiBoost ? AI_BOOST_MULTIPLIER : 1;
+}
 
 /** Where in their journey a student may apply for a scholarship. */
 export type EligibleStage = "accepted" | "enrolled";
@@ -97,8 +300,6 @@ export type Fulfillment =
   | "refund_due" // they'd already paid; an admin still has to press the button
   | "refunded"; // the partial refund went through
 
-export const MAX_MENTOR_CALLS = 20;
-
 // ---------------------------------------------------------------------------
 // The award itself
 // ---------------------------------------------------------------------------
@@ -106,18 +307,38 @@ export const MAX_MENTOR_CALLS = 20;
 /**
  * The terms a scholarship offers, as stored on the `scholarships` row.
  *
- * `amountCents` and `percent` are alternatives, not a stack: percent wins when
- * it is set. Both exist because both are things people actually want to offer
- * — "$50 off" and "half tuition" — and expressing the second as a cents figure
+ * Money and perks are independent halves: a scholarship can carry either or
+ * both, and awardTypeOf() says which. `amountCents` and `percent` are
+ * alternatives within the money half, not a stack: percent wins when it is
+ * set. Both exist because both are things people actually want to offer —
+ * "$50 off" and "half tuition" — and expressing the second as a cents figure
  * means it silently stops being half the moment tuition changes.
  */
 export type AwardTerms = {
-  awardType: AwardType;
   amountCents: number;
   /** 1–100, or null when the award is a flat amount. */
   percent: number | null;
-  mentorCalls: number;
+  perks: AwardPerks;
 };
+
+/** Whether the money half of these terms is worth anything. */
+export function hasMoney(terms: AwardTerms): boolean {
+  return terms.percent !== null || normalizeCents(terms.amountCents) > 0;
+}
+
+/**
+ * The derived summary of what an award pays out. "discount" for money alone,
+ * "perks" for perks alone, "both" for both. Terms with neither are a
+ * scholarship worth nothing, which the form and the 0074 constraint refuse;
+ * they read as "discount" here only so the type stays total.
+ */
+export function awardTypeOf(terms: AwardTerms): AwardType {
+  const money = hasMoney(terms);
+  const perks = hasAnyPerk(terms.perks);
+  if (money && perks) return "both";
+  if (perks) return "perks";
+  return "discount";
+}
 
 /** Clamp to a whole, non-negative number of cents. */
 export function normalizeCents(value: unknown): number {
@@ -151,13 +372,13 @@ export function normalizeMentorCalls(value: unknown): number {
  * stops a full-ride pass holder plus a 50% scholarship from producing a
  * negative balance.
  *
- * Returns 0 for a calls-only award.
+ * Returns 0 for a perks-only award.
  */
 export function awardDiscountCents(
   terms: AwardTerms,
   priceCents: number,
 ): number {
-  if (terms.awardType !== "discount") return 0;
+  if (!hasMoney(terms)) return 0;
   const price = normalizeCents(priceCents);
   if (price <= 0) return 0;
   const raw =
@@ -184,7 +405,7 @@ export function awardRefundCents(
   paidCents: number,
   alreadyRefundedCents = 0,
 ): number {
-  if (terms.awardType !== "discount") return 0;
+  if (!hasMoney(terms)) return 0;
   const paid = normalizeCents(paidCents);
   const already = normalizeCents(alreadyRefundedCents);
   const remaining = Math.max(0, paid - already);
@@ -207,19 +428,28 @@ export function fulfillmentFor(
   terms: AwardTerms,
   args: { hasPaid: boolean; refundedCents?: number },
 ): Fulfillment {
-  if (terms.awardType !== "discount") return "none";
+  if (!hasMoney(terms)) return "none";
   if (!args.hasPaid) return "discount";
   return normalizeCents(args.refundedCents) > 0 ? "refunded" : "refund_due";
 }
 
-/** A short human summary of the terms, for cards and emails. */
-export function describeAward(terms: AwardTerms): string {
-  if (terms.awardType === "mentor_calls") {
-    const n = normalizeMentorCalls(terms.mentorCalls);
-    return n === 1 ? "1 extra mentor call" : `${n} extra mentor calls`;
-  }
+/** The money half as a phrase, or null when there is none. */
+export function describeMoney(terms: AwardTerms): string | null {
+  if (!hasMoney(terms)) return null;
   if (terms.percent !== null) return `${terms.percent}% off tuition`;
   return `${formatMoney(terms.amountCents)} off tuition`;
+}
+
+/**
+ * A short human summary of the terms, for cards and emails: the money, then
+ * each perk — "$50 off tuition · 3 extra mentor calls · AI co-founder boost".
+ * One string, so a card never has to decide how to lay it out.
+ */
+export function describeAward(terms: AwardTerms): string {
+  const parts = [describeMoney(terms), ...perkSummaries(terms.perks)].filter(
+    (p): p is string => !!p,
+  );
+  return parts.length ? parts.join(" · ") : "Nothing yet";
 }
 
 /** `$130`, `$12.50`. Whole dollars drop the cents — the house style. */
