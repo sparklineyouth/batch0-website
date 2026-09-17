@@ -17,6 +17,7 @@ import {
 import { getStudentAccess } from "@/lib/access";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { FLOW_STAGES } from "@/lib/flows";
+import { sortCategories } from "@/lib/resource-categories";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
 export const metadata = { title: "Resources · batch0" };
@@ -114,7 +115,8 @@ export default async function DashboardResourcesPage() {
     arr.push(r);
     byCategory.set(cat, arr);
   }
-  const categories = Array.from(byCategory.keys()).sort();
+  // Sprint shelves ("week 1 · validate") first, then the generic ones A–Z.
+  const categories = sortCategories(byCategory.keys());
 
   const startDate = fmtDateOnly(access.cohortStartsOn);
 

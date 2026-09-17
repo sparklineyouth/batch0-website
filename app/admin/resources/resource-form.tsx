@@ -14,15 +14,7 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveResource, deleteResource, type ResourceInput } from "./actions";
 import { getUploadToken } from "@/app/admin/course/upload-actions";
 import { Upload, FileText, X } from "lucide-react";
-
-const CATEGORIES = [
-  "general",
-  "templates",
-  "decks",
-  "guides",
-  "readings",
-  "tools",
-];
+import { RESOURCE_CATEGORIES } from "@/lib/resource-categories";
 
 export function ResourceForm({
   initial,
@@ -140,7 +132,7 @@ export function ResourceForm({
             value={v.category}
             onChange={(e) => set("category", e.target.value)}
           >
-            {CATEGORIES.map((c) => (
+            {RESOURCE_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
