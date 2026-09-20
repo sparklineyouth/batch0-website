@@ -10,6 +10,7 @@ import {
   FieldError,
 } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
+import { normalizeDisplayViewers } from "@/lib/live";
 import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { LocalTime } from "@/components/ui/local-time";
@@ -129,6 +130,7 @@ export function EventsManager({
               recording_url: null,
               visibility: "enrolled",
               live_mode: "external",
+              display_viewer_count: null,
               daily_room_name: null,
               daily_room_url: null,
             })
@@ -366,6 +368,30 @@ function EventForm({
             </>
           )}
         </p>
+      )}
+      {e.live_mode !== "external" && (
+        <div>
+          <Label>Shown attendees (optional)</Label>
+          <Input
+            type="number"
+            min={0}
+            inputMode="numeric"
+            value={e.display_viewer_count ?? ""}
+            onChange={(ev) =>
+              setE({
+                ...e,
+                display_viewer_count: normalizeDisplayViewers(ev.target.value),
+              })
+            }
+            placeholder="Leave blank to hide the count"
+          />
+          <p className="mt-1.5 text-xs text-ink-faint">
+            {e.display_viewer_count !== null &&
+            e.display_viewer_count !== undefined
+              ? `Everyone watching sees “${e.display_viewer_count.toLocaleString()} watching,” in place of the hidden headcount.`
+              : "Blank keeps turnout hidden from the audience. Set a number to announce that many watching to everyone."}
+          </p>
+        </div>
       )}
       <div>
         <Label>Recording URL (after the event)</Label>

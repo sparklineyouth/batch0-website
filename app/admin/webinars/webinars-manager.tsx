@@ -8,7 +8,13 @@ import { LocalTime } from "@/components/ui/local-time";
 import { LiveDot } from "@/components/live/call-stage";
 import { getActionError } from "@/lib/action-error";
 import { saveEvent } from "@/app/admin/events/actions";
-import { canJoin, joinState, relativeTime, type LiveEvent } from "@/lib/live";
+import {
+  canJoin,
+  joinState,
+  relativeTime,
+  normalizeDisplayViewers,
+  type LiveEvent,
+} from "@/lib/live";
 import {
   isSunday,
   localDateTime,
@@ -93,6 +99,7 @@ export function WebinarsManager({
     visibility: string;
     cohortId: string | null;
     notify: boolean;
+    displayViewerCount: number | null;
   }) {
     setError(undefined);
     const startsAt = localDateTime(draft.sunday, draft.time);
@@ -124,6 +131,7 @@ export function WebinarsManager({
             zoom_url: null,
             recording_url: null,
             visibility: draft.visibility as any,
+            display_viewer_count: draft.displayViewerCount,
             // The point of this page: hosting is on, not a toggle to remember.
             live_mode: "hosted",
           },
@@ -259,6 +267,11 @@ function Row({ webinar: w }: { webinar: Webinar }) {
                 no room yet — re-save to create one
               </span>
             )}
+            {w.displayViewerCount !== null && (
+              <span title="Shown to everyone watching, in place of the real headcount">
+                shows {w.displayViewerCount.toLocaleString()} watching
+              </span>
+            )}
             {w.recordingUrl && (
               <a
                 href={w.recordingUrl}
@@ -312,6 +325,7 @@ function ScheduleForm({
     visibility: string;
     cohortId: string | null;
     notify: boolean;
+    displayViewerCount: number | null;
   }) => void;
   onCancel: () => void;
   pending: boolean;
@@ -329,6 +343,11 @@ function ScheduleForm({
   const [visibility, setVisibility] = useState("staff");
   const [cohortId, setCohortId] = useState<string>(cohorts[0]?.id ?? "");
   const [notify, setNotify] = useState(false);
+  // Optional "shown attendees". Blank means the room hides turnout as usual;
+  // a number is announced to everyone in place of the hidden roster. Kept as
+  // the raw string so the field can be emptied, and normalized on submit.
+  const [shownAttendees, setShownAttendees] = useState("");
+  const displayViewerCount = normalizeDisplayViewers(shownAttendees);
 
   // The name follows the Sunday — "Week 3 Webinar" — until the admin types
   // one of their own, after which the pick stops touching it. A title the
@@ -446,6 +465,23 @@ function ScheduleForm({
         </div>
       </div>
 
+      <div>
+        <Label>Shown attendees (optional)</Label>
+        <Input
+          type="number"
+          min={0}
+          inputMode="numeric"
+          value={shownAttendees}
+          onChange={(e) => setShownAttendees(e.target.value)}
+          placeholder="Leave blank to hide the count"
+        />
+        <p className="mt-1.5 text-xs text-ink-faint">
+          {displayViewerCount !== null
+            ? `Everyone watching sees “${displayViewerCount.toLocaleString()} watching,” whoever's actually here. Leave blank to keep turnout hidden.`
+            : "Leave blank and the audience never sees a count. Set a number to announce that many — e.g. 43 — to everyone watching, in place of the hidden headcount."}
+        </p>
+      </div>
+
       <label className="flex items-start gap-2.5 rounded-md border border-line bg-wash px-3 py-2.5">
         <input
           type="checkbox"
@@ -469,7 +505,10 @@ function ScheduleForm({
       <p className="rounded-md border border-line bg-wash px-3 py-2.5 text-xs text-ink-soft">
         A private room is created when you save, and expires two hours after the
         end. Only you get camera and mic — students watch, ask questions beside
-        the video, and can&rsquo;t see each other or how many are here.
+        the video, and can&rsquo;t see each other
+        {displayViewerCount !== null
+          ? ". They see the shown-attendees count above, not the real one."
+          : " or how many are here."}
       </p>
 
       {error && <FieldError>{error}</FieldError>}
@@ -487,6 +526,7 @@ function ScheduleForm({
               visibility,
               cohortId: cohortId || null,
               notify: visibility === "staff" ? false : notify,
+              displayViewerCount,
             })
           }
         >
