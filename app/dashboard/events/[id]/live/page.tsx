@@ -10,7 +10,13 @@ import {
   mintToken,
   roomIsLive,
 } from "@/lib/daily";
-import { canJoin, joinState, DEFAULT_EVENT_MINUTES, type LiveRole } from "@/lib/live";
+import {
+  canJoin,
+  joinState,
+  normalizeDisplayViewers,
+  DEFAULT_EVENT_MINUTES,
+  type LiveRole,
+} from "@/lib/live";
 import {
   listQuestionsForEvent,
   listQuestionsForAsker,
@@ -57,7 +63,7 @@ export default async function EventLivePage(
     supabase
       .from("events")
       .select(
-        "id, title, description, type, starts_at, ends_at, live_mode, daily_room_name, daily_room_url",
+        "id, title, description, type, starts_at, ends_at, live_mode, daily_room_name, daily_room_url, display_viewer_count",
       )
       .eq("id", params.id)
       .maybeSingle(),
@@ -113,6 +119,11 @@ export default async function EventLivePage(
   // The host/viewer split, derived from the permission the admin panel already
   // uses for events. Never from anything the client sent.
   const role: LiveRole = can(caps, "events.manage") ? "host" : "viewer";
+
+  // The admin-announced headcount, if any — shown to everyone in the room in
+  // place of the hidden roster. Sanitized here (not trusted from the row) since
+  // the room renders it straight into the header.
+  const displayViewerCount = normalizeDisplayViewers(ev.display_viewer_count);
 
   const end = ev.ends_at
     ? new Date(ev.ends_at)
@@ -195,6 +206,7 @@ export default async function EventLivePage(
       token={token}
       role={role}
       backHref="/dashboard/events"
+      displayViewerCount={displayViewerCount}
       qa={{ eventId: ev.id, initialQuestions }}
     />
   );

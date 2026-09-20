@@ -18,7 +18,11 @@ import {
   updateRoomExpiry,
   dailyConfigured,
 } from "@/lib/daily";
-import { DEFAULT_EVENT_MINUTES, type LiveMode } from "@/lib/live";
+import {
+  DEFAULT_EVENT_MINUTES,
+  normalizeDisplayViewers,
+  type LiveMode,
+} from "@/lib/live";
 import { env } from "@/lib/env";
 
 /**
@@ -68,6 +72,12 @@ export type EventInput = {
   recording_url: string | null;
   visibility: "enrolled" | "staff" | "public";
   live_mode: LiveMode;
+  /**
+   * Announced attendance shown in the live room in place of the hidden roster
+   * ("43 watching"). Null / omitted = the private default. Display only — see
+   * lib/live.ts. Sanitized on save regardless of what the form sends.
+   */
+  display_viewer_count?: number | null;
   daily_room_name?: string | null;
   daily_room_url?: string | null;
 };
@@ -149,6 +159,9 @@ export async function saveEvent(input: EventInput, notify: boolean) {
     recording_url: input.recording_url?.trim() || null,
     visibility: input.visibility,
     live_mode: input.live_mode,
+    // Re-sanitized here, not trusted from the form: the room reads this back to
+    // decide what number the whole audience sees.
+    display_viewer_count: normalizeDisplayViewers(input.display_viewer_count),
     daily_room_name: roomName,
     daily_room_url: roomUrl,
   };

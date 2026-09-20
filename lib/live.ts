@@ -66,6 +66,80 @@ export function canSeeRoster(role: LiveRole): boolean {
   return role === "host";
 }
 
+// ---------------------------------------------------------------------------
+// Announced attendance
+// ---------------------------------------------------------------------------
+
+/**
+ * Largest "shown attendees" figure an admin may set (mirrored by the DB CHECK
+ * in migration 0071). Big enough for any real webinar, small enough that a
+ * fat-fingered extra digit can't render a ten-character number into the header.
+ */
+export const MAX_DISPLAY_VIEWERS = 100_000;
+
+/**
+ * Sanitize an admin-entered "shown attendees" value into what we store and show.
+ *
+ * A webinar can carry an *announced* headcount — a number the admin chooses to
+ * show the audience ("43 watching") instead of the true, hidden roster. It is a
+ * deliberate exception to `canSeeRoster`: turnout is normally the host's
+ * business, but a host may still want to project a figure. Empty, non-numeric,
+ * or negative input means "don't announce anything" and becomes null — the room
+ * then falls back to the private default (a viewer sees no count, a host sees
+ * the real one). Anything larger than the cap is clamped, not rejected.
+ *
+ * Pure and shared so the form (to validate as it's typed), the server action
+ * (the actual gate), and the room (which re-sanitizes on the way out, in case a
+ * value was written straight into the row) all agree on what a valid figure is.
+ */
+export function normalizeDisplayViewers(
+  input: number | string | null | undefined,
+): number | null {
+  if (input === null || input === undefined) return null;
+  const trimmed = typeof input === "string" ? input.trim() : input;
+  if (trimmed === "") return null;
+  const n = Math.floor(Number(trimmed));
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.min(n, MAX_DISPLAY_VIEWERS);
+}
+
+/**
+ * The headcount to show in a live room's header, and whether it is the
+ * announced figure or the true roster.
+ *
+ * Precedence, and why:
+ *  - An announced count (events.display_viewer_count), when set, wins for
+ *    *everyone*. That is the whole point of the field — the audience sees the
+ *    chosen number, and a host previewing the room sees exactly what the
+ *    audience sees. A host still has the real roster elsewhere (the
+ *    participants panel, the tiles they can actually see), and the caller can
+ *    surface it alongside via the returned `announced` flag.
+ *  - With no announced count, the privacy default holds: a host sees the real
+ *    roster size, a viewer sees nothing.
+ *
+ * Returns null when there is nothing to show — a viewer in a room with no
+ * announced count — so the caller renders no chip at all rather than a bare "0".
+ * `realCount` may be null for backends that don't expose a client-side roster
+ * (a Daily room manages its own participant list); such a room shows the
+ * announced figure or nothing.
+ */
+export function headcountLabel({
+  role,
+  displayCount,
+  realCount,
+}: {
+  role: LiveRole;
+  displayCount: number | null;
+  realCount: number | null;
+}): { count: number; announced: boolean } | null {
+  const announced = normalizeDisplayViewers(displayCount);
+  if (announced !== null) return { count: announced, announced: true };
+  if (canSeeRoster(role) && realCount !== null && realCount >= 0) {
+    return { count: realCount, announced: false };
+  }
+  return null;
+}
+
 export type LiveEvent = {
   id: string;
   title: string;
@@ -80,6 +154,11 @@ export type LiveEvent = {
   externalUrl: string | null;
   recordingUrl: string | null;
   hostName: string | null;
+  /**
+   * Announced attendance shown in the live room in place of the hidden roster.
+   * Null = the private default (see `headcountLabel`). Display only.
+   */
+  displayViewerCount: number | null;
 } & LiveRoom;
 
 export type CallInvite = {

@@ -6,7 +6,10 @@ import {
   joinState,
   inviteEndsAt,
   normalizeQuestion,
+  normalizeDisplayViewers,
+  headcountLabel,
   MAX_QUESTION_LENGTH,
+  MAX_DISPLAY_VIEWERS,
   JOIN_OPENS_MINUTES_BEFORE,
   JOIN_CLOSES_MINUTES_AFTER,
   DEFAULT_EVENT_MINUTES,
@@ -170,4 +173,73 @@ test("an over-long question is capped at the DB limit", () => {
   const long = "a".repeat(MAX_QUESTION_LENGTH + 50);
   const out = normalizeQuestion(long);
   assert.equal(out?.length, MAX_QUESTION_LENGTH);
+});
+
+// ---------------------------------------------------------------------------
+// Announced attendance
+// ---------------------------------------------------------------------------
+//
+// normalizeDisplayViewers is the shared truth the form, the server action, and
+// the room all read, so "what counts as nothing" (null) and "what counts as a
+// figure" both matter. headcountLabel is where the privacy default and the
+// announced override meet — the case that must never regress is a viewer with
+// no announced count seeing nothing at all.
+
+test("an unset / blank shown-attendees value announces nothing", () => {
+  assert.equal(normalizeDisplayViewers(null), null);
+  assert.equal(normalizeDisplayViewers(undefined), null);
+  assert.equal(normalizeDisplayViewers(""), null);
+  assert.equal(normalizeDisplayViewers("   "), null);
+});
+
+test("a real shown-attendees figure is kept, from a string or a number", () => {
+  assert.equal(normalizeDisplayViewers("43"), 43);
+  assert.equal(normalizeDisplayViewers(43), 43);
+  assert.equal(normalizeDisplayViewers("  43 "), 43);
+  assert.equal(normalizeDisplayViewers(0), 0); // an explicit, deliberate zero
+});
+
+test("a fractional or negative figure is floored / rejected", () => {
+  assert.equal(normalizeDisplayViewers("12.9"), 12);
+  assert.equal(normalizeDisplayViewers(-5), null);
+  assert.equal(normalizeDisplayViewers("nope"), null);
+});
+
+test("a wildly large figure is clamped to the cap, not rejected", () => {
+  assert.equal(normalizeDisplayViewers(MAX_DISPLAY_VIEWERS + 1), MAX_DISPLAY_VIEWERS);
+  assert.equal(normalizeDisplayViewers("99999999"), MAX_DISPLAY_VIEWERS);
+});
+
+test("an announced count overrides the roster for everyone, including viewers", () => {
+  // The whole point of the field: the audience sees the chosen number.
+  assert.deepEqual(headcountLabel({ role: "viewer", displayCount: 43, realCount: null }), {
+    count: 43,
+    announced: true,
+  });
+  // A host sees exactly what the audience sees; `announced` lets the caller
+  // still surface the true roster alongside.
+  assert.deepEqual(headcountLabel({ role: "host", displayCount: 43, realCount: 2 }), {
+    count: 43,
+    announced: true,
+  });
+});
+
+test("with no announced count, the privacy default holds", () => {
+  // A viewer sees nothing at all — never a "0".
+  assert.equal(headcountLabel({ role: "viewer", displayCount: null, realCount: 5 }), null);
+  assert.equal(headcountLabel({ role: "viewer", displayCount: null, realCount: null }), null);
+  // A host sees the real roster size.
+  assert.deepEqual(headcountLabel({ role: "host", displayCount: null, realCount: 5 }), {
+    count: 5,
+    announced: false,
+  });
+});
+
+test("a backend with no client-side roster shows the announced figure or nothing", () => {
+  // realCount null models Daily, which owns its own participant list.
+  assert.deepEqual(headcountLabel({ role: "host", displayCount: 43, realCount: null }), {
+    count: 43,
+    announced: true,
+  });
+  assert.equal(headcountLabel({ role: "host", displayCount: null, realCount: null }), null);
 });

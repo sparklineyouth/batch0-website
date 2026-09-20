@@ -230,6 +230,7 @@ function buildMocks(): Mocks {
     description: null,
     location: null,
     recordingUrl: null,
+    displayViewerCount: null,
     roomName: null,
     roomUrl: null,
     externalUrl: null,

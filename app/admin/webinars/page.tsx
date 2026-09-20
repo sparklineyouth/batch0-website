@@ -35,7 +35,7 @@ export default async function AdminWebinarsPage() {
     admin
       .from("events")
       .select(
-        "id, title, description, type, starts_at, ends_at, location, visibility, live_mode, daily_room_name, daily_room_url, recording_url",
+        "id, title, description, type, starts_at, ends_at, location, visibility, live_mode, daily_room_name, daily_room_url, recording_url, display_viewer_count",
       )
       .eq("live_mode", "hosted")
       .order("starts_at", { ascending: false })
@@ -49,12 +49,13 @@ export default async function AdminWebinarsPage() {
       .order("starts_on", { ascending: false, nullsFirst: false }),
   ]);
 
-  // `live_mode` arrives with migration 0058. Until it is applied the filter
-  // above fails, and a 500 here would read as "webinars are broken" rather
-  // than "one SQL file hasn't been run". Say which.
+  // `live_mode` arrives with migration 0058, `display_viewer_count` with 0071.
+  // Until each is applied the query above fails, and a 500 here would read as
+  // "webinars are broken" rather than "one SQL file hasn't been run". Say which.
   const missingColumn =
     error &&
-    (error.code === "42703" || /live_mode/.test(error.message ?? ""));
+    (error.code === "42703" ||
+      /live_mode|display_viewer_count/.test(error.message ?? ""));
 
   if (missingColumn) {
     return (
@@ -76,7 +77,9 @@ export default async function AdminWebinarsPage() {
                 and safe to re-run. Then reload this page.
               </p>
               <p className="mt-2 text-xs text-ink-faint">
-                Q&amp;A also needs <code>0060_webinar_questions.sql</code>.
+                Q&amp;A also needs <code>0060_webinar_questions.sql</code>, and
+                the shown-attendees count needs{" "}
+                <code>0071_event_display_viewer_count.sql</code>.
               </p>
             </div>
           </div>
@@ -111,6 +114,7 @@ export default async function AdminWebinarsPage() {
       externalUrl: null,
       recordingUrl: e.recording_url,
       hostName: null,
+      displayViewerCount: e.display_viewer_count ?? null,
       roomName: e.daily_room_name,
       roomUrl: e.daily_room_url,
       visibility: e.visibility,
