@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { BarChart, TrendLine, Funnel, Meter } from "@/components/admin/charts";
 import { isoWeekStart, mondayOf } from "@/lib/week";
 import { thisMonthStartISODate } from "@/lib/ai/pricing";
+import { revenueInPeriod, revenuePeriods } from "@/lib/revenue-periods";
 import {
   Inbox,
   CheckCircle,
@@ -70,7 +71,7 @@ export default async function PulsePage() {
   const prev7Start = daysAgo(13);
   prev7Start.setUTCHours(0, 0, 0, 0);
   const eightWeeks = lastNWeeks(8);
-  const eightWeeksStart = eightWeeks[0].start;
+  const revenue = revenuePeriods(now);
   const currentWeekStart = isoWeekStart(now);
   const twoWeeksAgo = (() => {
     const d = new Date(currentWeekStart);
@@ -101,7 +102,7 @@ export default async function PulsePage() {
       .from("payments")
       .select("amount_cents, status, paid_at")
       .eq("currency", "usd")
-      .gte("paid_at", eightWeeksStart.toISOString())
+      .gte("paid_at", revenue.weeks[0].start.toISOString())
       .in("status", ["succeeded", "refunded"]),
     // Also widened to eight weeks so the participation trend has a history to
     // draw. The at-risk calculation below still only looks at the last two.
@@ -158,16 +159,8 @@ export default async function PulsePage() {
     ).length ?? 0;
 
   // ── Revenue metrics ─────────────────────────────────────────────────────
-  const rev7 = (recentPayments ?? [])
-    .filter((p: any) => new Date(p.paid_at) >= last7Start)
-    .reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0);
-  const revPrev7 = (recentPayments ?? [])
-    .filter(
-      (p: any) =>
-        new Date(p.paid_at) >= prev7Start &&
-        new Date(p.paid_at) < last7Start,
-    )
-    .reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0);
+  const rev7 = revenueInPeriod(recentPayments ?? [], revenue.current);
+  const revPrev7 = revenueInPeriod(recentPayments ?? [], revenue.previous);
 
   // ── Weekly bar series ───────────────────────────────────────────────────
   const appsByWeek = eightWeeks.map((w) => ({
@@ -178,14 +171,9 @@ export default async function PulsePage() {
     ).length,
   }));
 
-  const revByWeek = eightWeeks.map((w) => ({
+  const revByWeek = revenue.weeks.map((w) => ({
     ...w,
-    cents: (recentPayments ?? [])
-      .filter(
-        (p: any) =>
-          new Date(p.paid_at) >= w.start && new Date(p.paid_at) < w.end,
-      )
-      .reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0),
+    cents: revenueInPeriod(recentPayments ?? [], w),
   }));
 
   // ── Check-in completion ─────────────────────────────────────────────────
@@ -314,7 +302,7 @@ export default async function PulsePage() {
           prior={revPrev7}
           format={fmtMoney}
           href="/admin/payments"
-          hint="USD gross, before refunds and fees; verified payment dates only"
+          hint="7 Eastern calendar days including today (America/New_York); USD gross before refunds and fees, verified payment dates only"
         />
         <Delta
           icon={CheckCircle}
@@ -395,7 +383,7 @@ export default async function PulsePage() {
         <Card>
           <BarChart
             title="Tuition captured · 8 weeks"
-            subtitle="USD captured by verified Stripe payment date, before refunds and fees. Unknown dates and other products excluded."
+            subtitle="Monday–Sunday in Eastern time (America/New_York). USD captured by verified Stripe payment date, before refunds and fees. Unknown dates and other products excluded."
             data={revByWeek.map((w) => ({
               key: w.key,
               label: w.label,
