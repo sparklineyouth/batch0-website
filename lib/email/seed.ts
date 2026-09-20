@@ -158,10 +158,10 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     description:
       "Not sent by the app — build a drip on the “Application accepted” event and use this as a later step.",
     category: "lifecycle",
-    subject: "Your batch0 seat is still open, {{first_name}}",
-    preheader: "Pay {{amount}} to lock in your seat.",
+    subject: "Any questions about joining batch0, {{first_name}}?",
+    preheader: "The schedule, parent guide, and your next step.",
     body_html:
-      "<p>Hi {{first_name}},</p><p>Your seat in <strong>{{cohort_name}}</strong> is still held, but it isn't locked in until the <strong>{{amount}}</strong> enrollment fee is paid. It takes a minute.</p><p>If something's in the way — timing, cost, anything — reply to this email and tell us. We'd rather sort it out than lose you.</p>",
+      "<p>Hi {{first_name}},</p><p>You were accepted to <strong>{{cohort_name}}</strong>. Is the schedule, a parent question, the cost, or checkout holding you back?</p><p><a href=\"{{site_url}}/parents\">The parent guide</a> explains the live schedule, sample work, and how enrollment works. Your enrollment page shows your current total and availability before payment. A seat is confirmed only when enrollment is complete.</p><p>Reply with the main question and we will answer it directly. If the timing no longer works, tell us and we will stop following up.</p>",
     cta_label: "Finish enrolling",
     cta_url: "{{site_url}}/dashboard/accepted",
     // `amount` is the live tuition, resolved when the nudge sends (not when the

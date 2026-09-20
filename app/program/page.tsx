@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
+import { EnrollmentNotice } from "@/components/enrollment-notice";
+import { PublicTimetable } from "@/components/public-timetable";
+import { getPublicCohortSchedule } from "@/lib/public-program";
 import { Ledger } from "@/components/ledger";
 import { ApplyCta } from "@/components/apply-cta";
 import { WEEKS } from "@/components/curriculum";
@@ -72,7 +75,7 @@ const DETAIL: Record<string, string[]> = {
   Pitch: [
     "Write the deck: problem, product, traction, model, ask",
     "Rehearse with the batch0 team until the delivery holds",
-    "Pitch live at demo day",
+    "Submit a demo or narrated deck for the staff-hosted showcase",
   ],
 };
 
@@ -85,7 +88,7 @@ const WEEKLY_OUTCOMES = [
   ["Market · position", "A specific audience, a competitive comparison, and a clear product message."],
   ["Market · distribute", "A small distribution experiment, a measured funnel, and a plan for the next users."],
   ["Pitch · prepare", "An evidence-based deck, a concise pitch, and a reliable demo."],
-  ["Pitch · demonstrate", "A rehearsed demo-day presentation, an honest retrospective, and a 30-day plan."],
+  ["Pitch · demonstrate", "A prepared demo or narrated deck, an honest retrospective, and a 30-day plan."],
 ];
 
 // Prerendered with ISR, same shape as the homepage: the server renders the
@@ -101,6 +104,7 @@ export default async function ProgramPage() {
     getPublicSiteConfig({ countryCode: "IN" }),
   ]);
   const { derived } = config;
+  const sessions = await getPublicCohortSchedule(config.cohort);
   const cohortLabel = derived.cohortLabel || "the next cohort";
 
   // ---------- Course structured data ----------
@@ -167,7 +171,7 @@ export default async function ProgramPage() {
       category: "Tuition",
       url: `${SITE}/apply`,
       availability:
-        derived.spotsLeft > 0
+        derived.applicationsAvailable && derived.spotsLeft > 0
           ? "https://schema.org/LimitedAvailability"
           : "https://schema.org/SoldOut",
       ...(cohort.applicationsCloseAt
@@ -184,7 +188,7 @@ export default async function ProgramPage() {
     "@id": `${SITE}/program#course`,
     name: "batch0 — Startup Accelerator for High Schoolers",
     description:
-      "A live, online startup accelerator where high schoolers build a real company across four one-week build sprints — Validate, Build, Market, Pitch — each followed by a build week, and pitch it at a live demo day.",
+      "A live, online startup accelerator where high schoolers build a real company across four one-week build sprints — Validate, Build, Market, Pitch — each followed by a build week, and prepare a demo for a staff-hosted showcase.",
     url: `${SITE}/program`,
     provider: { "@id": ORG_ID },
     audience: STUDENT_AUDIENCE,
@@ -217,7 +221,7 @@ export default async function ProgramPage() {
     // makes "Skip to content" land above the nav. No layout classes on the
     // inner <main>, so nothing shifts.
     <div className="min-h-screen bg-paper">
-      <Navbar cohortLabel={derived.cohortLabel || "the next cohort"} />
+      <Navbar cohortLabel={derived.cohortLabel || "the next cohort"} applicationLabel={derived.applicationLabel} />
       <main id="main-content" tabIndex={-1}>
 
       <section className="px-5 pb-16 pt-14 sm:px-6 sm:pt-20 md:pb-20 md:pt-24">
@@ -240,6 +244,8 @@ export default async function ProgramPage() {
               links and calendar downloads in Events, and lessons and
               workbooks in Course.
             </p>
+            <EnrollmentNotice config={config} />
+            <p className="mt-5 text-sm"><a href="/sample-lesson" className="link-ink">Try a sample lesson before applying →</a></p>
           </div>
           <div className="md:col-span-5 md:pl-6 md:pt-2">
             <Ledger config={config} className="border-t border-line pt-6 md:border-t-0 md:pt-0" />
@@ -247,6 +253,7 @@ export default async function ProgramPage() {
         </div>
       </section>
 
+      <PublicTimetable sessions={sessions} contactEmail={config.settings.contactEmail} />
       <section className="border-t border-line bg-wash px-5 py-16 sm:px-6" aria-labelledby="weekly-plan">
         <div className="mx-auto max-w-[1100px]">
           <h2 id="weekly-plan" className="font-display text-3xl font-bold">Your nine-week path</h2>
@@ -312,16 +319,12 @@ export default async function ProgramPage() {
           </div>
           <div className="md:col-span-8">
             <p className="max-w-[40rem] text-[1.0625rem] leading-[1.65] text-ink-soft">
-              The cohort ends with a live demo day: you pitch the
-              company you built to the batch0 team and invited guests.
-              Cohort standouts may be offered batch0 sponsorship: a
-              non-dilutive grant funded by our organization, decided purely on
-              merit. Funding is never guaranteed, tuition never buys a
-              sponsorship, and every student keeps 100% of their company
-              either way.
-              {/* TODO(RISH): demo-day date (settings.demo_day_date is unset)
-                  and the confirmed guest list once it exists — see
-                  NEEDED_FACTS.md. */}
+              The cohort closes with a staff-hosted showcase. Students submit
+              a short demo recording or a pitch deck with written narration;
+              staff presents the work and moderates written questions.
+              Students do not use a live microphone or share their screens,
+              and appearing on camera is optional. No outside guests, funding
+              or prizes are promised. Every student keeps ownership of their work.
             </p>
             
           </div>
@@ -335,7 +338,7 @@ export default async function ProgramPage() {
             finishes things.
           </h2>
           <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <ApplyCta label={`Apply for ${cohortLabel}`} location="program-page" />
+            <ApplyCta label={derived.applicationLabel} location="program-page" />
             <p className="text-[13px] text-ink-faint">
               Free to apply · {derived.priceLabel} charged only if accepted
             </p>

@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { VT323, IBM_Plex_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import { GoogleAnalytics } from "@next/third-parties/google";
+import { SiteAnalytics } from "@/components/site-analytics";
+import { PAYMENT_FRAGMENT_SCRIPT } from "@/lib/payment-privacy";
 import { ThemeProvider } from "@/components/theme-provider";
 import {
   SITE,
@@ -81,7 +80,7 @@ export const metadata: Metadata = {
   // default for every other route, where it is always true regardless of
   // where the cohort calendar sits.
   description:
-    "batch0 is a live, online startup accelerator for high schoolers. Build a real company across four build sprints and pitch it at demo day. Free to apply, no equity taken.",
+    "batch0 is a live, online startup program for high schoolers. Practice customer research, build a first version and prepare a staff-hosted showcase. Free to apply, no equity taken.",
   keywords: [
     "high school startup accelerator",
     "startup programs for high schoolers",
@@ -96,7 +95,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Startup Accelerator for High Schoolers — batch0",
     description:
-      "A live, online startup accelerator for U.S. high schoolers. Build a real company across four build sprints, then pitch it at demo day. $130, free to apply, no equity taken.",
+      "A live, online startup program for high schoolers. Customer research, a first version and a staff-hosted showcase. Free to apply, no equity taken.",
     url: SITE,
     siteName: "batch0",
     // Image is generated dynamically by app/opengraph-image.tsx and picked
@@ -107,7 +106,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Startup Accelerator for High Schoolers — batch0",
     description:
-      "A live, online startup accelerator for U.S. high schoolers. Build a real company across four build sprints, then pitch it at demo day. $130, free to apply, no equity taken.",
+      "A live, online startup program for high schoolers. Customer research, a first version and a staff-hosted showcase. Free to apply, no equity taken.",
   },
   // Google Search Console ownership. Set GOOGLE_SITE_VERIFICATION in the
   // Vercel project env to the bare token Google gives you (not the whole meta
@@ -151,17 +150,8 @@ export const metadata: Metadata = {
 // FAQPage, BlogPosting, sponsor offers) reference these two by `@id` — see
 // lib/schema.tsx for why the ids matter.
 //
-// The tuition Offer here is the static base price, matching FALLBACK_COHORT
-// in lib/site-config.ts. It is intentionally not read from the DB: this is
-// the root layout, so a query here would hit every authenticated page too.
-// Pages that need the live, regional price (/program) emit it themselves.
-//
-// It is also deliberately the LIST price during a promotion. This node is
-// built at module scope in a statically generated layout, so a sale price
-// written here would outlive the sale and keep asserting a discount that
-// checkout no longer honours — the same build-time freeze that keeps the
-// promo out of `title` above. A promo-aware Offer belongs on a per-request
-// page, not here.
+// Tuition belongs on the cohort-aware /program page. A root-layout Offer
+// would keep advertising a past cohort's price after admission changes.
 const orgJsonLd = {
   "@context": "https://schema.org",
   "@type": "EducationalOrganization",
@@ -178,7 +168,7 @@ const orgJsonLd = {
     height: 512,
   },
   description:
-    "batch0 is a live, online startup accelerator for U.S. high schoolers. Students build a real company across four one-week build sprints and pitch it at a live demo day. No equity is taken; sponsorship for standouts is merit-based and funding is never guaranteed.",
+    "batch0 is a live, online startup accelerator for high schoolers. Students work on customer research, a first version and a staff-hosted showcase across nine weeks. No equity is taken; sponsorship for standouts is merit-based and funding is never guaranteed.",
   legalName: "Sparkline Youth LLC",
   founder: FOUNDERS,
   foundingDate: "2026",
@@ -202,15 +192,6 @@ const orgJsonLd = {
     "Go-to-market strategy",
     "Pitch decks",
   ],
-  offers: {
-    "@type": "Offer",
-    price: "129.99",
-    priceCurrency: "USD",
-    category: "Tuition",
-    availability: "https://schema.org/LimitedAvailability",
-    description:
-      "Cohort tuition, charged only if accepted. Free to apply. Reduced regional pricing available in select countries.",
-  },
   // TODO(RISH): `sameAs` — the official Instagram/Discord/X handles, once
   // they exist (NEEDED_FACTS.md #11; the footer carries the same TODO).
   // Left off deliberately rather than guessed: `sameAs` asserts that an
@@ -230,7 +211,7 @@ const websiteJsonLd = {
   alternateName: "Sparkline Youth",
   url: SITE,
   description:
-    "A live, online startup accelerator for high schoolers. Build a real company, pitch it at demo day.",
+    "A live, online startup program for high schoolers. Customer research, a first version and a staff-hosted showcase.",
   publisher: { "@id": ORG_ID },
   inLanguage: "en-US",
 };
@@ -277,6 +258,7 @@ export default function RootLayout({
             on the very first frame without the page reading cookies on the
             server and losing its prerender. Same shape as the next-themes
             script above it. See lib/auth-flag.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: PAYMENT_FRAGMENT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: AUTH_FLAG_SCRIPT }} />
         <ThemeProvider>
           <a
@@ -298,11 +280,7 @@ export default function RootLayout({
           <div>{children}</div>
           <JsonLd data={orgJsonLd} />
           <JsonLd data={websiteJsonLd} />
-          <Analytics />
-          {/* Real-user Core Web Vitals. Like <Analytics />, the script 404s on
-              localhost by design and resolves on Vercel; data only appears once
-              Speed Insights is enabled for the project in the dashboard. */}
-          <SpeedInsights />
+          <SiteAnalytics googleEnabled={GA_ENABLED} googleId={GA_MEASUREMENT_ID} />
         </ThemeProvider>
         {/* gtag.js, loaded afterInteractive so it never blocks first paint.
             Client-side route changes are counted by GA4's Enhanced
@@ -310,7 +288,7 @@ export default function RootLayout({
             which is on by default — this component only fires the initial
             page_view, so that setting must stay enabled in the property or
             every in-app navigation goes unrecorded. */}
-        {GA_ENABLED && <GoogleAnalytics gaId={GA_MEASUREMENT_ID} />}
+
       </body>
     </html>
   );

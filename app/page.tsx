@@ -97,7 +97,7 @@ export default async function Home() {
     // nav it is supposed to skip. <main> now wraps only the content, and
     // carries no layout classes of its own so nothing moves.
     <div className="min-h-screen bg-paper">
-      <Navbar cohortLabel={config.derived.cohortLabel || "the next cohort"} />
+      <Navbar cohortLabel={config.derived.cohortLabel || "the next cohort"} applicationLabel={config.derived.applicationLabel} />
       {activeChallenge && (
         <ChallengeMarquee
           challenge={{

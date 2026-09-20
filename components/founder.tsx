@@ -23,15 +23,14 @@ export default function Founder({
           <p className="max-w-[40rem] text-[1.0625rem] leading-[1.65] text-ink-soft">
             batch0 is built and run by{" "}
             <strong className="font-semibold text-ink">Rishabh Dagli and Shresht Chopra</strong>, two
-            17-year-old serial founders. We built batch0 to give high schoolers the same chance
-            that we wish we had: to build a REAL company with mentorship and support, and even the chance
-            of funding!
+            student founders. They lead the sessions and help students work
+            through customer research, a first version and a final showcase.
             {/* TODO(RISH): 2–3 public receipts (links) — shipped products,
                 hardware, repos, press — to add specifics here. Logged in
                 NEEDED_FACTS.md. */}
           </p>
           <p className="mt-5 max-w-[40rem] text-[15px] leading-[1.65] text-ink-soft">
-            Cohort 1 is deliberately the first. There are no glossy alumni
+            Fall 2026 is the founding cohort. There are no glossy alumni
             stats to show you yet, and we won&apos;t invent any. What we can
             promise: Rishabh and Shresht run every live session themselves, read every
             application, and answer every parent question personally within

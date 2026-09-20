@@ -2,6 +2,7 @@ import React from "react";
 import type { SiteConfig } from "@/lib/site-config";
 import { Ledger } from "@/components/ledger";
 import { ApplyCta } from "@/components/apply-cta";
+import { EnrollmentNotice } from "@/components/enrollment-notice";
 
 export default function Hero({ config }: { config: SiteConfig }) {
   const { derived } = config;
@@ -30,9 +31,9 @@ export default function Hero({ config }: { config: SiteConfig }) {
           </h1>
 
           <p className="animate-rise rise-3 mt-6 max-w-[38rem] text-[1.0625rem] leading-[1.6] text-ink-soft sm:text-lg">
-            batch0 is a live, online startup accelerator for
-            high schoolers. Seasonal build sprints, mentorship, and a supportive community
-            resulting in a company of your own.
+            Turn your idea into customer research, a first version and a
+            demo you can show. A small, live online cohort for high schoolers,
+            with weekly work, founder feedback and people to build alongside.
           </p>
 
           <div className="animate-rise rise-4 mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
@@ -42,7 +43,7 @@ export default function Hero({ config }: { config: SiteConfig }) {
                 browser, and it does so without shifting anything. */}
             <ApplyCta
               href="/home"
-              label={`Apply for ${cohortLabel}`}
+              label={derived.applicationLabel}
               signedInLabel="Go to dashboard"
               location="hero"
             />
@@ -57,6 +58,8 @@ export default function Hero({ config }: { config: SiteConfig }) {
           <p className="animate-rise rise-5 mt-4 text-[13px] text-ink-faint">
             Free to apply · {derived.priceLabel} charged only if accepted
           </p>
+          <EnrollmentNotice config={config} />
+          <p className="mt-5 text-sm"><a href="/parents" className="link-ink">For parents: schedule, tuition and how it works →</a></p>
         </div>
 
         {/* The Cohort Ledger — every row rendered from the live cohort

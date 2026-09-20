@@ -23,15 +23,15 @@ export default function StickyMobileCta({ config }: { config: SiteConfig }) {
 
   useEffect(() => {
     if (isAuthed) return;
-    if (!settings.applicationsOpen) return;
+    if (!derived.applicationsAvailable) return;
     // Appear once the hero is behind the reader.
     const onScroll = () => setShow(window.scrollY > 480);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [isAuthed, settings.applicationsOpen]);
+  }, [isAuthed, derived.applicationsAvailable]);
 
-  if (isAuthed || !settings.applicationsOpen) return null;
+  if (isAuthed || !derived.applicationsAvailable) return null;
 
   const cohortLabel = derived.cohortLabel || "the next cohort";
 
@@ -51,7 +51,7 @@ export default function StickyMobileCta({ config }: { config: SiteConfig }) {
           className="press flex w-full items-center justify-between gap-3 rounded-md bg-phosphor px-4 py-3.5 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
         >
           <span className="flex flex-col items-start leading-tight">
-            <span>Apply for {cohortLabel}</span>
+            <span>{derived.applicationLabel}</span>
             {/* `text-on-phosphor`, never `text-ink`. The phosphor fill is a
                 constant yellow in both themes, but --ink flips to near-white
                 in dark mode — so text-ink/70 here rendered at ~1.35:1 and the

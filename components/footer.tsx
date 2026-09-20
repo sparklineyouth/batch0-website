@@ -17,6 +17,8 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
   const contactEmail = resolved.settings.contactEmail;
   const links = [
     { href: "/program", label: "Program" },
+    { href: "/parents", label: "For parents" },
+    { href: "/sample-lesson", label: "Sample lesson" },
     { href: "/start", label: "Free starter kit" },
     { href: "/blog", label: "Blog" },
     { href: "/sponsors", label: "Sponsors" },

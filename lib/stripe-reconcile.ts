@@ -145,6 +145,15 @@ async function walkSessions(
   opts: ReconcileOptions,
 ) {
   const max = opts.maxSessions ?? 1000;
+  const paidAtByIntent = new Map<string, string>();
+  try {
+    let scanned = 0;
+    for await (const event of stripe.events.list({ type: "payment_intent.succeeded", limit: 100 })) {
+      const intent = event.data.object as Stripe.PaymentIntent;
+      paidAtByIntent.set(intent.id, new Date(event.created * 1000).toISOString());
+      if (++scanned >= max) break;
+    }
+  } catch (err: any) { summary.errors.push(`success timestamps: ${err?.message ?? "unavailable"}`); }
   const params: Stripe.Checkout.SessionListParams = { limit: 100 };
   if (opts.sinceUnix) params.created = { gte: opts.sinceUnix };
 
@@ -162,6 +171,7 @@ async function walkSessions(
       try {
         const result = await fulfillCheckoutSession(session, {
           silent: opts.silent,
+          paidAt: paidAtByIntent.get(typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? "") ?? null,
         });
         tally(summary, result);
       } catch (err: any) {

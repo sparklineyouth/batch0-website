@@ -17,11 +17,11 @@ export default function FAQ({ config }: { config: SiteConfig }) {
   const faqs: { q: string; a: string }[] = [
     {
       q: "How much does it cost?",
-      a: `${price}, once, and only if you're accepted; applying is free. There are no hidden fees, no upsells, and no materials costs. Comparable accelerators list tuition in the thousands. Reduced regional pricing applies automatically in select countries, and refund terms are published on the refund policy page.`,
+      a: `${price}, once, and only if you're accepted; applying is free. There are no hidden fees, no upsells, and no materials costs. Reduced regional pricing applies automatically in select countries, and refund terms are published on the refund policy page.`,
     },
     {
       q: "Who runs batch0?",
-      a: `Rishabh Dagli and Shresht Chopra — two 17-year-old founders who build and ship their own projects, including batch0 itself. They personally review every application, run every live session, and coordinate mentor and investor relationships for students. This is the founding cohort: no borrowed credentials, no invented track record.`,
+      a: `Rishabh Dagli and Shresht Chopra — two 17-year-old founders who build and ship their own projects, including batch0 itself. They personally review applications and run the live sessions. Fall 2026 is the founding cohort; we do not claim an alumni track record.`,
     },
     {
       q: "Who is it for?",
@@ -29,7 +29,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "How much time does it take?",
-      a: "Plan for 5–10 focused hours a week, the way you would a serious extracurricular. Each week has one live cohort session plus office hours, scheduled on U.S. Eastern time, and the rest is you building toward that week's deliverable. Session links and calendar downloads are in Events; readings and workbooks are in Course. If you miss a session, use the course materials and ask the team about catching up.",
+      a: "Plan for 5–10 focused hours a week, the way you would a serious extracurricular. The live calendar on the parent page lists sessions and office hours in U.S. Eastern time; the rest is independent work toward your weekly deliverable. Session links and calendar downloads are in Events; readings and workbooks are in Course. If you miss a session, use the course materials and ask the team about catching up.",
     },
     {
       q: "Is it really fully online?",
@@ -37,7 +37,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "Who are the mentors?",
-      a: `Cohort 1 is taught end-to-end by Rishabh and Shresht — every person involved is named on this site before you pay, and we won't pad the roster. Guest mentors and investors join around demo day; admitted students get their names before the cohort starts, and nobody interacts with students outside moderated program spaces.`,
+      a: `Rishabh and Shresht lead the cohort. Guest mentors and investors are not promised as part of tuition. Live sessions are staff-led with moderated written Q&A.`,
     },
     {
       q: "How is the community moderated?",
@@ -45,7 +45,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "What is demo day?",
-      a: "The last day of the cohort: you pitch the company you built, live. Cohort standouts may be offered batch0 sponsorship: a non-dilutive grant funded by our organization, decided on merit. Sponsorship and any introductions are never guaranteed, and tuition never buys them.",
+      a: "A staff-hosted showcase of submitted student demos or narrated decks, with moderated written Q&A. Students do not take a live microphone or share their screens. Outside guests, funding and prizes are not promised.",
     },
     {
       q: "Does batch0 take equity or own my idea?",
@@ -81,6 +81,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
             </a>
             .
           </p>
+          <p className="mt-4 text-sm"><a href="/parents" className="link-ink">Read the parent guide and live calendar →</a></p>
         </div>
         <div className="md:col-span-8">
           <div className="border-t border-line">

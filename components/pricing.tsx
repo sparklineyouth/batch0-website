@@ -37,13 +37,10 @@ export default function Pricing({ config }: { config: SiteConfig }) {
           )}
           <p className="mt-4 max-w-[34rem] text-[15px] leading-[1.65] text-ink-soft">
             batch0 is 100% free to apply, tuition is charged only if you&apos;re accepted.
-            Comparable summer programs (LaunchX, LeanGap) list tuition in the
-            $3,000–$8,000+ range, even for online programs!
-            {/* TODO(RISH): re-verify current LaunchX / LeanGap list prices
-                before each cohort; logged in NEEDED_FACTS.md. */}{" "}
-            Tuition here covers the program itself. Sponsorship and any
-            investor/mentor relationship are merit-based, never paid for, and never
-            guaranteed.
+            Tuition covers the live cohort sessions, course materials,
+            office hours and the final student showcase. You are paying for
+            structure and feedback as you build. Revenue, investment and
+            college admission outcomes are not guaranteed.
           </p>
           {derived.isRegionalPrice && (
             <p className="mt-3 text-[13px] text-ink-faint">
