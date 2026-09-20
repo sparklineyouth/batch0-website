@@ -158,7 +158,7 @@ export default async function FounderStarterKitPage() {
                 batch0 is a live, online accelerator for high schoolers, ages 13–18. Work through validation, building, marketing, and pitching with feedback. Applying is free; standard tuition is {config.derived.basePriceLabel}, charged only if accepted. Check the program page for current dates, regional pricing, and any active offer. No equity taken; funding is never guaranteed.
               </p>
               <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-center">
-                <ApplyCta label={`Apply for ${cohortLabel}`} location="starter-kit" />
+                <ApplyCta label={config.derived.applicationLabel} location="starter-kit" />
                 <Link href="/program" className="link-ink text-sm font-medium">See the program</Link>
                 <Link href="/#faq" className="link-ink text-sm font-medium">Questions parents ask</Link>
               </div>

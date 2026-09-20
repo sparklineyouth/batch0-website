@@ -26,8 +26,8 @@ export default function HowItWorks({ config }: { config: SiteConfig }) {
       body: "Validate, build, market, pitch and most importantly, transform your idea into a company.",
     },
     {
-      title: "Pitch at demo day",
-      body: "The cohort closes with a live demo day where you present the company you built. Standouts may be offered batch0 sponsorship, a non-dilutive grant, decided on merit, never guaranteed.",
+      title: "Share your work at demo day",
+      body: "The cohort closes with a staff-hosted showcase of submitted demos and decks, followed by moderated written Q&A. No outside guests, funding or prizes are promised.",
     },
   ];
 

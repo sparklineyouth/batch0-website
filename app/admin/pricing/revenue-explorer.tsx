@@ -25,19 +25,20 @@ export function RevenueExplorer(props: {
   hasCohort: boolean;
 }) {
   const [elasticity, setElasticity] = useState(-1.2);
+  const [assumedPayers, setAssumedPayers] = useState(props.conversions);
 
   const model = useMemo(
     () =>
       buildRevenueModel({
         referencePriceCents: props.referencePriceCents,
-        referenceConversions: props.conversions,
+        referenceConversions: assumedPayers,
         acceptedPool: props.acceptedPool,
         capacity: props.capacity,
         elasticity,
       }),
     [
       props.referencePriceCents,
-      props.conversions,
+      assumedPayers,
       props.acceptedPool,
       props.capacity,
       elasticity,
@@ -66,23 +67,23 @@ export function RevenueExplorer(props: {
 
   return (
     <div className="space-y-6">
-      {/* What the model is standing on — all observed, none assumed. */}
+      <p className="rounded-lg border border-amber-500/30 p-3 text-sm text-ink-soft">Scenario calculator, not a price recommendation. Historical payers include different prices, promotions, and scholarships. Neither their count nor the slider measures demand at today’s price. The scenario below assumes both a starting number of payers and price sensitivity.</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Accepted" value={String(props.acceptedPool)} />
-        <Stat label="Paid" value={String(props.conversions)} />
+        <Stat label="Paying people · all prices" value={String(props.conversions)} />
         <Stat
-          label="Conversion"
+          label="Assumed conversion"
           value={pct(model.assumptions.referenceRate)}
         />
         <Stat
-          label="Capacity"
-          value={`${props.conversions}/${props.capacity}`}
+          label="Scenario places"
+          value={`${assumedPayers}/${props.capacity}`}
         />
-        <Stat label="Current price" value={dollars(props.referencePriceCents)} />
+        <Stat label="Scenario base price" value={dollars(props.referencePriceCents)} />
         <Stat label="List price" value={dollars(props.listPriceCents)} />
         <Stat label="Submitted" value={String(props.submitted)} />
         <Stat
-          label="Revenue to date"
+          label="Tuition after refunds · USD"
           value={dollars(props.revenueToDateCents)}
         />
       </div>
@@ -95,11 +96,18 @@ export function RevenueExplorer(props: {
         </p>
       )}
 
-      {/* The one assumed input, on a slider. */}
+      <div>
+        <label htmlFor="assumed-payers" className="text-sm font-medium text-ink">Assumed payers at the base price</label>
+        <input id="assumed-payers" type="number" min={0} max={Math.max(props.acceptedPool, props.capacity)} value={assumedPayers}
+          onChange={e => setAssumedPayers(Math.min(Math.max(props.acceptedPool, props.capacity), Math.max(0, Number(e.target.value) || 0)))}
+          className="ml-3 w-24 rounded border border-line bg-paper p-2" />
+        <p className="mt-1 text-xs text-ink-faint">Starts from historical paying people for convenience; this is an assumption at the displayed base price, not a measured conversion.</p>
+      </div>
+      {/* Both scenario demand and elasticity are assumptions. */}
       <div>
         <div className="flex items-baseline justify-between">
           <label htmlFor="elasticity" className="text-sm font-medium text-ink">
-            Price sensitivity
+            Assumed price sensitivity
           </label>
           <span className="text-xs text-ink-faint">
             elasticity {elasticity.toFixed(1)} · {elasticityLabel(elasticity)}
@@ -118,28 +126,28 @@ export function RevenueExplorer(props: {
         <p className="mt-1 text-xs text-ink-faint">
           How much demand moves when price moves. We can&apos;t measure this from
           one price point, so it&apos;s the assumption to sanity-check — drag it
-          and watch the recommended price respond.
+          and watch the scenario change.
         </p>
       </div>
 
       {/* The recommendation. */}
       <div className="rounded-xl border border-phosphor/30 bg-phosphor/[0.06] p-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
-          Revenue-maximizing price
+          Highest revenue within these assumptions
         </p>
         <p className="mt-1 text-3xl font-bold text-ink">
           {dollars(rec.priceCents)}
         </p>
         <p className="mt-2 text-sm text-ink-soft">
           {direction === "hold" ? (
-            <>Today&apos;s price is already about right for this model.</>
+            <>The scenario peak is near the chosen base price.</>
           ) : (
             <>
-              The model suggests you could{" "}
+              Under the chosen assumptions, the scenario has a{" "}
               <span className="font-semibold text-ink">
-                {direction} tuition
+                {direction === "raise" ? "higher price" : "lower price"}
               </span>{" "}
-              from {dollars(ref.priceCents)} to {dollars(rec.priceCents)}.
+              ({dollars(rec.priceCents)} versus the {dollars(ref.priceCents)} base).
             </>
           )}{" "}
           It projects{" "}
@@ -151,7 +159,7 @@ export function RevenueExplorer(props: {
             {dollars(rec.revenueCents)}
           </span>{" "}
           in tuition — {delta >= 0 ? "up" : "down"} {dollars(Math.abs(delta))}{" "}
-          vs. {dollars(ref.revenueCents)} at today&apos;s price.
+          versus {dollars(ref.revenueCents)} in the baseline scenario.
         </p>
       </div>
 
@@ -159,10 +167,10 @@ export function RevenueExplorer(props: {
 
       <p className="text-xs leading-relaxed text-ink-faint">
         How to read this: the curve is projected tuition revenue at each price,
-        built from this cohort&apos;s real accept-to-pay conversion and capped by
-        your {props.capacity} seats. The dashed line marks today&apos;s price;
+        built from assumed demand and assumed price sensitivity, capped by
+        your {props.capacity} seats. The dashed line marks the scenario base price;
         the dot marks the revenue peak. This is decision support, not a
-        guarantee — the price sensitivity above is an estimate.
+        guarantee. Choose prices using observed paid outcomes, refunds, capacity and delivery costs; this chart cannot identify causal price effects.
       </p>
     </div>
   );

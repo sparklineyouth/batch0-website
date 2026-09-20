@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { cohortEligibility } from "@/lib/cohort-eligibility";
+import { easternDeadline, formatUsd } from "@/lib/offer-format";
+import { loadPromoConfig } from "@/lib/promo-settings";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -15,12 +18,12 @@ import { ApplicationForm } from "./application-form";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { getApplicationForm } from "@/lib/application-questions";
 import { getScholarshipInterestQuestions } from "@/lib/scholarships";
-import { listPriceCents } from "@/lib/promo";
+import { listPriceCents, promoPriceCents } from "@/lib/promo";
 
 export const metadata = {
   title: "Apply · batch0",
   description:
-    "Apply to batch0 — the live, online startup accelerator for U.S. high schoolers. Free to apply; tuition charged only if accepted. Rolling review.",
+    "Apply to batch0 — the live, online startup accelerator for high schoolers. Free to apply; tuition charged only if accepted. Rolling review.",
   openGraph: {
     title: "Apply to batch0",
     description:
@@ -82,7 +85,7 @@ export default async function ApplyPage(
       ]),
     supabase
       .from("cohorts")
-      .select("id, name, capacity, price_cents, starts_on")
+      .select("*")
       .in("status", ["upcoming", "active"])
       .order("starts_on", { ascending: true }),
     getApplicationForm(),
@@ -106,7 +109,7 @@ export default async function ApplyPage(
   // review or already decided. lib/reapply.ts owns the classification so the
   // submit action can reach the same verdict from the same inputs.
   const plan = planReapply({
-    cohorts: openCohorts ?? [],
+    cohorts: (openCohorts ?? []).filter(cohort => cohortEligibility(cohort).eligible),
     history: applications,
     latestStatus: existing?.status ?? null,
     holdsPass: pass !== null,
@@ -236,7 +239,9 @@ export default async function ApplyPage(
     listPriceCents(selected?.price_cents ?? 13000),
     country,
   );
-  const priceDollars = (regional.amountCents / 100).toFixed(0);
+  const priceLabel = formatUsd(promoPriceCents(regional.amountCents, new Date(), await loadPromoConfig()));
+  const selectedRow = (openCohorts ?? []).find(cohort => cohort.id === selectedId);
+  const admission = selectedRow ? cohortEligibility(selectedRow) : null;
   const hasMultiple = cohorts.length > 1;
 
   return (
@@ -265,8 +270,11 @@ export default async function ApplyPage(
         <p className="mt-3 max-w-2xl text-[15px] sm:text-base text-ink-soft leading-[1.55]">
           {cohortName} is capped at {capacity} students. Applications are
           reviewed on a rolling basis. After your application is accepted,
-          you'll pay ${priceDollars} to lock in your seat.
+          you'll see your final tuition before paying. Current tuition for your region is {priceLabel}.
         </p>
+
+        <p className="mt-4 text-sm leading-relaxed text-ink-soft">Four steps: about you, background, your idea, then review. Your draft saves as you work. Fields marked optional can be skipped. <Link className="link-ink" href={`/parents?cohort=${selectedId}`}>Share the schedule and parent guide →</Link></p>
+        {admission?.mode === "late_entry" && <div className="mt-5 border-l-2 border-phosphor bg-wash p-4 text-sm leading-relaxed"><p className="font-semibold">This cohort has started. Late entry ends {easternDeadline(admission.deadline)}.</p><p className="mt-2 text-ink-soft">{selectedRow?.catch_up_plan}</p></div>}
 
         {hasMultiple && (
           <div className="mt-6 rounded-xl border border-line bg-wash px-4 py-3">
@@ -361,7 +369,7 @@ export default async function ApplyPage(
           <ApplicationForm
             defaults={reapplying ? null : existing ?? null}
             email={user.email ?? ""}
-            priceLabel={`$${priceDollars}`}
+            priceLabel={priceLabel}
             cohortId={selectedId}
             questions={questions}
             customQuestions={customQuestions}

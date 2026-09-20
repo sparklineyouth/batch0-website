@@ -81,7 +81,7 @@ export default async function PulsePage() {
 
   const [
     { data: recentApps },
-    { data: recentPayments },
+    { data: recentPayments, error: paymentsError },
     { data: weeklyCheckins },
     { data: activeCohorts },
     { count: pendingApps },
@@ -99,9 +99,10 @@ export default async function PulsePage() {
       .limit(5000),
     admin
       .from("payments")
-      .select("amount_cents, status, created_at")
-      .gte("created_at", eightWeeksStart.toISOString())
-      .eq("status", "succeeded"),
+      .select("amount_cents, status, paid_at")
+      .eq("currency", "usd")
+      .gte("paid_at", eightWeeksStart.toISOString())
+      .in("status", ["succeeded", "refunded"]),
     // Also widened to eight weeks so the participation trend has a history to
     // draw. The at-risk calculation below still only looks at the last two.
     admin
@@ -131,6 +132,8 @@ export default async function PulsePage() {
       .in("action", ["application.accepted", "application.rejected"]),
   ]);
 
+  if (paymentsError) throw new Error("Verified payment history is unavailable.");
+
   // ── Application metrics ─────────────────────────────────────────────────
   const apps7 =
     recentApps?.filter(
@@ -156,13 +159,13 @@ export default async function PulsePage() {
 
   // ── Revenue metrics ─────────────────────────────────────────────────────
   const rev7 = (recentPayments ?? [])
-    .filter((p: any) => new Date(p.created_at) >= last7Start)
+    .filter((p: any) => new Date(p.paid_at) >= last7Start)
     .reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0);
   const revPrev7 = (recentPayments ?? [])
     .filter(
       (p: any) =>
-        new Date(p.created_at) >= prev7Start &&
-        new Date(p.created_at) < last7Start,
+        new Date(p.paid_at) >= prev7Start &&
+        new Date(p.paid_at) < last7Start,
     )
     .reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0);
 
@@ -180,7 +183,7 @@ export default async function PulsePage() {
     cents: (recentPayments ?? [])
       .filter(
         (p: any) =>
-          new Date(p.created_at) >= w.start && new Date(p.created_at) < w.end,
+          new Date(p.paid_at) >= w.start && new Date(p.paid_at) < w.end,
       )
       .reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0),
   }));
@@ -306,11 +309,12 @@ export default async function PulsePage() {
         />
         <Delta
           icon={CreditCard}
-          label="Revenue · 7d"
+          label="Tuition captured · 7d"
           current={rev7}
           prior={revPrev7}
           format={fmtMoney}
           href="/admin/payments"
+          hint="USD gross, before refunds and fees; verified payment dates only"
         />
         <Delta
           icon={CheckCircle}
@@ -390,8 +394,8 @@ export default async function PulsePage() {
 
         <Card>
           <BarChart
-            title="Revenue · 8 weeks"
-            subtitle="Succeeded payments only. Excludes fees & fines."
+            title="Tuition captured · 8 weeks"
+            subtitle="USD captured by verified Stripe payment date, before refunds and fees. Unknown dates and other products excluded."
             data={revByWeek.map((w) => ({
               key: w.key,
               label: w.label,
@@ -406,8 +410,8 @@ export default async function PulsePage() {
       <section className="mt-6 grid gap-6 md:grid-cols-2">
         <Card>
           <Funnel
-            title="Applicant funnel · all time"
-            subtitle="Where applicants stop. Each stage is a subset of the one above it."
+            title="Application status snapshot · all time"
+            subtitle="Application records and current status, not a time-based conversion rate. Enrolled includes free/manual places; see Payments for paying people."
             stages={funnelStages}
           />
         </Card>

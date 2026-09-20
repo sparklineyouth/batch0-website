@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
-        await fulfillCheckoutSession(session);
+        await fulfillCheckoutSession(session, { paidAt: new Date(event.created * 1000).toISOString() });
         break;
       }
 
@@ -121,7 +121,8 @@ export async function POST(req: Request) {
       }
 
       case "charge.refunded": {
-        await handleChargeRefunded(event.data.object as Stripe.Charge);
+        const charge = event.data.object as Stripe.Charge;
+        await handleChargeRefunded(await stripe.charges.retrieve(charge.id));
         break;
       }
     }

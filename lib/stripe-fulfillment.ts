@@ -80,6 +80,7 @@ export type FulfillmentResult = {
    * silently omits real money.
    */
   ledgerError?: string | null;
+  enrollmentBlocked?: boolean;
 };
 
 const UNKNOWN: FulfillmentResult = {
@@ -133,6 +134,10 @@ export async function fetchReceiptUrl(
 }
 
 export type FulfillOptions = {
+  /** Internal refund recovery owns the final cleanup and must not recurse. */
+  skipRefundSync?: boolean;
+  /** Verified Stripe success-event timestamp; never checkout creation time. */
+  paidAt?: string | null;
   /**
    * Override the state read off the session. The webhook needs this:
    * `checkout.session.async_payment_failed` carries a session that on its
@@ -147,6 +152,22 @@ export type FulfillOptions = {
    */
   silent?: boolean;
 };
+
+async function currentCapture(session: Stripe.Checkout.Session, opts: FulfillOptions) {
+  const paymentIntentId = paymentIntentIdOf(session);
+  const intent = paymentIntentId ? await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] }) : null;
+  const charge = intent?.latest_charge
+    ? typeof intent.latest_charge === "string" ? await stripe.charges.retrieve(intent.latest_charge) : intent.latest_charge
+    : null;
+  return {
+    charge,
+    amountCents: charge?.amount_captured ?? session.amount_total ?? 0,
+    currency: charge?.currency ?? session.currency ?? "usd",
+    receiptUrl: charge?.receipt_url ?? null,
+    paidAt: opts.paidAt ?? (charge?.paid && charge.captured && charge.payment_method_details?.type === "card"
+      ? new Date(charge.created * 1000).toISOString() : null),
+  };
+}
 
 /**
  * Apply a Checkout Session to our database. Safe to call repeatedly and
@@ -261,182 +282,56 @@ async function fulfillEnrollment(
     return base;
   }
 
-  // Read before writing: the transition into paid is what gates the
-  // one-shot side effects below.
-  const { data: app } = await admin
-    .from("applications")
-    .select("status, paid_at")
-    .eq("id", applicationId)
-    .maybeSingle();
-  const alreadyFulfilled =
-    app?.status === "paid" || app?.status === "enrolled";
-
-  // A refunded payment must never be resurrected by a replay. The refund
-  // handler rolled the application back to "accepted" and dropped the
-  // enrollment deliberately; re-running this session (webhook redelivery,
-  // reconciliation) would otherwise hand the seat back for free.
-  const { data: ledger } = await admin
-    .from("payments")
-    .select("id, status")
-    .eq("stripe_session_id", session.id)
-    .maybeSingle();
-  if (ledger?.status === "refunded") return base;
-
-  const receiptUrl = await fetchReceiptUrl(paymentIntentId);
-
-  if (app?.status !== "enrolled") {
-    await admin
-      .from("applications")
-      .update({
-        status: "paid",
-        paid_at: app?.paid_at ?? new Date().toISOString(),
-        stripe_payment_intent_id: paymentIntentId,
-      })
-      .eq("id", applicationId);
-  }
-
-  const ledgerError = await recordEnrollmentPayment(admin, {
-    existingId: ledger?.id ?? null,
-    sessionId: session.id,
-    userId,
-    applicationId,
-    cohortId,
-    amountCents: amountCents ?? 0,
-    currency: session.currency ?? "usd",
-    paymentIntentId,
-    receiptUrl,
+  // Inspect the current charge before granting access: Stripe may deliver
+  // a refund webhook before Checkout's completion event.
+  const capture = await currentCapture(session, opts);
+  const capturedCharge = capture.charge;
+  const actualAmountCents = capture.amountCents;
+  const receiptUrl = capture.receiptUrl;
+  // Our card Checkout uses automatic capture. A successful card Charge's
+  // creation time is usable on immediate return before webhook delivery.
+  // Delayed payment methods require the actual success event timestamp.
+  const paidAt = capture.paidAt;
+  base.amountCents = actualAmountCents;
+  const { data: settlement, error } = await admin.rpc("settle_enrollment_payment", {
+    p_session_id: session.id,
+    p_user_id: userId,
+    p_application_id: applicationId,
+    p_cohort_id: cohortId,
+    p_amount_cents: actualAmountCents,
+    p_currency: capture.currency,
+    p_payment_intent_id: paymentIntentId,
+    p_receipt_url: receiptUrl,
+    p_paid_at: paidAt,
+    p_reservation_id: session.metadata?.checkout_reservation_id || null,
+    p_refunded_cents: capturedCharge?.amount_refunded ?? 0,
   });
-
-  if (cohortId) {
-    await admin.from("enrollments").upsert(
-      {
-        user_id: userId,
-        cohort_id: cohortId,
-        application_id: applicationId,
-      },
-      { onConflict: "user_id,cohort_id" },
-    );
-    await admin
-      .from("applications")
-      .update({ status: "enrolled" })
-      .eq("id", applicationId);
+  // A failed ledger/access transaction must be retried by Stripe. Never mark
+  // the webhook completed after swallowing a Supabase write error.
+  if (error) throw new Error(`Enrollment settlement failed: ${error.message}`);
+  if (!opts.skipRefundSync && capturedCharge && capturedCharge.amount_refunded > 0) await handleChargeRefunded(capturedCharge, { silent: true });
+  if (settlement?.blocked) {
+    const { count } = await admin.from("audit_log").select("id", { count: "exact", head: true })
+      .eq("action", "payment.enrollment_blocked").eq("target_id", applicationId);
+    if (!count && !capturedCharge?.refunded) await logAudit({ action: "payment.enrollment_blocked", targetType: "application", targetId: applicationId,
+      payload: { stripe_session_id: session.id, amount_cents: actualAmountCents, reason: "Paid checkout did not grant enrollment; review eligibility, capacity, and refund history." } });
+    console.error("[stripe] captured enrollment requires staff review", session.id);
+    return { ...base, receiptUrl, enrollmentBlocked: true };
   }
-
-  if (!alreadyFulfilled) {
-    if (!opts.silent) {
-      await announceEnrollment({
-        userId,
-        cohortId,
-        cohortName: cohortName ?? "batch0",
-        amountCents: amountCents ?? 0,
-      });
-    }
-    await logAudit({
-      action: "payment.succeeded",
-      targetType: "application",
-      targetId: applicationId,
-      payload: {
-        amount_cents: amountCents,
-        stripe_session_id: session.id,
-        stripe_payment_intent_id: paymentIntentId,
-      },
-    });
+  if (settlement?.newly_enrolled) {
+    if (!opts.silent) await announceEnrollment({ userId, cohortId,
+      cohortName: cohortName ?? "batch0", amountCents: actualAmountCents });
+    await logAudit({ action: "payment.succeeded", targetType: "application", targetId: applicationId,
+      payload: { amount_cents: actualAmountCents, stripe_session_id: session.id, stripe_payment_intent_id: paymentIntentId } });
   }
-
-  return { ...base, receiptUrl, ledgerError };
-}
-
-/**
- * Move the ledger row for this checkout to succeeded. The row is normally
- * created when the session is created; insert one if it's missing so the
- * student's billing history is complete even when that write was lost.
- *
- * Returns null on success, or a reason string. The caller surfaces it —
- * an insert that fails here means real money is missing from the admin
- * Payments page, which is not something to discover by accident.
- */
-async function recordEnrollmentPayment(
-  admin: ReturnType<typeof createAdminClient>,
-  row: {
-    /** The ledger row for this session, if one already exists. */
-    existingId: string | null;
-    sessionId: string;
-    userId: string;
-    applicationId: string;
-    cohortId: string | null;
-    amountCents: number;
-    currency: string;
-    paymentIntentId: string | null;
-    receiptUrl: string | null;
-  },
-): Promise<string | null> {
-  if (row.existingId) {
-    const { error } = await admin
-      .from("payments")
-      .update({
-        status: "succeeded",
-        stripe_payment_intent_id: row.paymentIntentId,
-        stripe_receipt_url: row.receiptUrl,
-      })
-      .eq("id", row.existingId);
-    if (error) {
-      console.error("[stripe] ledger update failed", row.sessionId, error);
-      return `ledger update failed: ${error.message}`;
-    }
-    return null;
-  }
-
-  const { error } = await admin.from("payments").insert({
-    user_id: row.userId,
-    application_id: row.applicationId,
-    cohort_id: row.cohortId,
-    stripe_session_id: row.sessionId,
-    stripe_payment_intent_id: row.paymentIntentId,
-    stripe_receipt_url: row.receiptUrl,
-    amount_cents: row.amountCents,
-    currency: row.currency,
-    status: "succeeded",
-  });
-  if (!error) return null;
-
-  // 23503 = foreign key violation. The student's profile or their
-  // application was deleted after they paid, so there is nowhere valid to
-  // hang the row. Retry without the application reference (it's nullable)
-  // before giving up — losing the link is better than losing the money.
-  if ((error as any).code === "23503" && row.applicationId) {
-    const { error: retryErr } = await admin.from("payments").insert({
-      user_id: row.userId,
-      application_id: null,
-      cohort_id: row.cohortId,
-      stripe_session_id: row.sessionId,
-      stripe_payment_intent_id: row.paymentIntentId,
-      stripe_receipt_url: row.receiptUrl,
-      amount_cents: row.amountCents,
-      currency: row.currency,
-      status: "succeeded",
-    });
-    if (!retryErr) return null;
-  }
-
-  console.error("[stripe] ledger insert failed", row.sessionId, error);
-  return `no ledger row for ${row.sessionId}: ${error.message}`;
+  return { ...base, receiptUrl };
 }
 
 async function lookupCohortName(cohortId: string): Promise<string | null> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("cohorts")
-    .select("name")
-    .eq("id", cohortId)
-    .maybeSingle();
+  const { data } = await createAdminClient().from("cohorts").select("name").eq("id",cohortId).maybeSingle();
   return data?.name ?? null;
 }
 
-/**
- * Receipt email + in-app notification + Discord role sync, fired once when
- * a student first becomes enrolled. Every step is best-effort: a flaky
- * mailer must not make Stripe retry a payment we've already banked.
- */
 async function announceEnrollment(args: {
   userId: string;
   cohortId: string | null;
@@ -581,11 +476,12 @@ async function fulfillUserCharge(
   const amountCents = session.amount_total ?? null;
   if (!chargeId) return { ...UNKNOWN, state, amountCents };
 
-  const { data: charge } = await admin
+  const { data: charge, error: readError } = await admin
     .from("user_charges")
     .select("id, user_id, kind, description, amount_cents, status")
     .eq("id", chargeId)
     .maybeSingle();
+  if (readError) throw new Error(readError.message);
   if (!charge) return { ...UNKNOWN, state, amountCents };
 
   const label = `${charge.kind === "fine" ? "Fine" : "Fee"}: ${charge.description}`;
@@ -602,29 +498,36 @@ async function fulfillUserCharge(
   if (state !== "paid") return base;
 
   const paymentIntentId = paymentIntentIdOf(session);
-  const receiptUrl = await fetchReceiptUrl(paymentIntentId);
+  const capture = await currentCapture(session, opts);
+  const receiptUrl = capture.receiptUrl;
+  base.amountCents = capture.amountCents;
   const wasPending = charge.status === "pending";
 
-  // Guard on `pending` so a redelivered event can never resurrect a charge
-  // an admin has since waived, cancelled, or refunded.
-  await admin
+  // Compare the status read above: only one concurrent completion may make
+  // the pending-to-paid transition. Canceled/refunded rows never resurrect.
+  const { data: settled, error: settlementError } = await admin
     .from("user_charges")
     .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
+      status: capture.charge?.refunded ? "refunded" : "paid",
+      ...(capture.paidAt ? { paid_at: capture.paidAt } : {}),
+      captured_amount_cents: capture.amountCents,
+      captured_currency: capture.currency,
       stripe_payment_intent_id: paymentIntentId,
       stripe_receipt_url: receiptUrl,
     })
     .eq("id", chargeId)
-    .eq("status", "pending");
+    .eq("status", charge.status)
+    .in("status", ["pending", "paid"]).select("id");
+  if (settlementError) throw new Error(settlementError.message);
+  if (!opts.skipRefundSync && capture.charge && capture.charge.amount_refunded > 0) await handleChargeRefunded(capture.charge, { silent: true });
 
-  if (wasPending) {
+  if (wasPending && settled?.length && !capture.charge?.refunded) {
     if (!opts.silent) {
       await notify({
         userId: charge.user_id,
         type: "charge_paid",
         title: `${charge.kind === "fine" ? "Fine paid: " : "Fee paid: "}${charge.description}`,
-        body: `Amount: $${(charge.amount_cents / 100).toFixed(2)}`,
+        body: `Amount: ${(capture.amountCents / 100).toFixed(2)} ${capture.currency.toUpperCase()}`,
         link: "/dashboard/billing",
         dedupeKey: `charge_paid:${charge.id}`,
       });
@@ -634,7 +537,7 @@ async function fulfillUserCharge(
       targetType: "user_charge",
       targetId: charge.id,
       payload: {
-        amount_cents: charge.amount_cents,
+        amount_cents: capture.amountCents,
         stripe_session_id: session.id,
         stripe_payment_intent_id: paymentIntentId,
       },
@@ -665,11 +568,12 @@ async function fulfillDemoDayTicket(
   const amountCents = session.amount_total ?? null;
   if (!ticketId) return { ...UNKNOWN, state, amountCents };
 
-  const { data } = await admin
+  const { data, error: readError } = await admin
     .from("demo_day_tickets")
     .select("*")
     .eq("id", ticketId)
     .maybeSingle();
+  if (readError) throw new Error(readError.message);
   const ticket = data as DemoDayTicket | null;
   if (!ticket) return { ...UNKNOWN, state, amountCents };
 
@@ -686,7 +590,9 @@ async function fulfillDemoDayTicket(
   if (state !== "paid") return base;
 
   const paymentIntentId = paymentIntentIdOf(session);
-  const receiptUrl = await fetchReceiptUrl(paymentIntentId);
+  const capture = await currentCapture(session, opts);
+  const receiptUrl = capture.receiptUrl;
+  base.amountCents = capture.amountCents;
   const wasSent = ticket.status === "sent";
 
   // The email may have joined batch0 since the invite went out — or the admin
@@ -696,21 +602,25 @@ async function fulfillDemoDayTicket(
   const userId =
     ticket.user_id ?? (await findProfileByEmail(ticket.email))?.id ?? null;
 
-  // Guard on `sent` so a redelivered event can never resurrect a ticket an
-  // admin has since cancelled or refunded.
-  await admin
+  // Only one worker may transition a sent ticket; existing refunds win.
+  const { data: settled, error: settlementError } = await admin
     .from("demo_day_tickets")
     .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
+      status: capture.charge?.refunded ? "refunded" : "paid",
+      ...(capture.paidAt ? { paid_at: capture.paidAt } : {}),
+      captured_amount_cents: capture.amountCents,
+      captured_currency: capture.currency,
       stripe_payment_intent_id: paymentIntentId,
       stripe_receipt_url: receiptUrl,
       user_id: userId,
     })
     .eq("id", ticketId)
-    .eq("status", "sent");
+    .eq("status", ticket.status)
+    .in("status", ["sent", "paid"]).select("id");
+  if (settlementError) throw new Error(settlementError.message);
+  if (!opts.skipRefundSync && capture.charge && capture.charge.amount_refunded > 0) await handleChargeRefunded(capture.charge, { silent: true });
 
-  if (wasSent) {
+  if (wasSent && settled?.length && !capture.charge?.refunded) {
     if (!opts.silent) {
       await announceTicketPaid({ ...ticket, user_id: userId }, receiptUrl);
     }
@@ -720,7 +630,7 @@ async function fulfillDemoDayTicket(
       targetId: ticket.id,
       payload: {
         email: ticket.email,
-        amount_cents: ticket.amount_cents,
+        amount_cents: capture.amountCents,
         stripe_session_id: session.id,
         stripe_payment_intent_id: paymentIntentId,
       },
@@ -839,140 +749,64 @@ export async function handleChargeRefunded(
   opts: { silent?: boolean } = {},
 ) {
   const admin = createAdminClient();
-  const piId =
-    typeof charge.payment_intent === "string"
-      ? charge.payment_intent
-      : charge.payment_intent?.id ?? null;
+  const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+  if (!piId) return;
   const full = charge.refunded === true;
   const refundId = charge.refunds?.data?.[0]?.id ?? null;
-  // Did this call actually move anything? The reconciler replays known
-  // refunds on every run; without this the audit log would grow a
-  // duplicate row a day for each one.
-  let changed = false;
-
-  if (piId) {
-    const { data: payment } = await admin
-      .from("payments")
-      .select("id, user_id, application_id, status")
-      .eq("stripe_payment_intent_id", piId)
-      .maybeSingle();
-
-    if (payment) {
-      const alreadyRefunded = payment.status === "refunded";
-      if (full && !alreadyRefunded) {
-        changed = true;
-        await admin
-          .from("payments")
-          .update({ status: "refunded" })
-          .eq("id", payment.id);
-        if (payment.application_id) {
-          // Roll the student back to "accepted": the seat is theirs to
-          // buy again, but it isn't paid for.
-          await admin
-            .from("applications")
-            .update({ status: "accepted", paid_at: null })
-            .eq("id", payment.application_id);
-          await admin
-            .from("enrollments")
-            .delete()
-            .eq("application_id", payment.application_id);
-        }
-      }
-      if (payment.user_id && !alreadyRefunded && !opts.silent) {
-        await notify({
-          userId: payment.user_id,
-          type: "payment_refunded",
-          title: full ? "Payment refunded" : "Partial refund issued",
-          body: full
-            ? "Your enrollment payment was refunded. Reach out if this was unexpected."
-            : `$${(charge.amount_refunded / 100).toFixed(2)} was returned to your card.`,
-          link: "/dashboard/billing",
-          dedupeKey: `refund:${refundId ?? piId}`,
-        });
+  const refundArgs = {
+    p_payment_intent_id: piId, p_amount_cents: charge.amount_captured,
+    p_refunded_cents: charge.amount_refunded, p_currency: charge.currency,
+  };
+  let { data: result, error } = await admin.rpc("apply_enrollment_refund", refundArgs);
+  if (error) throw new Error(`Enrollment refund reconciliation failed: ${error.message}`);
+  if (!result?.matched) {
+    // The refund can beat Checkout completion: the pending row may not yet
+    // have its payment-intent ID. Resolve its real session and settle current
+    // Stripe state before cleanup, so an older in-flight completion cannot
+    // subsequently grant access from a stale pre-refund snapshot.
+    const sessions = await stripe.checkout.sessions.list({ payment_intent: piId, limit: 100 });
+    for (const session of sessions.data) {
+      if (session.metadata?.application_id || ["user_charge", "demo_day_ticket"].includes(session.metadata?.kind ?? "")) {
+        await fulfillCheckoutSession(session, { silent: true, skipRefundSync: true });
       }
     }
-
-    // Also reflect on any matching user_charges row.
-    const { data: userCharge } = await admin
-      .from("user_charges")
-      .select("id, user_id, kind, description, amount_cents, status")
-      .eq("stripe_payment_intent_id", piId)
-      .maybeSingle();
-    if (userCharge && userCharge.status !== "refunded") {
-      if (full) {
-        changed = true;
-        await admin
-          .from("user_charges")
-          .update({
-            status: "refunded",
-            refunded_at: new Date().toISOString(),
-            stripe_refund_id: refundId,
-          })
-          .eq("id", userCharge.id);
-      }
-      if (!opts.silent) {
-        await notify({
-          userId: userCharge.user_id,
-          type: "charge_refunded",
-          title: `${userCharge.kind === "fine" ? "Fine" : "Fee"} ${
-            full ? "refunded" : "partially refunded"
-          }: ${userCharge.description}`,
-          body: `$${(charge.amount_refunded / 100).toFixed(2)} returned to your card.`,
-          link: "/dashboard/billing",
-          dedupeKey: `refund:${refundId ?? piId}`,
-        });
-      }
-    }
-
-    // And on a Demo Day ticket. A full refund takes the ticket back — the
-    // events policy keys on status = 'paid', so the holder's dashboard access
-    // goes with it. Partial refunds are recorded in Stripe only; the ticket
-    // is still good.
-    const { data: ticket } = await admin
-      .from("demo_day_tickets")
-      .select("id, user_id, status")
-      .eq("stripe_payment_intent_id", piId)
-      .maybeSingle();
-    if (ticket && ticket.status !== "refunded") {
-      if (full) {
-        changed = true;
-        await admin
-          .from("demo_day_tickets")
-          .update({
-            status: "refunded",
-            refunded_at: new Date().toISOString(),
-            stripe_refund_id: refundId,
-          })
-          .eq("id", ticket.id)
-          .eq("status", "paid");
-      }
-      if (ticket.user_id && !opts.silent) {
-        await notify({
-          userId: ticket.user_id,
-          type: "demo_day_ticket_refunded",
-          title: full
-            ? "Demo Day ticket refunded"
-            : "Demo Day ticket partially refunded",
-          body: `$${(charge.amount_refunded / 100).toFixed(2)} returned to your card.`,
-          link: "/dashboard/billing",
-          dedupeKey: `refund:${refundId ?? piId}`,
-        });
-      }
-    }
+    ({ data: result, error } = await admin.rpc("apply_enrollment_refund", refundArgs));
+    if (error) throw new Error(`Enrollment refund recovery failed: ${error.message}`);
   }
-
-  if (changed || !opts.silent) {
-    await logAudit({
-      action: full ? "payment.refunded" : "payment.partially_refunded",
-      targetType: "payment_intent",
-      targetId: piId,
-      payload: {
-        amount_refunded: charge.amount_refunded,
-        amount: charge.amount,
-        stripe_refund_id: refundId,
-      },
+  let changed = Boolean(result?.changed);
+  if (result?.changed && result.user_id && !opts.silent) {
+    await notify({ userId: result.user_id, type: "payment_refunded",
+      title: full ? "Payment refunded" : "Partial refund issued",
+      body: `${(charge.amount_refunded / 100).toFixed(2)} ${charge.currency.toUpperCase()} returned to your payment method.`,
+      link: "/dashboard/billing", dedupeKey: `refund:${piId}:${charge.amount_refunded}` });
+  }
+  // Fee and ticket refunds retain their quote; captured/refunded money is
+  // stored independently. Re-read the current charge before calling us.
+  for (const table of ["user_charges", "demo_day_tickets"] as const) {
+    const { data: row, error: readError } = await admin.from(table)
+      .select("id,user_id,status,amount_refunded_cents")
+      .eq("stripe_payment_intent_id", piId).maybeSingle();
+    if (readError) throw new Error(readError.message);
+    if (!row) continue;
+    const refunded = Math.max(row.amount_refunded_cents ?? 0, charge.amount_refunded);
+    const rowChanged = refunded !== row.amount_refunded_cents;
+    const { error: writeError } = await admin.from(table).update({
+      captured_amount_cents: charge.amount_captured, captured_currency: charge.currency,
+      amount_refunded_cents: refunded,
+      ...(full ? { status: "refunded", refunded_at: new Date().toISOString(), stripe_refund_id: refundId } : {}),
+    }).eq("id", row.id).lte("amount_refunded_cents", refunded);
+    if (writeError) throw new Error(writeError.message);
+    changed ||= rowChanged;
+    if (rowChanged && row.user_id && !opts.silent) await notify({
+      userId: row.user_id, type: table === "user_charges" ? "charge_refunded" : "demo_day_ticket_refunded",
+      title: full ? "Payment refunded" : "Partial refund issued",
+      body: `${(refunded / 100).toFixed(2)} ${charge.currency.toUpperCase()} returned to your payment method.`,
+      link: "/dashboard/billing", dedupeKey: `refund:${piId}:${refunded}`,
     });
   }
+  if (changed) await logAudit({ action: full ? "payment.refunded" : "payment.partially_refunded",
+    targetType: "payment_intent", targetId: piId,
+    payload: { amount_refunded: charge.amount_refunded, amount: charge.amount, stripe_refund_id: refundId } });
 }
 
 /**
@@ -990,21 +824,12 @@ export async function handlePaymentFailed(pi: Stripe.PaymentIntent) {
   // the link in their inbox is still live to try again.
   if (pi.metadata?.kind === "demo_day_ticket") return;
 
-  // The ledger row is created at session-create time and only learns its
-  // payment intent id on success, so a declined attempt has to be matched
-  // through the application it belongs to.
-  if (applicationId) {
-    await admin
-      .from("payments")
+  const sessions = await stripe.checkout.sessions.list({ payment_intent: pi.id, limit: 100 });
+  for (const session of sessions.data) {
+    const { error } = await admin.from("payments")
       .update({ status: "failed", stripe_payment_intent_id: pi.id })
-      .eq("application_id", applicationId)
-      .eq("status", "pending");
-  } else {
-    await admin
-      .from("payments")
-      .update({ status: "failed" })
-      .eq("stripe_payment_intent_id", pi.id)
-      .eq("status", "pending");
+      .eq("stripe_session_id", session.id).eq("status", "pending");
+    if (error) throw new Error(error.message);
   }
 
   if (!userId) return;

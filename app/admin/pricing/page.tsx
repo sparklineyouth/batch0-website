@@ -1,3 +1,4 @@
+import { revenueSummary } from "@/lib/revenue-ledger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { getSiteConfig } from "@/lib/site-config";
@@ -29,23 +30,19 @@ export default async function AdminPricingPage() {
   const config = await getSiteConfig();
   const cohort = config.cohort;
 
-  // The list price (regional overrides stripped) and the price we actually
-  // charge today after the promo — the demand curve anchors on the latter,
-  // because that is the price at which the conversions below were observed.
+  // Current prices seed a scenario. Historical payers were not necessarily
+  // offered this price, so the UI treats baseline demand as an assumption.
   const listCents = cohort ? listPriceCents(cohort.priceCents) : 12999;
   const chargedCents = config.derived.priceCents;
 
-  // Live funnel for the active cohort. Accepted pool = everyone we admitted
-  // (paid or not); conversions = the admitted who paid. Their ratio is today's
-  // conversion rate, the thing the model is pinned to.
+  // Snapshot of admissions and actual retained payments, across all prices.
   let acceptedPool = 0;
   let conversions = 0;
   let submitted = 0;
   let revenueToDateCents = 0;
   if (cohort?.id) {
-    const [accepted, paid, submittedCount, payments] = await Promise.all([
+    const [accepted, submittedCount, payments] = await Promise.all([
       countApplications(admin, cohort.id, ["accepted", "paid", "enrolled"]),
-      countApplications(admin, cohort.id, ["paid", "enrolled"]),
       countApplications(admin, cohort.id, [
         "submitted",
         "accepted",
@@ -56,17 +53,15 @@ export default async function AdminPricingPage() {
       ]),
       admin
         .from("payments")
-        .select("amount_cents")
+        .select("amount_cents, amount_refunded_cents, status, currency, user_id, application_id, paid_at")
         .eq("cohort_id", cohort.id)
-        .eq("status", "succeeded"),
+        .in("status", ["succeeded", "refunded"]),
     ]);
+    if (payments.error) throw new Error("Payment data unavailable; pricing assumptions cannot be populated.");
     acceptedPool = accepted;
-    conversions = paid;
+    conversions = revenueSummary(payments.data ?? []).payingUsers.size;
     submitted = submittedCount;
-    revenueToDateCents = (payments.data ?? []).reduce(
-      (sum, r: { amount_cents: number | null }) => sum + (r.amount_cents ?? 0),
-      0,
-    );
+    revenueToDateCents = revenueSummary(payments.data ?? []).netCents;
   }
 
   return (
@@ -76,8 +71,8 @@ export default async function AdminPricingPage() {
       </h1>
       <p className="mt-1 text-sm text-ink-faint">
         Set the tuition discount — it applies across the marketing site,
-        checkout, and the acceptance email on the next request — and model which
-        price would earn the most, from this cohort&apos;s own funnel.
+        checkout, and the acceptance email on the next request. Explore pricing
+        scenarios below; historical enrollment does not establish an optimal price.
       </p>
 
       <Card className="mt-6">
@@ -101,7 +96,7 @@ export default async function AdminPricingPage() {
 
       <Card className="mt-6">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-ink-faint">
-          Revenue model
+          Pricing scenario calculator
         </h2>
         <RevenueExplorer
           cohortName={config.derived.cohortHeadline}

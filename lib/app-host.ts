@@ -49,6 +49,8 @@ export function isAppHost(host: string | null | undefined): boolean {
  */
 const MARKETING_PREFIXES = [
   "/program",
+  "/parents",
+  "/sample-lesson",
   "/blog",
   "/sponsors",
   // "/challenges" is deliberately NOT here. It looks like marketing and it is

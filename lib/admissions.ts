@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
-import { promoPriceCents, listPriceCents } from "@/lib/promo";
-import { loadPromoConfig } from "@/lib/promo-settings";
+import { quoteTuition } from "@/lib/tuition-quote";
 import { Templates } from "@/lib/email/templates";
 import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
@@ -16,7 +15,6 @@ import { getPassForUser } from "@/lib/founder-pass";
 import { reviewerOverrodePass, type DecidedApplication } from "@/lib/reapply";
 import {
   grantAutoAdmits,
-  grantDiscountCents,
   type PassGrant,
 } from "@/lib/founder-pass-tiers";
 
@@ -57,11 +55,8 @@ export type AcceptedApplication = {
  * caller resolved when it decided the price. Reading it twice is how the
  * acceptance email and checkout end up disagreeing.
  *
- * Uses the LIST price, not a regional one: both callers run without the
- * applicant's geography to hand (an admin request, or a submit that hasn't
- * routed through pricing). Someone on a regional price is quoted slightly high
- * and then charged less by checkout; a full ride resolves to $0 either way,
- * since the discount clamps to whatever price it is given.
+ * Uses the same persisted student region, promotion, pass and scholarship
+ * calculation as checkout. Payer geography never changes the tuition.
  */
 export async function announceAcceptance(
   admin: SupabaseClient,
@@ -69,29 +64,25 @@ export async function announceAcceptance(
   grant: PassGrant | null,
 ): Promise<void> {
   const cohortName = app.cohortName ?? "batch0";
-  // The promo comes off before the pass discount, matching checkout. An
-  // acceptance email that quotes list price while Stripe charges the sale
-  // price is the one mismatch a student is guaranteed to notice. The percent
-  // and deadline are read from the same admin-set config checkout uses, so an
-  // edit at /admin/pricing reaches the email too.
-  const promoConfig = await loadPromoConfig();
-  const saleCents = promoPriceCents(
-    listPriceCents(app.listPriceCents),
-    new Date(),
-    promoConfig,
-  );
-  const priceCents = Math.max(
-    0,
-    saleCents - (grant ? grantDiscountCents(grant, saleCents) : 0),
-  );
+  try {
+  const { data: application, error: quoteError } = await admin.from("applications")
+    .select("cohort_id,pricing_country").eq("id", app.id).single();
+  if (quoteError || !application) throw new Error("Acceptance quote could not be verified");
+  const quote = await quoteTuition(admin, {
+    userId: app.user_id, cohortId: application.cohort_id,
+    rowPriceCents: app.listPriceCents, country: application.pricing_country ?? null,
+    passGrant: grant,
+  });
+  const priceCents = quote.amountCents;
   const vars = {
     cohort_name: cohortName,
-    amount: `$${(priceCents / 100).toFixed(0)}`,
+    amount: `$${(priceCents / 100).toFixed(2)}`,
+    application_id: app.id,
+    cohort_id: application.cohort_id ?? "",
     application_status: "accepted",
     pay_url: `${env.siteUrl}/dashboard/accepted`,
   };
 
-  try {
     if (app.applicantEmail) {
       await sendTemplated("application.accepted", {
         to: app.applicantEmail,
@@ -193,11 +184,8 @@ export type AutoAdmitResult =
  * this returns "not admitted" — the admin's decision stands, and nobody gets
  * two acceptance emails.
  *
- * Deliberately does NOT check cohort capacity: nothing else in the product does
- * (an admin accepting their 25th student into a 24-seat cohort is not stopped
- * either), and inventing a silent cap here would make the perk fail in a way
- * the holder couldn't see or fix. Capacity is an admin conversation, not a
- * surprise rejection.
+ * Acceptance establishes eligibility, not a paid seat. Checkout atomically
+ * reserves capacity and fulfillment consumes that reservation.
  *
  * It DOES stop at a human decline — see reviewerOverrodePass() in
  * lib/reapply.ts, which is also what /apply's banner consults so the page and

@@ -58,7 +58,7 @@ export default async function SponsorsPage() {
   return (
     // See app/page.tsx: <main> must not contain the navbar or footer.
     <div className="min-h-screen bg-paper">
-      <Navbar cohortLabel={config.derived.cohortLabel || "the next cohort"} />
+      <Navbar cohortLabel={config.derived.cohortLabel || "the next cohort"} applicationLabel={config.derived.applicationLabel} />
       <main id="main-content" tabIndex={-1}>
 
       {/* Hero */}

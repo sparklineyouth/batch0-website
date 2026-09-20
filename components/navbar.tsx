@@ -10,6 +10,7 @@ import { AuthLabel, useIsAuthed } from "@/components/auth-label";
 // navbar is rendered on subroutes.
 const LINKS = [
   { href: "/program", label: "Program" },
+  { href: "/parents", label: "For parents" },
   { href: "/blog", label: "Blog" },
   { href: "/sponsors", label: "Sponsors" },
   { href: "/#faq", label: "FAQ" },
@@ -32,8 +33,10 @@ const LINKS = [
  */
 export default function Navbar({
   cohortLabel = "the next cohort",
+  applicationLabel,
 }: {
   cohortLabel?: string;
+  applicationLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const isAuthed = useIsAuthed();
@@ -53,7 +56,7 @@ export default function Navbar({
   // Constant on the server AND for the signed-out majority; /home sorts out
   // where a signed-in visitor actually belongs.
   const applyHref = "/home";
-  const applyLabel = `Apply for ${cohortLabel}`;
+  const applyLabel = applicationLabel ?? `Apply for ${cohortLabel}`;
 
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-paper pt-safe">
@@ -65,7 +68,7 @@ export default function Navbar({
           <Wordmark className="h-[18px] text-ink" />
         </Link>
 
-        <div className="hidden items-center gap-7 md:flex">
+        <div className="hidden items-center gap-4 md:flex lg:gap-6">
           {LINKS.map((l) => (
             <Link
               key={l.href}

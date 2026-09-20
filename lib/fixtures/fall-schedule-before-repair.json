@@ -1,0 +1,164 @@
+[
+  {
+    "id": "a1ab2a89-6cde-504c-9b17-857a683549eb",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Intro Call \u2014 Finding a Problem Worth Building",
+    "starts_at": "2026-09-21T17:00:00+00:00",
+    "ends_at": "2026-09-21T18:00:00+00:00",
+    "daily_room_name": "intro-call-finding-a-problem-w-5edf198f41b1"
+  },
+  {
+    "id": "0bf2c099-aae6-5891-946f-bb64278965c7",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Week 9 Webinar \u2014 Week 5 office hours: User Testing and Sustainable Delivery",
+    "starts_at": "2026-11-16T01:00:00+00:00",
+    "ends_at": "2026-11-16T01:30:00+00:00",
+    "daily_room_name": "b0-6350c6ac-oh-20261015-0bf2c099"
+  },
+  {
+    "id": "cd8a60f9-14ca-5940-baa1-dae17d4aff88",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "workshop",
+    "title": "Week 10 Webinar \u2014 Week 6 workshop: Positioning and Your First Distribution Test",
+    "starts_at": "2026-11-23T01:00:00+00:00",
+    "ends_at": "2026-11-23T02:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-ws-20261019-cd8a60f9"
+  },
+  {
+    "id": "dee27569-4780-50dc-b505-fd14cc8f10e1",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Week 11 Webinar \u2014 Week 6 office hours: Positioning and Your First Distribution Test",
+    "starts_at": "2026-11-30T01:00:00+00:00",
+    "ends_at": "2026-11-30T01:30:00+00:00",
+    "daily_room_name": "b0-6350c6ac-oh-20261022-dee27569"
+  },
+  {
+    "id": "99160703-4008-5a7b-849b-0d53e3e483a9",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "workshop",
+    "title": "Week 12 Webinar \u2014 Week 7 workshop: Activation, Retention, and a Repeatable Channel",
+    "starts_at": "2026-12-07T01:00:00+00:00",
+    "ends_at": "2026-12-07T02:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-ws-20261026-99160703"
+  },
+  {
+    "id": "1b06cf49-faf4-5fc0-963b-31639a13631f",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Week 13 Webinar \u2014 Week 7 office hours: Activation, Retention, and a Repeatable Channel",
+    "starts_at": "2026-12-14T01:00:00+00:00",
+    "ends_at": "2026-12-14T01:30:00+00:00",
+    "daily_room_name": "b0-6350c6ac-oh-20261029-1b06cf49"
+  },
+  {
+    "id": "f3d903ed-17e4-5ac1-b785-da3c95ed8c2f",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "workshop",
+    "title": "Week 14 Webinar \u2014 Week 8 workshop: Tell the Story Your Evidence Supports",
+    "starts_at": "2026-12-21T01:00:00+00:00",
+    "ends_at": "2026-12-21T02:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-ws-20261102-f3d903ed"
+  },
+  {
+    "id": "7662e89c-ccbb-590e-8bec-d32b86f91258",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Week 15 Webinar \u2014 Week 8 office hours: Tell the Story Your Evidence Supports",
+    "starts_at": "2026-12-28T01:00:00+00:00",
+    "ends_at": "2026-12-28T01:30:00+00:00",
+    "daily_room_name": "b0-6350c6ac-oh-20261105-7662e89c"
+  },
+  {
+    "id": "d5cb7e4b-6ec0-52e1-bb56-9d61372cf3e0",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "workshop",
+    "title": "Week 16 Webinar \u2014 Week 9 workshop: Demo Day and the Next Thirty Days",
+    "starts_at": "2027-01-04T01:00:00+00:00",
+    "ends_at": "2027-01-04T02:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-ws-20261109-d5cb7e4b"
+  },
+  {
+    "id": "00a5f79f-33c8-5f80-afff-14c6be392229",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Week 17 Webinar \u2014 Week 9 office hours: Demo Day and the Next Thirty Days",
+    "starts_at": "2027-01-11T01:00:00+00:00",
+    "ends_at": "2027-01-11T01:30:00+00:00",
+    "daily_room_name": "b0-6350c6ac-oh-20261112-00a5f79f"
+  },
+  {
+    "id": "11440c44-e895-5f1c-be51-62d400e2554e",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "workshop",
+    "title": "Week 2 Webinar \u2014 Week 2 workshop: Customer Evidence and a Focused Problem",
+    "starts_at": "2026-09-28T00:00:00+00:00",
+    "ends_at": "2026-09-28T01:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-ws-20260921-11440c44"
+  },
+  {
+    "id": "6edeb3aa-e7ec-5e31-ae19-de69581dfdd1",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Week 3 Webinar \u2014 Week 2 office hours: Customer Evidence and a Focused Problem",
+    "starts_at": "2026-10-05T00:00:00+00:00",
+    "ends_at": "2026-10-05T00:30:00+00:00",
+    "daily_room_name": "b0-6350c6ac-oh-20260924-6edeb3aa"
+  },
+  {
+    "id": "9e19825f-1bbd-5246-8ed3-90f5eb4911e3",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "workshop",
+    "title": "Week 4 Webinar \u2014 Week 3 workshop: Experiments and the Build Decision",
+    "starts_at": "2026-10-12T00:00:00+00:00",
+    "ends_at": "2026-10-12T01:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-ws-20260928-9e19825f"
+  },
+  {
+    "id": "ae298761-cfed-5ee7-9028-06d9fe18967a",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Week 5 Webinar \u2014 Week 3 office hours: Experiments and the Build Decision",
+    "starts_at": "2026-10-19T00:00:00+00:00",
+    "ends_at": "2026-10-19T00:30:00+00:00",
+    "daily_room_name": "b0-6350c6ac-oh-20261001-ae298761"
+  },
+  {
+    "id": "b6f661ff-cdff-5506-b7a4-b31ad81570d2",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "workshop",
+    "title": "Week 6 Webinar \u2014 Week 4 workshop: Ship the Smallest Useful Version",
+    "starts_at": "2026-10-26T00:00:00+00:00",
+    "ends_at": "2026-10-26T01:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-ws-20261005-b6f661ff"
+  },
+  {
+    "id": "54d2a158-b450-5ea3-b936-88838c00d65c",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "office_hours",
+    "title": "Week 7 Webinar \u2014 Week 4 office hours: Ship the Smallest Useful Version",
+    "starts_at": "2026-11-02T01:00:00+00:00",
+    "ends_at": "2026-11-02T01:30:00+00:00",
+    "daily_room_name": "b0-6350c6ac-oh-20261008-54d2a158"
+  },
+  {
+    "id": "55dbc388-8a67-50e2-8feb-b97744b109b1",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "workshop",
+    "title": "Week 8 Webinar \u2014 Week 5 workshop: User Testing and Sustainable Delivery",
+    "starts_at": "2026-11-09T01:00:00+00:00",
+    "ends_at": "2026-11-09T02:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-ws-20261012-55dbc388"
+  },
+  {
+    "id": "18edf9a7-ceb5-5a5e-8b0b-86bdd1b0f66e",
+    "cohort_id": "6350c6ac-70f0-4f53-93d5-c99e397185a9",
+    "type": "demo_day",
+    "title": "Week 18 Webinar \u2014 Demo Day \u2014 student showcase and moderated Q&A",
+    "starts_at": "2027-01-18T01:00:00+00:00",
+    "ends_at": "2027-01-18T02:00:00+00:00",
+    "daily_room_name": "b0-6350c6ac-demo-20261113-18edf9a7"
+  }
+]

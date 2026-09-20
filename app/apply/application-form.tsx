@@ -1,4 +1,5 @@
 "use client";
+import { track } from "@vercel/analytics";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
@@ -256,6 +257,10 @@ export function ApplicationForm({
 }) {
   const cfg = useMemo(() => buildConfig(questions), [questions]);
   const customQs = useMemo(() => customQuestions ?? [], [customQuestions]);
+  const startedTracked = useRef(false);
+  useEffect(() => {
+    if (!startedTracked.current) { startedTracked.current = true; track("application_started"); }
+  }, []);
   const scholarshipQs = useMemo(
     () => scholarshipQuestions ?? [],
     [scholarshipQuestions],
@@ -961,12 +966,12 @@ export function ApplicationForm({
           {(show("linkedin_url") ||
             show("resume_url") ||
             show("portfolio_url")) && (
-            <div className="rounded-xl border border-line bg-paper p-4">
-              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-phosphor-ink">
-                Links (optional)
-              </p>
+            <details className="rounded-xl border border-line bg-paper p-4" open={["linkedin_url", "resume_url", "portfolio_url"].some(key => isRequired(cfg, key)) || !!(form.linkedin_url || form.resume_url || form.portfolio_url) ? true : undefined}>
+              <summary className="cursor-pointer text-sm font-semibold text-ink">
+                {["linkedin_url", "resume_url", "portfolio_url"].some(key => isRequired(cfg, key)) ? "Supporting links" : "Add links (optional)"}
+              </summary>
               <p className="mt-1 text-xs text-ink-soft">
-                Anything that helps us see what you've built.
+                Share work you already have. You do not need to create a résumé or a profile to apply.
               </p>
               <div className="mt-4 space-y-3">
                 {show("linkedin_url") && (
@@ -1069,7 +1074,7 @@ export function ApplicationForm({
                   </div>
                 )}
               </div>
-            </div>
+            </details>
           )}
         </div>
       )}
