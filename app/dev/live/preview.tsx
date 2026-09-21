@@ -164,6 +164,9 @@ export function LivePreview() {
                   .map((e) => ({ ...e, visibility: "staff" }))}
                 past={[{ ...mocks.pastEvent, visibility: "enrolled" }]}
                 cohorts={[{ id: "c1", name: "Cohort 1", startsOn: "2026-09-14" }]}
+                // The preview shows the batch0 Live shape, which is the
+                // default: no provider-side room, so nothing is gated on one.
+                needsProviderRoom={false}
               />
             </div>
           )}

@@ -6,6 +6,8 @@ import { getInvite } from "@/lib/calls";
 import { createRoom, dailyConfigured, mintToken, roomIsLive } from "@/lib/daily";
 import { canJoin, joinState, inviteEndsAt } from "@/lib/live";
 import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
+import { BuiltinCallRoom } from "./builtin-room";
+import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -49,17 +51,6 @@ export default async function CallLivePage(
     );
   }
 
-  if (!dailyConfigured()) {
-    return (
-      <Shell title={invite.topic || "1:1 call"}>
-        <p className="text-sm text-ink-soft">
-          Live video isn&rsquo;t configured on this environment.
-        </p>
-        <BackLink />
-      </Shell>
-    );
-  }
-
   const endsAt = inviteEndsAt(invite);
   const state = joinState(invite.startsAt, endsAt);
   if (!canJoin(state)) {
@@ -73,6 +64,35 @@ export default async function CallLivePage(
         ) : (
           <p className="text-sm text-ink-soft">This call has ended.</p>
         )}
+        <BackLink />
+      </Shell>
+    );
+  }
+
+  const callTitle =
+    invite.topic || `1:1 with ${isHost ? invite.inviteeName : invite.hostName}`;
+
+  // ---- batch0 Live (the default) ------------------------------------------
+  //
+  // A 1:1 needs no room to exist in advance and none to be healed: both
+  // parties are known from the invite row, so each is handed the other's
+  // inbox and they connect directly. The lazy room creation, the
+  // compare-and-set race between two people clicking Join at once, and the
+  // dead-room recovery below all exist only because Daily needed a
+  // provider-side room. None of it has an equivalent here.
+  if (env.liveProvider === "builtin") {
+    return (
+      <BuiltinCallRoom inviteId={invite.id} title={callTitle} />
+    );
+  }
+
+  // ---- Daily (opt-in via LIVE_PROVIDER=daily) -----------------------------
+  if (!dailyConfigured()) {
+    return (
+      <Shell title={callTitle}>
+        <p className="text-sm text-ink-soft">
+          Live video isn&rsquo;t configured on this environment.
+        </p>
         <BackLink />
       </Shell>
     );
@@ -144,7 +164,7 @@ export default async function CallLivePage(
 
   return (
     <LiveRoom
-      title={invite.topic || `1:1 with ${isHost ? invite.inviteeName : invite.hostName}`}
+      title={callTitle}
       roomUrl={roomUrl}
       token={token}
       role="host"

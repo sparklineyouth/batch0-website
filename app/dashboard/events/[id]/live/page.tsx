@@ -22,6 +22,8 @@ import {
   listQuestionsForAsker,
 } from "@/lib/webinar-questions";
 import { LiveRoom } from "./live-room";
+import { BuiltinEventRoom } from "./builtin-room";
+import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -74,22 +76,19 @@ export default async function EventLivePage(
 
   // An external event has no room to join; send them to the list, which shows
   // the Zoom link.
-  if (ev.live_mode !== "hosted" || !ev.daily_room_name) {
+  //
+  // Note what is NOT required here any more: a `daily_room_name`. The
+  // built-in provider has no provider-side room to create — the event id is
+  // the room — so a hosted event is joinable the moment it is scheduled.
+  // That also retires a whole class of bug: 0069 moved every webinar to a
+  // Sunday and left 17 of 18 pointing at a Daily room that expired before the
+  // webinar started, which the join page then had to heal on the critical
+  // path with an audience already waiting.
+  if (ev.live_mode !== "hosted") {
     return (
       <Shell title={ev.title}>
         <p className="text-sm text-ink-soft">
           This event isn&rsquo;t hosted on batch0.
-        </p>
-        <BackLink />
-      </Shell>
-    );
-  }
-
-  if (!dailyConfigured()) {
-    return (
-      <Shell title={ev.title}>
-        <p className="text-sm text-ink-soft">
-          Live video isn&rsquo;t configured on this environment.
         </p>
         <BackLink />
       </Shell>
@@ -146,10 +145,42 @@ export default async function EventLivePage(
       : profile
         ? listQuestionsForAsker(ev.id, profile.id)
         : Promise.resolve([]);
-  // It is awaited in the Promise.all below, where a failure still fails the
-  // page. This just keeps a rejection that lands while the Daily round trip
-  // is in flight from being "unhandled" in the meantime.
+  // It is awaited below, where a failure still fails the page. This just
+  // keeps a rejection that lands while a provider round trip is in flight
+  // from being "unhandled" in the meantime.
   questionsPromise.catch(() => {});
+
+  // ---- batch0 Live (the default) ------------------------------------------
+  //
+  // Nothing to mint and no provider to call: the credentials are issued by a
+  // server action once the browser is actually joining, so this page renders
+  // as fast as the Q&A query. The comparison with the Daily branch below is
+  // the honest argument for the switch — that path cannot render at all
+  // without two HTTP round trips to a third party that currently refuses
+  // every media session.
+  if (env.liveProvider === "builtin") {
+    return (
+      <BuiltinEventRoom
+        eventId={ev.id}
+        title={ev.title}
+        role={role}
+        displayViewerCount={displayViewerCount}
+        initialQuestions={await questionsPromise}
+      />
+    );
+  }
+
+  // ---- Daily (opt-in via LIVE_PROVIDER=daily) -----------------------------
+  if (!dailyConfigured() || !ev.daily_room_name) {
+    return (
+      <Shell title={ev.title}>
+        <p className="text-sm text-ink-soft">
+          Live video isn&rsquo;t configured on this environment.
+        </p>
+        <BackLink />
+      </Shell>
+    );
+  }
 
   // The stored room can be dead. Daily deletes a room at its `exp` — the
   // event's end time as it was when the room was made — so a webinar moved to

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createRoom, dailyConfigured, mintToken } from "@/lib/daily";
+import { env } from "@/lib/env";
 import type { LiveRole } from "@/lib/live";
 import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
 
@@ -60,16 +61,29 @@ export default async function DevLiveRoomPage(
   const searchParams = await props.searchParams;
   if (process.env.VERCEL_ENV === "production") notFound();
 
+  // This page is the DAILY room, and only that. It predates batch0 Live and
+  // is kept for the day the Daily account has a card on file again — but on
+  // the default provider it would mint a token against an account that
+  // refuses every media session, and hand back
+  // `account-missing-payment-method` at the join. Say which room you are
+  // asking for instead, and point at the one that works.
+  if (env.liveProvider !== "daily") {
+    return (
+      <Notice title="This is the Daily test room">
+        LIVE_PROVIDER is not set to <code>daily</code>, so webinars run on
+        batch0 Live and this page would join a Daily account that refuses
+        every media session. Open a real webinar at{" "}
+        <code>/dashboard/events/[id]/live</code>, or run{" "}
+        <code>npm run webinar-e2e</code> to drive two browsers through one.
+      </Notice>
+    );
+  }
+
   if (!dailyConfigured()) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <h1 className="font-display text-xl font-semibold text-ink">
-          Daily isn&rsquo;t configured
-        </h1>
-        <p className="mt-2 text-sm text-ink-soft">
-          Set DAILY_API_KEY and NEXT_PUBLIC_DAILY_DOMAIN in .env.local.
-        </p>
-      </div>
+      <Notice title="Daily isn't configured">
+        Set DAILY_API_KEY and NEXT_PUBLIC_DAILY_DOMAIN in .env.local.
+      </Notice>
     );
   }
 
@@ -111,6 +125,21 @@ export default async function DevLiveRoomPage(
         role={role}
         backHref="/dev/live"
       />
+    </div>
+  );
+}
+
+function Notice({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mx-auto max-w-lg px-4 py-16 text-center">
+      <h1 className="font-display text-xl font-semibold text-ink">{title}</h1>
+      <p className="mt-2 text-sm text-ink-soft">{children}</p>
     </div>
   );
 }

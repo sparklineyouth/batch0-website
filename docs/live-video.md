@@ -1,6 +1,30 @@
 # Live video on batch0.org — webinars + 1:1 calls
 
-Working plan for `feat/live-video-webinars-and-1on1`.
+> ## ⚠️ Superseded: webinars no longer run on Daily
+>
+> **Live video now runs on [batch0 Live](./batch0-live.md), a self-hosted
+> WebRTC provider built into this repo.** Read that document first — this one
+> is kept because its analysis of the problem is still accurate and because
+> the Daily path is still in the codebase behind `LIVE_PROVIDER=daily`.
+>
+> **Why the switch.** The Daily integration described below was correct and is
+> still correct. What is not correct is the Daily *account*: it cannot start a
+> media session at all. Every join is refused with
+> `account-missing-payment-method` — including a join into a bare public room
+> with no properties set, which rules out anything in this repo as the cause.
+> It is an account-level block, and only a payment method on the Daily account
+> clears it.
+>
+> **Why nobody noticed.** `npm run daily-doctor` passed every check the entire
+> time. It exercises the REST plane — create a room, mint a token, decode the
+> claims — and all of that still works today. The failure was on the media
+> plane, which no REST-shaped check can see. That gap is the real lesson here,
+> and it is now closed by `npm run webinar-e2e`, which drives two real
+> browsers into a real room and asserts on decoded video frames.
+>
+> **To go back to Daily**: add a card to the Daily account, set
+> `LIVE_PROVIDER=daily`, and run `npm run webinar-e2e -- --provider=daily` to
+> confirm the media plane actually works before trusting it with an audience.
 
 ## Status
 

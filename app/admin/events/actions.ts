@@ -92,6 +92,15 @@ export async function saveEvent(input: EventInput, notify: boolean) {
   // deleting the event) tears it down. Done here rather than lazily at join
   // time so the failure — a bad key, a Daily outage — surfaces to the admin
   // who is looking at the form, not to twenty students at 7pm.
+  //
+  // ALL OF THIS IS A NO-OP ON batch0 Live, which is the default. The built-in
+  // provider has no provider-side room: the event id is the room, credentials
+  // are minted per join, and there is nothing to create, re-stamp, or reap.
+  // That deletes the entire class of bug this block exists to manage — 0069
+  // moved every webinar to a Sunday and left 17 of 18 pointing at a room that
+  // expired before the webinar started, because the schedule moved and the
+  // room did not.
+  const usesProviderRooms = env.liveProvider === "daily";
   let roomName = input.daily_room_name ?? null;
   let roomUrl = input.daily_room_url ?? null;
 
@@ -102,7 +111,7 @@ export async function saveEvent(input: EventInput, notify: boolean) {
   // has already reaped it, drop the name and fall through to create a fresh
   // one below. Anything else Daily says here is not worth failing the save
   // over: the join page also re-checks the room and heals a dead one.
-  if (input.live_mode === "hosted" && roomName) {
+  if (usesProviderRooms && input.live_mode === "hosted" && roomName) {
     try {
       const stillThere = await updateRoomExpiry(
         roomName,
@@ -117,7 +126,7 @@ export async function saveEvent(input: EventInput, notify: boolean) {
     }
   }
 
-  if (input.live_mode === "hosted" && !roomName) {
+  if (usesProviderRooms && input.live_mode === "hosted" && !roomName) {
     if (!dailyConfigured()) {
       throw new Error(
         "Live video isn't configured — set DAILY_API_KEY and NEXT_PUBLIC_DAILY_DOMAIN, or use a Zoom link instead.",
@@ -137,11 +146,15 @@ export async function saveEvent(input: EventInput, notify: boolean) {
 
   if (input.live_mode === "external" && roomName) {
     // Best-effort: an event that can't drop its room should still save as
-    // external. The room expires on its own regardless.
-    try {
-      await deleteRoom(roomName);
-    } catch (err) {
-      console.error("[events] could not delete room", err);
+    // external. The room expires on its own regardless. Still attempted when
+    // the built-in provider is active, because the name may be a leftover
+    // Daily room from before the switch and reaping it costs nothing.
+    if (dailyConfigured()) {
+      try {
+        await deleteRoom(roomName);
+      } catch (err) {
+        console.error("[events] could not delete room", err);
+      }
     }
     roomName = null;
     roomUrl = null;
