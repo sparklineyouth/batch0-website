@@ -25,7 +25,13 @@ function toLiveEvent(e: any): LiveEvent {
     location: e.location,
     // Rows written before migration 0058 have no live_mode; they are all
     // external by definition, so default rather than render them broken.
-    liveMode: e.live_mode === "hosted" ? "hosted" : "external",
+    // Narrowed rather than passed through, so a value this build does not know
+    // about renders as an ordinary external event instead of as a room nobody
+    // can enter.
+    liveMode:
+      e.live_mode === "hosted" || e.live_mode === "premiere"
+        ? e.live_mode
+        : "external",
     externalUrl: e.zoom_url,
     recordingUrl: e.recording_url,
     hostName: null,

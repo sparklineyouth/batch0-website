@@ -735,6 +735,8 @@ function prettyEventType(t: string) {
       return "🚀 Demo Day";
     case "office_hours":
       return "💬 Office Hours";
+    case "webinar":
+      return "🎥 Webinar";
     case "workshop":
       return "🛠️ Workshop";
     default:

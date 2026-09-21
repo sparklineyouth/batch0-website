@@ -4,6 +4,8 @@ import { can } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { getInvite } from "@/lib/calls";
 import { canJoin, joinState, inviteEndsAt } from "@/lib/live";
+import { isHostedOnBatch0, normalizeAudienceMode, type AudienceMode } from "@/lib/webinars";
+import { speakerUserIds } from "@/lib/webinar-data";
 import {
   inboxTopic,
   PEER_TIMEOUT_MS,
@@ -60,6 +62,22 @@ type ResolvedRoom = {
   role: SignalRole;
   /** Peers already known from the row itself, before any Realtime discovery. */
   knownPeers: LivePeer[];
+  /**
+   * May this broadcaster be told WHO is watching, as opposed to how many?
+   *
+   * Guest speakers (migration 0084) broke the assumption that every
+   * broadcaster is staff. A founder invited to talk holds one send-only
+   * connection per viewer — the star topology gives them no choice — so they
+   * need every viewer's inbox. They do not need anyone's name, and the
+   * attendance list of a room containing minors should stay with the staff who
+   * are accountable for it.
+   *
+   * True for `events.manage` holders and for both parties to a 1:1. False for
+   * a guest speaker, which is the only case it exists for.
+   */
+  discloseNames: boolean;
+  /** Decides whether a VIEWER is handed the room channel. See credentialsFor. */
+  audienceMode: AudienceMode;
 };
 
 async function resolveRoom(
@@ -75,17 +93,28 @@ async function resolveRoom(
     const supabase = await createClient();
     const { data } = await supabase
       .from("events")
-      .select("id, starts_at, ends_at, live_mode")
+      .select("id, starts_at, ends_at, live_mode, audience_mode")
       .eq("id", id)
       .maybeSingle();
     const ev = data as any;
-    if (!ev || ev.live_mode !== "hosted") return null;
+    // Both batch0-hosted modes. A premiere plays a recording and then hands
+    // over to this same room for the live Q&A, so it needs credentials for the
+    // whole of its run — not only after the handover, because the chat and the
+    // question queue are live from the first minute and that is most of what
+    // makes a premiere feel live.
+    if (!ev || !isHostedOnBatch0(ev.live_mode)) return null;
     if (!canJoin(joinState(ev.starts_at, ev.ends_at))) return null;
 
-    const role: SignalRole = can(actor.caps, "events.manage")
-      ? "host"
-      : "viewer";
+    // Two ways to broadcast, and the difference between them matters below.
+    // `events.manage` is the staff grant: global, and the same one the admin
+    // panel uses. A speaker row is the per-event grant that exists so a guest
+    // does not have to be handed the admin panel for forty minutes of talking.
+    const isStaffHost = can(actor.caps, "events.manage");
+    const isSpeaker =
+      !isStaffHost && (await speakerUserIds(ev.id)).includes(actor.userId);
+    const role: SignalRole = isStaffHost || isSpeaker ? "host" : "viewer";
     const roomId = `event:${ev.id}`;
+    const discloseNames = !isSpeaker;
 
     // A host gets the attendance-backed roster as a reconcile backstop; a
     // viewer gets nothing here and learns about the host from the stage
@@ -93,7 +122,7 @@ async function resolveRoom(
     // audience is not filtered out of the response, it is never fetched.
     const knownPeers =
       role === "host"
-        ? await liveParticipants(ev.id, roomId, PEER_TIMEOUT_MS)
+        ? await liveParticipants(ev.id, roomId, PEER_TIMEOUT_MS, discloseNames)
         : [];
 
     return {
@@ -101,6 +130,8 @@ async function resolveRoom(
       role,
       // Never hand a host its own row back as a peer to call.
       knownPeers: knownPeers.filter((p) => p.peerId !== actor.userId),
+      discloseNames,
+      audienceMode: normalizeAudienceMode(ev.audience_mode),
     };
   }
 
@@ -124,6 +155,13 @@ async function resolveRoom(
     // Both parties broadcast. A viewer role here would leave one of them
     // unable to speak in their own meeting.
     role: "host",
+    // Two named people who accepted an invite to each other. There is no
+    // audience here to protect, and withholding the name would leave each of
+    // them looking at an unlabelled tile.
+    discloseNames: true,
+    // A 1:1 has no audience channel at all; `private` is what stops
+    // credentialsFor handing one out.
+    audienceMode: "private",
     knownPeers: [
       {
         peerId: otherId,
@@ -176,6 +214,8 @@ export async function joinRoom(
     name,
     role: room.role,
     peers: room.knownPeers,
+    audienceMode: room.audienceMode,
+    discloseNames: room.discloseNames,
   });
 }
 
@@ -232,7 +272,24 @@ async function announceInternal(
     await notifyHosts(room.roomId, {
       t: "peer-online",
       peerId: userId,
-      name,
+      // A VIEWER'S NAME NEVER CROSSES THE LOBBY.
+      //
+      // The lobby key goes to every broadcaster, and since migration 0084 a
+      // broadcaster may be a guest speaker rather than staff. Anything put on
+      // this channel is therefore readable by an outsider with devtools open,
+      // and "who is watching" is precisely what an outsider should not have.
+      //
+      // Nothing is lost by withholding it: the engine only ever renders peers
+      // whose role is `host` (see publish() in use-live-session.ts), so a
+      // viewer's name on this message was never drawn anywhere. Staff who
+      // genuinely need the roster — for the attendance panel — get it from
+      // listAudience(), which is a server action that can check the permission
+      // this broadcast cannot.
+      //
+      // A host's name still travels, because a co-host IS rendered, and their
+      // name is already public to the whole room the moment they appear on
+      // camera.
+      name: room.role === "host" ? name : "",
       role: room.role,
       inbox: inboxTopic(room.roomId, inboxKeyFor(room.roomId, userId)),
     });
@@ -286,6 +343,11 @@ export async function listAudience(
   const actor = await requireActor();
   const room = await resolveRoom(kind, id);
   if (!room || room.role !== "host" || kind !== "event") return [];
-  const peers = await liveParticipants(id, room.roomId, PEER_TIMEOUT_MS);
+  const peers = await liveParticipants(
+    id,
+    room.roomId,
+    PEER_TIMEOUT_MS,
+    room.discloseNames,
+  );
   return peers.filter((p) => p.peerId !== actor.userId);
 }

@@ -38,7 +38,18 @@ export default async function AdminWebinarsPage() {
       .select(
         "id, title, description, type, starts_at, ends_at, location, visibility, live_mode, daily_room_name, daily_room_url, recording_url, display_viewer_count",
       )
-      .eq("live_mode", "hosted")
+      // What counts as a webinar, and why this is an OR rather than a rename.
+      //
+      // Before 0084 a webinar was `live_mode = 'hosted'` with `type =
+      // 'workshop'`; now it is `type = 'webinar'`. Every webinar already on the
+      // calendar still carries the old shape, and no migration backfills them
+      // — deliberately, because scripts/prepare-course-schedule.mts asserts the
+      // exact counts of workshop/office_hours/demo_day rows in the seeded
+      // schedule and a backfill would break it.
+      //
+      // So this page accepts both, and will keep having to. A premiere is
+      // included too: it is a webinar that plays a recording.
+      .or("type.eq.webinar,live_mode.eq.hosted,live_mode.eq.premiere")
       .order("starts_at", { ascending: false })
       .limit(100),
     // Newest first, so the form defaults to the cohort that is actually

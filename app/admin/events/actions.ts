@@ -23,6 +23,7 @@ import {
   normalizeDisplayViewers,
   type LiveMode,
 } from "@/lib/live";
+import { normalizeAudienceMode, type AudienceMode } from "@/lib/webinars";
 import { env } from "@/lib/env";
 
 /**
@@ -62,7 +63,7 @@ function roomExpiry(startsAt: string, endsAt: string | null): Date {
 export type EventInput = {
   id?: string;
   cohort_id: string | null;
-  type: "demo_day" | "office_hours" | "workshop" | "other";
+  type: "demo_day" | "office_hours" | "workshop" | "webinar" | "other";
   title: string;
   description: string | null;
   starts_at: string;
@@ -80,9 +81,33 @@ export type EventInput = {
   display_viewer_count?: number | null;
   daily_room_name?: string | null;
   daily_room_url?: string | null;
+
+  // ---- Webinar settings (migration 0084) ---------------------------------
+  //
+  // All optional, and every one of them defaults to the behaviour the event
+  // had before 0084. An admin surface that does not know about webinars — or a
+  // caller written before this block existed — saves an event unchanged rather
+  // than silently switching its audience on or starting to record it.
+  /** May the audience see itself? See lib/webinars.ts. Omitted = 'private'. */
+  audience_mode?: AudienceMode;
+  /** Start recording when the host starts broadcasting. Omitted = off. */
+  auto_record?: boolean;
+  /** Email the deck and recording out afterwards. Omitted = off. */
+  auto_share?: boolean;
+  /** Premiere only: when the genuinely-live Q&A opens. */
+  qa_opens_at?: string | null;
 };
 
-export async function saveEvent(input: EventInput, notify: boolean) {
+/**
+ * Returns the event's id — including for an insert, where the caller could not
+ * have known it. That is what lets the admin form attach guest speakers to an
+ * event it is creating for the first time, in the same click, instead of making
+ * the admin save once and come back.
+ */
+export async function saveEvent(
+  input: EventInput,
+  notify: boolean,
+): Promise<string> {
   await assertPermission("events.manage");
   const admin = createAdminClient();
 
@@ -100,7 +125,11 @@ export async function saveEvent(input: EventInput, notify: boolean) {
   // moved every webinar to a Sunday and left 17 of 18 pointing at a room that
   // expired before the webinar started, because the schedule moved and the
   // room did not.
-  const usesProviderRooms = env.liveProvider === "daily";
+  // Daily never hosted a premiere — that mode arrived with batch0 Live — so a
+  // premiere must not take this path even on an environment still pinned to
+  // Daily. It would create a room nobody joins and stamp the row with it.
+  const usesProviderRooms =
+    env.liveProvider === "daily" && input.live_mode !== "premiere";
   let roomName = input.daily_room_name ?? null;
   let roomUrl = input.daily_room_url ?? null;
 
@@ -177,6 +206,19 @@ export async function saveEvent(input: EventInput, notify: boolean) {
     display_viewer_count: normalizeDisplayViewers(input.display_viewer_count),
     daily_room_name: roomName,
     daily_room_url: roomUrl,
+
+    // Re-sanitized on the way in, exactly like display_viewer_count and for a
+    // sharper reason: this value decides whether one student's words are shown
+    // to another. `normalizeAudienceMode` fails closed, so a form that sends
+    // nothing, or a value this build does not recognise, stores 'private'.
+    audience_mode: normalizeAudienceMode(input.audience_mode),
+    auto_record: !!input.auto_record,
+    auto_share: !!input.auto_share,
+    // Only meaningful for a premiere. Cleared otherwise, so switching an event
+    // away from premiere cannot leave a handover time behind that a later
+    // switch back would silently resurrect.
+    qa_opens_at:
+      input.live_mode === "premiere" ? input.qa_opens_at || null : null,
   };
   let id = input.id;
   if (id) {
@@ -307,6 +349,7 @@ export async function saveEvent(input: EventInput, notify: boolean) {
 
   revalidatePath("/admin/events");
   revalidatePath("/dashboard/events");
+  return id!;
 }
 
 export async function deleteEvent(id: string) {

@@ -188,7 +188,7 @@ export type AuditLog = {
 export type EventRow = {
   id: string;
   cohort_id: string | null;
-  type: "demo_day" | "office_hours" | "workshop" | "other";
+  type: "demo_day" | "office_hours" | "workshop" | "webinar" | "other";
   title: string;
   description: string | null;
   starts_at: string;
