@@ -165,7 +165,30 @@ export type SignalMessage =
   | { t: "ice"; from: string; candidates: unknown[] }
   /** Sender is going away — tear the connection down now, don't wait for ICE
    *  to notice. Makes "the host left" instant instead of ~10 seconds frozen. */
-  | { t: "bye"; from: string };
+  | { t: "bye"; from: string }
+  /**
+   * Which of the sender's slots are actually carrying media right now.
+   *
+   * Sent by a broadcaster when a connection comes up and on every change
+   * afterwards, because the receiving end cannot work this out for itself.
+   * The obvious source — `receiver.track.muted` — does not answer it:
+   *
+   *  - Detaching a sender (`replaceTrack(null)`) stops the RTP but does not
+   *    reliably mute the remote track, so a host turning their camera off
+   *    left the viewer watching a frozen last frame with nothing to explain
+   *    it.
+   *  - The screen transceiver exists from the first offer, before anyone has
+   *    ever presented, and a receiver track that has simply never carried
+   *    packets is not distinguishable from one whose sender went quiet. Read
+   *    optimistically that put every viewer into the presenting layout,
+   *    staring at a black rectangle instead of the host's face.
+   *
+   * Both of those are invisible to a decoded-frames check and obvious to an
+   * audience, which is the worst combination. So the sender — the only party
+   * that actually knows — says so. `slotIsActive` is where the two sources
+   * are reconciled.
+   */
+  | { t: "media"; from: string; slots: Record<MediaSlot, boolean> };
 
 /**
  * Host announcements on the stage channel.
@@ -239,6 +262,39 @@ export function slotForMid(mid: string | null | undefined): MediaSlot | null {
   if (typeof mid !== "string" || !/^\d+$/.test(mid)) return null;
   const i = Number(mid);
   return i < MEDIA_SLOTS.length ? MEDIA_SLOTS[i] : null;
+}
+
+/**
+ * Should a received slot be rendered — reconciling what the sender announced
+ * with what the transport can see.
+ *
+ * `announced` is the sender's own `media` message, and it wins whenever we
+ * have one: it is the only account of intent, and it is the half that knows
+ * a detached sender from a quiet one.
+ *
+ * Before the first `media` message arrives the two remaining cases differ,
+ * and deliberately so:
+ *
+ *  - camera and audio fall back to the track. A dropped message must not
+ *    cost the audience the webinar, and a live unmuted track is good enough
+ *    evidence that media is flowing.
+ *  - screen does NOT. Nobody is presenting until a host says they are, so an
+ *    unknown screen slot is off. Guessing the other way is the bug that put
+ *    viewers in the presenting layout in front of a black rectangle, and
+ *    "the slide is a second late" is a far cheaper mistake than "the webinar
+ *    appears to be a black screen".
+ */
+export function slotIsActive({
+  slot,
+  announced,
+  trackLive,
+}: {
+  slot: MediaSlot;
+  announced: boolean | undefined;
+  trackLive: boolean;
+}): boolean {
+  if (announced !== undefined) return announced;
+  return slot === "screen" ? false : trackLive;
 }
 
 // ---------------------------------------------------------------------------

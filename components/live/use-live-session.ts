@@ -9,6 +9,7 @@ import {
   MEDIA_SLOTS,
   SIGNAL_EVENT,
   slotForMid,
+  slotIsActive,
   type LobbyMessage,
   type MediaSlot,
   type SignalMessage,
@@ -52,17 +53,23 @@ import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
  *
  * Because all three transceivers always exist, `ontrack` fires three times as
  * soon as the offer is applied — including for the screen slot the host is
- * not using. Those tracks arrive MUTED, and treating "a track object exists"
- * as "they are presenting" put every viewer into the presenting layout,
- * staring at a black rectangle where the host's face should be.
+ * not using. So "a track object exists" cannot mean "they are presenting":
+ * read that way, every viewer lands in the presenting layout, staring at a
+ * black rectangle where the host's face should be.
  *
- * So a slot counts as live only while its track is unmuted, and `mute` /
- * `unmute` are watched for the life of the connection. That single rule does
- * four jobs: the screen appears exactly when a host starts presenting and
- * disappears when they stop; the "waiting for the host" placeholder survives
- * until real media arrives; and camera/mic off show as "camera off" rather
- * than a black frame, because a muted sender (`replaceTrack(null)`) mutes the
- * receiver's track too.
+ * The receiver's own `muted` flag is not the answer either. Detaching a
+ * sender with `replaceTrack(null)` stops the packets but does not reliably
+ * mute the remote track, so a host turning their camera off left the audience
+ * on a frozen last frame with nothing to explain it — and a decoded-frames
+ * check sails straight past both bugs, which is how they reached an audience.
+ *
+ * So the sender says what it is sending, in a `media` message on the same
+ * channel as the rest of the signalling, when a connection comes up and on
+ * every change after. `slotIsActive` reconciles that with what the transport
+ * can see: the announcement wins where we have one, the track is the fallback
+ * for camera and audio so a dropped message cannot cost the webinar, and an
+ * unannounced screen slot is off, because nobody is presenting until a host
+ * says so.
  */
 
 export type ConnectionState =
@@ -111,8 +118,15 @@ type PeerConnection = {
   /** Our outbound senders, one per slot. Empty for a viewer. */
   senders: Partial<Record<MediaSlot, RTCRtpSender>>;
   streams: Partial<Record<MediaSlot, MediaStream>>;
-  /** Which slots are currently carrying media (track present AND unmuted). */
+  /** Which slots to render — `slotIsActive` over the two fields below. */
   active: Partial<Record<MediaSlot, boolean>>;
+  /**
+   * What the peer SAID it is sending, from its `media` messages. Authoritative
+   * where present: only the sender can tell a detached slot from a quiet one.
+   */
+  announced: Partial<Record<MediaSlot, boolean>>;
+  /** What the transport can see — a present, unmuted, live receiver track. */
+  trackLive: Partial<Record<MediaSlot, boolean>>;
   /** Buffered ICE candidates, flushed together (see ICE_BATCH_MS). */
   pending: RTCIceCandidateInit[];
   flushTimer: ReturnType<typeof setTimeout> | null;
@@ -336,6 +350,24 @@ export function useLiveSession({
 
   // --- local media ---------------------------------------------------------
   /**
+   * Tell one peer which of our slots are live.
+   *
+   * Best-effort and unacknowledged, like every other signal here: a lost
+   * message costs a stale label until the next toggle or reconnect, never
+   * the media itself. Skipped entirely before the connection has a topic.
+   */
+  const announceMedia = useCallback(
+    (conn: PeerConnection, slots: Record<MediaSlot, boolean>) => {
+      const creds = credsRef.current;
+      if (!creds || !conn.topic) return;
+      void sendOn(conn.topic, { t: "media", from: creds.peerId, slots }).catch(
+        () => {},
+      );
+    },
+    [sendOn],
+  );
+
+  /**
    * Put the current camera/mic/screen tracks onto a connection's senders.
    *
    * A slot the host has turned off is detached (`replaceTrack(null)`) rather
@@ -343,21 +375,36 @@ export function useLiveSession({
    * detaching mutes the RECEIVER's track, which is what lets a viewer's tile
    * say "camera off" instead of showing a black rectangle.
    */
-  const attachLocalTracks = useCallback((conn: PeerConnection) => {
-    if (!isBroadcasterRef.current) return;
-    const { cameraOn: wantCam, micOn: wantMic } = wantRef.current;
-    const want: Record<MediaSlot, MediaStreamTrack | null> = {
-      camera: wantCam ? (localRef.current?.getVideoTracks()[0] ?? null) : null,
-      screen: screenRef.current?.getVideoTracks()[0] ?? null,
-      audio: wantMic ? (localRef.current?.getAudioTracks()[0] ?? null) : null,
-    };
-    for (const slot of MEDIA_SLOTS) {
-      const sender = conn.senders[slot];
-      if (!sender || sender.track === want[slot]) continue;
-      // Rejected only in states where the connection is going away anyway.
-      sender.replaceTrack(want[slot]).catch(() => {});
-    }
-  }, []);
+  const attachLocalTracks = useCallback(
+    (conn: PeerConnection) => {
+      if (!isBroadcasterRef.current) return;
+      const { cameraOn: wantCam, micOn: wantMic } = wantRef.current;
+      const want: Record<MediaSlot, MediaStreamTrack | null> = {
+        camera: wantCam ? (localRef.current?.getVideoTracks()[0] ?? null) : null,
+        screen: screenRef.current?.getVideoTracks()[0] ?? null,
+        audio: wantMic ? (localRef.current?.getAudioTracks()[0] ?? null) : null,
+      };
+      for (const slot of MEDIA_SLOTS) {
+        const sender = conn.senders[slot];
+        if (!sender || sender.track === want[slot]) continue;
+        // Rejected only in states where the connection is going away anyway.
+        sender.replaceTrack(want[slot]).catch(() => {});
+      }
+      // And say what we just did. Detaching a sender stops the packets
+      // without reliably muting the remote track, so without this the other
+      // end has no way to tell "camera off" from "frozen", and no way to
+      // tell a screen slot that has never carried anything from one that
+      // has gone quiet. Sent on every call rather than only on a change:
+      // this also runs when a connection is built, which is exactly when a
+      // newly arrived viewer needs the current state.
+      announceMedia(conn, {
+        camera: !!want.camera,
+        screen: !!want.screen,
+        audio: !!want.audio,
+      });
+    },
+    [announceMedia],
+  );
   const isBroadcasterRef = useRef(isBroadcaster);
   isBroadcasterRef.current = isBroadcaster;
 
@@ -446,6 +493,8 @@ export function useLiveSession({
         senders: {},
         streams: {},
         active: {},
+        announced: {},
+        trackLive: {},
         pending: [],
         flushTimer: null,
         earlyCandidates: [],
@@ -478,7 +527,13 @@ export function useLiveSession({
         // for the screen slot even when nobody is presenting — with a MUTED
         // track. Presence follows the mute state, not the object's existence.
         const sync = () => {
-          conn.active[slot] = !ev.track.muted && ev.track.readyState === "live";
+          conn.trackLive[slot] =
+            !ev.track.muted && ev.track.readyState === "live";
+          conn.active[slot] = slotIsActive({
+            slot,
+            announced: conn.announced[slot],
+            trackLive: conn.trackLive[slot]!,
+          });
           publish();
         };
         ev.track.addEventListener("unmute", sync);
@@ -626,6 +681,26 @@ export function useLiveSession({
 
       const conn = connections.current.get(msg.from);
       if (!conn) return;
+
+      if (msg.t === "media") {
+        // The sender's own account of what it is sending, which beats
+        // anything the receiver can infer. This is what turns a camera
+        // switched off into "the host's camera is off" rather than a frozen
+        // last frame, and what keeps the presenting layout away until
+        // somebody is genuinely presenting.
+        for (const slot of MEDIA_SLOTS) {
+          const announced = msg.slots?.[slot];
+          if (typeof announced !== "boolean") continue;
+          conn.announced[slot] = announced;
+          conn.active[slot] = slotIsActive({
+            slot,
+            announced,
+            trackLive: conn.trackLive[slot] ?? false,
+          });
+        }
+        publish();
+        return;
+      }
 
       if (msg.t === "answer") {
         try {

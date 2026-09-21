@@ -6,6 +6,7 @@ import {
   lobbyTopic,
   stageTopic,
   slotForMid,
+  slotIsActive,
   MEDIA_SLOTS,
   HEARTBEAT_MS,
   PEER_TIMEOUT_MS,
@@ -159,5 +160,60 @@ test("a peer times out only after several missed heartbeats", () => {
   assert.ok(
     PEER_TIMEOUT_MS >= HEARTBEAT_MS * 3,
     `PEER_TIMEOUT_MS (${PEER_TIMEOUT_MS}) should allow at least 3 missed heartbeats (${HEARTBEAT_MS})`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// What a receiver renders
+// ---------------------------------------------------------------------------
+
+test("the sender's announcement beats anything the receiver can infer", () => {
+  // The case that mattered: a host turns the camera off, the sender detaches
+  // the track, the packets stop — and the remote track does NOT reliably go
+  // muted, so the transport still reads "live". Believing it leaves the
+  // audience on a frozen last frame. The announcement is the only honest
+  // account, so it wins in both directions.
+  assert.equal(
+    slotIsActive({ slot: "camera", announced: false, trackLive: true }),
+    false,
+  );
+  assert.equal(
+    slotIsActive({ slot: "camera", announced: true, trackLive: false }),
+    true,
+  );
+  assert.equal(
+    slotIsActive({ slot: "screen", announced: true, trackLive: false }),
+    true,
+  );
+});
+
+test("before any announcement, camera and audio fall back to the track", () => {
+  // A dropped message must cost a stale label, never the webinar itself.
+  assert.equal(
+    slotIsActive({ slot: "camera", announced: undefined, trackLive: true }),
+    true,
+  );
+  assert.equal(
+    slotIsActive({ slot: "audio", announced: undefined, trackLive: true }),
+    true,
+  );
+  assert.equal(
+    slotIsActive({ slot: "camera", announced: undefined, trackLive: false }),
+    false,
+  );
+});
+
+test("an unannounced screen slot is off — nobody presents by default", () => {
+  // Every connection carries a screen transceiver from the first offer,
+  // before anyone has ever presented. Reading that optimistically is what put
+  // viewers in the presenting layout in front of a black rectangle, and a
+  // decoded-frames check cannot see it.
+  assert.equal(
+    slotIsActive({ slot: "screen", announced: undefined, trackLive: true }),
+    false,
+  );
+  assert.equal(
+    slotIsActive({ slot: "screen", announced: undefined, trackLive: false }),
+    false,
   );
 });
