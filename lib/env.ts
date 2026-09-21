@@ -68,6 +68,48 @@ export const env = {
   // as dailyRecording: a paid feature, opt-in, defaulting to "works anywhere".
   dailyLargeCalls: process.env.DAILY_LARGE_CALLS === "true",
 
+  // ---------------------------------------------------------------------
+  // batch0 Live — the built-in webinar provider (lib/live-rooms.ts).
+  // ---------------------------------------------------------------------
+  //
+  // Which provider hosted events and 1:1 calls actually run on.
+  //
+  // Defaults to "builtin", and that default is load-bearing rather than a
+  // preference: the Daily account this project was wired to cannot start a
+  // media session at all. Every join — including into a bare public room with
+  // no properties set — is refused with `account-missing-payment-method`,
+  // which is an account-level block no code here can clear. Daily's REST API
+  // still answers perfectly, which is exactly why it looked healthy for so
+  // long (see scripts/daily-doctor.mts, and scripts/webinar-e2e.mts for the
+  // check that catches it).
+  //
+  // Set LIVE_PROVIDER=daily to go back, once that account has a card on file.
+  // Nothing about the Daily path was removed.
+  liveProvider:
+    process.env.LIVE_PROVIDER === "daily" ? ("daily" as const) : ("builtin" as const),
+
+  // Secret that channel names and host proofs are derived from. Never sent to
+  // a browser; only HMACs of it are, and only to the participant they belong
+  // to. Falls back to the service-role key so batch0 Live needs NO new
+  // environment variable to be secure — the fallback is a one-way HMAC input,
+  // never transmitted. Set LIVE_ROOM_SECRET to rotate every room key without
+  // touching Supabase credentials.
+  liveRoomSecret:
+    process.env.LIVE_ROOM_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY,
+
+  // Optional TURN relay, for viewers whose network refuses a direct peer
+  // connection (symmetric NAT, some school and corporate firewalls). STUN
+  // alone covers the large majority of home networks, so this stays optional
+  // in the usual shape: unset means "no relay", not "broken".
+  //
+  // Comma-separated, e.g.
+  //   LIVE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349
+  // Server-only: TURN credentials are handed to the browser per join by
+  // lib/live-rooms.ts, never inlined into the bundle.
+  liveTurnUrls: process.env.LIVE_TURN_URLS,
+  liveTurnUsername: process.env.LIVE_TURN_USERNAME,
+  liveTurnCredential: process.env.LIVE_TURN_CREDENTIAL,
+
   discordBotToken: process.env.DISCORD_BOT_TOKEN,
   discordGuildId: process.env.DISCORD_GUILD_ID,
   discordRoleStudent: process.env.DISCORD_ROLE_STUDENT,

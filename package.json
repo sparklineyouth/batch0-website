@@ -2,6 +2,9 @@
   "name": "batch0-website",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build && node scripts/verify-static.mjs",
@@ -10,6 +13,7 @@
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/*.test.ts",
     "test:discord-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-discord-auto-db.mts",
     "test:scholarships-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-scholarships-db.mts",
+    "test:profile-privileges-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-profile-privileges-db.mts",
     "seo-doctor": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seo-doctor.mts",
     "onshape-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/onshape-doctor.mts",
     "mint-cards": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/mint-cards.mts",
@@ -17,7 +21,9 @@
     "verify-roles": "node --env-file=.env.local scripts/verify-roles.mjs",
     "e2e-roles": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/e2e-roles.mts",
     "test-blast-addressing": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-blast-addressing.mts",
-    "daily-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/daily-doctor.mts"
+    "daily-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/daily-doctor.mts",
+    "webinar-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-e2e.mts",
+    "webinar-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-doctor.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",

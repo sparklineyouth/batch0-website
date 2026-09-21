@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dailyConfigured } from "@/lib/daily";
+import { env } from "@/lib/env";
 import { joinState, type LiveEvent } from "@/lib/live";
 import { Card } from "@/components/ui/card";
 import { WebinarsManager } from "./webinars-manager";
@@ -131,7 +132,13 @@ export default async function AdminWebinarsPage() {
 
   return (
     <Shell>
-      {!dailyConfigured() && (
+      {/*
+        Only the Daily path can be "unconfigured". batch0 Live needs no
+        credentials at all — it runs on Supabase Realtime for signalling and
+        browser-to-browser WebRTC for media, both of which are already there —
+        so there is nothing to warn about and no banner to show.
+      */}
+      {env.liveProvider === "daily" && !dailyConfigured() && (
         <Card className="mt-6">
           <div className="flex gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -140,9 +147,11 @@ export default async function AdminWebinarsPage() {
                 Live video isn&rsquo;t configured here
               </h2>
               <p className="mt-1.5 text-sm text-ink-soft">
-                Set <code>DAILY_API_KEY</code> and{" "}
-                <code>NEXT_PUBLIC_DAILY_DOMAIN</code> in this environment.
-                Scheduling a webinar will fail until then.
+                <code>LIVE_PROVIDER=daily</code> is set, but{" "}
+                <code>DAILY_API_KEY</code> and{" "}
+                <code>NEXT_PUBLIC_DAILY_DOMAIN</code> are missing. Unset{" "}
+                <code>LIVE_PROVIDER</code> to use batch0 Live, which needs no
+                credentials.
               </p>
             </div>
           </div>
@@ -159,6 +168,7 @@ export default async function AdminWebinarsPage() {
             name: c.name,
             startsOn: c.starts_on ?? null,
           }))}
+          needsProviderRoom={env.liveProvider === "daily"}
         />
       </Card>
     </Shell>

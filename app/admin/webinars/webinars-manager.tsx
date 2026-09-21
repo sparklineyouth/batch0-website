@@ -65,11 +65,19 @@ export function WebinarsManager({
   upcoming,
   past,
   cohorts,
+  needsProviderRoom,
 }: {
   live: Webinar[];
   upcoming: Webinar[];
   past: Webinar[];
   cohorts: Cohort[];
+  /**
+   * True only on the Daily path, where a webinar is not joinable until a
+   * provider-side room exists. batch0 Live has no such room — the event id is
+   * the room — so a webinar is joinable the moment it is scheduled, and
+   * gating the button on `roomName` would hide it forever.
+   */
+  needsProviderRoom: boolean;
 }) {
   const router = useRouter();
   const [composing, setComposing] = useState(false);
@@ -176,21 +184,33 @@ export function WebinarsManager({
           {live.length > 0 && (
             <Section label="Live now" accent>
               {live.map((w) => (
-                <Row key={w.id} webinar={w} />
+                <Row
+                  key={w.id}
+                  webinar={w}
+                  needsProviderRoom={needsProviderRoom}
+                />
               ))}
             </Section>
           )}
           {upcoming.length > 0 && (
             <Section label="Upcoming">
               {upcoming.map((w) => (
-                <Row key={w.id} webinar={w} />
+                <Row
+                  key={w.id}
+                  webinar={w}
+                  needsProviderRoom={needsProviderRoom}
+                />
               ))}
             </Section>
           )}
           {past.length > 0 && (
             <Section label="Past">
               {past.map((w) => (
-                <Row key={w.id} webinar={w} />
+                <Row
+                  key={w.id}
+                  webinar={w}
+                  needsProviderRoom={needsProviderRoom}
+                />
               ))}
             </Section>
           )}
@@ -227,7 +247,13 @@ function Section({
   );
 }
 
-function Row({ webinar: w }: { webinar: Webinar }) {
+function Row({
+  webinar: w,
+  needsProviderRoom,
+}: {
+  webinar: Webinar;
+  needsProviderRoom: boolean;
+}) {
   // Server-rendered, so this is the request's clock rather than the viewer's.
   // Good enough for a coarse status chip; LocalTime handles the exact time.
   const state = joinState(w.startsAt, w.endsAt);
@@ -254,7 +280,7 @@ function Row({ webinar: w }: { webinar: Webinar }) {
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-faint">
             <LocalTime value={w.startsAt} mode="datetime-short" />
             {state === "early" && <span>{relativeTime(w.startsAt)}</span>}
-            {!w.roomName && (
+            {needsProviderRoom && !w.roomName && (
               <span className="text-amber-600 dark:text-amber-400">
                 no room yet — re-save to create one
               </span>
@@ -273,7 +299,7 @@ function Row({ webinar: w }: { webinar: Webinar }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {joinable && w.roomName && (
+          {joinable && (!needsProviderRoom || w.roomName) && (
             <ButtonLink size="sm" href={`/dashboard/events/${w.id}/live`}>
               <Video className="h-4 w-4" />
               {state === "live" ? "Join now" : "Open"}
@@ -467,9 +493,10 @@ function ScheduleForm({
       </label>
 
       <p className="rounded-md border border-line bg-wash px-3 py-2.5 text-xs text-ink-soft">
-        A private room is created when you save, and expires two hours after the
-        end. Only you get camera and mic — students watch, ask questions beside
-        the video, and can&rsquo;t see each other or how many are here.
+        The room opens 15 minutes before the start and closes 30 minutes after
+        the end. Only you get camera, mic, and screen share — students watch,
+        ask questions beside the video, and can&rsquo;t see each other or how
+        many are here.
       </p>
 
       {error && <FieldError>{error}</FieldError>}
@@ -490,7 +517,7 @@ function ScheduleForm({
             })
           }
         >
-          {pending ? "Creating the room…" : "Schedule webinar"}
+          {pending ? "Scheduling…" : "Schedule webinar"}
         </Button>
         <Button variant="ghost" onClick={onCancel} disabled={pending}>
           Cancel

@@ -1,43 +1,70 @@
 # batch0 — batch0.org
 
-The marketing site for batch0, the 4-week virtual startup accelerator for high schoolers.
+The batch0 marketing site and application platform for student founders, with
+applications, payments, courses, and student/admin dashboards.
 
 ## Stack
 
-- Next.js 14 (App Router) + React 18 + TypeScript
-- Tailwind CSS (custom `phosphor` amber palette, sampled from the batch0 wordmark)
-- framer-motion (scroll + entrance animations, including the 21st.dev-style ContainerScroll)
-- lucide-react (icons)
+- Node.js 24.x; `.nvmrc` pins the verified local version, 24.21.0
+- Next.js 15.5.25 (App Router), React 19.3.0, and TypeScript
+- Tailwind CSS and lucide-react
+- Supabase for authentication, database, and private file storage; Stripe for payments
 
-## Getting started
+## Fresh checkout
 
-```bash
-cd batch0-website
-npm install
+Use Node.js 24.x. With nvm installed, run these commands from the repository root:
+
+```sh
+nvm install
+nvm use
+npm ci
+```
+
+Create `.env.local` from `.env.local.example` if you do not already have one.
+Configure `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `STRIPE_SECRET_KEY` for your development
+environment. Set `NEXT_PUBLIC_SITE_URL` to `http://localhost:3000` locally.
+The template documents payment webhooks and optional integrations; leave unused
+optional services unset. Keep secret values out of Git and browser-facing variables.
+
+```sh
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000. Authentication and other service-backed features
+need configured services and their database migrations; placeholder credentials
+do not provide a working backend.
 
-## Deploy
+## Verify and build
 
-Site is built to deploy to Vercel and point at `batch0.org`.
-
-```bash
+```sh
+npm test
+npm run test:discord-db
+npm run test:scholarships-db
 npm run build
+npm start
 ```
 
-Then connect the repo to Vercel and add `batch0.org` (and `batch0.org`) as production domains.
+The two database test commands use isolated, in-memory PGlite databases. The
+production build compiles and type-checks the app, then checks that the expected
+blog and marketing routes remain prerendered.
 
-## Sections
+`STRIPE_SECRET_KEY` must be nonempty even during a build because the Stripe client
+is initialized when its module loads. A clean checkout was verified on Node
+24.21.0 with 393 unit tests, 36 isolated database tests, and a successful build
+using intentionally invalid Supabase/Stripe fixture values. Unavailable Supabase
+reads used the marketing fallback data. This proves build portability; it does
+not validate live authentication, payments, or production configuration.
 
-- Hero (animated logo + Cohort 1 announcement)
-- Marquee
-- Problem (LaunchX/LeanGap/YEA pain points)
-- Scroll Preview (21st.dev `ContainerScroll` showing the cohort dashboard)
-- 4-week Curriculum (Validate / Build / Market / Pitch)
-- Stats (16M, $97, 4 weeks, 100% virtual)
-- Comparison table
-- Founders (Rishabh Dagli, Shresht Chopra)
-- FAQ
-- CTA + Footer
+## Deployment
+
+Deploy to Vercel with Node.js 24.x, install with `npm ci`, and build with
+`npm run build`. Configure real environment values in the hosting project's
+environment settings; do not upload a developer's `.env.local` as configuration.
+Production uses `batch0.org` and `app.batch0.org`, with matching authentication
+redirects and webhook endpoints. See `.env.local.example` for available settings.
+
+The checkout can live anywhere. Dependencies and `.next` are rebuilt locally;
+private course source under `content/course-launch/` is intentionally excluded
+from this public repository and is not needed for the website build. Restore
+those private materials separately when running curriculum publishing tools.
