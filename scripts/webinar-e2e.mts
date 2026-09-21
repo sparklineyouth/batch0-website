@@ -32,6 +32,7 @@
  * on failure.
  */
 
+import { randomBytes } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -77,7 +78,50 @@ function check(cond: boolean, m: string) {
 const stamp = String(process.pid);
 const HOST_EMAIL = `e2e-webinar-host-${stamp}@example.invalid`;
 const VIEWER_EMAIL = `e2e-webinar-viewer-${stamp}@example.invalid`;
-const PASSWORD = "e2e-Test-Password-9271";
+/**
+ * A fresh password every run, and never one that is written down.
+ *
+ * This used to be the constant `"e2e-Test-Password-9271"`, and that combined
+ * with the account this script creates — role `admin`, `email_confirm: true` —
+ * into a real hole. Cleanup is a `finally` block, and a `finally` does not run
+ * when the process is killed: a ^C, an OOM, a closed laptop, a CI timeout.
+ * Each of those leaves a live ADMIN account on whatever database .env.local
+ * points at, signed in to by anyone who can read this file — because the
+ * password was in it.
+ *
+ * That is not hypothetical. A run on 2026-09-20 left exactly that account
+ * behind, and it sat in production until it was found the next day.
+ *
+ * Randomising it makes an orphan inert: nobody can sign in as it, because the
+ * only process that ever knew the password has exited. `reapOrphans` then
+ * removes it on the next run regardless.
+ */
+const PASSWORD = `e2e-${randomBytes(18).toString("base64url")}`;
+
+/**
+ * Delete test accounts a previous run failed to clean up.
+ *
+ * The belt to `finally`'s braces. Scoped as tightly as it can be — the exact
+ * `e2e-webinar-*@example.invalid` shape this script mints, on a reserved TLD
+ * that can never belong to a real person — so it cannot touch a real account
+ * however badly it is invoked.
+ */
+async function reapOrphans(): Promise<void> {
+  const res = await fetch(
+    `${url}/rest/v1/profiles?select=id,email&email=like.e2e-webinar-*@example.invalid`,
+    { headers: adm },
+  );
+  if (!res.ok) return;
+  const rows = (await res.json()) as { id: string; email: string }[];
+  for (const r of rows) {
+    if (!/^e2e-webinar-[a-z0-9-]+@example\.invalid$/.test(r.email ?? "")) continue;
+    await fetch(`${url}/auth/v1/admin/users/${r.id}`, {
+      method: "DELETE",
+      headers: adm,
+    }).catch(() => {});
+    console.log(`  reaped orphaned test account ${r.email}`);
+  }
+}
 
 const createdUsers: string[] = [];
 let createdEventId: string | null = null;
@@ -335,6 +379,18 @@ async function main() {
     console.error(`No dev server at ${BASE}. Run \`npm run dev\` first.`);
     process.exit(1);
   }
+
+  // Say out loud which database is about to get real rows written to it. BASE
+  // is the APP; the accounts and the public test event go wherever .env.local
+  // points, which is very often production even when BASE is localhost. That
+  // mismatch is exactly why this names the project ref rather than BASE.
+  if (!/localhost|127\.0\.0\.1/.test(url)) {
+    console.log(`  !!  writing test rows to Supabase project ${projectRef}`);
+    console.log(`  !!  a public test event exists for the duration of this run\n`);
+  }
+
+  // Anything a previous run left behind, before this one adds more.
+  await reapOrphans();
 
   console.log("fixtures");
   const hostUserId = await createUser(HOST_EMAIL, "admin");
