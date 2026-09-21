@@ -88,6 +88,24 @@ await db.exec(`
   );
   insert into public.app_roles values ('admin', array['*']), ('mentor', array['mentor.panel']);
 
+  -- 0070_demo_day_tickets.sql — the slice 0074 alters: the amount check it
+  -- relaxes (an INLINE check, so Postgres names it the same way here as in
+  -- production: demo_day_tickets_amount_cents_check) and the row shape the
+  -- guest-ticket sender inserts.
+  create table public.demo_day_tickets (
+    id uuid primary key default gen_random_uuid(),
+    token text not null unique,
+    email text not null,
+    name text,
+    user_id uuid references public.profiles(id) on delete set null,
+    cohort_id uuid references public.cohorts(id) on delete set null,
+    amount_cents integer not null check (amount_cents > 0),
+    status text not null default 'sent'
+      check (status in ('sent','paid','cancelled','refunded')),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  );
+
   -- 0001_init.sql:324 — the shared trigger function 0071 attaches.
   create or replace function public.touch_updated_at()
   returns trigger language plpgsql as $$
@@ -113,6 +131,22 @@ const MIGRATION = await readFile(
 // PGlite has no PostgREST, so the migration's closing NOTIFY is meaningless
 // here — and `notify` with a payload is fine in Postgres, so it is left in.
 await db.exec(MIGRATION);
+
+// A scholarship as 0071 would have stored a learner's grant, written BEFORE
+// 0074 runs so the rewrite of its award_type is exercised on a real row.
+await db.exec(`
+  insert into public.scholarships (slug, name, award_type, award_cents, mentor_calls)
+  values ('legacy-calls', 'Legacy learner grant', 'mentor_calls', 0, 3);
+`);
+
+// 0074 — perks. Executed the same way, for the same reason: it rewrites the
+// award-shape constraint and relaxes a check on another table, both of which
+// are exactly the kind of thing a hand-pasted migration gets subtly wrong.
+const PERKS_MIGRATION = await readFile(
+  new URL("../supabase/migrations/0074_scholarship_perks.sql", import.meta.url),
+  "utf8",
+);
+await db.exec(PERKS_MIGRATION);
 
 async function newProfile(email: string): Promise<string> {
   const r = await q<{ id: string }>(
@@ -165,15 +199,29 @@ async function fails(fn: () => Promise<unknown>): Promise<string> {
 
 // ---------------------------------------------------------------------------
 
-test("the migration is idempotent — re-running changes nothing", async () => {
-  // Every migration in this repo promises this in its header, and 0071 is
-  // pasted by hand, so a double-paste has to be harmless.
-  await db.exec(MIGRATION);
-  await db.exec(MIGRATION);
-  const r = await q<{ n: number }>(
+test("the migrations are idempotent — re-running changes nothing", async () => {
+  // Every migration in this repo promises this in its header, and both are
+  // pasted by hand, so a double-paste has to be harmless — including 0071
+  // landing again AFTER 0074 (its create-table-if-not-exists must not
+  // reinstate the old award-shape constraint).
+  const before = await q<{ n: number }>(
     "select count(*)::int as n from public.scholarships",
   );
-  assert.equal(r.rows[0].n, 0);
+  await db.exec(MIGRATION);
+  await db.exec(MIGRATION);
+  await db.exec(PERKS_MIGRATION);
+  await db.exec(PERKS_MIGRATION);
+  const after = await q<{ n: number }>(
+    "select count(*)::int as n from public.scholarships",
+  );
+  assert.equal(after.rows[0].n, before.rows[0].n);
+  // Exactly one shape constraint, and it is 0074's.
+  const c = await q<{ def: string }>(
+    `select pg_get_constraintdef(oid) as def from pg_constraint
+     where conname = 'scholarships_award_shape'`,
+  );
+  assert.equal(c.rows.length, 1);
+  assert.match(c.rows[0].def, /perk_ai_boost/);
 });
 
 test("both new tables exist with RLS enabled", async () => {
@@ -470,4 +518,132 @@ test("migration 0071 grants no role a scholarship permission", async () => {
   const mentor = r.rows.find((x: { slug: string }) => x.slug === "mentor");
   assert.ok(mentor);
   assert.deepEqual(mentor.permissions, ["mentor.panel"]);
+});
+
+// ---------------------------------------------------------------------------
+// 0074 — perks
+// ---------------------------------------------------------------------------
+
+test("0074 rewrote the legacy mentor_calls award_type to perks", async () => {
+  const r = await q<{ award_type: string; mentor_calls: number }>(
+    "select award_type, mentor_calls from public.scholarships where slug = 'legacy-calls'",
+  );
+  assert.equal(r.rows.length, 1);
+  assert.equal(r.rows[0].award_type, "perks");
+  // The calls themselves are untouched — nothing anyone was granted changes.
+  assert.equal(r.rows[0].mentor_calls, 3);
+});
+
+test("award_type takes the derived vocabulary and nothing else", async () => {
+  // The inline check from 0071 has to have been DROPPED by name, or 'perks'
+  // would still be refused — the failure mode of guessing the auto-generated
+  // constraint name wrong.
+  await q(
+    `insert into public.scholarships (slug, name, award_type, award_cents, perk_ai_boost)
+     values ('both-kinds','Both','both',5000,true)`,
+  );
+  await q(
+    `insert into public.scholarships (slug, name, award_type, perk_demo_day_tickets)
+     values ('perks-kind','Perks','perks',2)`,
+  );
+  const msg = await fails(() =>
+    q(
+      `insert into public.scholarships (slug, name, award_type, award_cents)
+       values ('gold-kind','Gold','gold',5000)`,
+    ),
+  );
+  assert.match(msg, /scholarships_award_type_check/);
+});
+
+test("the new award-shape constraint keys on worth, not on award_type", async () => {
+  // Nothing at all: still refused.
+  const nothing = await fails(() =>
+    q(`insert into public.scholarships (slug, name) values ('nothing','Nothing')`),
+  );
+  assert.match(nothing, /scholarships_award_shape/);
+
+  // Any single half is enough — money alone, or each perk alone.
+  await q(`insert into public.scholarships (slug, name, award_percent) values ('p-money','M',50)`);
+  await q(`insert into public.scholarships (slug, name, mentor_calls) values ('p-calls','C',1)`);
+  await q(`insert into public.scholarships (slug, name, perk_feedback_credits) values ('p-fb','F',1)`);
+  await q(`insert into public.scholarships (slug, name, perk_demo_day_tickets) values ('p-dd','D',1)`);
+  await q(`insert into public.scholarships (slug, name, perk_ai_boost) values ('p-ai','A',true)`);
+
+  // award_type on its own proves nothing: 'discount' with no money is refused.
+  const lying = await fails(() =>
+    q(
+      `insert into public.scholarships (slug, name, award_type, award_cents)
+       values ('lying','Lying','discount',0)`,
+    ),
+  );
+  assert.match(lying, /scholarships_award_shape/);
+});
+
+test("perk ceilings hold on the catalog and on the award snapshot", async () => {
+  const fb = await fails(() =>
+    q(`insert into public.scholarships (slug, name, perk_feedback_credits) values ('fb-hi','X',11)`),
+  );
+  assert.match(fb, /perk_feedback_credits/);
+  const dd = await fails(() =>
+    q(`insert into public.scholarships (slug, name, perk_demo_day_tickets) values ('dd-hi','X',11)`),
+  );
+  assert.match(dd, /perk_demo_day_tickets/);
+
+  const s = await newScholarship();
+  const user = await newProfile("ceiling@example.com");
+  const snap = await fails(() =>
+    q(
+      `insert into public.scholarship_applications
+         (scholarship_id, user_id, status, feedback_credits_awarded)
+       values ($1,$2,'awarded',11)`,
+      [s, user],
+    ),
+  );
+  assert.match(snap, /feedback_credits_awarded/);
+
+  // Every new snapshot column defaults to "nothing extra".
+  const app = await q<{ f: number; d: number; a: boolean }>(
+    `insert into public.scholarship_applications (scholarship_id, user_id) values ($1,$2)
+     returning feedback_credits_awarded as f, demo_day_tickets_awarded as d, ai_boost_awarded as a`,
+    [s, user],
+  );
+  assert.deepEqual(app.rows[0], { f: 0, d: 0, a: false });
+});
+
+test("a guest ticket is a $0 paid ticket tagged with its award, and survives the award's deletion", async () => {
+  // The amount check has to have been relaxed by name — a second, stricter
+  // constraint left behind would refuse every guest ticket ever sent.
+  const s = await newScholarship();
+  const user = await newProfile("host@example.com");
+  const app = await q<{ id: string }>(
+    `insert into public.scholarship_applications
+       (scholarship_id, user_id, status, demo_day_tickets_awarded)
+     values ($1,$2,'awarded',2) returning id`,
+    [s, user],
+  );
+  const ticket = await q<{ id: string }>(
+    `insert into public.demo_day_tickets
+       (token, email, amount_cents, status, scholarship_application_id)
+     values ('tok-guest-1','guest@example.com',0,'paid',$1) returning id`,
+    [app.rows[0].id],
+  );
+  assert.equal(ticket.rows.length, 1);
+
+  // Still no negative money.
+  const neg = await fails(() =>
+    q(
+      `insert into public.demo_day_tickets (token, email, amount_cents)
+       values ('tok-neg','neg@example.com',-1)`,
+    ),
+  );
+  assert.match(neg, /demo_day_tickets_amount_cents_check/);
+
+  // Deleting the award must NOT erase the record of a ticket that went out.
+  await q("delete from public.scholarship_applications where id = $1", [app.rows[0].id]);
+  const after = await q<{ scholarship_application_id: string | null }>(
+    "select scholarship_application_id from public.demo_day_tickets where id = $1",
+    [ticket.rows[0].id],
+  );
+  assert.equal(after.rows.length, 1, "the ticket itself must survive");
+  assert.equal(after.rows[0].scholarship_application_id, null);
 });

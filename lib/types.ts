@@ -117,6 +117,11 @@ export type DemoDayTicket = {
   paid_at: string | null;
   cancelled_at: string | null;
   refunded_at: string | null;
+  /**
+   * Set on a complimentary guest ticket a scholarship holder sent (migration
+   * 0074). Optional: absent on a database where 0074 hasn't run.
+   */
+  scholarship_application_id?: string | null;
 };
 
 export type Cohort_Slug = { slug: string };

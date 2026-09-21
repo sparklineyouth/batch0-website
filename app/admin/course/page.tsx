@@ -10,7 +10,7 @@ export default async function AdminCoursePage() {
   const [{ data: cohorts }, { data: modules }, { data: lessons }] =
     await Promise.all([
       admin.from("cohorts").select("id, name").order("starts_on"),
-      admin.from("modules").select("*").order("position"),
+      admin.from("modules").select("*").order("week").order("position"),
       admin.from("lessons").select("*").order("position"),
     ]);
 

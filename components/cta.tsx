@@ -12,9 +12,9 @@ export default function CTA({ config }: { config: SiteConfig }) {
     <section id="apply-cta" className="border-t border-line px-5 py-20 sm:px-6 md:py-28">
       <div className="mx-auto max-w-[1100px]">
         <h2 className="max-w-[24ch] font-display text-[clamp(2rem,4.5vw,3.25rem)] font-bold leading-[1.05] tracking-[-0.02em] text-ink">
-          {settings.applicationsOpen ? (
+          {derived.applicationsAvailable ? (
             <>
-              {derived.cohortLabel || "Cohort 1"} is the founding cohort.{" "}
+              Build alongside {derived.cohortName || "your next cohort"}.{" "}
               <span className="hl">Be in it.</span>
             </>
           ) : (
@@ -25,12 +25,12 @@ export default function CTA({ config }: { config: SiteConfig }) {
           <Ledger config={config} rows="strip" />
         </div>
         <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-          {settings.applicationsOpen ? (
+          {derived.applicationsAvailable ? (
             <>
               {/* href intentionally omitted — the default /home matches the
                   hero, so a signed-in visitor doesn't get sent back to
                   /apply by the bottom of the page they're already in. */}
-              <ApplyCta label={`Apply for ${cohortLabel}`} location="final-cta" />
+              <ApplyCta label={derived.applicationLabel} location="final-cta" />
               <p className="text-[13px] text-ink-faint">
                 Free to apply · {derived.priceLabel} charged only if accepted
               </p>

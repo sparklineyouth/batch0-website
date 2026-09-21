@@ -1,5 +1,8 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { cohortEligibility } from "@/lib/cohort-eligibility";
+import { getCountryFromHeaders } from "@/lib/pricing";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -180,10 +183,10 @@ async function getActiveCohortId(
 ): Promise<string | null> {
   const { data: open } = await supabase
     .from("cohorts")
-    .select("id, name, starts_on")
+    .select("id, name, starts_on, ends_on, status, applications_close_at, late_entry_until, catch_up_plan, capacity")
     .in("status", ["upcoming", "active"])
     .order("starts_on", { ascending: true });
-  return selectCohortId(open ?? [], [await getPinnedCohortId(supabase)]);
+  return selectCohortId((open ?? []).filter((c) => cohortEligibility(c).eligible), [await getPinnedCohortId(supabase)]);
 }
 
 async function upsertApplication(
@@ -300,7 +303,7 @@ async function upsertApplication(
         .order("created_at", { ascending: false }),
       supabase
         .from("cohorts")
-        .select("id, name, starts_on")
+        .select("id, name, starts_on, ends_on, status, applications_close_at, late_entry_until, catch_up_plan, capacity")
         .in("status", ["upcoming", "active"])
         .order("starts_on", { ascending: true }),
       getPinnedCohortId(supabase),
@@ -310,7 +313,7 @@ async function upsertApplication(
   const applications = history ?? [];
   const existing = applications[0] ?? null;
   const plan = planReapply({
-    cohorts: openCohorts ?? [],
+    cohorts: (openCohorts ?? []).filter((c) => cohortEligibility(c).eligible),
     history: applications,
     latestStatus: existing?.status ?? null,
     holdsPass,
@@ -340,6 +343,10 @@ async function upsertApplication(
     draftCohortId,
     pinnedId,
   ]);
+
+  if (submit && requested && cohortId !== requested) {
+    return { ok: false, error: "That cohort is no longer open for applications. Please select an available cohort." };
+  }
 
   // A submit with nowhere to go must fail loudly rather than quietly attaching
   // itself to whatever cohort happened to sort first. Drafts are let through
@@ -425,6 +432,14 @@ async function upsertApplication(
       .single();
     if (error) return { ok: false, error: error.message };
     applicationId = created!.id;
+  }
+
+  const pricingCountry = getCountryFromHeaders(await headers());
+  if (pricingCountry) {
+    const { error: pricingError } = await createAdminClient().from("applications")
+      .update({ pricing_country: pricingCountry }).eq("id", applicationId)
+      .is("pricing_country", null);
+    if (pricingError) return { ok: false, error: "We could not save your tuition region. Please try again." };
   }
 
   // The auto-admit perk: a virtual founder pass turns "submitted" into

@@ -124,6 +124,29 @@ function silverPassCard(args: {
   </table>`;
 }
 
+/**
+ * A short bulleted list for the scholarship award emails, with an optional
+ * lead-in line. Table-based like the pass invite's perk list, for the same
+ * reason: `<ul>` margins are one of the things Outlook's Word engine throws
+ * away.
+ */
+function perkList(heading: string, items: string[]): string {
+  if (items.length === 0) return "";
+  return `
+        ${heading ? `<p style="margin:0 0 6px 0">${escape(heading)}</p>` : ""}
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px 0">
+          ${items
+            .map(
+              (line) =>
+                `<tr>
+                   <td width="18" valign="top" style="padding:3px 0;color:#ffbb00;font-size:14px;line-height:1.55">&bull;</td>
+                   <td valign="top" style="padding:3px 0;font-size:15px;line-height:1.55;color:#e7e7e7">${escape(line)}</td>
+                 </tr>`,
+            )
+            .join("")}
+        </table>`;
+}
+
 export const Templates = {
   /**
    * Admin-composed blast email (the /admin/email/blast composer). Body
@@ -958,9 +981,12 @@ ${env.siteUrl}/dashboard/scholarships`,
     amountCents: number;
     /** They'd already paid: this is a refund, not a discount. */
     refund: boolean;
+    /** The perks riding along with the money, as short phrases (0074). */
+    perks?: string[];
     note?: string | null;
   }) => {
     const amount = `$${(args.amountCents / 100).toFixed(args.amountCents % 100 === 0 ? 0 : 2)}`;
+    const perks = args.perks ?? [];
     return {
       subject: `You got the ${args.scholarshipName}`,
       html: layout({
@@ -975,6 +1001,7 @@ ${env.siteUrl}/dashboard/scholarships`,
             ? `<p><strong>${amount}</strong> is being refunded to the card you paid with. Refunds usually land in 5–10 business days depending on your bank. Your spot in the cohort is unchanged — nothing about your enrollment moves.</p>`
             : `<p>Your tuition is now <strong>${amount} lower</strong>. You don't need to enter a code: the new price is already applied when you go to pay.</p>`
         }
+        ${perks.length ? perkList("It also comes with:", perks) : ""}
         ${
           args.note
             ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">${escape(args.note).replace(/\n/g, "<br>")}</p>`
@@ -995,34 +1022,44 @@ ${
     ? `${amount} is being refunded to the card you paid with, usually within 5-10 business days. Your enrollment is unchanged.`
     : `Your tuition is now ${amount} lower. The new price is already applied at checkout — no code needed.`
 }
+${perks.length ? `\nIt also comes with:\n${perks.map((p) => `- ${p}`).join("\n")}\nEverything is on your scholarship page.\n` : ""}
 ${args.note ? `\n${args.note}\n` : ""}
 ${env.siteUrl}/dashboard/scholarships`,
     };
   },
 
   /**
-   * "You got it" — the learner's scholarship. No money changes hands, so the
-   * entire job of this email is to make the student actually book the calls.
-   * An unredeemed grant helps nobody, and mentor time set aside and never used
-   * is the failure mode this scholarship exists to avoid.
+   * "You got it" — a perks-only award (no money). Its whole job is to make the
+   * student actually USE what they were granted: a mentor call never booked, a
+   * feedback credit never redeemed, a guest ticket never sent, is the failure
+   * mode this kind of scholarship exists to avoid. So it names every perk and
+   * sends them to the page where each one is redeemed.
    */
-  scholarshipAwardedCalls: (args: {
+  scholarshipAwardedPerks: (args: {
     name?: string | null;
     scholarshipName: string;
+    awardSummary: string;
+    /** Every granted perk as a short phrase, in the order the award lists them. */
+    perks: string[];
+    /** The mentor calls among them, for the call-specific nudge. */
     calls: number;
     note?: string | null;
   }) => {
-    const n = args.calls;
-    const callWord = n === 1 ? "call" : "calls";
+    const callWord = args.calls === 1 ? "call" : "calls";
     return {
-      subject: `You got the ${args.scholarshipName} — ${n} extra mentor ${callWord}`,
+      subject: `You got the ${args.scholarshipName} — ${args.awardSummary}`,
       html: layout({
-        preheader: `${n} extra 1:1 ${callWord} with a batch0 mentor, yours to book.`,
+        preheader: `${args.awardSummary}, yours to use.`,
         body: `
         <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">You got it</h1>
-        <p>Congratulations${args.name ? `, ${escape(args.name)}` : ""} — you've been awarded the <strong>${escape(args.scholarshipName)}</strong>: <strong>${n} extra 1:1 mentor ${callWord}</strong>, on top of everything else in the program.</p>
-        <p>These are yours to book whenever you want them. Pick a time that suits you and tell us what you want to dig into — the more specific the topic, the more useful the ${callWord} ${n === 1 ? "is" : "are"}.</p>
-        <p style="color:#bbb">They don't expire during the cohort, but they also don't do anything sitting unused. Book the first one this week.</p>
+        <p>Congratulations${args.name ? `, ${escape(args.name)}` : ""} — you've been awarded the <strong>${escape(args.scholarshipName)}</strong>, on top of everything else in the program. Here's what it comes with:</p>
+        ${perkList("", args.perks)}
+        ${
+          args.calls > 0
+            ? `<p>The mentor ${callWord} ${args.calls === 1 ? "is" : "are"} yours to book whenever you want ${args.calls === 1 ? "it" : "them"}. Pick a time that suits you and tell us what you want to dig into — the more specific the topic, the more useful the ${callWord} ${args.calls === 1 ? "is" : "are"}.</p>`
+            : ""
+        }
+        <p style="color:#bbb">None of it expires during the cohort, but none of it does anything sitting unused. Use the first thing this week.</p>
         ${
           args.note
             ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">${escape(args.note).replace(/\n/g, "<br>")}</p>`
@@ -1031,14 +1068,80 @@ ${env.siteUrl}/dashboard/scholarships`,
       `,
         cta: {
           url: `${env.siteUrl}/dashboard/scholarships`,
-          label: `Book your first ${callWord === "calls" ? "call" : callWord}`,
+          label: args.calls > 0 ? "Book your first call" : "See your scholarship",
         },
       }),
-      text: `You got the ${args.scholarshipName} — ${n} extra 1:1 mentor ${callWord}.
+      text: `You got the ${args.scholarshipName} — ${args.awardSummary}.
 
-They're yours to book whenever you want them. Be specific about the topic and they'll be worth far more.
+It comes with:
+${args.perks.map((p) => `- ${p}`).join("\n")}
 
-${env.siteUrl}/dashboard/scholarships`,
+${args.calls > 0 ? "The mentor calls are yours to book whenever you want them. Be specific about the topic and they'll be worth far more.\n\n" : ""}${args.note ? `${args.note}\n\n` : ""}${env.siteUrl}/dashboard/scholarships`,
+    };
+  },
+
+  /**
+   * A complimentary Demo Day ticket, sent to a guest by a scholarship holder
+   * (migration 0074). The twin of demoDayTicketConfirmed with the payment
+   * language taken out: nobody paid, and "we received your payment of $0"
+   * would read as a billing error. Names who sent it, because the guest has
+   * never heard of batch0 and the founder's name is the only thing on this
+   * email they recognise.
+   */
+  demoDayGuestTicket: (args: {
+    name?: string | null;
+    hostName?: string | null;
+    when?: string | null;
+    location?: string | null;
+    externalUrl?: string | null;
+    cohortName?: string | null;
+    /** The guest's email is on a batch0 account: the event is on their dashboard. */
+    hasAccount: boolean;
+  }) => {
+    const host = (args.hostName ?? "").trim() || "a batch0 founder";
+    const details = [
+      args.when ? `<p style="margin:0 0 6px 0"><strong>When:</strong> ${escape(args.when)}</p>` : "",
+      args.location ? `<p style="margin:0 0 6px 0"><strong>Where:</strong> ${escape(args.location)}</p>` : "",
+      args.externalUrl
+        ? `<p style="margin:0 0 6px 0"><strong>Join link:</strong> <a href="${args.externalUrl}" style="color:#ffbb00;text-decoration:none">${escape(args.externalUrl)}</a></p>`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("");
+    return {
+      subject: `${host} has invited you to batch0 Demo Day`,
+      html: layout({
+        preheader: `A guest ticket for Demo Day, from ${host}.`,
+        body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">You're on the list</h1>
+        <p>${escape(host)} has sent you a guest ticket${args.name ? `, ${escape(args.name)}` : ""}. You're in for <strong>Demo Day</strong>${
+          args.cohortName ? ` (${escape(args.cohortName)})` : ""
+        } — the day every founder in the cohort presents what they built. There's nothing to pay.</p>
+        ${details ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid rgba(255,255,255,0.1);border-radius:10px">${details}</div>` : ""}
+        <p style="color:#bbb">${
+          args.hasAccount
+            ? "Since this email is on a batch0 account, the event also shows up under Events on your dashboard."
+            : args.externalUrl
+              ? "Keep this email — the join link above is your way in."
+              : "We'll email you the joining details before the day."
+        }</p>
+      `,
+        cta: args.hasAccount
+          ? { url: `${env.siteUrl}/dashboard/events`, label: "See it on your dashboard" }
+          : args.externalUrl
+            ? { url: args.externalUrl, label: "Open the join link" }
+            : undefined,
+      }),
+      text: `${host} has sent you a guest ticket for batch0 Demo Day${args.cohortName ? ` (${args.cohortName})` : ""}. There's nothing to pay.
+${args.when ? `\nWhen: ${args.when}` : ""}${args.location ? `\nWhere: ${args.location}` : ""}${args.externalUrl ? `\nJoin link: ${args.externalUrl}` : ""}
+
+${
+  args.hasAccount
+    ? `The event is under Events on your dashboard: ${env.siteUrl}/dashboard/events`
+    : args.externalUrl
+      ? "Keep this email — the join link is your way in."
+      : "We'll email you the joining details before the day."
+}`,
     };
   },
 

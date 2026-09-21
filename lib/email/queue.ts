@@ -11,6 +11,7 @@ import { isMissingTable, type TemplateRow } from "@/lib/email/store";
 import { parseCron, cronMatches, CronParseError, type ParsedCron } from "@/lib/email/cron";
 import { resolveAudience, audienceAddresses } from "@/lib/email/audience";
 import { isAudienceSegment } from "@/lib/email/catalog";
+import { recoveryContext } from "@/lib/email-recovery";
 
 /**
  * The drainer, run by /api/cron/email-queue.
@@ -383,7 +384,10 @@ async function gateRows(
   for (const r of rows) {
     if (!r.step_id) continue;
     const step = stepById.get(r.step_id);
-    if (!step) continue; // step replaced by a save; treat as ungated
+    if (!step) {
+      out.set(r.id, { send: false, reason: "Automation step was replaced; review before sending" });
+      continue;
+    }
     if (!step.enabled) {
       out.set(r.id, { send: false, reason: "Step was disabled before it sent" });
       continue;
@@ -393,12 +397,12 @@ async function gateRows(
 
   for (const [kind, group] of groupBy(gated, (g) => g.kind)) {
     if (kind === "always") continue;
-    if (kind === "no_login_since") {
+    if (kind === "no_login_since" || kind === "not_paid") {
       // No batch form — it reads auth.users per user.
       for (const g of group) {
         const verdict = await evaluateCondition(
           { kind },
-          { userId: g.row.user_id ?? null, queuedAt: g.row.created_at ?? null },
+          { userId: g.row.user_id ?? null, queuedAt: g.row.created_at ?? null, ...recoveryContext(g.row.variables) },
         );
         if (!verdict.send) out.set(g.row.id, verdict);
       }
@@ -444,7 +448,11 @@ export async function fanOutScheduled(
     includeParents: Boolean(audience.includeParents),
   });
   const addresses = audienceAddresses(members, Boolean(audience.includeParents));
-  const runStamp = dueMinute ?? Math.floor(now.getTime() / 60_000);
+  const windowHours = Math.max(0, Number(automation.dedupe_window_hours) || 0);
+  const occurrence = dueMinute ?? Math.floor(now.getTime() / 60_000);
+  // A bucket gives concurrent fan-outs a shared unique key. A rolling lookback
+  // below also prevents a repeat just across the bucket boundary.
+  const runStamp = windowHours > 0 ? `window:${Math.floor(occurrence / (windowHours*60))}` : String(occurrence);
 
   const steps = [...(automation.steps ?? [])]
     .filter((s: any) => s.enabled)
@@ -458,7 +466,7 @@ export async function fanOutScheduled(
   // `ignoreDuplicates` is the dedupe index doing natively what the per-row
   // path did by catching 23505, so a re-run of the same due minute still
   // collapses to one email per person.
-  const rows = addresses.flatMap((person) =>
+  let rows = addresses.flatMap((person) =>
     steps.map((step: any) => ({
       automation_id: automation.id,
       step_id: step.id,
@@ -466,7 +474,7 @@ export async function fanOutScheduled(
       to_email: person.email,
       to_name: person.name,
       user_id: person.userId,
-      variables: baseVariables({ email: person.email, name: person.name }),
+      variables: { ...baseVariables({ email: person.email, name: person.name }), application_id: person.applicationId ?? "", cohort_id: person.cohortId ?? "", cohort_name: person.cohortName ?? "" },
       send_after: new Date(
         now.getTime() + step.delay_minutes * 60_000,
       ).toISOString(),
@@ -476,6 +484,14 @@ export async function fanOutScheduled(
   );
 
   const admin = createAdminClient();
+  if(windowHours > 0 && rows.length > 0) {
+    const {data:recent,error}=await admin.from("email_outbox").select("step_id,to_email")
+      .eq("automation_id",automation.id).neq("status","skipped")
+      .gte("created_at",new Date(now.getTime()-windowHours*3600000).toISOString()).limit(10000);
+    if(error)throw new Error("Could not check the follow-up repeat window; no mail queued");
+    const seen=new Set((recent??[]).map(r=>`${r.step_id}:${r.to_email.toLowerCase()}`));
+    rows=rows.filter(r=>!seen.has(`${r.step_id}:${r.to_email.toLowerCase()}`));
+  }
   let queued = 0;
   const CHUNK = 500;
   for (let i = 0; i < rows.length; i += CHUNK) {

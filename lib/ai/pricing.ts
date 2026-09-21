@@ -37,34 +37,57 @@ export type TokenUsage = {
 };
 
 /**
+ * The free monthly allowance for one user. `multiplier` is 1 for everyone
+ * except a student whose scholarship award carries the AI boost (migration
+ * 0074; see perkAiAllowanceMultiplier in lib/scholarship-award.ts). The usage
+ * meter and the overage math both read through here so the bar a student
+ * watches and the point they start being billed are the same number.
+ */
+export function freeAllowance(multiplier = 1): {
+  input: number;
+  output: number;
+} {
+  const m = Number.isFinite(multiplier) && multiplier >= 1 ? multiplier : 1;
+  return {
+    input: Math.round(MONTHLY_FREE_INPUT_TOKENS * m),
+    output: Math.round(MONTHLY_FREE_OUTPUT_TOKENS * m),
+  };
+}
+
+/**
  * Computes the OVERAGE cost of a single request given the user's
  * usage *before* the request. Returns cents to charge for the request.
  * Cached input is free for the user (Anthropic discount); cache_read
  * is billed at 10% of normal input price → we pass that through.
+ *
+ * `freeMultiplier` widens the free band (the AI boost perk); omit it for the
+ * standard allowance.
  */
 export function computeOverageCents(args: {
   before: TokenUsage;
   delta: TokenUsage;
+  freeMultiplier?: number;
 }): number {
+  const free = freeAllowance(args.freeMultiplier);
   const beforeBilledInput = Math.max(
     0,
-    args.before.input_tokens - MONTHLY_FREE_INPUT_TOKENS,
+    args.before.input_tokens - free.input,
   );
   const afterBilledInput = Math.max(
     0,
-    args.before.input_tokens + args.delta.input_tokens - MONTHLY_FREE_INPUT_TOKENS,
+    args.before.input_tokens + args.delta.input_tokens - free.input,
   );
   const billableInput = Math.max(0, afterBilledInput - beforeBilledInput);
 
   const beforeBilledOutput = Math.max(
     0,
-    args.before.output_tokens - MONTHLY_FREE_OUTPUT_TOKENS,
+    args.before.output_tokens - free.output,
   );
   const afterBilledOutput = Math.max(
     0,
     args.before.output_tokens +
       args.delta.output_tokens -
-      MONTHLY_FREE_OUTPUT_TOKENS,
+      free.output,
   );
   const billableOutput = Math.max(
     0,

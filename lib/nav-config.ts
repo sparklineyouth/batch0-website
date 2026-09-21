@@ -233,6 +233,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: Inbox,
         perm: "applications.view",
       },
+      { href: "/admin/recovery", label: "Enrollment recovery", icon: MessagesSquare, perm: "applications.review" },
       {
         href: "/admin/application-questions",
         label: "Application form",

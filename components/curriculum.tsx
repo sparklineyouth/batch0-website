@@ -26,8 +26,8 @@ export const WEEKS = [
   {
     week: "Step 4",
     title: "Pitch",
-    body: "Final deck, rehearsals, and a live pitch at demo day. Standouts may be offered batch0 sponsorship. Never guaranteed.",
-    deliverable: "Live demo-day pitch",
+    body: "Prepare a demo or narrated deck, rehearse it, and share it in the staff-hosted showcase with moderated written Q&A.",
+    deliverable: "Demo and evidence-based deck",
   },
 ];
 

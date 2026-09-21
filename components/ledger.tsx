@@ -22,11 +22,7 @@ export function Ledger({
 }) {
   const { derived, settings } = config;
   const dates = derived.dateRangeLabel.replace("→", "–");
-  const applicationsValue = settings.applicationsOpen
-    ? derived.applicationsCountdownLabel
-      ? derived.applicationsCountdownLabel.toLowerCase()
-      : "open — rolling review"
-    : "closed";
+  const applicationsValue = derived.applicationsCountdownLabel;
 
   // Tuition is the row a visitor actually stops on, so during a sale it shows
   // the old price struck through beside the new one — the way a price is

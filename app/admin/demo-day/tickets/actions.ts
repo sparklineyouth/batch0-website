@@ -183,11 +183,18 @@ export async function cancelDemoDayTicket(id: string): Promise<SimpleResult> {
   const admin = createAdminClient();
   const { data: existing } = await admin
     .from("demo_day_tickets")
-    .select("status, email, user_id")
+    .select("status, email, user_id, amount_cents, stripe_payment_intent_id")
     .eq("id", id)
     .maybeSingle();
   if (!existing) return { ok: false, error: "Ticket not found." };
-  if (existing.status !== "sent") {
+  // A complimentary guest ticket (0074) is 'paid' from birth with no money
+  // behind it, so cancelling — not refunding — is how it's revoked. It also
+  // hands the slot back to the scholarship holder who sent it.
+  const guest =
+    existing.status === "paid" &&
+    existing.amount_cents === 0 &&
+    !existing.stripe_payment_intent_id;
+  if (existing.status !== "sent" && !guest) {
     return { ok: false, error: `Only unpaid tickets can be cancelled (this one is ${existing.status}).` };
   }
   const { error } = await admin
@@ -198,14 +205,15 @@ export async function cancelDemoDayTicket(id: string): Promise<SimpleResult> {
       cancelled_by: userId,
     })
     .eq("id", id)
-    .eq("status", "sent");
+    .eq("status", existing.status);
   if (error) return { ok: false, error: error.message };
   await logAudit({
     action: "demo_day_ticket.cancelled",
     targetType: "demo_day_ticket",
     targetId: id,
-    payload: { email: existing.email },
+    payload: { email: existing.email, guest },
   });
+  if (guest) revalidatePath("/dashboard/scholarships");
   revalidatePath(PATH);
   return { ok: true };
 }

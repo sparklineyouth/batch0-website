@@ -9,7 +9,7 @@ import { QAPanel } from "@/components/live/qa-panel";
 import { useLocalMedia } from "@/components/live/use-local-media";
 import { useLiveSession } from "@/components/live/use-live-session";
 import { Button, ButtonLink } from "@/components/ui/button";
-import type { LiveRole, WebinarQuestion } from "@/lib/live";
+import { headcountLabel, type LiveRole, type WebinarQuestion } from "@/lib/live";
 import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
 import { AlertTriangle, Users, Loader2 } from "lucide-react";
 
@@ -29,7 +29,11 @@ import { AlertTriangle, Users, Loader2 } from "lucide-react";
  *     connection recvonly, so there is nothing to un-mute;
  *   - a viewer sees the host and no one else, because the server never told
  *     it anyone else exists;
- *   - only the host sees a headcount.
+ *   - only the host sees the real headcount.
+ *
+ * The one deliberate exception to that last rule is an admin-announced
+ * `displayViewerCount`, which is shown to everyone. `headcountLabel` owns the
+ * precedence so this room and the Daily one cannot disagree about it.
  */
 
 type Phase = "prejoin" | "live" | "left";
@@ -40,6 +44,7 @@ export function BroadcastRoom({
   title,
   role,
   backHref,
+  displayViewerCount = null,
   qa,
   join,
   announce,
@@ -51,6 +56,13 @@ export function BroadcastRoom({
   title: string;
   role: LiveRole;
   backHref: string;
+  /**
+   * Admin-announced headcount (events.display_viewer_count). When set it is
+   * shown to everyone in place of the hidden roster — the deliberate
+   * exception to audience privacy. Null keeps the default: the host sees the
+   * real count, a viewer sees nothing.
+   */
+  displayViewerCount?: number | null;
   /** Present for webinars, absent for 1:1 calls. */
   qa?: { eventId: string; initialQuestions: WebinarQuestion[] };
   join: () => Promise<LiveCredentials | null>;
@@ -101,6 +113,15 @@ export function BroadcastRoom({
     announce,
     leave,
     listPeers,
+  });
+
+  // Unlike Daily, this provider knows its own roster, so `realCount` is a
+  // real number for a host rather than null — the default "host sees the
+  // truth, viewer sees nothing" comes out of `headcountLabel` directly.
+  const headcount = headcountLabel({
+    role,
+    displayCount: displayViewerCount,
+    realCount: session.audienceCount,
   });
 
   const onJoin = useCallback((opts: { cameraOn: boolean; micOn: boolean }) => {
@@ -163,16 +184,24 @@ export function BroadcastRoom({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {/*
-            The headcount is host-only and deliberately has no viewer
+            By default the headcount is host-only and has no viewer
             equivalent — `audienceCount` is null for a viewer, so there is no
             number here to hide. A student must not be able to tell whether
             they are one of three or one of thirty.
+
+            An announced count overrides that for everyone, which is the point
+            of the field. The host is not lied to: when the figure is
+            announced, the real roster is shown beside it.
           */}
-          {session.audienceCount !== null && (
+          {headcount && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-ink-faint">
               <Users className="h-3.5 w-3.5" />
-              {session.audienceCount}{" "}
-              {session.audienceCount === 1 ? "watching" : "watching"}
+              {headcount.count.toLocaleString()} watching
+              {headcount.announced && isHost && session.audienceCount !== null && (
+                <span className="text-ink-faint/70">
+                  · {session.audienceCount} really here
+                </span>
+              )}
             </span>
           )}
           <span

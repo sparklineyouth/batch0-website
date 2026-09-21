@@ -1,4 +1,6 @@
 import { cache } from "react";
+import { cohortEligibility } from "@/lib/cohort-eligibility";
+import { easternDeadline, formatUsd } from "@/lib/offer-format";
 import { unstable_cache } from "next/cache";
 import {
   createAdminClient,
@@ -36,6 +38,8 @@ export type ActiveCohort = {
   priceCents: number;
   status: string;
   applicationsCloseAt: string | null;
+  lateEntryUntil?: string | null;
+  catchUpPlan?: string | null;
 };
 
 export type SiteSettings = {
@@ -135,6 +139,10 @@ export type SiteConfig = {
      * out it is. Empty when there's no signal worth showing.
      */
     applicationsCountdownLabel: string;
+    applicationsAvailable: boolean;
+    enrollmentMode: "open" | "late_entry" | "closed" | "full";
+    applicationLabel: string;
+    enrollmentNote: string;
   };
 };
 
@@ -184,21 +192,24 @@ export const FALLBACK_COHORT: ActiveCohort = {
   startsOn: "2026-09-14",
   endsOn: "2026-11-13",
   capacity: 16,
-  priceCents: 7800,
+  priceCents: 12999,
   status: "active",
-  applicationsCloseAt: "2026-09-14T23:59:00+00:00",
+  applicationsCloseAt: "2026-09-22T23:59:59-04:00",
+  lateEntryUntil: "2026-09-22T23:59:59-04:00",
+  catchUpPlan: "Complete the kickoff project brief and Week 1 workbook, then use office hours to review your catch-up plan with the team.",
 };
 
 function formatDateRange(startsOn: string | null, endsOn: string | null) {
   if (!startsOn || !endsOn) return "";
-  // Render in US locale, short month, no year (the cohort name carries the
-  // year). Parse as UTC midnight so a 2026-06-15 string doesn't shift due
-  // to the server's timezone.
+  // Include both years for a winter cohort crossing New Year. Parse as UTC
+  // midnight so date-only fields do not shift with the server's timezone.
+  const crossesYear = startsOn.slice(0, 4) !== endsOn.slice(0, 4);
   const fmt = (iso: string) => {
     const d = new Date(`${iso}T00:00:00Z`);
     return d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
+      ...(crossesYear ? { year: "numeric" as const } : {}),
       timeZone: "UTC",
     });
   };
@@ -253,9 +264,12 @@ function derive(
   // price and charge another.
   const promo = activePromo(new Date(), promoConfig);
   const chargeCents = promoPriceCents(regional.amountCents, new Date(), promoConfig);
-  const dollars = Math.round(chargeCents / 100);
-  const listDollars = Math.round(regional.amountCents / 100);
-  const baseDollars = Math.round(baseCents / 100);
+  const eligibility = cohortEligibility({
+    status: c.status, starts_on: c.startsOn, ends_on: c.endsOn,
+    applications_close_at: c.applicationsCloseAt, late_entry_until: c.lateEntryUntil,
+    catch_up_plan: c.catchUpPlan, capacity: c.capacity,
+  }, new Date(), enrolledCount);
+  const applicationsAvailable = !!cohort && applicationsOpen && eligibility.eligible;
 
   const spotsLeft = Math.max(0, (c.capacity ?? 0) - enrolledCount);
   let spotsLabel = "";
@@ -270,29 +284,18 @@ function derive(
     }
   }
 
-  // Countdown only fires when applications are open AND we have a real
-  // close date AND it's in the future-but-not-too-far. Past that
-  // horizon the label drops to "Apply by <date>" which is calmer.
-  let applicationsCountdownLabel = "";
-  if (applicationsOpen && cohort && c.applicationsCloseAt) {
-    const close = new Date(c.applicationsCloseAt);
-    const ms = close.getTime() - Date.now();
-    const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
-    if (days <= 0) {
-      applicationsCountdownLabel = "Applications closed";
-    } else if (days === 1) {
-      applicationsCountdownLabel = "Applications close in 1 day";
-    } else if (days <= 14) {
-      applicationsCountdownLabel = `Applications close in ${days} days`;
-    } else {
-      const label = close.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        timeZone: "UTC",
-      });
-      applicationsCountdownLabel = `Apply by ${label}`;
-    }
-  }
+  // Use the same real deadline and eligibility rule as checkout.
+  const deadlineLabel = easternDeadline(eligibility.deadline);
+  const applicationsCountdownLabel = applicationsAvailable
+    ? eligibility.mode === "late_entry"
+      ? `Late entry until ${deadlineLabel}`
+      : deadlineLabel ? `Apply by ${deadlineLabel}` : "Open · rolling review"
+    : eligibility.mode === "full" ? "Cohort full" : "Applications closed";
+  const enrollmentNote = applicationsAvailable && eligibility.mode === "late_entry"
+    ? `This cohort has started. ${c.catchUpPlan?.trim() ?? ""}`
+    : !applicationsAvailable
+      ? "Applications for this cohort are closed. Check available cohorts or contact us about the next intake."
+      : "Apply free. Tuition is due only after acceptance.";
 
   return {
     cohortLabel,
@@ -300,12 +303,12 @@ function derive(
     cohortHeadline,
     dateRangeLabel: formatDateRange(c.startsOn, c.endsOn),
     dateRangeSentence: formatDateSentence(c.startsOn, c.endsOn),
-    applyByLabel: formatApplyBy(c.applicationsCloseAt),
-    priceDollars: String(dollars),
-    priceLabel: `$${dollars}`,
+    applyByLabel: formatApplyBy(eligibility.deadline),
+    priceDollars: formatUsd(chargeCents).slice(1),
+    priceLabel: formatUsd(chargeCents),
     priceCents: chargeCents,
-    basePriceLabel: `$${baseDollars}`,
-    listPriceLabel: `$${listDollars}`,
+    basePriceLabel: formatUsd(baseCents),
+    listPriceLabel: formatUsd(regional.amountCents),
     isPromoPrice: promo !== null && chargeCents !== regional.amountCents,
     promoPercentLabel: promo ? String(promo.percent) : "",
     promoDeadlineLabel: promo ? promo.longDeadline : "",
@@ -316,6 +319,10 @@ function derive(
     spotsLeft,
     spotsLabel,
     applicationsCountdownLabel,
+    applicationsAvailable,
+    enrollmentMode: eligibility.mode,
+    applicationLabel: applicationsAvailable ? `Apply for ${cohortLabel || cohortName}` : "View available cohorts",
+    enrollmentNote,
   };
 }
 
@@ -434,6 +441,26 @@ export async function getPublicSiteConfig(
   return assemble(data, opts.countryCode ?? null);
 }
 
+/** A parent's link stays tied to the student's cohort as marketing rolls on. */
+export async function getPublicCohortConfig(cohortId?: string): Promise<SiteConfig> {
+  const current = await getPublicSiteConfig();
+  if (!cohortId || current.cohort?.id === cohortId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cohortId)) return current;
+  const { data, error } = await createPublicReadClient().from("cohorts")
+    .select("*, enrollments(count)").eq("id", cohortId).maybeSingle();
+  if (error || !data || !["upcoming", "active", "completed"].includes(data.status)) return current;
+  return assemble({
+    cohort: {
+      id: data.id, name: data.name, cohortNumber: data.cohort_number ?? null,
+      startsOn: data.starts_on, endsOn: data.ends_on, capacity: data.capacity,
+      priceCents: data.price_cents, status: data.status,
+      applicationsCloseAt: data.applications_close_at ?? null,
+      lateEntryUntil: data.late_entry_until ?? null, catchUpPlan: data.catch_up_plan ?? null,
+    },
+    settings: current.settings, enrolledCount: data.enrollments?.[0]?.count ?? 0, readError: null,
+  }, null);
+}
+
 type SiteConfigData = {
   cohort: ActiveCohort | null;
   settings: SiteSettings;
@@ -480,9 +507,7 @@ async function loadSiteConfigData(
       .from("cohorts")
       .select("*, enrollments(count)")
       .in("status", ["upcoming", "active"])
-      .order("starts_on", { ascending: true, nullsFirst: false })
-      .limit(1)
-      .maybeSingle(),
+      .order("starts_on", { ascending: true, nullsFirst: false }),
   ]);
 
   const raw: Record<string, any> = {};
@@ -554,10 +579,14 @@ async function loadSiteConfigData(
         typeof data.applications_close_at === "string"
           ? data.applications_close_at
           : null,
+      lateEntryUntil: typeof data.late_entry_until === "string" ? data.late_entry_until : null,
+      catchUpPlan: typeof data.catch_up_plan === "string" ? data.catch_up_plan : null,
     };
   }
 
-  let cohortRow: any = fallbackCohortRes.data ?? null;
+  const candidates = fallbackCohortRes.data ?? [];
+  const available = (row: any) => cohortEligibility(row, new Date(), row.enrollments?.[0]?.count ?? 0).eligible;
+  let cohortRow: any = candidates.find(available) ?? candidates[0] ?? null;
   // Collected rather than thrown: a marketing page still has to render, and
   // every field above already has a fallback. What the callers need is to know
   // the difference, which is what this carries out.
@@ -573,7 +602,7 @@ async function loadSiteConfigData(
       .select("*, enrollments(count)")
       .eq("id", pinnedId)
       .maybeSingle();
-    if (data) cohortRow = data;
+    if (data && available(data)) cohortRow = data;
     // A *failed* pin read is not "the pin resolves to nothing" — silently
     // standing in the candidate cohort here would publish the wrong dates and
     // the wrong price under the admin's pin, which is worse than degrading.

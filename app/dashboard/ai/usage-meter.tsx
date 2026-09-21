@@ -17,12 +17,15 @@ export function UsageMeter({
   billedCents,
   freeInput,
   freeOutput,
+  boosted = false,
 }: {
   inputTokens: number;
   outputTokens: number;
   billedCents: number;
   freeInput: number;
   freeOutput: number;
+  /** A scholarship's AI boost is widening this allowance (migration 0074). */
+  boosted?: boolean;
 }) {
   const inPct = pct(inputTokens, freeInput);
   const outPct = pct(outputTokens, freeOutput);
@@ -34,11 +37,21 @@ export function UsageMeter({
         <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
           This month
         </p>
-        {overage && (
-          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-            Overage
-          </span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {boosted && (
+            <span
+              title="Your scholarship carries the AI boost — a wider free allowance"
+              className="rounded-full bg-phosphor/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-phosphor-ink"
+            >
+              Boosted
+            </span>
+          )}
+          {overage && (
+            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+              Overage
+            </span>
+          )}
+        </span>
       </div>
 
       <div className="mt-3 space-y-3">

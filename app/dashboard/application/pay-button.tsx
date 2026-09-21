@@ -1,4 +1,5 @@
 "use client";
+import { track } from "@vercel/analytics";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getActionError } from "@/lib/action-error";
@@ -18,6 +19,7 @@ export function PayButton({ applicationId }: { applicationId: string }) {
       });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error || "Could not start checkout");
+      track("checkout_opened", { source: "student" });
       window.location.href = data.url;
     } catch (e: any) {
       setError(getActionError(e));

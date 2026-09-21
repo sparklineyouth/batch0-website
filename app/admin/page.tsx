@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { revenueSummary, auxiliaryRevenueRow } from "@/lib/revenue-ledger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
@@ -21,7 +22,7 @@ function fmtMoney(cents: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(cents / 100);
 }
 
@@ -42,8 +43,9 @@ export default async function AdminOverview() {
     { count: pendingApps },
     { count: acceptedApps },
     { count: enrolledCount },
-    { data: paymentsData },
-    { data: chargesData },
+    { data: paymentsData, error: paymentsError },
+    { data: chargesData, error: chargesError },
+    { data: ticketData, error: ticketError },
     { data: recentApps },
     openQuestions,
   ] = await Promise.all([
@@ -70,37 +72,39 @@ export default async function AdminOverview() {
     seeRevenue
       ? admin
           .from("payments")
-          .select("amount_cents")
-          .eq("status", "succeeded")
+          .select("amount_cents, amount_refunded_cents, currency, user_id, paid_at, status")
+          .in("status", ["succeeded", "refunded"])
           .limit(10000)
-      : { data: null },
+      : { data: null, error: null },
     // Paid fees/fines count toward revenue too; refunded rows don't.
     seeRevenue
       ? admin
           .from("user_charges")
-          .select("amount_cents")
-          .eq("status", "paid")
+          .select("amount_cents, captured_amount_cents, captured_currency, amount_refunded_cents, status")
+          .in("status", ["paid", "refunded"])
           .limit(10000)
-      : { data: null },
+      : { data: null, error: null },
+    seeRevenue
+      ? admin.from("demo_day_tickets").select("amount_cents, captured_amount_cents, captured_currency, amount_refunded_cents, status")
+          .in("status", ["paid", "refunded"]).limit(10000)
+      : { data: null, error: null },
     seeApplications
       ? admin
           .from("applications")
           .select("id, full_name, status, submitted_at, created_at")
           .order("created_at", { ascending: false })
           .limit(8)
-      : { data: null },
+      : { data: null, error: null },
     seeDiscussions ? countQuestionsNeedingReply() : Promise.resolve(0),
   ]);
 
-  const enrollmentRevenueCents = (paymentsData ?? []).reduce(
-    (sum, p) => sum + (p.amount_cents ?? 0),
-    0,
-  );
-  const chargesRevenueCents = (chargesData ?? []).reduce(
-    (sum, c) => sum + (c.amount_cents ?? 0),
-    0,
-  );
-  const revenueCents = enrollmentRevenueCents + chargesRevenueCents;
+  if (paymentsError || chargesError || ticketError) throw new Error("Financial data unavailable. Check the revenue migration and database connection.");
+
+  const tuition = revenueSummary(paymentsData ?? []);
+  const enrollmentRevenueCents = tuition.netCents;
+  const chargesRevenueCents = revenueSummary((chargesData ?? []).map(auxiliaryRevenueRow)).netCents;
+  const ticketRevenueCents = revenueSummary((ticketData ?? []).map(auxiliaryRevenueRow)).netCents;
+  const revenueCents = enrollmentRevenueCents + chargesRevenueCents + ticketRevenueCents;
 
   const inboxItems = [
     ...(seeApplications
@@ -144,17 +148,15 @@ export default async function AdminOverview() {
     },
     seePeople && {
       icon: GraduationCap,
-      label: "Enrolled",
+      label: "Enrolled seats",
       value: String(enrolledCount ?? 0),
     },
+    seeRevenue && { icon: CreditCard, label: "Paying tuition customers", value: String(tuition.payingUsers.size), hint: "Distinct people retaining a positive USD tuition payment" },
     seeRevenue && {
       icon: CheckCircle,
-      label: "Revenue",
+      label: "USD collected after refunds",
       value: fmtMoney(revenueCents),
-      hint:
-        chargesRevenueCents > 0
-          ? `Enrollments ${fmtMoney(enrollmentRevenueCents)} + fees/fines ${fmtMoney(chargesRevenueCents)}`
-          : undefined,
+      hint: `Tuition ${fmtMoney(enrollmentRevenueCents)} + fees ${fmtMoney(chargesRevenueCents)} + tickets ${fmtMoney(ticketRevenueCents)}; before Stripe fees`,
     },
   ].filter(Boolean) as {
     icon: any;

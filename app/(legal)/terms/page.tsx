@@ -2,7 +2,7 @@ import { JsonLd, breadcrumbJsonLd, webPageJsonLd } from "@/lib/schema";
 
 export const metadata = {
   title: "Terms of Service · batch0",
-  description: "The terms that govern batch0, the live online startup accelerator for U.S. high schoolers.",
+  description: "The terms that govern batch0, the live online startup accelerator for high schoolers.",
   alternates: { canonical: "/terms" },
 };
 
@@ -11,7 +11,7 @@ export default function TermsPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Terms of Service</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: September 15, 2026
+        Last updated: September 20, 2026
       </p>
 
       <p>
@@ -24,7 +24,7 @@ export default function TermsPage() {
 
       <h2>Eligibility</h2>
       <p>
-        batch0 is intended for U.S. high schoolers, generally ages 13–18.
+        batch0 is intended for high schoolers, generally ages 13–18.
         If you are under 18, you must have permission from a parent or legal
         guardian to use the platform.
       </p>
@@ -92,8 +92,10 @@ export default function TermsPage() {
       <h2>Disclaimer</h2>
       <p>
         batch0 is provided "as is" without warranties. We don't
-        guarantee investment outcomes — Demo Day connects students with
-        real investors, but funding is at the investors' discretion.
+        guarantee business, revenue, investment or college admission outcomes.
+        Demo Day is a staff-hosted showcase of student submissions with
+        moderated written questions. Guest investors, funding and prizes
+        are not guaranteed or included in tuition.
       </p>
 
       <h2>Contact</h2>
@@ -109,8 +111,8 @@ export default function TermsPage() {
           path: "/terms",
           name: "Terms of Service",
           description:
-            "The terms that govern batch0, the live online startup accelerator for U.S. high schoolers.",
-          dateModified: "2026-09-15",
+            "The terms that govern batch0, the live online startup accelerator for high schoolers.",
+          dateModified: "2026-09-20",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Terms", path: "/terms" }])} />

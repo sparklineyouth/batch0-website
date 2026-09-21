@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isStepCondition, type StepConditionKind } from "@/lib/email/catalog";
+import { paymentReminderVerdict } from "@/lib/email/recovery";
 
 /**
  * Step gates, evaluated when the mail is about to leave.
@@ -31,10 +32,11 @@ export function conditionValue(kind: StepConditionKind): Record<string, any> {
 
 export async function evaluateCondition(
   raw: unknown,
-  ctx: { userId: string | null; queuedAt: string | null },
+  ctx: { userId: string | null; queuedAt: string | null; cohortId?: string | null; applicationId?: string | null },
 ): Promise<ConditionVerdict> {
   const kind = parseCondition(raw);
   if (kind === "always") return { send: true };
+  if (kind === "not_paid") return paymentReminderVerdict(ctx);
 
   // Every gate below asks a question about a *person*. A row with no profile
   // behind it (a parent's address, an outside contact) can't answer it, so it
@@ -46,16 +48,6 @@ export async function evaluateCondition(
 
   try {
     switch (kind) {
-      case "not_paid": {
-        const { count } = await admin
-          .from("payments")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", ctx.userId)
-          .eq("status", "succeeded");
-        return (count ?? 0) > 0
-          ? { send: false, reason: "They've since paid" }
-          : { send: true };
-      }
       case "not_enrolled": {
         const { count } = await admin
           .from("enrollments")

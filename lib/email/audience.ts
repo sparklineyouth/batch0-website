@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { STATUS_RANK, pickParentEmail } from "@/app/admin/email/blast/shared";
 import type { AudienceSegment } from "@/lib/email/catalog";
+import { recoveryBlocker } from "@/lib/email-recovery";
 
 /**
  * Resolve an audience segment to the people in it.
@@ -20,6 +21,9 @@ export type AudienceMember = {
   appStatus: string | null;
   cohorts: string[];
   role: string;
+  applicationId?: string | null;
+  cohortId?: string | null;
+  cohortName?: string | null;
 };
 
 export type AudienceSpec = {
@@ -41,7 +45,7 @@ export async function resolveAudience(
   let q = admin
     .from("profiles")
     .select(
-      "id, email, full_name, role, applications!applications_user_id_fkey(status, parent_email, created_at), enrollments!enrollments_user_id_fkey(cohort_id, cohort:cohorts(name))",
+      "id, email, full_name, role, applications!applications_user_id_fkey(id,user_id,cohort_id,status,followup_paused,parent_email,created_at,cohort:cohorts(name)), payments!payments_user_id_fkey(user_id,cohort_id,status,amount_refunded_cents), enrollments!enrollments_user_id_fkey(user_id,cohort_id,cohort:cohorts(name))",
     )
     .not("email", "is", null)
     .limit(5000);
@@ -62,25 +66,34 @@ export async function resolveAudience(
   const members: AudienceMember[] = (data ?? [])
     .filter((p: any) => p.email)
     .map((p: any) => {
-      const statuses: string[] = (p.applications ?? []).map((a: any) => a.status);
+      const applications = (p.applications ?? []).filter((a: any) => !spec.cohortId || a.cohort_id === spec.cohortId);
+      const statuses: string[] = applications.map((a: any) => a.status);
       const appStatus =
         statuses.length > 0
           ? statuses.reduce((best, s) =>
               (STATUS_RANK[s] ?? -1) > (STATUS_RANK[best] ?? -1) ? s : best,
             )
           : null;
-      const enrollments = (p.enrollments ?? []) as any[];
+      const enrollments = (p.enrollments ?? []).filter((e: any) => !spec.cohortId || e.cohort_id === spec.cohortId) as any[];
+      const accepted = applications.filter((a: any) => !recoveryBlocker(a, p.payments ?? [], p.enrollments ?? []))
+        .sort((a: any,b: any) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+      const context = accepted ?? applications.sort((a: any,b: any) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+      const contextCohort = Array.isArray(context?.cohort) ? context.cohort[0] : context?.cohort;
       return {
         userId: p.id,
         email: p.email,
         name: p.full_name ?? null,
-        parentEmail: pickParentEmail(p.applications ?? []),
+        parentEmail: context?.parent_email ?? pickParentEmail(applications),
         appStatus,
         role: p.role,
         cohorts: enrollments
           .map((e) => (Array.isArray(e.cohort) ? e.cohort[0]?.name : e.cohort?.name))
           .filter(Boolean),
-        _cohortIds: enrollments.map((e) => e.cohort_id).filter(Boolean),
+        applicationId: context?.id ?? null,
+        cohortId: context?.cohort_id ?? null,
+        cohortName: contextCohort?.name ?? null,
+        _acceptedEligible: !!accepted && p.role === "student",
+        _cohortIds: [...enrollments.map((e) => e.cohort_id), ...applications.map((a: any) => a.cohort_id)].filter(Boolean),
       } as AudienceMember & { _cohortIds: string[] };
     })
     .filter((m: any) => {
@@ -89,7 +102,7 @@ export async function resolveAudience(
         case "enrolled":
           return m.cohorts.length > 0;
         case "accepted":
-          return m.appStatus === "accepted";
+          return m._acceptedEligible;
         case "waitlisted":
           return m.appStatus === "waitlisted";
         case "applied":
@@ -107,7 +120,7 @@ export async function resolveAudience(
           return true;
       }
     })
-    .map(({ _cohortIds, ...m }: any) => m);
+    .map(({ _cohortIds, _acceptedEligible, ...m }: any) => m);
 
   return members.slice(0, MAX_AUDIENCE);
 }
@@ -122,22 +135,23 @@ export async function resolveAudience(
 export function audienceAddresses(
   members: AudienceMember[],
   includeParents = false,
-): { email: string; name: string | null; userId: string | null }[] {
+): { email: string; name: string | null; userId: string | null; applicationId?: string | null; cohortId?: string | null; cohortName?: string | null }[] {
   const byAddress = new Map<
     string,
-    { email: string; name: string | null; userId: string | null }
+    { email: string; name: string | null; userId: string | null; applicationId?: string | null; cohortId?: string | null; cohortName?: string | null }
   >();
   for (const m of members) {
     const key = m.email.toLowerCase();
     if (!byAddress.has(key)) {
-      byAddress.set(key, { email: m.email, name: m.name, userId: m.userId });
+      byAddress.set(key, { email: m.email, name: m.name, userId: m.userId, applicationId: m.applicationId, cohortId:m.cohortId, cohortName:m.cohortName });
     }
     if (includeParents && m.parentEmail) {
       const pk = m.parentEmail.toLowerCase();
       // A student's own address wins if it collides with a parent entry, so
       // they're greeted by name rather than as an anonymous guardian.
       if (!byAddress.has(pk)) {
-        byAddress.set(pk, { email: m.parentEmail, name: null, userId: null });
+        // The recipient is the parent, but the payment gate must check the student.
+        byAddress.set(pk, { email: m.parentEmail, name: null, userId: m.userId, applicationId:m.applicationId,cohortId:m.cohortId,cohortName:m.cohortName });
       }
     }
   }

@@ -158,10 +158,10 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     description:
       "Not sent by the app — build a drip on the “Application accepted” event and use this as a later step.",
     category: "lifecycle",
-    subject: "Your batch0 seat is still open, {{first_name}}",
-    preheader: "Pay {{amount}} to lock in your seat.",
+    subject: "Any questions about joining batch0, {{first_name}}?",
+    preheader: "The schedule, parent guide, and your next step.",
     body_html:
-      "<p>Hi {{first_name}},</p><p>Your seat in <strong>{{cohort_name}}</strong> is still held, but it isn't locked in until the <strong>{{amount}}</strong> enrollment fee is paid. It takes a minute.</p><p>If something's in the way — timing, cost, anything — reply to this email and tell us. We'd rather sort it out than lose you.</p>",
+      "<p>Hi {{first_name}},</p><p>You were accepted to <strong>{{cohort_name}}</strong>. Is the schedule, a parent question, the cost, or checkout holding you back?</p><p><a href=\"{{site_url}}/parents\">The parent guide</a> explains the live schedule, sample work, and how enrollment works. Your enrollment page shows your current total and availability before payment. A seat is confirmed only when enrollment is complete.</p><p>Reply with the main question and we will answer it directly. If the timing no longer works, tell us and we will stop following up.</p>",
     cta_label: "Finish enrolling",
     cta_url: "{{site_url}}/dashboard/accepted",
     // `amount` is the live tuition, resolved when the nudge sends (not when the
@@ -319,7 +319,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     subject: "You got the {{scholarship_name}}",
     preheader: "{{amount}} toward your batch0 tuition.",
     body_html:
-      "<h1>You got it</h1><p>Congratulations {{first_name}} — you've been awarded the <strong>{{scholarship_name}}</strong>: <strong>{{award_summary}}</strong>.</p><p>{{fulfillment_line}}</p><p><em>{{note|We're glad you're here.}}</em></p>",
+      "<h1>You got it</h1><p>Congratulations {{first_name}} — you've been awarded the <strong>{{scholarship_name}}</strong>: <strong>{{award_summary}}</strong>.</p><p>{{fulfillment_line}}</p><p>{{perks_line}}</p><p><em>{{note|We're glad you're here.}}</em></p>",
     cta_label: "See your scholarship",
     cta_url: "{{site_url}}/dashboard/scholarships",
     variables: [
@@ -333,7 +333,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       {
         key: "award_summary",
         label: "What it's worth",
-        example: "$50 off tuition",
+        example: "$50 off tuition · 2 extra mentor calls",
         required: true,
       },
       { key: "amount", label: "Award amount", example: "$50", required: true },
@@ -344,20 +344,29 @@ export const SYSTEM_TEMPLATES: Seed[] = [
           "Your tuition is now $50 lower. The new price is already applied at checkout.",
         required: true,
       },
+      {
+        key: "perks_line",
+        label: "The perks riding along, if any",
+        example:
+          "It also comes with: 2 extra mentor calls, AI co-founder boost. Everything is on your scholarship page.",
+      },
       { key: "note", label: "Note from the team", example: "Loved your answers." },
     ],
   },
   {
+    // The key predates 0074, when the only perk was mentor calls; it's kept so
+    // copies admins have already edited stay attached. The template now
+    // covers every perks-only award.
     key: "scholarship.awarded_calls",
-    name: "Scholarship awarded (mentor calls)",
+    name: "Scholarship awarded (perks, no money)",
     description:
-      "Sent when the learner's scholarship is awarded. Its whole job is getting the student to actually book — mentor time set aside and never used is the failure mode this scholarship exists to avoid.",
+      "Sent when a scholarship with no money off tuition is awarded — mentor calls, feedback credits, Demo Day guest tickets, the AI boost, in any mix. {{award_summary}} lists what they got. Its whole job is getting the student to actually use it: a call never booked or a ticket never sent is the failure mode this kind of scholarship exists to avoid.",
     category: "transactional",
-    subject: "You got the {{scholarship_name}} — {{calls}} extra mentor calls",
-    preheader: "{{calls}} extra 1:1 calls with a batch0 mentor, yours to book.",
+    subject: "You got the {{scholarship_name}} — {{award_summary}}",
+    preheader: "{{award_summary}}, yours to use.",
     body_html:
-      "<h1>You got it</h1><p>Congratulations {{first_name}} — you've been awarded the <strong>{{scholarship_name}}</strong>: <strong>{{calls}} extra 1:1 mentor calls</strong>, on top of everything else in the program.</p><p>These are yours to book whenever you want them. The more specific the topic, the more useful they are.</p><p>They don't expire during the cohort, but they also don't do anything sitting unused. Book the first one this week.</p><p><em>{{note|Make them count.}}</em></p>",
-    cta_label: "Book your first call",
+      "<h1>You got it</h1><p>Congratulations {{first_name}} — you've been awarded the <strong>{{scholarship_name}}</strong>, on top of everything else in the program: <strong>{{award_summary}}</strong>.</p><p>{{perks_line}}</p><p>None of it expires during the cohort, but none of it does anything sitting unused. Use the first thing this week.</p><p><em>{{note|Make it count.}}</em></p>",
+    cta_label: "See your scholarship",
     cta_url: "{{site_url}}/dashboard/scholarships",
     variables: [
       ...COMMON,
@@ -367,8 +376,47 @@ export const SYSTEM_TEMPLATES: Seed[] = [
         example: "Learner's scholarship",
         required: true,
       },
-      { key: "calls", label: "Number of calls", example: "3", required: true },
-      { key: "note", label: "Note from the team", example: "Make them count." },
+      {
+        key: "award_summary",
+        label: "What it's worth",
+        example: "3 extra mentor calls · 1 feedback credit",
+        required: true,
+      },
+      {
+        key: "perks_line",
+        label: "The perks as a sentence",
+        example:
+          "That's: 3 extra mentor calls, 1 feedback credit. Everything is on your scholarship page.",
+        required: true,
+      },
+      { key: "calls", label: "Number of mentor calls (0 if none)", example: "3" },
+      { key: "note", label: "Note from the team", example: "Make it count." },
+    ],
+  },
+  {
+    key: "demo_day.guest_ticket",
+    name: "Demo Day guest ticket",
+    description:
+      "Sent to a guest when a scholarship holder sends them one of their complimentary Demo Day tickets. The guest has usually never heard of batch0, so {{host_name}} is the one thing on the email they recognise — keep it near the top. Nothing is owed, so never mention payment.",
+    category: "transactional",
+    subject: "{{host_name}} has invited you to batch0 Demo Day",
+    preheader: "A guest ticket for Demo Day, from {{host_name}}.",
+    body_html:
+      "<h1>You're on the list</h1><p>{{host_name}} has sent you a guest ticket {{first_name}}. You're in for <strong>Demo Day</strong> — the day every founder in the cohort presents what they built. There's nothing to pay.</p><p><strong>When:</strong> {{demo_day_when|We'll confirm the date shortly}}<br><strong>Where:</strong> {{demo_day_where|Details to follow}}</p><p>{{join_url|We'll email you the joining details before the day.}}</p>",
+    cta_label: "See the event",
+    cta_url: "{{site_url}}/dashboard/events",
+    variables: [
+      ...COMMON,
+      {
+        key: "host_name",
+        label: "The founder who sent it",
+        example: "Ada Okonkwo",
+        required: true,
+      },
+      { key: "demo_day_when", label: "When Demo Day is", example: "Saturday, November 14 at 1:00 PM ET" },
+      { key: "demo_day_where", label: "Where it is", example: "Newark, NJ" },
+      { key: "cohort_name", label: "Cohort", example: "Fall 2026" },
+      { key: "join_url", label: "Join link for an online event", example: "https://zoom.us/j/…" },
     ],
   },
   {

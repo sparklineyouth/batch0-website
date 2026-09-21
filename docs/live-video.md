@@ -317,6 +317,23 @@ Recommendation: ship layers 1–3, which defeat every non-technical student and
 all identity disclosure. Revisit HLS only if the exact headcount leaking to
 someone determined enough to open devtools is genuinely unacceptable.
 
+**Announcing a headcount on purpose — opt-in (shipped).** The default above
+hides turnout. `events.display_viewer_count` (migration 0071) is the deliberate
+exception: an admin sets a number on the webinar — in the schedule form or the
+event editor — and the room shows **that** figure to everyone, "43 watching", in
+place of the hidden roster. It is a display value and nothing else: it gates no
+access, mints into no token, and is re-sanitized on read by
+`normalizeDisplayViewers`, so a number written straight into the row still can't
+render a wall of digits into the header. `headcountLabel(role, displayCount,
+realCount)` in `lib/live.ts` is where the default and the override meet, and the
+room header reads through it: an announced count wins for everyone (a host
+previewing the room sees exactly what the audience sees, and keeps the truth in
+Prebuilt's participants bar); with no announced count the layer-1 default holds —
+a host sees the real roster, a viewer sees nothing. This does not weaken layers
+2–3: the *real* roster is still withheld from viewers by the server and the
+provider. The announced number is independent of it — it can read higher or lower
+than who is truly present, because that is the point.
+
 **Questions go through server-backed Q&A, not Daily chat (shipped).** Hiding the
 audience broke the assumption above that viewers ask questions in Daily's chat.
 Daily Prebuilt only lets a hidden participant (`hasPresence: false`) *read* chat,

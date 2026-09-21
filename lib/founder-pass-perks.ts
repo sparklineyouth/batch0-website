@@ -4,6 +4,7 @@ import {
   DEFAULT_TIER,
   type PassTier,
 } from "@/lib/founder-pass-tiers";
+import { scholarshipPerksForUser } from "@/lib/scholarships";
 import {
   FEEDBACK_TOPICS,
   feedbackTopicLabel,
@@ -152,23 +153,48 @@ async function spentFeedbackCredits(
 }
 
 /**
- * How many feedback credits this holder has left, and how many they started
- * with. Null when they hold no pass.
+ * How many feedback credits this person holds in total, from every source.
  *
- * Surfaced on /pass so "2 credits" is a number the holder can see going down,
- * rather than a claim in an email they have to take on trust.
+ * Two sources feed one pool: the tier on a founder pass (0055), and the
+ * credits stamped on a live scholarship award (0074). One pool, because the
+ * requests table is keyed on the user and not on where the credit came from —
+ * so "3 credits" is 3 requests, whichever grant paid for them, and a student
+ * holding both a pass and a scholarship simply has more. Null when neither
+ * grants any: that is the signal callers hide the credit UI on.
+ */
+async function totalFeedbackCredits(
+  client: SupabaseClient,
+  userId: string,
+): Promise<number | null> {
+  const [tier, scholarship] = await Promise.all([
+    getPassTierForUser(client, userId),
+    scholarshipPerksForUser(client, userId),
+  ]);
+  const fromPass = tier?.feedbackCredits ?? 0;
+  const fromScholarship = scholarship?.perks.feedbackCredits ?? 0;
+  if (!tier && fromScholarship <= 0) return null;
+  return fromPass + fromScholarship;
+}
+
+/**
+ * How many feedback credits this person has left, and how many they started
+ * with. Null when nothing grants them any.
+ *
+ * Surfaced on /pass and /dashboard/scholarships so "2 credits" is a number the
+ * holder can see going down, rather than a claim in an email they have to
+ * take on trust.
  */
 export async function feedbackCreditBalance(
   client: SupabaseClient,
   userId: string,
 ): Promise<{ total: number; spent: number; remaining: number } | null> {
-  const tier = await getPassTierForUser(client, userId);
-  if (!tier) return null;
+  const total = await totalFeedbackCredits(client, userId);
+  if (total === null) return null;
   const spent = await spentFeedbackCredits(client, userId);
   return {
-    total: tier.feedbackCredits,
+    total,
     spent,
-    remaining: Math.max(0, tier.feedbackCredits - spent),
+    remaining: Math.max(0, total - spent),
   };
 }
 
@@ -179,19 +205,20 @@ export async function createFeedbackRequest(
   if (!FEEDBACK_TOPIC_VALUES.has(args.topic)) {
     return { ok: false, reason: "invalid" };
   }
-  const tier = await getPassTierForUser(client, args.userId);
-  if (!tier) {
+  const total = await totalFeedbackCredits(client, args.userId);
+  if (total === null) {
     return { ok: false, reason: "no_pass" };
   }
 
-  // The lifetime ceiling. Since 0055 the unique index only guards "one OPEN at
-  // a time", so this check is what stops a two-credit holder filing a third.
+  // The lifetime ceiling — pass credits plus scholarship credits. Since 0055
+  // the unique index only guards "one OPEN at a time", so this check is what
+  // stops a two-credit holder filing a third.
   //
   // It is safe to check-then-insert here precisely because that index still
   // exists: a holder with a request already open is rejected by the database
   // no matter what this count said, so this code path only ever runs when
   // nothing of theirs is in flight — serially, by construction.
-  if ((await spentFeedbackCredits(client, args.userId)) >= tier.feedbackCredits) {
+  if ((await spentFeedbackCredits(client, args.userId)) >= total) {
     return { ok: false, reason: "spent" };
   }
 

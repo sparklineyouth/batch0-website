@@ -31,6 +31,7 @@ export default function robots(): MetadataRoute.Robots {
     "/mentor",
     "/investor",
     "/apply",
+    "/pay",
     // The auth-dependent redirect behind every marketing CTA. For a crawler it
     // always resolves to /apply, which is already disallowed — following it
     // just spends crawl budget on a force-dynamic function invocation, once

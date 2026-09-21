@@ -174,7 +174,19 @@ export default async function AdminDemoDayTicketsPage(props: {
                         {cohort?.name ?? "Any"}
                       </td>
                       <td className="px-4 py-3 font-semibold tabular-nums text-ink">
-                        {formatTicketAmount(t.amount_cents)}
+                        {t.scholarship_application_id ? (
+                          // A complimentary ticket a scholarship holder sent
+                          // (0074): nothing was paid, and "$0" alone reads as
+                          // a pricing mistake rather than a gift.
+                          <span
+                            title="Complimentary guest ticket, sent by a scholarship holder"
+                            className="inline-flex items-center rounded-md border border-phosphor/40 bg-phosphor/[0.08] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-phosphor-ink"
+                          >
+                            Guest
+                          </span>
+                        ) : (
+                          formatTicketAmount(t.amount_cents)
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={t.status} />
@@ -207,6 +219,7 @@ export default async function AdminDemoDayTicketsPage(props: {
                           ticketId={t.id}
                           status={t.status}
                           url={ticketPayUrl(t.token)}
+                          guest={!!t.scholarship_application_id}
                         />
                       </td>
                     </tr>

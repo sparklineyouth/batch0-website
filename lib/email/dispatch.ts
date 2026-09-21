@@ -13,6 +13,9 @@ import {
 } from "@/lib/email/store";
 import { firstNameOf, type VariableValues } from "@/lib/email/vars";
 import { refreshTuitionVars } from "@/lib/email/pricing-vars";
+import { paymentReminderVerdict } from "@/lib/email/recovery";
+import { recoveryContext } from "@/lib/email-recovery";
+import { evaluateCondition, parseCondition } from "@/lib/email/conditions";
 
 /**
  * The send path everything user-facing goes through.
@@ -389,6 +392,23 @@ export async function sendQueuedRow(
 ): Promise<boolean> {
   const admin = createAdminClient();
   try {
+    if (row.automation_id) {
+      const {data: automation,error} = await admin.from("email_automations").select("enabled").eq("id",row.automation_id).maybeSingle();
+      if (error || !automation?.enabled || !row.step_id) {
+        await finish(admin,row.id,{status:"skipped",error:"Automation is paused, unavailable, or its step was replaced"});
+        return false;
+      }
+    }
+    if (row.step_id) {
+      const {data:step,error}=await admin.from("email_automation_steps").select("enabled,condition").eq("id",row.step_id).maybeSingle();
+      if(error||!step?.enabled){await finish(admin,row.id,{status:"skipped",error:"Automation step is disabled or unavailable"});return false;}
+      const kind=parseCondition(step.condition);
+      if(kind!=="always") {
+        const {data:queued}=await admin.from("email_outbox").select("created_at").eq("id",row.id).maybeSingle();
+        const verdict=await evaluateCondition({kind},{userId:row.user_id,queuedAt:queued?.created_at??null,...recoveryContext(row.variables)});
+        if(!verdict.send){await finish(admin,row.id,{status:"skipped",error:verdict.reason});return false;}
+      }
+    }
     let subject: string;
     let html: string;
     let text: string | undefined;
@@ -396,17 +416,7 @@ export async function sendQueuedRow(
     let from: string | undefined;
     let replyTo: string | undefined;
 
-    // Resolve tuition tags against the CURRENT price, not the value frozen when
-    // this row was queued. A discount changed at /admin/pricing after a drip
-    // was scheduled reaches the mail that hasn't left yet — the same contract
-    // the template copy already has (it's re-fetched here too). A receipt's
-    // paid amount is preserved: refreshTuitionVars only rewrites `amount` for a
-    // still-unpaid applicant. See lib/email/pricing-vars.
-    const vars = await refreshTuitionVars(
-      admin,
-      row.variables ?? {},
-      row.user_id,
-    );
+    let vars = row.variables ?? {};
 
     if (row.template_id) {
       let tpl: TemplateRow | null;
@@ -423,6 +433,19 @@ export async function sendQueuedRow(
         });
         return false;
       }
+      // Also guard immediate event sends and orphaned/old outbox rows. Parent
+      // recipients must carry the student's context; unknown identity never sends.
+      if (tpl.key === "nudge.unpaid") {
+        const verdict = await paymentReminderVerdict({userId:row.user_id,...recoveryContext(row.variables)});
+        if (!verdict.send) {
+          await finish(admin,row.id,{status:"skipped",error:verdict.reason});
+          return false;
+        }
+      }
+      // Only forward-looking enrollment messages get a new quote. Receipts
+      // retain the captured amount even if this student has another application.
+      vars = await refreshTuitionVars(admin, vars, row.user_id,
+        tpl.key === "application.accepted" || tpl.key === "nudge.unpaid");
       const rendered = renderTemplate(toStoredTemplate(tpl), vars);
       if (rendered.missing.length > 0) {
         await finish(admin, row.id, {

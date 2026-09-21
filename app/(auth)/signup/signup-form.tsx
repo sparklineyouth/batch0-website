@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { track } from "@vercel/analytics";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
@@ -45,11 +46,11 @@ export function SignupCard({ priceLabel }: { priceLabel: string }) {
             Apply · step 1 of 2
           </p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">
-            Create your account
+            Start your application
           </h1>
           <p className="mt-2 text-sm leading-[1.6] text-white/50">
-            The application itself is step 2 — one form about you and what
-            you want to build. Applying is free;{" "}
+            First, save your progress with a free account. Next, tell us what
+            you want to build. No card needed to apply;{" "}
             {priceLabel} tuition is charged only if you&apos;re
             accepted. Decisions go out by email on a rolling basis.
           </p>
@@ -60,12 +61,13 @@ export function SignupCard({ priceLabel }: { priceLabel: string }) {
             Create your account
           </h1>
           <p className="mt-1 text-sm text-white/50">
-            Sign up for batch0. Takes 30 seconds. Applying to a cohort is a
-            separate, optional step.
+            Create a free account to save your progress. Then complete your
+            application or explore your dashboard. No payment is required.
           </p>
         </>
       )}
-      <SignupForm />
+      <SignupForm applying={isApplyFlow} />
+      <p className="mt-4 text-center text-xs text-white/60"><Link href="/parents" className="underline underline-offset-2">See tuition, the calendar and the parent guide</Link></p>
       <p className="mt-6 text-center text-sm text-white/50">
         Already have an account?{" "}
         <Link href={loginHref} className="text-phosphor hover:underline">
@@ -76,7 +78,7 @@ export function SignupCard({ priceLabel }: { priceLabel: string }) {
   );
 }
 
-export function SignupForm() {
+export function SignupForm({ applying = false }: { applying?: boolean }) {
   const [fullName, setFullName] = useState("");
 
   // Capture the referral code on mount and stash it so the apply flow can
@@ -136,6 +138,7 @@ export function SignupForm() {
     // bounce the user back to /login). ?next is read here at submit time —
     // see the SignupCard doc comment for why not useSearchParams.
     const next = safeNext(new URLSearchParams(window.location.search).get("next"));
+    track("signup_completed", { destination: applying ? "application" : "dashboard" });
     window.location.assign(next ?? "/dashboard");
   }
 
@@ -199,7 +202,7 @@ export function SignupForm() {
       </div>
       <FieldError id="signup-error">{error}</FieldError>
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Creating account…" : "Create account"}
+        {loading ? "Creating account…" : applying ? "Create account & continue →" : "Create account"}
       </Button>
       <p className="text-center text-xs text-white/55">
         By creating an account you agree to our{" "}

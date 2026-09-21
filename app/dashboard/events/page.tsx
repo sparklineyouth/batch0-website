@@ -29,6 +29,7 @@ function toLiveEvent(e: any): LiveEvent {
     externalUrl: e.zoom_url,
     recordingUrl: e.recording_url,
     hostName: null,
+    displayViewerCount: e.display_viewer_count ?? null,
     roomName: e.daily_room_name ?? null,
     roomUrl: e.daily_room_url ?? null,
   };

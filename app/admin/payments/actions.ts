@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
+import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { reconcileStripe } from "@/lib/stripe-reconcile";
@@ -66,18 +67,16 @@ export async function refundPayment(paymentId: string, reason?: string) {
     metadata: reason ? { admin_reason: reason } : undefined,
   });
 
-  // Mark optimistically; the charge.refunded webhook will also update.
-  await admin
-    .from("payments")
-    .update({ status: "refunded" })
-    .eq("id", paymentId);
+  const chargeId = typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
+  if (!chargeId) throw new Error("Stripe accepted the refund but returned no charge. Reconcile before retrying.");
+  await handleChargeRefunded(await stripe.charges.retrieve(chargeId), { silent: true });
 
   await logAudit({
     action: "payment.refunded",
     targetType: "payment",
     targetId: paymentId,
     payload: {
-      amount_cents: p.amount_cents,
+      amount_cents: refund.amount,
       stripe_refund_id: refund.id,
       reason: reason ?? null,
     },
@@ -95,7 +94,7 @@ export async function refundPayment(paymentId: string, reason?: string) {
         embeds: [
           refundEmbed({
             name: profile?.full_name ?? profile?.email ?? null,
-            amountCents: p.amount_cents,
+            amountCents: refund.amount,
             description: "Enrollment payment refund",
             reason: reason?.trim() || null,
             kind: "payment",

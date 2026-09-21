@@ -21,11 +21,14 @@ export function BuiltinEventRoom({
   eventId,
   title,
   role,
+  displayViewerCount,
   initialQuestions,
 }: {
   eventId: string;
   title: string;
   role: LiveRole;
+  /** Admin-announced headcount, shown to everyone. Null = hidden roster. */
+  displayViewerCount: number | null;
   initialQuestions: WebinarQuestion[];
 }) {
   const actions = useMemo(
@@ -45,6 +48,7 @@ export function BuiltinEventRoom({
       title={title}
       role={role}
       backHref="/dashboard/events"
+      displayViewerCount={displayViewerCount}
       qa={{ eventId, initialQuestions }}
       {...actions}
     />

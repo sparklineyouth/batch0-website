@@ -24,10 +24,17 @@ export function TicketRowActions({
   ticketId,
   status,
   url,
+  guest = false,
 }: {
   ticketId: string;
   status: DemoDayTicketStatus;
   url: string;
+  /**
+   * A complimentary guest ticket from a scholarship (0074): paid from birth
+   * with nothing to refund, so its one action is to revoke it — which also
+   * hands the slot back to the student who sent it.
+   */
+  guest?: boolean;
 }) {
   const router = useRouter();
   const [confirmKind, setConfirmKind] = useState<Kind | null>(null);
@@ -88,7 +95,16 @@ export function TicketRowActions({
             </button>
           </>
         )}
-        {status === "paid" && (
+        {status === "paid" && guest && (
+          <button
+            type="button"
+            onClick={() => setConfirmKind("cancel")}
+            className={`${btn} hover:border-red-400/40 hover:text-red-700 dark:hover:text-red-300`}
+          >
+            <X className="h-3 w-3" /> Revoke
+          </button>
+        )}
+        {status === "paid" && !guest && (
           <button
             type="button"
             onClick={() => setConfirmKind("refund")}
@@ -114,17 +130,18 @@ export function TicketRowActions({
       />
       <ConfirmDialog
         open={confirmKind === "cancel"}
-        title="Cancel this ticket?"
+        title={guest ? "Revoke this guest ticket?" : "Cancel this ticket?"}
         description={
           <>
             <p>
-              The link stops working and can&rsquo;t be paid. Nothing has been
-              charged. Send a new ticket if you change your mind.
+              {guest
+                ? "The guest is no longer on the list, and the student who sent it gets the ticket back to send again. Nothing was ever charged."
+                : "The link stops working and can’t be paid. Nothing has been charged. Send a new ticket if you change your mind."}
             </p>
             {error && <p className="mt-2 text-red-700 dark:text-red-300">{error}</p>}
           </>
         }
-        confirmLabel="Cancel ticket"
+        confirmLabel={guest ? "Revoke ticket" : "Cancel ticket"}
         destructive
         pending={pending}
         onConfirm={execute}

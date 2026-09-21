@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { revenueSummary, retainedCents, refundCents } from "@/lib/revenue-ledger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
@@ -59,7 +60,7 @@ export default async function AdminPaymentsPage(
   let listQuery = admin
     .from("payments")
     .select(
-      "id, created_at, amount_cents, currency, status, stripe_payment_intent_id, stripe_session_id, profile:profiles(email, full_name), cohort:cohorts(id, name)",
+      "id, created_at, paid_at, amount_refunded_cents, amount_cents, currency, status, stripe_payment_intent_id, stripe_session_id, profile:profiles(email, full_name), cohort:cohorts(id, name)",
       { count: "exact" },
     )
     .order("created_at", { ascending: false })
@@ -69,36 +70,30 @@ export default async function AdminPaymentsPage(
     listQuery = listQuery.eq("cohort_id", cohortFilter);
   }
 
-  const [{ data: pageRows, count }, { data: statRows }, { data: cohorts }] =
+  const [{ data: pageRows, count, error: pageError }, { data: statRows, error: statsError }, { data: cohorts }] =
     await Promise.all([
       listQuery,
       admin
         .from("payments")
-        .select("amount_cents, status, cohort_id, user_id")
+        .select("amount_cents, amount_refunded_cents, currency, paid_at, status, cohort_id, user_id, application_id")
         .limit(10000),
       admin.from("cohorts").select("id, name").order("starts_on"),
     ]);
 
+  if (pageError || statsError) throw new Error("Payment data unavailable. Check the revenue migration and database connection.");
   const filtered = (pageRows ?? []) as any[];
   const all = (statRows ?? []) as any[];
 
   const totalCount = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  const succeededAll = all.filter((p) => p.status === "succeeded");
-  const refundedAll = all.filter((p) => p.status === "refunded");
-  const grossCents = succeededAll.reduce(
-    (s, p) => s + (p.amount_cents ?? 0),
-    0,
-  );
-  const refundedCents = refundedAll.reduce(
-    (s, p) => s + (p.amount_cents ?? 0),
-    0,
-  );
-  const netCents = grossCents - refundedCents;
-  const payingStudents = new Set(succeededAll.map((p) => p.user_id)).size;
-  const avgCents =
-    succeededAll.length > 0 ? Math.round(grossCents / succeededAll.length) : 0;
+  const summary = revenueSummary(all);
+  const succeededAll = all.filter(p => p.status === "succeeded" && p.currency === "usd" && retainedCents(p) > 0);
+  const { grossCents, refundedCents, netCents } = summary;
+  const payingStudents = summary.payingUsers.size;
+  const avgCents = succeededAll.length > 0
+    ? Math.round(succeededAll.reduce((n,p) => n + retainedCents(p),0) / succeededAll.length) : 0;
+
   const pendingCount = all.filter((p) => p.status === "pending").length;
   const failedCount = all.filter((p) => p.status === "failed").length;
 
@@ -117,7 +112,7 @@ export default async function AdminPaymentsPage(
     const name =
       (p.cohort_id ? cohortNameById.get(p.cohort_id) : null) ?? "Unassigned";
     const cur = byCohort.get(id) ?? { name, gross: 0, count: 0 };
-    cur.gross += p.amount_cents ?? 0;
+    cur.gross += retainedCents(p);
     cur.count += 1;
     byCohort.set(id, cur);
   }
@@ -131,7 +126,7 @@ export default async function AdminPaymentsPage(
         <div>
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Payments</h1>
           <p className="mt-1 text-sm text-ink-faint">
-            Stripe activity, revenue, and per-cohort breakdown.
+            USD tuition collected, refunds, and paying people. Enrollment alone is not a payment.
           </p>
         </div>
         <div className="flex items-start gap-2">
@@ -148,9 +143,9 @@ export default async function AdminPaymentsPage(
       {/* Stat tiles */}
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
-          label="Net revenue"
+          label="Tuition after refunds"
           value={fmtMoney(netCents)}
-          sub={`Gross ${fmtMoney(grossCents)} · Refunded ${fmtMoney(refundedCents)}`}
+          sub={`Captured ${fmtMoney(grossCents)} · Refunded ${fmtMoney(refundedCents)} · Before Stripe fees`}
           accent
         />
         <Stat
@@ -161,21 +156,22 @@ export default async function AdminPaymentsPage(
         <Stat
           label="Avg payment"
           value={fmtMoney(avgCents)}
-          sub="Mean of succeeded charges"
+          sub="Retained USD per paid transaction"
         />
         <Stat
           label="Open"
-          value={`${pendingCount} pending`}
-          sub={`${failedCount} failed`}
+          value={`${pendingCount} open checkouts`}
+          sub={`${failedCount} expired / failed checkout attempts`}
           warn={pendingCount + failedCount > 0}
         />
       </div>
 
+      <p className="mt-4 text-xs text-ink-faint">Checkout attempts are not unique customers or card declines. {summary.unknownPaidDates} captured payments have no verified payment date; run Stripe reconciliation to recover dates still in Stripe’s event history. {summary.otherCurrencyCount > 0 ? `${summary.otherCurrencyCount} non-USD records excluded from USD totals.` : ""}</p>
       {/* Cohort breakdown */}
       <Card className="mt-8">
         <div className="mb-4 flex items-baseline justify-between">
           <h2 className="text-lg font-semibold text-ink">Revenue by cohort</h2>
-          <span className="text-xs text-ink-faint">Succeeded only</span>
+          <span className="text-xs text-ink-faint">USD retained after refunds</span>
         </div>
         {cohortRows.length === 0 ? (
           <p className="text-sm text-ink-faint">No revenue yet.</p>
@@ -188,7 +184,7 @@ export default async function AdminPaymentsPage(
                   <div className="mb-1 flex items-baseline justify-between text-sm">
                     <span className="text-ink">{c.name}</span>
                     <span className="text-ink-soft">
-                      {fmtMoney(c.gross)} · {c.count} student
+                      {fmtMoney(c.gross)} · {c.count} payment
                       {c.count === 1 ? "" : "s"}
                     </span>
                   </div>
@@ -260,7 +256,7 @@ export default async function AdminPaymentsPage(
                   className="border-b border-line last:border-0 hover:bg-wash"
                 >
                   <td className="px-5 py-3 text-ink-soft">
-                    <LocalTime value={p.created_at} />
+                    {p.paid_at ? <LocalTime value={p.paid_at} /> : <span title={`Checkout created ${p.created_at}`}>Payment date unknown</span>}
                   </td>
                   <td className="px-5 py-3">
                     <div className="text-ink">
@@ -275,6 +271,7 @@ export default async function AdminPaymentsPage(
                   </td>
                   <td className="px-5 py-3 text-ink-soft">
                     {fmtMoney(p.amount_cents, p.currency)}
+                    {refundCents(p) > 0 && <div className="text-xs text-ink-faint">Refunded {fmtMoney(refundCents(p), p.currency)} · Retained {fmtMoney(retainedCents(p), p.currency)}</div>}
                   </td>
                   <td className="px-5 py-3">
                     <StatusBadge status={p.status} />
@@ -286,7 +283,7 @@ export default async function AdminPaymentsPage(
                     {p.status === "succeeded" && (
                       <RefundButton
                         paymentId={p.id}
-                        amountLabel={fmtMoney(p.amount_cents, p.currency)}
+                        amountLabel={fmtMoney(retainedCents(p), p.currency)}
                       />
                     )}
                   </td>

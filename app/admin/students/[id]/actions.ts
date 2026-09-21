@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { stripe } from "@/lib/stripe";
+import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { env } from "@/lib/env";
 import { kickFromGuild, removeRoleFromMember, getDiscordSettings } from "@/lib/discord";
 
@@ -261,8 +262,7 @@ export async function deleteUserAccount(userId: string, reason: string) {
 
 /**
  * Refund the user's most recent succeeded enrollment payment via
- * Stripe, mark the payment row refunded, set the application back to
- * `accepted` so they can re-pay (or be removed separately).
+ * Stripe, mark the payment row refunded, withdraw the application only when no replacement payment retains access.
  */
 export async function refundLatestPayment(userId: string, reason: string) {
   await assertPermission("payments.manage");
@@ -274,6 +274,9 @@ export async function refundLatestPayment(userId: string, reason: string) {
     .select("id, stripe_payment_intent_id, application_id, amount_cents")
     .eq("user_id", userId)
     .eq("status", "succeeded")
+    .not("stripe_payment_intent_id", "is", null)
+    .gt("amount_cents", 0)
+    .order("paid_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -282,7 +285,7 @@ export async function refundLatestPayment(userId: string, reason: string) {
     throw new Error("Payment is missing the Stripe intent id");
   }
 
-  await stripe.refunds.create({
+  const refund = await stripe.refunds.create({
     payment_intent: payment.stripe_payment_intent_id,
     reason: "requested_by_customer",
     metadata: {
@@ -291,21 +294,9 @@ export async function refundLatestPayment(userId: string, reason: string) {
     },
   });
 
-  await admin
-    .from("payments")
-    .update({ status: "refunded" })
-    .eq("id", payment.id);
-
-  if (payment.application_id) {
-    await admin
-      .from("applications")
-      .update({ status: "accepted", paid_at: null })
-      .eq("id", payment.application_id);
-    await admin
-      .from("enrollments")
-      .delete()
-      .eq("application_id", payment.application_id);
-  }
+  const chargeId = typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
+  if (!chargeId) throw new Error("Stripe accepted the refund but returned no charge. Reconcile before retrying.");
+  await handleChargeRefunded(await stripe.charges.retrieve(chargeId), { silent: true });
 
   await logAudit({
     action: "payment.refunded_by_admin",
@@ -314,7 +305,7 @@ export async function refundLatestPayment(userId: string, reason: string) {
     payload: {
       user_id: userId,
       email: target.email,
-      amount_cents: payment.amount_cents,
+      amount_cents: refund.amount,
       reason: reason?.trim() || null,
     },
   });
@@ -323,7 +314,7 @@ export async function refundLatestPayment(userId: string, reason: string) {
     userId,
     type: "payment_refunded",
     title: "Payment refunded",
-    body: `An admin has issued a refund for $${(payment.amount_cents / 100).toFixed(2)}.`,
+    body: `An admin has issued a refund for ${(refund.amount / 100).toFixed(2)} ${refund.currency.toUpperCase()}.`,
     link: "/dashboard/billing",
   });
 

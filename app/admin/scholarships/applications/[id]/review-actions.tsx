@@ -27,7 +27,7 @@ export function ReviewActions({
   applicationId,
   status,
   fulfillment,
-  awardType,
+  hasMoney,
   projectedCents,
   awardCents,
   refundedCents,
@@ -40,7 +40,8 @@ export function ReviewActions({
   applicationId: string;
   status: string;
   fulfillment: string;
-  awardType: string;
+  /** The scholarship carries money — so the override box and refund apply. */
+  hasMoney: boolean;
   /** What awarding would be worth, computed the way the action computes it. */
   projectedCents: number;
   awardCents: number;
@@ -89,7 +90,7 @@ export function ReviewActions({
 
   const decidable = status === "submitted" || status === "under_review";
   const awarded = status === "awarded";
-  const isMoney = awardType === "discount";
+  const isMoney = hasMoney;
   const refundOwed = awarded && fulfillment === "refund_due";
   const refunded = fulfillment === "refunded";
 
