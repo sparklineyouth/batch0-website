@@ -20,8 +20,24 @@
  */
 export type LiveRole = "host" | "viewer";
 
-/** Where a live session lives — an external link, or a room batch0 owns. */
-export type LiveMode = "external" | "hosted";
+/**
+ * Where a live session lives.
+ *
+ *   external  A pasted link to someone else's Zoom. The original behaviour.
+ *   hosted    A batch0 Live room — a real camera, in real time.
+ *   premiere  A recording played on the schedule, handing over to a genuinely
+ *             live Q&A at the end (migration 0084). Everything around the video
+ *             — chat, questions, polls, attendance — is live throughout, which
+ *             is what a premiere is FOR: it is a talk that has been rehearsed
+ *             instead of improvised, not an audience that has been faked.
+ *
+ * `hosted` and `premiere` are both rooms batch0 owns, and almost every caller
+ * that used to ask `=== "hosted"` means "is this ours". Use isHostedOnBatch0()
+ * from lib/webinars.ts for that question — a bare `=== "hosted"` left over from
+ * when there were two modes is a place a premiere silently behaves like an
+ * external link.
+ */
+export type LiveMode = "external" | "hosted" | "premiere";
 
 export type CallInviteStatus =
   | "invited"
@@ -144,7 +160,7 @@ export type LiveEvent = {
   id: string;
   title: string;
   description: string | null;
-  type: "demo_day" | "office_hours" | "workshop" | "other";
+  type: "demo_day" | "office_hours" | "workshop" | "webinar" | "other";
   startsAt: string;
   endsAt: string | null;
   /** Free text — "Virtual", or a physical address for in-person events. */

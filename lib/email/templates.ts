@@ -593,6 +593,83 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }),
 
   /**
+   * The webinar is over — here is the deck and the recording.
+   *
+   * Sent by /api/cron/webinar-followups to everyone who was invited, not only
+   * to everyone who turned up. That is deliberate and it is most of the value
+   * of the feature: the people who most need the recording are the ones who
+   * missed it, and a follow-up that only reaches attendees is a follow-up that
+   * reaches the people who least need it.
+   *
+   * Every link points at batch0.org, never at a storage URL. The files are
+   * private — an enrolled-only webinar's deck is enrolled-only — so a raw link
+   * would be a signed URL that expires in minutes and works for whoever it is
+   * forwarded to in the meantime. The page behind these links re-checks who is
+   * asking and mints a fresh one.
+   *
+   * `attended` changes only the opening line. Two templates would drift, and
+   * the difference between them really is one sentence.
+   */
+  webinarFollowUp: (args: {
+    title: string;
+    eventUrl: string;
+    hasRecording: boolean;
+    hasDeck: boolean;
+    attended: boolean;
+  }) => ({
+    subject: args.attended
+      ? `Your notes from ${args.title}`
+      : `You missed ${args.title} — here's the recording`,
+    html: layout({
+      preheader: args.hasRecording
+        ? "The recording and the slides are ready."
+        : "The slides are ready.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
+        <p>${
+          args.attended
+            ? "Thanks for coming. Everything from the session is on the event page:"
+            : "Sorry you couldn't make it. Everything from the session is on the event page:"
+        }</p>
+        <ul style="margin:12px 0;padding-left:18px">
+          ${args.hasRecording ? "<li>The full recording</li>" : ""}
+          ${args.hasDeck ? "<li>The slides</li>" : ""}
+          <li>The questions that were asked, and the answers</li>
+        </ul>
+      `,
+      cta: { url: args.eventUrl, label: "Open the event" },
+    }),
+  }),
+
+  /**
+   * A guest has been invited to speak at a webinar.
+   *
+   * The link carries a single-use claim token. It is NOT a sign-in link — the
+   * guest still has to be a signed-in batch0 user, and all the token does is
+   * attach that account to the speaker row an admin already created. Said
+   * plainly in the copy, because a link that silently does nothing for a
+   * logged-out reader is a support request.
+   */
+  speakerInvite: (args: {
+    eventTitle: string;
+    startsAt: string;
+    inviteUrl: string;
+    hostName: string;
+  }) => ({
+    subject: `You're speaking at ${args.eventTitle}`,
+    html: layout({
+      preheader: new Date(args.startsAt).toLocaleString(),
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">You're speaking at ${escape(args.eventTitle)}</h1>
+        <p><strong>${escape(args.hostName)}</strong> has added you as a speaker.</p>
+        <p>Starts <strong>${new Date(args.startsAt).toLocaleString()}</strong>.</p>
+        <p style="margin:12px 0">Open the link below once while signed in to batch0 and your camera and mic will be enabled for this session. You can do that any time before it starts.</p>
+      `,
+      cta: { url: args.inviteUrl, label: "Claim your speaker slot" },
+    }),
+  }),
+
+  /**
    * A mentor, investor, or admin has proposed a 1:1.
    *
    * The time is rendered in UTC with the zone named, because this is sent

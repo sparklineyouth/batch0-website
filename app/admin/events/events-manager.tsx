@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,11 @@ import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { LocalTime } from "@/components/ui/local-time";
 import { saveEvent, deleteEvent, type EventInput } from "./actions";
+import { fetchWebinarExtras, saveSpeakers } from "./webinar-actions";
+import {
+  WebinarFields,
+  type WebinarFieldsValue,
+} from "./webinar-fields";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 
 type Cohort = { id: string; name: string };
@@ -24,6 +29,7 @@ const TYPES = [
   { value: "demo_day", label: "Demo Day" },
   { value: "office_hours", label: "Office hours" },
   { value: "workshop", label: "Workshop" },
+  { value: "webinar", label: "Webinar" },
   { value: "other", label: "Other" },
 ];
 
@@ -59,6 +65,36 @@ function comingSundayStart(): string {
   return d.toISOString();
 }
 
+/**
+ * The webinar half of an event, as the form should first see it.
+ *
+ * Speakers and files are deliberately empty here rather than fetched: they
+ * belong to an event that may not exist yet, and `WebinarFields` loads them
+ * itself once it has an id. Seeding them from the list page would mean the
+ * admin list query carrying every speaker bio and every file row for every
+ * event on the calendar, to populate one form.
+ */
+function webinarInitialFor(e: EventInput): WebinarFieldsValue {
+  return {
+    audienceMode: e.audience_mode ?? "private",
+    autoRecord: e.auto_record ?? false,
+    autoShare: e.auto_share ?? false,
+    liveMode: e.live_mode,
+    premiereSeconds: null,
+    // Stored as a timestamptz, edited as a `datetime-local` string. Converted
+    // on the way in here and back on the way out in `submit`, exactly as
+    // starts_at/ends_at already are — without this the input renders blank for
+    // a saved value and writes an unparseable one back.
+    qaOpensAt: e.qa_opens_at ? toLocal(e.qa_opens_at) : null,
+    speakers: [],
+    assets: [],
+    // Nothing to load for a brand-new event, so it is "loaded" already. For an
+    // existing one this flips true when fetchWebinarExtras lands, and until it
+    // does the form will not touch the speaker list.
+    speakersLoaded: !(e as EventInput & { id?: string }).id,
+  };
+}
+
 export function EventsManager({
   events,
   cohorts,
@@ -72,11 +108,50 @@ export function EventsManager({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
 
-  function save(e: EventInput, notify: boolean) {
+  function save(e: EventInput, notify: boolean, w: WebinarFieldsValue) {
     setError(undefined);
     start(async () => {
       try {
-        await saveEvent(e, notify);
+        // The event first, because it is what a speaker row points at — and
+        // because `saveEvent` is the call that MINTS the id for a brand-new
+        // event. Saving speakers first would have nothing to attach them to.
+        const id = await saveEvent(
+          {
+            ...e,
+            audience_mode: w.audienceMode,
+            auto_record: w.autoRecord,
+            auto_share: w.autoShare,
+            live_mode: w.liveMode,
+            qa_opens_at: w.qaOpensAt,
+          },
+          notify,
+        );
+
+        // Speakers are a second write rather than part of the payload, because
+        // they are their own table and the form edits them as a whole list.
+        //
+        // GUARDED ON `speakersLoaded`, and that guard is load-bearing:
+        // `saveSpeakers` REPLACES the list, deleting any row not in what it is
+        // handed. The form seeds speakers as an empty array and fills them from
+        // the server a moment later, so saving in that window — or after the
+        // seed request failed — would silently delete every guest speaker the
+        // event already had. Skipping the write entirely is the safe answer:
+        // the speakers stay exactly as they were.
+        if (w.speakersLoaded)
+        await saveSpeakers(
+          id,
+          w.speakers.map((sp, i) => ({
+            id: sp.id,
+            name: sp.name,
+            title: sp.title || null,
+            bio: sp.bio || null,
+            email: sp.email || null,
+            photoUrl: sp.photoUrl || null,
+            linkUrl: sp.linkUrl || null,
+            sortOrder: i,
+          })),
+        );
+
         setEditing(null);
         router.refresh();
       } catch (err: any) {
@@ -107,6 +182,7 @@ export function EventsManager({
         initial={editing}
         onCancel={() => setEditing(null)}
         onSave={save}
+        webinarInitial={webinarInitialFor(editing)}
         pending={pending}
         error={error}
       />
@@ -222,15 +298,70 @@ function EventForm({
   onSave,
   pending,
   error,
+  webinarInitial,
 }: {
   initial: EventInput;
   cohorts: Cohort[];
   onCancel: () => void;
-  onSave: (e: EventInput, notify: boolean) => void;
+  onSave: (e: EventInput, notify: boolean, w: WebinarFieldsValue) => void;
   pending: boolean;
   error?: string;
+  /** Speakers and files already attached. Empty for a new event. */
+  webinarInitial: WebinarFieldsValue;
 }) {
   const [e, setE] = useState<EventInput>(initial);
+  const [w, setW] = useState<WebinarFieldsValue>(webinarInitial);
+
+  // Speakers and files for an event that already exists.
+  //
+  // Fetched here rather than carried by the admin list query, which would
+  // otherwise haul every speaker biography and every file row for every event
+  // on the calendar to populate one form. Until it lands, `speakersLoaded`
+  // stays false and `save` leaves the speaker list alone — see the note there.
+  const eventId = (initial as EventInput & { id?: string }).id ?? null;
+  useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
+    void fetchWebinarExtras(eventId)
+      .then((extra) => {
+        if (cancelled) return;
+        setW((prev) => ({
+          ...prev,
+          speakersLoaded: true,
+          speakers: extra.speakers.map((sp) => ({
+            id: sp.id,
+            name: sp.name,
+            title: sp.title ?? "",
+            bio: sp.bio ?? "",
+            email: sp.email ?? "",
+            photoUrl: sp.photoUrl ?? "",
+            linkUrl: sp.linkUrl ?? "",
+            claimed: !!sp.userId,
+          })),
+          assets: extra.assets
+            .filter((a) => a.kind !== "recording")
+            .map((a) => ({
+              id: a.id,
+              kind: a.kind as "deck" | "handout" | "premiere",
+              storagePath: a.storagePath,
+              filename: a.filename,
+              mimeType: a.mimeType,
+              sizeBytes: a.sizeBytes,
+              durationSeconds: a.durationSeconds,
+            })),
+          premiereSeconds:
+            extra.assets.find((a) => a.kind === "premiere")?.durationSeconds ??
+            prev.premiereSeconds,
+        }));
+      })
+      .catch(() => {
+        // Left un-loaded on purpose. A failed seed must not become a save that
+        // deletes the speakers it could not read.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
   const [startsLocal, setStartsLocal] = useState(toLocal(initial.starts_at));
   const [endsLocal, setEndsLocal] = useState(toLocal(initial.ends_at));
   const [notify, setNotify] = useState(false);
@@ -244,6 +375,11 @@ function EventForm({
         ends_at: endsLocal ? fromLocal(endsLocal) : null,
       },
       notify,
+      {
+        ...w,
+        // Back to an ISO timestamp for the column, mirroring starts_at/ends_at.
+        qaOpensAt: w.qaOpensAt ? fromLocal(w.qaOpensAt) : null,
+      },
     );
   }
 
@@ -328,20 +464,48 @@ function EventForm({
         />
       </div>
 
+      {/*
+        Hosting is now a three-way choice (external / hosted / premiere), and
+        it lives inside WebinarFields with the rest of the webinar settings.
+        This toggle stays for the simple case — an admin adding office hours
+        does not want a premiere picker — and the two are kept in step by
+        reading and writing the SAME `w.liveMode`, so there is one source of
+        truth rather than a toggle and a segmented control that can disagree.
+      */}
       <Toggle
         label="Host the video on batch0"
         description={
-          e.live_mode === "hosted"
+          w.liveMode !== "external"
             ? "Students join at batch0.org. Only you get camera and mic — they watch, and can't see how many others are here."
             : "Off: paste an external link below instead. Students leave the site to join it."
         }
-        checked={e.live_mode === "hosted"}
-        onChange={(on) =>
-          setE({ ...e, live_mode: on ? "hosted" : "external" })
-        }
+        checked={w.liveMode !== "external"}
+        onChange={(on) => {
+          const mode = on ? "hosted" : "external";
+          setW({ ...w, liveMode: mode });
+          setE({ ...e, live_mode: mode });
+        }}
       />
 
-      {e.live_mode === "external" ? (
+      <WebinarFields
+        value={w}
+        onChange={(next) => {
+          setW(next);
+          // Mirrored onto the event draft so the branch below — and the
+          // payload `submit` builds — agree with the picker.
+          if (next.liveMode !== e.live_mode) {
+            setE({ ...e, live_mode: next.liveMode });
+          }
+        }}
+        eventId={eventId}
+        // From the LIVE form state, not the saved row: an admin who moves the
+        // start is usually moving it because of what the schedule line says,
+        // and a line computed from disk would keep describing the old plan.
+        startsAt={startsLocal ? fromLocal(startsLocal) : null}
+        disabled={pending}
+      />
+
+      {w.liveMode === "external" ? (
         <div>
           <Label>Zoom URL</Label>
           <Input

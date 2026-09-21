@@ -20,6 +20,7 @@ const TYPE_LABEL: Record<string, string> = {
   demo_day: "Demo Day",
   office_hours: "Office hours",
   workshop: "Workshop",
+  webinar: "Webinar",
   other: "Event",
 };
 

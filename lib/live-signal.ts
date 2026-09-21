@@ -317,3 +317,121 @@ export const PEER_TIMEOUT_MS = 40_000;
 
 /** How long ICE candidates are buffered before going out as one message. */
 export const ICE_BATCH_MS = 120;
+
+// ---------------------------------------------------------------------------
+// The room channel — chat, questions, polls, reactions, and the premiere
+// handover
+// ---------------------------------------------------------------------------
+
+/**
+ * Where everything that is not media happens.
+ *
+ * Unlike `stageTopic`, this one is KEYED. The stage is derivable from the event
+ * id on purpose, because the only thing it carries is "a host is live", which
+ * a viewer already knows by looking. This channel carries the room's activity,
+ * and an enrolled-only webinar's activity must not be observable by a signed-in
+ * student who happened to learn the event id. So `roomKey` is an HMAC, minted
+ * in lib/live-rooms.ts and handed out only to participants who passed the join
+ * gate — and, for a viewer, only when the event's `audience_mode` lets the
+ * audience see itself at all.
+ *
+ * That last clause is the one that keeps migration 0076's guarantee intact. In
+ * `private` mode a viewer is never given this topic, so there is no channel on
+ * which they could observe another viewer typing, reacting, or arriving. The
+ * privacy is structural exactly as it was before this channel existed; chat is
+ * not a hole punched in it, it is a second room that private webinars never
+ * open.
+ */
+export function roomTopic(eventId: string, roomKey: string): string {
+  return `${NS}:${eventId}:room:${roomKey}`;
+}
+
+/**
+ * The hosts' back channel: pending messages, new questions, raised hands.
+ *
+ * Separate from the room channel rather than a flag on it, because in
+ * `moderated` mode the whole point is that the audience does not see a message
+ * until a host releases it. One channel with a "pending" flag would put every
+ * unapproved message on the wire to every viewer and rely on the client not to
+ * render it — which is the "hiding a list the browser already holds" mistake
+ * the rest of this subsystem is built to avoid.
+ */
+export function moderationTopic(eventId: string, modKey: string): string {
+  return `${NS}:${eventId}:mod:${modKey}`;
+}
+
+/**
+ * What crosses the room channel.
+ *
+ * Read the `bump` case carefully, because it is the whole security model here.
+ *
+ * Everything substantive — a chat message, a question, a poll, an approval — is
+ * announced as a CONTENT-FREE PING, and the client answers it by re-fetching
+ * through a server action that reads under the caller's own RLS. The channel
+ * never carries the message body, the author, or anything else worth forging.
+ *
+ * The alternative was to publish the message itself and have clients verify a
+ * signature. That does not work here: every participant holds `roomKey`, so
+ * anything one participant can verify, another can mint. A proof only helps on
+ * a channel where the publisher holds a secret the subscribers do not — which
+ * is true of the stage (hosts publish, everyone listens) and false of a chat
+ * room by definition.
+ *
+ * So the worst a student in devtools can do on this channel is make the room
+ * re-fetch. That costs one small query per client, it is debounced, and it
+ * returns exactly what the caller was already entitled to see. Compared against
+ * the 5-second poll this replaces, a forged bump is indistinguishable from an
+ * ordinary tick.
+ *
+ * `react` is the one exception, and it is deliberately the one thing that is
+ * never stored: a reaction is an emoji that floats up the video and is gone.
+ * Forging one puts a clap on some screens for two seconds. Anything richer
+ * would need the moderation apparatus chat has, for a feature whose entire
+ * value is that it costs no round trip.
+ */
+export type RoomMessage =
+  /**
+   * "Something in `what` changed — re-read it."
+   *
+   * `cursor` is the newest `created_at` the publisher knows about, so a client
+   * can fetch only what is new instead of the whole feed. Advisory: a client
+   * that has fallen behind ignores it and asks from its own cursor.
+   */
+  | { t: "bump"; what: "chat" | "qa" | "poll"; cursor?: string }
+  /** Ephemeral, never stored, published by viewers directly. */
+  | { t: "react"; emoji: string }
+  /**
+   * A premiere is handing over to the live room, now — because the recording
+   * finished or because a host pressed "go live" early.
+   *
+   * Carries no proof and is therefore only ever a HINT: the client re-reads
+   * `live_started_at` from the server before it switches, so a forged message
+   * costs one query and changes nothing. The page also computes the handover
+   * from the clock on its own, which is what makes the switch happen at all
+   * for anyone whose channel dropped the message.
+   */
+  | { t: "stage-change" };
+
+/**
+ * How long a client waits after a bump before re-fetching.
+ *
+ * A burst of five messages in a busy room arrives as five bumps within a
+ * second; without a debounce that is five queries per client per second, which
+ * is the pile-up the old 5-second poll was carefully designed to avoid and
+ * would be a poor way to reintroduce it. 250ms collapses a burst into one
+ * fetch and is still four times faster than a human notices.
+ */
+export const ROOM_BUMP_DEBOUNCE_MS = 250;
+
+/**
+ * The backstop poll for the room channel.
+ *
+ * Realtime broadcasts are not replayed: a message published while a client was
+ * between subscriptions is simply gone. For media that is repaired by the
+ * heartbeat; for chat it would be a message that never appears for one person
+ * and appears for everyone else, which is the kind of bug nobody can reproduce.
+ * So the feed is also re-read on this interval regardless of bumps — rarely
+ * enough to cost almost nothing at fifty viewers, often enough that a dropped
+ * message is a blip rather than a hole.
+ */
+export const ROOM_RESYNC_MS = 20_000;

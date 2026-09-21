@@ -41,7 +41,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
   // calendar would fail to open — and the page it points at instead is the
   // one that decides whether they're allowed in.
   const joinUrl =
-    ev.live_mode === "hosted"
+    ev.live_mode === "hosted" || ev.live_mode === "premiere"
       ? `${env.siteUrl}/dashboard/events/${ev.id}/live`
       : ev.zoom_url;
   const start = toIcsDate(ev.starts_at);

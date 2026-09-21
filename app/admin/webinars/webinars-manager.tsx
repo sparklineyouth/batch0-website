@@ -128,7 +128,12 @@ export function WebinarsManager({
         await saveEvent(
           {
             cohort_id: draft.cohortId,
-            type: "workshop",
+            // Was "workshop" — a webinar had no type of its own, so this page
+            // wrote one thing and identified webinars by another (`live_mode`
+            // below). Migration 0084 gives it a real type; the page's filter
+            // now accepts either, so the webinars scheduled before this change
+            // keep showing up here.
+            type: "webinar",
             title: draft.title.trim(),
             description: draft.description.trim() || null,
             starts_at: startsAt.toISOString(),

@@ -95,6 +95,18 @@ export type RemotePeer = {
 
 export type LiveSession = {
   state: ConnectionState;
+  /**
+   * The room's Realtime topics, once joined — chat, questions, polls and
+   * reactions, and (hosts only) the moderation queue.
+   *
+   * Surfaced here rather than fetched separately because they arrive in the
+   * join payload, which only this hook holds. Both are null until the join
+   * lands, and `roomTopic` STAYS null for a viewer in a `private` webinar —
+   * that null is the feature, not a disabled button: it is the absence of any
+   * channel on which one student could learn that another is here.
+   */
+  roomTopic: string | null;
+  moderationTopic: string | null;
   /** Broadcasters you can see. For a viewer, this is the whole call. */
   remotes: RemotePeer[];
   /**
@@ -218,6 +230,10 @@ export function useLiveSession({
   const [error, setError] = useState<string | null>(null);
   const [remotes, setRemotes] = useState<RemotePeer[]>([]);
   const [audienceCount, setAudienceCount] = useState<number | null>(null);
+  const [topics, setTopics] = useState<{
+    roomTopic: string | null;
+    moderationTopic: string | null;
+  }>({ roomTopic: null, moderationTopic: null });
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const credsRef = useRef<LiveCredentials | null>(null);
@@ -765,6 +781,13 @@ export function useLiveSession({
         return;
       }
       credsRef.current = creds;
+      // Published to the UI so the text panels can subscribe. Set before any
+      // channel work below, so a panel mounting alongside the room does not
+      // have to wait out the whole media handshake to start listening.
+      setTopics({
+        roomTopic: creds.roomTopic,
+        moderationTopic: creds.moderationTopic,
+      });
 
       const supabase = createClient();
       supabaseRef.current = supabase;
@@ -922,8 +945,16 @@ export function useLiveSession({
   }, [enabled, sendOn]);
 
   return useMemo(
-    () => ({ state, remotes, audienceCount, error, refreshTracks }),
-    [state, remotes, audienceCount, error, refreshTracks],
+    () => ({
+      state,
+      remotes,
+      audienceCount,
+      error,
+      refreshTracks,
+      roomTopic: topics.roomTopic,
+      moderationTopic: topics.moderationTopic,
+    }),
+    [state, remotes, audienceCount, error, refreshTracks, topics],
   );
 }
 

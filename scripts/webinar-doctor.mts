@@ -270,6 +270,111 @@ async function checkData() {
   }
 }
 
+/**
+ * Everything migration 0084 added, and whether it is actually there.
+ *
+ * All of it is optional by design — the feature degrades to "a webinar without
+ * decks, chat or speakers" rather than to "nobody can join" — which is exactly
+ * why it needs a doctor. A missing table here is silent at runtime: the reads
+ * in lib/webinar-data.ts swallow PGRST205 on purpose, so the only symptom of an
+ * unapplied migration is panels that are mysteriously empty. This turns that
+ * into a line of output.
+ *
+ * Read-only. Every call is a bare GET, so it is safe to run while a webinar is
+ * in progress — though note it is still talking to whatever .env.local points
+ * at, which is production.
+ */
+async function checkWebinars() {
+  console.log("\nwebinars (migration 0084)");
+
+  const tables: [string, string][] = [
+    ["event_speakers", "guest speakers"],
+    ["event_assets", "decks, premieres and recordings"],
+    ["webinar_messages", "live chat"],
+    ["webinar_question_votes", "question upvotes"],
+    ["webinar_polls", "polls"],
+  ];
+  let missing = 0;
+  for (const [table, what] of tables) {
+    const r = await rest(`${table}?select=*&limit=1`);
+    if (r.ok) {
+      pass(`${table} present — ${what} work`);
+    } else {
+      missing++;
+      warn(`${table} missing — ${what} silently unavailable`);
+    }
+  }
+  if (missing > 0) {
+    info("Apply supabase/migrations/0084_webinars.sql in the Supabase SQL editor.");
+    info("Do it BEFORE deploying the code that reads these tables, not after.");
+    // Deliberately a warning and not a failure: a deploy that is ahead of the
+    // SQL is a real, recoverable state, and every webinar still runs in it.
+    return;
+  }
+
+  // The new events columns. A 400 here means the column is absent, which is
+  // the same "0084 not applied" condition reported more precisely.
+  const cols = await rest(
+    "events?select=id,audience_mode,auto_record,auto_share,premiere_seconds,assets_shared_at&limit=1",
+  );
+  check(cols.ok, "events carries the webinar columns");
+
+  // The audience-mode census. This is the one number in this script worth
+  // reading every time: `private` is the default and the safe answer, and a
+  // webinar in `open` is one where students see each other's names. Nobody
+  // should discover that from a student.
+  const modes = await rest(
+    "events?select=id,title,audience_mode,live_mode,starts_at&or=(type.eq.webinar,live_mode.eq.hosted,live_mode.eq.premiere)&limit=200",
+  );
+  if (modes.ok) {
+    const rows = await modes.json();
+    const open = rows.filter((e: any) => e.audience_mode === "open");
+    const moderated = rows.filter((e: any) => e.audience_mode === "moderated");
+    info(
+      `${rows.length} webinar(s): ${rows.length - open.length - moderated.length} private, ` +
+        `${moderated.length} moderated, ${open.length} open`,
+    );
+    for (const e of open) {
+      warn(
+        `open chat — students see each other by name: ${String(e.title).slice(0, 45)}`,
+      );
+    }
+
+    // A premiere with no video is an event nobody can watch: the page falls
+    // back to the live room and the audience waits for a host who was never
+    // going to appear.
+    const premieres = rows.filter((e: any) => e.live_mode === "premiere");
+    for (const e of premieres) {
+      const a = await rest(
+        `event_assets?select=id&event_id=eq.${e.id}&kind=eq.premiere&limit=1`,
+      );
+      const has = a.ok && (await a.json()).length > 0;
+      check(
+        has,
+        `premiere has a video to play: ${String(e.title).slice(0, 40)}`,
+      );
+    }
+  }
+
+  // The storage bucket the whole feature writes to.
+  const bucket = await fetch(`${SUPABASE_URL}/storage/v1/bucket/webinar-media`, {
+    headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
+  });
+  check(bucket.ok, "webinar-media bucket exists");
+  if (bucket.ok) {
+    const b = await bucket.json();
+    check(b.public === false, "webinar-media is private (decks are not public)");
+  }
+
+  // auto_share is inert without the cron. Worth naming, because the symptom is
+  // an admin ticking a box and nothing ever happening.
+  if (!process.env.CRON_SECRET) {
+    warn("CRON_SECRET unset — the auto-share follow-up job cannot run");
+  } else {
+    pass("CRON_SECRET set — /api/cron/webinar-followups can run");
+  }
+}
+
 async function main() {
   console.log(`\nwebinar-doctor — active provider: ${PROVIDER}`);
 
@@ -277,6 +382,7 @@ async function main() {
   else await checkDaily();
 
   await checkData();
+  await checkWebinars();
 
   console.log("\nmedia plane");
   info("Configuration checks cannot prove a student sees the host.");

@@ -6,12 +6,22 @@ import { LiveDot } from "@/components/live/call-stage";
 import { VideoTile } from "@/components/live/video-tile";
 import { CallControls } from "@/components/live/call-controls";
 import { QAPanel } from "@/components/live/qa-panel";
+import { RoomPanel } from "@/components/live/room-panel";
+import { PremierePlayer } from "@/components/live/premiere-player";
 import { useLocalMedia } from "@/components/live/use-local-media";
 import { useLiveSession } from "@/components/live/use-live-session";
+import { useRecorder } from "@/components/live/use-recorder";
+import { SpeakerStrip } from "@/components/live/speaker-strip";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { headcountLabel, type LiveRole, type WebinarQuestion } from "@/lib/live";
 import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
-import { AlertTriangle, Users, Loader2 } from "lucide-react";
+import type {
+  AudienceMode,
+  EventSpeaker,
+  PremiereState,
+} from "@/lib/webinars";
+import type { RoomState } from "@/app/dashboard/events/[id]/live/room-actions";
+import { AlertTriangle, Users, Loader2, CircleDot } from "lucide-react";
 
 /**
  * A batch0 Live room — the built-in provider's equivalent of LiveRoom.
@@ -38,6 +48,37 @@ import { AlertTriangle, Users, Loader2 } from "lucide-react";
 
 type Phase = "prejoin" | "live" | "left";
 
+export type WebinarRoom = {
+  eventId: string;
+  audienceMode: AudienceMode;
+  /** Staff, as opposed to a guest speaker who also broadcasts. */
+  isStaffHost: boolean;
+  autoRecord: boolean;
+  /** Null for an ordinary live webinar. */
+  premiere: (PremiereState & { url: string; durationSeconds: number }) | null;
+  liveEndedAt: string | null;
+  speakers: EventSpeaker[];
+  deck: { id: string; filename: string; sizeBytes: number | null }[];
+  initialQuestions: WebinarQuestion[];
+  initialRoomState: RoomState | null;
+  onSegment: (blob: Blob, index: number, seconds: number) => Promise<void>;
+  onGoLive: () => Promise<string | null>;
+  onEndLive: () => Promise<void>;
+  onReopenLive: () => Promise<void>;
+  /**
+   * Re-read the premiere's position from the SERVER's clock.
+   *
+   * Polled as a backstop rather than trusted from the browser. A viewer whose
+   * laptop is four minutes fast would otherwise drift four minutes ahead of the
+   * room — visibly, in chat, reacting to something nobody else has seen — and
+   * one whose clock is out by an hour would watch a black screen and conclude
+   * the webinar never started.
+   */
+  refreshPremiere: () => Promise<
+    (PremiereState & { liveEndedAt: string | null }) | null
+  >;
+};
+
 export function BroadcastRoom({
   kind,
   roomId,
@@ -46,6 +87,7 @@ export function BroadcastRoom({
   backHref,
   displayViewerCount = null,
   qa,
+  webinar,
   join,
   announce,
   leave,
@@ -65,6 +107,16 @@ export function BroadcastRoom({
   displayViewerCount?: number | null;
   /** Present for webinars, absent for 1:1 calls. */
   qa?: { eventId: string; initialQuestions: WebinarQuestion[] };
+  /**
+   * Everything that makes this room a WEBINAR rather than a 1:1.
+   *
+   * One optional bundle rather than a dozen optional props, because they are
+   * all-or-nothing: a room either has an event behind it or it does not, and
+   * twelve independently-optional props would be twelve ways to end up in a
+   * state that cannot happen. A 1:1 passes nothing and every webinar feature
+   * below is simply absent — no flags to read, no branches to get wrong.
+   */
+  webinar?: WebinarRoom;
   join: () => Promise<LiveCredentials | null>;
   announce: () => Promise<boolean>;
   leave: () => Promise<void>;
@@ -73,6 +125,48 @@ export function BroadcastRoom({
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("prejoin");
   const isHost = role === "host";
+
+  // ---- Premiere -----------------------------------------------------------
+  //
+  // Tracked as state because it CHANGES under everyone during the session: the
+  // recording runs out, or a host presses "go live" thirty minutes into a
+  // forty-minute talk. Seeded from the server render so the first paint is
+  // already correct, then advanced by the ticker below.
+  const [premierePhase, setPremierePhase] = useState(
+    webinar?.premiere?.phase ?? null,
+  );
+  const [endedAt, setEndedAt] = useState<string | null>(
+    webinar?.liveEndedAt ?? null,
+  );
+  const inPremiere = premierePhase === "playing" || premierePhase === "waiting";
+
+  const refreshPremiere = webinar?.refreshPremiere;
+  useEffect(() => {
+    if (!refreshPremiere) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const next = await refreshPremiere();
+        if (cancelled || !next) return;
+        setPremierePhase(next.phase);
+        setEndedAt(next.liveEndedAt);
+      } catch {
+        // A dropped poll costs a few seconds of staleness; the next one
+        // catches up. Surfacing it would put an error banner over a webinar
+        // that is working.
+      }
+    };
+    void tick();
+    // Every eight seconds. Frequent enough that "go live early" reaches the
+    // room while the host is still saying "we're going live now", cheap enough
+    // that fifty viewers cost about six requests a second between them — an
+    // order of magnitude below the 5-second Q&A poll this feature replaced.
+    const timer = setInterval(tick, 8_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [refreshPremiere]);
 
   // What they chose in the green room, applied once the real stream exists.
   const wanted = useRef<{ cameraOn: boolean; micOn: boolean }>({
@@ -84,7 +178,12 @@ export function BroadcastRoom({
   // The call's own devices, acquired after the green room rather than handed
   // over from it: PreJoin releases its stream on unmount, and re-acquiring
   // costs no second permission prompt now that permission is granted.
-  const media = useLocalMedia({ autoStart: isHost && phase === "live" });
+  // A host's camera does NOT come up while a premiere is still playing. They
+  // are not on air yet, and lighting up a webcam (and its indicator light) for
+  // forty minutes before anyone can see it is both wasteful and alarming.
+  const media = useLocalMedia({
+    autoStart: isHost && phase === "live" && !inPremiere,
+  });
   const screen = useScreenShare();
 
   // Honour the green room's toggles once, as soon as there is a stream to
@@ -124,16 +223,105 @@ export function BroadcastRoom({
     realCount: session.audienceCount,
   });
 
+  // ---- Recording ----------------------------------------------------------
+  //
+  // Records what the AUDIENCE saw, not what the camera captured: the hook
+  // composites camera and screen share onto a canvas, so a host switching to
+  // slides mid-sentence produces one continuous file rather than a recording
+  // that stops at the switch. Segments upload while the webinar is still
+  // running — see the header of use-recorder.ts for why that is not an
+  // optimisation but the difference between losing five minutes and losing an
+  // hour.
+  //
+  // Gated on `!inPremiere` as well as on the host: a premiere is already a
+  // recording, and re-recording the Q&A over the top of it would produce a
+  // second asset that starts forty minutes in and looks like a truncated
+  // duplicate.
+  const recorder = useRecorder({
+    eventId: webinar?.eventId ?? roomId,
+    enabled:
+      !!webinar?.autoRecord && isHost && phase === "live" && !inPremiere,
+    cameraStream: media.stream,
+    screenStream: screen.stream,
+    micStream: media.stream,
+    cameraOn: media.cameraOn,
+    micOn: media.micOn,
+    onSegment: webinar?.onSegment ?? noopSegment,
+  });
+
   const onJoin = useCallback((opts: { cameraOn: boolean; micOn: boolean }) => {
     wanted.current = opts;
     setPhase("live");
   }, []);
 
+  const [ending, setEnding] = useState(false);
+
+  /**
+   * Leave, without ending anything for anybody else.
+   *
+   * What a viewer's button does, and what a host's does when there is a second
+   * host still talking. The room carries on.
+   */
   const hangUp = useCallback(() => {
     screen.stop();
     media.stop();
     setPhase("left");
   }, [media, screen]);
+
+  /**
+   * End the webinar, for everyone.
+   *
+   * This is the button that was missing, and the order below is the whole of
+   * it. Every step has to happen before the one after it, and the previous
+   * behaviour — set phase to "left" and stop the tracks — skipped all four:
+   *
+   *  1. FLUSH THE RECORDING FIRST, and await it. `media.stop()` ends the
+   *     tracks the recorder is reading, so stopping them first truncates the
+   *     final segment to whatever had already been written. That is the last
+   *     few minutes of the webinar — reliably the Q&A, reliably the part
+   *     people re-watch.
+   *  2. Tell the SERVER. Closing the host's tab already tears the peer
+   *     connections down, but from a viewer's browser a host who ended and a
+   *     host who dropped off hotel wifi are the same event, so the audience
+   *     sits on "waiting for the host to start" until the join window closes
+   *     half an hour later. Stamping `live_ended_at` is what distinguishes
+   *     them; every client polls it.
+   *  3. Only then stop the local devices and leave.
+   *
+   * The whole thing is wrapped so that a failure at step 2 — a dead network at
+   * exactly the wrong moment — still lets the host out of the room. A webinar
+   * that says "live" for another twenty minutes is a bad outcome; a host
+   * trapped in a room by a failed request is a worse one.
+   */
+  const endWebinar = useCallback(async () => {
+    if (ending) return;
+    setEnding(true);
+    try {
+      await recorder.stop();
+    } catch (err) {
+      console.error("[live] recording flush failed", err);
+    }
+    try {
+      await webinar?.onEndLive();
+    } catch (err) {
+      console.error("[live] end failed", err);
+    }
+    screen.stop();
+    media.stop();
+    setEnding(false);
+    setPhase("left");
+  }, [ending, media, recorder, screen, webinar]);
+
+  /** Hand a premiere over to the live room, now. Hosts only. */
+  const goLiveNow = useCallback(async () => {
+    if (!webinar) return;
+    try {
+      await webinar.onGoLive();
+      setPremierePhase("live");
+    } catch (err) {
+      console.error("[live] go-live failed", err);
+    }
+  }, [webinar]);
 
   if (phase === "left") {
     return (
@@ -166,21 +354,57 @@ export function BroadcastRoom({
     );
   }
 
-  // The one broadcaster a viewer is watching. A host watching another host
-  // (two staff, or a 1:1) gets the same tile.
-  const speaker = session.remotes[0] ?? null;
-  const remoteScreen = speaker?.streams.screen ?? null;
-  const remoteCamera = speaker?.streams.camera ?? null;
-  const remoteAudio = speaker?.streams.audio ?? null;
+  // Every broadcaster, not just the first.
+  //
+  // This used to be `session.remotes[0]`, which was correct for exactly as
+  // long as a webinar had one host. With a guest speaker it silently drops
+  // one: students see whichever broadcaster's connection came up first,
+  // permanently, and the other is not merely off-screen but INAUDIBLE, because
+  // the single `<AudioSink>` was wired to that one peer's audio track. Nothing
+  // errors — a speaker just never arrives.
+  const broadcasters = session.remotes;
+
+  // A premiere is SHOWN while the recording is still running and the viewer is
+  // not a host. A host mid-premiere gets the console below instead — they are
+  // not on air yet, and watching their own recording is not what they are here
+  // for.
+  const premiereShowing =
+    !!webinar?.premiere && premierePhase === "playing" && !isHost;
+  const panel = webinar ?? qa;
 
   return (
-    <div className={qa ? "mx-auto max-w-6xl" : "mx-auto max-w-5xl"}>
+    <div className={panel ? "mx-auto max-w-6xl" : "mx-auto max-w-5xl"}>
       <header className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <h1 className="truncate font-display text-lg font-semibold tracking-[-0.02em] text-ink">
             {title}
           </h1>
-          {session.state === "live" && <LiveDot />}
+          {/* A premiere reads as live to the audience, and it IS live in every
+              way that touches them — the chat, the questions, the polls and
+              the host answering at the end are all real and happening now.
+              What is pre-recorded is the talk. */}
+          {!endedAt && (session.state === "live" || premiereShowing) && (
+            <LiveDot />
+          )}
+          {endedAt && (
+            <span className="rounded-full border border-line px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+              Ended
+            </span>
+          )}
+          {recorder.state === "recording" && (
+            <span
+              className="inline-flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400"
+              // The host is recording a room full of students. That fact gets an
+              // aria-live region rather than a silent dot, because it is the
+              // kind of thing a screen-reader user must not have to go looking
+              // for.
+              role="status"
+              aria-live="polite"
+            >
+              <CircleDot className="h-3.5 w-3.5 animate-pulse" />
+              Recording
+            </span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {/*
@@ -273,40 +497,124 @@ export function BroadcastRoom({
                 </div>
               )}
             </>
+          ) : premiereShowing ? (
+            <PremierePlayer
+              src={webinar!.premiere!.url}
+              offsetSeconds={webinar!.premiere!.offsetSeconds}
+              durationSeconds={webinar!.premiere!.durationSeconds}
+              title={title}
+              onExpired={() => router.refresh()}
+              // The recording finishing is a HINT, not the handover. The server
+              // owns that moment (`live_started_at`, or the schedule), and the
+              // poll above is what acts on it — so this only nudges the poll
+              // rather than switching the room on the browser's say-so.
+              onRecordingFinished={() =>
+                void webinar?.refreshPremiere().catch(() => {})
+              }
+              onLeave={hangUp}
+            />
           ) : (
             <ViewerStage
-              name={speaker?.name ?? "Host"}
-              connected={!!speaker && speaker.state === "live"}
-              screen={remoteScreen}
-              camera={remoteCamera}
-              audio={remoteAudio}
+              peers={broadcasters}
+              waitingLabel={
+                endedAt
+                  ? "This webinar has ended"
+                  : premierePhase === "waiting"
+                    ? "Starting shortly"
+                    : undefined
+              }
             />
+          )}
+
+          {webinar && webinar.speakers.length > 0 && (
+            <SpeakerStrip speakers={webinar.speakers} compact />
           )}
         </div>
 
-        {qa && (
+        {(webinar || qa) && (
           <div className="h-[50vh] min-h-[320px] w-full shrink-0 lg:h-[70vh] lg:w-80">
-            <QAPanel
-              eventId={qa.eventId}
-              role={role}
-              initialQuestions={qa.initialQuestions}
-            />
+            {webinar && webinar.initialRoomState ? (
+              // The rich panel: chat, the question queue with upvotes, polls
+              // and reactions, all over Realtime rather than the 5-second poll
+              // QAPanel was built around.
+              <RoomPanel
+                eventId={webinar.eventId}
+                isModerator={isHost}
+                audienceMode={webinar.audienceMode}
+                initial={webinar.initialRoomState}
+                roomTopic={session.roomTopic}
+                moderationTopic={session.moderationTopic}
+                onLiveEnded={(at) => setEndedAt(at)}
+              />
+            ) : (
+              // The fallback, and it is a real one rather than dead code: a
+              // deploy that lands before migration 0084 is applied by hand gets
+              // a null room state, and a webinar that degrades to the question
+              // queue it has always had is very much better than one that
+              // renders an error where the panel should be.
+              <QAPanel
+                eventId={webinar?.eventId ?? qa!.eventId}
+                role={role}
+                initialQuestions={
+                  webinar?.initialQuestions ?? qa!.initialQuestions
+                }
+              />
+            )}
           </div>
         )}
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
         <CallControls
           micOn={media.micOn}
           cameraOn={media.cameraOn}
           onToggleMic={media.toggleMic}
           onToggleCamera={media.toggleCamera}
-          onToggleScreen={isHost ? screen.toggle : undefined}
+          onToggleScreen={isHost && !inPremiere ? screen.toggle : undefined}
           screenSharing={!!screen.stream}
+          // Leave, for everyone. A host ALSO gets End beside it — the two are
+          // deliberately different buttons rather than one that guesses, because
+          // a co-host stepping out and the webinar finishing are different
+          // intentions and only one of them is reversible.
           onLeave={hangUp}
-          canBroadcast={isHost}
+          canBroadcast={isHost && !inPremiere}
         />
+
+        {isHost && webinar && inPremiere && (
+          <Button onClick={goLiveNow}>Go live now</Button>
+        )}
+
+        {isHost && webinar && !inPremiere && !endedAt && (
+          <Button variant="danger" onClick={endWebinar} disabled={ending}>
+            {ending
+              ? recorder.state === "uploading"
+                ? "Saving the recording…"
+                : "Ending…"
+              : "End webinar"}
+          </Button>
+        )}
+
+        {isHost && webinar && endedAt && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              void webinar.onReopenLive().then(() => setEndedAt(null))
+            }
+          >
+            Reopen
+          </Button>
+        )}
       </div>
+
+      {/* The recorder speaks up only when something is wrong or still in
+          flight. A host closing the tab on "Saving the recording…" is how the
+          last segment gets lost, so it is said out loud rather than left to a
+          spinner nobody reads. */}
+      {isHost && recorder.error && (
+        <p className="mt-2 text-center text-xs text-amber-600 dark:text-amber-400">
+          {recorder.error}
+        </p>
+      )}
     </div>
   );
 }
@@ -321,44 +629,63 @@ export function BroadcastRoom({
  * video tag, presenting would silence the webinar.
  */
 function ViewerStage({
-  name,
-  connected,
-  screen,
-  camera,
-  audio,
+  peers,
+  waitingLabel,
 }: {
-  name: string;
-  connected: boolean;
-  screen: MediaStream | null;
-  camera: MediaStream | null;
-  audio: MediaStream | null;
+  peers: {
+    peerId: string;
+    name: string;
+    state: string;
+    streams: { camera?: MediaStream; screen?: MediaStream; audio?: MediaStream };
+  }[];
+  /** Overrides the placeholder copy for a premiere or a finished webinar. */
+  waitingLabel?: string;
 }) {
-  // Both the connection AND real media are required before the placeholder
-  // goes away. `camera`/`screen` are now only non-null once a track is
-  // actually unmuted, so this no longer clears the instant an offer is
-  // applied — which used to drop students onto a black rectangle seconds
-  // before, or entirely without, any video arriving.
+  // Who gets the big frame. Presenting wins — slides are the thing being
+  // discussed, and a talking head beside them is the sideshow — and otherwise
+  // it is simply the first broadcaster who actually has a picture.
+  const presenting = peers.find((p) => p.streams.screen);
+  const primary = presenting ?? peers.find((p) => p.streams.camera) ?? peers[0];
+  const others = peers.filter((p) => p.peerId !== primary?.peerId);
+  const connected = !!primary && primary.state === "live";
+  const screen = primary?.streams.screen ?? null;
+  const camera = primary?.streams.camera ?? null;
+
+  // EVERY broadcaster's audio is mounted, always, including the ones whose
+  // video is a thumbnail and the one whose camera is off entirely. Audio rides
+  // its own transceiver, so tying it to whichever video element happens to be
+  // on screen is how a guest speaker becomes inaudible the moment the host
+  // starts presenting — and how a host talking with their camera off silences
+  // the whole webinar.
+  const audio = (
+    <>
+      {peers.map((p) => (
+        <AudioSink key={p.peerId} stream={p.streams.audio ?? null} />
+      ))}
+    </>
+  );
+
   if (!camera && !screen) {
     return (
       <>
-        {/*
-          Audio is mounted here too, not only in the branch below. A host
-          talking with their camera off is a normal thing to do, and returning
-          early without this would silence the webinar the moment they did it.
-        */}
-        <AudioSink stream={audio} />
+        {audio}
         <div className="grid aspect-video w-full place-items-center rounded-xl border border-line bg-ink-900">
           <div className="px-6 text-center">
-            <Loader2 className="mx-auto h-6 w-6 animate-spin text-ink-faint" />
+            {!waitingLabel && (
+              <Loader2 className="mx-auto h-6 w-6 animate-spin text-ink-faint" />
+            )}
             <p className="mt-3 text-sm font-medium text-[#fff]">
-              {connected
-                ? "The host's camera is off"
-                : "Waiting for the host to start"}
+              {waitingLabel ??
+                (connected
+                  ? "The host's camera is off"
+                  : "Waiting for the host to start")}
             </p>
             <p className="mt-1 text-xs text-[#fff]/60">
-              {connected
-                ? "You'll hear them, and see them as soon as they turn it on."
-                : "You'll join automatically — no need to refresh."}
+              {waitingLabel
+                ? "You can keep chatting and asking questions here."
+                : connected
+                  ? "You'll hear them, and see them as soon as they turn it on."
+                  : "You'll join automatically — no need to refresh."}
             </p>
           </div>
         </div>
@@ -368,18 +695,50 @@ function ViewerStage({
 
   return (
     <>
-      <AudioSink stream={audio} />
+      {audio}
       {screen ? (
         <>
-          <VideoTile stream={screen} name={name} label="presenting" muted className="w-full" />
+          <VideoTile
+            stream={screen}
+            name={primary!.name}
+            label="presenting"
+            muted
+            className="w-full"
+          />
           {camera && (
             <div className="mt-3 w-48">
-              <VideoTile stream={camera} name={name} muted />
+              <VideoTile stream={camera} name={primary!.name} muted />
             </div>
           )}
         </>
       ) : (
-        <VideoTile stream={camera} name={name} label="host" muted className="w-full" />
+        <VideoTile
+          stream={camera}
+          name={primary!.name}
+          label="host"
+          muted
+          className="w-full"
+        />
+      )}
+
+      {/* Co-hosts and guest speakers, beside the main frame rather than
+          replacing it. Never the audience — `session.remotes` only ever
+          contains broadcasters, because the server never told a viewer that
+          another viewer exists. */}
+      {others.length > 0 && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {others.map((p) => (
+            <VideoTile
+              key={p.peerId}
+              stream={p.streams.screen ?? p.streams.camera ?? null}
+              name={p.name}
+              label={p.streams.screen ? "presenting" : undefined}
+              cameraOn={!!(p.streams.screen ?? p.streams.camera)}
+              micOn={!!p.streams.audio}
+              muted
+            />
+          ))}
+        </div>
       )}
     </>
   );
@@ -466,6 +825,9 @@ function useScreenShare() {
 
   return { stream, toggle, stop };
 }
+
+/** A 1:1 has no event to attach a recording to, and never records. */
+async function noopSegment(): Promise<void> {}
 
 function Centered({
   title,

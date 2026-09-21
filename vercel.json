@@ -43,6 +43,10 @@
     {
       "path": "/api/cron/stripe-reconcile",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/webinar-followups",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

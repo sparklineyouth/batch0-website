@@ -14,6 +14,11 @@ import {
   listQuestionsForEvent,
   listQuestionsForAsker,
 } from "@/lib/webinar-questions";
+import {
+  isHostedOnBatch0,
+  messagesNeedApproval,
+  normalizeAudienceMode,
+} from "@/lib/webinars";
 
 /**
  * Server actions for webinar Q&A.
@@ -43,6 +48,7 @@ type EventGate = {
   starts_at: string;
   ends_at: string | null;
   live_mode: string;
+  audience_mode: string | null;
 };
 
 /**
@@ -55,7 +61,7 @@ async function gateEvent(eventId: string): Promise<EventGate | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("events")
-    .select("id, starts_at, ends_at, live_mode")
+    .select("id, starts_at, ends_at, live_mode, audience_mode")
     .eq("id", eventId)
     .maybeSingle();
   return (data as EventGate | null) ?? null;
@@ -72,7 +78,10 @@ export async function askQuestion(
 
   const event = await gateEvent(eventId);
   if (!event) throw new Error("You can't post to this event.");
-  if (event.live_mode !== "hosted") {
+  // A premiere takes questions from its first minute — that is most of what
+  // makes it feel live — so this accepts both batch0-hosted modes. The RLS
+  // insert policy (0084) was widened in step with it; keep the two together.
+  if (!isHostedOnBatch0(event.live_mode)) {
     throw new Error("This event isn't a hosted webinar.");
   }
   if (!canJoin(joinState(event.starts_at, event.ends_at))) {
@@ -90,9 +99,31 @@ export async function askQuestion(
     throw new Error("You've asked plenty for now — give the host a chance.");
   }
 
+  // Whether the room may see this question, decided at INSERT time.
+  //
+  // `approved_at` is the single predicate the read policy (0084) uses, and
+  // stamping it here rather than reading the mode at display time is what makes
+  // widening a webinar's audience safe: a question asked while the room was
+  // `private` is never approved, so it stays hidden to everyone but its asker
+  // and the hosts even if an admin later switches the mode to `open`. Students
+  // who asked under a private promise are not retroactively published.
+  //
+  // The flip side is the bug this fixes. In `open` mode nothing else ever sets
+  // this column — `spotlightQuestion` does, but only for the one question a
+  // host features — so without it the audience of an open webinar could see
+  // their own questions and no one else's, which is exactly the private
+  // behaviour the mode exists to turn off.
+  const mode = normalizeAudienceMode(event.audience_mode);
+  const approvedNow = mode === "open" && !messagesNeedApproval(mode);
+
   const { data, error } = await admin
     .from("webinar_questions")
-    .insert({ event_id: eventId, asker_id: actor.userId, body })
+    .insert({
+      event_id: eventId,
+      asker_id: actor.userId,
+      body,
+      approved_at: approvedNow ? new Date().toISOString() : null,
+    })
     .select("id, event_id, asker_id, body, status, created_at")
     .single();
   if (error) throw new Error(error.message);
