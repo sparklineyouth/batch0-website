@@ -6,6 +6,7 @@ import { assertPermission } from "@/lib/server-guards";
 import { stripe } from "@/lib/stripe";
 import { logAudit } from "@/lib/audit";
 import { runAction, type ActionResult } from "@/lib/action-result";
+import { easternEndOfDay } from "@/lib/cohort-eligibility";
 
 export type CohortInput = {
   id?: string;
@@ -23,6 +24,16 @@ export type CohortInput = {
    * `applications_open` setting still works either way.
    */
   applications_close_at?: string | null;
+  /**
+   * Late entry, the two halves of one switch. Once a cohort has started,
+   * `lib/cohort-eligibility.ts` (and `assert_cohort_admissions` in the
+   * database) only admit a student when BOTH are set — a deadline still in
+   * the future and a non-empty catch-up plan. Either one alone reads as
+   * "enrollment closed", which is why they are validated together below.
+   * Accepts a `YYYY-MM-DD` date, stored as end of that day in New York.
+   */
+  late_entry_until?: string | null;
+  catch_up_plan?: string | null;
 };
 
 const ALLOWED_STATUSES = new Set([
@@ -132,6 +143,36 @@ export async function saveCohort(
       throw new Error("End date is before the start date");
     }
 
+    // Late entry: accept a date from the form (stored as 23:59:59 Eastern) or
+    // an instant that is already stored, and keep the pair coherent.
+    const rawLateEntry = input.late_entry_until?.trim() || null;
+    let lateEntryUntil: string | null = null;
+    if (rawLateEntry) {
+      lateEntryUntil = /^\d{4}-\d{2}-\d{2}$/.test(rawLateEntry)
+        ? easternEndOfDay(rawLateEntry)
+        : rawLateEntry;
+      if (!lateEntryUntil || !Number.isFinite(Date.parse(lateEntryUntil))) {
+        throw new Error("Late-entry deadline is not a valid date");
+      }
+    }
+    const catchUpPlan = input.catch_up_plan?.trim() || null;
+    if (lateEntryUntil && !catchUpPlan) {
+      throw new Error(
+        "A late-entry deadline needs a catch-up plan too — without one, enrollment stays closed once the cohort starts.",
+      );
+    }
+    if (catchUpPlan && !lateEntryUntil) {
+      throw new Error(
+        "A catch-up plan needs a late-entry deadline too — without one, enrollment stays closed once the cohort starts.",
+      );
+    }
+    if (
+      lateEntryUntil && endsOn &&
+      Date.parse(lateEntryUntil) > Date.parse(`${endsOn}T23:59:59Z`)
+    ) {
+      throw new Error("Late entry cannot run past the cohort's end date");
+    }
+
     const admin = createAdminClient();
     const basePayload = {
       name,
@@ -141,21 +182,25 @@ export async function saveCohort(
       status: input.status,
       price_cents: priceCents,
     };
-    // cohort_number is a newer column (migration 0017),
-    // applications_close_at lands in 0029. We always pass them
+    // cohort_number is a newer column (migration 0017), applications_close_at
+    // lands in 0029, and the late-entry pair in 0081. We always pass them
     // (including null) so editing can clear values; if a migration
     // hasn't landed the fallback path drops the optional column.
     const payload: Record<string, any> = {
       ...basePayload,
       cohort_number: cohortNumber,
       applications_close_at: input.applications_close_at?.trim() || null,
+      late_entry_until: lateEntryUntil,
+      catch_up_plan: catchUpPlan,
     };
 
     function isUnknownColumnError(err: any) {
       const msg = String(err?.message ?? err);
       return (
         /column .*cohort_number.* does not exist/i.test(msg) ||
-        /column .*applications_close_at.* does not exist/i.test(msg)
+        /column .*applications_close_at.* does not exist/i.test(msg) ||
+        /column .*late_entry_until.* does not exist/i.test(msg) ||
+        /column .*catch_up_plan.* does not exist/i.test(msg)
       );
     }
 
@@ -227,7 +272,12 @@ export async function saveCohort(
       action: input.id ? "cohort.updated" : "cohort.created",
       targetType: "cohort",
       targetId: cohortId!,
-      payload: { name, price_cents: priceCents, status: input.status },
+      // late_entry_until decides who can still pay, so a change to it is
+      // worth the same trail as a price change.
+      payload: {
+        name, price_cents: priceCents, status: input.status,
+        late_entry_until: lateEntryUntil,
+      },
     });
 
     revalidatePath("/admin/cohorts");

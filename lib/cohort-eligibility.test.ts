@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cohortEligibility, type AdmissionCohort } from "./cohort-eligibility.ts";
+import { cohortEligibility, easternDateOf, easternEndOfDay, type AdmissionCohort } from "./cohort-eligibility.ts";
 import { createPayerToken, hashPayerToken, isPayerToken, payerLinkExpiresAt } from "./payer-token.ts";
 const fall: AdmissionCohort = { status: "active", starts_on: "2026-09-14", ends_on: "2026-11-13", applications_close_at: "2026-09-13T23:59:59-04:00", late_entry_until: "2026-09-22T23:59:59-04:00", catch_up_plan: "Review week one and attend catch-up.", capacity: 16 };
 test("late enrollment remains available through the advertised Eastern evening, not UTC midnight", () => {
@@ -29,4 +29,32 @@ test("payer invitations expire within 24 hours and never outlive admissions", ()
   const now = new Date("2026-09-22T20:00:00Z");
   assert.equal(payerLinkExpiresAt(now, fall.late_entry_until!).toISOString(), "2026-09-23T03:59:59.000Z");
   assert.equal(payerLinkExpiresAt(now, null).toISOString(), "2026-09-23T20:00:00.000Z");
+});
+
+test("an admin-entered late-entry date ends at the close of that Eastern day", () => {
+  // The same instant migration 0083 wrote by hand for Fall.
+  assert.equal(easternEndOfDay("2026-09-22"), "2026-09-23T03:59:59.000Z");
+  assert.equal(cohortEligibility({ ...fall, late_entry_until: easternEndOfDay("2026-09-22") }, new Date("2026-09-23T03:59:58Z")).mode, "late_entry");
+  assert.equal(cohortEligibility({ ...fall, late_entry_until: easternEndOfDay("2026-09-22") }, new Date("2026-09-23T04:00:00Z")).eligible, false);
+});
+test("a late-entry date after daylight saving ends still closes at Eastern midnight", () => {
+  // -05:00 in November, not the -04:00 that a fixed offset would assume.
+  assert.equal(easternEndOfDay("2026-11-13"), "2026-11-14T04:59:59.000Z");
+});
+test("a late-entry date round-trips through the admin date input", () => {
+  for (const date of ["2026-09-22", "2026-11-13", "2026-03-08"]) {
+    assert.equal(easternDateOf(easternEndOfDay(date)), date);
+  }
+});
+test("a date the admin just typed displays as typed, not the day before", () => {
+  // The form holds a plain date between keystroke and save; parsing that as
+  // UTC midnight would render it in New York as the previous day.
+  assert.equal(easternDateOf("2026-10-02"), "2026-10-02");
+  assert.equal(easternDateOf("2026-01-01"), "2026-01-01");
+});
+test("a malformed late-entry date is rejected rather than silently stored", () => {
+  assert.equal(easternEndOfDay("nonsense"), null);
+  assert.equal(easternEndOfDay("2026-9-2"), null);
+  assert.equal(easternDateOf(null), "");
+  assert.equal(easternDateOf("not-a-date"), "");
 });
