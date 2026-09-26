@@ -1,113 +1,93 @@
-import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createAdminClient,
   createPublicReadClient,
 } from "@/lib/supabase/admin";
 import {
   rowToChallenge,
-  HTTP_URL_RE,
-  CHALLENGE_UPLOAD_PREFIX,
-  SHORT_TEXT_MAX,
-  LONG_TEXT_MAX,
-  URL_MAX,
+  rowToSubmission,
+  mergeQualifiedReferrals,
+  shortName,
   type Challenge,
-  type ChallengeQuestion,
-  type ChallengeAnswers,
+  type ChallengeSubmission,
   type PublicWinner,
+  type ReferralSource,
 } from "@/lib/challenges-shared";
 
 // ---------------------------------------------------------------------------
-// Weekly Challenges — SERVER data layer.
+// Challenges — SERVER data layer.
 //
-// This module holds everything that must run server-side: the runtime zod
-// answer-schema builder and the service-role reads. Pure types/constants/
-// helpers live in lib/challenges-shared.ts (client-safe) and are re-exported
-// here so server callers can keep importing from "@/lib/challenges".
+// Service-role reads. Pure types/helpers live in lib/challenges-shared.ts
+// (client-safe) and are re-exported here so server callers can keep importing
+// from "@/lib/challenges".
 //
-// Reads mirror getSiteConfig(): admin client with a no-store fetch, defensive
-// parsing, and NEVER throw — a malformed row can degrade a challenge but can't
-// crash the marquee or the apply page.
+// Reads mirror getSiteConfig(): defensive parsing and NEVER throw — a
+// malformed row can degrade a challenge but can't crash the marquee, the index
+// or an event page.
 // ---------------------------------------------------------------------------
 
 export * from "@/lib/challenges-shared";
 
 /**
- * Build a zod schema for a submission from the challenge's question defs, so
- * validation always matches the exact questions rendered. Expects a record of
- * `{ [questionId]: string }` (missing keys should be pre-filled with "").
+ * The live challenge for the homepage marquee and the student Home row.
+ * Several can be live at once now; this picks one — an admin-featured one
+ * first, then whichever closes soonest (the most urgent deadline).
+ *
+ * Public read: same data for every visitor, so it goes through the cacheable
+ * client. The no-store admin client here would force the homepage to render
+ * per-request.
  */
-export function buildAnswerSchema(
-  questions: ChallengeQuestion[],
-): z.ZodType<ChallengeAnswers> {
-  const shape: Record<string, z.ZodTypeAny> = {};
-  for (const q of questions) {
-    shape[q.id] = fieldSchema(q);
-  }
-  return z.object(shape) as unknown as z.ZodType<ChallengeAnswers>;
-}
-
-function fieldSchema(q: ChallengeQuestion): z.ZodTypeAny {
-  const req = q.required;
-  switch (q.type) {
-    case "long_text": {
-      const s = z.string().trim().max(LONG_TEXT_MAX, "That's too long");
-      return req ? s.min(1, "Required") : s.optional().or(z.literal(""));
-    }
-    case "url":
-    case "video": {
-      // Both accept a pasted http(s) link OR an uploaded file encoded as
-      // `upload:<path>` (see CHALLENGE_UPLOAD_PREFIX) — since every link field
-      // now offers an mp4 upload alongside the link. Both are plain strings.
-      const s = z
-        .string()
-        .trim()
-        .max(URL_MAX, "That's too long")
-        .refine(
-          (v) =>
-            v === "" ||
-            HTTP_URL_RE.test(v) ||
-            v.startsWith(CHALLENGE_UPLOAD_PREFIX),
-          "Paste a full http:// or https:// link, or upload a video",
-        );
-      return req
-        ? s.refine((v) => v.length > 0, "Required")
-        : s.optional().or(z.literal(""));
-    }
-    case "select": {
-      const opts = q.options.length
-        ? (q.options as [string, ...string[]])
-        : (["__none__"] as [string, ...string[]]);
-      const base = z.enum(opts);
-      if (req) return base;
-      return z.union([base, z.literal("")]);
-    }
-    case "short_text":
-    default: {
-      const s = z.string().trim().max(SHORT_TEXT_MAX, "That's too long");
-      return req ? s.min(1, "Required") : s.optional().or(z.literal(""));
-    }
-  }
-}
-
-// --- Reads (service-role, no-store, never throw) --------------------------
-
-/** The single active challenge (drives the hero marquee + apply page). */
-// Public read: same data for every visitor, so it goes through the cacheable
-// client. Using the no-store admin client here would force /challenges (and
-// anything else showing the marquee) to render per-request.
 export async function getActiveChallenge(): Promise<Challenge | null> {
   try {
-    const admin = createPublicReadClient();
-    const { data } = await admin
+    const db = createPublicReadClient();
+    // Filter past-deadline rows in SQL, BEFORE the limit: nothing auto-closes
+    // a challenge, so several "active but judging" ones can pile up and would
+    // otherwise fill the page ahead of the one that's actually open.
+    const nowIso = new Date().toISOString();
+    const { data } = await db
       .from("challenges")
       .select("*")
       .eq("status", "active")
-      .limit(1)
-      .maybeSingle();
-    return data ? rowToChallenge(data) : null;
+      .or(`closes_at.is.null,closes_at.gt.${nowIso}`)
+      .order("featured", { ascending: false })
+      .order("closes_at", { ascending: true, nullsFirst: false })
+      .limit(20);
+    const now = Date.now();
+    const rows = (data ?? []).map(rowToChallenge);
+    // Skip one that's past its deadline but not yet closed by an admin — the
+    // marquee shouldn't advertise a form that won't accept anything.
+    return (
+      rows.find((c) => !c.closesAt || new Date(c.closesAt).getTime() > now) ??
+      null
+    );
   } catch (err) {
     console.error("[challenges] getActiveChallenge failed:", err);
     return null;
+  }
+}
+
+export type ChallengeListItem = Challenge & { registrationCount: number };
+
+/** Every published (active or closed) challenge, with registration counts,
+ *  for the public index. Cacheable — the index is prerendered. */
+export async function getPublicChallenges(): Promise<ChallengeListItem[]> {
+  try {
+    const db = createPublicReadClient();
+    const { data } = await db
+      .from("challenges")
+      .select("*, registrations:challenge_registrations(count)")
+      .in("status", ["active", "closed"])
+      .order("created_at", { ascending: false })
+      .limit(60);
+    return (data ?? []).map((r: any) => ({
+      ...rowToChallenge(r),
+      registrationCount: Array.isArray(r.registrations)
+        ? (r.registrations[0]?.count ?? 0)
+        : 0,
+    }));
+  } catch (err) {
+    console.error("[challenges] getPublicChallenges failed:", err);
+    return [];
   }
 }
 
@@ -146,14 +126,155 @@ export async function getChallengeById(id: string): Promise<Challenge | null> {
   }
 }
 
-/** Curated, PII-safe funded winners for the public strip. */
+export async function getRegistrationCount(challengeId: string): Promise<number> {
+  try {
+    const admin = createAdminClient();
+    const { count } = await admin
+      .from("challenge_registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("challenge_id", challengeId);
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export type EntrantState = {
+  registered: boolean;
+  registeredAt: string | null;
+  submission: ChallengeSubmission | null;
+  referralCode: string | null;
+  fullName: string | null;
+};
+
+/** Everything the event + submit pages need to know about one viewer. */
+export async function getEntrantState(
+  challengeId: string,
+  userId: string,
+): Promise<EntrantState> {
+  const admin = createAdminClient();
+  const [{ data: reg }, { data: sub }, { data: profile }] = await Promise.all([
+    admin
+      .from("challenge_registrations")
+      .select("created_at")
+      .eq("challenge_id", challengeId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    admin
+      .from("challenge_submissions")
+      .select("*")
+      .eq("challenge_id", challengeId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    admin
+      .from("profiles")
+      .select("referral_code, full_name")
+      .eq("id", userId)
+      .maybeSingle(),
+  ]);
+  return {
+    // A submission implies registration even if the row predates 0087.
+    registered: !!reg || !!sub,
+    registeredAt: (reg as any)?.created_at ?? null,
+    submission: sub ? rowToSubmission(sub) : null,
+    referralCode: ((profile as any)?.referral_code as string | null) ?? null,
+    fullName: ((profile as any)?.full_name as string | null) ?? null,
+  };
+}
+
+export type ReferralFriend = {
+  name: string;
+  source: ReferralSource;
+  at: string;
+};
+
+export type ReferralProgress = {
+  required: number;
+  count: number;
+  friends: ReferralFriend[];
+};
+
+/**
+ * Who `referrerId` has brought in, for the purposes of THIS challenge's
+ * referrals_required gate. A friend qualifies when they have an account and,
+ * through the referrer's link, either registered for this challenge or
+ * submitted a cohort application — on or after the challenge was created. See
+ * mergeQualifiedReferrals for the dedupe rules.
+ */
+export async function getReferralProgress(
+  challenge: Pick<Challenge, "id" | "createdAt" | "referralsRequired">,
+  referrerId: string,
+  referralCode: string | null,
+  client?: SupabaseClient,
+): Promise<ReferralProgress> {
+  const empty = {
+    required: challenge.referralsRequired,
+    count: 0,
+    friends: [],
+  };
+  const code = (referralCode ?? "").trim().toLowerCase();
+  if (!code) return empty;
+  try {
+    const admin = client ?? createAdminClient();
+    const [{ data: regs }, { data: apps }] = await Promise.all([
+      admin
+        .from("challenge_registrations")
+        .select("user_id, created_at")
+        .eq("challenge_id", challenge.id)
+        .eq("referral_code", code)
+        .limit(500),
+      admin
+        .from("applications")
+        .select("user_id, submitted_at")
+        .eq("referral_code", code)
+        .neq("status", "draft")
+        .not("submitted_at", "is", null)
+        .gte("submitted_at", challenge.createdAt)
+        .limit(500),
+    ]);
+    const merged = mergeQualifiedReferrals(
+      {
+        registrations: (regs ?? []) as any[],
+        applications: (apps ?? []) as any[],
+      },
+      { referrerId, since: challenge.createdAt },
+    );
+    let names = new Map<string, string>();
+    if (merged.length) {
+      const { data: profs } = await admin
+        .from("profiles")
+        .select("id, full_name")
+        .in(
+          "id",
+          merged.map((m) => m.userId),
+        );
+      names = new Map(
+        (profs ?? []).map((p: any) => [p.id as string, shortName(p.full_name)]),
+      );
+    }
+    return {
+      required: challenge.referralsRequired,
+      count: merged.length,
+      friends: merged.map((m) => ({
+        name: names.get(m.userId) ?? "A friend",
+        source: m.source,
+        at: m.at,
+      })),
+    };
+  } catch (err) {
+    console.error("[challenges] getReferralProgress failed:", err);
+    return empty;
+  }
+}
+
+/** Curated, PII-safe winners for the public strip and event pages. */
 export async function getPublicWinners(
   opts: { challengeSlug?: string; limit?: number } = {},
 ): Promise<PublicWinner[]> {
   try {
     // Public, identical for every visitor — cacheable client, see above.
-    const admin = createPublicReadClient();
-    let q = admin
+    const db = createPublicReadClient();
+    let q = db
       .from("challenge_winners_public")
       .select("*")
       .order("funded_at", { ascending: false, nullsFirst: false })
@@ -171,6 +292,7 @@ export async function getPublicWinners(
         typeof r.payout_amount_cents === "number"
           ? r.payout_amount_cents
           : null,
+      awardLabel: r.award_label ?? null,
       fundedAt: r.funded_at ?? null,
     }));
   } catch (err) {

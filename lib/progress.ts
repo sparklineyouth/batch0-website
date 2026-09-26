@@ -139,8 +139,10 @@ export async function getStudentProgress(
       .eq("user_id", userId),
     admin
       .from("challenge_submissions")
-      .select("id, challenge_id, created_at, challenge:challenges(title)")
-      .eq("user_id", userId),
+      .select("id, challenge_id, created_at, submitted_at, challenge:challenges(title)")
+      .eq("user_id", userId)
+      // An autosaved draft isn't activity worth reporting.
+      .neq("status", "draft"),
     admin
       .from("assignment_submissions")
       .select(
@@ -241,7 +243,8 @@ export async function getStudentProgress(
       area: "challenge",
       label: c?.title ?? "a weekly challenge",
       detail: "submitted",
-      at: r.created_at,
+      // created_at is when the first draft autosaved, possibly days earlier.
+      at: r.submitted_at ?? r.created_at,
       complete: true,
       href: "/admin/challenges",
     });
