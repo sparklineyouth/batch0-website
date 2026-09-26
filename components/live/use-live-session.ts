@@ -143,6 +143,14 @@ export type RemotePeer = {
    */
   seenLive: boolean;
   /**
+   * When this connection stopped being live (epoch ms) — or was created, if it
+   * never has been. Null while live, and for a departed peer with no
+   * connection left to measure. What lets the webinar room stop counting a
+   * co-host who has been "reconnecting" for too long as present (see
+   * `presentForRecording` in lib/webinars.ts).
+   */
+  downSince: number | null;
+  /**
    * Inbound tracks, by slot — present only while actually carrying media.
    * A slot whose track is muted is absent, not black.
    */
@@ -177,6 +185,14 @@ export type LiveSession = {
   /** Broadcasters you can see. For a viewer, this is the whole call. */
   remotes: RemotePeer[];
   /**
+   * The join has landed AND every peer it named has been handed to the
+   * engine — so `remotes` now includes every broadcaster who was already in
+   * the room when this one arrived (most still "connecting"). The webinar
+   * room waits for this before deciding who records: deciding earlier is
+   * deciding with an empty roster, and every host would elect themselves.
+   */
+  joined: boolean;
+  /**
    * How many viewers are watching RIGHT NOW (live connections only), for the
    * host's header. Always null for a viewer — the audience count is the one
    * number a webinar exists to keep from them — and null in a 1:1, which has
@@ -198,11 +214,6 @@ export type LiveSession = {
    * a transient error, or the window not open yet. The room offers Retry.
    */
   joinFailed: { reason: JoinRefusal } | null;
-  /**
-   * Webinar staff hosts: has the server picked THIS tab as the room's one
-   * recorder? Recomputed on every heartbeat (see pickRecorder).
-   */
-  isRecorder: boolean;
   /**
    * Ask the server for this room's status now (throttled). What the room
    * calls when it hears, from somewhere other than the stage, that the room
@@ -244,6 +255,13 @@ type PeerConnection = {
   state: ConnectionState;
   /** True once connected at least once — drives "reconnecting" vs "failed". */
   wasLive: boolean;
+  /**
+   * When the connection last stopped being live, or was created if it never
+   * has been. Unlike `progressAt` it does not move while the connection
+   * flaps between not-live states, so it measures how long the peer has been
+   * gone rather than how long since the last ICE event.
+   */
+  downSince: number;
   /**
    * When the CURRENT negotiation attempt started. Re-stamped on every state
    * change, so the stuck-watchdog below measures "how long has it been
@@ -344,6 +362,7 @@ export function useLiveSession({
   const [error, setError] = useState<string | null>(null);
   const [remotes, setRemotes] = useState<RemotePeer[]>([]);
   const [audienceCount, setAudienceCount] = useState<number | null>(null);
+  const [joined, setJoined] = useState(false);
   const [topics, setTopics] = useState<{
     roomTopic: string | null;
     moderationTopic: string | null;
@@ -353,7 +372,6 @@ export function useLiveSession({
   const [joinFailed, setJoinFailed] = useState<{ reason: JoinRefusal } | null>(
     null,
   );
-  const [isRecorder, setIsRecorder] = useState(false);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const credsRef = useRef<LiveCredentials | null>(null);
@@ -431,6 +449,7 @@ export function useLiveSession({
           role: c.peer.role,
           state: gone ? ("left" as const) : c.state,
           seenLive: everLive.current.has(c.peer.peerId),
+          downSince: c.state === "live" ? null : c.downSince,
           streams: gone ? {} : streams,
         };
       });
@@ -445,6 +464,7 @@ export function useLiveSession({
         role: peer.role,
         state: "left",
         seenLive: everLive.current.has(peerId),
+        downSince: null,
         streams: {},
       });
     }
@@ -711,6 +731,7 @@ export function useLiveSession({
         earlyCandidates: [],
         state: "connecting",
         wasLive: false,
+        downSince: now,
         progressAt: now,
         createdAt: now,
         lastLiveAt: null,
@@ -799,6 +820,7 @@ export function useLiveSession({
         // watchdog only fires on a connection that is genuinely going nowhere.
         conn.progressAt = at;
         if (conn.state === "live") conn.lastLiveAt = at;
+        const before = conn.state;
         if (s === "connected") {
           conn.state = "live";
           conn.wasLive = true;
@@ -813,6 +835,7 @@ export function useLiveSession({
         } else if (s === "failed" || s === "closed") {
           conn.state = conn.wasLive ? "reconnecting" : "failed";
         }
+        if (before === "live" && conn.state !== "live") conn.downSince = Date.now();
         publish();
         recomputeOverall();
       };
@@ -868,6 +891,7 @@ export function useLiveSession({
         } catch (err) {
           // Torn down under us is not an error anyone needs to read.
           if (stale()) return;
+          if (conn.state === "live") conn.downSince = Date.now();
           conn.state = "failed";
           conn.progressAt = Date.now();
           publish();
@@ -982,6 +1006,7 @@ export function useLiveSession({
           if (connections.current.get(msg.from) !== conn || !credsRef.current) {
             return;
           }
+          if (conn.state === "live") conn.downSince = Date.now();
           conn.state = "failed";
           conn.progressAt = Date.now();
           publish();
@@ -1100,7 +1125,6 @@ export function useLiveSession({
     setClosed(null);
     setJoinFailed(null);
     setServerRole(null);
-    setIsRecorder(false);
 
     /**
      * End this run: the one teardown, whoever calls it. Idempotent, because
@@ -1136,7 +1160,7 @@ export function useLiveSession({
       supabaseRef.current = null;
       setRemotes([]);
       setAudienceCount(null);
-      setIsRecorder(false);
+      setJoined(false);
       setTopics({ roomTopic: null, moderationTopic: null });
       setState("idle");
       void leave().catch(() => {});
@@ -1154,7 +1178,6 @@ export function useLiveSession({
       if (cancelled) return;
       const next = nextStatusAction(res?.status ?? null, strikes);
       strikes = next.strikes;
-      if (res?.status === "ok") setIsRecorder(res.isRecorder);
       if (next.close && res) closeWith(res.status as CloseReason);
     };
 
@@ -1377,13 +1400,31 @@ export function useLiveSession({
         // until they signal again, and viewers are never dialled from here at
         // all: a viewer who is still present re-announces, which reaches us
         // through the lobby.
+        //
+        // And every OTHER broadcaster this one is connected to, not just the
+        // join-time roster. A host who arrived after us was found through the
+        // lobby and is not in `held.peers`; if they then vanish without a
+        // goodbye (battery, crash, closed lid — no pagehide, so no bye and no
+        // peer-offline), their connection sits in "reconnecting" forever with
+        // nothing to reconnect to. In a webinar that is a co-host the recorder
+        // election keeps counting as present — possibly the elected recorder,
+        // recording nothing while everyone else stands down for them. Retried
+        // here, a wedged connection is rebuilt to "connecting" like any other,
+        // which the election stops counting once settling is over.
         addTimer(
           setInterval(() => {
             if (cancelled) return;
             void runAnnounce();
             const held = credsRef.current;
             if (held) {
-              for (const peer of held.peers) {
+              const dial = new Map<string, LivePeer>();
+              for (const peer of held.peers) dial.set(peer.peerId, peer);
+              if (isBroadcasterRef.current) {
+                for (const c of connections.current.values()) {
+                  if (!dial.has(c.peer.peerId)) dial.set(c.peer.peerId, c.peer);
+                }
+              }
+              for (const peer of dial.values()) {
                 if (peer.role !== "host") continue;
                 if (kind === "event" && departed.current.has(peer.peerId)) {
                   continue;
@@ -1429,6 +1470,10 @@ export function useLiveSession({
 
         for (const peer of creds.peers) void connectTo(peer);
         recomputeOverall();
+        // After the loop, not before: connectTo publishes each peer
+        // synchronously, so by this line `remotes` names everyone the server
+        // said was here.
+        setJoined(true);
       } catch (err) {
         // Anything the bootstrap did not expect. Said out loud, with a retry
         // offered by the room, rather than a spinner that never resolves.
@@ -1487,6 +1532,7 @@ export function useLiveSession({
     () => ({
       state,
       remotes,
+      joined,
       audienceCount,
       error,
       refreshTracks,
@@ -1495,12 +1541,12 @@ export function useLiveSession({
       serverRole,
       closed,
       joinFailed,
-      isRecorder,
       recheck,
     }),
     [
       state,
       remotes,
+      joined,
       audienceCount,
       error,
       refreshTracks,
@@ -1508,7 +1554,6 @@ export function useLiveSession({
       serverRole,
       closed,
       joinFailed,
-      isRecorder,
       recheck,
     ],
   );

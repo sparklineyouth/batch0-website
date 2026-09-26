@@ -63,7 +63,13 @@ export function ManagePanel({
           await removeFromProgram(userId, reason);
           setOkMsg("Removed from program.");
         } else if (action === "move") {
-          await moveToCohort(userId, targetCohort);
+          // Returns its refusals (a scholarship award that can't move with
+          // them) so the admin reads the real reason, not a masked one.
+          const res = await moveToCohort(userId, targetCohort);
+          if (!res.ok) {
+            setError(res.error);
+            return;
+          }
           setOkMsg("Moved to selected cohort.");
         } else if (action === "reset") {
           await sendPasswordResetForUser(userId);

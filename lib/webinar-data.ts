@@ -146,33 +146,6 @@ export async function listSpeakers(
   }));
 }
 
-/**
- * Just the ids, for the authorization check on the join path.
- *
- * A separate, narrower query rather than `listSpeakers().map(...)` because this
- * one runs on every join, every heartbeat, and every question — and it should
- * cost an index probe rather than a read of every speaker's biography.
- */
-export async function speakerUserIds(eventId: string): Promise<string[]> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("event_speakers")
-    .select("user_id")
-    .eq("event_id", eventId)
-    .not("user_id", "is", null)
-    .limit(20);
-  if (error) {
-    // A missing table means 0084 has not been run. Degrading to "there are no
-    // guest speakers" keeps every existing webinar working exactly as it did,
-    // which is the same call lib/live-rooms.ts makes about live_participants.
-    if (!isMissingTable(error)) {
-      console.error("[webinars] speaker id read failed", error.message);
-    }
-    return [];
-  }
-  return (data ?? []).map((r: any) => r.user_id).filter(Boolean);
-}
-
 // ---------------------------------------------------------------------------
 // Files
 // ---------------------------------------------------------------------------
@@ -196,9 +169,9 @@ export async function listAssets(
     .order("kind", { ascending: true })
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
-    // A recording is one row per five minutes, so an eight-hour cap's worth of
-    // segments is about a hundred. 500 is far above anything real and far below
-    // anything that would hurt.
+    // A recording is one row per two minutes, so an eight-hour cap's worth of
+    // segments is about two hundred and forty. 500 is above anything real and
+    // far below anything that would hurt.
     .limit(500);
   if (error) {
     if (!isMissingTable(error)) {

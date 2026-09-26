@@ -1,6 +1,9 @@
 "use client";
 import { useCallback, useMemo } from "react";
-import { BroadcastRoom } from "@/components/live/broadcast-room";
+import {
+  BroadcastRoom,
+  type SegmentOutcome,
+} from "@/components/live/broadcast-room";
 import {
   joinRoom,
   announcePresence,
@@ -14,14 +17,18 @@ import {
   reopenLive,
 } from "./room-actions";
 import {
-  getWebinarUploadToken,
-  nextRecordingIndex,
-  registerWebinarAsset,
+  getWebinarRecordingUploadToken,
+  registerWebinarRecordingSegment,
 } from "@/app/admin/events/webinar-actions";
 import type { RoomState } from "./room-actions";
 import type { LiveRole, WebinarQuestion } from "@/lib/live";
 import type { SignalRole } from "@/lib/live-signal";
-import type { AudienceMode, EventSpeaker, PremiereState } from "@/lib/webinars";
+import {
+  webinarSegmentName,
+  type AudienceMode,
+  type EventSpeaker,
+  type PremiereState,
+} from "@/lib/webinars";
 
 /**
  * A hosted webinar on batch0 Live.
@@ -47,6 +54,8 @@ import type { AudienceMode, EventSpeaker, PremiereState } from "@/lib/webinars";
  */
 export function BuiltinEventRoom({
   eventId,
+  selfUserId,
+  selfName,
   title,
   startsAt,
   endsAt,
@@ -65,6 +74,14 @@ export function BuiltinEventRoom({
   initialRoomState,
 }: {
   eventId: string;
+  /**
+   * The signed-in person's id — the same id every other host's browser sees
+   * them by (a peer's id IS its user id), which is what lets every browser in
+   * the room agree on which one of them records.
+   */
+  selfUserId: string;
+  /** The signed-in person's name, for their tile if their browser records. */
+  selfName: string;
   title: string;
   /** The schedule — see WebinarRoom in components/live/broadcast-room. */
   startsAt: string;
@@ -124,63 +141,64 @@ export function BuiltinEventRoom({
    *
    * The three-step dance this repo already uses for every large upload, and it
    * is three steps for a reason Next imposes: a server action's request body is
-   * capped at 1 MB by default and this project does not raise it, so a 45 MB
+   * capped at 1 MB by default and this project does not raise it, so a 19 MB
    * segment cannot be POSTed to an action at all. Instead the server mints a
    * signed URL, the bytes go straight from the tab to Supabase Storage without
    * touching a Vercel function, and a second action records the path.
    *
-   * `sortOrder` is the segment index this recorder wants, and the filename
-   * carries it too (`segment-0004.webm`). Registering the same segment again
-   * — same uploader, same name — REPLACES that row, so a recorder that
-   * re-uploads segment 4 after a dropped connection does not leave two copies
-   * and play the same five minutes twice. An index already held by anything
-   * else (another staff recorder overlapping this one) is never replaced: the
-   * segment is appended at the next free index instead (see
-   * saveRecordingSegment). The index itself is seeded from the server
-   * (`nextRecordingIndex`), so a reload or a handover starts past everything
-   * already registered.
+   * Either server step may answer "another host's browser is recording this
+   * webinar" (see recordingRival in lib/webinars.ts). That is not a failure —
+   * it is the room's one-recorder rule being enforced — so it comes back as
+   * `"refused"` rather than a throw, and the room stands this recorder down.
    *
-   * Throws on failure, which is deliberate: `useRecorder` catches, counts the
-   * failure, and KEEPS RECORDING. Losing one segment must never stop the next
-   * one, because the alternative is a network blip at minute twelve costing
-   * the remaining forty-eight.
+   * Throws on real failure, which is deliberate: `useRecorder` catches, counts
+   * the failure, and KEEPS RECORDING. Losing one segment must never stop the
+   * next one, because the alternative is a network blip at minute twelve
+   * costing the remaining forty-eight.
    */
   const onSegment = useCallback(
-    async (blob: Blob, index: number, durationSeconds: number) => {
-      const filename = `segment-${String(index).padStart(4, "0")}.webm`;
-      const { path, token } = await getWebinarUploadToken(
+    async (
+      blob: Blob,
+      index: number,
+      durationSeconds: number,
+      run: number,
+    ): Promise<SegmentOutcome> => {
+      // `run` is the room mount the recorder belongs to — see WebinarRoom's
+      // onSegment in components/live/broadcast-room.tsx.
+      const filename = webinarSegmentName(run, index);
+      // The segment's length goes with the ask, so the server can tell a
+      // co-host who registered BEFORE this segment began (a recorder who has
+      // since handed over) from one recording alongside it.
+      const minted = await getWebinarRecordingUploadToken(
         eventId,
-        "recording",
         filename,
+        Math.round(durationSeconds),
       );
+      if (!minted.ok) return "refused";
       // Deferred import keeps supabase-js out of the route's first-load JS;
       // it's only needed here, at the moment an upload starts.
       const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
       const up = await supabase.storage
         .from("webinar-media")
-        .uploadToSignedUrl(path, token, blob, {
+        .uploadToSignedUrl(minted.path, minted.token, blob, {
           contentType: blob.type || "video/webm",
         });
       if (up.error) throw up.error;
 
-      await registerWebinarAsset(eventId, {
-        kind: "recording",
-        storagePath: path,
+      const filed = await registerWebinarRecordingSegment(eventId, {
+        storagePath: minted.path,
         filename,
         mimeType: blob.type || "video/webm",
         sizeBytes: blob.size,
         durationSeconds: Math.round(durationSeconds),
         sortOrder: index,
       });
+      return filed.ok ? "saved" : "refused";
     },
     [eventId],
   );
 
-  const seedRecordingIndex = useCallback(
-    () => nextRecordingIndex(eventId),
-    [eventId],
-  );
   const onGoLive = useCallback(() => goLive(eventId), [eventId]);
   const onEndLive = useCallback(() => endLive(eventId), [eventId]);
   const onReopenLive = useCallback(() => reopenLive(eventId), [eventId]);
@@ -194,6 +212,8 @@ export function BuiltinEventRoom({
       eventId,
       startsAt,
       endsAt,
+      selfUserId,
+      selfName,
       audienceMode,
       isStaffHost,
       autoRecord,
@@ -205,7 +225,6 @@ export function BuiltinEventRoom({
       initialQuestions,
       initialRoomState,
       onSegment,
-      nextRecordingIndex: seedRecordingIndex,
       onGoLive,
       onEndLive,
       onReopenLive,
@@ -218,6 +237,8 @@ export function BuiltinEventRoom({
       eventId,
       startsAt,
       endsAt,
+      selfUserId,
+      selfName,
       audienceMode,
       isStaffHost,
       autoRecord,
@@ -229,7 +250,6 @@ export function BuiltinEventRoom({
       initialQuestions,
       initialRoomState,
       onSegment,
-      seedRecordingIndex,
       onGoLive,
       onEndLive,
       onReopenLive,

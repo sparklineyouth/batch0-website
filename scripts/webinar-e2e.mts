@@ -39,11 +39,14 @@
  *     close and frames stop, and a fresh join is refused;
  *   - the host presses Reopen, goes back on air, and the ended viewer is
  *     offered Rejoin (the ended screen's slow poll) and decodes video again;
- *   - the 1:1 is hosted by a MENTOR (the live-room middleware exemption), and
- *     the owner's End call puts both sides on "The call has ended".
+ *   - the 1:1 is hosted by a MENTOR (the live-room middleware exemption):
+ *     both people are shown the recording notice before they join, the
+ *     mentor's End call puts both sides on "This call has ended" and marks
+ *     the call completed, the mentor lands back on their own calls page, and
+ *     the mentor's browser — the side that records — has uploaded the call.
  *
- * Every account and row it creates is removed in a finally block, including
- * on failure.
+ * Every account, row and stored file it creates is removed in a finally
+ * block, including on failure.
  */
 
 import { randomBytes } from "node:crypto";
@@ -248,7 +251,70 @@ async function createAcceptedCall(
   return rows[0].id;
 }
 
+/**
+ * Every object under `prefix` in `bucket`, removed. Best-effort, like the rest
+ * of cleanup — a missing bucket (nothing was ever recorded) is simply empty.
+ * Folders are walked, because a recording lands one level down.
+ */
+async function removeStoragePrefix(bucket: string, prefix: string): Promise<void> {
+  const paths: string[] = [];
+  const walk = async (dir: string): Promise<void> => {
+    const res = await fetch(`${url}/storage/v1/object/list/${bucket}`, {
+      method: "POST",
+      headers: adm,
+      body: JSON.stringify({ prefix: dir, limit: 1000, offset: 0 }),
+    }).catch(() => null);
+    if (!res?.ok) return;
+    const items = (await res.json()) as { name: string; id: string | null }[];
+    for (const it of items) {
+      const full = `${dir}/${it.name}`;
+      // A folder has no id in a Storage listing.
+      if (it.id) paths.push(full);
+      else await walk(full);
+    }
+  };
+  await walk(prefix);
+  if (paths.length === 0) return;
+  await fetch(`${url}/storage/v1/object/${bucket}`, {
+    method: "DELETE",
+    headers: adm,
+    body: JSON.stringify({ prefixes: paths }),
+  }).catch(() => {});
+}
+
+/** The objects in a 1:1's recording folder (lib/call-recording.ts). */
+async function callRecordingFiles(inviteId: string): Promise<string[]> {
+  const res = await fetch(`${url}/storage/v1/object/list/call-recordings`, {
+    method: "POST",
+    headers: adm,
+    body: JSON.stringify({
+      prefix: `calls/${inviteId}/recording`,
+      limit: 100,
+      offset: 0,
+    }),
+  }).catch(() => null);
+  if (!res?.ok) return [];
+  const items = (await res.json()) as { name: string; id: string | null }[];
+  return items.filter((i) => !!i.id).map((i) => i.name);
+}
+
 async function cleanup() {
+  // Recordings first, while the rows that name them still exist. The 1:1 is
+  // recorded from the host's browser into the private call-recordings bucket
+  // (no rows — the folder is the record); a webinar with auto-record on would
+  // put segments in webinar-media with an event_assets row each. The test
+  // webinar leaves auto-record off, but a run against a database whose
+  // default changed must not leave a recording of test accounts behind.
+  if (createdInviteId) {
+    await removeStoragePrefix("call-recordings", `calls/${createdInviteId}`);
+  }
+  if (createdEventId) {
+    await fetch(`${url}/rest/v1/event_assets?event_id=eq.${createdEventId}`, {
+      method: "DELETE",
+      headers: adm,
+    }).catch(() => {});
+    await removeStoragePrefix("webinar-media", createdEventId);
+  }
   // End / Reopen / End call write audit entries against the test event and
   // call. They name only these throwaway rows, so they go with them.
   for (const target of [createdEventId, createdInviteId]) {
@@ -960,12 +1026,28 @@ async function main() {
     const inviteId = await createAcceptedCall(mentorUserId, viewerUserId);
     const callPath = `/dashboard/calls/${inviteId}/live`;
 
+    // Every 1:1 is recorded, and both people are told so in the green room —
+    // BEFORE the Join button, not once they are already on camera.
+    const recordedNotice = /this call is recorded/i;
+
     const caller = await openAs(browser, MENTOR_EMAIL, callPath, "caller");
     contexts.push(caller.ctx);
+    check(
+      !!(await until("the mentor's recording notice", async () =>
+        hasText(caller.page, recordedNotice),
+      )),
+      "the mentor is told the call is recorded before joining",
+    );
     check(await enterRoom(caller.page, "caller"), "the mentor opened the 1:1");
 
     const callee = await openAs(browser, VIEWER_EMAIL, callPath, "callee");
     contexts.push(callee.ctx);
+    check(
+      !!(await until("the student's recording notice", async () =>
+        hasText(callee.page, recordedNotice),
+      )),
+      "the student is told the call is recorded before joining",
+    );
     check(await enterRoom(callee.page, "callee"), "student opened the same 1:1");
 
     // Both directions must carry media — that is what makes it a call rather
@@ -1015,25 +1097,66 @@ async function main() {
       "BOTH sides send media (a 1:1 is two broadcasters, not a broadcast)",
     );
 
-    // End call is the owner's, two-step, and final for both people.
-    console.log("\nthe owner ends the call");
-    check(
-      await press(caller.page, /^end call$/i, "owner's End call"),
-      "owner armed End call",
+    // The mentor's browser is the one recording (call_invites.host_id), and
+    // says so in the room.
+    const recording = await until("the mentor's Recording indicator", async () =>
+      hasText(caller.page, /^\s*recording\s*$/i),
     );
+    check(!!recording, "the mentor's room shows it is recording");
+
+    // End call: one press, offered once both people have been in the room and
+    // the start has come (the call started two minutes ago). Final for both.
+    console.log("\nthe host ends the call");
     check(
-      await press(caller.page, /^end for both$/i, "End call confirm step", 5_000),
-      "owner confirmed End for both",
+      await press(caller.page, /^end call$/i, "the mentor's End call", 30_000),
+      "the mentor pressed End call",
     );
-    const callEnded = /(the|this) call has ended/i;
-    const bothEnded = await until(
-      "both sides to see the call ended",
+    const callEnded = /this call has ended/i;
+    // The presser's room shows the ended screen at once, and returns them to
+    // their OWN calls page (/mentor/calls, never the student inbox) once the
+    // recording's last segment has uploaded.
+    const callerDone = await until(
+      "the mentor's ended screen or calls page",
       async () =>
-        (await hasText(caller.page, callEnded)) &&
-        (await hasText(callee.page, callEnded)),
+        (await hasText(caller.page, callEnded)) ||
+        new URL(caller.page.url()).pathname === "/mentor/calls",
       15_000,
     );
-    check(!!bothEnded, "both sides see \"The call has ended\"");
+    check(!!callerDone, "the mentor sees \"This call has ended\"");
+    // The other side learns it from its status poll or its heartbeat.
+    const calleeEnded = await until(
+      "the student's ended screen",
+      async () => hasText(callee.page, callEnded),
+      40_000,
+    );
+    check(!!calleeEnded, "the student's room closes too: \"This call has ended\"");
+    const statusRes = await fetch(
+      `${url}/rest/v1/call_invites?id=eq.${inviteId}&select=status`,
+      { headers: adm },
+    );
+    const statusRows = (await statusRes.json()) as { status: string }[];
+    check(statusRows[0]?.status === "completed", "the call is completed in the database");
+
+    const backHome = await until(
+      "the mentor to be sent back to /mentor/calls",
+      async () => new URL(caller.page.url()).pathname === "/mentor/calls",
+      100_000,
+    );
+    check(!!backHome, "the mentor lands back on their own calls page");
+    const uploaded = await until(
+      "the call's recording to land in storage",
+      async () => {
+        const files = await callRecordingFiles(inviteId);
+        return files.length > 0 ? files : null;
+      },
+      60_000,
+    );
+    check(
+      !!uploaded,
+      "the mentor's browser recorded the call and uploaded it after End call",
+    );
+    if (uploaded) info(`${(uploaded as string[]).length} recording segment(s)`);
+
     await callee.page.reload({ waitUntil: "domcontentloaded" });
     const calleeRefused = await until(
       "student's reload to be refused",

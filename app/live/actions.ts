@@ -1,17 +1,8 @@
 "use server";
-import { revalidatePath } from "next/cache";
 import { requireActor } from "@/lib/server-guards";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { logAudit } from "@/lib/audit";
 import { type RoomStatus } from "@/lib/live";
-import {
-  isHostedOnBatch0,
-  mayRecordBlind,
-  pickRecorder,
-  stickySegment,
-  type AudienceMode,
-} from "@/lib/webinars";
+import { isHostedOnBatch0, type AudienceMode } from "@/lib/webinars";
 import {
   inboxTopic,
   PEER_TIMEOUT_MS,
@@ -22,7 +13,6 @@ import {
   inboxKeyFor,
   liveParticipants,
   notifyHosts,
-  notifyStage,
   touchParticipant,
   type LiveCredentials,
   type LivePeer,
@@ -31,7 +21,6 @@ import {
   callRefusal,
   callRoomStatus,
   leaveInternal,
-  presentHostRoles,
   resolveCallAccess,
   resolveEventAccess,
   roomAccessFor,
@@ -63,7 +52,7 @@ import {
  *           an admin reviewing the safeguarding list can read that a call
  *           happened without being able to walk into it. Both parties
  *           broadcast, because a 1:1 has no audience to hide; the inviter is
- *           the call's owner and the only one who can End it.
+ *           the call's owner (and the side that records).
  *
  * The role returned here is derived, never accepted. Nothing a client sends
  * influences whether it gets a broadcaster's credentials.
@@ -76,12 +65,15 @@ import {
  *              the window, a status, or visibility — so it works after End,
  *              after a cancel, past the window, and from `pagehide` (where the
  *              /api/live/leave beacon route runs the same leaveInternal).
- *   End        A webinar's End is `endLive` in the room actions; a 1:1's is
- *              `endCall` below. Both stamp the database and send a
- *              content-free `room-changed` on the room's public stage topic,
- *              and from then on joinRoom and announcePresence refuse the room
- *              with status 'ended' — for everyone, hosts included, until staff
- *              Reopen a webinar. A completed call never reopens.
+ *   End        A webinar's End is `endLive` in the room actions: it stamps
+ *              `live_ended_at` and sends a content-free `room-changed` on the
+ *              room's public stage topic, and from then on joinRoom and
+ *              announcePresence refuse the room with status 'ended' — for
+ *              everyone, hosts included, until staff Reopen it. A 1:1's is
+ *              `endCall` in app/calls/actions.ts, which marks the invite
+ *              completed; each side's room notices on its status poll, and
+ *              this heartbeat answers 'ended' too. A completed call never
+ *              reopens.
  */
 
 export type RoomKind = LiveRoomKind;
@@ -123,21 +115,12 @@ export type JoinResult =
        * one rather than run a host engine on viewer credentials.
        */
       role: SignalRole;
-      /** 1:1 only: is the caller the inviter (the one who may End the call)? */
-      isOwner?: boolean;
     }
   | { ok: false; reason: JoinRefusal };
 
 export type PresenceResult = {
   /** See RoomStatus in lib/live.ts; act on it with nextStatusAction. */
   status: RoomStatus;
-  /**
-   * Webinar staff hosts only: are YOU the one recorder for this room right
-   * now? Recomputed on every heartbeat (see pickRecorder). Always false for
-   * viewers, speakers, calls, events without auto-record, and any status but
-   * 'ok'.
-   */
-  isRecorder: boolean;
 };
 
 /**
@@ -332,9 +315,7 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
     audienceMode: room.audienceMode,
     discloseNames: room.discloseNames,
   });
-  return room.call
-    ? { ok: true, creds, role: room.role, isOwner: room.call.isOwner }
-    : { ok: true, creds, role: room.role };
+  return { ok: true, creds, role: room.role };
 }
 
 /**
@@ -365,16 +346,16 @@ export async function announcePresence(
 ): Promise<PresenceResult> {
   const actor = await requireActor();
   const resolved = await resolveRoom(kind, id);
-  if (!resolved.ok) return { status: resolved.status, isRecorder: false };
+  if (!resolved.ok) return { status: resolved.status };
   const room = resolved.room;
   if (joinedAs === "host" && room.role !== "host") {
-    return { status: "revoked", isRecorder: false };
+    return { status: "revoked" };
   }
 
   // A 1:1 has no lobby and no attendance record: both sides already know each
   // other from the invite row, so there is nobody to announce to. The status
   // is the whole answer.
-  if (!room.event) return { status: "ok", isRecorder: false };
+  if (!room.event) return { status: "ok" };
 
   const name = await displayName(actor.userId);
 
@@ -408,8 +389,7 @@ export async function announcePresence(
 
   // Attendance. Best-effort and deliberately after discovery, so a missing
   // `live_participants` table (0076 not yet run) costs the attendance record
-  // and nothing else. Also BEFORE the recorder pick below, which reads these
-  // rows and must see the caller as present.
+  // and nothing else.
   await touchParticipant({
     eventId: room.event.event.id,
     userId: actor.userId,
@@ -417,83 +397,7 @@ export async function announcePresence(
     displayName: name,
   });
 
-  return { status: "ok", isRecorder: await isRecorderFor(room.event) };
-}
-
-/**
- * Is this caller the room's one recorder right now? See pickRecorder.
- *
- * Only staff hosts in an auto-record webinar are ever asked. The inputs are
- * the present hosts, each marked staff by their own role (presentHostRoles —
- * a staff member who also holds a speaker row is still staff, and so still
- * eligible; it used to be never picked, so an auto-record webinar they ran
- * alone was silently not recorded), and the most recent real segment
- * (stickySegment).
- *
- * When presence cannot be read at all (the attendance table is missing or
- * erroring), the caller records blind only if nobody ELSE has registered a
- * real segment recently (mayRecordBlind): a webinar nobody recorded is not
- * recoverable, but neither is a recorder that a one-heartbeat read error
- * turned into two. And if two recorders do overlap, registration appends on
- * a clash rather than overwriting (saveRecordingSegment) — they interleave,
- * they do not destroy each other's files.
- */
-async function isRecorderFor(access: EventAccess): Promise<boolean> {
-  if (!access.isStaff || !access.event.autoRecord) return false;
-  const eventId = access.event.id;
-  const [hosts, last] = await Promise.all([
-    presentHostRoles(eventId),
-    latestRecordingSegment(eventId),
-  ]);
-  if (hosts === null) {
-    return mayRecordBlind({ userId: access.userId, lastSegment: last });
-  }
-  // The caller is staff (checked above) and present (touched just before
-  // this), whatever a read a moment earlier or the role lookup made of them.
-  const others = hosts.filter((h) => h.userId !== access.userId);
-  const self = hosts.find((h) => h.userId === access.userId);
-  const pick = pickRecorder({
-    presentHosts: [
-      ...others.map((h) => ({ ...h, isSpeaker: !h.isStaff })),
-      {
-        userId: access.userId,
-        joinedAt: self?.joinedAt ?? new Date().toISOString(),
-        isSpeaker: false,
-      },
-    ],
-    lastSegment: last,
-  });
-  return pick === access.userId;
-}
-
-/**
- * The segment the sticky rule keys on: the most recently REGISTERED real one
- * (see stickySegment), from the last few registrations.
- *
- * By registration time, not by index: with overlapping recorders appending at
- * the next free index, the highest index and the newest registration are the
- * same thing in practice, but "who registered most recently" is the question
- * the sticky rule actually asks.
- */
-async function latestRecordingSegment(
-  eventId: string,
-): Promise<{ userId: string | null; at: string | Date } | null> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("event_assets")
-    .select("uploaded_by, created_at, duration_seconds")
-    .eq("event_id", eventId)
-    .eq("kind", "recording")
-    .order("created_at", { ascending: false })
-    .limit(10);
-  if (error || !data) return null;
-  return stickySegment(
-    (data as any[]).map((r) => ({
-      userId: r.uploaded_by ?? null,
-      at: r.created_at,
-      seconds: r.duration_seconds ?? null,
-    })),
-  );
+  return { status: "ok" };
 }
 
 /**
@@ -544,80 +448,4 @@ export async function listAudience(
     resolved.room.discloseNames,
   );
   return peers.filter((p) => p.peerId !== actor.userId);
-}
-
-// ---------------------------------------------------------------------------
-// 1:1 — End call
-// ---------------------------------------------------------------------------
-
-const CALL_PATHS = [
-  "/dashboard/calls",
-  "/mentor/calls",
-  "/investor/calls",
-  "/admin/calls",
-];
-
-/**
- * End a 1:1 for both people. The call's OWNER (the inviter) only.
- *
- * Marks the invite `completed` — a status migration 0059 always allowed and
- * nothing ever wrote — conditional on it still being `accepted`, so a double
- * click, two tabs, or a race with a cancel converge on one outcome. Idempotent:
- * ending a call that is already completed succeeds quietly.
- *
- * Then the content-free `room-changed` on the call's stage topic, which both
- * clients answer by re-asking announcePresence, getting 'ended', and showing
- * "The call has ended" with no Rejoin. joinRoom refuses the call from then on.
- *
- * The invitee cannot end the call for the owner — their Leave is enough to
- * get out at any time — and the owner can never pull the invitee back in.
- * An admin in a call is always its owner (invitees are always students), so
- * "admin is always host" holds without a special case.
- */
-export async function endCall(inviteId: string): Promise<void> {
-  const access = await resolveCallAccess(inviteId);
-  if (!access.ok) {
-    throw new Error(
-      access.reason === "error"
-        ? "Couldn't reach the server — try again."
-        : "That call isn't yours to end.",
-    );
-  }
-  if (!access.isOwner) {
-    throw new Error("Only the person who booked the call can end it.");
-  }
-  if (access.status === "completed") return;
-  if (access.status !== "accepted") {
-    throw new Error("This call isn't running.");
-  }
-
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("call_invites")
-    .update({ status: "completed" })
-    .eq("id", access.inviteId)
-    .eq("status", "accepted")
-    .select("id")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-
-  if (!data) {
-    // Lost a race. Fine if the other writer also completed it; not fine if it
-    // was cancelled underneath us — say so rather than pretend.
-    const { data: now } = await admin
-      .from("call_invites")
-      .select("status")
-      .eq("id", access.inviteId)
-      .maybeSingle();
-    if ((now as any)?.status === "completed") return;
-    throw new Error("This call isn't running.");
-  }
-
-  await logAudit({
-    action: "call_invite.completed",
-    targetType: "call_invite",
-    targetId: access.inviteId,
-  });
-  await notifyStage(access.roomId, { t: "room-changed" });
-  for (const p of CALL_PATHS) revalidatePath(p);
 }

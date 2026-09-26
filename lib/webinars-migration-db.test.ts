@@ -392,6 +392,43 @@ test("the vote trigger recounts rather than steps, so it cannot drift", async ()
   }
 });
 
+test("ON CONFLICT (event_id, sort_order) cannot target the partial segment index", async () => {
+  // Why registerWebinarAsset reads and then inserts instead of upserting.
+  // The unique index behind recording segments is PARTIAL (`where kind =
+  // 'recording'`), and Postgres will only infer a partial index as an
+  // ON CONFLICT arbiter when the statement repeats its predicate. PostgREST's
+  // `onConflict: "event_id,sort_order"` cannot, so every segment the recorder
+  // ever uploaded failed to register with 42P10 — and nothing noticed, because
+  // the recorder had also never started.
+  const db = await setup();
+  try {
+    await db.exec(migration);
+    await assert.rejects(
+      () =>
+        db.query(
+          `insert into public.event_assets(event_id,kind,storage_path,filename,sort_order)
+           values ($1,'recording','p/0.webm','0.webm',0)
+           on conflict (event_id, sort_order) do update set storage_path = excluded.storage_path`,
+          [EVENT],
+        ),
+      /no unique or exclusion constraint matching the ON CONFLICT specification/,
+    );
+    // A plain insert is what the action does, and it lands.
+    await db.query(
+      `insert into public.event_assets(event_id,kind,storage_path,filename,sort_order)
+       values ($1,'recording','p/0.webm','0.webm',0)`,
+      [EVENT],
+    );
+    const { rows } = await db.query<{ n: number }>(
+      `select count(*)::int as n from public.event_assets where event_id = $1`,
+      [EVENT],
+    );
+    assert.equal(rows[0].n, 1);
+  } finally {
+    await db.close();
+  }
+});
+
 test("a recording segment index is unique, so a retried upload replaces rather than duplicates", async () => {
   const db = await setup();
   try {

@@ -14,7 +14,7 @@ import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { canBypassClosedApplications, hasFounderPass } from "@/lib/founder-pass";
 import { autoAdmitOnSubmit } from "@/lib/admissions";
-import { planReapply, selectCohortId } from "@/lib/reapply";
+import { planReapply, resolveApplicationCohort } from "@/lib/reapply";
 import { isValidPhone, PHONE_MAX_LENGTH } from "@/lib/phone";
 import { getApplicationForm } from "@/lib/application-questions";
 import { buildQuestionMap, requiredBuiltinErrors } from "@/lib/apply-flow";
@@ -32,6 +32,8 @@ import {
   getDiscordSettings,
 } from "@/lib/discord";
 import { env } from "@/lib/env";
+import { attachCampaignAttribution } from "@/lib/campaign-attribution-server";
+import { getUser as getVerifiedTokenUser } from "@/lib/auth";
 
 // Optional URL: empty string allowed, otherwise must be a valid URL
 const optionalUrl = z
@@ -177,12 +179,64 @@ function checkDraftable(
 type ActionResult = {
   ok: boolean;
   error?: string;
+  /**
+   * Why a save didn't happen, for the form to act on:
+   *   signed_out        the session is gone — sign in again; retrying won't help
+   *   auth_unavailable  couldn't confirm who you are right now — retry
+   *   rate_limited      too many saves in a minute — retry shortly
+   */
+  code?: "signed_out" | "auth_unavailable" | "rate_limited";
   fieldErrors?: Record<string, string>;
   applicationId?: string;
   savedAt?: string;
   /** Set on submit when a virtual founder pass admitted them outright. */
   autoAdmitted?: boolean;
 };
+
+type SessionUser = { id: string; email?: string | null };
+
+/**
+ * Who is saving.
+ *
+ * getUser() — a round trip to Supabase Auth — stays the authority, as it is
+ * for every mutation (lib/server-guards.ts explains why): a deleted or
+ * signed-out account must stop writing immediately, and a 401/403 from Auth
+ * is exactly that. What this adds is what a FAILED check means. Before, any
+ * failure — Auth slow, a 5xx, a network blip — returned "Not signed in", the
+ * form showed "Couldn't save" on a loop, and nothing was logged anywhere.
+ *
+ *   - Auth rejects the session (401/403, or no session at all) → signed_out.
+ *   - Auth errors any other way → retried once, then, for a DRAFT only, the
+ *     session's locally verified token (lib/auth getUser, getClaims — what
+ *     every page already trusts). A draft is the applicant's own row and RLS
+ *     still checks their token on the write, and a deleted account never gets
+ *     here: Auth answers it with a 403 above, not an outage. Submit has no
+ *     fallback — it waits for a real answer.
+ */
+async function resolveSessionUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  allowVerifiedToken: boolean,
+): Promise<{ user: SessionUser } | { code: "signed_out" | "auth_unavailable" }> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const { data, error } = await supabase.auth.getUser();
+    if (data.user) return { user: data.user };
+    const status = (error as { status?: number } | null)?.status;
+    const name = error?.name ?? "";
+    if (status === 401 || status === 403 || name === "AuthSessionMissingError") {
+      console.warn("[apply] save refused: session rejected by auth", status ?? name);
+      return { code: "signed_out" };
+    }
+    console.warn(`[apply] auth check failed (attempt ${attempt})`, status ?? "(no status)", name, error?.message);
+  }
+  if (allowVerifiedToken) {
+    const tokenUser = await getVerifiedTokenUser();
+    if (tokenUser) {
+      console.warn("[apply] auth unreachable; saving draft on the verified token");
+      return { user: tokenUser };
+    }
+  }
+  return { code: "auth_unavailable" };
+}
 
 /** The admin-pinned active cohort, or null. Not validated as open here — the
  *  caller only ever looks it up inside a list that already is. */
@@ -204,8 +258,34 @@ async function upsertApplication(
   submit: boolean,
 ): Promise<ActionResult> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in" };
+  const session = await resolveSessionUser(supabase, !submit);
+  if ("code" in session) {
+    return {
+      ok: false,
+      code: session.code,
+      error:
+        session.code === "signed_out"
+          ? "You've been signed out. Sign in again to keep saving."
+          : "We couldn't confirm you're signed in just now. Trying again…",
+    };
+  }
+  const user = session.user;
+
+  // Throttle draft saves — without this, a runaway autosave loop or a bot
+  // hammering the form burns DB writes and audit rows. 30/min per user covers
+  // normal typing comfortably (the form saves after a pause, not per key).
+  if (!submit) {
+    const rl = await checkRateLimit({
+      kind: "apply-draft",
+      identifier: user.id,
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!rl.ok) {
+      console.warn("[apply] draft save rate-limited", rl.count);
+      return { ok: false, code: "rate_limited", error: "Saving paused for a moment — too many edits in a row." };
+    }
+  }
 
   const raw = Object.fromEntries(formData.entries());
   const schema = submit ? SubmitSchema : DraftSchema;
@@ -372,15 +452,13 @@ async function upsertApplication(
   const requested = typeof data.cohort_id === "string" ? data.cohort_id : "";
   const draftCohortId =
     existing?.status === "draft" ? (existing as any).cohort_id ?? null : null;
-  const cohortId = selectCohortId(plan.allowed, [
-    requested,
-    draftCohortId,
-    pinnedId,
-  ]);
-
-  if (submit && requested && cohortId !== requested) {
-    return { ok: false, error: "That cohort is no longer open for applications. Please select an available cohort." };
+  const selection = resolveApplicationCohort(plan.allowed, requested, draftCohortId, pinnedId);
+  if (selection.unavailableCohortId && (submit || requested !== draftCohortId)) {
+    return { ok: false, error: "That cohort is no longer open for applications. Your draft has not been moved. Please select an available cohort." };
   }
+  // A form already open at midnight may autosave its answers, but cannot
+  // submit to the closed intake or silently move the draft to the next one.
+  const cohortId = selection.unavailableCohortId ? draftCohortId : selection.cohortId;
 
   // A submit with nowhere to go must fail loudly rather than quietly attaching
   // itself to whatever cohort happened to sort first. Drafts are let through
@@ -456,7 +534,10 @@ async function upsertApplication(
       .from("applications")
       .update(payload)
       .eq("id", existing!.id);
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[apply] application update failed", submit ? "submit" : "draft", error.code, error.message);
+      return { ok: false, error: error.message };
+    }
     applicationId = existing!.id;
   } else {
     const { data: created, error } = await supabase
@@ -464,16 +545,24 @@ async function upsertApplication(
       .insert(payload)
       .select("id")
       .single();
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[apply] application insert failed", submit ? "submit" : "draft", error.code, error.message);
+      return { ok: false, error: error.message };
+    }
     applicationId = created!.id;
   }
+
+  await attachCampaignAttribution(applicationId);
 
   const pricingCountry = getCountryFromHeaders(await headers());
   if (pricingCountry) {
     const { error: pricingError } = await createAdminClient().from("applications")
       .update({ pricing_country: pricingCountry }).eq("id", applicationId)
       .is("pricing_country", null);
-    if (pricingError) return { ok: false, error: "We could not save your tuition region. Please try again." };
+    if (pricingError) {
+      console.error("[apply] pricing_country write failed", pricingError.code, pricingError.message);
+      return { ok: false, error: "We could not save your tuition region. Please try again." };
+    }
   }
 
   // The auto-admit perk: a virtual founder pass turns "submitted" into
@@ -492,7 +581,10 @@ async function upsertApplication(
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/accepted");
   revalidatePath("/dashboard/application");
-  revalidatePath("/apply");
+  // Not on a draft save: revalidating the page the action was called from
+  // re-renders all of /apply server-side and ships it back with every
+  // autosave, for a client that already holds every answer.
+  if (submit) revalidatePath("/apply");
 
   // Send "we got it" email + notify admins on first submission.
   if (submit) {
@@ -617,28 +709,11 @@ export async function saveDraftAction(
   _: ActionResult | null,
   formData: FormData,
 ) {
-  // Throttle draft saves — without this, a runaway autosave loop or a
-  // bot hammering the form burns DB writes + audit log + revalidation.
-  // 30/min per user covers normal typing comfortably.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) {
-    const rl = await checkRateLimit({
-      kind: "apply-draft",
-      identifier: user.id,
-      limit: 30,
-      windowSeconds: 60,
-    });
-    if (!rl.ok) {
-      return {
-        ok: false,
-        errors: { _form: "Too many edits in a row — wait a moment." },
-      } as ActionResult;
-    }
-  }
-  return upsertApplication(formData, false);
+  // Auth and the rate limit both live in upsertApplication now, so a save
+  // costs one round trip to Supabase Auth instead of two.
+  const result = await upsertApplication(formData, false);
+  if (!result.ok && !result.code) console.warn("[apply] draft save refused:", result.error);
+  return result;
 }
 
 export async function submitApplicationAction(
@@ -703,6 +778,7 @@ export async function attachReferralCodeAction(code: string) {
       .update({ referral_code: trimmed })
       .eq("id", existing.id);
     if (error) return { ok: false, error: error.message };
+    await attachCampaignAttribution(existing.id);
     return { ok: true };
   }
 
@@ -710,12 +786,13 @@ export async function attachReferralCodeAction(code: string) {
   // remember it. No cohort: this row is created on page load, before the
   // applicant has chosen one, and /apply reads a draft's cohort back as their
   // choice. It is attached on the first real save.
-  const { error } = await supabase.from("applications").insert({
+  const { data: created, error } = await supabase.from("applications").insert({
     user_id: user.id,
     cohort_id: null,
     status: "draft",
     referral_code: trimmed,
-  });
+  }).select("id").single();
   if (error) return { ok: false, error: error.message };
+  await attachCampaignAttribution(created!.id);
   return { ok: true };
 }

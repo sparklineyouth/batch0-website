@@ -194,6 +194,13 @@ export type CallInvite = {
   durationMinutes: number;
   topic: string | null;
   status: CallInviteStatus;
+  /**
+   * When the row last changed (call_invites.updated_at, kept by the
+   * touch_call_invites trigger). For a cancelled call that is when it was
+   * cancelled — which is what tells a call cancelled mid-room, with recording
+   * segments, from one cancelled days ahead (mayHaveCallRecording).
+   */
+  updatedAt?: string;
 } & LiveRoom;
 
 // ---------------------------------------------------------------------------
@@ -517,49 +524,6 @@ export function eventLiveStatus(
 }
 
 /**
- * Where a 1:1 stands, for the cards and for every server gate.
- *
- *   invited    Sent, not answered.
- *   upcoming   Accepted, before the join window opens.
- *   joinable   Accepted, inside the window — the only phase with a Join.
- *   completed  Someone pressed End call, OR the call was accepted and its
- *              window has closed. The second half is derived: the database
- *              status stays 'accepted' until someone presses End, but a call
- *              whose time is over is over everywhere — Past, no Join, no Add
- *              to calendar, no Cancel (and so no credit refund for a call that
- *              already happened).
- *   cancelled / declined  As stored.
- */
-export type CallPhase =
-  | "invited"
-  | "upcoming"
-  | "joinable"
-  | "completed"
-  | "cancelled"
-  | "declined";
-
-export function callPhase(
-  invite: Pick<CallInvite, "status" | "startsAt" | "durationMinutes">,
-  now: Date = new Date(),
-): CallPhase {
-  switch (invite.status) {
-    case "completed":
-    case "cancelled":
-    case "declined":
-      return invite.status;
-    case "invited":
-      return "invited";
-    case "accepted":
-    default: {
-      const state = joinState(invite.startsAt, inviteEndsAt(invite), now);
-      if (state === "early") return "upcoming";
-      if (state === "ended") return "completed";
-      return "joinable";
-    }
-  }
-}
-
-/**
  * "in 3 minutes" / "2 hours ago" — a coarse relative label for join buttons
  * and countdowns.
  *
@@ -585,39 +549,4 @@ export function relativeTime(
     }
   }
   return rtf.format(Math.round(diffMs / 1000), "second");
-}
-
-/**
- * An event time for anything rendered on the SERVER — emails above all — with
- * the zone written out: "Sun, Sep 27, 2026, 6:00 PM EDT".
- *
- * `toLocaleString()` on the server formats in the server's zone, which on
- * Vercel is UTC, and prints no zone at all. The guest-speaker invite did that,
- * so a speaker in New York invited to an 18:00 EDT webinar read "9/27/2026,
- * 10:00:00 PM" — four hours out, with nothing to say so — and the event
- * reminder had the same bug. The program runs on Eastern time (the demo-day
- * tickets and the promo deadlines already say so), so emails name it: pinned
- * to America/New_York rather than "the server's locale", and labelled EDT/EST
- * so a reader elsewhere can convert. Pages that render in the browser keep
- * using LocalTime, which shows each reader their own zone.
- *
- * Deterministic for a given instant (it never reads the machine's zone), so
- * it is safe in a test. The narrow no-break space newer ICU puts before
- * "PM" is normalised to a plain one, which every mail client renders.
- */
-export function formatEventTime(value: string | Date): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  })
-    .format(d)
-    .replace(/[  ]/g, " ");
 }

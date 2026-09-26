@@ -34,9 +34,12 @@ const LINKS = [
 export default function Navbar({
   cohortLabel = "the next cohort",
   applicationLabel,
+  applyHref = "/home",
 }: {
   cohortLabel?: string;
   applicationLabel?: string;
+  /** Optional cohort-specific destination for signed-out applicants. */
+  applyHref?: string;
 }) {
   const [open, setOpen] = useState(false);
   const isAuthed = useIsAuthed();
@@ -55,7 +58,6 @@ export default function Navbar({
 
   // Constant on the server AND for the signed-out majority; /home sorts out
   // where a signed-in visitor actually belongs.
-  const applyHref = "/home";
   const applyLabel = applicationLabel ?? `Apply for ${cohortLabel}`;
 
   return (
@@ -95,17 +97,23 @@ export default function Navbar({
             Log in
           </Link>
           <Link
-            href={applyHref}
+            href="/home"
             // /home is force-dynamic and resolved in middleware — prefetching
             // it fires the redirect chain for real, on every marketing page
             // view, and `staleTimes.dynamic = 0` throws the result away
             // immediately. Same reasoning as components/dashboard/sidebar.tsx.
             prefetch={false}
             onClick={() => !isAuthed && track("apply_click", { location: "navbar" })}
-            className="press rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className={`${applyHref !== "/home" ? "when-authed " : ""}press rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper`}
           >
             <AuthLabel signedOut={applyLabel} />
           </Link>
+          {applyHref !== "/home" && <Link
+            href={applyHref}
+            prefetch={false}
+            onClick={() => track("apply_click", { location: "navbar" })}
+            className="when-anon press rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          >{applyLabel}</Link>}
         </div>
 
         <div className="flex items-center gap-1.5 md:hidden">
@@ -154,7 +162,7 @@ export default function Navbar({
             ))}
             <div className="flex flex-col gap-2 pt-3">
               <Link
-                href={applyHref}
+                href={isAuthed ? "/home" : applyHref}
                 prefetch={false}
                 onClick={() => {
                   setOpen(false);

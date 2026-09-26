@@ -9,13 +9,16 @@ import {
   mapScholarship,
   mapScholarshipApplication,
   listApplicationsForUser,
+  endedCohortIdsAmong,
   describeAward,
   formatMoney,
 } from "@/lib/scholarships";
 import {
   awardRefundCents,
   awardDiscountCents,
+  countsAgainstCohort,
   hasMoney,
+  LIVE_SCHOLARSHIP_STATUSES,
   perkSummaries,
   SCHOLARSHIP_KIND_LABELS,
 } from "@/lib/scholarship-award";
@@ -69,13 +72,22 @@ export default async function ScholarshipApplicationPage(props: {
   const hasPaid = paidCents > 0;
 
   // The other scholarships this student has touched — the one-at-a-time rule
-  // is re-checked at award time, so a reviewer should see it coming.
+  // is re-checked at award time, so a reviewer should see it coming. Counted
+  // the way awardScholarship counts them (countsAgainstCohort): a row from a
+  // cohort that is over no longer blocks, so it isn't warned about.
   const otherApps = (await listApplicationsForUser(admin, app.userId)).filter(
     (a) => a.id !== app.id,
   );
+  const endedCohortIds = await endedCohortIdsAmong(
+    admin,
+    otherApps,
+    app.cohortId,
+    new Date(),
+  );
   const otherLive = otherApps.filter(
     (a) =>
-      a.status === "awarded" || a.status === "submitted" || a.status === "under_review",
+      LIVE_SCHOLARSHIP_STATUSES.includes(a.status) &&
+      countsAgainstCohort(a, app.cohortId, endedCohortIds),
   );
 
   // The figure the reviewer is about to commit to, computed the same way the
@@ -197,8 +209,8 @@ export default async function ScholarshipApplicationPage(props: {
               <>
                 {" "}
                 — <strong>including one already awarded</strong>. Students hold
-                one at a time, so awarding this will be refused until that one
-                is revoked.
+                one at a time until that award&apos;s cohort is over, so
+                awarding this will be refused until that one is revoked.
               </>
             )}
             .

@@ -17,6 +17,19 @@ export type CohortEligibility = {
   deadline: string | null;
 };
 
+/** Select admissions independently from existing students' cohort membership.
+ * A stale admin pin cannot keep a closed cohort as the public default. */
+export function selectAdmissionCohort<C extends AdmissionCohort & { id: string }>(
+  cohorts: C[],
+  pinnedId: string | null = null,
+  now = new Date(),
+  occupied: (cohort: C) => number | undefined = () => undefined,
+): C | null {
+  const available = cohorts.filter(cohort => cohortEligibility(cohort, now, occupied(cohort)).eligible)
+    .sort((a, b) => (a.starts_on ?? "9999-12-31").localeCompare(b.starts_on ?? "9999-12-31"));
+  return available.find(cohort => cohort.id === pinnedId) ?? available[0] ?? null;
+}
+
 export function cohortEligibility(
   cohort: AdmissionCohort,
   now = new Date(),
@@ -49,7 +62,7 @@ const nyCalendar = new Intl.DateTimeFormat("en-US", {
 });
 
 /**
- * The instant 23:59:59 in New York on a calendar date. Late entry is
+ * The final millisecond of the day in New York on a calendar date. Late entry is
  * advertised as running "through <date>", so the stored deadline has to be
  * the end of that Eastern day: storing the admin's date as UTC midnight
  * would expire the window most of a day early for an Eastern audience.
@@ -70,7 +83,7 @@ export function easternEndOfDay(date: string): string | null {
     if (correction === 0) break;
     instant += correction;
   }
-  return new Date(instant).toISOString();
+  return new Date(instant + 999).toISOString();
 }
 
 /** The New York calendar date an instant falls on — the inverse of

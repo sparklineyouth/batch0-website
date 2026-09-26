@@ -10,6 +10,7 @@ import { stripe } from "@/lib/stripe";
 import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { env } from "@/lib/env";
 import { kickFromGuild, removeRoleFromMember, getDiscordSettings } from "@/lib/discord";
+import type { ActionResult } from "@/lib/action-result";
 
 async function fetchTargetProfile(userId: string) {
   const admin = createAdminClient();
@@ -126,12 +127,24 @@ export async function removeFromProgram(userId: string, reason: string) {
 }
 
 /**
- * Move a student to a different cohort. Updates their latest active
- * application + replaces the enrollment row.
+ * Scholarship rows that move with a student: every one not yet finished with.
+ * Declined and withdrawn rows stay on the cohort they were decided in, since
+ * they're a record of what happened there.
  */
-export async function moveToCohort(userId: string, cohortId: string) {
+const MOVABLE_SCHOLARSHIP_STATUSES = ["draft", "submitted", "under_review", "awarded"];
+
+/**
+ * Move a student to a different cohort. Updates their latest active
+ * application, restamps their live scholarship rows, and replaces the
+ * enrollment row.
+ *
+ * Returns a result rather than throwing for the refusals an admin has to act
+ * on, because a thrown message is replaced with a generic one in production
+ * builds (lib/action-result.ts).
+ */
+export async function moveToCohort(userId: string, cohortId: string): Promise<ActionResult> {
   const { userId: actorId } = await assertPermission("people.manage");
-  if (!cohortId) throw new Error("Pick a cohort");
+  if (!cohortId) return { ok: false, error: "Pick a cohort." };
   const target = await fetchTargetProfile(userId);
 
   const admin = createAdminClient();
@@ -140,7 +153,7 @@ export async function moveToCohort(userId: string, cohortId: string) {
     .select("id, name")
     .eq("id", cohortId)
     .maybeSingle();
-  if (!cohort) throw new Error("Cohort not found");
+  if (!cohort) return { ok: false, error: "That cohort doesn't exist." };
 
   const { data: app } = await admin
     .from("applications")
@@ -150,11 +163,81 @@ export async function moveToCohort(userId: string, cohortId: string) {
     .limit(1)
     .maybeSingle();
 
+  // Their scholarship rows move with them, BEFORE anything else changes, so a
+  // refusal here leaves the student exactly where they were.
+  //
+  // A scholarship follows the dates of the cohort on its row: the call window,
+  // the one-at-a-time rule, seat counts, the checkout discount lookup and the
+  // guest tickets' Demo Day all read scholarship_applications.cohort_id. Left
+  // on the old cohort, a deferred student's award would lock their mentor
+  // calls when the old cohort ended, although they're enrolled in the new one
+  // with calls unused, and would stop blocking a second award in the new one.
+  // Only rows on the cohort the application is leaving move. A returning
+  // student's award from an earlier cohort belongs to that cohort.
+  const fromCohortId: string | null = app?.cohort_id ?? null;
+  let movedScholarshipIds: string[] = [];
+  if (fromCohortId && fromCohortId !== cohortId) {
+    // The partial unique index (user_id, cohort_id) WHERE status='awarded'
+    // (0071) allows one award per student per cohort, so an award can't move
+    // into a cohort where they already hold one. Checked up front to say so
+    // plainly; the index still catches a race below.
+    const { data: awards, error: awardsErr } = await admin
+      .from("scholarship_applications")
+      .select("cohort_id")
+      .eq("user_id", userId)
+      .eq("status", "awarded")
+      .in("cohort_id", [fromCohortId, cohortId]);
+    if (awardsErr) {
+      return {
+        ok: false,
+        error: `Couldn't check their scholarships before moving them: ${awardsErr.message}`,
+      };
+    }
+    const heldIn = new Set(((awards ?? []) as Array<{ cohort_id: string }>).map((a) => a.cohort_id));
+    if (heldIn.has(fromCohortId) && heldIn.has(cohortId)) {
+      return {
+        ok: false,
+        error: `They hold a scholarship award in their current cohort and another in ${cohort.name}, and a student holds one award per cohort. Revoke one of the two awards, then move them.`,
+      };
+    }
+
+    const { data: moved, error: moveErr } = await admin
+      .from("scholarship_applications")
+      .update({ cohort_id: cohortId })
+      .eq("user_id", userId)
+      .eq("cohort_id", fromCohortId)
+      .in("status", MOVABLE_SCHOLARSHIP_STATUSES)
+      .select("id");
+    if (moveErr) {
+      return {
+        ok: false,
+        error: /duplicate key|unique constraint/i.test(moveErr.message)
+          ? `They already hold a scholarship award in ${cohort.name}, and a student holds one award per cohort. Revoke one of the two awards, then move them.`
+          : `Couldn't move their scholarship applications to ${cohort.name}, so nothing was moved: ${moveErr.message}`,
+      };
+    }
+    movedScholarshipIds = ((moved ?? []) as Array<{ id: string }>).map((r) => r.id);
+  }
+
   if (app) {
-    await admin
+    const { error: appErr } = await admin
       .from("applications")
       .update({ cohort_id: cohortId })
       .eq("id", app.id);
+    if (appErr) {
+      // Put the scholarship rows back so they still agree with the
+      // application, which stayed where it was.
+      if (movedScholarshipIds.length > 0) {
+        const { error: undoErr } = await admin
+          .from("scholarship_applications")
+          .update({ cohort_id: fromCohortId })
+          .in("id", movedScholarshipIds);
+        if (undoErr) {
+          console.error("[moveToCohort] scholarship restamp undo failed:", undoErr.message);
+        }
+      }
+      return { ok: false, error: `Couldn't move their application: ${appErr.message}` };
+    }
   }
 
   // Drop existing enrollments (any cohort) and recreate against the
@@ -176,6 +259,9 @@ export async function moveToCohort(userId: string, cohortId: string) {
       email: target.email,
       from_cohort_id: app?.cohort_id ?? null,
       to_cohort_id: cohortId,
+      // The cohort the scholarship rows were restamped from, and which ones.
+      from_scholarship_cohort: movedScholarshipIds.length > 0 ? fromCohortId : null,
+      scholarship_application_ids: movedScholarshipIds,
       actor_id: actorId,
     },
   });
@@ -191,6 +277,8 @@ export async function moveToCohort(userId: string, cohortId: string) {
   revalidatePath(`/admin/students/${userId}`);
   revalidatePath("/admin/students");
   revalidatePath("/admin/applications");
+  if (movedScholarshipIds.length > 0) revalidatePath("/admin/scholarships/applications");
+  return { ok: true };
 }
 
 /**

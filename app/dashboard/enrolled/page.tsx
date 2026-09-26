@@ -9,6 +9,7 @@ import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { getInterviewRequestForStudent } from "@/lib/interview-requests";
 import { InterviewRequestCard } from "@/components/interview-request-card";
+import { interviewCardState, interviewStage } from "@/lib/call-lifecycle";
 import {
   ArrowRight,
   CalendarDays,
@@ -74,8 +75,12 @@ export default async function EnrolledPage(
   // A getting-to-know-you interview happens before kickoff, so it belongs on
   // this page — the first thing a student sees after paying — but only while
   // the cohort hasn't started. Any request already in flight keeps showing.
+  // "In flight" is read through the call it booked — see interviewStage.
   const interviewRequest = await getInterviewRequestForStudent(user.id);
-  const showInterviewRequest = !started || interviewRequest != null;
+  const interviewState = interviewCardState(
+    interviewStage(interviewRequest),
+    !started,
+  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -150,12 +155,15 @@ export default async function EnrolledPage(
         </div>
       </section>
 
-      {showInterviewRequest && (
+      {interviewState !== "hidden" && (
         <section className="mt-10">
           <h2 className="mb-4 text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
             Meet the team
           </h2>
-          <InterviewRequestCard request={interviewRequest} />
+          <InterviewRequestCard
+            request={interviewRequest}
+            state={interviewState}
+          />
         </section>
       )}
 

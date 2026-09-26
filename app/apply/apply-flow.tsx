@@ -54,6 +54,7 @@ import {
   postableForm,
   promptFor,
   resumeIndex,
+  restoreDraftCohort,
   screenFieldNames,
   screenHasAnswer,
   validateAll,
@@ -111,6 +112,7 @@ type SaveStatus =
 type Direction = "forward" | "back";
 
 const COARSE_POINTER = "(pointer: coarse)";
+const BACKUP_PREFIX = "batch0:apply-backup:";
 const ADVANCE_DELAY_MS = 320;
 const AUTOSAVE_DELAY_MS = 1200;
 
@@ -174,6 +176,7 @@ export function ApplyFlow({
   scholarshipQuestions,
   cohorts,
   initialCohortId,
+  explicitCohortId = null,
   notices,
   blockedCohortNames,
   parentGuideHref,
@@ -192,6 +195,8 @@ export function ApplyFlow({
   cohorts: CohortOption[];
   /** Preselected cohort; null = several open and none chosen yet. */
   initialCohortId: string | null;
+  /** An eligible cohort from this visit's URL wins over older device backups. */
+  explicitCohortId?: string | null;
   /** Server-decided banners for the welcome screen (reapply, founder pass). */
   notices: { tone: "accent" | "neutral"; title: string; body: string }[];
   /** Open cohorts they can't pick because they've had a decision there. */
@@ -202,7 +207,8 @@ export function ApplyFlow({
 }) {
   const router = useRouter();
   const cfg = useMemo<QuestionMap>(() => buildQuestionMap(questions), [questions]);
-  const chooseCohort = cohorts.length > 1;
+  const [recoveredClosedCohort, setRecoveredClosedCohort] = useState(false);
+  const chooseCohort = cohorts.length > 1 || recoveredClosedCohort;
   const cohortIds = useMemo(() => cohorts.map((c) => c.id), [cohorts]);
 
   const [form, setForm] = useState<FormState>(() => initialForm(defaults, suggestedName));
@@ -219,6 +225,9 @@ export function ApplyFlow({
   const formRef = useRef(form);
   const extraRef = useRef(extra);
   const cohortRef = useRef(cohortId);
+  // Preserve a closed device-only draft's original intake across refreshes
+  // until the student deliberately chooses an open one.
+  const unavailableBackupCohortRef = useRef<string | null>(null);
   // Set by every real edit (below), so "Save & exit" writes only when there
   // is something to save — an unedited visit must not insert a blank draft,
   // which for a declined applicant would bury their decision on the dashboard.
@@ -259,6 +268,10 @@ export function ApplyFlow({
   const [submitPending, startSubmit] = useTransition();
   const [exiting, setExiting] = useState(false);
   const [exitFailed, setExitFailed] = useState(false);
+  // The session is gone (Auth said so): saving can't succeed until they sign
+  // in again, so say that instead of "retrying" forever.
+  const [signedOut, setSignedOut] = useState(false);
+  const [restored, setRestored] = useState(false);
 
   const found = screens.findIndex((s) => s.id === currentId);
   const index = Math.max(0, found);
@@ -350,6 +363,7 @@ export function ApplyFlow({
   function pickCohort(id: string) {
     if (cohortRef.current !== id) dirtyRef.current = true;
     cohortRef.current = id;
+    unavailableBackupCohortRef.current = null;
     setCohortId(id);
     clearServerError(["cohort_id"]);
   }
@@ -602,6 +616,11 @@ export function ApplyFlow({
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const skipFirstSave = useRef(true);
 
+  // Failed saves retry on their own, backing off — before, "retrying" only
+  // happened on the next keystroke, so the last thing typed was never retried.
+  const retryRef = useRef<{ timer: number | null; attempt: number }>({ timer: null, attempt: 0 });
+  const backupKey = `${BACKUP_PREFIX}${email}`;
+
   /** Save now if anything changed. Resolves true when nothing is left unsaved. */
   const saveNow = useCallback(async (): Promise<boolean> => {
     if (submittingRef.current) return true;
@@ -609,35 +628,153 @@ export function ApplyFlow({
     // before deciding whether there's anything left to write.
     if (inFlightRef.current) await inFlightRef.current;
     if (!dirtyRef.current) return true;
+    if (!cohortRef.current) {
+      setSave({ kind: "error", message: "Choose a cohort to save" });
+      return false;
+    }
     dirtyRef.current = false;
+    if (retryRef.current.timer !== null) {
+      window.clearTimeout(retryRef.current.timer);
+      retryRef.current.timer = null;
+    }
     setSave({ kind: "saving" });
     if (preview) {
       await new Promise((r) => window.setTimeout(r, 300));
       setSave({ kind: "saved" });
       return true;
     }
+    const retryIn = (ms: number) => {
+      retryRef.current.attempt += 1;
+      retryRef.current.timer = window.setTimeout(() => {
+        retryRef.current.timer = null;
+        void saveNow();
+      }, ms);
+    };
+    const backoff = () => Math.min(30_000, 3_000 * 2 ** retryRef.current.attempt);
     const run = saveDraftAction(null, payload())
       .then((result) => {
         if (result.ok) {
+          retryRef.current.attempt = 0;
           setSave({ kind: "saved" });
           setExitFailed(false);
+          setSignedOut(false);
+          setRestored(false);
+          // Everything on this device is now on the server too.
+          if (!dirtyRef.current) {
+            try {
+              window.localStorage.removeItem(backupKey);
+            } catch {}
+          }
           return true;
         }
-        // Keep it dirty so the next tick retries instead of dropping it.
+        // Keep it dirty so nothing typed is dropped.
         dirtyRef.current = true;
-        setSave({ kind: "error", message: "Couldn't save — retrying" });
+        if (result.code === "signed_out") {
+          setSignedOut(true);
+          setSave({ kind: "error", message: "Signed out — not saving" });
+        } else if (result.code === "rate_limited") {
+          setSave({ kind: "error", message: "Saving paused — retrying" });
+          retryIn(15_000);
+        } else {
+          setSave({ kind: "error", message: "Couldn't save — retrying" });
+          retryIn(backoff());
+        }
         return false;
       })
       .catch(() => {
         dirtyRef.current = true;
         setSave({ kind: "error", message: "Offline — will retry" });
+        retryIn(backoff());
         return false;
       });
     inFlightRef.current = run;
     const ok = await run;
     if (inFlightRef.current === run) inFlightRef.current = null;
     return ok;
+    // payload/backupKey read refs and a per-session constant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview]);
+
+  useEffect(
+    () => () => {
+      if (retryRef.current.timer !== null) window.clearTimeout(retryRef.current.timer);
+    },
+    [],
+  );
+
+  // A copy of the answers on this device, written on every edit and cleared
+  // once the server has them. If saving fails and the tab closes, the next
+  // visit restores them instead of losing them — unless the server already
+  // holds something newer.
+  useEffect(() => {
+    if (preview || mode === "reapply") return;
+    try {
+      const stored = window.localStorage.getItem(backupKey);
+      if (!stored) return;
+      const backup = JSON.parse(stored) as {
+        at: number;
+        form: Partial<FormState>;
+        extra: AnswerState;
+        cohortId: string | null;
+      };
+      const serverAt = defaults?.updated_at ? Date.parse(defaults.updated_at) : 0;
+      if (!backup?.at || backup.at <= serverAt) {
+        window.localStorage.removeItem(backupKey);
+        return;
+      }
+      const nextForm = { ...formRef.current };
+      for (const key of FORM_KEYS) {
+        const v = backup.form?.[key];
+        if (typeof v === "string") nextForm[key] = v;
+      }
+      formRef.current = nextForm;
+      setForm(nextForm);
+      const nextExtra = { ...extraRef.current, ...(backup.extra ?? {}) };
+      extraRef.current = nextExtra;
+      setExtra(nextExtra);
+      const restoredCohort = restoreDraftCohort(cohortRef.current, explicitCohortId, backup.cohortId, cohortIds);
+      cohortRef.current = restoredCohort;
+      setCohortId(restoredCohort);
+      if (backup.cohortId && !restoredCohort) {
+        unavailableBackupCohortRef.current = backup.cohortId;
+        setRecoveredClosedCohort(true);
+        currentRef.current = "cohort";
+        setCurrentId("cohort");
+      }
+      dirtyRef.current = true;
+      setRestored(true);
+    } catch {}
+    // Once, on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function writeBackup() {
+    if (preview) return;
+    try {
+      window.localStorage.setItem(
+        backupKey,
+        JSON.stringify({
+          at: Date.now(),
+          form: formRef.current,
+          extra: extraRef.current,
+          cohortId: cohortRef.current ?? unavailableBackupCohortRef.current,
+        }),
+      );
+    } catch {}
+  }
+
+  /** The session is gone: clear it locally and sign back in, landing here. */
+  async function signInAgain() {
+    writeBackup();
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      await createClient().auth.signOut({ scope: "local" });
+    } catch {}
+    const returnTo = cohortRef.current
+      ? `/apply?cohort=${encodeURIComponent(cohortRef.current)}`
+      : "/apply";
+    window.location.assign(`/login?next=${encodeURIComponent(returnTo)}`);
+  }
 
   useEffect(() => {
     // Loading the page must not re-save the draft it just loaded.
@@ -646,14 +783,17 @@ export function ApplyFlow({
       return;
     }
     dirtyRef.current = true;
+    writeBackup();
     const timer = window.setTimeout(() => void saveNow(), AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
+    // writeBackup reads refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, extra, cohortId, saveNow]);
 
   // A closed tab or a backgrounded phone keeps the latest keystrokes.
   useEffect(() => {
     const flush = () => {
-      if (preview || !dirtyRef.current || submittingRef.current) return;
+      if (preview || !dirtyRef.current || submittingRef.current || !cohortRef.current) return;
       dirtyRef.current = false;
       // Tracked like any save, and re-marked unsaved if it fails — a flush
       // that dies while the phone is backgrounded must not leave Save & exit
@@ -733,6 +873,7 @@ export function ApplyFlow({
       // Success redirects server-side; reaching here means it didn't go through.
       submittingRef.current = false;
       if (!result.ok) {
+        if (result.code === "signed_out") setSignedOut(true);
         setSubmitError(result.error ?? "Something went wrong. Try again.");
         const fieldErrors = result.fieldErrors ?? {};
         if (Object.keys(fieldErrors).length > 0) {
@@ -774,6 +915,33 @@ export function ApplyFlow({
         {announcement}
       </p>
 
+      {signedOut && (
+        <div role="alert" className="border-b border-line bg-wash">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm sm:px-8">
+            <p className="text-ink">
+              You&apos;ve been signed out, so your answers aren&apos;t saving.{" "}
+              <span className="text-ink-soft">Everything you&apos;ve typed is kept on this device.</span>
+            </p>
+            <button
+              type="button"
+              onClick={signInAgain}
+              className="inline-flex h-9 items-center rounded-md bg-phosphor px-4 font-semibold text-on-phosphor hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            >
+              Sign in again
+            </button>
+          </div>
+        </div>
+      )}
+      {restored && !signedOut && (
+        <div role="status" className="border-b border-line bg-wash">
+          <p className="mx-auto max-w-5xl px-5 py-3 text-sm text-ink-soft sm:px-8">
+            {cohortId
+              ? "We restored answers from this device that hadn't saved yet — they're saving now."
+              : "We recovered your answers, but their original cohort is no longer open. Your answers are kept on this device. Choose an available cohort to continue and save them."}
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-1 items-start sm:items-center">
         <div
           ref={stageRef}
@@ -792,7 +960,7 @@ export function ApplyFlow({
               questionCount={questionCount}
               answeredCount={saved.hasSaved ? screens.slice(1, -1).filter((s) => screenHasAnswer(s, withoutPrefill(ctx))).length : 0}
               notices={notices}
-              parentGuideHref={parentGuideHref}
+              parentGuideHref={cohortId ? `/parents?cohort=${encodeURIComponent(cohortId)}` : parentGuideHref}
               resumeLabel={mode === "draft" && saved.hasSaved ? "Continue where you left off" : null}
               onStart={next}
               onResume={() => {

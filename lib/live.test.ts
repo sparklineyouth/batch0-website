@@ -19,17 +19,10 @@ import {
   roomIsOpen,
   roomWindow,
   eventLiveStatus,
-  callPhase,
-  formatEventTime,
   type CallInvite,
   type LiveRole,
   type RoomAccess,
 } from "./live.ts";
-import {
-  callsHomeFor,
-  capabilitiesFrom,
-  isLiveRoomPath,
-} from "./permissions.ts";
 
 // Run with `npm test`. No framework, no transpile step — Node strips the types
 // natively, which is why lib/live.ts is kept import-free.
@@ -387,103 +380,4 @@ test("an event with no end time lists with the default length", () => {
     at(DEFAULT_EVENT_MINUTES + 31),
   );
   assert.equal(s, "past");
-});
-
-// ---------------------------------------------------------------------------
-// callPhase — where a 1:1 stands
-// ---------------------------------------------------------------------------
-
-function call(status: CallInvite["status"], minutes: number) {
-  return callPhase(
-    { status, startsAt: START.toISOString(), durationMinutes: 30 },
-    at(minutes),
-  );
-}
-
-test("an accepted call inside its window is joinable, before it upcoming", () => {
-  assert.equal(call("accepted", -16), "upcoming");
-  assert.equal(call("accepted", -15), "joinable");
-  assert.equal(call("accepted", 10), "joinable");
-  // 30-minute call: window closes at start + 30 + 30.
-  assert.equal(call("accepted", 60), "joinable");
-});
-
-test("an accepted call past start + duration + 30 counts as completed", () => {
-  assert.equal(call("accepted", 61), "completed");
-});
-
-test("stored terminal statuses pass straight through", () => {
-  assert.equal(call("completed", 10), "completed");
-  assert.equal(call("cancelled", 10), "cancelled");
-  assert.equal(call("declined", 10), "declined");
-});
-
-test("an unanswered invite is 'invited', whatever the clock says", () => {
-  assert.equal(call("invited", -100), "invited");
-  assert.equal(call("invited", 10), "invited");
-});
-
-// ---------------------------------------------------------------------------
-// Live-room routing (lib/permissions.ts) — the middleware exemption and the
-// role-aware Back link. Kept beside the room rules they serve.
-// ---------------------------------------------------------------------------
-
-test("only the two room paths are live rooms", () => {
-  assert.equal(isLiveRoomPath("/dashboard/events/abc/live"), true);
-  assert.equal(isLiveRoomPath("/dashboard/calls/abc/live"), true);
-  assert.equal(isLiveRoomPath("/dashboard/events/abc/live/"), true);
-
-  assert.equal(isLiveRoomPath("/dashboard/events"), false);
-  assert.equal(isLiveRoomPath("/dashboard/calls"), false);
-  assert.equal(isLiveRoomPath("/dashboard/events/abc"), false);
-  assert.equal(isLiveRoomPath("/dashboard/events/abc/live/y"), false);
-  assert.equal(isLiveRoomPath("/dashboard/events//live"), false);
-  assert.equal(isLiveRoomPath("/dashboard/teams/abc/live"), false);
-  assert.equal(isLiveRoomPath("/admin/events/abc/live"), false);
-});
-
-test("a call owner's Back goes to their own calls page", () => {
-  assert.equal(callsHomeFor(capabilitiesFrom("admin", ["*"])), "/admin/calls");
-  assert.equal(
-    callsHomeFor(capabilitiesFrom("mentor", ["mentor.panel", "calls.invite"])),
-    "/mentor/calls",
-  );
-  assert.equal(
-    callsHomeFor(capabilitiesFrom("investor", ["investor.panel", "calls.invite"])),
-    "/investor/calls",
-  );
-  assert.equal(
-    callsHomeFor(capabilitiesFrom("student", ["student.dashboard"])),
-    "/dashboard/calls",
-  );
-  // A mentor role with admin-area access to calls sees the admin page.
-  assert.equal(
-    callsHomeFor(capabilitiesFrom("custom", ["mentor.panel", "calls.invite", "events.manage"])),
-    "/admin/calls",
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Server-rendered event times (emails)
-// ---------------------------------------------------------------------------
-
-test("an email's event time is Eastern and says so, whatever the server's zone", () => {
-  // 22:00 UTC on 27 Sep 2026 is 18:00 EDT. The invite used to print
-  // "9/27/2026, 10:00:00 PM" from a UTC server, with no zone.
-  const summer = formatEventTime("2026-09-27T22:00:00Z");
-  assert.match(summer, /Sep 27, 2026/);
-  assert.match(summer, /6:00 PM/);
-  assert.match(summer, /EDT$/);
-  assert.doesNotMatch(summer, /10:00/);
-  // Standard time gets the other label.
-  const winter = formatEventTime(new Date("2026-12-06T23:30:00Z"));
-  assert.match(winter, /Dec 6, 2026/);
-  assert.match(winter, /6:30 PM/);
-  assert.match(winter, /EST$/);
-  // Plain spaces only — no narrow no-break space before "PM" in a mail body.
-  assert.doesNotMatch(summer + winter, /[\u202f\u00a0]/);
-});
-
-test("an unparseable time is passed through rather than printed as 'Invalid Date'", () => {
-  assert.equal(formatEventTime("not a date"), "not a date");
 });

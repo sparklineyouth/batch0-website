@@ -463,7 +463,7 @@ export function WebinarFields({
 
         `EventAsset` carries a fourth kind this form has no business holding:
         `recording`, which is written by the recorder from inside the live
-        room, one row per five-minute segment. A form that spread the server's
+        room, one row per two-minute segment. A form that spread the server's
         row into its asset list would type-widen to include it, and the first
         person to open a finished webinar in the editor would find eleven
         recording segments listed under "Slides" with an X beside each one.

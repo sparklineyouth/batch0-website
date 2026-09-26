@@ -28,6 +28,12 @@ function toIcsDate(iso: string) {
   );
 }
 
+function icsStatus(status: string): "CONFIRMED" | "TENTATIVE" | "CANCELLED" {
+  if (status === "accepted" || status === "completed") return "CONFIRMED";
+  if (status === "invited") return "TENTATIVE";
+  return "CANCELLED";
+}
+
 function escapeIcs(s: string) {
   return s
     .replace(/\\/g, "\\\\")
@@ -71,8 +77,10 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
     `DESCRIPTION:${escapeIcs(`Join at ${joinUrl}`)}`,
     `URL:${escapeIcs(joinUrl)}`,
     // A cancelled or declined call should grey out in the calendar rather
-    // than sitting there looking live.
-    `STATUS:${invite.status === "accepted" ? "CONFIRMED" : "CANCELLED"}`,
+    // than sitting there looking live. A completed call HAPPENED — it stays
+    // confirmed in the history, rather than turning into a cancellation the
+    // moment it ends — and an unanswered invite is tentative, not called off.
+    `STATUS:${icsStatus(invite.status)}`,
     "END:VEVENT",
     "END:VCALENDAR",
   ];

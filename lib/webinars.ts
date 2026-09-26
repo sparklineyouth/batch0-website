@@ -264,13 +264,20 @@ export function formatBytes(bytes: number | null | undefined): string {
  *   - a crashed tab or a dropped connection costs the segment in flight,
  *     not the hour behind it.
  *
- * The cost is a seam every five minutes, because a `MediaRecorder` has to be
+ * The cost is a seam every two minutes, because a `MediaRecorder` has to be
  * stopped and restarted for each file to carry its own header and be playable
  * on its own. That seam is tens of milliseconds and the player preloads across
- * it. Five minutes is the number that makes the seam rare (about eleven in an
- * hour) while keeping each upload small enough to retry cheaply.
+ * it.
+ *
+ * Two minutes, not the five this started at, because of the SIZE of a file,
+ * not the number of seams. At the bitrates below five minutes is ~48.6 MB
+ * before the encoder's VBR overshoot — and Supabase's default global upload
+ * limit is 50 MB, which binds every signed upload whatever the bucket says. A
+ * segment that sometimes comes out at 51 MB is a recording that silently
+ * loses five minutes at a time. Two minutes is ~19 MB: comfortably inside
+ * that limit even at double the nominal rate, and cheaper to lose.
  */
-export const RECORDING_SEGMENT_SECONDS = 300;
+export const RECORDING_SEGMENT_SECONDS = 120;
 
 /**
  * Video bitrate for the recording, in bits per second.
@@ -278,8 +285,8 @@ export const RECORDING_SEGMENT_SECONDS = 300;
  * 1.2 Mbps is a deliberate compromise. Higher looks better and puts an hour of
  * webinar past a gigabyte, which is a lot to ask of a host's upstream *while
  * they are broadcasting on the same connection* — the recording competes with
- * the thing it is recording. At 1.2 Mbps a five-minute segment is about 45 MB
- * and an hour is about 540 MB, and screen-shared slides (which is most of what
+ * the thing it is recording. At 1.2 Mbps a two-minute segment is about 19 MB
+ * and an hour is about 580 MB, and screen-shared slides (which is most of what
  * a webinar shows, and which compresses very well) look clean.
  */
 export const RECORDING_VIDEO_BITRATE = 1_200_000;
@@ -287,6 +294,264 @@ export const RECORDING_AUDIO_BITRATE = 96_000;
 
 /** Frame rate the composed canvas is captured at. */
 export const RECORDING_FPS = 24;
+
+/**
+ * A recording segment's name, as the live room writes it: which room mount
+ * (`run`) recorded it, and its index within that run.
+ *
+ * `segment-<run>-<index>.webm` — the server then appends its own upload stamp,
+ * so a stored path reads `<event>/recording/segment-<run>-<index>-<stamp>.webm`.
+ * The run is the recording room's mount time (a page load, or a Rejoin/Reopen,
+ * which remount the room); see `recordingSegmentSlot` for what it is for.
+ */
+export function webinarSegmentName(run: number, index: number): string {
+  return `segment-${Math.max(0, Math.floor(run))}-${String(
+    Math.max(0, Math.floor(index)),
+  ).padStart(4, "0")}.webm`;
+}
+
+/**
+ * The (run, index) a stored segment path carries, or null for a path from
+ * before runs existed (`segment-0003-<stamp>.webm`) or any other name.
+ */
+export function parseSegmentRun(
+  storagePath: string,
+): { run: number; index: number } | null {
+  const m = /(?:^|\/)segment-(\d+)-(\d+)-(\d+)\.[a-z0-9]+$/i.exec(storagePath);
+  if (!m) return null;
+  const run = Number(m[1]);
+  const index = Number(m[2]);
+  if (!Number.isSafeInteger(run) || !Number.isSafeInteger(index)) return null;
+  return { run, index };
+}
+
+/**
+ * Which `sort_order` a newly uploaded recording segment should be registered
+ * at, given the segments the event already has.
+ *
+ *   - The same file registered again (the same storage path) is the SAME
+ *     segment — a retried register after a dropped response. It keeps its
+ *     slot, so the recording can never play that stretch twice.
+ *   - A segment from a run the event has already seen goes at that run's
+ *     base plus its index. Every run is laid out as one contiguous block, so a
+ *     slow segment arriving after its successors still lands in order, and a
+ *     segment whose upload failed leaves a harmless gap in its own block.
+ *   - A segment from a NEW run starts a new block after everything already
+ *     registered. `useRecorder` numbers from zero on every mount, so a host
+ *     who reloads (or a second host who takes over) begins a second run whose
+ *     indexes mean nothing against the first run's. Filling the first run's
+ *     gaps with them — which "a free index is taken as asked" used to do —
+ *     played minutes 32-37 between minutes 5-10 and 15-20.
+ *   - Should the computed slot be held by a different file anyway (only a
+ *     tampered or pathological name can do it), the segment goes after the
+ *     last one rather than over it.
+ *
+ * Paths from before runs existed (no run in the name) keep the old rule: a
+ * free index is taken as asked, a held one goes after the last. That is
+ * correct for the one run such a recording has, which is all it ever had.
+ *
+ * Pure so the rule is pinned in lib/webinars.test.ts. The caller re-reads and
+ * re-asks if its insert then loses a race for the slot (23505).
+ */
+export function recordingSegmentSlot(
+  requested: number,
+  storagePath: string,
+  taken: readonly { sortOrder: number; storagePath: string }[],
+): { kind: "existing"; sortOrder: number } | { kind: "insert"; sortOrder: number } {
+  const same = taken.find((t) => t.storagePath === storagePath);
+  if (same) return { kind: "existing", sortOrder: same.sortOrder };
+  const asked = Number.isInteger(requested) && requested >= 0 ? requested : 0;
+  const last = taken.reduce((m, t) => Math.max(m, t.sortOrder), -1);
+  const held = (slot: number) => taken.some((t) => t.sortOrder === slot);
+
+  const mine = parseSegmentRun(storagePath);
+  if (mine) {
+    // The run's base is where its block starts. Every row it placed sits at
+    // base + index, except one the safety net below pushed later — which can
+    // only ever be LATER — so the smallest offset is the true base.
+    let base: number | null = null;
+    for (const t of taken) {
+      const theirs = parseSegmentRun(t.storagePath);
+      if (!theirs || theirs.run !== mine.run) continue;
+      const offset = t.sortOrder - theirs.index;
+      if (base === null || offset < base) base = offset;
+    }
+    const slot = (base ?? last + 1) + mine.index;
+    return { kind: "insert", sortOrder: held(slot) ? last + 1 : slot };
+  }
+
+  if (!held(asked)) return { kind: "insert", sortOrder: asked };
+  return { kind: "insert", sortOrder: last + 1 };
+}
+
+// ---------------------------------------------------------------------------
+// One recorder per webinar
+// ---------------------------------------------------------------------------
+//
+// Every host in the room — staff and guest speakers alike — runs the same
+// page, and any of their browsers could record. Whichever one does records the
+// WHOLE STAGE: every live host's camera and screen share composited onto one
+// canvas, every voice mixed into one track (use-recorder.ts). So which browser
+// records decides nothing about what ends up in the recording — only whose
+// upstream carries it. What matters is that exactly ONE does: two recorders
+// put the webinar into one event's segment sequence twice, interleaved a
+// segment at a time. So one browser is chosen by a rule every browser in the
+// room computes identically from what it can already see, and the server
+// refuses segments from anyone the same rule would not have chosen.
+//
+// The rule is deliberately the dullest one available: the lowest user id
+// among the hosts present. An earlier version ranked staff ahead of guest
+// speakers, which needed every browser to agree on who was a guest — and the
+// only place a browser could learn that was the speaker list rendered into
+// its page when it loaded. A guest who claimed their slot after a co-host's
+// page had loaded was staff to that co-host and a guest to themselves; each
+// browser elected the other, and nobody recorded. A peer's id is the one fact
+// about it that every browser holds identically from the moment it appears.
+
+/**
+ * Whose browser records, among the hosts present: the lowest user id. Null
+ * when nobody is. Every browser in the room — and `recordingRival` on the
+ * server — applies this same comparison, so they cannot disagree about the
+ * winner given the same set of ids.
+ */
+export function electRecorder(userIds: readonly string[]): string | null {
+  let best: string | null = null;
+  for (const id of userIds) {
+    if (!id) continue;
+    if (best === null || id < best) best = id;
+  }
+  return best;
+}
+
+/**
+ * How long after joining a browser counts a co-host whose connection is still
+ * coming up as present.
+ *
+ * The join payload names every host already in the room, and their
+ * connections start as "connecting". Counting those as present is what stops a
+ * host who arrives second from recording for the few seconds it takes the
+ * connection to come up. After this, only a connection that is (or was, and is
+ * re-establishing) live counts: a host whose connection never came up must not
+ * hold the recording hostage for the rest of the webinar.
+ */
+export const RECORDER_SETTLE_MS = 15_000;
+
+/**
+ * How long a co-host whose connection DROPPED keeps counting as present: two
+ * segments.
+ *
+ * Long enough that a wifi handover — ICE dipping through "disconnected" and
+ * coming back — does not hand the recording to somebody else and back again.
+ * Bounded, because a host whose laptop died or whose lid closed never says
+ * goodbye: no `bye`, no `peer-offline`, and a connection that sits in
+ * "reconnecting" with nothing to reconnect to. Unbounded, that host would stay
+ * the elected recorder for the rest of the webinar while recording nothing.
+ * The live-session engine also rebuilds such a connection on its heartbeat
+ * (which drops it to "connecting", no longer counted once settling is over);
+ * this bound is what holds if that never happens.
+ */
+export const RECORDER_RECONNECT_GRACE_MS = 2 * RECORDING_SEGMENT_SECONDS * 1000;
+
+/**
+ * Does a co-host in this connection state count as present for the election?
+ *
+ * `state` is a `ConnectionState` from use-live-session, taken as a string so
+ * this file stays import-free. `downForMs` is how long the connection has not
+ * been live — only consulted for "reconnecting".
+ */
+export function presentForRecording(
+  state: string,
+  settling: boolean,
+  downForMs = 0,
+): boolean {
+  if (state === "live") return true;
+  if (state === "reconnecting") return downForMs <= RECORDER_RECONNECT_GRACE_MS;
+  return settling && state === "connecting";
+}
+
+/**
+ * How long a recorder's claim on an event outlives its last registered
+ * segment: two segments, so one failed upload does not hand the recording to
+ * somebody else mid-talk.
+ */
+export const RECORDER_LEASE_MS = 2 * RECORDING_SEGMENT_SECONDS * 1000;
+
+/**
+ * When the segment being filed began, in epoch ms on the SERVER's clock, from
+ * how long the browser says it ran. Undefined when no usable length was sent,
+ * which `recordingRival` reads as "any registration inside the lease counts".
+ *
+ * Derived from a DURATION rather than taken as a timestamp, because a duration
+ * is the one number a browser with a wrong clock still gets right: a laptop
+ * four minutes fast would otherwise put every rival's registration "before"
+ * its segment and never be refused.
+ */
+export function recordingSegmentStart(
+  now: Date,
+  durationSeconds: number | null | undefined,
+): number | undefined {
+  if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds)) {
+    return undefined;
+  }
+  return now.getTime() - Math.max(0, durationSeconds) * 1000;
+}
+
+/**
+ * The server's backstop: who (if anyone) is recording this event in the
+ * caller's place, such that the caller's segment must be refused?
+ *
+ * The client-side election is the rule; this is what holds when the clients
+ * disagree — two hosts whose connection to each other never came up, a
+ * transient in the first seconds after a join, a stale tab. A rival is a
+ * DIFFERENT user who registered a segment within the lease — and, when
+ * `segmentStartMs` is given, AFTER the caller's segment began — who is still
+ * in the room (`present`; null when attendance can't be read, which counts
+ * everyone as present), and whom the election ranks ahead of the caller
+ * (a lower id).
+ *
+ * Ranked, not first-come. "Whoever registered most recently keeps it" loses
+ * the start of a webinar every time a second host's tab records for a few
+ * seconds before seeing the first: that stub registers first and the rightful
+ * recorder is refused for the whole lease. Under ranking the rightful
+ * recorder is never refused by someone the room would not have chosen, and a
+ * handover works as soon as the departing host is no longer present.
+ *
+ * "After the caller's segment began", because a registration only proves the
+ * rival was recording at the time it landed. The recorder who left (A) and
+ * came back three minutes later still has a registration inside the lease —
+ * but it predates everything the host who covered for them (B) recorded in
+ * between, and refusing B's handover flush for it dropped that stretch of the
+ * talk outright. A host genuinely recording ALONGSIDE the rival always sees
+ * the rival register during its own segment, and is still refused.
+ *
+ * The same user is never their own rival: a host who reloads starts a new run
+ * that must carry straight on from the old one.
+ */
+export function recordingRival({
+  callerId,
+  recent,
+  present,
+  now,
+  segmentStartMs,
+}: {
+  callerId: string;
+  recent: readonly { userId: string | null; at: string }[];
+  present: ReadonlySet<string> | null;
+  now: Date;
+  /** From `recordingSegmentStart`. Omitted: every registration in the lease counts. */
+  segmentStartMs?: number;
+}): string | null {
+  const since = now.getTime() - RECORDER_LEASE_MS;
+  for (const r of recent) {
+    if (!r.userId || r.userId === callerId) continue;
+    const at = Date.parse(r.at);
+    if (!Number.isFinite(at) || at < since) continue;
+    if (segmentStartMs !== undefined && at <= segmentStartMs) continue;
+    if (present && !present.has(r.userId)) continue;
+    if (electRecorder([r.userId, callerId]) === r.userId) return r.userId;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Guest speakers
@@ -349,8 +614,9 @@ export function canBroadcast({
  * is running. A founder who presses "End" thinking it ends their segment is
  * exactly the case this refuses; their normal exit is Leave.
  *
- * `staffPresent` comes from the attendance table (fresh host rows that belong
- * to non-speakers). When that table cannot be read the server passes `false`,
+ * `staffPresent` comes from the attendance table (fresh host rows whose own
+ * role holds `events.manage` — presentHostRoles in lib/live-access.ts). When
+ * that cannot be read the server passes `false`,
  * i.e. the rule fails OPEN for speakers: ending is reversible by staff and is
  * not a privacy risk, while failing closed would strand guest-only webinars.
  */
@@ -366,139 +632,6 @@ export function canEndForEveryone({
   if (isStaff) return true;
   if (isSpeaker) return !staffPresent;
   return false;
-}
-
-/**
- * How long the host who uploaded the latest recording segment keeps the
- * recorder while present, in milliseconds.
- *
- * One segment's length plus two minutes. A segment is registered only when it
- * finishes (every RECORDING_SEGMENT_SECONDS), so a window shorter than a
- * segment would drop the stickiness between every pair of uploads and let the
- * pick flap to another host mid-recording. The extra two minutes cover the
- * upload itself.
- */
-export const RECORDER_STICKY_MS = RECORDING_SEGMENT_SECONDS * 1000 + 2 * 60_000;
-
-/**
- * Which host records this webinar right now. Exactly one, or nobody.
- *
- * The server calls this on every host heartbeat and tells each host whether
- * they are it, which is what stops two admins in the same room from each
- * running a recorder and interleaving each other's segments. (Registration
- * no longer lets one overwrite the other — it appends on a clash — but two
- * cameras cut together in five-minute pieces is not a recording.)
- *
- *   1. Sticky: whoever registered the most recent REAL segment (see
- *      stickySegment — a flush from a recorder that just lost the pick does
- *      not count) within RECORDER_STICKY_MS keeps recording while they are
- *      still present. A handover mid-talk costs a seam and risks a gap; not
- *      handing over when nothing is wrong costs nothing.
- *   2. Otherwise the earliest-joined present staff host. Deterministic, so
- *      every host's heartbeat computes the same answer.
- *
- * Guest speakers never record: the recording is the program's record of a
- * room that may contain minors, and it is owned by the staff accountable for
- * it. (A speaker's tab would also be uploading an hour of video over the same
- * connection it is broadcasting on.)
- */
-export function pickRecorder({
-  presentHosts,
-  lastSegment,
-  now = new Date(),
-  stickyMs = RECORDER_STICKY_MS,
-}: {
-  presentHosts: readonly {
-    userId: string;
-    joinedAt: string | Date;
-    isSpeaker: boolean;
-  }[];
-  lastSegment: { userId: string | null; at: string | Date } | null;
-  now?: Date;
-  stickyMs?: number;
-}): string | null {
-  const staff = presentHosts.filter((h) => !h.isSpeaker);
-  if (staff.length === 0) return null;
-
-  if (lastSegment?.userId) {
-    const fresh = now.getTime() - new Date(lastSegment.at).getTime() <= stickyMs;
-    if (fresh && staff.some((h) => h.userId === lastSegment.userId)) {
-      return lastSegment.userId;
-    }
-  }
-
-  // Earliest joined wins; ties broken by id so two hosts whose rows share a
-  // timestamp still agree on one answer.
-  const sorted = [...staff].sort((a, b) => {
-    const d = new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
-    return d !== 0 ? d : a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0;
-  });
-  return sorted[0].userId;
-}
-
-/**
- * The shortest segment that counts for stickiness, in seconds.
- *
- * A recorder that loses the pick stops, and stopping flushes whatever it had
- * — usually one heartbeat's worth (about 12s) of a recording it should never
- * have started. Keyed on "the most recent segment" alone, that flush made the
- * loser sticky, so the NEXT heartbeat handed the recording back to it and
- * stopped the real recorder, whose own flush then took it back again: the
- * pick could ping-pong for as long as the heartbeats stayed in phase, cutting
- * the recording into twelve-second pieces from two cameras. A minute is far
- * above any such flush and far below a real five-minute segment.
- */
-export const RECORDER_STICKY_MIN_SECONDS = 60;
-
-/**
- * Which registered segment the sticky rule should key on: the most recently
- * registered one long enough to be real recording (RECORDER_STICKY_MIN_SECONDS),
- * or null. Pass the last few segments by registration time; feed the answer to
- * pickRecorder as `lastSegment`.
- */
-export function stickySegment(
-  segments: readonly {
-    userId: string | null;
-    at: string | Date;
-    seconds: number | null;
-  }[],
-  minSeconds: number = RECORDER_STICKY_MIN_SECONDS,
-): { userId: string | null; at: string | Date } | null {
-  let best: { userId: string | null; at: string | Date } | null = null;
-  let bestAt = -Infinity;
-  for (const s of segments) {
-    if ((s.seconds ?? 0) < minSeconds) continue;
-    const t = new Date(s.at).getTime();
-    if (!Number.isFinite(t) || t <= bestAt) continue;
-    best = { userId: s.userId, at: s.at };
-    bestAt = t;
-  }
-  return best;
-}
-
-/**
- * Host presence could not be read at all: should this staff host record anyway?
- *
- * Yes, unless someone ELSE registered a real segment within the sticky window
- * — then they are recording, and a second recorder would only interleave with
- * them. This used to be an unconditional yes ("a duplicate is recoverable, a
- * webinar nobody recorded is not"), so one failed attendance read turned every
- * staff host in the room into a recorder for a heartbeat, each numbering
- * segments from the same seed as the real one.
- */
-export function mayRecordBlind({
-  userId,
-  lastSegment,
-  now = new Date(),
-  stickyMs = RECORDER_STICKY_MS,
-}: {
-  userId: string;
-  lastSegment: { userId: string | null; at: string | Date } | null;
-  now?: Date;
-  stickyMs?: number;
-}): boolean {
-  if (!lastSegment?.userId || lastSegment.userId === userId) return true;
-  return now.getTime() - new Date(lastSegment.at).getTime() > stickyMs;
 }
 
 // ---------------------------------------------------------------------------

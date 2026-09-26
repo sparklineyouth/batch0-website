@@ -308,6 +308,10 @@ export default async function EventLivePage(
     return (
       <BuiltinEventRoom
         eventId={ev.id}
+        // The id every other host's browser knows this one by (a peer's id
+        // is its user id) — what the recorder election compares.
+        selfUserId={access.userId}
+        selfName={profile?.full_name || "Host"}
         title={ev.title}
         startsAt={ev.startsAt}
         endsAt={ev.endsAt}

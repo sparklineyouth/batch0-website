@@ -32,12 +32,6 @@ if (posts.length < 100) {
 }
 
 const MUST_BE_STATIC = [
-  // "/" and "/program" prerender only because regional tuition is a
-  // client-side label swap (components/regional-price.tsx) — reintroducing
-  // a headers()/cookies() read there silently regresses the two
-  // highest-traffic pages back to per-request rendering.
-  "/",
-  "/program",
   "/blog",
   "/sponsors",
   "/challenges",
@@ -50,6 +44,11 @@ const MUST_BE_STATIC = [
   "/login",
   "/signup",
 ];
+// These admissions pages deliberately resolve the public intake at request
+// time so midnight does not wait for ISR. Keep the rest of marketing static.
+for (const route of ["/", "/program"]) {
+  if (manifest.routes[route]) throw new Error(`${route} must resolve admissions at request time.`);
+}
 for (const route of MUST_BE_STATIC) {
   if (!manifest.routes[route]) {
     throw new Error(

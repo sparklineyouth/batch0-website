@@ -12,10 +12,15 @@ import { resolveEventAccess } from "@/lib/live-access";
 import {
   isDeckFile,
   MAX_UPLOAD_BYTES,
+  RECORDER_LEASE_MS,
+  recordingRival,
+  recordingSegmentSlot,
+  recordingSegmentStart,
   type AssetKind,
   type EventAsset,
   type EventSpeaker,
 } from "@/lib/webinars";
+import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import { listAssets, listSpeakers } from "@/lib/webinar-data";
 
 /**
@@ -24,7 +29,7 @@ import { listAssets, listSpeakers } from "@/lib/webinar-data";
  * Two jobs that look unrelated and share one gate, which is why they live
  * together: both are "things an admin attaches to a webinar", both are written
  * from the same form, and both are also written from INSIDE the live room — a
- * recording segment uploads itself every five minutes while the webinar runs,
+ * recording segment uploads itself every two minutes while the webinar runs,
  * and a guest speaker claims their slot on the way in.
  *
  * ---------------------------------------------------------------------------
@@ -72,19 +77,12 @@ function safeSegment(s: string) {
  * Authorize a write against one webinar.
  *
  * `events.manage` is the staff grant. A speaker row is the per-event grant, and
- * it deliberately does NOT extend to every kind of write: a guest may not edit
- * the speaker list, delete somebody else's file — or record. Every write in
- * this file currently takes the "staff" gate; "moderator" (staff or this
- * event's speakers) is kept for a guest-deck path that does not exist yet.
- *
- * Recordings in particular are staff-only. They used to take the moderator
- * gate, so any guest speaker could mint an upload URL and register a
- * "segment" — and once registration replaced rows, that meant overwriting the
- * staff recorder's segments with whatever file they liked and deleting the
- * originals from storage, one index at a time, with the follow-up email then
- * sending the result to the cohort. Speakers never record (pickRecorder; the
- * room only starts a recorder for a staff host the server picked), so they
- * lose nothing.
+ * it deliberately does NOT extend to every kind of write: a guest may upload a
+ * recording of the room they are in — any host's browser may be the one the
+ * room elects to record (see "One recorder per webinar" in lib/webinars.ts) —
+ * and may not edit the speaker list or delete somebody else's file. That split
+ * is the whole point of having a per-event grant rather than handing a guest
+ * `events.manage`.
  *
  * Both halves come from `resolveEventAccess` (lib/live-access.ts), the one
  * place the host rule is computed, so "may upload a segment of this room" and
@@ -124,12 +122,19 @@ export async function getWebinarUploadToken(
   kind: AssetKind,
   filename: string,
 ): Promise<{ path: string; token: string; signedUrl: string }> {
-  // Staff work, every kind. A recording is uploaded from inside the room, but
-  // only ever by the room's one recorder, which is always a staff host — never
-  // a guest speaker (see gateWrite). Everything else is an admin attaching a
-  // file to an event.
-  await gateWrite(eventId, "staff");
+  // A recording is uploaded from inside the room, by whoever is hosting it —
+  // which may be a guest speaker. Everything else is an admin attaching a file
+  // to an event, which is staff work.
+  await gateWrite(eventId, kind === "recording" ? "moderator" : "staff");
+  return mintUploadToken(eventId, kind, filename);
+}
 
+/** Build the path for one upload and sign it. Callers gate first. */
+async function mintUploadToken(
+  eventId: string,
+  kind: AssetKind,
+  filename: string,
+): Promise<{ path: string; token: string; signedUrl: string }> {
   const dot = filename.lastIndexOf(".");
   const base = dot > 0 ? filename.slice(0, dot) : filename;
   const ext = dot > 0 ? filename.slice(dot + 1) : "";
@@ -163,9 +168,10 @@ export type RegisterAssetInput = {
 /**
  * Record an uploaded file against the event.
  *
- * Three checks before the insert, each of which has a specific thing it stops:
+ * Three checks before the insert (`verifyUpload`), each of which has a
+ * specific thing it stops:
  *
- *  1. The path must live under this event's prefix. Otherwise a host of
+ *  1. The path must live under this event's prefix. Otherwise a moderator of
  *     webinar A could attach webinar B's private recording to their own event
  *     and have the follow-up job email it out.
  *  2. The object must actually exist in the bucket. Otherwise a tampered client
@@ -173,54 +179,44 @@ export type RegisterAssetInput = {
  *     `auto_share`, an email promising a recording that was never made.
  *  3. The size must be inside the cap. The bucket enforces this too and that is
  *     the copy that binds; this one is what turns a refusal into a sentence.
+ *
+ * The live room files its recording segments through
+ * `registerWebinarRecordingSegment` below, which answers a refusal with a
+ * value the recorder can act on. A recording registered HERE gets the same
+ * one-recorder check and throws on refusal, because this is still an entry
+ * point anyone holding the action id can call.
  */
 export async function registerWebinarAsset(
   eventId: string,
   input: RegisterAssetInput,
 ): Promise<EventAsset> {
-  // Staff, recordings included — see gateWrite for why a guest speaker may
-  // not register a segment.
-  const { userId } = await gateWrite(eventId, "staff");
-
-  const prefix = `${eventId}/${input.kind}/`;
-  if (!input.storagePath.startsWith(prefix)) {
-    throw new Error("That file doesn't belong to this event.");
-  }
-  if (input.sizeBytes != null && input.sizeBytes > MAX_UPLOAD_BYTES) {
-    throw new Error("Files are capped at 2 GB.");
-  }
-  if (input.kind === "deck" && !isDeckFile(input.filename, input.mimeType)) {
-    throw new Error("A deck has to be a PDF or a PowerPoint file.");
-  }
-
+  const { userId } = await gateWrite(
+    eventId,
+    input.kind === "recording" ? "moderator" : "staff",
+  );
   const admin = createAdminClient();
+  await verifyUpload(admin, eventId, input);
 
-  const segments = input.storagePath.split("/");
-  const name = segments.pop() ?? "";
-  const folder = segments.join("/");
-  const { data: listed } = await admin.storage
-    .from(BUCKET)
-    .list(folder, { limit: 1, search: name });
-  if (!listed?.some((o: any) => o.name === name)) {
-    throw new Error("Upload didn't complete — try again.");
+  const row = assetRow(eventId, input, userId);
+
+  let data: any;
+  if (input.kind === "recording") {
+    // No segment start: this entry point is not the live room's, and has no
+    // segment to date — any registration inside the lease counts.
+    const filed = await fileRecordingSegment(admin, eventId, userId, row);
+    if (!filed.ok) {
+      throw new Error("Another host's browser is recording this webinar.");
+    }
+    data = filed.data;
+  } else {
+    const res = await admin
+      .from("event_assets")
+      .insert(row)
+      .select(ASSET_COLUMNS)
+      .single();
+    if (res.error) throw new Error(res.error.message);
+    data = res.data;
   }
-
-  const row = {
-    event_id: eventId,
-    kind: input.kind,
-    storage_path: input.storagePath,
-    filename: input.filename.slice(0, 200),
-    mime_type: input.mimeType,
-    size_bytes: input.sizeBytes,
-    duration_seconds: input.durationSeconds,
-    sort_order: input.sortOrder ?? 0,
-    uploaded_by: userId,
-  };
-
-  const data =
-    input.kind === "recording"
-      ? await saveRecordingSegment(admin, row)
-      : await insertAsset(admin, row);
 
   // A premiere's length is what positions every viewer's player, so it is
   // mirrored onto the event row where the join page can read it without a
@@ -234,8 +230,18 @@ export async function registerWebinarAsset(
   }
 
   // Deliberately NOT audited per recording segment: an hour-long webinar writes
-  // twelve of them, and twelve near-identical audit rows per event would bury
+  // thirty of them, and thirty near-identical audit rows per event would bury
   // the entries a human actually reads. The admin-facing uploads are audited.
+  //
+  // Nor REVALIDATED per segment, and that one is not about noise. Next re-renders
+  // the CURRENT route whenever an action revalidates anything at all (the path
+  // argument is not checked — "TODO: only revalidate if the path matches" in
+  // Next's revalidate.ts), and a recording segment is registered from inside
+  // the live room. Every segment therefore re-ran /dashboard/events/<id>/live,
+  // and once a webinar has overrun its join window that page renders "This
+  // event has ended" — so the next segment swapped the host's live room for
+  // that shell mid-sentence, tearing down every viewer's connection. Nothing
+  // on /admin/events needs to know about a segment the moment it lands.
   if (input.kind !== "recording") {
     await logAudit({
       action: "event.asset_added",
@@ -243,10 +249,140 @@ export async function registerWebinarAsset(
       targetId: eventId,
       payload: { kind: input.kind, filename: row.filename },
     });
+    revalidatePath("/admin/events");
   }
 
-  revalidatePath("/admin/events");
-  const r = data as any;
+  return toAsset(data);
+}
+
+/**
+ * A signed URL for one recording segment — or a refusal, because another
+ * host's browser is this webinar's recorder.
+ *
+ * The live room asks before it uploads rather than finding out afterwards:
+ * a refused segment should cost nothing, not twenty megabytes of the host's
+ * upstream in the middle of their talk. The refusal is a VALUE, not a throw,
+ * because production strips an action's error message and the recorder has to
+ * tell "someone else is recording" (stand down, quietly) from "the upload
+ * failed" (count it, say so).
+ *
+ * `durationSeconds` is how long the segment ran. The segment has already been
+ * cut when this is asked, so it is known, and it is what lets the check
+ * ignore a rival registration from BEFORE this segment began
+ * (`recordingRival`): a returning recorder's old lease must not refuse the
+ * handover flush of the host who covered for them.
+ */
+export async function getWebinarRecordingUploadToken(
+  eventId: string,
+  filename: string,
+  durationSeconds?: number | null,
+): Promise<
+  { ok: true; path: string; token: string } | { ok: false; reason: "other_recorder" }
+> {
+  const { userId } = await gateWrite(eventId, "moderator");
+  const admin = createAdminClient();
+  if (await recordingRivalFor(admin, eventId, userId, durationSeconds)) {
+    return { ok: false, reason: "other_recorder" };
+  }
+  const { path, token } = await mintUploadToken(eventId, "recording", filename);
+  return { ok: true, path, token };
+}
+
+/**
+ * File one uploaded recording segment — or refuse it, as above.
+ *
+ * Checked again here, not only when the upload was signed: two hosts can both
+ * be signed in the same instant, and a whole upload sits between the two
+ * checks — during which the other host's segment may have landed. No audit
+ * and no revalidate, for the reasons in `registerWebinarAsset`.
+ *
+ * A refused segment's bytes are deleted, since nothing will ever point at
+ * them — but ONLY once the database confirms nothing already does. The path
+ * comes from the browser, and `verifyUpload` proves only that it is under this
+ * event's recording prefix and exists; it does not prove this caller uploaded
+ * it. Deleting unconditionally let any host (a guest speaker included) name a
+ * co-host's already-registered segment, be refused, and have the server
+ * delete that stretch of the replay for them. A legitimately refused segment
+ * is always a freshly minted path nothing has claimed, so this changes nothing
+ * for it; and when the check cannot be read, the bytes are left alone — an
+ * orphaned file costs storage, a deleted registered one costs the recording.
+ */
+export async function registerWebinarRecordingSegment(
+  eventId: string,
+  input: Omit<RegisterAssetInput, "kind">,
+): Promise<{ ok: true } | { ok: false; reason: "other_recorder" }> {
+  const { userId } = await gateWrite(eventId, "moderator");
+  const admin = createAdminClient();
+  const full: RegisterAssetInput = { ...input, kind: "recording" };
+  await verifyUpload(admin, eventId, full);
+  const filed = await fileRecordingSegment(
+    admin,
+    eventId,
+    userId,
+    assetRow(eventId, full, userId),
+    input.durationSeconds,
+  );
+  if (!filed.ok) {
+    const { data: claimed, error: claimErr } = await admin
+      .from("event_assets")
+      .select("id")
+      .eq("storage_path", full.storagePath)
+      .limit(1);
+    if (!claimErr && (claimed ?? []).length === 0) {
+      try {
+        await admin.storage.from(BUCKET).remove([full.storagePath]);
+      } catch (err) {
+        console.error("[webinars] refused segment cleanup failed", err);
+      }
+    }
+    return { ok: false, reason: "other_recorder" };
+  }
+  return { ok: true };
+}
+
+/** The three checks `registerWebinarAsset` documents. Throws a sentence. */
+async function verifyUpload(
+  admin: ReturnType<typeof createAdminClient>,
+  eventId: string,
+  input: RegisterAssetInput,
+): Promise<void> {
+  const prefix = `${eventId}/${input.kind}/`;
+  if (!input.storagePath.startsWith(prefix)) {
+    throw new Error("That file doesn't belong to this event.");
+  }
+  if (input.sizeBytes != null && input.sizeBytes > MAX_UPLOAD_BYTES) {
+    throw new Error("Files are capped at 2 GB.");
+  }
+  if (input.kind === "deck" && !isDeckFile(input.filename, input.mimeType)) {
+    throw new Error("A deck has to be a PDF or a PowerPoint file.");
+  }
+
+  const segments = input.storagePath.split("/");
+  const name = segments.pop() ?? "";
+  const folder = segments.join("/");
+  const { data: listed } = await admin.storage
+    .from(BUCKET)
+    .list(folder, { limit: 1, search: name });
+  if (!listed?.some((o: any) => o.name === name)) {
+    throw new Error("Upload didn't complete — try again.");
+  }
+}
+
+function assetRow(eventId: string, input: RegisterAssetInput, userId: string) {
+  return {
+    event_id: eventId,
+    kind: input.kind,
+    storage_path: input.storagePath,
+    filename: input.filename.slice(0, 200),
+    mime_type: input.mimeType,
+    size_bytes: input.sizeBytes,
+    duration_seconds: input.durationSeconds,
+    sort_order: input.sortOrder ?? 0,
+    uploaded_by: userId,
+  };
+}
+
+function toAsset(r: any): EventAsset {
   return {
     id: r.id,
     eventId: r.event_id,
@@ -261,229 +397,156 @@ export async function registerWebinarAsset(
   };
 }
 
+/**
+ * Is somebody else this event's recorder, such that `userId`'s segment must be
+ * refused? Their user id if so.
+ *
+ * The server half of "one recorder per webinar" (lib/webinars.ts): the live
+ * room elects one host's browser, and this refuses segments from anyone the
+ * election ranks below a host who registered a segment within the lease (and
+ * since this segment began, when its length is known) and is still in the
+ * room. Built from rows that already exist — the event's recent recording
+ * rows and live attendance — so there is no lease column to migrate and
+ * nothing to clean up after a crash.
+ *
+ * Attendance is best-effort, like everywhere else it is read: a database
+ * without `live_participants` counts every recent recorder as present, and
+ * the lease alone decides.
+ */
+async function recordingRivalFor(
+  admin: ReturnType<typeof createAdminClient>,
+  eventId: string,
+  userId: string,
+  segmentSeconds?: number | null,
+): Promise<string | null> {
+  const now = new Date();
+  const since = new Date(now.getTime() - RECORDER_LEASE_MS).toISOString();
+  const { data: recent, error } = await admin
+    .from("event_assets")
+    .select("uploaded_by, created_at")
+    .eq("event_id", eventId)
+    .eq("kind", "recording")
+    .neq("uploaded_by", userId)
+    .gte("created_at", since)
+    .limit(50);
+  // A failed read must not stop a webinar being recorded; the client-side
+  // election is still in force, and this is its backstop, not its gate.
+  if (error || !recent || recent.length === 0) return null;
+
+  const rivals = [
+    ...new Set(recent.map((r: any) => r.uploaded_by as string).filter(Boolean)),
+  ];
+  let present: Set<string> | null = null;
+  const { data: here, error: hereErr } = await admin
+    .from("live_participants")
+    .select("user_id")
+    .eq("event_id", eventId)
+    .in("user_id", rivals)
+    .is("left_at", null)
+    .gte("last_seen_at", new Date(now.getTime() - PEER_TIMEOUT_MS).toISOString());
+  if (!hereErr) present = new Set((here ?? []).map((r: any) => r.user_id as string));
+
+  return recordingRival({
+    callerId: userId,
+    recent: recent.map((r: any) => ({
+      userId: r.uploaded_by ?? null,
+      at: r.created_at,
+    })),
+    present,
+    now,
+    segmentStartMs: recordingSegmentStart(now, segmentSeconds),
+  });
+}
+
 const ASSET_COLUMNS =
   "id, event_id, kind, storage_path, filename, mime_type, size_bytes, duration_seconds, sort_order, created_at";
 
-type AssetRow = {
-  event_id: string;
-  kind: AssetKind;
-  storage_path: string;
-  filename: string;
-  mime_type: string | null;
-  size_bytes: number | null;
-  duration_seconds: number | null;
-  sort_order: number;
-  uploaded_by: string;
-};
-
-async function insertAsset(
-  admin: ReturnType<typeof createAdminClient>,
-  row: AssetRow,
-): Promise<any> {
-  const { data, error } = await admin
-    .from("event_assets")
-    .insert(row)
-    .select(ASSET_COLUMNS)
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
-}
-
 /**
- * Register one recording segment, never at the cost of another one.
- *
- * This used to be a PostgREST upsert with on_conflict=event_id,sort_order —
- * and it failed on EVERY segment with 42P10, because the only matching index
- * (event_assets_recording_segment, 0084) is PARTIAL (`where kind =
- * 'recording'`) and Postgres cannot infer a partial index from an ON CONFLICT
- * with no predicate. The bytes landed in storage and no row was ever written.
- * Its replacement then went too far the other way: ANY second registration at
- * an index replaced the row there and deleted its file. The index is chosen
- * by the client (seeded from the server when recording starts), and two
- * recorders can overlap — a presence blip that briefly picks a second staff
- * host, a handover while the old recorder's final upload is still in flight —
- * so one recorder's 12-second clip could silently replace the other's
- * five-minute segment. Now, in order:
- *
- *  1. The same FILE again (the storage path is minted per upload, so this is
- *     a repeated registration, not a new segment): return the row it already
- *     has. A path already attached to a different segment is refused — one
- *     object must never sit under two indices, or replacing one would delete
- *     the other's bytes.
- *  2. A retry of a segment THIS recorder already registered — same uploader,
- *     same segment name (`segment-0004.webm`, which carries the client's own
- *     index): replace that row wherever it ended up, and delete the file it
- *     pointed at. This is the case the replace exists for: a re-upload after a
- *     dropped connection must not play the same five minutes twice.
- *  3. Otherwise it is a new segment. Insert it at the index the recorder
- *     asked for; if that index is taken — by another staff recorder, or by
- *     one of this recorder's own segments that step 3 had to move earlier —
- *     insert it at the next free index instead. Never replace. The partial
- *     unique index is what makes "taken" atomic: a clash is a 23505, and the
- *     loop re-checks step 2 (a concurrent retry of the same segment) before
- *     moving on.
- *
- * Matching the retry on the segment name rather than on the index is what
- * stops step 3 from undoing itself: a segment moved from index 7 to 9 keeps
- * the name `segment-0007`, so when the same recorder's next segment (its own
- * index 8, then 9) arrives, it is recognised as new and appended — not taken
- * for a retry of the moved one and written over it.
- *
- * Overlapping recorders therefore interleave (playback order is sort_order,
- * so a few seconds may play out of sequence) but never lose a file. Speakers
- * cannot reach any of this: registration is staff-only (see gateWrite).
+ * File one recording segment: refuse it if another host is the recorder,
+ * otherwise register it at its slot. The one-recorder check and the insert
+ * run back to back, so the window in which two hosts can both pass is the
+ * length of one round trip rather than one segment.
  */
-async function saveRecordingSegment(
-  admin: ReturnType<typeof createAdminClient>,
-  row: AssetRow,
-): Promise<any> {
-  type Existing = {
-    id: string;
-    kind: string;
-    storage_path: string;
-    filename: string;
-    uploaded_by: string | null;
-  };
-  const EXISTING_COLUMNS = "id, kind, storage_path, filename, uploaded_by";
-
-  // 1. The same file, registered again.
-  {
-    const { data, error } = await admin
-      .from("event_assets")
-      .select(`${ASSET_COLUMNS}, uploaded_by`)
-      .eq("event_id", row.event_id)
-      .eq("storage_path", row.storage_path)
-      .limit(1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    const same = data as (Existing & Record<string, unknown>) | null;
-    if (same) {
-      if (
-        same.kind === "recording" &&
-        same.uploaded_by === row.uploaded_by &&
-        same.filename === row.filename
-      ) {
-        return same;
-      }
-      throw new Error("That file is already attached to this event.");
-    }
-  }
-
-  // 2. This recorder's own earlier registration of this segment, if any.
-  const findOwn = async (): Promise<Existing | null> => {
-    const { data, error } = await admin
-      .from("event_assets")
-      .select(EXISTING_COLUMNS)
-      .eq("event_id", row.event_id)
-      .eq("kind", "recording")
-      .eq("uploaded_by", row.uploaded_by)
-      .eq("filename", row.filename)
-      .order("sort_order", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    return data as Existing | null;
-  };
-
-  const replace = async (existing: Existing) => {
-    const { data, error } = await admin
-      .from("event_assets")
-      .update({
-        storage_path: row.storage_path,
-        filename: row.filename,
-        mime_type: row.mime_type,
-        size_bytes: row.size_bytes,
-        duration_seconds: row.duration_seconds,
-        uploaded_by: row.uploaded_by,
-      })
-      .eq("id", existing.id)
-      .select(ASSET_COLUMNS)
-      .single();
-    if (error) throw new Error(error.message);
-    if (existing.storage_path && existing.storage_path !== row.storage_path) {
-      await removeIfUnreferenced(admin, existing.storage_path);
-    }
-    return data;
-  };
-
-  // 3. A new segment: the requested index if it is free, else the next one.
-  // A handful of attempts is plenty — each clash means another registration
-  // landed in the same instant, and there are at most a couple of recorders.
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const own = await findOwn();
-    if (own) return replace(own);
-    const sortOrder =
-      attempt === 0
-        ? row.sort_order
-        : await nextFreeRecordingIndex(admin, row.event_id);
-    const { data, error } = await admin
-      .from("event_assets")
-      .insert({ ...row, sort_order: sortOrder })
-      .select(ASSET_COLUMNS)
-      .single();
-    if (!error) return data;
-    if (error.code !== "23505") throw new Error(error.message);
-  }
-  throw new Error("Couldn't save that recording segment — try again.");
-}
-
-/**
- * Delete a replaced segment's file — unless some row still points at it.
- *
- * Registration refuses to attach one object twice (step 1 above), but rows
- * written before that rule existed may share a path, and deleting bytes
- * another row still serves would break that segment silently. Best-effort
- * both ways: a file we fail to delete costs storage; a check we cannot make
- * keeps the file.
- */
-async function removeIfUnreferenced(
-  admin: ReturnType<typeof createAdminClient>,
-  storagePath: string,
-): Promise<void> {
-  try {
-    const { count, error } = await admin
-      .from("event_assets")
-      .select("id", { count: "exact", head: true })
-      .eq("storage_path", storagePath);
-    if (error || (count ?? 0) > 0) return;
-    await admin.storage.from(BUCKET).remove([storagePath]);
-  } catch (err) {
-    console.error("[webinars] replaced segment delete failed", err);
-  }
-}
-
-/** One past the highest recording index registered for this event, or 0. */
-async function nextFreeRecordingIndex(
+async function fileRecordingSegment(
   admin: ReturnType<typeof createAdminClient>,
   eventId: string,
-): Promise<number> {
-  const { data, error } = await admin
-    .from("event_assets")
-    .select("sort_order")
-    .eq("event_id", eventId)
-    .eq("kind", "recording")
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  userId: string,
+  row: ReturnType<typeof assetRow>,
+  segmentSeconds?: number | null,
+): Promise<{ ok: true; data: any } | { ok: false }> {
+  if (await recordingRivalFor(admin, eventId, userId, segmentSeconds)) {
+    return { ok: false };
+  }
+  const { data, error } = await registerRecordingSegment(admin, row);
   if (error) throw new Error(error.message);
-  const top = (data as any)?.sort_order;
-  return typeof top === "number" ? top + 1 : 0;
+  return { ok: true, data };
 }
 
 /**
- * The index the next recording segment should use: one past the highest
- * already registered for this event, or 0.
+ * Register one recording segment without ever writing over another.
  *
- * Seeded from the server so a reload, a second recording run after Reopen, or
- * a handover to another staff host starts past everything already there
- * instead of at segment 0. A seed is only a starting point — two recorders
- * that overlap can still be handed the same one — and it is registration
- * (saveRecordingSegment) that guarantees they append rather than overwrite.
- * Staff only, the same gate as uploading a segment.
+ * This used to be an upsert with `onConflict: "event_id,sort_order"`, and it
+ * could not work: the unique index it names is PARTIAL (`where kind =
+ * 'recording'`, migration 0084), Postgres only accepts a partial index as an
+ * ON CONFLICT target when the statement repeats the predicate, and PostgREST
+ * has no way to say it. Every segment was refused with 42P10 — pinned in
+ * lib/webinars-migration-db.test.ts.
+ *
+ * So: read the segments the event already has, let `recordingSegmentSlot`
+ * decide (the same file again keeps its row; a segment from a run the event
+ * has seen goes at that run's base plus its index; a new run — a reload, or a
+ * second host taking over — starts a new block after the last), and insert.
+ * The partial unique index still guards the insert; a 23505 means another
+ * segment took the slot between the read and the write, so read again and ask
+ * again. Three rounds is far more than two-minute segments can race for.
  */
-export async function nextRecordingIndex(eventId: string): Promise<number> {
-  await gateWrite(eventId, "staff");
-  return nextFreeRecordingIndex(createAdminClient(), eventId);
+async function registerRecordingSegment(
+  admin: ReturnType<typeof createAdminClient>,
+  row: {
+    event_id: string;
+    storage_path: string;
+    sort_order: number;
+    [k: string]: unknown;
+  },
+): Promise<{ data: any; error: { message: string } | null }> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: taken, error: readErr } = await admin
+      .from("event_assets")
+      .select("sort_order, storage_path")
+      .eq("event_id", row.event_id)
+      .eq("kind", "recording");
+    if (readErr) return { data: null, error: readErr };
+
+    const slot = recordingSegmentSlot(
+      row.sort_order,
+      row.storage_path,
+      (taken ?? []).map((t: any) => ({
+        sortOrder: t.sort_order,
+        storagePath: t.storage_path,
+      })),
+    );
+
+    if (slot.kind === "existing") {
+      return admin
+        .from("event_assets")
+        .select(ASSET_COLUMNS)
+        .eq("event_id", row.event_id)
+        .eq("kind", "recording")
+        .eq("sort_order", slot.sortOrder)
+        .single();
+    }
+
+    const res = await admin
+      .from("event_assets")
+      .insert({ ...row, sort_order: slot.sortOrder })
+      .select(ASSET_COLUMNS)
+      .single();
+    if (!res.error || (res.error as any).code !== "23505") return res;
+  }
+  return {
+    data: null,
+    error: { message: "Couldn't file that recording segment — try again." },
+  };
 }
 
 /** Detach a file and delete the bytes. Staff only. */
@@ -676,7 +739,6 @@ export async function speakerInviteLink(
   if (!token) throw new Error("That speaker has already claimed their slot.");
   return inviteUrlFor(eventId, token);
 }
-
 function inviteUrlFor(eventId: string, token: string): string {
   return `${env.siteUrl}/dashboard/events/${eventId}/live?speaker=${token}`;
 }
@@ -734,6 +796,7 @@ export async function sendSpeakerInvite(
     payload: { speakerId },
   });
 }
+
 
 /**
  * Claim a speaker slot.

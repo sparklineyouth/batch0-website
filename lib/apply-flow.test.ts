@@ -11,6 +11,7 @@ import {
   promptFor,
   requiredBuiltinErrors,
   resumeIndex,
+  restoreDraftCohort,
   screenIndexForField,
   validateAll,
   validateScreen,
@@ -55,6 +56,25 @@ function ctx(form: FormState, over: Partial<ValidationContext> = {}): Validation
 }
 
 const ids = (screens: { id: string }[]) => screens.map((s) => s.id);
+
+test("recovering unsaved answers honors an explicit Winter link over an older Fall device choice", () => {
+  assert.equal(restoreDraftCohort("winter", "winter", "fall", ["fall", "winter"]), "winter");
+  assert.equal(restoreDraftCohort("fall", "fall", "winter", ["fall", "winter"]), "fall");
+});
+
+test("ordinary draft recovery preserves an eligible saved choice, but not a closed intake", () => {
+  assert.equal(restoreDraftCohort("fall", null, "winter", ["fall", "winter"]), "winter");
+  assert.equal(restoreDraftCohort("winter", null, "fall", ["winter"]), null);
+  assert.equal(restoreDraftCohort(null, null, "unknown", ["fall", "winter"]), null);
+});
+
+test("a device-only Fall draft needs a deliberate choice even when Winter is the sole open intake", () => {
+  const restored = restoreDraftCohort("winter", null, "fall", ["winter"]);
+  const screens = buildScreens(args({ chooseCohort: restored === null }));
+  assert.equal(screens[1].id, "cohort");
+  assert.ok(validateScreen(screens[1], ctx(complete(), { cohortId: restored })).cohort_id);
+  assert.deepEqual(validateScreen(screens[1], ctx(complete(), { cohortId: "winter" })), {});
+});
 
 test("one open cohort: no cohort question — it is simply the one they apply to", () => {
   const screens = buildScreens(args({ chooseCohort: false }));

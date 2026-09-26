@@ -5,15 +5,14 @@ import { capabilitiesForRole } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  callPhase,
   inviteEndsAt,
   roomAccess,
   roomWindow,
   type CallInviteStatus,
-  type CallPhase,
   type RoomAccess,
   type RoomStatus,
 } from "@/lib/live";
+import { callPhase, type CallPhase } from "@/lib/call-lifecycle";
 import {
   canBroadcast,
   normalizeAudienceMode,
@@ -231,16 +230,14 @@ export async function roomAccessFor(
  * The hosts present in an event's room right now, each marked staff or not
  * by THEIR OWN role — never by whether they are on the speaker list.
  *
- * The one place the speaker End rule ("is a staff host here?") and the
- * recorder pick ("which staff host records?") learn who is who. Both used to
- * call a present host staff only if they were NOT on the speaker list, which
- * went wrong for anyone who is both: a staff member who opened a guest's claim
- * link to test it (claiming is now refused for staff, but rows from before
- * that stay), or a guest later promoted to a role with `events.manage`. Such
- * a person was never picked to record — an auto-record webinar they ran alone
- * was silently not recorded — and their presence did not stop a guest speaker
- * from ending the room under them. Now staff means `events.manage` on the
- * person's role, the same test resolveEventAccess applies to the caller.
+ * Where the speaker End rule ("is a staff host here?") learns who is who. It
+ * used to call a present host staff only if they were NOT on the speaker
+ * list, which went wrong for anyone who is both: a staff member who opened a
+ * guest's claim link to test it (claiming is now refused for staff, but rows
+ * from before that stay), or a guest later promoted to a role with
+ * `events.manage`. Their presence did not stop a guest speaker from ending
+ * the room under them. Now staff means `events.manage` on the person's role,
+ * the same test resolveEventAccess applies to the caller.
  *
  * Null when presence cannot be read at all (see presentHosts: callers decide
  * what "could not tell" means for them). If only the roles cannot be read, it
@@ -317,8 +314,9 @@ export type CallAccess = {
   hostId: string;
   inviteeId: string;
   /**
-   * The inviter — the call's owner/host. Invitees are always students, so an
-   * admin in a call is always its owner. Only the owner may End the call.
+   * The inviter — the call's owner/host, and the side that records. Invitees
+   * are always students, so an admin in a call is always its owner. (Either
+   * person may End call — see endCall in app/calls/actions.ts.)
    */
   isOwner: boolean;
   otherId: string;
@@ -331,7 +329,11 @@ export type CallAccess = {
   durationMinutes: number;
   endsAt: string;
   topic: string | null;
-  /** callPhase at resolve time. See callRefusal for what each means for a join. */
+  /**
+   * callPhase (lib/call-lifecycle.ts) at resolve time — the same answer the
+   * lists, the page and the lifecycle sweep use. See callRefusal for what
+   * each means for a join.
+   */
   phase: CallPhase;
 };
 
@@ -345,10 +347,9 @@ export type CallAccess = {
  * walk into two people's call.
  *
  * Returns the phase instead of refusing on it, because the answers after the
- * party check differ by caller: leaving needs only identity, End call needs
- * `accepted`, and the page needs the names to say "The call has ended". Use
- * `callRefusal(phase)` for the join/heartbeat gate. Nothing about a call's
- * status is revealed to a non-party.
+ * party check differ by caller: leaving needs only identity, and the join and
+ * the heartbeat need `callRefusal(phase)` / `callRoomStatus(phase)`. Nothing
+ * about a call's status is revealed to a non-party.
  */
 export async function resolveCallAccess(
   inviteId: string,
@@ -412,10 +413,11 @@ export async function resolveCallAccess(
 /**
  * Why a party may not be in their call right now, or null when they may.
  *
- *   joinable              null — come in.
+ *   joinable / live       null — come in.
  *   upcoming              'early'
- *   invited               'closed' (never accepted; there is no call yet)
- *   completed             'completed' (End call pressed, or the window closed)
+ *   needs_answer/expired  'closed' (never accepted; there is no call yet)
+ *   completed / ended     'completed' (End call pressed, or the window closed
+ *                         — the same call to a person; see callPhase)
  *   cancelled / declined  as named
  */
 export type CallRefusal =
@@ -426,32 +428,20 @@ export type CallRefusal =
   | "declined";
 
 export function callRefusal(phase: CallPhase): CallRefusal | null {
-  switch (phase) {
-    case "joinable":
-      return null;
-    case "upcoming":
-      return "early";
-    case "invited":
-      return "closed";
-    default:
-      return phase;
-  }
+  if (phase === "joinable" || phase === "live") return null;
+  if (phase === "upcoming") return "early";
+  if (phase === "completed" || phase === "ended") return "completed";
+  if (phase === "cancelled" || phase === "declined") return phase;
+  return "closed";
 }
 
 /** The heartbeat's answer for a call in this phase. */
 export function callRoomStatus(phase: CallPhase): RoomStatus {
-  switch (phase) {
-    case "joinable":
-      return "ok";
-    case "completed":
-      return "ended";
-    case "cancelled":
-      return "cancelled";
-    case "declined":
-      return "revoked";
-    default:
-      return "closed";
-  }
+  if (phase === "joinable" || phase === "live") return "ok";
+  if (phase === "completed" || phase === "ended") return "ended";
+  if (phase === "cancelled") return "cancelled";
+  if (phase === "declined") return "revoked";
+  return "closed";
 }
 
 // ---------------------------------------------------------------------------
@@ -476,7 +466,8 @@ export function callRoomStatus(phase: CallPhase): RoomStatus {
  *   call   nothing server-side. A 1:1 keeps no presence record (there is no
  *          call attendance table; see P56 in the live design notes), and the
  *          departing party's `bye` is what tells the other side. The call is
- *          NOT completed by leaving — only the owner's End call does that.
+ *          NOT completed by leaving — End call does that, or the lifecycle
+ *          sweep once the window has closed (lib/call-lifecycle.ts).
  */
 export async function leaveInternal(
   kind: LiveRoomKind,
@@ -501,11 +492,12 @@ const UUID =
 /**
  * Claimed speakers' user ids, or null when the read failed.
  *
- * Separate from `speakerUserIds` in lib/webinar-data.ts, which returns [] on
- * any error — right for a display list, wrong here, where "the query failed"
- * would silently demote a guest speaker to a viewer mid-webinar. A missing
+ * Null rather than [] on an error, because here "the query failed" would
+ * otherwise silently demote a guest speaker to a viewer mid-webinar. A missing
  * table (0084 not applied) is still "no speakers", which is the truth. Also
- * presentHostRoles' fallback when roles cannot be read.
+ * presentHostRoles' fallback when roles cannot be read. (This replaced the
+ * `speakerUserIds` helper that the gates used to share, which swallowed
+ * errors into an empty list.)
  */
 async function readSpeakerIds(eventId: string): Promise<string[] | null> {
   const admin = createAdminClient();

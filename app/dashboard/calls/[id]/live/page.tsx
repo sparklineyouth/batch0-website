@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { requireUser, getProfile, getCapabilities } from "@/lib/auth";
+import { requireUser, getViewer } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getInvite } from "@/lib/calls";
 import { createRoom, dailyConfigured, mintToken, roomIsLive } from "@/lib/daily";
-import { callsHomeFor } from "@/lib/permissions";
-import { resolveCallAccess } from "@/lib/live-access";
+import { canJoin, joinState, inviteEndsAt } from "@/lib/live";
+import { callPhase, hostCallsHref } from "@/lib/call-lifecycle";
 import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
 import { BuiltinCallRoom } from "./builtin-room";
 import { env } from "@/lib/env";
@@ -26,86 +27,71 @@ export default async function CallLivePage(
 ) {
   const params = await props.params;
   await requireUser();
+  const viewer = await getViewer();
+  if (!viewer) notFound();
+  const profile = viewer.profile;
+
+  const invite = await getInvite(params.id);
+  if (!invite) notFound();
 
   // A 1:1 is private to its two people. Not "can you see this page" but
   // "are you one of the two" — an admin browsing the safeguarding list can
-  // read that a call happened without being able to walk into it. A
-  // non-party gets the same 404 as a call that does not exist; that is the
-  // deliberate safeguarding rule, not a gap. (An admin who BOOKED a call is
-  // its owner, and is let in like any other owner.)
-  //
-  // The same resolution joinRoom and endCall use (lib/live-access.ts), so the
-  // page, the credentials and End call agree about who owns the call and
-  // whether it is still running.
-  const [access, caps, profile] = await Promise.all([
-    resolveCallAccess(params.id),
-    getCapabilities(),
-    getProfile(),
-  ]);
-  if (!access.ok) {
-    if (access.reason === "no-access") notFound();
+  // read that a call happened without being able to walk into it.
+  const isHost = invite.hostId === profile.id;
+  const isInvitee = invite.inviteeId === profile.id;
+  if (!isHost && !isInvitee) notFound();
+
+  // "Back" is this person's own calls list. For the student that is
+  // /dashboard/calls; for a mentor it is /mentor/calls — sending a host to the
+  // student inbox showed them an empty page after every call.
+  const backHref = isHost
+    ? hostCallsHref({
+        superAdmin: viewer.caps.superAdmin,
+        mentorPanel: can(viewer.caps, "mentor.panel"),
+        investorPanel: can(viewer.caps, "investor.panel"),
+        canInvite: can(viewer.caps, "calls.invite"),
+      })
+    : "/dashboard/calls";
+
+  // Every reason the door is shut, from the one rule the lists use
+  // (lib/call-lifecycle.ts), so this page and the card that linked here can
+  // never disagree about whether the call is still on.
+  const phase = callPhase(invite);
+  if (invite.status !== "accepted" || phase === "ended") {
+    const why: Record<string, string> = {
+      needs_answer: "This call hasn't been accepted yet.",
+      expired: "This invite was never answered, and its time has passed.",
+      ended: "This call has ended.",
+      completed: "This call has ended.",
+      declined: "This call was declined.",
+      cancelled: "This call was cancelled.",
+    };
     return (
-      <Shell title="1:1 call">
+      <Shell title={invite.topic || "1:1 call"}>
         <p className="text-sm text-ink-soft">
-          We couldn&rsquo;t load this call just now. Try again in a moment.
+          {why[phase] ?? "This call isn't open."}
         </p>
-        <BackLink href="/dashboard/calls" />
+        <BackLink href={backHref} />
       </Shell>
     );
   }
 
-  // Back goes where each person manages their calls: the owner to their
-  // admin, mentor or investor calls page; the invitee (always a student) to
-  // theirs. Sending everyone to /dashboard/calls bounced mentors to /mentor
-  // and showed admins a list where their call seemed to have vanished.
-  const isOwner = access.isOwner;
-  const backHref = isOwner ? callsHomeFor(caps) : "/dashboard/calls";
-  const title = access.topic || "1:1 call";
-
-  // Everything but "joinable" is said in words. Note that an accepted call
-  // whose window has closed counts as completed here, exactly as it does on
-  // the cards and in joinRoom — nobody pressing End call does not make a call
-  // from last week still "on".
-  switch (access.phase) {
-    case "invited":
-      return (
-        <Shell title={title}>
-          <p className="text-sm text-ink-soft">
-            This call hasn&rsquo;t been accepted yet.
-          </p>
-          <BackLink href={backHref} />
-        </Shell>
-      );
-    case "upcoming":
-      return (
-        <Shell title={title}>
-          <p className="text-sm text-ink-soft">
-            This opens 15 minutes before it starts —{" "}
-            <LocalTime value={access.startsAt} />.
-          </p>
-          <BackLink href={backHref} />
-        </Shell>
-      );
-    case "completed":
-      return (
-        <Shell title={title}>
-          <p className="text-sm text-ink-soft">This call has ended.</p>
-          <BackLink href={backHref} />
-        </Shell>
-      );
-    case "cancelled":
-    case "declined":
-      return (
-        <Shell title={title}>
-          <p className="text-sm text-ink-soft">This call was {access.phase}.</p>
-          <BackLink href={backHref} />
-        </Shell>
-      );
-    case "joinable":
-      break;
+  const endsAt = inviteEndsAt(invite);
+  const state = joinState(invite.startsAt, endsAt);
+  if (!canJoin(state)) {
+    return (
+      <Shell title={invite.topic || "1:1 call"}>
+        <p className="text-sm text-ink-soft">
+          This opens 15 minutes before it starts —{" "}
+          <LocalTime value={invite.startsAt} />.
+        </p>
+        <BackLink href={backHref} />
+      </Shell>
+    );
   }
 
-  const callTitle = access.topic || `1:1 with ${access.otherName}`;
+  const callTitle =
+    invite.topic || `1:1 with ${isHost ? invite.inviteeName : invite.hostName}`;
 
   // ---- batch0 Live (the default) ------------------------------------------
   //
@@ -118,21 +104,21 @@ export default async function CallLivePage(
   if (env.liveProvider === "builtin") {
     return (
       <BuiltinCallRoom
-        inviteId={access.inviteId}
+        inviteId={invite.id}
+        startsAt={invite.startsAt}
         title={callTitle}
+        isHost={isHost}
+        selfName={
+          (isHost ? invite.hostName : invite.inviteeName) ||
+          profile.full_name ||
+          "You"
+        }
+        otherName={isHost ? invite.inviteeName : invite.hostName}
+        endsAt={endsAt}
         backHref={backHref}
-        isOwner={isOwner}
-        otherName={access.otherName}
-        endsAt={access.endsAt}
       />
     );
   }
-
-  const endsAt = access.endsAt;
-  // The Daily branch needs the provider room columns, which only the invite
-  // row carries.
-  const invite = await getInvite(access.inviteId);
-  if (!invite) notFound();
 
   // ---- Daily (opt-in via LIVE_PROVIDER=daily) -----------------------------
   if (!dailyConfigured()) {
@@ -202,8 +188,8 @@ export default async function CallLivePage(
 
   const token = await mintToken({
     roomName,
-    userId: access.userId,
-    userName: profile?.full_name || "Guest",
+    userId: profile.id,
+    userName: profile.full_name || "Guest",
     // Both parties are hosts in a 1:1 — there is no audience to hide, and a
     // viewer token would leave one of them unable to speak.
     role: "host",

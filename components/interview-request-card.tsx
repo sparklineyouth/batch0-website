@@ -11,17 +11,25 @@ import {
   cancelInterviewRequest,
 } from "@/app/calls/interview-actions";
 import type { InterviewRequest } from "@/lib/interview-requests";
+import type { InterviewCardState } from "@/lib/call-lifecycle";
 import { CalendarClock, CheckCircle, Clock, Sparkles, X } from "lucide-react";
 
 /**
  * The student's "getting to know you" interview request (migration 0061).
  *
- * One component, three states, so a student sees the same thing whether they
+ * One component, four states, so a student sees the same thing whether they
  * land on it from the calls page, the dashboard home, or the enrolled page:
  *
- *  - no live request  → a prompt with an inline form to ask
- *  - requested        → "waiting on the team", with a way to withdraw
- *  - scheduled        → "booked", pointing at 1:1 calls to accept the time
+ *  - compose    → a prompt with an inline form to ask
+ *  - requested  → "waiting on the team", with a way to withdraw
+ *  - booked     → the call exists and hasn't happened yet
+ *  - done       → the call's time has come and gone
+ *
+ * WHICH state is decided by the page, from the request and the call it booked
+ * (interviewStage / interviewCardState in lib/call-lifecycle.ts). The request's
+ * own status stops at `scheduled` for ever, so a card that read it alone said
+ * "Interview booked" over a call that had been cancelled, and over one that
+ * had already happened — two of the three in production.
  *
  * `variant` only tunes the chrome: "full" leads with a heading (the calls
  * page and enrolled page give it room), "compact" is the tighter card the
@@ -29,11 +37,25 @@ import { CalendarClock, CheckCircle, Clock, Sparkles, X } from "lucide-react";
  */
 export function InterviewRequestCard({
   request,
+  state: stateProp,
   variant = "full",
 }: {
   request: InterviewRequest | null;
+  /**
+   * What to show. Omitted, it falls back to the request's own status — which
+   * is only right for a request whose call nobody has touched since, so every
+   * page passes the derived state.
+   */
+  state?: InterviewCardState;
   variant?: "full" | "compact";
 }) {
+  const state: InterviewCardState =
+    stateProp ??
+    (request?.status === "scheduled"
+      ? "booked"
+      : request?.status === "requested"
+        ? "requested"
+        : "compose");
   const router = useRouter();
   const [composing, setComposing] = useState(false);
   const [pending, start] = useTransition();
@@ -79,14 +101,41 @@ export function InterviewRequestCard({
     "rounded-xl border border-line bg-wash p-5" +
     (variant === "compact" ? "" : " md:p-6");
 
-  // ---- Scheduled -----------------------------------------------------------
-  if (request?.status === "scheduled") {
+  if (state === "hidden") return null;
+
+  // ---- Done ----------------------------------------------------------------
+  if (state === "done") {
+    return (
+      <div className={shell}>
+        <Eyebrow icon={CheckCircle}>Interview done</Eyebrow>
+        <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+          Thanks for making time to meet the team. It&rsquo;s under Past in your
+          1:1 calls, with the recording if there is one.
+        </p>
+      </div>
+    );
+  }
+
+  // ---- Booked ----------------------------------------------------------------
+  if (state === "booked") {
+    const needsAnswer = request?.call?.status === "invited";
     return (
       <div className={shell}>
         <Eyebrow icon={CheckCircle}>Interview booked</Eyebrow>
         <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-          Your getting-to-know-you interview is on the calendar. Head to your
-          1:1 calls to confirm the time and join when it starts.
+          Your getting-to-know-you interview is on the calendar
+          {request?.call && (
+            <>
+              {" "}for{" "}
+              <span className="font-medium text-ink">
+                <LocalTime value={request.call.startsAt} mode="datetime-short" />
+              </span>
+            </>
+          )}
+          .{" "}
+          {needsAnswer
+            ? "Head to your 1:1 calls to accept the time, then join when it starts."
+            : "Join from your 1:1 calls when it starts."}
         </p>
         <Link
           href="/dashboard/calls"
@@ -99,7 +148,7 @@ export function InterviewRequestCard({
   }
 
   // ---- Requested (waiting) -------------------------------------------------
-  if (request?.status === "requested") {
+  if (state === "requested" && request) {
     return (
       <div className={shell}>
         <Eyebrow icon={Clock}>Interview requested</Eyebrow>
@@ -152,6 +201,14 @@ export function InterviewRequestCard({
         A short, no-pressure video call with the batch0 team before your cohort
         starts. Tell us when you&rsquo;re free and we&rsquo;ll confirm a time.
       </p>
+      {/* A request is still "scheduled" when the call it booked falls
+          through; the page shows the ask again, and this says why. */}
+      {request?.status === "scheduled" && (
+        <p className="mt-2 text-sm text-ink-faint">
+          Your last interview didn&rsquo;t go ahead — ask for a new time
+          whenever suits you.
+        </p>
+      )}
 
       {!composing ? (
         <Button className="mt-4" onClick={() => setComposing(true)}>

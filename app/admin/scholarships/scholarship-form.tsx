@@ -345,7 +345,7 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div>
-          <Label htmlFor="s-seats">Seats</Label>
+          <Label htmlFor="s-seats">Seats per cohort</Label>
           <Input
             id="s-seats"
             type="number"
@@ -353,26 +353,18 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
             value={v.seats}
             onChange={(e) => set("seats", e.target.value)}
             placeholder="Unlimited"
+            aria-describedby="s-seats-help"
           />
         </div>
-        <div>
-          <Label htmlFor="s-opens">Opens</Label>
-          <Input
-            id="s-opens"
-            type="datetime-local"
-            value={v.opensAt}
-            onChange={(e) => set("opensAt", e.target.value)}
-          />
-        </div>
-        <div>
-          <Label htmlFor="s-closes">Closes</Label>
-          <Input
-            id="s-closes"
-            type="datetime-local"
-            value={v.closesAt}
-            onChange={(e) => set("closesAt", e.target.value)}
-          />
-        </div>
+        {/* No opens/closes dates: a scholarship has no window of its own. */}
+        <p
+          id="s-seats-help"
+          className="self-end text-xs text-ink-faint sm:col-span-2"
+        >
+          Each student&apos;s window follows their cohort: accepted students
+          until its enrollment deadline, enrolled students until it ends.
+          Seats count separately in each cohort.
+        </p>
       </div>
 
       <div>

@@ -149,30 +149,14 @@ version.
 
 ## Recording
 
-**Exactly one recorder per webinar**, and it starts on its own — there is no
-button to forget. On every host heartbeat the server picks the recorder
-(`pickRecorder` in `lib/webinars.ts`) and tells each host whether it is them:
+Auto-record starts when the elected host starts broadcasting — once their
+camera and mic have settled, so the first segment is not a second of silence.
+There is no button to forget. It runs only while its host is live, not during
+a premiere's recording, and never after End.
 
-1. **Sticky:** whoever registered the most recent real segment within
-   `RECORDER_STICKY_MS` (one five-minute segment plus two minutes for the
-   upload) keeps recording while they are present. A handover mid-talk costs a
-   seam; not handing over when nothing is wrong costs nothing. "Real" means at
-   least `RECORDER_STICKY_MIN_SECONDS` long (`stickySegment`): the short flush
-   a recorder uploads when it loses the pick must not hand the recording back
-   to it, or two hosts can ping-pong it every heartbeat.
-2. Otherwise, the **earliest-joined staff host** who is present — staff by
-   their own role, so a staff member who also holds a speaker row is eligible.
-
-If presence cannot be read, a staff host records blind only when nobody else
-has registered a real segment recently (`mayRecordBlind`).
-
-Guest speakers never record. The recording is the program's record of a room
-that may contain minors, and it belongs to the staff accountable for it. A
-webinar hosted only by guest speakers is therefore not recorded, and the
-record page (`/admin/events/[id]`) says why when a recording is missing.
-
-The recorder runs only while its host is live, not during a premiere's
-recording, and never after End.
+Until September 2026 it never started at all: `useRecorder` returned a
+`start()` that nothing called, and the register step below failed on every
+segment. Both are fixed; there are no recordings from before that.
 
 **It records what the audience saw, not what the camera captured.** The host's
 picture changes mid-webinar — camera, then slides, then back — and a
@@ -180,38 +164,63 @@ picture changes mid-webinar — camera, then slides, then back — and a
 `use-recorder.ts` composites onto a `<canvas>` and records
 `canvas.captureStream()`, which survives every switch as one continuous track.
 
-**It uploads in ~5-minute segments while the webinar is still running.** Holding
+**It uploads in 2-minute segments while the webinar is still running.** Holding
 an hour in a tab and pushing it at the end fails three ways at the worst moment:
 memory grows all hour, the upload starts exactly when the host wants to close
 the laptop, and any failure costs the whole recording. Each segment is a
-self-contained file and `event_assets.sort_order` is its index. The index is
-seeded from the server (`nextRecordingIndex`: the highest recording index plus
-one), so a reload or a handover to another host starts past everything
-already there. Registration (`saveRecordingSegment`, staff only) never lets
-one segment destroy another:
+self-contained file; `event_assets.sort_order` is its position. Two minutes
+(~19 MB at the recording bitrates) rather than five (~49 MB before VBR
+overshoot) because Supabase's default global upload limit is 50 MB and binds
+every signed upload whatever the bucket says.
 
-- the same file registered twice returns the row it already has, and a file
-  already attached to a different segment is refused;
-- the same recorder registering the same segment name again
-  (`segment-0004.webm` — a re-upload after a dropped connection) **replaces**
-  that row and deletes its old file (unless another row still points at it),
-  so the recording never plays the same five minutes twice;
-- anything else is a new segment: inserted at the index the recorder asked
-  for, or — if that index is taken, say by a second staff recorder
-  overlapping this one during a handover — at the next free index. It never
-  replaces someone else's segment.
+**It records the whole stage, from exactly one host's browser.** The recorder
+composites every live host's camera and screen share (a presenter's screen
+full-frame with faces inset, otherwise everyone side by side, each labelled)
+and mixes every voice through an `AudioContext` — the same stage machine a 1:1
+uses (`use-recorder.ts`). So a staff moderator's intro and the guest speaker's
+slides and talk are both in the file, whichever laptop made it. Every host
+(staff and guest speakers) runs the same room, so each host's browser elects
+one recorder from the co-hosts it can see (`electRecorder` in
+`lib/webinars.ts`: the lowest user id present — a peer's id is its user id, the
+one fact every browser holds identically; an earlier staff-before-guests rank
+depended on a speaker list rendered at page load, which a guest claiming their
+slot later made two browsers disagree about). The recorder stands down and
+flushes when a lower id arrives; the next in line takes over when it leaves. A
+co-host whose connection dropped counts as present for two segment lengths
+(`presentForRecording`), and the engine's heartbeat rebuilds a wedged
+connection to every co-host (not only the join-time roster), so a recorder who
+vanished without a goodbye cannot hold the election. The server backs this up
+(`recordingRival`): a segment is refused — before its upload is signed, and
+again at registration — when a *different*, lower-id host registered a segment
+within two segment lengths, after this segment began (worked out on the server
+from the segment's length, so a skewed client clock can't move it), and is
+still in the room (`live_participants`). A refusal is returned as a value, and
+the room stands its recorder down for that lease before looking again. A
+refused segment's bytes are deleted only when no `event_assets` row already
+claims that path, so naming someone else's registered segment deletes nothing.
 
-It is done in application code rather than as a PostgREST upsert because the
-unique index is *partial*, and `ON CONFLICT` cannot target a partial index:
-every segment upsert used to fail with `42P10` and no recording was ever
-attached. The index still makes a clash atomic (a 23505 sends registration to
-the next free index).
+Registering a segment reads the event's segments and then inserts
+(`registerRecordingSegment` in `app/admin/events/webinar-actions.ts`, rule in
+`recordingSegmentSlot`). It is not an upsert: the unique index is partial
+(`where kind = 'recording'`), PostgREST cannot repeat that predicate in an
+`ON CONFLICT`, and Postgres refuses with 42P10 — pinned in
+`lib/webinars-migration-db.test.ts`. The same file registered twice keeps its
+slot, so nothing plays twice. Each segment's name carries its **run** (the
+recording room's mount time — a reload, a Rejoin or a Reopen each start a new
+one) and index — `segment-<run>-<index>-<stamp>.webm` —
+and each run is laid out as its own contiguous block: a slow segment still
+lands in order behind its successors, and a reload (or a second host taking
+over) starts a new block after everything registered instead of filling the
+first run's gaps. Registering a segment never revalidates a path: Next
+re-renders the *current* route on any revalidate, and from inside the live room
+that re-ran the page — which, past the join window, replaced the host's room
+with "This event has ended".
 
-The cost is a seam of tens of milliseconds every five minutes, because a
+The cost is a seam of tens of milliseconds every two minutes, because a
 `MediaRecorder` has to be stopped and restarted for each file to carry its own
 header.
 
-### The End button
+### The End button (and Leave)
 
 There is **one** End for everyone, in the room's control bar, with a two-step
 confirm. Staff hosts always see it (during a premiere too); a guest speaker sees
@@ -237,7 +246,7 @@ The order, and why:
    (its blob built — milliseconds, capped at a few seconds), never on its
    upload. It used to wait for the upload with no bound on the final
    segment, which on a host's Leave meant staying on air to the whole room
-   for as long as ~27 MB took to climb their uplink.
+   for as long as the final segment took to climb their uplink.
 4. Screen, camera and mic stop, and the host lands on the ended screen, which
    shows "Saving the recording — keep this tab open" and arms the unload
    prompt until the upload lands. Reopen (and Rejoin after a Leave) waits for
@@ -351,6 +360,9 @@ mailing the whole cohort twice on the next run.
 It goes to everyone enrolled, not only to attendees. The people who most need a
 recording are the ones who missed it.
 
+The email and the bell link to `/dashboard/events`. They used to link to
+`/dashboard/events/<id>`, which has no page.
+
 ---
 
 ## Files touched
@@ -380,10 +392,19 @@ recording are the ones who missed it.
   choppy picture for that stretch; audio is continuous throughout and it
   recovers on return. Holding the frame rate properly would need a Web Worker
   timer or an audio-clock-driven loop.
+- **The elected recorder is chosen by presence, not by capability.** If the
+  host's browser that wins the election cannot record at all (no
+  `MediaRecorder`, no canvas capture), it says so to that host and nobody else
+  records — the other hosts defer to it. The server backstop only ever
+  *refuses* segments; it never asks a second browser to start.
 - **A failed segment upload is dropped, not retried.** That is what keeps memory
-  bounded to one segment, but a host with five minutes of dead network loses
-  five minutes of the talk. Retry belongs in `onSegment`, where the caller can
+  bounded to one segment, but a host with two minutes of dead network loses
+  two minutes of the talk. Retry belongs in `onSegment`, where the caller can
   tell a network failure from a rejected file.
+- **Students have no player for auto-recorded segments.** The follow-up says the
+  recording is up, and `/dashboard/events` still only shows the manual
+  `events.recording_url`. The segments are listed (as a count) on the admin
+  event page only.
 - **No PDF/PPTX rendering.** A deck is a download, not an in-page viewer — there
   is no renderer in the repo and adding one would be a new dependency.
 - **Existing webinars are not backfilled** to `type = 'webinar'`. They are still

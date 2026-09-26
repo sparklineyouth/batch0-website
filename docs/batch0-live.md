@@ -51,11 +51,12 @@ and ICE candidates that lets two browsers find each other — and that rides
 
 | File | Role |
 | --- | --- |
-| `lib/live.ts` | Pure rules: the audience window, `roomAccess` (who may be in a room now, by role), `eventLiveStatus` (what a list shows), `callPhase` (where a 1:1 stands). Unit-tested. |
+| `lib/live.ts` | Pure rules: the audience window, `roomAccess` (who may be in a room now, by role), `eventLiveStatus` (what a list shows). Unit-tested. |
+| `lib/call-lifecycle.ts` | Pure rules for a 1:1: `callPhase` (where a call stands, from its status and the clock), who may cancel, answer or end it. Unit-tested; see docs/live-video.md. |
 | `lib/live-signal.ts` | Pure wire protocol: channel names, message shapes, media slots, and the client's reaction to a status answer (`nextStatusAction`). Import-free, unit-tested. |
 | `lib/live-access.ts` | Server-only. **Who someone is in a room**, computed once: `resolveEventAccess` / `resolveCallAccess`, and the identity-only `leaveInternal`. Every gate below calls it. |
 | `lib/live-rooms.ts` | Server-only. Derives channel keys, issues credentials, records attendance, publishes the server's hints. Holds the room secret. |
-| `app/live/actions.ts` | The server actions: `joinRoom`, `announcePresence`, `leaveRoom`, `listAudience`, `endCall`. The access-control surface for media. |
+| `app/live/actions.ts` | The server actions: `joinRoom`, `announcePresence`, `leaveRoom`, `listAudience`. The access-control surface for media. (A 1:1's End call and status poll are `endCall` / `getCallRoomStatus` in `app/calls/actions.ts`.) |
 | `app/api/live/leave/route.ts` | The same leave as `leaveRoom`, as a `sendBeacon` target for a closing tab. |
 | `app/dashboard/events/[id]/live/room-actions.ts` | Everything in a webinar that isn't video — chat, Q&A, polls — plus `endLive` / `reopenLive`. |
 | `components/live/use-live-session.ts` | The WebRTC engine. Runs both webinars and 1:1s. |
@@ -167,8 +168,8 @@ The ordering problem is that students arrive before the host does.
   `revoked` only on the second consecutive answer, so one read at a boundary
   ends nobody's session; `error` (a query failed) is never acted on, so a
   database blip cannot look like a revocation and empty a room.
-- The server's own changes arrive as a hint. On End, Reopen, End call and
-  Cancel the server publishes a content-free `{ t: "room-changed" }` on the
+- The server's own changes arrive as a hint. On a webinar's End and Reopen
+  the server publishes a content-free `{ t: "room-changed" }` on the
   **stage** topic — the one channel every participant holds, including a viewer
   in a `private` webinar who has no room topic. A client that hears it
   re-announces immediately (throttled to one re-check per
@@ -176,7 +177,9 @@ The ordering problem is that students arrive before the host does.
   itself is **unauthenticated** — the stage topic is derivable, and nothing
   verifies a stage message in the browser — so it carries nothing and decides
   nothing. A forged one costs one throttled re-check. `host-online` is a hint
-  in exactly the same sense.
+  in exactly the same sense. A 1:1 learns that it was ended or cancelled from
+  its own status poll (`getCallRoomStatus`, every 15s) or the heartbeat's
+  answer, whichever comes first.
 - A departure is a `bye` with `reason: "leave"` (a connection being rebuilt
   sends `reason: "rebuild"`, which is not a departure), addressed with `to` to
   the one peer it concerns. The other side marks
@@ -210,12 +213,12 @@ intern or custom role with `events.manage` ticked. There are two kinds:
 | Sees audience **names** | yes | **never** — headcount and opaque ids only |
 | End for everyone | always | only when no staff host is present |
 | Reopen | yes | no |
-| Records | the one the server picks | never |
+| Records | whichever host's browser the room elects (lowest user id present), the whole stage | same rule |
 
 Every host is on air. There is no backstage mode.
 
-Who among the hosts *present in a room* is staff — for the speaker End rule
-and the recorder pick — is decided by each person's own role
+Who among the hosts *present in a room* is staff — for the speaker End rule —
+is decided by each person's own role
 (`presentHostRoles` in `lib/live-access.ts`), never by "not on the speaker
 list". Staff cannot claim a speaker slot at all: opening a guest's claim link
 while signed in as staff is a no-op, and the link stays good for the guest.
@@ -233,9 +236,8 @@ student — is the other participant. Since invitees are students, an admin in a
 call is always its owner. An admin who is *not* a party can never enter: the
 page 404s and `joinRoom` answers `no-access`, whoever is asking. That is the
 safeguarding rule, and the privacy between two people, and both are kept on
-purpose. Such an admin sees the call on `/admin/calls` as a read-only
-observer card (both names, no Join); a superAdmin may Cancel it from there,
-which disconnects both people.
+purpose. Such an admin sees the call on `/admin/calls` in the read-only
+"booked by everyone else" list (both names, no Join, no Cancel).
 
 ## Who may be in the room, and when
 
@@ -258,14 +260,16 @@ webinar shows **Ended**, with no Join, from the moment it ends.
 ### Reaching the room
 
 `/dashboard/events/[id]/live` and `/dashboard/calls/[id]/live` are exempt from
-the middleware's `student.dashboard` role gate and from the pre-cohort
-lockdown (`isLiveRoomPath` in `lib/permissions.ts`). The page and the actions
-do the authorizing instead, so a mentor or investor who booked a call, an
-intern with `events.manage`, and a mentor invited as a guest speaker can all
-reach a room they host. Back links are role-aware: a staff webinar host goes
-back to `/admin/webinars`, a call owner to their own calls page
-(`callsHomeFor`: `/admin/calls`, `/mentor/calls` or `/investor/calls`), a
-student to `/dashboard/events` or `/dashboard/calls`.
+the middleware's `student.dashboard` role gate (`isLiveRoomPath` and
+`bouncesFromDashboard` in `lib/dashboard-gate.ts`, tested). The page and the
+actions do the authorizing instead, so a mentor or investor who booked a call,
+an intern with `events.manage`, and a mentor invited as a guest speaker can all
+reach a room they host. The pre-cohort lockdown is unchanged: a 1:1 room is on
+its allowed list (under `/dashboard/calls`), a webinar room is not. Back links
+are role-aware: a staff webinar host goes back to `/admin/webinars`, a call's
+host to their own calls page (`hostCallsHref` in `lib/call-lifecycle.ts`:
+`/admin/calls`, `/mentor/calls` or `/investor/calls`), a student to
+`/dashboard/events` or `/dashboard/calls`.
 
 ## Leave, and End for everyone
 
@@ -329,14 +333,16 @@ uploading.
 
 Either person can **Leave**; the other sees "<name> left the call — they can
 rejoin until <end>", and the leaver can Rejoin inside the window. **End call**
-belongs to the owner alone (two-step confirm): `endCall` sets the invite to
-`completed` (only from `accepted`, so it is idempotent), audits it and sends
-`room-changed`, and both sides see "The call has ended" with no Rejoin. The
-invitee's Leave is always enough to get out, and the owner can never pull
-them back in. **Cancelling** a call that is in progress disconnects both
-people the same way ("This call was cancelled"). An accepted call whose
-window has closed counts as completed everywhere — Past, no Join, no Cancel —
-even if nobody pressed End call.
+is offered to either person once both have been in the room and the start has
+come: `endCall` (app/calls/actions.ts) sets the invite to `completed` (only
+from `accepted`, so it is idempotent) and audits it; the side that pressed it
+sees "This call has ended", and the other side's room closes to the same
+screen on its next status poll or heartbeat. The host's recording captures
+its final segment on the way out, and the upload finishes behind that screen.
+**Cancelling** a call that is in progress closes both rooms the same way. An
+accepted call whose window has closed counts as over everywhere — Past, no
+Join, no Cancel — even if nobody pressed End call (`callPhase` in
+`lib/call-lifecycle.ts`; the call-lifecycle sweep stamps it `completed`).
 
 ---
 

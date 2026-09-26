@@ -12,7 +12,7 @@ import { grantAutoAdmits } from "@/lib/founder-pass-tiers";
 import {
   planReapply,
   reviewerOverrodePass,
-  selectCohortId,
+  resolveApplicationCohort,
 } from "@/lib/reapply";
 import { formatDateSentence } from "@/lib/seo-meta";
 import { FORM_KEYS } from "@/lib/apply-flow";
@@ -174,11 +174,29 @@ export default async function ApplyPage(
     typeof searchParams.cohort === "string" ? searchParams.cohort : null;
   const draftCohortId =
     existing && !reapplying ? (existing as any).cohort_id ?? null : null;
-  const selectedId = selectCohortId(cohorts, [
-    queryCohort,
-    draftCohortId,
-    pinnedId,
-  ]);
+  const { cohortId: selectedId, unavailableCohortId } = resolveApplicationCohort(
+    cohorts, queryCohort, draftCohortId, pinnedId,
+  );
+  if (unavailableCohortId) {
+    const name = (openCohorts ?? []).find(cohort => cohort.id === unavailableCohortId)?.name ?? "That cohort";
+    return (
+      <ApplyMessage
+        eyebrow="Applications"
+        title={`${name} is no longer available for applications.`}
+        actions={cohorts.map(cohort => (
+          <Link key={cohort.id} href={`/apply?cohort=${cohort.id}`} className="press inline-flex h-11 items-center rounded-md border border-line px-5 text-sm text-ink hover:border-ink/30 hover:bg-wash">
+            Choose {cohort.name}
+          </Link>
+        ))}
+      >
+        <p>
+          {draftCohortId ? "Your saved draft and answers have not been moved. Choose a cohort below to continue your draft for that intake." : "Choose an available cohort below to start your application."}
+        </p>
+        {!cohorts.length && <p>No cohort is open right now. Your existing application remains on file.</p>}
+        <p><Link href="/dashboard/application" className="link-ink">View your application</Link></p>
+      </ApplyMessage>
+    );
+  }
 
   // Nothing left to apply to. Two shapes, and they need different words: the
   // cohort that declined them is the only one open (come back next season), or
@@ -304,6 +322,7 @@ export default async function ApplyPage(
       scholarshipQuestions={scholarshipQuestions}
       cohorts={cohortOptions}
       initialCohortId={initialCohortId}
+      explicitCohortId={queryCohort}
       notices={notices}
       blockedCohortNames={plan.blocked.map((c) => c.name)}
       parentGuideHref={`/parents?cohort=${selected.id}`}

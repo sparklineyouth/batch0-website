@@ -250,7 +250,7 @@ export default async function AdminWebinarPage(props: {
         {recordings.length === 0 ? (
           <p className="mt-2 text-sm text-ink-soft">
             {ev.auto_record
-              ? "Nothing recorded yet. Recording runs in one staff host's browser while they are on air (guest speakers never record), so either no staff host went live, or the tab was closed before the first five-minute segment finished uploading."
+              ? "Nothing recorded yet. Recording runs in one host's browser while they are on air, so either no host went live, or the tab was closed before the first two-minute segment finished uploading."
               : "Auto-record was off for this webinar."}
           </p>
         ) : (
@@ -264,7 +264,7 @@ export default async function AdminWebinarPage(props: {
             </p>
             {/*
               Segments are listed rather than stitched. The recorder writes a
-              self-contained file every five minutes so a crashed tab costs one
+              self-contained file every two minutes so a crashed tab costs one
               segment instead of the hour behind it (see docs/webinars.md), and
               joining them back into a single file needs a muxer this project
               does not have. The student-facing player walks them in order.

@@ -58,6 +58,19 @@ export type AnswerState = Record<string, string>;
 
 export type QuestionMap = Record<string, MergedQuestion>;
 
+/** Restore a saved choice without overriding the intake the student just
+ * explicitly opened. Answer recovery must not change that current intent. */
+export function restoreDraftCohort(
+  currentId: string | null,
+  explicitId: string | null,
+  backupId: string | null,
+  allowedIds: string[],
+): string | null {
+  if (explicitId && allowedIds.includes(explicitId)) return explicitId;
+  if (backupId) return allowedIds.includes(backupId) ? backupId : null;
+  return currentId;
+}
+
 /**
  * Per-field length ceilings. The same numbers as the server's SubmitSchema in
  * app/apply/actions.ts — the inputs carry them as maxLength so an answer can't
