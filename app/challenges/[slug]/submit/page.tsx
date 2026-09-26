@@ -129,7 +129,7 @@ export default async function SubmitPage(props: {
               kind={challenge.kind}
               imageUrl={challenge.coverImageUrl}
               theme={challenge.coverTheme}
-              size="sm"
+              size="xs"
             />
           }
           initialAnswers={sub?.answers ?? {}}

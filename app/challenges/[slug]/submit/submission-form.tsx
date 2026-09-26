@@ -1023,7 +1023,8 @@ function QuestionField({
     case "scale": {
       const n = typeof value === "number" ? value : Number(value) || 0;
       control = (
-        <div>
+        // inline-flex so the end labels span exactly the width of the buttons.
+        <div className="inline-flex max-w-full flex-col">
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={inputId}>
             {Array.from({ length: q.scaleMax }, (_, i) => i + 1).map((k) => (
               <button
@@ -1042,7 +1043,7 @@ function QuestionField({
             ))}
           </div>
           {(q.scaleMinLabel || q.scaleMaxLabel) && (
-            <div className="mt-1.5 flex justify-between text-[12px] text-ink-faint" style={{ maxWidth: `${q.scaleMax * 2.9}rem` }}>
+            <div className="mt-1.5 flex justify-between gap-4 text-[12px] text-ink-faint">
               <span>{q.scaleMinLabel}</span>
               <span>{q.scaleMaxLabel}</span>
             </div>

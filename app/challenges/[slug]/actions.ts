@@ -649,27 +649,3 @@ export async function getChallengeUploadToken(input: {
     bucket: CHALLENGE_UPLOAD_BUCKET,
   };
 }
-
-/** Short-lived view URLs for the entrant's own uploaded files (previews on
- *  the form after a reload). Only paths inside their own folder. */
-export async function getMyUploadPreviewUrls(input: {
-  slug: string;
-  paths: string[];
-}): Promise<Record<string, string>> {
-  const loaded = await loadContext(input.slug);
-  if (!loaded.ok) return {};
-  const { ctx } = loaded;
-  const mine = (input.paths ?? [])
-    .filter((p) => typeof p === "string" && p.startsWith(uploadPrefix(ctx)))
-    .slice(0, 40);
-  if (!mine.length) return {};
-  const { data } = await ctx.admin.storage
-    .from(CHALLENGE_UPLOAD_BUCKET)
-    .createSignedUrls(mine, 3600);
-  const out: Record<string, string> = {};
-  for (const row of data ?? []) {
-    if (row.path && row.signedUrl) out[row.path] = row.signedUrl;
-  }
-  return out;
-}
-

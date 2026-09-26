@@ -9,6 +9,7 @@ import { ShareLink } from "@/components/challenges/share-link";
 import { REF_STORAGE_KEY, stashRefFromLocation } from "@/lib/referral-code";
 import {
   canRegister,
+  challengePhase,
   isChallengeOpen,
   type Challenge,
   type SubmissionStatus,
@@ -199,7 +200,9 @@ export function RegisterCard(p: Props) {
         <p className="mt-1 text-sm text-ink-soft">
           {c.winnersPublished
             ? "Winners are out — see them below."
-            : "We're judging entries now. New challenges drop often."}
+            : now != null && challengePhase(c, now) === "judging"
+              ? "We're judging entries now. New challenges drop often."
+              : "This one has wrapped up. New challenges drop often."}
         </p>
         <Link href="/challenges" className={`${buttonClasses("secondary", "md")} mt-4`}>
           See what&apos;s live
@@ -277,7 +280,7 @@ export function RegisterCard(p: Props) {
           </p>
         )}
 
-        {registered && regOpen && (p.calendarUrl || p.icsUrl) && (
+        {registered && regOpen && !submitted && (p.calendarUrl || p.icsUrl) && (
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
             <span className="inline-flex items-center gap-1.5 text-ink-faint">
               <CalendarPlus className="h-3.5 w-3.5" /> Add the deadline:

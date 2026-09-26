@@ -23,7 +23,8 @@ export function ChallengeCover({
   theme: CoverTheme;
   /** Bottom line on the typographic cover — usually the prize headline. */
   footer?: string;
-  size?: "lg" | "sm";
+  /** lg: event page · sm: list thumbnail · xs: a ~36px header tile. */
+  size?: "lg" | "sm" | "xs";
   className?: string;
 }) {
   const base = `relative aspect-square w-full overflow-hidden rounded-xl border border-line ${className}`;
@@ -54,6 +55,14 @@ export function ChallengeCover({
       : theme === "paper"
         ? "border-phosphor"
         : "border-on-phosphor/30";
+
+  if (size === "xs") {
+    return (
+      <div className={`${base} ${palette} flex items-center justify-center`}>
+        <span className="font-display text-[15px] leading-none">b0</span>
+      </div>
+    );
+  }
 
   if (size === "sm") {
     return (

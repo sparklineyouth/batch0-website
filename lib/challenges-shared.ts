@@ -954,7 +954,10 @@ export function validateAnswers(
       case "url": {
         const s = (typeof v === "string" ? v : "").trim().slice(0, URL_MAX);
         value = s;
-        if (s && !HTTP_URL_RE.test(s) && !isUploadAnswer(s)) {
+        // Pre-0087 link fields could hold an upload; only the owner's own.
+        if (s && isUploadAnswer(s) && !ownsPath(uploadPathOf(s))) {
+          value = "";
+        } else if (s && !HTTP_URL_RE.test(s) && !isUploadAnswer(s)) {
           err = "Paste a full link starting with https://";
         }
         break;
