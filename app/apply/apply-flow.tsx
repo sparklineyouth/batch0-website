@@ -54,6 +54,7 @@ import {
   postableForm,
   promptFor,
   resumeIndex,
+  restoreDraftCohort,
   screenFieldNames,
   screenHasAnswer,
   validateAll,
@@ -175,6 +176,7 @@ export function ApplyFlow({
   scholarshipQuestions,
   cohorts,
   initialCohortId,
+  explicitCohortId = null,
   notices,
   blockedCohortNames,
   parentGuideHref,
@@ -193,6 +195,8 @@ export function ApplyFlow({
   cohorts: CohortOption[];
   /** Preselected cohort; null = several open and none chosen yet. */
   initialCohortId: string | null;
+  /** An eligible cohort from this visit's URL wins over older device backups. */
+  explicitCohortId?: string | null;
   /** Server-decided banners for the welcome screen (reapply, founder pass). */
   notices: { tone: "accent" | "neutral"; title: string; body: string }[];
   /** Open cohorts they can't pick because they've had a decision there. */
@@ -203,7 +207,8 @@ export function ApplyFlow({
 }) {
   const router = useRouter();
   const cfg = useMemo<QuestionMap>(() => buildQuestionMap(questions), [questions]);
-  const chooseCohort = cohorts.length > 1;
+  const [recoveredClosedCohort, setRecoveredClosedCohort] = useState(false);
+  const chooseCohort = cohorts.length > 1 || recoveredClosedCohort;
   const cohortIds = useMemo(() => cohorts.map((c) => c.id), [cohorts]);
 
   const [form, setForm] = useState<FormState>(() => initialForm(defaults, suggestedName));
@@ -220,6 +225,9 @@ export function ApplyFlow({
   const formRef = useRef(form);
   const extraRef = useRef(extra);
   const cohortRef = useRef(cohortId);
+  // Preserve a closed device-only draft's original intake across refreshes
+  // until the student deliberately chooses an open one.
+  const unavailableBackupCohortRef = useRef<string | null>(null);
   // Set by every real edit (below), so "Save & exit" writes only when there
   // is something to save — an unedited visit must not insert a blank draft,
   // which for a declined applicant would bury their decision on the dashboard.
@@ -355,6 +363,7 @@ export function ApplyFlow({
   function pickCohort(id: string) {
     if (cohortRef.current !== id) dirtyRef.current = true;
     cohortRef.current = id;
+    unavailableBackupCohortRef.current = null;
     setCohortId(id);
     clearServerError(["cohort_id"]);
   }
@@ -619,6 +628,10 @@ export function ApplyFlow({
     // before deciding whether there's anything left to write.
     if (inFlightRef.current) await inFlightRef.current;
     if (!dirtyRef.current) return true;
+    if (!cohortRef.current) {
+      setSave({ kind: "error", message: "Choose a cohort to save" });
+      return false;
+    }
     dirtyRef.current = false;
     if (retryRef.current.timer !== null) {
       window.clearTimeout(retryRef.current.timer);
@@ -719,9 +732,14 @@ export function ApplyFlow({
       const nextExtra = { ...extraRef.current, ...(backup.extra ?? {}) };
       extraRef.current = nextExtra;
       setExtra(nextExtra);
-      if (backup.cohortId && cohortIds.includes(backup.cohortId)) {
-        cohortRef.current = backup.cohortId;
-        setCohortId(backup.cohortId);
+      const restoredCohort = restoreDraftCohort(cohortRef.current, explicitCohortId, backup.cohortId, cohortIds);
+      cohortRef.current = restoredCohort;
+      setCohortId(restoredCohort);
+      if (backup.cohortId && !restoredCohort) {
+        unavailableBackupCohortRef.current = backup.cohortId;
+        setRecoveredClosedCohort(true);
+        currentRef.current = "cohort";
+        setCurrentId("cohort");
       }
       dirtyRef.current = true;
       setRestored(true);
@@ -739,7 +757,7 @@ export function ApplyFlow({
           at: Date.now(),
           form: formRef.current,
           extra: extraRef.current,
-          cohortId: cohortRef.current,
+          cohortId: cohortRef.current ?? unavailableBackupCohortRef.current,
         }),
       );
     } catch {}
@@ -752,7 +770,10 @@ export function ApplyFlow({
       const { createClient } = await import("@/lib/supabase/client");
       await createClient().auth.signOut({ scope: "local" });
     } catch {}
-    window.location.assign("/login?next=%2Fapply");
+    const returnTo = cohortRef.current
+      ? `/apply?cohort=${encodeURIComponent(cohortRef.current)}`
+      : "/apply";
+    window.location.assign(`/login?next=${encodeURIComponent(returnTo)}`);
   }
 
   useEffect(() => {
@@ -772,7 +793,7 @@ export function ApplyFlow({
   // A closed tab or a backgrounded phone keeps the latest keystrokes.
   useEffect(() => {
     const flush = () => {
-      if (preview || !dirtyRef.current || submittingRef.current) return;
+      if (preview || !dirtyRef.current || submittingRef.current || !cohortRef.current) return;
       dirtyRef.current = false;
       // Tracked like any save, and re-marked unsaved if it fails — a flush
       // that dies while the phone is backgrounded must not leave Save & exit
@@ -914,7 +935,9 @@ export function ApplyFlow({
       {restored && !signedOut && (
         <div role="status" className="border-b border-line bg-wash">
           <p className="mx-auto max-w-5xl px-5 py-3 text-sm text-ink-soft sm:px-8">
-            We restored answers from this device that hadn&apos;t saved yet — they&apos;re saving now.
+            {cohortId
+              ? "We restored answers from this device that hadn't saved yet — they're saving now."
+              : "We recovered your answers, but their original cohort is no longer open. Your answers are kept on this device. Choose an available cohort to continue and save them."}
           </p>
         </div>
       )}
@@ -937,7 +960,7 @@ export function ApplyFlow({
               questionCount={questionCount}
               answeredCount={saved.hasSaved ? screens.slice(1, -1).filter((s) => screenHasAnswer(s, withoutPrefill(ctx))).length : 0}
               notices={notices}
-              parentGuideHref={parentGuideHref}
+              parentGuideHref={cohortId ? `/parents?cohort=${encodeURIComponent(cohortId)}` : parentGuideHref}
               resumeLabel={mode === "draft" && saved.hasSaved ? "Continue where you left off" : null}
               onStart={next}
               onResume={() => {

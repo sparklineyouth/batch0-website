@@ -12,7 +12,7 @@ import { CATEGORIES, CATEGORY_COPY, categoryPath } from "@/lib/blog-shared";
 // footer of every legal page, and when it went through the no-store admin
 // client it was — on its own, for one mailto: address — the reason /privacy,
 // /terms and /refund-policy were rendered per-request instead of prerendered.
-export default async function Footer({ config }: { config?: SiteConfig }) {
+export default async function Footer({ config, applyHref = "/apply" }: { config?: SiteConfig; applyHref?: string }) {
   const resolved = config ?? (await getPublicSiteConfig());
   const contactEmail = resolved.settings.contactEmail;
   const links = [
@@ -23,7 +23,7 @@ export default async function Footer({ config }: { config?: SiteConfig }) {
     { href: "/blog", label: "Blog" },
     { href: "/sponsors", label: "Sponsors" },
     { href: "/#faq", label: "FAQ" },
-    { href: "/apply", label: "Apply" },
+    { href: applyHref, label: "Apply" },
     { href: "/login", label: "Log in" },
   ];
   return (

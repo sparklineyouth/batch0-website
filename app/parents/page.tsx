@@ -20,9 +20,10 @@ export default async function ParentsPage({ searchParams }: { searchParams: Prom
   const config = await getPublicCohortConfig(cohort);
   const sessions = await getPublicCohortSchedule(config.cohort);
   const { derived, settings } = config;
+  const applyHref = derived.applicationsAvailable && config.cohort?.id ? `/apply?cohort=${config.cohort.id}` : "/apply";
   return (
     <div className="min-h-screen bg-paper">
-      <Navbar cohortLabel={derived.cohortLabel} applicationLabel={derived.applicationLabel} />
+      <Navbar cohortLabel={derived.cohortLabel} applicationLabel={derived.applicationLabel} applyHref={applyHref} />
       <main id="main-content" tabIndex={-1}>
         <section className="px-5 py-16 sm:px-6 md:py-24">
           <div className="mx-auto grid max-w-[1100px] gap-10 md:grid-cols-12">
@@ -73,12 +74,12 @@ export default async function ParentsPage({ searchParams }: { searchParams: Prom
                 <li><strong className="text-ink">3. Pay from your own device.</strong> An accepted student can create a secure parent payment link from their acceptance page. It shows the amount and cohort, without exposing their application answers or sharing their password. Payment confirms enrollment after verification.</li>
               </ol>
               <p className="mt-6 text-sm leading-relaxed text-ink-soft">Before paying, read the <Link className="link-ink" href="/refund-policy">refund policy</Link>. Your receipt and checkout show the final amount in USD. No equity or ownership of the student’s work is taken.</p>
-              <div className="mt-8 flex flex-wrap items-center gap-5"><ApplyCta label={derived.applicationLabel} location="parents" /><Link className="link-ink text-sm" href="/dashboard/accepted">Already accepted? Open your acceptance →</Link></div>
+              <div className="mt-8 flex flex-wrap items-center gap-5"><ApplyCta href={applyHref} label={derived.applicationLabel} signedInLabel="" location="parents" /><Link className="link-ink text-sm" href="/dashboard/accepted">Already accepted? Open your acceptance →</Link></div>
             </div>
           </div>
         </section>
       </main>
-      <Footer config={config} />
+      <Footer config={config} applyHref={applyHref} />
     </div>
   );
 }

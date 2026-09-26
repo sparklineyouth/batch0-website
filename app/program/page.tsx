@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { EnrollmentNotice } from "@/components/enrollment-notice";
@@ -29,6 +30,7 @@ const PROGRAM_TITLE = "Program: Four Sprints to Demo Day — batch0";
 // mid-clause before it ever reached "demo day". Leading with the dates keeps
 // the useful half inside the ~155-character budget.
 export async function generateMetadata(): Promise<Metadata> {
+  await connection();
   const { derived } = await getPublicSiteConfig({ countryCode: null });
   const when = derived.dateRangeSentence
     ? ` ${derived.cohortLabel || "Next cohort"}: ${derived.dateRangeSentence}.`
@@ -91,14 +93,11 @@ const WEEKLY_OUTCOMES = [
   ["Pitch · demonstrate", "A prepared demo or narrated deck, an honest retrospective, and a 30-day plan."],
 ];
 
-// Prerendered with ISR, same shape as the homepage: the server renders the
-// base price and <RegionalPrice> swaps the label client-side for visitors
-// whose clock says India — the geo header this page used to read served
-// exactly that one override. Admin edits revalidate SITE_CONFIG_TAG and
-// this path directly; 300s is only the fallback horizon.
-export const revalidate = 300;
+// Resolve admissions, dates, metadata and course structured data on the
+// request; the underlying public cohort/settings facts remain cached.
 
 export default async function ProgramPage() {
+  await connection();
   const [config, regionalConfig] = await Promise.all([
     getPublicSiteConfig({ countryCode: null }),
     getPublicSiteConfig({ countryCode: "IN" }),

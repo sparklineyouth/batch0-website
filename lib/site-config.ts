@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { cohortEligibility } from "@/lib/cohort-eligibility";
+import { cohortEligibility, selectAdmissionCohort } from "@/lib/cohort-eligibility";
 import { easternDeadline, formatUsd } from "@/lib/offer-format";
 import { unstable_cache } from "next/cache";
 import {
@@ -22,6 +22,9 @@ import {
 } from "@/lib/seo-meta";
 
 export { META_DESCRIPTION_MAX } from "@/lib/seo-meta";
+
+// Metadata and body share one admissions instant within a request.
+const requestTime = cache(() => new Date());
 
 // Single source of truth for public, admin-editable site facts (active
 // cohort + branding). The admin can change anything here from
@@ -184,19 +187,19 @@ const FALLBACK_SETTINGS: SiteSettings = {
 //
 // It can still drift, so `npm run seo-doctor` diffs it against the live row
 // and exits non-zero on mismatch. Run it whenever the cohort row changes.
-// Last verified: 2026-09-14.
+// Last verified: 2026-09-26; admissions close at the end of September 30 Eastern.
 export const FALLBACK_COHORT: ActiveCohort = {
   id: "",
   name: "Fall 2026",
   cohortNumber: 1,
   startsOn: "2026-09-14",
   endsOn: "2026-11-13",
-  capacity: 16,
-  priceCents: 12999,
+  capacity: 24,
+  priceCents: 13000,
   status: "active",
-  applicationsCloseAt: "2026-09-22T23:59:59-04:00",
-  lateEntryUntil: "2026-09-22T23:59:59-04:00",
-  catchUpPlan: "Complete the kickoff project brief and Week 1 workbook, then use office hours to review your catch-up plan with the team.",
+  applicationsCloseAt: "2026-09-30T23:59:59.999-04:00",
+  lateEntryUntil: "2026-09-30T23:59:59.999-04:00",
+  catchUpPlan: "Late entrants review the Week 1 field guide and Week 2 customer-interview work, then contact hello@batch0.org to agree catch-up priorities and join the next session listed in Events. Earlier session recordings are not promised.",
 };
 
 function formatDateRange(startsOn: string | null, endsOn: string | null) {
@@ -224,7 +227,7 @@ function formatDateRange(startsOn: string | null, endsOn: string | null) {
  * lib/seo-meta.ts, which is import-free and unit-tested. `now` is threaded
  * through so tests can pin the deadline logic.
  */
-export function metaDescription(config: SiteConfig, now = new Date()): string {
+export function metaDescription(config: SiteConfig, now = requestTime()): string {
   // Read raw dates from the same record `derive` used, so the snippet can
   // never disagree with the dates rendered on the page.
   const c = config.cohort ?? FALLBACK_COHORT;
@@ -244,6 +247,7 @@ function derive(
   applicationsOpen: boolean,
   countryCode: string | null,
   promoConfig: PromoConfig,
+  now: Date,
 ): SiteConfig["derived"] {
   const c = cohort ?? FALLBACK_COHORT;
   const cohortLabel =
@@ -262,13 +266,13 @@ function derive(
   // and none of it has to be unwound by hand when the offer ends. Every label
   // below is derived from this single pair, so the site cannot advertise one
   // price and charge another.
-  const promo = activePromo(new Date(), promoConfig);
-  const chargeCents = promoPriceCents(regional.amountCents, new Date(), promoConfig);
+  const promo = activePromo(now, promoConfig);
+  const chargeCents = promoPriceCents(regional.amountCents, now, promoConfig);
   const eligibility = cohortEligibility({
     status: c.status, starts_on: c.startsOn, ends_on: c.endsOn,
     applications_close_at: c.applicationsCloseAt, late_entry_until: c.lateEntryUntil,
     catch_up_plan: c.catchUpPlan, capacity: c.capacity,
-  }, new Date(), enrolledCount);
+  }, now, enrolledCount);
   const applicationsAvailable = !!cohort && applicationsOpen && eligibility.eligible;
 
   const spotsLeft = Math.max(0, (c.capacity ?? 0) - enrolledCount);
@@ -401,7 +405,7 @@ const loadPublicData = unstable_cache(
     if (data.readError) throw new Error(data.readError);
     return data;
   },
-  ["site-config-public"],
+  ["site-config-public-v2-admissions"],
   { revalidate: 300, tags: [SITE_CONFIG_TAG] },
 );
 
@@ -465,6 +469,9 @@ type SiteConfigData = {
   cohort: ActiveCohort | null;
   settings: SiteSettings;
   enrolledCount: number;
+  /** Cache facts, not a clock-dependent default. Re-select on every render. */
+  candidates?: Array<{ cohort: ActiveCohort; enrolledCount: number }>;
+  pinnedId?: string | null;
   /**
    * Set when a read failed, as opposed to succeeding and finding nothing.
    *
@@ -480,15 +487,38 @@ function assemble(
   data: SiteConfigData,
   countryCode: string | null,
 ): SiteConfig {
+  const now = requestTime();
+  let cohort = data.cohort;
+  let enrolledCount = data.enrolledCount;
+  if (data.candidates) {
+    const candidates = data.candidates.map(candidate => ({
+      ...candidate,
+      id: candidate.cohort.id,
+      status: candidate.cohort.status,
+      starts_on: candidate.cohort.startsOn,
+      ends_on: candidate.cohort.endsOn,
+      applications_close_at: candidate.cohort.applicationsCloseAt,
+      late_entry_until: candidate.cohort.lateEntryUntil,
+      catch_up_plan: candidate.cohort.catchUpPlan,
+      capacity: candidate.cohort.capacity,
+    }));
+    // Keep a closed cohort's information only when no intake is available.
+    // Explicit parent links omit candidates and remain tied to their cohort.
+    const selected = selectAdmissionCohort(candidates, data.pinnedId, now, c => c.enrolledCount)
+      ?? candidates[0];
+    cohort = selected?.cohort ?? null;
+    enrolledCount = selected?.enrolledCount ?? 0;
+  }
   return {
-    cohort: data.cohort,
+    cohort,
     settings: data.settings,
     derived: derive(
-      data.cohort,
-      data.enrolledCount,
+      cohort,
+      enrolledCount,
       data.settings.applicationsOpen,
       countryCode,
       data.settings.promo,
+      now,
     ),
   };
 }
@@ -496,11 +526,8 @@ function assemble(
 async function loadSiteConfigData(
   admin: ReturnType<typeof createAdminClient>,
 ): Promise<SiteConfigData> {
-  // One parallel wave. The unfiltered settings scan already carries the
-  // active_cohort_id row, so the pinned id never needs a query of its own,
-  // and the fallback cohort candidate (next upcoming/active by start date)
-  // rides alongside with its enrollment count embedded. Only an admin pin
-  // pointing somewhere other than that candidate costs a second trip.
+  // Cache all public candidate facts in one parallel wave. Selection happens
+  // in assemble() against the current clock, never inside the data cache.
   const [settingsRes, fallbackCohortRes] = await Promise.all([
     admin.from("site_settings").select("key, value"),
     admin
@@ -559,8 +586,7 @@ async function loadSiteConfigData(
       ? (raw.active_cohort_id as string)
       : null;
 
-  // Resolve the active cohort: pinned id wins, otherwise the next
-  // upcoming/active cohort by start date. We `select("*")` so the read
+  // The pin wins only while admissions are open. We `select("*")` so the read
   // tolerates a missing `cohort_number` column — matches the pattern in
   // 0008_discord_integration where the app tolerates the migration
   // landing later than the code.
@@ -585,36 +611,24 @@ async function loadSiteConfigData(
   }
 
   const candidates = fallbackCohortRes.data ?? [];
-  const available = (row: any) => cohortEligibility(row, new Date(), row.enrollments?.[0]?.count ?? 0).eligible;
-  let cohortRow: any = candidates.find(available) ?? candidates[0] ?? null;
-  // Collected rather than thrown: a marketing page still has to render, and
-  // every field above already has a fallback. What the callers need is to know
-  // the difference, which is what this carries out.
   let readError: string | null =
     fallbackCohortRes.error?.message ?? settingsRes.error?.message ?? null;
-
-  if (pinnedId && pinnedId !== cohortRow?.id) {
-    // A pin may point at a cohort of any status (that is the point of
-    // pinning), so the upcoming/active candidate can't stand in for it.
-    // A pin that resolves to nothing falls back to the candidate.
-    const { data, error } = await admin
-      .from("cohorts")
-      .select("*, enrollments(count)")
-      .eq("id", pinnedId)
-      .maybeSingle();
-    if (data && available(data)) cohortRow = data;
-    // A *failed* pin read is not "the pin resolves to nothing" — silently
-    // standing in the candidate cohort here would publish the wrong dates and
-    // the wrong price under the admin's pin, which is worse than degrading.
+  if (pinnedId && !candidates.some(row => row.id === pinnedId)) {
+    const { data, error } = await admin.from("cohorts")
+      .select("*, enrollments(count)").eq("id", pinnedId).maybeSingle();
+    if (data) candidates.push(data);
     else if (error) readError ??= error.message;
   }
-  const cohort = cohortRow ? toCohort(cohortRow) : null;
-
-  // Live enrollment count, read off the embedded count(*) aggregate — no
-  // per-row read. Reads as 0 (rather than erroring) when there's no
-  // cohort or the embed is missing for any reason.
-  const embeddedCount = cohortRow?.enrollments?.[0]?.count;
-  const enrolledCount = typeof embeddedCount === "number" ? embeddedCount : 0;
-
-  return { cohort, settings, enrolledCount, readError };
+  const options = candidates.map(row => ({
+    cohort: toCohort(row),
+    enrolledCount: typeof row.enrollments?.[0]?.count === "number" ? row.enrollments[0].count : 0,
+  }));
+  return {
+    cohort: options[0]?.cohort ?? null,
+    enrolledCount: options[0]?.enrolledCount ?? 0,
+    candidates: options,
+    pinnedId,
+    settings,
+    readError,
+  };
 }
