@@ -9,15 +9,28 @@ import { QAPanel } from "@/components/live/qa-panel";
 import { RoomPanel } from "@/components/live/room-panel";
 import { PremierePlayer } from "@/components/live/premiere-player";
 import { useLocalMedia } from "@/components/live/use-local-media";
-import { useLiveSession } from "@/components/live/use-live-session";
+import {
+  useLiveSession,
+  type CloseReason,
+  type RemotePeer,
+} from "@/components/live/use-live-session";
 import {
   useRecorder,
   type RecorderRemote,
 } from "@/components/live/use-recorder";
 import { SpeakerStrip } from "@/components/live/speaker-strip";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { headcountLabel, type LiveRole, type WebinarQuestion } from "@/lib/live";
-import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
+import { LocalTime } from "@/components/ui/local-time";
+import { getActionError } from "@/lib/action-error";
+import {
+  headcountLabel,
+  JOIN_CLOSES_MINUTES_AFTER,
+  roomWindow,
+  type LiveRole,
+  type WebinarQuestion,
+} from "@/lib/live";
+import type { LivePeer } from "@/lib/live-rooms";
+import type { SignalRole } from "@/lib/live-signal";
 import {
   electRecorder,
   presentForRecording,
@@ -29,7 +42,8 @@ import {
   type PremiereState,
 } from "@/lib/webinars";
 import type { RoomState } from "@/app/dashboard/events/[id]/live/room-actions";
-import { AlertTriangle, Users, Loader2, CircleDot } from "lucide-react";
+import type { JoinResult, PresenceResult } from "@/app/live/actions";
+import { AlertTriangle, Users, Loader2, CircleDot, PhoneOff } from "lucide-react";
 
 /**
  * A batch0 Live room — the built-in provider's equivalent of LiveRoom.
@@ -52,20 +66,152 @@ import { AlertTriangle, Users, Loader2, CircleDot } from "lucide-react";
  * The one deliberate exception to that last rule is an admin-announced
  * `displayViewerCount`, which is shown to everyone. `headcountLabel` owns the
  * precedence so this room and the Daily one cannot disagree about it.
+ *
+ * ---------------------------------------------------------------------------
+ * Leave vs End — the two ways out, and why they are different buttons
+ * ---------------------------------------------------------------------------
+ *
+ *   Leave        "I go; the room keeps running." Off air at once, capture this
+ *                tab's final recording segment, stop the devices, "You've
+ *                left" with a Rejoin that really rejoins. The last broadcaster
+ *                on air in a webinar is asked first — End for everyone, or
+ *                Leave and keep the room open — because a sole host who simply
+ *                leaves strands the audience on "the host stepped away".
+ *   End          Webinar, once it has begun: staff (and a guest speaker only
+ *                when no staff host is present) end it for EVERYONE — the
+ *                server stamps it, every other client hears `room-changed`
+ *                and closes, and this tab lands on an ended screen with
+ *                Reopen for staff. Before the start there is no End at all
+ *                (webinarHasBegun); Leave is the way out of a rehearsal. 1:1:
+ *                either person can End call once both have been in the room
+ *                and the start has come (`finishCall`); the other side's room
+ *                notices on its status poll (or its heartbeat) and closes too.
+ *
+ * Whichever way the room ends — this tab's End, another host's, a heartbeat
+ * saying 'ended', the stage hint, the 8s poll — the teardown is the same and
+ * in the same order. The session goes down the moment the exit is committed
+ * (bye to every peer: the host is off air now, not after anything uploads).
+ * Then the recorder's final segment is CAPTURED — milliseconds, bounded — and
+ * only then are screen/camera/mic stopped, so the file is not cut mid-frame.
+ * Then the phase changes. The final upload finishes in the background on the
+ * left/ended screen, which says "keep this tab open"; the tab's unload prompt
+ * holds until it lands (use-recorder keeps it, so it outlives the room), and
+ * every way off that screen — Rejoin, Reopen, Back, and a 1:1's automatic
+ * return to the calls list — waits for it first (bounded). A webinar End that
+ * fails tears nothing down: the host stays live with the error and can retry.
+ *
+ * ---------------------------------------------------------------------------
+ * Rejoin is a remount
+ * ---------------------------------------------------------------------------
+ *
+ * The room is two components: `BroadcastRoom` holds an attempt counter, and
+ * the session below is keyed on it. Rejoin bumps the key (and refreshes the
+ * server tree), so every hook starts from nothing — phase, media, recorder,
+ * the peer engine. `router.refresh()` alone keeps client state, which is why
+ * Rejoin used to leave people staring at "You've left" until they reloaded.
  */
 
 /**
  * `left` is this person stepping out — the room carries on and they can
- * rejoin. `ended` is the CALL being over, for both people: someone pressed End
- * call, it was cancelled, or its window closed. Only a 1:1 reaches `ended`; a
- * webinar's ending is the `endedAt` banner, because its audience stays on the
- * page for the chat.
+ * rejoin. `ended` is the room being over: a webinar ended for everyone, or a
+ * 1:1 whose End call was pressed, that was cancelled, or whose window closed.
+ * `closed` is a webinar the server closed for another reason (the window ran
+ * out with no host, access revoked) — see closedTitle.
  */
-type Phase = "prejoin" | "live" | "left" | "ended";
+type Phase = "prejoin" | "live" | "left" | "ended" | "closed";
+
+/**
+ * The ways off the left/ended screens that take this room off the screen, and
+ * so wait for the recording's uploads first (see `drainBefore`).
+ */
+type ScreenExit = "rejoin" | "reopen" | "back";
+
+/**
+ * What became of a webinar segment. `refused` is the server saying another
+ * host's browser is this webinar's recorder — not a failure, an instruction
+ * to stand down (see `recordingRival` in lib/webinars.ts).
+ */
+export type SegmentOutcome = "saved" | "refused";
+
+export type WebinarRoom = {
+  eventId: string;
+  /** The signed-in person's id — their peer id as every other host sees it. */
+  selfUserId: string;
+  /** Their name, for their own tile if their browser is the one recording. */
+  selfName: string;
+  /**
+   * The schedule, as the server rendered it (`endsAt` null means the default
+   * length — see roomWindow). A viewer's stage uses the start to stop saying
+   * "waiting for the host to start" once it has started, and the ended screen
+   * uses the hard stop to know when to stop watching for a Reopen.
+   */
+  startsAt: string;
+  endsAt: string | null;
+  audienceMode: AudienceMode;
+  /** Staff, as opposed to a guest speaker who also broadcasts. */
+  isStaffHost: boolean;
+  autoRecord: boolean;
+  /** Null for an ordinary live webinar. */
+  premiere: (PremiereState & { url: string; durationSeconds: number }) | null;
+  liveEndedAt: string | null;
+  /**
+   * May this reader end the webinar for everyone, as of the page render?
+   * Nobody before it has begun (webinarHasBegun); from then, staff always and
+   * a guest speaker only when no staff host is present. Kept current by the
+   * poll and the panel's reads — the server decides.
+   */
+  canEnd: boolean;
+  speakers: EventSpeaker[];
+  deck: { id: string; filename: string; sizeBytes: number | null }[];
+  initialQuestions: WebinarQuestion[];
+  initialRoomState: RoomState | null;
+  /**
+   * File one recording segment. `run` is the recording run it belongs to —
+   * when this room (and so its recorder) mounted. `useRecorder` numbers
+   * segments from zero on every mount, so an index alone cannot say whether
+   * segment 2 belongs after segment 1 or is the start of a reload twenty
+   * minutes later; the run goes into every segment's name, and the server lays
+   * each run out as its own block (recordingSegmentSlot in lib/webinars.ts).
+   * Per MOUNT rather than per page load, because Rejoin and Reopen remount the
+   * room — a fresh recorder counting from zero again — without a page load.
+   */
+  onSegment: (
+    blob: Blob,
+    index: number,
+    seconds: number,
+    run: number,
+  ) => Promise<SegmentOutcome>;
+  onGoLive: () => Promise<string | null>;
+  /** End for everyone. Resolves with the STORED `live_ended_at`. */
+  onEndLive: () => Promise<string>;
+  onReopenLive: () => Promise<void>;
+  /**
+   * Re-read the room's live state from the SERVER: the premiere's position
+   * (from the server's clock), whether it has been ended, and whether this
+   * reader may end it.
+   *
+   * Polled as a backstop rather than trusted from the browser. A viewer whose
+   * laptop is four minutes fast would otherwise drift four minutes ahead of the
+   * room — visibly, in chat, reacting to something nobody else has seen — and
+   * one whose clock is out by an hour would watch a black screen and conclude
+   * the webinar never started.
+   */
+  refreshPremiere: () => Promise<
+    | (PremiereState & {
+        liveEndedAt: string | null;
+        canEnd: boolean;
+        isStaff: boolean;
+      })
+    | null
+  >;
+};
 
 /**
  * Everything that makes this room a 1:1 CALL, as `WebinarRoom` is for a
  * webinar — one all-or-nothing bundle, for the same reason.
+ *
+ * Both parties broadcast (signal role `host`), so the role cannot say whose
+ * browser records; `isRecorder` does.
  */
 export type CallRoom = {
   inviteId: string;
@@ -76,6 +222,8 @@ export type CallRoom = {
    * saying "End call" there would promise something it cannot do.
    */
   startsAt: string;
+  /** Scheduled end. Rejoining stays possible until the window closes after it. */
+  endsAt: string;
   /**
    * This person is the call's host (call_invites.host_id), and so the one
    * whose browser records. Exactly one side records: two recorders would put
@@ -98,71 +246,17 @@ export type CallRoom = {
 /** How often a call room asks whether the other person ended it. */
 const CALL_STATUS_POLL_MS = 15_000;
 
-/**
- * What became of a webinar segment. `refused` is the server saying another
- * host's browser is this webinar's recorder — not a failure, an instruction
- * to stand down (see `recordingRival` in lib/webinars.ts).
- */
-export type SegmentOutcome = "saved" | "refused";
-
-export type WebinarRoom = {
-  eventId: string;
-  /** The signed-in person's id — their peer id as every other host sees it. */
-  selfUserId: string;
-  /** Their name, for their own tile if their browser is the one recording. */
-  selfName: string;
-  audienceMode: AudienceMode;
-  /** Staff, as opposed to a guest speaker who also broadcasts. */
-  isStaffHost: boolean;
-  autoRecord: boolean;
-  /** Null for an ordinary live webinar. */
-  premiere: (PremiereState & { url: string; durationSeconds: number }) | null;
-  liveEndedAt: string | null;
-  speakers: EventSpeaker[];
-  deck: { id: string; filename: string; sizeBytes: number | null }[];
-  initialQuestions: WebinarQuestion[];
-  initialRoomState: RoomState | null;
-  onSegment: (
-    blob: Blob,
-    index: number,
-    seconds: number,
-  ) => Promise<SegmentOutcome>;
-  onGoLive: () => Promise<string | null>;
-  onEndLive: () => Promise<void>;
-  onReopenLive: () => Promise<void>;
-  /**
-   * Re-read the premiere's position from the SERVER's clock.
-   *
-   * Polled as a backstop rather than trusted from the browser. A viewer whose
-   * laptop is four minutes fast would otherwise drift four minutes ahead of the
-   * room — visibly, in chat, reacting to something nobody else has seen — and
-   * one whose clock is out by an hour would watch a black screen and conclude
-   * the webinar never started.
-   */
-  refreshPremiere: () => Promise<
-    (PremiereState & { liveEndedAt: string | null }) | null
-  >;
-};
-
-export function BroadcastRoom({
-  kind,
-  roomId,
-  title,
-  role,
-  backHref,
-  displayViewerCount = null,
-  qa,
-  webinar,
-  call,
-  join,
-  announce,
-  leave,
-  listPeers,
-}: {
+type RoomProps = {
   kind: "event" | "call";
   roomId: string;
   title: string;
   role: LiveRole;
+  /**
+   * Where Back and every after-leave link go. Role-aware, decided by the
+   * page: staff webinar hosts go to the admin list, a call's owner to their
+   * calls page, students to theirs. Never `history.back()`, which does
+   * nothing in a tab opened from a calendar invite.
+   */
   backHref: string;
   /**
    * Admin-announced headcount (events.display_viewer_count). When set it is
@@ -183,58 +277,245 @@ export function BroadcastRoom({
    * below is simply absent — no flags to read, no branches to get wrong.
    */
   webinar?: WebinarRoom;
-  /** Present for 1:1 calls, absent for webinars. Never both. */
+  /** The 1:1 equivalent — see CallRoom. */
   call?: CallRoom;
-  join: () => Promise<LiveCredentials | null>;
-  announce: () => Promise<boolean>;
+  join: () => Promise<JoinResult>;
+  announce: (joinedAs?: SignalRole) => Promise<PresenceResult>;
   leave: () => Promise<void>;
   listPeers: () => Promise<LivePeer[]>;
+};
+
+type RejoinOptions = {
+  /** What the room currently knows about End, carried across the remount. */
+  endedAt?: string | null;
+  /** The role the server minted, when it disagreed with the page. */
+  role?: LiveRole;
+};
+
+export function BroadcastRoom(props: RoomProps) {
+  const router = useRouter();
+  const [attempt, setAttempt] = useState(0);
+  const [roleOverride, setRoleOverride] = useState<LiveRole | null>(null);
+  // The remount can land before the refreshed server props do, so what the
+  // room last knew about End is carried across explicitly — otherwise a host
+  // coming back from Reopen would mount on the stale "ended" prop.
+  const [endedOverride, setEndedOverride] = useState<{
+    at: string | null;
+  } | null>(null);
+
+  const rejoin = useCallback(
+    (opts?: RejoinOptions) => {
+      if (opts && "endedAt" in opts) {
+        setEndedOverride({ at: opts.endedAt ?? null });
+      }
+      if (opts?.role) setRoleOverride(opts.role);
+      setAttempt((n) => n + 1);
+      router.refresh();
+    },
+    [router],
+  );
+
+  // A 1:1's "the other person has been here" latch (see `peerSeen` in the
+  // session) lives HERE, above the remount, for the same reason End and the
+  // role are carried: Rejoin, the join-failed Retry and the role-mismatch
+  // rejoin all remount the session, and a latch kept inside it reset to
+  // false — so someone back in the room after the other person had gone lost
+  // End call, and the call stayed open until the sweep. Keyed by room so it
+  // can never leak into another call, and mirrored into sessionStorage so a
+  // reload of the tab keeps it too.
+  const { kind, roomId } = props;
+  const [peerSeenIn, setPeerSeenIn] = useState<string | null>(null);
+  useEffect(() => {
+    if (kind === "call" && readPeerSeen(roomId)) setPeerSeenIn(roomId);
+  }, [kind, roomId]);
+  const markPeerSeen = useCallback(() => {
+    setPeerSeenIn(roomId);
+    writePeerSeen(roomId);
+  }, [roomId]);
+
+  return (
+    <BroadcastSession
+      key={attempt}
+      {...props}
+      role={roleOverride ?? props.role}
+      initialEndedAt={
+        endedOverride ? endedOverride.at : (props.webinar?.liveEndedAt ?? null)
+      }
+      rejoin={rejoin}
+      peerSeenCarried={peerSeenIn === roomId}
+      onPeerSeen={markPeerSeen}
+    />
+  );
+}
+
+/** sessionStorage key for a 1:1's peer-seen latch. */
+const peerSeenKey = (roomId: string) => `live:peerSeen:${roomId}`;
+
+function readPeerSeen(roomId: string): boolean {
+  try {
+    return window.sessionStorage.getItem(peerSeenKey(roomId)) === "1";
+  } catch {
+    // Storage blocked (private mode, a sandboxed frame): the in-memory latch
+    // above still survives every remount; only a reload forgets it.
+    return false;
+  }
+}
+
+function writePeerSeen(roomId: string): void {
+  try {
+    window.sessionStorage.setItem(peerSeenKey(roomId), "1");
+  } catch {
+    /* see readPeerSeen */
+  }
+}
+
+function BroadcastSession({
+  kind,
+  roomId,
+  title,
+  role,
+  backHref,
+  displayViewerCount = null,
+  qa,
+  webinar,
+  call,
+  join,
+  announce,
+  leave,
+  listPeers,
+  initialEndedAt,
+  rejoin,
+  peerSeenCarried,
+  onPeerSeen,
+}: RoomProps & {
+  initialEndedAt: string | null;
+  rejoin: (opts?: RejoinOptions) => void;
+  /** A 1:1's other person was live in this room before a remount. */
+  peerSeenCarried: boolean;
+  /** Latch it above the remount (see BroadcastRoom). */
+  onPeerSeen: () => void;
 }) {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("prejoin");
   const isHost = role === "host";
+  const isCall = kind === "call";
+  const isStaffHost = isHost && !!webinar?.isStaffHost;
 
-  // ---- Premiere -----------------------------------------------------------
+  // ---- Premiere, End, and who may End -------------------------------------
   //
-  // Tracked as state because it CHANGES under everyone during the session: the
-  // recording runs out, or a host presses "go live" thirty minutes into a
-  // forty-minute talk. Seeded from the server render so the first paint is
-  // already correct, then advanced by the ticker below.
+  // Tracked as state because they CHANGE under everyone during the session:
+  // the recording runs out, a host presses "go live" thirty minutes into a
+  // forty-minute talk, someone ends the webinar. Seeded from the server render
+  // so the first paint is already correct.
   const [premierePhase, setPremierePhase] = useState(
     webinar?.premiere?.phase ?? null,
   );
-  const [endedAt, setEndedAt] = useState<string | null>(
-    webinar?.liveEndedAt ?? null,
+  const [endedAt, setEndedAt] = useState<string | null>(initialEndedAt);
+  const [canEnd, setCanEnd] = useState(!!webinar?.canEnd);
+  // A viewer who arrives on an ended webinar (only ever via a stale page — the
+  // server renders the ended shell for them) goes straight to the ended screen.
+  const [phase, setPhase] = useState<Phase>(
+    !isHost && webinar && initialEndedAt ? "ended" : "prejoin",
   );
-  const inPremiere = premierePhase === "playing" || premierePhase === "waiting";
+  const [closedReason, setClosedReason] = useState<CloseReason | null>(null);
+  const [endedByMe, setEndedByMe] = useState(false);
+  const inPremiere =
+    !!webinar?.premiere &&
+    (premierePhase === "playing" || premierePhase === "waiting");
 
-  const refreshPremiere = webinar?.refreshPremiere;
+  // A fresh server render (after Rejoin's refresh) is the truth about End
+  // while we are still in the green room. Skipped on mount, where the seed
+  // above already accounts for anything Rejoin carried across.
+  const propEndedAt = webinar?.liveEndedAt ?? null;
+  const firstProp = useRef(true);
   useEffect(() => {
-    if (!refreshPremiere) return;
+    if (firstProp.current) {
+      firstProp.current = false;
+      return;
+    }
+    if (phase === "prejoin") setEndedAt(propEndedAt);
+    // Only a change of the prop should re-seed; the phase is read, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propEndedAt]);
+
+  const hasPremiere = !!webinar?.premiere;
+  const applyServer = useCallback(
+    (next: {
+      phase: PremiereState["phase"];
+      liveEndedAt: string | null;
+      canEnd: boolean;
+    }) => {
+      // Only a premiere tracks a premiere phase. A hosted webinar is live the
+      // whole time; reading it as a premiere hid the host's camera and End.
+      if (hasPremiere) setPremierePhase(next.phase);
+      setEndedAt(next.liveEndedAt);
+      setCanEnd(next.canEnd);
+    },
+    [hasPremiere],
+  );
+
+  // The live-state poll: the backstop under the stage hint and the panel's
+  // bump. Only while live — it used to run from the green room through the
+  // "You've left" screen for as long as the tab stayed open — and paused
+  // while the tab is hidden.
+  const refreshPremiere = webinar?.refreshPremiere;
+  const pollNow = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!refreshPremiere || phase !== "live") return;
     let cancelled = false;
     const tick = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
       try {
         const next = await refreshPremiere();
         if (cancelled || !next) return;
-        setPremierePhase(next.phase);
-        setEndedAt(next.liveEndedAt);
+        applyServer(next);
       } catch {
         // A dropped poll costs a few seconds of staleness; the next one
         // catches up. Surfacing it would put an error banner over a webinar
         // that is working.
       }
     };
+    pollNow.current = () => void tick();
     void tick();
     // Every eight seconds. Frequent enough that "go live early" reaches the
     // room while the host is still saying "we're going live now", cheap enough
     // that fifty viewers cost about six requests a second between them — an
     // order of magnitude below the 5-second Q&A poll this feature replaced.
     const timer = setInterval(tick, 8_000);
+    const onVisibility = () => {
+      if (!document.hidden) void tick();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
+      pollNow.current = () => {};
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [refreshPremiere]);
+  }, [refreshPremiere, phase, applyServer]);
+
+  // End for everyone exists only once the webinar has begun (webinarHasBegun
+  // — the server's `canEnd` decides, and the poll above carries it). A host
+  // who opened the room early for setup reaches the start on air, so re-ask
+  // the server AT the start rather than up to a poll later; and until then
+  // the last-host prompt says why there is nothing to end.
+  const webinarStartsAt = webinar?.startsAt;
+  const [webinarBegun, setWebinarBegun] = useState(false);
+  useEffect(() => {
+    if (!webinarStartsAt) return;
+    const wait = Date.parse(webinarStartsAt) - Date.now();
+    if (!(wait > 0)) {
+      setWebinarBegun(true);
+      return;
+    }
+    setWebinarBegun(false);
+    // Capped at setTimeout's ceiling; hosts can only be in the room from an
+    // hour before the start, so the cap never binds in practice.
+    const t = setTimeout(() => setWebinarBegun(true), Math.min(wait, 2_147_483_647));
+    return () => clearTimeout(t);
+  }, [webinarStartsAt]);
+  useEffect(() => {
+    if (webinarBegun) pollNow.current();
+  }, [webinarBegun]);
 
   // What they chose in the green room, applied once the real stream exists.
   const wanted = useRef<{ cameraOn: boolean; micOn: boolean }>({
@@ -248,9 +529,12 @@ export function BroadcastRoom({
   // costs no second permission prompt now that permission is granted.
   // A host's camera does NOT come up while a premiere is still playing. They
   // are not on air yet, and lighting up a webcam (and its indicator light) for
-  // forty minutes before anyone can see it is both wasteful and alarming.
+  // forty minutes before anyone can see it is both wasteful and alarming. Nor
+  // on an ended webinar. The gate closing does not stop the devices (see
+  // useLocalMedia) — the teardown below does, once the recorder has captured
+  // its final segment.
   const media = useLocalMedia({
-    autoStart: isHost && phase === "live" && !inPremiere,
+    autoStart: isHost && phase === "live" && !inPremiere && !endedAt,
   });
   const screen = useScreenShare();
 
@@ -263,11 +547,27 @@ export function BroadcastRoom({
     if (!wanted.current.micOn && media.micOn) media.toggleMic();
   }, [media]);
 
+  // This tab is on its way out: Leave committed (`leaving`), or the room is
+  // ending under it — this tab's End succeeded, or the server / another host
+  // ended or closed it (`ending`). Not set while a WEBINAR End request is
+  // merely in flight: if the server refuses, the host is still live and still
+  // on air. A 1:1's End call sets it from the press — that side leaves the
+  // room whatever the server answers (see `finishCall`).
+  const [ending, setEnding] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  // Off air the moment the exit is committed, not when the phase changes.
+  // The phase waits for the recorder to capture its final segment (see
+  // `finish`), and gating the session on the phase alone kept the host's
+  // camera and mic on every viewer's screen for that whole wait — which,
+  // when it was the final segment's UPLOAD, was minutes. Disabling it here
+  // sends `bye` to every peer at once; the local tracks keep running only
+  // for the recorder, and stop a moment later.
   const session = useLiveSession({
     kind,
     roomId,
     role: isHost ? "host" : "viewer",
-    enabled: phase === "live",
+    enabled: phase === "live" && !leaving && !ending,
     localStream: isHost ? media.stream : null,
     screenStream: screen.stream,
     // Passed through rather than inferred from `track.enabled`: a disabled
@@ -284,7 +584,8 @@ export function BroadcastRoom({
 
   // Unlike Daily, this provider knows its own roster, so `realCount` is a
   // real number for a host rather than null — the default "host sees the
-  // truth, viewer sees nothing" comes out of `headcountLabel` directly.
+  // truth, viewer sees nothing" comes out of `headcountLabel` directly. The
+  // engine reports null in a 1:1, so a call never grows a "0 watching" chip.
   const headcount = headcountLabel({
     role,
     displayCount: displayViewerCount,
@@ -304,7 +605,8 @@ export function BroadcastRoom({
   // Gated on `!inPremiere` as well as on the host: a premiere is already a
   // recording, and re-recording the Q&A over the top of it would produce a
   // second asset that starts forty minutes in and looks like a truncated
-  // duplicate.
+  // duplicate. And never once this tab is on its way out (`leaving`,
+  // `ending`) — the gate closing is the flush.
   //
   // A 1:1 records always, from the host's side only (`call.isRecorder`), and
   // hands the recorder the other person too — their tile and their voice —
@@ -333,7 +635,8 @@ export function BroadcastRoom({
   // id, the one fact every browser holds identically, so they agree without
   // talking to each other. When the recorder leaves, the next in line sees it
   // go and takes over; when a host with a lower id arrives, the recorder sees
-  // them and stands down, flushing what it has.
+  // them and stands down, flushing what it has. A co-host who pressed Leave is
+  // "left" to the engine, and never counts.
   //
   // Nothing is decided until the join has landed (`session.joined`), or every
   // host would elect themselves off an empty roster. For RECORDER_SETTLE_MS
@@ -402,10 +705,14 @@ export function BroadcastRoom({
     return () => clearTimeout(t);
   }, [standDownUntil]);
   const webinarSegment = webinar?.onSegment;
+  // This mount's recording run (see WebinarRoom's onSegment). A ref, not
+  // state: it must never change for the life of the mount, and nothing
+  // renders it.
+  const recordingRun = useRef(Date.now());
   const onWebinarSegment = useCallback(
     async (blob: Blob, index: number, seconds: number) => {
       if (!webinarSegment) return;
-      const outcome = await webinarSegment(blob, index, seconds);
+      const outcome = await webinarSegment(blob, index, seconds, recordingRun.current);
       if (outcome === "refused") {
         setStandDownUntil(Date.now() + RECORDER_LEASE_MS);
       }
@@ -413,9 +720,9 @@ export function BroadcastRoom({
     [webinarSegment],
   );
 
-  // Not once the webinar has been ENDED, either — by this host or a co-host
-  // (RoomPanel's onLiveEnded sets `endedAt` live). The gate closing flushes
-  // what was recorded; a host lingering in an ended room is not more talk.
+  // Not once the webinar has been ENDED, either — by this host or a co-host.
+  // The gate closing flushes what was recorded; a host lingering in an ended
+  // room is not more talk.
   const recordWebinar =
     !!webinar?.autoRecord &&
     isHost &&
@@ -479,7 +786,12 @@ export function BroadcastRoom({
   }, [webinar, call, session.remotes]);
   const recorder = useRecorder({
     eventId: webinar?.eventId ?? roomId,
-    enabled: (recordWebinar || recordCall) && phase === "live" && mediaSettled,
+    enabled:
+      (recordWebinar || recordCall) &&
+      phase === "live" &&
+      mediaSettled &&
+      !ending &&
+      !leaving,
     cameraStream: media.stream,
     screenStream: screen.stream,
     micStream: media.stream,
@@ -493,41 +805,293 @@ export function BroadcastRoom({
 
   const onJoin = useCallback((opts: { cameraOn: boolean; micOn: boolean }) => {
     wanted.current = opts;
-    // A rejoin brings a fresh stream, and the green room's toggles apply to it.
+    // A fresh stream, and the green room's toggles apply to it.
     applied.current = false;
     setPhase("live");
   }, []);
 
-  const [ending, setEnding] = useState(false);
-  const [leaving, setLeaving] = useState(false);
+  // ---- Teardown -----------------------------------------------------------
 
   /**
-   * Leave, without ending anything for anybody else.
+   * One way out of the live phase, in the one safe order. Every caller has
+   * already set `leaving` or `ending`, so the session is down (bye to every
+   * peer, channels removed, leave) and the host is off air before this runs.
    *
-   * What a viewer's button does, and what a host's does when there is a second
-   * host still talking. The room carries on.
-   *
-   * It FLUSHES THE RECORDING first, for the same reason End does (see below):
-   * `media.stop()` ends the tracks the recorder is reading, and a 1:1 has no
-   * End-for-everyone step that always comes first — Leave is the button most
-   * calls finish on. Stopping the tracks first cut the last segment to
-   * whatever had been written, and the page leaving then dropped its upload.
-   * Bounded by the recorder's own drain timeout, and instant when nothing is
-   * recording, which is every viewer.
+   * Then: capture the recording's final segment (awaited — `media.stop()`
+   * ends the tracks the recorder reads, so stopping them first truncates the
+   * final segment, reliably the Q&A), stop screen, camera and mic, change
+   * phase. `recorder.stop()` resolves on CAPTURE, in milliseconds and never
+   * more than a few seconds; the upload carries on behind the left/ended
+   * screen, which shows it and guards the tab. It used to resolve only once
+   * the upload had landed, and with no bound on the final segment, so Leave
+   * could hold a host on air — and on "Saving the recording…" — indefinitely.
    */
-  const hangUp = useCallback(async () => {
-    if (leaving) return;
-    setLeaving(true);
-    try {
-      await recorder.stop();
-    } catch (err) {
-      console.error("[live] recording flush failed", err);
+  const stopRecording = recorder.stop;
+  const finish = useCallback(
+    async (next: Exclude<Phase, "prejoin" | "live">) => {
+      try {
+        await stopRecording();
+      } catch (err) {
+        console.error("[live] recording flush failed", err);
+      }
+      screen.stop();
+      media.stop();
+      setPhase(next);
+    },
+    [stopRecording, screen, media],
+  );
+
+  /**
+   * Rejoin, Reopen or Back from the left/ended screen — after the recording's
+   * uploads, when there are any.
+   *
+   * Each of them takes this room off the screen: a rejoin remounts the whole
+   * room, recorder included, and Back navigates away from it. Segments this
+   * session is still uploading carry on in the background, but they drop off
+   * the screen — the "keep this tab open" note goes with the room — so a host
+   * who left the screen and then closed the tab lost them without a word.
+   * (The unload prompt itself outlives the room: use-recorder holds it at the
+   * tab level for as long as any upload is on the wire.) These are the places
+   * anything waits for an upload, bounded by the recorder's drain ceiling
+   * (UPLOAD_DRAIN_TIMEOUT_MS) and skipped when nothing is on the wire. One
+   * exit waits at a time, and the button that is waiting says so.
+   */
+  const drainRecording = recorder.drain;
+  const recorderStateRef = useRef(recorder.state);
+  recorderStateRef.current = recorder.state;
+  const [savingFor, setSavingFor] = useState<ScreenExit | null>(null);
+  const drainBefore = useCallback(
+    async (exit: ScreenExit) => {
+      if (recorderStateRef.current !== "uploading") return;
+      setSavingFor(exit);
+      try {
+        await drainRecording();
+      } finally {
+        setSavingFor(null);
+      }
+    },
+    [drainRecording],
+  );
+  /**
+   * A way off the left/ended screen has been chosen — Rejoin, Reopen, Back, or
+   * a 1:1's automatic return to the calls list. One exit, never two: that
+   * automatic return waits on the same uploads, and must not carry off
+   * someone who pressed Rejoin (or Back) while they drained.
+   */
+  const exitChosenRef = useRef(false);
+  const rejoinAfterUploads = useCallback(
+    async (opts?: RejoinOptions) => {
+      exitChosenRef.current = true;
+      await drainBefore("rejoin");
+      rejoin(opts);
+    },
+    [drainBefore, rejoin],
+  );
+  // Reopen drains FIRST, then reopens: the audience is let back in when the
+  // host is actually on the way back, not up to a drain's length before.
+  const onReopenLive = webinar?.onReopenLive;
+  const reopenAfterUploads = useCallback(async () => {
+    if (!onReopenLive) return;
+    exitChosenRef.current = true;
+    await drainBefore("reopen");
+    await onReopenLive();
+  }, [drainBefore, onReopenLive]);
+
+  // ---- Back to the list ---------------------------------------------------
+  //
+  // The room's own path, read once mounted, so an exit that waited on the
+  // uploads can tell whether the person is still here to be sent anywhere —
+  // they may have clicked away meanwhile, and must not be yanked back. Asked
+  // of the URL rather than of this component being mounted: a re-render can
+  // unmount the room while the person is still on its page, and they still
+  // need taking back to their list.
+  const roomPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    roomPathRef.current = window.location.pathname;
+  }, []);
+  const stillOnRoomPath = useCallback(
+    () =>
+      roomPathRef.current === null ||
+      window.location.pathname === roomPathRef.current,
+    [],
+  );
+  const backAfterUploads = useCallback(async () => {
+    await drainBefore("back");
+    if (stillOnRoomPath()) router.push(backHref);
+  }, [drainBefore, stillOnRoomPath, router, backHref]);
+  /**
+   * Every Back on the left, ended and closed screens. An ordinary link while
+   * nothing is uploading; while something is, the click waits for it first
+   * (see `drainBefore`). A modified click opens a new tab and leaves this one,
+   * and its uploads, where they are.
+   */
+  const onBackClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+        return;
+      }
+      exitChosenRef.current = true;
+      if (recorderStateRef.current !== "uploading") return;
+      e.preventDefault();
+      void backAfterUploads();
+    },
+    [backAfterUploads],
+  );
+
+  /** Guards every exit so two of them (End + the hint it causes) never race. */
+  const exitingRef = useRef(false);
+  /** An End request is with the server; nothing has been torn down yet. */
+  const [endPending, setEndPending] = useState(false);
+  const [leavePrompt, setLeavePrompt] = useState(false);
+  const [endError, setEndError] = useState<string | null>(null);
+
+  /** Someone else ended it (or the server says so): the same teardown. */
+  const enterEnded = useCallback(() => {
+    if (exitingRef.current) return;
+    exitingRef.current = true;
+    setEnding(true);
+    setLeavePrompt(false);
+    void finish("ended");
+  }, [finish]);
+
+  /** The server closed the room for a reason other than End. */
+  const enterClosed = useCallback(
+    (reason: CloseReason) => {
+      if (exitingRef.current) return;
+      exitingRef.current = true;
+      setEnding(true);
+      setLeavePrompt(false);
+      setClosedReason(reason);
+      void finish("closed");
+    },
+    [finish],
+  );
+
+  // End is terminal however it arrives — the poll, the panel's read, or this
+  // tab's own End button (which has already claimed the exit).
+  useEffect(() => {
+    if (phase === "live" && endedAt) enterEnded();
+  }, [phase, endedAt, enterEnded]);
+
+  // Read by an End that FAILED: while its request was out, the room may have
+  // been ended or closed anyway (the server stamped it and the response was
+  // lost), and the effects that would have acted on that already ran while
+  // the End held the exit.
+  const closedRef = useRef(session.closed);
+  closedRef.current = session.closed;
+  const endedAtRef = useRef(endedAt);
+  endedAtRef.current = endedAt;
+  const afterFailedEnd = useCallback(() => {
+    const closed = closedRef.current;
+    if (closed && closed.reason !== "ended") enterClosed(closed.reason);
+    else if (closed || endedAtRef.current) enterEnded();
+  }, [enterClosed, enterEnded]);
+
+  // ...or the engine: a heartbeat or a `room-changed` re-check that came back
+  // 'ended', 'cancelled', 'closed' or 'revoked'. The engine has already torn
+  // itself down; this stops the devices and says what happened. A 1:1 closes
+  // the one way a 1:1 closes — `finishCall`, as if its status poll had said
+  // the call is over, which is what the server just told the heartbeat.
+  useEffect(() => {
+    const closed = session.closed;
+    if (!closed || phase !== "live") return;
+    if (call) {
+      void finishCallRef.current("elsewhere");
+      return;
     }
-    screen.stop();
-    media.stop();
-    setLeaving(false);
-    setPhase("left");
-  }, [leaving, media, recorder, screen]);
+    if (closed.reason === "ended") {
+      // Fetch the stored time for the ended screen; the teardown does not wait.
+      if (webinar && refreshPremiere) {
+        void refreshPremiere()
+          .then((next) => {
+            if (next?.liveEndedAt) setEndedAt(next.liveEndedAt);
+          })
+          .catch(() => {});
+      }
+      enterEnded();
+    } else {
+      enterClosed(closed.reason);
+    }
+  }, [session.closed, phase, call, webinar, refreshPremiere, enterEnded, enterClosed]);
+
+  // The server minted a different role than the page rendered (a speaker row
+  // removed between render and Start, a profile read that fell back). Never
+  // run a host engine on viewer credentials or the reverse: remount as what
+  // the server says, back through the green room.
+  const pageRole: SignalRole = isHost ? "host" : "viewer";
+  useEffect(() => {
+    const minted = session.serverRole;
+    if (!minted || minted === pageRole || phase !== "live") return;
+    rejoin({ role: minted, endedAt });
+    // endedAt is carried, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.serverRole, pageRole, phase, rejoin]);
+
+  const otherBroadcasterLive = session.remotes.some(
+    (r) => r.role === "host" && r.state === "live",
+  );
+  /** The last broadcaster on air in a running webinar — Leave asks first. */
+  const soleOnAirHost =
+    !!webinar && isHost && phase === "live" && !endedAt && !otherBroadcasterLive;
+
+  /** Leave, without ending anything for anybody else. */
+  const leaveNow = useCallback(async () => {
+    if (exitingRef.current) return;
+    exitingRef.current = true;
+    setLeavePrompt(false);
+    setLeaving(true);
+    await finish("left");
+  }, [finish]);
+
+  /**
+   * The Leave button. What a viewer's does, what a host's does when another
+   * broadcaster is still on air — and, for the last one on air, a question
+   * first, because a sole host who just leaves strands the whole audience.
+   */
+  const hangUp = useCallback(() => {
+    if (soleOnAirHost) {
+      setLeavePrompt(true);
+      // Whether a guest speaker may End depends on who else is present right
+      // now, which the server knows and the page render may not.
+      pollNow.current();
+      return;
+    }
+    void leaveNow();
+  }, [soleOnAirHost, leaveNow]);
+
+  /**
+   * End the webinar, for everyone.
+   *
+   *  1. Tell the SERVER, first and alone. If this fails nothing has been torn
+   *     down: the host is still live, sees why, and can press it again. (It
+   *     used to swallow the error and leave anyway, so a webinar past its
+   *     window "ended" on screen and stayed live for everyone else.)
+   *  2. Flush the recording, then stop the devices, then the ended screen —
+   *     `finish`, in that order. Every other client hears `room-changed` and
+   *     does the same on their side.
+   */
+  const endWebinar = useCallback(async () => {
+    if (!webinar || exitingRef.current) return;
+    exitingRef.current = true;
+    setEndPending(true);
+    setEndError(null);
+    setLeavePrompt(false);
+    let stored: string;
+    try {
+      stored = await webinar.onEndLive();
+    } catch (err) {
+      exitingRef.current = false;
+      setEndPending(false);
+      setEndError(getActionError(err, "Couldn't end the webinar — try again."));
+      afterFailedEnd();
+      return;
+    }
+    setEndPending(false);
+    setEnding(true);
+    setEndedByMe(true);
+    setEndedAt(stored);
+    await finish("ended");
+  }, [webinar, finish, afterFailedEnd]);
 
   // ---- Ending a 1:1 -------------------------------------------------------
   //
@@ -542,12 +1106,14 @@ export function BroadcastRoom({
   // closes.
   //
   // "Been in the room" is latched: someone whose connection drops after the
-  // conversation has still had it, and must still be able to end it.
+  // conversation has still had it, and must still be able to end it. The
+  // latch is held by BroadcastRoom, above the remount, so a Rejoin or a Retry
+  // — each a fresh session — keeps it too.
   const peerLive = !!call && session.remotes.some((p) => p.state === "live");
-  const [peerSeen, setPeerSeen] = useState(false);
   useEffect(() => {
-    if (peerLive) setPeerSeen(true);
-  }, [peerLive]);
+    if (peerLive) onPeerSeen();
+  }, [peerLive, onPeerSeen]);
+  const peerSeen = !!call && (peerLive || peerSeenCarried);
   const peerSeenRef = useRef(peerSeen);
   peerSeenRef.current = peerSeen;
 
@@ -570,11 +1136,12 @@ export function BroadcastRoom({
   /**
    * End a 1:1, for both people — or close this side because it already ended.
    *
-   * Same order as ending a webinar, for the same reasons: flush the recording,
-   * THEN tell the server, THEN stop the devices. The server step marks the
-   * call completed (only once its start has come — see endCall); the other
-   * person's room learns it on its next status poll and closes itself, which
-   * flushes their recording in turn if they are the one recording.
+   * The same teardown as every other exit (`finish`): the session goes down
+   * at once, the recording's final segment is captured, the devices stop.
+   * Then, for this side's own End call, the server marks the call completed
+   * (only once its start has come — see endCall); the other person's room
+   * learns it on its next status poll or heartbeat and closes itself, which
+   * captures their recording in turn if they are the one recording.
    *
    * `elsewhere` is that other side: the call is over and this room is only
    * catching up, so it skips the server call.
@@ -585,28 +1152,45 @@ export function BroadcastRoom({
    * still in the room), so this side has LEFT it, and says so, rather than
    * announcing an end and a recording "under Past" that are not there.
    *
-   * Guarded by a ref rather than the `ending` state, because the poll and the
-   * button can both fire inside one render and the second must not run the
-   * flush twice.
+   * Nothing before the screen changes waits on the recording's UPLOAD — the
+   * other person hears of the End within one round trip, not after up to a
+   * drain's length. The upload finishes behind the ended screen, which says
+   * "keep this tab open", and only then does this side's own End call take
+   * them back to their calls list (bounded by the drain ceiling). That relies
+   * on the room STAYING MOUNTED through the upload, which is why `endCall`
+   * revalidates nothing: a revalidating action re-renders the current route,
+   * and this route renders a static "This call has ended" once the call is
+   * completed — which swapped the room out mid-upload and took the note, the
+   * navigation back and the room's copy of the story with it. The navigation
+   * goes ahead as long as they are still on the room's page, mounted or not,
+   * and never after they have clicked away or chosen another way off the
+   * screen (Rejoin, Back) while the upload drained.
+   *
+   * Guarded by the shared exit ref, because the poll, the heartbeat and the
+   * button can all fire inside one render and the second must not run the
+   * teardown twice.
    */
-  const finishingRef = useRef(false);
   const finishCall = useCallback(
     async (how: "mine" | "elsewhere") => {
-      if (!call || finishingRef.current) return;
+      if (!call || exitingRef.current) return;
       // Nobody else has been here: this is a Leave, not an end. The button is
       // not shown in that state; this holds if something calls it anyway.
       if (how === "mine" && !peerSeenRef.current) {
-        void hangUp();
+        void leaveNow();
         return;
       }
-      finishingRef.current = true;
+      exitingRef.current = true;
       setEnding(true);
+      let completed = how === "elsewhere";
       try {
-        await recorder.stop();
+        await stopRecording();
       } catch (err) {
         console.error("[live] recording flush failed", err);
       }
-      let completed = how === "elsewhere";
+      // Captured: the tracks are no longer needed, and the camera light goes
+      // off now rather than after a server round trip.
+      screen.stop();
+      media.stop();
       if (how === "mine") {
         try {
           completed = (await call.onEndCall()).completed;
@@ -617,16 +1201,26 @@ export function BroadcastRoom({
           console.error("[live] end call failed", err);
         }
       }
-      screen.stop();
-      media.stop();
-      setEnding(false);
-      // A call that did not end can be rejoined, so the guard is released
-      // for the next time this person is in the room.
-      if (!completed) finishingRef.current = false;
       setPhase(completed ? "ended" : "left");
-      if (how === "mine") router.push(backHref);
+      if (how === "mine") {
+        await drainRecording();
+        if (!exitChosenRef.current && stillOnRoomPath()) {
+          exitChosenRef.current = true;
+          router.push(backHref);
+        }
+      }
     },
-    [backHref, call, hangUp, media, recorder, router, screen],
+    [
+      backHref,
+      call,
+      drainRecording,
+      leaveNow,
+      media,
+      router,
+      screen,
+      stillOnRoomPath,
+      stopRecording,
+    ],
   );
   const finishCallRef = useRef(finishCall);
   finishCallRef.current = finishCall;
@@ -635,7 +1229,8 @@ export function BroadcastRoom({
   // pressing End call and the other person's wifi dropping look identical
   // from here. Without this the remaining person — and, if they are the host,
   // their recorder — sat in the room until the window closed half an hour
-  // later.
+  // later. (The heartbeat hears it too, as 'ended' or 'cancelled'; whichever
+  // comes first closes the room, through the same finishCall.)
   const fetchCallStatus = call?.fetchStatus;
   useEffect(() => {
     if (!fetchCallStatus || phase !== "live") return;
@@ -657,50 +1252,6 @@ export function BroadcastRoom({
     };
   }, [fetchCallStatus, phase]);
 
-  /**
-   * End the webinar, for everyone.
-   *
-   * This is the button that was missing, and the order below is the whole of
-   * it. Every step has to happen before the one after it, and the previous
-   * behaviour — set phase to "left" and stop the tracks — skipped all four:
-   *
-   *  1. FLUSH THE RECORDING FIRST, and await it. `media.stop()` ends the
-   *     tracks the recorder is reading, so stopping them first truncates the
-   *     final segment to whatever had already been written. That is the last
-   *     few minutes of the webinar — reliably the Q&A, reliably the part
-   *     people re-watch.
-   *  2. Tell the SERVER. Closing the host's tab already tears the peer
-   *     connections down, but from a viewer's browser a host who ended and a
-   *     host who dropped off hotel wifi are the same event, so the audience
-   *     sits on "waiting for the host to start" until the join window closes
-   *     half an hour later. Stamping `live_ended_at` is what distinguishes
-   *     them; every client polls it.
-   *  3. Only then stop the local devices and leave.
-   *
-   * The whole thing is wrapped so that a failure at step 2 — a dead network at
-   * exactly the wrong moment — still lets the host out of the room. A webinar
-   * that says "live" for another twenty minutes is a bad outcome; a host
-   * trapped in a room by a failed request is a worse one.
-   */
-  const endWebinar = useCallback(async () => {
-    if (ending) return;
-    setEnding(true);
-    try {
-      await recorder.stop();
-    } catch (err) {
-      console.error("[live] recording flush failed", err);
-    }
-    try {
-      await webinar?.onEndLive();
-    } catch (err) {
-      console.error("[live] end failed", err);
-    }
-    screen.stop();
-    media.stop();
-    setEnding(false);
-    setPhase("left");
-  }, [ending, media, recorder, screen, webinar]);
-
   /** Hand a premiere over to the live room, now. Hosts only. */
   const goLiveNow = useCallback(async () => {
     if (!webinar) return;
@@ -708,71 +1259,259 @@ export function BroadcastRoom({
       await webinar.onGoLive();
       setPremierePhase("live");
     } catch (err) {
-      console.error("[live] go-live failed", err);
+      setEndError(getActionError(err, "Couldn't go live — try again."));
     }
   }, [webinar]);
 
-  if (phase === "ended") {
-    return (
-      <Centered title="This call has ended">
-        {call?.isRecorder && (
-          <p className="mb-5 text-sm text-ink-soft">
-            {recorder.error
-              ? "Part of the recording may not have saved — check it under Past."
-              : "The recording is saved with the call — you’ll find it under Past."}
-          </p>
-        )}
-        <ButtonLink href={backHref}>Back to your calls</ButtonLink>
-      </Centered>
-    );
-  }
+  // Reopen from the green room ("Ended at 19:40 — Reopen and go live"): an
+  // explicit choice, never a side effect of pressing Start.
+  const [joinBusy, setJoinBusy] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const reopenAndJoin = useCallback(
+    async (opts: { cameraOn: boolean; micOn: boolean }) => {
+      if (!webinar) return;
+      setJoinBusy(true);
+      setJoinError(null);
+      try {
+        await webinar.onReopenLive();
+        setEndedAt(null);
+        wanted.current = opts;
+        setPhase("live");
+      } catch (err) {
+        setJoinError(getActionError(err, "Couldn't reopen the webinar."));
+      } finally {
+        setJoinBusy(false);
+      }
+    },
+    [webinar],
+  );
+  // Someone else reopened it while this host sat in the ended green room
+  // (ReopenWatcher below): the ordinary green room, with Start, comes back.
+  const onReopenedElsewhere = useCallback(() => setEndedAt(null), []);
+  // Past this, nothing can reopen the webinar, so the ended screens stop
+  // watching for it.
+  const hardCloseAt = webinar
+    ? roomWindow(webinar.startsAt, webinar.endsAt).hardCloseAt
+    : null;
+
+  // A tab closed mid-webinar by its last host strands the audience: the
+  // browser's own "leave this page?" for that, and nothing else here. (A tab
+  // closed while segments are still uploading loses them, and gets the same
+  // prompt — but from use-recorder, which holds it for the whole tab while
+  // any upload is on the wire, so it outlives this room when Back or a
+  // re-render takes the room off the screen first.)
+  const guardUnload = soleOnAirHost && session.state === "live";
+  useEffect(() => {
+    if (!guardUnload) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [guardUnload]);
+
+  // The panel heard `stage-change` (go-live, End, Reopen): re-ask the server
+  // now instead of waiting out the poll.
+  const recheck = session.recheck;
+  const onStageChange = useCallback(() => {
+    recheck();
+    pollNow.current();
+  }, [recheck]);
+
+  const rejoinUntil = call
+    ? new Date(
+        new Date(call.endsAt).getTime() + JOIN_CLOSES_MINUTES_AFTER * 60_000,
+      ).toISOString()
+    : null;
+
+  // Only for whoever records: a webinar host (whichever browser was elected,
+  // this one may have recorded a stretch), a 1:1's host.
+  const recordingNote =
+    (isHost && webinar) || call?.isRecorder ? (
+      <RecordingStatus
+        state={recorder.state}
+        uploaded={recorder.uploaded}
+        error={recorder.error}
+      />
+    ) : null;
+
+  // ---- Terminal and between-sessions screens ------------------------------
 
   if (phase === "left") {
     return (
-      <Centered title="You've left">
+      <Centered title={isCall ? "You left the call" : "You've left"}>
+        {isCall && rejoinUntil && (
+          <p className="-mt-2 mb-4 text-sm text-ink-soft">
+            You can rejoin until <LocalTime value={rejoinUntil} mode="time" />.
+          </p>
+        )}
+        {!isCall && webinar && !endedAt && (
+          <p className="-mt-2 mb-4 text-sm text-ink-soft">
+            The webinar is still running.
+          </p>
+        )}
+        {recordingNote}
         <div className="flex flex-wrap justify-center gap-2">
-          {/* Back to the green room, not just a refresh: router.refresh()
-              keeps this component's state, so on its own it re-rendered the
-              same "You've left" and Rejoin did nothing. The refresh still
-              runs, so a room that has closed in the meantime (the call ended,
-              the window shut) comes back as the server's "this has ended"
-              page instead of a green room for a door that is locked. */}
           <Button
-            onClick={() => {
-              router.refresh();
-              setPhase("prejoin");
-            }}
+            disabled={savingFor !== null}
+            onClick={() => void rejoinAfterUploads({ endedAt })}
           >
-            Rejoin
+            {savingFor === "rejoin" ? <SavingLabel /> : "Rejoin"}
           </Button>
-          <ButtonLink variant="secondary" href={backHref}>
-            Back
-          </ButtonLink>
+          <BackButton
+            href={backHref}
+            label="Back"
+            variant="secondary"
+            waiting={savingFor}
+            onClick={onBackClick}
+          />
         </div>
       </Centered>
     );
   }
 
-  if (phase === "prejoin") {
+  if (phase === "ended") {
+    if (isCall) {
+      return (
+        <Centered title="This call has ended">
+          {call?.isRecorder &&
+            (recorder.state === "uploading" || recorder.state === "recording" ? (
+              // The final segment is still on the wire: End no longer waits
+              // for it, so this screen is where "keep this tab open" is said.
+              recordingNote
+            ) : (
+              <p className="mb-5 text-sm text-ink-soft">
+                {recorder.error
+                  ? "Part of the recording may not have saved — check it under Past."
+                  : "The recording is saved with the call — you’ll find it under Past."}
+              </p>
+            ))}
+          <BackButton
+            href={backHref}
+            label="Back to your calls"
+            variant="primary"
+            waiting={savingFor}
+            onClick={onBackClick}
+          />
+        </Centered>
+      );
+    }
+    if (!isHost) {
+      return (
+        <ViewerEnded
+          endedAt={endedAt}
+          backHref={backHref}
+          refresh={refreshPremiere}
+          hardCloseAt={hardCloseAt}
+          onRejoin={() => rejoin({ endedAt: null })}
+        />
+      );
+    }
     return (
-      <PreJoin
-        title={title}
-        subtitle={
-          call
-            ? `A private 1:1 with ${call.otherName}. Your camera and mic will be on.`
-            : isHost
-              ? "You're the host — your camera and mic will be live."
-              : qa
-                ? "Your camera and mic stay off, and nobody can see who else is here. You can ask questions beside the video."
-                : "You'll be able to watch and listen."
-        }
-        notice={call ? <CallRecordingNotice call={call} /> : undefined}
-        role={role}
-        onJoin={onJoin}
-        joinLabel={call ? "Join call" : isHost ? "Start" : "Join"}
+      <HostEnded
+        endedByMe={endedByMe}
+        endedAt={endedAt}
+        backHref={backHref}
+        recordingNote={recordingNote}
+        onReopen={isStaffHost && webinar ? reopenAfterUploads : null}
+        waiting={savingFor}
+        onReopened={() => rejoin({ endedAt: null })}
+        refresh={refreshPremiere}
+        hardCloseAt={hardCloseAt}
+        // After the uploads, like every other way off this screen: the host
+        // may have been the elected recorder, with segments still in flight.
+        onRejoin={() => void rejoinAfterUploads({ endedAt: null })}
+        onBackClick={onBackClick}
       />
     );
   }
+
+  if (phase === "closed") {
+    return (
+      <Centered title={closedTitle(closedReason)}>
+        <p className="-mt-2 mb-4 text-sm text-ink-soft">
+          {closedDetail(closedReason)}
+        </p>
+        {recordingNote}
+        <BackButton
+          href={backHref}
+          label="Back"
+          variant="secondary"
+          waiting={savingFor}
+          onClick={onBackClick}
+        />
+      </Centered>
+    );
+  }
+
+  if (phase === "prejoin") {
+    // A host arriving after End. Pressing Start never reopens a webinar —
+    // staff get an explicit "Reopen and go live", with the camera left off
+    // until they choose it; anyone else is told it is over.
+    if (isHost && webinar && endedAt) {
+      const endedLine = (
+        <>
+          This webinar was ended at <LocalTime value={endedAt} mode="time" />.
+        </>
+      );
+      return (
+        <>
+          {/* Staff may reopen it from the admin pages, or from another tab,
+              while this host waits here — a guest speaker, who has no Reopen
+              of their own, most of all. Noticed on the ended screens' slow
+              poll; the ordinary green room (and Start) comes back. */}
+          <ReopenWatcher
+            refresh={refreshPremiere}
+            hardCloseAt={hardCloseAt}
+            onReopen={onReopenedElsewhere}
+          />
+          <PreJoin
+            title={title}
+            subtitle={
+              isStaffHost
+                ? "Reopening lets the audience back in and puts you on air."
+                : "Only staff can reopen it. If they do, this page will let you back in."
+            }
+            banner={endedLine}
+            role={role}
+            selfLabel="host"
+            autoStartMedia={false}
+            onJoin={reopenAndJoin}
+            joinLabel={isStaffHost ? "Reopen and go live" : undefined}
+            hideJoin={!isStaffHost}
+            busy={joinBusy}
+            joinError={joinError}
+            backHref={backHref}
+          />
+        </>
+      );
+    }
+    return (
+      <PreJoin
+        title={title}
+        subtitle={prejoinCopy({
+          isCall,
+          isHost,
+          isStaffHost,
+          inPremiere,
+          otherName: call?.otherName ?? null,
+          isWebinar: !!(webinar || qa),
+        })}
+        notice={call ? <CallRecordingNotice call={call} /> : undefined}
+        role={role}
+        selfLabel={isCall ? null : "host"}
+        onJoin={onJoin}
+        // "Start" for a webinar host is kept as-is (scripts/webinar-e2e.mts
+        // clicks it by name); the subtitle carries the co-host / premiere /
+        // guest-speaker nuance instead.
+        joinLabel={isCall ? "Join call" : isHost ? "Start" : "Join"}
+        backHref={backHref}
+      />
+    );
+  }
+
+  // ---- Live ---------------------------------------------------------------
 
   // Every broadcaster, not just the first.
   //
@@ -787,10 +1526,39 @@ export function BroadcastRoom({
   // A premiere is SHOWN while the recording is still running and the viewer is
   // not a host. A host mid-premiere gets the console below instead — they are
   // not on air yet, and watching their own recording is not what they are here
-  // for.
+  // for. Never after End: a recording that kept playing under "Ended" was a bug.
   const premiereShowing =
-    !!webinar?.premiere && premierePhase === "playing" && !isHost;
+    !!webinar?.premiere && premierePhase === "playing" && !isHost && !endedAt;
   const panel = webinar ?? qa;
+
+  // What a host sees of the other broadcasters. In a 1:1 the other person is
+  // always accounted for — waiting, here, reconnecting or left — so there is
+  // never a ghost camera-off tile for someone who is not there. In a webinar a
+  // co-host who left simply drops out.
+  const hostTiles: RemotePeer[] = isCall
+    ? broadcasters.length > 0
+      ? broadcasters
+      : [
+          {
+            peerId: "pending",
+            name: call?.otherName ?? "them",
+            role: "host",
+            state: "connecting",
+            seenLive: false,
+            downSince: null,
+            streams: {},
+          },
+        ]
+    : broadcasters.filter((p) => p.state !== "left");
+
+  // Brief by construction: the exit waits only for the recorder to capture
+  // its final segment. Any upload still running is reported on the screen
+  // this lands on, not here.
+  const busyNote = leaving
+    ? "Leaving…"
+    : ending || endPending
+      ? "Ending…"
+      : null;
 
   return (
     <div className={panel ? "mx-auto max-w-6xl" : "mx-auto max-w-5xl"}>
@@ -805,11 +1573,6 @@ export function BroadcastRoom({
               What is pre-recorded is the talk. */}
           {!endedAt && (session.state === "live" || premiereShowing) && (
             <LiveDot />
-          )}
-          {endedAt && (
-            <span className="rounded-full border border-line px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
-              Ended
-            </span>
           )}
           {call ? (
             // Shown to BOTH people, always, from the first frame. Only the
@@ -894,7 +1657,7 @@ export function BroadcastRoom({
                 : "border-line text-ink-faint"
             }`}
           >
-            {isHost ? "Hosting" : "Watching"}
+            {isCall ? "In call" : isHost ? "Hosting" : "Watching"}
           </span>
         </div>
       </header>
@@ -906,7 +1669,7 @@ export function BroadcastRoom({
         </p>
       )}
 
-      {session.error && (
+      {session.error && !session.joinFailed && (
         <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-400/10 p-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <p className="text-xs text-ink-soft">{session.error}</p>
@@ -915,7 +1678,13 @@ export function BroadcastRoom({
 
       <div className="flex flex-col gap-3 lg:flex-row">
         <div className="min-w-0 flex-1 space-y-3">
-          {isHost ? (
+          {isHost && session.joinFailed ? (
+            <JoinFailedCard
+              message={session.error}
+              onRetry={() => rejoin({ endedAt })}
+              backHref={backHref}
+            />
+          ) : isHost ? (
             <>
               {/* Presenting replaces the big frame; the camera drops to a
                   corner tile, which is what a viewer sees too. */}
@@ -932,7 +1701,7 @@ export function BroadcastRoom({
                     <VideoTile
                       stream={media.stream}
                       name="You"
-                      label="host"
+                      label={isCall ? undefined : "host"}
                       cameraOn={media.cameraOn}
                       micOn={media.micOn}
                       mirrored
@@ -944,7 +1713,7 @@ export function BroadcastRoom({
                 <VideoTile
                   stream={media.stream}
                   name="You"
-                  label="host"
+                  label={isCall ? undefined : "host"}
                   cameraOn={media.cameraOn}
                   micOn={media.micOn}
                   mirrored
@@ -955,10 +1724,15 @@ export function BroadcastRoom({
 
               {/* Other broadcasters — a co-host, or the other party in a 1:1.
                   Never the audience. */}
-              {session.remotes.length > 0 && (
+              {hostTiles.length > 0 && (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {session.remotes.map((p) => (
-                    <RemoteTile key={p.peerId} peer={p} />
+                  {hostTiles.map((p) => (
+                    <RemoteTile
+                      key={p.peerId}
+                      peer={p}
+                      isCall={isCall}
+                      rejoinUntil={rejoinUntil}
+                    />
                   ))}
                 </div>
               )}
@@ -974,21 +1748,17 @@ export function BroadcastRoom({
               // owns that moment (`live_started_at`, or the schedule), and the
               // poll above is what acts on it — so this only nudges the poll
               // rather than switching the room on the browser's say-so.
-              onRecordingFinished={() =>
-                void webinar?.refreshPremiere().catch(() => {})
-              }
+              onRecordingFinished={() => pollNow.current()}
               onLeave={hangUp}
             />
           ) : (
             <ViewerStage
               peers={broadcasters}
-              waitingLabel={
-                endedAt
-                  ? "This webinar has ended"
-                  : premierePhase === "waiting"
-                    ? "Starting shortly"
-                    : undefined
-              }
+              starting={premierePhase === "waiting"}
+              startsAt={webinar?.startsAt ?? null}
+              joinFailed={!!session.joinFailed}
+              failedMessage={session.error}
+              onRetry={() => rejoin({ endedAt })}
             />
           )}
 
@@ -1002,7 +1772,10 @@ export function BroadcastRoom({
             {webinar && webinar.initialRoomState ? (
               // The rich panel: chat, the question queue with upvotes, polls
               // and reactions, all over Realtime rather than the 5-second poll
-              // QAPanel was built around.
+              // QAPanel was built around. The ended state is OURS, passed in;
+              // the panel reports what the server tells it and never keeps a
+              // second copy (two copies is how a Reopen used to leave an
+              // "ended" banner up in one half of the room).
               <RoomPanel
                 eventId={webinar.eventId}
                 isModerator={isHost}
@@ -1010,7 +1783,12 @@ export function BroadcastRoom({
                 initial={webinar.initialRoomState}
                 roomTopic={session.roomTopic}
                 moderationTopic={session.moderationTopic}
-                onLiveEnded={(at) => setEndedAt(at)}
+                liveEndedAt={endedAt}
+                onServerState={(s) => {
+                  if (s.liveEndedAt) setEndedAt(s.liveEndedAt);
+                  setCanEnd(s.canEnd);
+                }}
+                onStageChange={onStageChange}
               />
             ) : (
               // The fallback, and it is a real one rather than dead code: a
@@ -1038,53 +1816,80 @@ export function BroadcastRoom({
           onToggleCamera={media.toggleCamera}
           onToggleScreen={isHost && !inPremiere ? screen.toggle : undefined}
           screenSharing={!!screen.stream}
-          // Leave, for everyone. A host ALSO gets End beside it — the two are
-          // deliberately different buttons rather than one that guesses, because
-          // a co-host stepping out and the webinar finishing are different
-          // intentions and only one of them is reversible.
-          onLeave={() => void hangUp()}
+          // Leave, for everyone. A host who may end ALSO gets End beside it —
+          // the two are deliberately different buttons rather than one that
+          // guesses, because stepping out and the webinar finishing are
+          // different intentions and only one of them is easy to undo.
+          onLeave={hangUp}
           canBroadcast={isHost && !inPremiere}
         />
 
+        {isHost && webinar && inPremiere && !endedAt && (
+          <Button onClick={goLiveNow} disabled={ending}>
+            Go live now
+          </Button>
+        )}
+
+        {/* The one End for everyone. Staff only in the bar (a guest speaker
+            reaches it only through the last-broadcaster Leave prompt), shown
+            during a premiere too, never before the webinar has begun (the
+            server's `canEnd` says so, and re-asks at the start), and
+            two-step — it ends the session for everyone watching, so it must
+            not be one mis-aimed click. */}
+        {isStaffHost && webinar && canEnd && !endedAt && (
+          <ArmButton
+            label="End for everyone"
+            confirmLabel="Confirm end"
+            warning="This ends the webinar for everyone watching."
+            busy={endPending || ending}
+            busyLabel={busyNote ?? "Ending…"}
+            onConfirm={() => void endWebinar()}
+          />
+        )}
+
+        {/* End call, for either person — once both have been here and the
+            start has come (see `finishCall`). One press: Leave sits beside it
+            for anyone who only means to step out. */}
         {call && peerSeen && callStarted && (
           <Button
             variant="danger"
             onClick={() => void finishCall("mine")}
             disabled={ending || leaving}
           >
-            {ending
-              ? recorder.state === "uploading"
-                ? "Saving the recording…"
-                : "Ending…"
-              : "End call"}
-          </Button>
-        )}
-
-        {isHost && webinar && inPremiere && (
-          <Button onClick={goLiveNow}>Go live now</Button>
-        )}
-
-        {isHost && webinar && !inPremiere && !endedAt && (
-          <Button variant="danger" onClick={endWebinar} disabled={ending}>
-            {ending
-              ? recorder.state === "uploading"
-                ? "Saving the recording…"
-                : "Ending…"
-              : "End webinar"}
-          </Button>
-        )}
-
-        {isHost && webinar && endedAt && (
-          <Button
-            variant="secondary"
-            onClick={() =>
-              void webinar.onReopenLive().then(() => setEndedAt(null))
-            }
-          >
-            Reopen
+            {ending ? "Ending…" : "End call"}
           </Button>
         )}
       </div>
+
+      {leavePrompt && (
+        <LeavePrompt
+          canEnd={canEnd}
+          beforeStart={
+            !webinarBegun && !(hasPremiere && premierePhase === "live")
+          }
+          busy={endPending || ending || leaving}
+          onEnd={() => void endWebinar()}
+          onLeave={() => void leaveNow()}
+          onCancel={() => setLeavePrompt(false)}
+        />
+      )}
+
+      {busyNote && (
+        <p
+          className="mt-2 text-center text-xs text-ink-soft"
+          role="status"
+          aria-live="polite"
+        >
+          {busyNote}
+        </p>
+      )}
+
+      {endError && (
+        <div className="mx-auto mt-2 flex max-w-md items-center justify-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>{endError}</span>
+        </div>
+      )}
 
       {/* The recorder speaks up only when something is wrong or still in
           flight. A host closing the tab on "Saving the recording…" is how the
@@ -1095,12 +1900,503 @@ export function BroadcastRoom({
           {recorder.error}
         </p>
       )}
-      {leaving && recorder.state === "uploading" && (
-        <p className="mt-2 text-center text-xs text-ink-faint">
-          Saving the recording before you go — keep this tab open.
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Copy
+// ---------------------------------------------------------------------------
+
+function prejoinCopy({
+  isCall,
+  isHost,
+  isStaffHost,
+  inPremiere,
+  otherName,
+  isWebinar,
+}: {
+  isCall: boolean;
+  isHost: boolean;
+  isStaffHost: boolean;
+  inPremiere: boolean;
+  otherName: string | null;
+  isWebinar: boolean;
+}): string {
+  // Both parties to a 1:1 broadcast, so the student invitee used to be told
+  // "You're the host". Neither of them is hosting an audience; it is a call.
+  if (isCall) {
+    return `A private 1:1 with ${otherName ?? "them"}. Your camera and mic will be on.`;
+  }
+  if (isHost && inPremiere) {
+    return "This is a premiere: the recording plays first. You go on air when it hands over — or when you press Go live now — and your camera stays off until then.";
+  }
+  if (isHost) {
+    return isStaffHost
+      ? "You're hosting — your camera and mic will be live."
+      : "You're a guest speaker — your camera and mic will be live.";
+  }
+  return isWebinar
+    ? "Your camera and mic stay off, and nobody can see who else is here. You can ask questions beside the video."
+    : "You'll be able to watch and listen.";
+}
+
+/**
+ * The closed screen's copy. Webinars only: a 1:1 the server closes goes
+ * through `finishCall` to "This call has ended", like one whose status poll
+ * says it is over.
+ */
+function closedTitle(reason: CloseReason | null): string {
+  return reason === "revoked"
+    ? "You no longer have access to this room"
+    : "This webinar is over";
+}
+
+function closedDetail(reason: CloseReason | null): string {
+  return reason === "revoked"
+    ? "If you think that's a mistake, ask the person who invited you."
+    : "The host has left and the room has closed.";
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+/**
+ * A two-step destructive button: press to arm, press again to confirm.
+ *
+ * Two-step rather than a dialog, for two reasons: it ends the session for
+ * other people, so it must not be a single mis-aimed click mid-talk; and there
+ * is no Dialog-on-top-of-a-live-room pattern in this tree worth inventing
+ * here, where the host is mid-sentence on camera. The armed state releases
+ * itself after a few seconds, so an abandoned press does not leave a red
+ * button armed for the rest of the webinar.
+ */
+function ArmButton({
+  label,
+  confirmLabel,
+  warning,
+  busy,
+  busyLabel,
+  onConfirm,
+}: {
+  label: string;
+  confirmLabel: string;
+  warning: string;
+  busy: boolean;
+  busyLabel: string;
+  onConfirm: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (disarm.current) clearTimeout(disarm.current);
+    },
+    [],
+  );
+
+  if (busy) {
+    return (
+      <Button variant="danger" disabled>
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {busyLabel}
+      </Button>
+    );
+  }
+  if (!armed) {
+    return (
+      <Button
+        variant="danger"
+        onClick={() => {
+          setArmed(true);
+          if (disarm.current) clearTimeout(disarm.current);
+          disarm.current = setTimeout(() => setArmed(false), 5000);
+        }}
+      >
+        <PhoneOff className="h-4 w-4" />
+        {label}
+      </Button>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs text-ink-soft">{warning}</span>
+      <Button variant="ghost" size="sm" onClick={() => setArmed(false)}>
+        Cancel
+      </Button>
+      <Button
+        variant="danger"
+        size="sm"
+        onClick={() => {
+          setArmed(false);
+          onConfirm();
+        }}
+      >
+        {confirmLabel}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * The last broadcaster on air pressed Leave. Three choices, because "leave"
+ * alone cannot say which of two very different things they meant — or two,
+ * when this host may not end it: before the webinar has begun (nobody may —
+ * see webinarHasBegun), or while a staff host is in the room (a guest
+ * speaker).
+ */
+function LeavePrompt({
+  canEnd,
+  beforeStart,
+  busy,
+  onEnd,
+  onLeave,
+  onCancel,
+}: {
+  canEnd: boolean;
+  /** Not yet at the scheduled start (and not handed over early). */
+  beforeStart: boolean;
+  busy: boolean;
+  onEnd: () => void;
+  onLeave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-label="Leave the webinar"
+      className="mx-auto mt-3 max-w-lg rounded-xl border border-line bg-wash p-4 text-center"
+    >
+      <p className="text-sm font-medium text-ink">
+        You&rsquo;re the only one on air.
+      </p>
+      <p className="mt-1 text-xs text-ink-soft">
+        {canEnd
+          ? "End the webinar for everyone, or step out and keep the room open — viewers will see that the host stepped away and reconnect when someone is back on air."
+          : beforeStart
+            ? "The webinar hasn't started yet, so there's nothing to end — stepping out keeps the room ready for the start. Anyone already waiting will see that the host stepped away until someone is back on air."
+            : "A staff host is in the room and will close it. If you step out, viewers will see that the host stepped away until someone is back on air."}
+      </p>
+      <div className="mt-3 flex flex-wrap justify-center gap-2">
+        {canEnd && (
+          <Button variant="danger" size="sm" onClick={onEnd} disabled={busy}>
+            End for everyone
+          </Button>
+        )}
+        <Button variant="secondary" size="sm" onClick={onLeave} disabled={busy}>
+          Leave — keep the room open
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** The recorder's state, said plainly on the screens a host lands on. */
+function RecordingStatus({
+  state,
+  uploaded,
+  error,
+}: {
+  state: string;
+  uploaded: number;
+  error: string | null;
+}) {
+  if (state === "uploading" || state === "recording") {
+    return (
+      <p className="mb-4 inline-flex items-center gap-2 text-sm text-ink-soft">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Saving the recording — keep this tab open.
+      </p>
+    );
+  }
+  if (uploaded === 0 && !error) return null;
+  return (
+    <div className="mb-4 space-y-1 text-sm">
+      {uploaded > 0 && (
+        <p className="text-ink-soft">
+          Recording saved ({uploaded} segment{uploaded === 1 ? "" : "s"} this
+          session).
         </p>
       )}
+      {error && <p className="text-amber-600 dark:text-amber-400">{error}</p>}
     </div>
+  );
+}
+
+/** "Saving the recording…" with a spinner — an exit waiting on the uploads. */
+function SavingLabel() {
+  return (
+    <>
+      <Loader2 className="h-4 w-4 animate-spin" />
+      Saving the recording…
+    </>
+  );
+}
+
+/**
+ * Back to the list from a screen the recording may still be uploading behind
+ * (the left, ended and closed screens). A link — `onClick` decides whether to
+ * let it navigate or to wait for the uploads first (see `onBackClick`). While
+ * any exit is waiting it is a disabled button: the one waiting says so, and a
+ * second exit must not start behind it.
+ */
+function BackButton({
+  href,
+  label,
+  variant,
+  waiting,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  variant: "primary" | "secondary";
+  waiting: ScreenExit | null;
+  onClick: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  if (waiting !== null) {
+    return (
+      <Button variant={variant} disabled>
+        {waiting === "back" ? <SavingLabel /> : label}
+      </Button>
+    );
+  }
+  return (
+    <ButtonLink variant={variant} href={href} onClick={onClick}>
+      {label}
+    </ButtonLink>
+  );
+}
+
+/** The host's ended screen: what happened, the recording, Reopen for staff. */
+function HostEnded({
+  endedByMe,
+  endedAt,
+  backHref,
+  recordingNote,
+  onReopen,
+  waiting,
+  onReopened,
+  refresh,
+  hardCloseAt,
+  onRejoin,
+  onBackClick,
+}: {
+  endedByMe: boolean;
+  endedAt: string | null;
+  backHref: string;
+  recordingNote: React.ReactNode;
+  /**
+   * Staff only; null hides the button. Waits for this session's recording
+   * uploads (bounded) before it reopens — see rejoinAfterUploads.
+   */
+  onReopen: (() => Promise<void>) | null;
+  /** Which way off this screen is waiting on those uploads right now. */
+  waiting: ScreenExit | null;
+  onReopened: () => void;
+  /** The server's live state — polled slowly for a Reopen pressed elsewhere. */
+  refresh: WebinarRoom["refreshPremiere"] | undefined;
+  /** Epoch ms after which nothing can reopen this webinar; null = unknown. */
+  hardCloseAt: number | null;
+  /** Rejoin once someone else has reopened it (after the uploads). */
+  onRejoin: () => void;
+  onBackClick: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Staff can reopen from the admin pages or another host's room, and this
+  // screen used to hear nothing of it: the live-state poll stops with the
+  // room, and the `room-changed` hint reaches only live sessions. A guest
+  // speaker who was mid-talk when End was pressed by mistake sat on "The
+  // webinar was ended" — with no Reopen of their own, and a Back the
+  // dashboard gate may bounce — until they thought to reload.
+  const reopened = useReopenWatch(refresh, hardCloseAt);
+  return (
+    <Centered
+      title={
+        reopened
+          ? "The webinar was reopened"
+          : endedByMe
+            ? "You ended the webinar for everyone"
+            : "The webinar was ended"
+      }
+    >
+      {reopened ? (
+        <p className="-mt-2 mb-4 text-sm text-ink-soft">
+          Rejoin to go back through the green room.
+        </p>
+      ) : (
+        endedAt && (
+          <p className="-mt-2 mb-4 text-sm text-ink-soft">
+            Ended at <LocalTime value={endedAt} mode="time" />.
+          </p>
+        )
+      )}
+      {recordingNote}
+      {error && (
+        <p className="mb-3 text-xs text-amber-600 dark:text-amber-400">{error}</p>
+      )}
+      <div className="flex flex-wrap justify-center gap-2">
+        {reopened && (
+          <Button disabled={waiting !== null} onClick={onRejoin}>
+            {waiting === "rejoin" ? <SavingLabel /> : "Rejoin"}
+          </Button>
+        )}
+        {onReopen && !reopened && (
+          <Button
+            variant="secondary"
+            disabled={pending || waiting !== null}
+            onClick={async () => {
+              setPending(true);
+              setError(null);
+              try {
+                await onReopen();
+                onReopened();
+              } catch (err) {
+                setError(getActionError(err, "Couldn't reopen the webinar."));
+                setPending(false);
+              }
+            }}
+          >
+            {pending
+              ? waiting === "reopen"
+                ? "Saving the recording…"
+                : "Reopening…"
+              : "Reopen"}
+          </Button>
+        )}
+        <BackButton
+          href={backHref}
+          label="Back"
+          variant="secondary"
+          waiting={waiting}
+          onClick={onBackClick}
+        />
+      </div>
+    </Centered>
+  );
+}
+
+/** The ended screens' slow poll, and its pace after a null answer. */
+const ENDED_POLL_MS = 30_000;
+const ENDED_POLL_BACKOFF_MS = 60_000;
+
+/**
+ * Watch an ended webinar for a Reopen. True once the server reports it open
+ * again; nothing reconnects anyone — the screen offers the way back.
+ *
+ * Every ended screen runs it: a viewer's, a host's (staff or guest speaker),
+ * and the ended green room. None of them has a live session any more, so the
+ * `room-changed` hint a Reopen sends reaches none of them, and the room's own
+ * live-state poll stops with the room. A slow poll (every 30s, paused while
+ * the tab is hidden) of the same server read is what notices.
+ *
+ * The poll stops at the webinar's hard stop (end + 3h, from the schedule the
+ * page rendered) and at nothing else. A null answer used to stop it for good,
+ * but null is not "never": the server also answers null for a moment it
+ * cannot place a viewer in the room — after a Reopen past end+30m, until a
+ * host is back on air — and that is exactly the Reopen this is waiting for.
+ * So a null only slows the poll down (60s); a failed read (the server throws
+ * rather than answering null when it could not tell — see fetchPremiereState)
+ * is retried on the next tick like any other.
+ */
+function useReopenWatch(
+  refresh: WebinarRoom["refreshPremiere"] | undefined,
+  hardCloseAt: number | null,
+): boolean {
+  const [reopened, setReopened] = useState(false);
+  useEffect(() => {
+    if (!refresh || reopened) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = (ms: number) => {
+      if (stopped) return;
+      // Past the hard stop nothing can reopen it: the one reason to stop.
+      if (hardCloseAt !== null && Date.now() > hardCloseAt) return;
+      timer = setTimeout(tick, ms);
+    };
+    const tick = async () => {
+      if (document.hidden) {
+        schedule(ENDED_POLL_MS);
+        return;
+      }
+      let next: Awaited<ReturnType<NonNullable<typeof refresh>>> | undefined;
+      try {
+        next = await refresh();
+      } catch {
+        // Couldn't tell — the next tick will try again.
+      }
+      if (stopped) return;
+      if (next && !next.liveEndedAt) {
+        setReopened(true);
+        return;
+      }
+      schedule(next === null ? ENDED_POLL_BACKOFF_MS : ENDED_POLL_MS);
+    };
+    schedule(ENDED_POLL_MS);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [refresh, reopened, hardCloseAt]);
+  return reopened;
+}
+
+/** `useReopenWatch` for a screen that is not a component of its own. */
+function ReopenWatcher({
+  refresh,
+  hardCloseAt,
+  onReopen,
+}: {
+  refresh: WebinarRoom["refreshPremiere"] | undefined;
+  hardCloseAt: number | null;
+  onReopen: () => void;
+}) {
+  const reopened = useReopenWatch(refresh, hardCloseAt);
+  useEffect(() => {
+    if (reopened) onReopen();
+  }, [reopened, onReopen]);
+  return null;
+}
+
+/**
+ * A viewer's ended screen. Terminal — no media, no Rejoin — unless staff
+ * reopen the webinar, which `useReopenWatch` notices and this answers with a
+ * Rejoin button. Nothing reconnects them automatically.
+ */
+function ViewerEnded({
+  endedAt,
+  backHref,
+  refresh,
+  hardCloseAt,
+  onRejoin,
+}: {
+  endedAt: string | null;
+  backHref: string;
+  refresh: WebinarRoom["refreshPremiere"] | undefined;
+  /** Epoch ms after which nothing can reopen this webinar; null = unknown. */
+  hardCloseAt: number | null;
+  onRejoin: () => void;
+}) {
+  const reopened = useReopenWatch(refresh, hardCloseAt);
+  return (
+    <Centered title={reopened ? "The webinar was reopened" : "This webinar has ended"}>
+      {!reopened && endedAt && (
+        <p className="-mt-2 mb-4 text-sm text-ink-soft">
+          It ended at <LocalTime value={endedAt} mode="time" />. Thanks for
+          watching.
+        </p>
+      )}
+      <div className="flex flex-wrap justify-center gap-2">
+        {reopened && <Button onClick={onRejoin}>Rejoin</Button>}
+        <ButtonLink variant="secondary" href={backHref}>
+          Back
+        </ButtonLink>
+      </div>
+    </Centered>
   );
 }
 
@@ -1128,6 +2424,36 @@ function CallRecordingNotice({ call }: { call: CallRoom }) {
   );
 }
 
+function JoinFailedCard({
+  message,
+  onRetry,
+  backHref,
+}: {
+  message: string | null;
+  onRetry: () => void;
+  backHref: string;
+}) {
+  return (
+    <div className="grid aspect-video w-full place-items-center rounded-xl border border-line bg-ink-900">
+      <div className="px-6 text-center">
+        <AlertTriangle className="mx-auto h-6 w-6 text-amber-400" />
+        <p className="mt-3 text-sm font-medium text-[#fff]">
+          Couldn&rsquo;t join this room
+        </p>
+        {message && <p className="mt-1 text-xs text-[#fff]/60">{message}</p>}
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <Button size="sm" onClick={onRetry}>
+            Try again
+          </Button>
+          <ButtonLink size="sm" variant="secondary" href={backHref}>
+            Back
+          </ButtonLink>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * What a student sees: the host, large, and nothing else.
  *
@@ -1136,66 +2462,143 @@ function CallRecordingNotice({ call }: { call: CallRoom }) {
  * own transceiver (slot `audio`), and when the host switches to slides the
  * video element being shown changes — if sound rode along with a particular
  * video tag, presenting would silence the webinar.
+ *
+ * The placeholder copy is honest about which situation this is: the join
+ * failed (Retry — it will not fix itself), a host was here and stepped away
+ * (they will reconnect automatically when someone is back on air), the link
+ * to the host is recovering, a premiere has not begun, the webinar is past
+ * its start with nobody on air, or it has genuinely not started yet.
  */
 function ViewerStage({
   peers,
-  waitingLabel,
+  starting,
+  startsAt,
+  joinFailed,
+  failedMessage,
+  onRetry,
 }: {
-  peers: {
-    peerId: string;
-    name: string;
-    state: string;
-    streams: { camera?: MediaStream; screen?: MediaStream; audio?: MediaStream };
-  }[];
-  /** Overrides the placeholder copy for a premiere or a finished webinar. */
-  waitingLabel?: string;
+  peers: RemotePeer[];
+  /** A premiere that has not begun: "Starting shortly". */
+  starting: boolean;
+  /** The scheduled start, when this is a webinar. See `pastStart`. */
+  startsAt: string | null;
+  joinFailed: boolean;
+  failedMessage: string | null;
+  onRetry: () => void;
 }) {
+  // Who is actually on air for us right now. A peer who left, or a link still
+  // coming up, is not someone to put in the big frame.
+  const onAir = peers.filter(
+    (p) => p.state === "live" || p.state === "reconnecting",
+  );
+  // Once any host has been live, silence means "stepped away", not "hasn't
+  // started" — that difference is what the audience most needs told.
+  const hadHost = useRef(false);
+  if (peers.some((p) => p.seenLive || p.state === "live")) hadHost.current = true;
+
+  // `hadHost` only knows what THIS mount has seen. A viewer who refreshes (a
+  // refresh goes back through the green room, by design) or joins while a
+  // sole host has stepped out mounts with no peers and no history — and was
+  // told "Waiting for the host to start" forty minutes into a webinar, the
+  // one sentence the audience must not be told after it has started. So past
+  // the scheduled start, silence gets neutral copy instead: "isn't on air
+  // right now" is true whether the host stepped away or is running late.
+  // Held as state and flipped by a timer, so a viewer who arrives early sees
+  // the copy change at the start without anything else re-rendering.
+  const startMs = startsAt ? new Date(startsAt).getTime() : NaN;
+  const [pastStart, setPastStart] = useState(
+    () => Number.isFinite(startMs) && Date.now() >= startMs,
+  );
+  useEffect(() => {
+    if (pastStart || !Number.isFinite(startMs)) return;
+    // Clamped: setTimeout overflows past ~24.8 days (nobody is in a room
+    // that early, but an overflow would fire at once).
+    const wait = Math.min(Math.max(0, startMs - Date.now()), 2_147_483_647);
+    const t = setTimeout(() => setPastStart(true), wait);
+    return () => clearTimeout(t);
+  }, [pastStart, startMs]);
+
   // Who gets the big frame. Presenting wins — slides are the thing being
   // discussed, and a talking head beside them is the sideshow — and otherwise
   // it is simply the first broadcaster who actually has a picture.
-  const presenting = peers.find((p) => p.streams.screen);
-  const primary = presenting ?? peers.find((p) => p.streams.camera) ?? peers[0];
-  const others = peers.filter((p) => p.peerId !== primary?.peerId);
+  const presenting = onAir.find((p) => p.streams.screen);
+  const primary =
+    presenting ?? onAir.find((p) => p.streams.camera) ?? onAir[0] ?? null;
+  const others = onAir.filter((p) => p.peerId !== primary?.peerId);
   const connected = !!primary && primary.state === "live";
+  const reconnecting = !!primary && primary.state === "reconnecting";
   const screen = primary?.streams.screen ?? null;
   const camera = primary?.streams.camera ?? null;
 
-  // EVERY broadcaster's audio is mounted, always, including the ones whose
-  // video is a thumbnail and the one whose camera is off entirely. Audio rides
-  // its own transceiver, so tying it to whichever video element happens to be
-  // on screen is how a guest speaker becomes inaudible the moment the host
-  // starts presenting — and how a host talking with their camera off silences
-  // the whole webinar.
+  // EVERY on-air broadcaster's audio is mounted, always, including the ones
+  // whose video is a thumbnail and the one whose camera is off entirely. Audio
+  // rides its own transceiver, so tying it to whichever video element happens
+  // to be on screen is how a guest speaker becomes inaudible the moment the
+  // host starts presenting — and how a host talking with their camera off
+  // silences the whole webinar.
   const audio = (
     <>
-      {peers.map((p) => (
+      {onAir.map((p) => (
         <AudioSink key={p.peerId} stream={p.streams.audio ?? null} />
       ))}
     </>
   );
 
+  if (joinFailed) {
+    return (
+      <div className="grid aspect-video w-full place-items-center rounded-xl border border-line bg-ink-900">
+        <div className="px-6 text-center">
+          <AlertTriangle className="mx-auto h-6 w-6 text-amber-400" />
+          <p className="mt-3 text-sm font-medium text-[#fff]">
+            Couldn&rsquo;t join this room
+          </p>
+          <p className="mt-1 text-xs text-[#fff]/60">
+            {failedMessage ?? "Something went wrong connecting."}
+          </p>
+          <div className="mt-4">
+            <Button size="sm" onClick={onRetry}>
+              Try again
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!camera && !screen) {
+    const [headline, detail] = connected
+      ? [
+          "The host's camera is off",
+          "You'll hear them, and see them as soon as they turn it on.",
+        ]
+      : reconnecting
+        ? ["Reconnecting to the host…", "This usually takes a few seconds."]
+        : hadHost.current
+          ? [
+              "The host stepped away",
+              "You'll reconnect automatically when they're back — no need to refresh.",
+            ]
+          : starting
+            ? ["Starting shortly", "You'll join automatically — no need to refresh."]
+            : pastStart
+              ? [
+                  "The host isn't on air right now",
+                  "You'll join automatically as soon as they are — no need to refresh.",
+                ]
+              : [
+                  "Waiting for the host to start",
+                  "You'll join automatically — no need to refresh.",
+                ];
     return (
       <>
         {audio}
         <div className="grid aspect-video w-full place-items-center rounded-xl border border-line bg-ink-900">
           <div className="px-6 text-center">
-            {!waitingLabel && (
+            {!connected && (
               <Loader2 className="mx-auto h-6 w-6 animate-spin text-ink-faint" />
             )}
-            <p className="mt-3 text-sm font-medium text-[#fff]">
-              {waitingLabel ??
-                (connected
-                  ? "The host's camera is off"
-                  : "Waiting for the host to start")}
-            </p>
-            <p className="mt-1 text-xs text-[#fff]/60">
-              {waitingLabel
-                ? "You can keep chatting and asking questions here."
-                : connected
-                  ? "You'll hear them, and see them as soon as they turn it on."
-                  : "You'll join automatically — no need to refresh."}
-            </p>
+            <p className="mt-3 text-sm font-medium text-[#fff]">{headline}</p>
+            <p className="mt-1 text-xs text-[#fff]/60">{detail}</p>
           </div>
         </div>
       </>
@@ -1205,30 +2608,35 @@ function ViewerStage({
   return (
     <>
       {audio}
-      {screen ? (
-        <>
+      <div className="relative">
+        {screen ? (
+          <>
+            <VideoTile
+              stream={screen}
+              name={primary!.name}
+              label="presenting"
+              muted
+              className="w-full"
+            />
+            {camera && (
+              <div className="mt-3 w-48">
+                <VideoTile stream={camera} name={primary!.name} muted />
+              </div>
+            )}
+          </>
+        ) : (
           <VideoTile
-            stream={screen}
+            stream={camera}
             name={primary!.name}
-            label="presenting"
+            label="host"
             muted
             className="w-full"
           />
-          {camera && (
-            <div className="mt-3 w-48">
-              <VideoTile stream={camera} name={primary!.name} muted />
-            </div>
-          )}
-        </>
-      ) : (
-        <VideoTile
-          stream={camera}
-          name={primary!.name}
-          label="host"
-          muted
-          className="w-full"
-        />
-      )}
+        )}
+        {/* The link dropped. Say so over the last frame rather than letting a
+            frozen picture pass for a live one. */}
+        {reconnecting && <ReconnectingOverlay />}
+      </div>
 
       {/* Co-hosts and guest speakers, beside the main frame rather than
           replacing it. Never the audience — `session.remotes` only ever
@@ -1253,6 +2661,17 @@ function ViewerStage({
   );
 }
 
+function ReconnectingOverlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-xl bg-ink-900/60">
+      <p className="inline-flex items-center gap-2 text-sm font-medium text-[#fff]">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Reconnecting…
+      </p>
+    </div>
+  );
+}
+
 /** Remote audio, decoupled from whichever video tile is on screen. */
 function AudioSink({ stream }: { stream: MediaStream | null }) {
   const ref = useRef<HTMLAudioElement>(null);
@@ -1267,18 +2686,66 @@ function AudioSink({ stream }: { stream: MediaStream | null }) {
   return <audio ref={ref} autoPlay playsInline className="hidden" />;
 }
 
+/**
+ * Another broadcaster, as a host sees them — a co-host, or the other person
+ * in a 1:1.
+ *
+ * Only a LIVE (or recovering) connection gets a video tile. Anything else is
+ * said in words: waiting for them to arrive, or that they left and until when
+ * they can come back. A connection that is merely being dialled used to be
+ * drawn as a "camera off" tile, which told the first person into a 1:1 that
+ * the other was already there — and, after they left, that they still were.
+ */
 function RemoteTile({
   peer,
+  isCall,
+  rejoinUntil,
 }: {
-  peer: { name: string; streams: { camera?: MediaStream; screen?: MediaStream; audio?: MediaStream } };
+  peer: RemotePeer;
+  isCall: boolean;
+  rejoinUntil: string | null;
 }) {
+  if (peer.state === "left") {
+    return (
+      <PeerNotice
+        title={isCall ? `${peer.name} left the call` : `${peer.name} left`}
+        detail={
+          isCall && rejoinUntil ? (
+            <>
+              They can rejoin until <LocalTime value={rejoinUntil} mode="time" />.
+            </>
+          ) : null
+        }
+      />
+    );
+  }
+  if (peer.state !== "live" && peer.state !== "reconnecting") {
+    return (
+      <PeerNotice
+        spinner
+        title={
+          peer.seenLive
+            ? `Reconnecting to ${peer.name}…`
+            : isCall
+              ? `Waiting for ${peer.name} to join`
+              : `Connecting to ${peer.name}…`
+        }
+        detail={
+          isCall && !peer.seenLive
+            ? "They'll appear here as soon as they're in."
+            : null
+        }
+      />
+    );
+  }
+
   // `screen` is only ever present while the peer is genuinely presenting —
   // the engine drops a slot whose track is muted, so this no longer picks an
   // empty screen transceiver over a live camera.
   const screen = peer.streams.screen ?? null;
   const camera = peer.streams.camera ?? null;
   return (
-    <>
+    <div className="relative">
       <AudioSink stream={peer.streams.audio ?? null} />
       <VideoTile
         stream={screen ?? camera}
@@ -1288,7 +2755,30 @@ function RemoteTile({
         micOn={!!peer.streams.audio}
         muted
       />
-    </>
+      {peer.state === "reconnecting" && <ReconnectingOverlay />}
+    </div>
+  );
+}
+
+function PeerNotice({
+  title,
+  detail,
+  spinner = false,
+}: {
+  title: string;
+  detail?: React.ReactNode;
+  spinner?: boolean;
+}) {
+  return (
+    <div className="grid aspect-video w-full place-items-center rounded-xl border border-line bg-ink-900">
+      <div className="px-6 text-center">
+        {spinner && (
+          <Loader2 className="mx-auto h-5 w-5 animate-spin text-ink-faint" />
+        )}
+        <p className="mt-2 text-sm font-medium text-[#fff]">{title}</p>
+        {detail && <p className="mt-1 text-xs text-[#fff]/60">{detail}</p>}
+      </div>
+    </div>
   );
 }
 
@@ -1299,11 +2789,24 @@ function RemoteTile({
  * different lifecycle: the browser puts its own "Stop sharing" bar on screen,
  * and a share that ends there must be reflected here or the host keeps seeing
  * a control that claims they are still presenting.
+ *
+ * A generation counter guards the picker, the same one useLocalMedia has for
+ * the camera. `getDisplayMedia` resolves whenever the person answers the
+ * browser's picker — which can be after they pressed Leave or End, or after
+ * the room unmounted. Without the guard that late answer was stored as a live
+ * capture on a room showing "You've left" (or on nothing at all): the
+ * browser's "sharing your screen" indicator stayed on and the capture ran
+ * until the tab closed. `stop()` and unmount bump the generation, and a
+ * picker that resolves into a newer generation stops its tracks unseen.
  */
 function useScreenShare() {
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const genRef = useRef(0);
+  /** A picker is open; a second press must not open another. */
+  const pendingRef = useRef(false);
 
   const stop = useCallback(() => {
+    genRef.current += 1;
     setStream((s) => {
       s?.getTracks().forEach((t) => t.stop());
       return null;
@@ -1311,17 +2814,31 @@ function useScreenShare() {
   }, []);
 
   const start = useCallback(async () => {
+    if (pendingRef.current) return;
     const md = navigator.mediaDevices as MediaDevices & {
       getDisplayMedia?: (c: DisplayMediaStreamOptions) => Promise<MediaStream>;
     };
     if (!md?.getDisplayMedia) return;
+    const gen = ++genRef.current;
+    pendingRef.current = true;
     try {
       const s = await md.getDisplayMedia({ video: true, audio: false });
+      if (gen !== genRef.current) {
+        // Answered after Leave, End, a stop or an unmount: nobody wants it.
+        s.getTracks().forEach((t) => t.stop());
+        return;
+      }
       // The browser's own stop button ends the track, not our state.
-      s.getVideoTracks()[0]?.addEventListener("ended", () => setStream(null));
+      s.getVideoTracks()[0]?.addEventListener("ended", () =>
+        setStream((cur) => (cur === s ? null : cur)),
+      );
       setStream(s);
     } catch {
       // Cancelling the picker is a normal outcome, not an error worth showing.
+    } finally {
+      // Only ever one picker in flight (see the guard above), so this start
+      // owns the flag whatever happened to the generation meanwhile.
+      pendingRef.current = false;
     }
   }, []);
 
@@ -1331,6 +2848,14 @@ function useScreenShare() {
   }, [start, stop, stream]);
 
   useEffect(() => () => stream?.getTracks().forEach((t) => t.stop()), [stream]);
+  // Unmount-only: a picker still open when the room goes away resolves into
+  // a stale generation and is stopped, not stored.
+  useEffect(
+    () => () => {
+      genRef.current += 1;
+    },
+    [],
+  );
 
   return { stream, toggle, stop };
 }

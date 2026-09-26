@@ -18,6 +18,7 @@ import { Templates } from "@/lib/email/templates";
 import { getSiteConfig } from "@/lib/site-config";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { formatTicketAmount } from "@/lib/demo-day-ticket-input";
+import { isHostedOnBatch0 } from "@/lib/webinars";
 import type { DemoDayTicket } from "@/lib/types";
 
 /** Template keys, so the seed, the send and the admin editor agree. */
@@ -134,8 +135,9 @@ export async function getDemoDayDetails(
       cohortName,
       when: formatEventWhen(ev.starts_at),
       location: ev.location ?? null,
-      externalUrl: ev.live_mode === "hosted" ? null : (ev.zoom_url ?? null),
-      hosted: ev.live_mode === "hosted",
+      // A premiere is hosted on batch0 too; only `external` has a Zoom link.
+      externalUrl: isHostedOnBatch0(ev.live_mode) ? null : (ev.zoom_url ?? null),
+      hosted: isHostedOnBatch0(ev.live_mode),
       eventId: ev.id,
     };
   }

@@ -3,9 +3,9 @@ import { requirePermission } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dailyConfigured } from "@/lib/daily";
 import { env } from "@/lib/env";
-import { joinState, type LiveEvent } from "@/lib/live";
+import { eventLiveStatus } from "@/lib/live";
 import { Card } from "@/components/ui/card";
-import { WebinarsManager } from "./webinars-manager";
+import { WebinarsManager, type Webinar } from "./webinars-manager";
 import { AlertTriangle } from "lucide-react";
 
 export const metadata = { title: "Webinars · Admin" };
@@ -17,8 +17,9 @@ export const dynamic = "force-dynamic";
 /**
  * Webinars, as their own thing.
  *
- * Under the hood a webinar is a row in `events` with `live_mode = 'hosted'`,
- * which is the right data model — it is an event, it belongs on the calendar,
+ * Under the hood a webinar is a row in `events` (`type = 'webinar'`, or the
+ * older `live_mode = 'hosted'` shape — see the filter below), which is the
+ * right data model — it is an event, it belongs on the calendar,
  * and it reuses the visibility rules and the ICS export that events already
  * have. But it was only *reachable* as "create an event, then remember to flip
  * a toggle", which is not a feature anyone can find. This page is the surface:
@@ -26,7 +27,16 @@ export const dynamic = "force-dynamic";
  * you have.
  *
  * Everything else about an event — cohort, recording URL, Discord cross-post —
- * still lives in the full editor at /admin/events, and each row links there.
+ * still lives in the full editor at /admin/events, and each row links there
+ * (straight into that event's form, via ?edit=<id>), and to its record page at
+ * /admin/events/<id>.
+ *
+ * It is also where an admin RUNS a webinar from outside the room. Every row
+ * says whether it is live or ended (from `live_ended_at`, not the clock alone),
+ * offers "Host room" whenever the host window is open, and carries End for
+ * everyone / Reopen. Before this, the only way to end a webinar a host had
+ * abandoned was to open the room, press Start — camera on, broadcasting to
+ * whoever was left — and then press End.
  */
 export default async function AdminWebinarsPage() {
   await requirePermission("events.manage");
@@ -36,7 +46,7 @@ export default async function AdminWebinarsPage() {
     admin
       .from("events")
       .select(
-        "id, title, description, type, starts_at, ends_at, location, visibility, live_mode, daily_room_name, daily_room_url, recording_url, display_viewer_count",
+        "id, title, description, type, starts_at, ends_at, location, visibility, live_mode, zoom_url, live_started_at, live_ended_at, daily_room_name, daily_room_url, recording_url, display_viewer_count",
       )
       // What counts as a webinar, and why this is an OR rather than a rename.
       //
@@ -61,13 +71,16 @@ export default async function AdminWebinarsPage() {
       .order("starts_on", { ascending: false, nullsFirst: false }),
   ]);
 
-  // `live_mode` arrives with migration 0058, `display_viewer_count` with 0071.
-  // Until each is applied the query above fails, and a 500 here would read as
-  // "webinars are broken" rather than "one SQL file hasn't been run". Say which.
+  // `live_mode` arrives with migration 0058, `display_viewer_count` with 0071,
+  // `live_started_at` / `live_ended_at` with 0084. Until each is applied the
+  // query above fails, and a 500 here would read as "webinars are broken"
+  // rather than "one SQL file hasn't been run". Say which.
   const missingColumn =
     error &&
     (error.code === "42703" ||
-      /live_mode|display_viewer_count/.test(error.message ?? ""));
+      /live_mode|display_viewer_count|live_started_at|live_ended_at/.test(
+        error.message ?? "",
+      ));
 
   if (missingColumn) {
     return (
@@ -91,7 +104,8 @@ export default async function AdminWebinarsPage() {
               <p className="mt-2 text-xs text-ink-faint">
                 Q&amp;A also needs <code>0060_webinar_questions.sql</code>, and
                 the shown-attendees count needs{" "}
-                <code>0071_event_display_viewer_count.sql</code>.
+                <code>0071_event_display_viewer_count.sql</code>, and live
+                status (End / Reopen) needs <code>0084_webinars.sql</code>.
               </p>
             </div>
           </div>
@@ -113,36 +127,49 @@ export default async function AdminWebinarsPage() {
   }
 
   const now = new Date();
-  const webinars: (LiveEvent & { visibility: string })[] = (rows ?? []).map(
-    (e: any) => ({
-      id: e.id,
-      title: e.title,
-      description: e.description,
-      type: e.type,
-      startsAt: e.starts_at,
-      endsAt: e.ends_at,
-      location: e.location,
-      liveMode: "hosted",
-      externalUrl: null,
-      recordingUrl: e.recording_url,
-      hostName: null,
-      displayViewerCount: e.display_viewer_count ?? null,
-      roomName: e.daily_room_name,
-      roomUrl: e.daily_room_url,
-      visibility: e.visibility,
-    }),
-  );
+  const webinars: Webinar[] = (rows ?? []).map((e: any) => ({
+    id: e.id,
+    title: e.title,
+    description: e.description,
+    type: e.type,
+    startsAt: e.starts_at,
+    endsAt: e.ends_at,
+    location: e.location,
+    // The REAL mode. This used to be forced to "hosted" for every row, so a
+    // webinar saved with hosting off was listed with a Join button into a room
+    // that said "this event isn't hosted on batch0", and a premiere was never
+    // labelled as one. Narrowed like the student page does, so an unknown
+    // value reads as external rather than as a room nobody can enter.
+    liveMode:
+      e.live_mode === "hosted" || e.live_mode === "premiere"
+        ? e.live_mode
+        : "external",
+    externalUrl: e.live_mode === "external" ? (e.zoom_url ?? null) : null,
+    recordingUrl: e.recording_url,
+    hostName: null,
+    displayViewerCount: e.display_viewer_count ?? null,
+    roomName: e.daily_room_name,
+    roomUrl: e.daily_room_url,
+    liveEndedAt: e.live_ended_at ?? null,
+    liveStartedAt: e.live_started_at ?? null,
+    visibility: e.visibility,
+  }));
 
   // Grouped by what you'd actually do with them: one you can walk into now,
   // ones to prepare for, ones to pull a recording from.
-  const live = webinars.filter(
-    (w) => joinState(w.startsAt, w.endsAt, now) === "live",
-  );
+  //
+  // By `eventLiveStatus`, which reads `live_ended_at` first: a webinar the host
+  // ended is in Past (marked Ended, with Reopen while the room can still be
+  // reopened) the moment it ends, rather than under "Live now" with a Join
+  // button until the clock runs out. Past is newest first, so the one that
+  // just ended is at the top of it.
+  const status = (w: Webinar) => eventLiveStatus(w, now);
+  const live = webinars.filter((w) => status(w) === "live");
   const upcoming = webinars
-    .filter((w) => ["early", "open"].includes(joinState(w.startsAt, w.endsAt, now)))
+    .filter((w) => ["upcoming", "open"].includes(status(w)))
     .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
-  const past = webinars.filter(
-    (w) => joinState(w.startsAt, w.endsAt, now) === "ended",
+  const past = webinars.filter((w) =>
+    ["ended", "past"].includes(status(w)),
   );
 
   return (
@@ -178,6 +205,11 @@ export default async function AdminWebinarsPage() {
           live={live}
           upcoming={upcoming}
           past={past}
+          // The request's clock, handed down so every row on the page agrees
+          // with the grouping above (and the server render with the client's
+          // first paint). Refreshed by the router.refresh() that follows End,
+          // Reopen and scheduling.
+          now={now.toISOString()}
           cohorts={(cohorts ?? []).map((c: any) => ({
             id: c.id,
             name: c.name,

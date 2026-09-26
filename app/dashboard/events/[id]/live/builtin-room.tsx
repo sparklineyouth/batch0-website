@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import {
   BroadcastRoom,
   type SegmentOutcome,
@@ -22,6 +22,7 @@ import {
 } from "@/app/admin/events/webinar-actions";
 import type { RoomState } from "./room-actions";
 import type { LiveRole, WebinarQuestion } from "@/lib/live";
+import type { SignalRole } from "@/lib/live-signal";
 import {
   webinarSegmentName,
   type AudienceMode,
@@ -56,8 +57,12 @@ export function BuiltinEventRoom({
   selfUserId,
   selfName,
   title,
+  startsAt,
+  endsAt,
   role,
   isStaffHost,
+  canEnd,
+  backHref,
   audienceMode,
   displayViewerCount,
   autoRecord,
@@ -78,6 +83,9 @@ export function BuiltinEventRoom({
   /** The signed-in person's name, for their tile if their browser records. */
   selfName: string;
   title: string;
+  /** The schedule — see WebinarRoom in components/live/broadcast-room. */
+  startsAt: string;
+  endsAt: string | null;
   role: LiveRole;
   /**
    * Staff, as opposed to a guest speaker who also holds `role: "host"`.
@@ -89,6 +97,18 @@ export function BuiltinEventRoom({
    * empty column where the roster would be.
    */
   isStaffHost: boolean;
+  /**
+   * May this reader end the webinar for everyone, as the server saw it at
+   * render time (nobody before the start; then staff always, and a guest
+   * speaker only with no staff host present). The room keeps it current from
+   * then on.
+   */
+  canEnd: boolean;
+  /**
+   * Back / after-leave destination, decided by the page from the role: staff
+   * go back to /admin/webinars, speakers and students to /dashboard/events.
+   */
+  backHref: string;
   audienceMode: AudienceMode;
   /** Admin-announced headcount, shown to everyone. Null = hidden roster. */
   displayViewerCount: number | null;
@@ -106,24 +126,16 @@ export function BuiltinEventRoom({
   const actions = useMemo(
     () => ({
       join: () => joinRoom("event", eventId),
-      announce: () => announcePresence("event", eventId),
+      // `joinedAs` lets the server answer 'revoked' to a host whose grant was
+      // removed mid-session, rather than silently re-announcing them as a
+      // viewer while they still hold host credentials.
+      announce: (joinedAs?: SignalRole) =>
+        announcePresence("event", eventId, joinedAs),
       leave: () => leaveRoom("event", eventId),
       listPeers: () => listAudience("event", eventId),
     }),
     [eventId],
   );
-
-  /**
-   * This page load's recording run: when it mounted.
-   *
-   * `useRecorder` numbers segments from zero on every page load, so an index
-   * alone cannot say whether segment 2 belongs after segment 1 or is the start
-   * of a reload twenty minutes later. The run goes into every segment's name,
-   * and the server lays each run out as its own block (recordingSegmentSlot in
-   * lib/webinars.ts). A ref, not state: it must never change for the life of
-   * the room, and nothing renders it.
-   */
-  const runRef = useRef<number>(Date.now());
 
   /**
    * Put one recording segment in the bucket.
@@ -150,15 +162,21 @@ export function BuiltinEventRoom({
       blob: Blob,
       index: number,
       durationSeconds: number,
+      run: number,
     ): Promise<SegmentOutcome> => {
-      const filename = webinarSegmentName(runRef.current, index);
+      // `run` is the room mount the recorder belongs to — see WebinarRoom's
+      // onSegment in components/live/broadcast-room.tsx.
+      const filename = webinarSegmentName(run, index);
       // The segment's length goes with the ask, so the server can tell a
       // co-host who registered BEFORE this segment began (a recorder who has
-      // since handed over) from one recording alongside it.
+      // since handed over) from one recording alongside it. Unrounded: it is
+      // only compared, never stored, and at a handover the departing
+      // recorder's last registration can sit within a second of this
+      // segment's start.
       const minted = await getWebinarRecordingUploadToken(
         eventId,
         filename,
-        Math.round(durationSeconds),
+        durationSeconds,
       );
       if (!minted.ok) return "refused";
       // Deferred import keeps supabase-js out of the route's first-load JS;
@@ -196,6 +214,8 @@ export function BuiltinEventRoom({
   const webinar = useMemo(
     () => ({
       eventId,
+      startsAt,
+      endsAt,
       selfUserId,
       selfName,
       audienceMode,
@@ -203,6 +223,7 @@ export function BuiltinEventRoom({
       autoRecord,
       premiere,
       liveEndedAt,
+      canEnd,
       speakers,
       deck,
       initialQuestions,
@@ -218,6 +239,8 @@ export function BuiltinEventRoom({
     // without ever actually changing identity mid-webinar.
     [
       eventId,
+      startsAt,
+      endsAt,
       selfUserId,
       selfName,
       audienceMode,
@@ -225,6 +248,7 @@ export function BuiltinEventRoom({
       autoRecord,
       premiere,
       liveEndedAt,
+      canEnd,
       speakers,
       deck,
       initialQuestions,
@@ -243,7 +267,7 @@ export function BuiltinEventRoom({
       roomId={eventId}
       title={title}
       role={role}
-      backHref="/dashboard/events"
+      backHref={backHref}
       displayViewerCount={displayViewerCount}
       webinar={webinar}
       {...actions}

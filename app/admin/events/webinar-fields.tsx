@@ -19,12 +19,16 @@ import {
   getWebinarUploadToken,
   registerWebinarAsset,
   removeWebinarAsset,
+  sendSpeakerInvite,
+  speakerInviteLink,
 } from "@/app/admin/events/webinar-actions";
 import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  Copy,
   FileText,
+  Mail,
   Film,
   Loader2,
   Plus,
@@ -204,6 +208,7 @@ export function WebinarFields({
   eventId,
   disabled,
   startsAt,
+  visibility,
 }: {
   value: WebinarFieldsValue;
   onChange: (next: WebinarFieldsValue) => void;
@@ -220,6 +225,13 @@ export function WebinarFields({
    * disk would keep describing the old plan until they pressed Save.
    */
   startsAt?: string | null;
+  /**
+   * The event's visibility, as the parent's draft has it. Read for one thing:
+   * a `staff` rehearsal never emails a follow-up (the save forces auto_share
+   * off and the follow-up job skips it), so "Share afterwards" is shown off
+   * and disabled rather than offered and silently ignored.
+   */
+  visibility?: string;
 }) {
   const [error, setError] = useState<string | undefined>();
   // Which file is in flight and how far along, or null. Not part of the
@@ -614,7 +626,61 @@ export function WebinarFields({
   const hasShareableDoc = value.assets.some(
     (a) => a.kind === "deck" || a.kind === "handout",
   );
-  const canAutoShare = value.autoRecord || hasShareableDoc;
+  const staffOnly = visibility === "staff";
+  const canAutoShare = !staffOnly && (value.autoRecord || hasShareableDoc);
+
+  /**
+   * Per-speaker invite state: which row is busy, and the last thing that
+   * happened to each ("Link copied", "Invite sent", or an error). Local on
+   * purpose — none of it belongs in the draft, and none of it is saved.
+   */
+  const [inviteBusy, setInviteBusy] = useState<string | null>(null);
+  const [inviteNote, setInviteNote] = useState<
+    Record<string, { ok: boolean; text: string }>
+  >({});
+
+  /**
+   * Copy a guest's claim link, or email it to them.
+   *
+   * Both go through the server: `speakerInviteLink` mints the URL from the
+   * token the list never carries (0084 revokes the column from every browser
+   * role), and `sendSpeakerInvite` emails the address on the SAVED row, never
+   * one typed here — so an edited-but-unsaved email is not where it goes, and
+   * the note says to save first. Both refuse once the slot is claimed.
+   *
+   * These existed server-side with no caller, so a guest speaker could never
+   * actually receive the link that makes them a host.
+   */
+  async function speakerInvite(speakerId: string, how: "copy" | "send") {
+    if (!eventId) return;
+    setInviteBusy(speakerId);
+    try {
+      if (how === "copy") {
+        const url = await speakerInviteLink(eventId, speakerId);
+        await navigator.clipboard.writeText(url);
+        setInviteNote((n) => ({
+          ...n,
+          [speakerId]: {
+            ok: true,
+            text: "Link copied. It works once, for whoever opens it signed in.",
+          },
+        }));
+      } else {
+        await sendSpeakerInvite(eventId, speakerId);
+        setInviteNote((n) => ({
+          ...n,
+          [speakerId]: { ok: true, text: "Invite sent to the saved email." },
+        }));
+      }
+    } catch (e: any) {
+      setInviteNote((n) => ({
+        ...n,
+        [speakerId]: { ok: false, text: getActionError(e) },
+      }));
+    } finally {
+      setInviteBusy(null);
+    }
+  }
 
   /**
    * Moving away from Private is the one change worth stopping to confirm.
@@ -908,15 +974,27 @@ export function WebinarFields({
           expires with the event, in the sense that it grants nothing anywhere
           else.
         */}
+        {/*
+          What a speaker CAN do in the room is broadcast and moderate (chat,
+          questions, polls). What they cannot: see who is watching (they get a
+          headcount, never names — audience privacy), end a room a staff host
+          is running (their End only appears when no staff host is on), or
+          reopen an ended webinar. Their browser may be the one that records
+          it: the room elects one recorder among every host present, guests
+          included (electRecorder in lib/webinars.ts).
+        */}
         <p className="text-xs text-ink-faint">
-          A speaker can start the camera and mic in this room, and nothing
-          else. They never get the admin panel.
+          A speaker can broadcast and moderate the chat, questions and polls in
+          this room, and nothing else. They never get the admin panel, and
+          never see who is watching. Save, then send each guest their invite
+          link — it works once, for the signed-in account that opens it.
         </p>
 
         <div className="mt-3 space-y-3">
           {value.speakers.length === 0 && (
             <p className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-xs text-ink-faint">
-              No guests. You are the only one who can go live.
+              No guests. Admins and staff with Manage events can broadcast; add
+              a speaker to give a guest the camera too.
             </p>
           )}
           {value.speakers.map((speaker, i) => (
@@ -934,6 +1012,11 @@ export function WebinarFields({
                 {speaker.id && !speaker.userId && (
                   <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
                     Invite not claimed yet
+                  </span>
+                )}
+                {speaker.id && speaker.userId && (
+                  <span className="rounded-full border border-phosphor/40 bg-phosphor/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-phosphor-ink">
+                    Claimed — can broadcast
                   </span>
                 )}
                 <div className="ml-auto flex items-center gap-1">
@@ -1032,6 +1115,41 @@ export function WebinarFields({
                   placeholder="One or two lines, as you'd introduce them."
                 />
               </div>
+
+              {/* The claim link, for a saved row nobody has claimed yet. A
+                  claimed row has no token left to hand out; an unsaved one
+                  has no row for the token to live on. */}
+              {eventId && speaker.id && !speaker.userId && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy || inviteBusy === speaker.id}
+                    onClick={() => void speakerInvite(speaker.id!, "copy")}
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Copy invite link
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy || inviteBusy === speaker.id}
+                    onClick={() => void speakerInvite(speaker.id!, "send")}
+                  >
+                    <Mail className="h-3.5 w-3.5" /> Send invite
+                  </Button>
+                  {inviteNote[speaker.id] && (
+                    <span
+                      className={`text-xs ${
+                        inviteNote[speaker.id].ok
+                          ? "text-ink-faint"
+                          : "text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      {inviteNote[speaker.id].text}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1054,7 +1172,12 @@ export function WebinarFields({
       <div className="space-y-3">
         <Toggle
           label="Record automatically"
-          description="Starts recording when you start broadcasting. No button to forget."
+          // One recorder per webinar: every host's browser elects the lowest
+          // user id present — staff or guest speaker alike (electRecorder in
+          // lib/webinars.ts) — and that browser records the whole stage. So a
+          // session with only guest speakers on air is recorded too, from a
+          // guest's laptop, and shared afterwards if "Share afterwards" is on.
+          description="Records the whole stage while anyone is on air, from one host's browser — which can be a guest speaker's, so a session with only guests on air is recorded too. It starts on its own, with no button to forget."
           checked={value.autoRecord}
           // Deliberately touches nothing but its own field. This used to clear
           // `autoShare` on the way off, which meant an admin who flicked
@@ -1067,18 +1190,29 @@ export function WebinarFields({
         <Toggle
           label="Share afterwards"
           description="Emails the deck and the recording to everyone invited, once it ends."
-          checked={value.autoShare}
+          // Drawn off for a staff-only rehearsal whatever the draft holds —
+          // the save forces it off there, and a checked-but-disabled toggle
+          // would promise an email that is never sent.
+          checked={value.autoShare && !staffOnly}
           onChange={(on) => patch({ autoShare: on })}
           // Enabled by a deck as well as by recording, because the follow-up
           // job sends whichever of the two exists. Gating it on recording
           // alone made "email the slides afterwards" impossible to ask for.
           disabled={busy || !canAutoShare}
         />
-        {!canAutoShare && value.liveMode !== "external" && (
+        {staffOnly ? (
           <p className="text-xs text-ink-faint">
-            Sharing needs something to send — turn recording on, or upload a
-            deck above.
+            A staff-only rehearsal emails nobody. Change who can see it to
+            share afterwards.
           </p>
+        ) : (
+          !canAutoShare &&
+          value.liveMode !== "external" && (
+            <p className="text-xs text-ink-faint">
+              Sharing needs something to send — turn recording on, or upload a
+              deck above.
+            </p>
+          )
         )}
       </div>
 

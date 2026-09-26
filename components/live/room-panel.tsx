@@ -45,21 +45,17 @@ import {
 import {
   approveQuestion,
   createPoll,
-  endLive,
   fetchRoomState,
   moderateChatMessage,
-  reopenLive,
   sendChatMessage,
   setPollOpen,
+  setQuestionStatus,
   spotlightQuestion,
   voteOnPoll,
   voteOnQuestion,
   type RoomState,
 } from "@/app/dashboard/events/[id]/live/room-actions";
-import {
-  askQuestion,
-  setQuestionStatus,
-} from "@/app/dashboard/events/[id]/live/actions";
+import { askQuestion } from "@/app/dashboard/events/[id]/live/actions";
 import {
   AlertTriangle,
   ArrowBigUp,
@@ -68,8 +64,6 @@ import {
   ChevronDown,
   MessageCircleQuestion,
   MessageSquare,
-  Phone,
-  PhoneOff,
   Pin,
   PinOff,
   Plus,
@@ -79,8 +73,8 @@ import {
 } from "lucide-react";
 
 /**
- * Everything in a webinar that isn't video: chat, the question queue, polls,
- * reactions, and the host's End button.
+ * Everything in a webinar that isn't video: chat, the question queue, polls
+ * and reactions.
  *
  * This is the richer sibling of qa-panel.tsx, not its replacement. That panel
  * is still exactly right where a room has nothing but a question queue — a 1:1
@@ -103,7 +97,7 @@ import {
  *
  *   `creds.roomTopic`        every participant who is allowed one. Carries
  *                            `bump` (re-read), `react` (draw and forget), and
- *                            `stage-change` (not ours — see below).
+ *                            `stage-change` (handed up — see below).
  *   `creds.moderationTopic`  hosts only. The same bumps, for items the
  *                            audience has not been shown yet.
  *
@@ -163,20 +157,26 @@ import {
  * disclosure that there is something to be disabled.
  *
  * ---------------------------------------------------------------------------
- * `stage-change`, and the End button
+ * `stage-change`, and why End is not here
  * ---------------------------------------------------------------------------
  *
- * `stage-change` is ignored here on purpose: the premiere handover belongs to
- * the page that owns the video, and two components racing to switch the stage
- * is how an audience ends up half on the recording and half on the camera.
+ * `stage-change` (go-live, End, Reopen) is not acted on here: it is handed to
+ * the room (`onStageChange`), which owns the video and re-asks the server.
+ * Two components racing to switch the stage is how an audience ends up half on
+ * the recording and half on the camera.
  *
- * The End button is a different thing and it does live here, because it is not
- * a teardown. "Leave" in the control bar closes THIS tab's peer connections; to
- * every viewer that is indistinguishable from a host whose hotel wifi dropped,
- * and they sit on "waiting for the host to start" until the join window closes
- * half an hour later. Ending is a server stamp (`endLive`), which is what gives
- * the room something it can honestly tell the audience — and it is reversible,
- * because a one-way door turns a misclick into a webinar nobody can rejoin.
+ * This panel used to carry its own End and Reopen buttons. Its End only
+ * stamped the row, so the host who pressed it kept broadcasting — camera, mic
+ * and recorder still live to every viewer — under an "Ended" badge, and its
+ * Reopen kept a second copy of the ended state that drifted from the room's.
+ * There is now exactly one End (the room's control bar, which flushes the
+ * recording and tears the session down) and one Reopen (the host's ended
+ * screen). The panel is told the ended state as a prop, reports what the
+ * server says upward, and keeps no copy of its own.
+ *
+ * After End the room is closed to the audience: composers, votes and
+ * reactions are withdrawn for non-moderators (the server refuses those writes
+ * too). Moderators keep everything, for a closing note or a last answer.
  */
 
 type PanelTab = "chat" | "questions" | "polls";
@@ -217,7 +217,9 @@ export function RoomPanel({
   initial,
   roomTopic,
   moderationTopic,
-  onLiveEnded,
+  liveEndedAt,
+  onServerState,
+  onStageChange,
 }: {
   eventId: string;
   /** Derived server-side from events.manage OR a guest-speaker row. */
@@ -227,18 +229,24 @@ export function RoomPanel({
   /** Realtime topics from the join payload. null when this participant has none. */
   roomTopic: string | null;
   moderationTopic: string | null;
-  /** Fired when the panel learns the webinar ended, so the page can react. */
-  onLiveEnded?: (at: string) => void;
+  /** When the webinar was ended for everyone, as the ROOM knows it. */
+  liveEndedAt: string | null;
+  /**
+   * What every read of the room told us about End and who may press it. The
+   * room decides what to do with it (an `ended` here starts its teardown).
+   */
+  onServerState?: (state: { liveEndedAt: string | null; canEnd: boolean }) => void;
+  /** `stage-change` arrived on the room channel — the room re-checks. */
+  onStageChange?: () => void;
 }) {
   const chatty = audienceCanSeeEachOther(audienceMode);
+  /** After End, the audience can read but no longer write. */
+  const closedToAudience = liveEndedAt !== null && !isModerator;
 
   const [chat, setChat] = useState<ChatMessage[]>(initial.chat);
   const [pinned, setPinned] = useState<ChatMessage | null>(initial.pinned);
   const [questions, setQuestions] = useState<RoomQuestion[]>(initial.questions);
   const [polls, setPolls] = useState<WebinarPoll[]>(initial.polls);
-  const [liveEndedAt, setLiveEndedAt] = useState<string | null>(
-    initial.liveEndedAt,
-  );
   const [error, setError] = useState<string | null>(null);
 
   // In `private` mode there is no Chat tab at all, so the queue is where
@@ -264,12 +272,12 @@ export function RoomPanel({
   /** Newest chat timestamp the SERVER has confirmed. Never advanced locally. */
   const cursorRef = useRef<string | null>(initial.cursor);
 
-  const onLiveEndedRef = useRef(onLiveEnded);
-  onLiveEndedRef.current = onLiveEnded;
-  // Whether the "it's over" callback has already fired. Seeded from the initial
-  // payload so a room that was already ended when this mounted does not
-  // re-announce something the page rendered itself around.
-  const endAnnounced = useRef(initial.liveEndedAt !== null);
+  // Read through refs by the apply path and the channel handler, which must
+  // not change identity (see the subscription note below).
+  const onServerStateRef = useRef(onServerState);
+  onServerStateRef.current = onServerState;
+  const onStageChangeRef = useRef(onStageChange);
+  onStageChangeRef.current = onStageChange;
 
   /**
    * Fold a fresh read into what is on screen.
@@ -326,11 +334,12 @@ export function RoomPanel({
       polls: active === "polls" ? 0 : b.polls + freshPolls.length,
     }));
 
-    setLiveEndedAt(next.liveEndedAt);
-    if (next.liveEndedAt && !endAnnounced.current) {
-      endAnnounced.current = true;
-      onLiveEndedRef.current?.(next.liveEndedAt);
-    }
+    // Every read reports, not just the first "ended" — there is no latch to
+    // forget to reset after a Reopen.
+    onServerStateRef.current?.({
+      liveEndedAt: next.liveEndedAt,
+      canEnd: next.canEnd,
+    });
   }, []);
 
   // Guards against pile-up: on a slow connection a resync can fire again
@@ -432,8 +441,13 @@ export function RoomPanel({
       if (isReaction(message.emoji)) pushReactionRef.current(message.emoji);
       return;
     }
-    // `stage-change` belongs to the page that owns the video. Acting on it here
-    // as well would mean two components racing to switch the stage.
+    // `stage-change` belongs to the room that owns the video: hand it up, so
+    // End or a go-live reaches the room now rather than on its poll. Acting
+    // on it here as well would mean two components racing to switch the stage.
+    if (message.t === "stage-change") {
+      onStageChangeRef.current?.();
+      return;
+    }
     if (message.t !== "bump") return;
 
     /**
@@ -674,10 +688,8 @@ export function RoomPanel({
       try {
         await fn();
       } catch (e: any) {
-        // Worth surfacing rather than swallowing: `setQuestionStatus` gates on
-        // the global `events.manage`, so a GUEST SPEAKER moderating their own
-        // event gets a real "Forbidden" here. Better a sentence they can repeat
-        // to staff than a button that silently does nothing.
+        // Surfaced rather than swallowed: a moderation click that did nothing
+        // should say why (the window closed, the session expired).
         setError(getActionError(e));
       }
       refreshRef.current(true);
@@ -797,6 +809,7 @@ export function RoomPanel({
           pinned={pinned}
           audienceMode={audienceMode}
           isModerator={isModerator}
+          closed={closedToAudience}
           onSend={onSendChat}
           onModerate={onModerateChat}
           onRetry={(key) => {
@@ -812,7 +825,8 @@ export function RoomPanel({
           eventId={eventId}
           questions={questions}
           isModerator={isModerator}
-          canUpvote={chatty}
+          canUpvote={chatty && !closedToAudience}
+          closed={closedToAudience}
           myVotes={myVotes}
           onVote={onVoteQuestion}
           onAsked={onAsked}
@@ -826,6 +840,7 @@ export function RoomPanel({
           eventId={eventId}
           polls={polls}
           isModerator={isModerator}
+          closed={closedToAudience}
           onVote={onVotePoll}
           onSetOpen={onSetPollOpen}
           onCreated={() => refreshRef.current(true)}
@@ -833,26 +848,7 @@ export function RoomPanel({
         />
       )}
 
-      {chatty && <ReactionBar onReact={sendReaction} />}
-
-      {isModerator && (
-        <EndWebinarControl
-          eventId={eventId}
-          ended={liveEndedAt !== null}
-          onEnded={(at) => {
-            setLiveEndedAt(at);
-            if (!endAnnounced.current) {
-              endAnnounced.current = true;
-              onLiveEndedRef.current?.(at);
-            }
-          }}
-          onReopened={() => {
-            setLiveEndedAt(null);
-            endAnnounced.current = false;
-          }}
-          onError={setError}
-        />
-      )}
+      {chatty && !closedToAudience && <ReactionBar onReact={sendReaction} />}
 
       <div
         className="pointer-events-none absolute inset-x-0 bottom-16 top-0 overflow-hidden"
@@ -882,6 +878,7 @@ function ChatTab({
   pinned,
   audienceMode,
   isModerator,
+  closed,
   onSend,
   onModerate,
   onRetry,
@@ -891,6 +888,8 @@ function ChatTab({
   pinned: ChatMessage | null;
   audienceMode: AudienceMode;
   isModerator: boolean;
+  /** Ended: the audience reads, and no longer writes. */
+  closed: boolean;
   onSend: (body: string) => Promise<void>;
   onModerate: (
     id: string,
@@ -1028,7 +1027,13 @@ function ChatTab({
         )}
       </div>
 
-      <ChatComposer onSend={onSend} />
+      {closed ? (
+        <p className="border-t border-line p-3 text-center text-[11px] text-ink-faint">
+          Chat is closed — the webinar has ended.
+        </p>
+      ) : (
+        <ChatComposer onSend={onSend} />
+      )}
     </div>
   );
 }
@@ -1203,6 +1208,7 @@ function QuestionsTab({
   questions,
   isModerator,
   canUpvote,
+  closed,
   myVotes,
   onVote,
   onAsked,
@@ -1214,6 +1220,8 @@ function QuestionsTab({
   isModerator: boolean;
   /** Upvotes exist only where the audience can see each other's questions. */
   canUpvote: boolean;
+  /** Ended: no new questions from the audience. */
+  closed: boolean;
   myVotes: Set<string>;
   onVote: (id: string, on: boolean) => void;
   onAsked: (q: WebinarQuestion) => void;
@@ -1244,7 +1252,7 @@ function QuestionsTab({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {!isModerator && (
+      {!isModerator && !closed && (
         <AskComposer eventId={eventId} onAsked={onAsked} onError={onError} />
       )}
 
@@ -1315,7 +1323,9 @@ function QuestionsTab({
                           <ChatAction
                             label="Answered"
                             onClick={() =>
-                              onAction(() => setQuestionStatus(q.id, "answered"))
+                              onAction(() =>
+                                setQuestionStatus(eventId, q.id, "answered"),
+                              )
                             }
                           >
                             <Check className="h-3 w-3" />
@@ -1324,7 +1334,7 @@ function QuestionsTab({
                             label="Dismiss"
                             onClick={() =>
                               onAction(() =>
-                                setQuestionStatus(q.id, "dismissed"),
+                                setQuestionStatus(eventId, q.id, "dismissed"),
                               )
                             }
                           >
@@ -1464,6 +1474,7 @@ function PollsTab({
   eventId,
   polls,
   isModerator,
+  closed,
   onVote,
   onSetOpen,
   onCreated,
@@ -1472,6 +1483,8 @@ function PollsTab({
   eventId: string;
   polls: WebinarPoll[];
   isModerator: boolean;
+  /** Ended: votes are frozen for the audience. */
+  closed: boolean;
   onVote: (pollId: string, choice: number) => void;
   onSetOpen: (pollId: string, open: boolean) => void;
   onCreated: () => void;
@@ -1500,6 +1513,7 @@ function PollsTab({
               key={p.id}
               poll={p}
               isModerator={isModerator}
+              closed={closed}
               onVote={onVote}
               onSetOpen={onSetOpen}
             />
@@ -1513,11 +1527,13 @@ function PollsTab({
 function PollCard({
   poll,
   isModerator,
+  closed,
   onVote,
   onSetOpen,
 }: {
   poll: WebinarPoll;
   isModerator: boolean;
+  closed: boolean;
   onVote: (pollId: string, choice: number) => void;
   onSetOpen: (pollId: string, open: boolean) => void;
 }) {
@@ -1549,7 +1565,7 @@ function PollCard({
                 // A vote is changeable while the poll is open — a student who
                 // misread the options should not be stuck with the wrong answer
                 // in front of the room — and frozen the moment it closes.
-                disabled={!poll.open}
+                disabled={!poll.open || closed}
                 onClick={() => onVote(poll.id, i)}
                 aria-pressed={mine}
                 className={`relative w-full overflow-hidden rounded-md border px-2.5 py-1.5 text-left text-xs transition disabled:cursor-default ${
@@ -1779,124 +1795,5 @@ function ReactionStyles() {
         will-change: transform, opacity;
       }
     `}</style>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Ending the webinar
-// ---------------------------------------------------------------------------
-
-/**
- * The End button — the real one.
- *
- * Distinct from "Leave" in the control bar, which tears down THIS tab and
- * nothing else. A host who only leaves is, from every viewer's browser,
- * indistinguishable from a host whose wifi dropped: the audience keeps waiting
- * for someone to come back, until the join window closes half an hour later.
- * `endLive` stamps the row, so the room can say the webinar is over and mean it.
- *
- * Two-step rather than a dialog, for two reasons: this ends the session for
- * everyone watching, so it must not be a single mis-aimed click during a talk;
- * and there is no Dialog-on-top-of-a-live-room pattern in this tree worth
- * inventing here, where the host is mid-sentence on camera. The confirm state
- * releases itself after a few seconds so an abandoned press does not leave a
- * red button armed for the rest of the webinar.
- */
-function EndWebinarControl({
-  eventId,
-  ended,
-  onEnded,
-  onReopened,
-  onError,
-}: {
-  eventId: string;
-  ended: boolean;
-  onEnded: (at: string) => void;
-  onReopened: () => void;
-  onError: (message: string) => void;
-}) {
-  const [arming, setArming] = useState(false);
-  const [pending, startTransition] = useTransition();
-  const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (disarm.current) clearTimeout(disarm.current);
-    },
-    [],
-  );
-
-  function arm() {
-    setArming(true);
-    if (disarm.current) clearTimeout(disarm.current);
-    disarm.current = setTimeout(() => setArming(false), 5000);
-  }
-
-  function confirm() {
-    if (pending) return;
-    setArming(false);
-    startTransition(async () => {
-      try {
-        await endLive(eventId);
-        // Stamped server-side; this is the client's best reading of the same
-        // moment, replaced by the real value on the next read.
-        onEnded(new Date().toISOString());
-      } catch (e: any) {
-        onError(getActionError(e));
-      }
-    });
-  }
-
-  function reopen() {
-    if (pending) return;
-    startTransition(async () => {
-      try {
-        await reopenLive(eventId);
-        onReopened();
-      } catch (e: any) {
-        onError(getActionError(e));
-      }
-    });
-  }
-
-  if (ended) {
-    return (
-      <div className="flex items-center justify-between gap-2 border-t border-line px-3 py-2">
-        <p className="text-[11px] text-ink-faint">Ended for everyone.</p>
-        <Button size="sm" variant="secondary" onClick={reopen} disabled={pending}>
-          <Phone className="h-3.5 w-3.5" />
-          Reopen
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-2 border-t border-line px-3 py-2">
-      <p className="text-[11px] text-ink-faint">
-        {arming ? "This ends it for everyone watching." : "Host controls"}
-      </p>
-      {arming ? (
-        <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="ghost" onClick={() => setArming(false)}>
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={confirm}
-            disabled={pending}
-          >
-            <PhoneOff className="h-3.5 w-3.5" />
-            {pending ? "Ending…" : "Confirm end"}
-          </Button>
-        </div>
-      ) : (
-        <Button size="sm" variant="danger" onClick={arm}>
-          <PhoneOff className="h-3.5 w-3.5" />
-          End webinar
-        </Button>
-      )}
-    </div>
   );
 }

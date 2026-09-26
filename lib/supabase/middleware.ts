@@ -531,10 +531,14 @@ export async function updateSession(request: NextRequest) {
       // their default home stays /admin. Billing + pay-fine are shared per-user
       // views every role can reach.
       //
-      // One more exemption: the 1:1 room, /dashboard/calls/<id>/live, which is
-      // shared by BOTH people on a call — and its host is often a mentor or an
-      // investor. The page 404s anyone who is not one of the two. The whole
-      // rule, including never bouncing /dashboard at /dashboard, lives in
+      // One more exemption: the live rooms, /dashboard/calls/<id>/live and
+      // /dashboard/events/<id>/live. They are filed under /dashboard but
+      // hosted by mentors, investors, events staff and guest speakers who have
+      // no student.dashboard, and each page authorizes itself — the 1:1
+      // through the two-party check, the webinar through the caller's RLS
+      // read (lib/live-access.ts) — so this navigational gate only ever
+      // bounced the person who was meant to be hosting. The whole rule,
+      // including never bouncing /dashboard at /dashboard, lives in
       // lib/dashboard-gate.ts where it is tested.
       if (
         bouncesFromDashboard({
@@ -568,7 +572,12 @@ export async function updateSession(request: NextRequest) {
       // Every other /dashboard route bounces home. The sidebar hides the
       // links too; this is the hard server-side gate, so a typed URL, a
       // stale link, or a prefetch can't reach past the designated pages.
-      // Staff previewing the student view are exempt.
+      // Staff previewing the student view are exempt. The live rooms get no
+      // exemption of their own here: a 1:1 room is under /dashboard/calls,
+      // which is on the allowed list (pre-cohort interviews are the point of
+      // it), and a webinar room stays locked like the events list that links
+      // to it, so a pre-cohort student cannot walk into a cohort webinar
+      // their RLS read happens to allow.
       if (
         path.startsWith("/dashboard") &&
         !canAccessAdmin(caps) &&

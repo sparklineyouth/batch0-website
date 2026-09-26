@@ -10,6 +10,13 @@ import {
   MEDIA_SLOTS,
   HEARTBEAT_MS,
   PEER_TIMEOUT_MS,
+  countLiveAudience,
+  isAddressedTo,
+  nextStatusAction,
+  shouldApplyAnswer,
+  shouldPruneConnection,
+  type SignalMessage,
+  type StageMessage,
 } from "./live-signal.ts";
 
 /**
@@ -216,4 +223,205 @@ test("an unannounced screen slot is off — nobody presents by default", () => {
     slotIsActive({ slot: "screen", announced: undefined, trackLive: false }),
     false,
   );
+});
+
+
+// ---------------------------------------------------------------------------
+// Pruning and the headcount
+// ---------------------------------------------------------------------------
+
+const T0 = 1_000_000;
+
+test("a failed or departed viewer connection is pruned at once", () => {
+  for (const state of ["failed", "left"] as const) {
+    assert.equal(
+      shouldPruneConnection({
+        peerRole: "viewer",
+        state,
+        lastLiveAt: T0,
+        createdAt: T0,
+        now: T0 + 1,
+      }),
+      true,
+      state,
+    );
+  }
+});
+
+test("a viewer connection not live for longer than PEER_TIMEOUT_MS is pruned", () => {
+  const base = { peerRole: "viewer" as const, createdAt: T0 };
+  // Was live, then went quiet (a laptop lid closing sends no bye).
+  assert.equal(
+    shouldPruneConnection({ ...base, state: "reconnecting", lastLiveAt: T0, now: T0 + PEER_TIMEOUT_MS }),
+    false,
+    "exactly the timeout is still within it",
+  );
+  assert.equal(
+    shouldPruneConnection({ ...base, state: "reconnecting", lastLiveAt: T0, now: T0 + PEER_TIMEOUT_MS + 1 }),
+    true,
+  );
+  // Never came up at all: measured from creation.
+  assert.equal(
+    shouldPruneConnection({ ...base, state: "connecting", lastLiveAt: null, now: T0 + PEER_TIMEOUT_MS + 1 }),
+    true,
+  );
+  assert.equal(
+    shouldPruneConnection({ ...base, state: "connecting", lastLiveAt: null, now: T0 + 5_000 }),
+    false,
+  );
+});
+
+test("a live connection is never pruned, however old", () => {
+  assert.equal(
+    shouldPruneConnection({
+      peerRole: "viewer",
+      state: "live",
+      lastLiveAt: T0,
+      createdAt: T0,
+      now: T0 + 10 * PEER_TIMEOUT_MS,
+    }),
+    false,
+  );
+});
+
+test("a host-role peer is never pruned — co-hosts and the other party are retried", () => {
+  for (const state of ["failed", "left", "reconnecting", "connecting"] as const) {
+    assert.equal(
+      shouldPruneConnection({
+        peerRole: "host",
+        state,
+        lastLiveAt: null,
+        createdAt: T0,
+        now: T0 + 10 * PEER_TIMEOUT_MS,
+      }),
+      false,
+      state,
+    );
+  }
+});
+
+test("the headcount counts only live viewer connections", () => {
+  assert.equal(
+    countLiveAudience([
+      { role: "viewer", state: "live" },
+      { role: "viewer", state: "live" },
+      { role: "viewer", state: "connecting" },
+      { role: "viewer", state: "reconnecting" },
+      { role: "viewer", state: "failed" },
+      { role: "host", state: "live" },
+    ]),
+    2,
+  );
+  assert.equal(countLiveAudience([]), 0);
+});
+
+// ---------------------------------------------------------------------------
+// What a status answer does to a session
+// ---------------------------------------------------------------------------
+
+test("'ended' and 'cancelled' close the session immediately", () => {
+  assert.equal(nextStatusAction("ended", 0).close, true);
+  assert.equal(nextStatusAction("cancelled", 0).close, true);
+});
+
+test("'closed' and 'revoked' close only on the second consecutive answer", () => {
+  for (const status of ["closed", "revoked"] as const) {
+    const first = nextStatusAction(status, 0);
+    assert.equal(first.close, false, `${status} once`);
+    const second = nextStatusAction(status, first.strikes);
+    assert.equal(second.close, true, `${status} twice`);
+  }
+  // Not consecutive: an 'ok' in between resets the count.
+  const a = nextStatusAction("closed", 0);
+  const b = nextStatusAction("ok", a.strikes);
+  assert.equal(b.strikes, 0);
+  assert.equal(nextStatusAction("closed", b.strikes).close, false);
+});
+
+test("'error' and a failed request never close anything", () => {
+  assert.deepEqual(nextStatusAction("error", 0), { close: false, strikes: 0 });
+  assert.deepEqual(nextStatusAction(null, 0), { close: false, strikes: 0 });
+  // ...and do not reset a soft-refusal streak either.
+  assert.deepEqual(nextStatusAction("error", 1), { close: false, strikes: 1 });
+  assert.equal(nextStatusAction("closed", nextStatusAction(null, 1).strikes).close, true);
+});
+
+// ---------------------------------------------------------------------------
+// Message shapes
+// ---------------------------------------------------------------------------
+
+test("the stage carries a content-free room-changed hint, and no host-offline", () => {
+  const hint = { t: "room-changed" } satisfies StageMessage;
+  assert.deepEqual(hint, { t: "room-changed" });
+  // Compile-time: `host-offline` is no longer a StageMessage. If someone adds
+  // it back, this @ts-expect-error stops being an error and `npx tsc` fails.
+  // @ts-expect-error — removed variant
+  const gone: StageMessage = { t: "host-offline", hostId: "h", proof: "p" };
+  assert.equal(gone.t, "host-offline");
+});
+
+test("a bye may say whether the sender left or is only rebuilding", () => {
+  const leave = { t: "bye", from: "a", reason: "leave" } satisfies SignalMessage;
+  const rebuild = { t: "bye", from: "a", reason: "rebuild" } satisfies SignalMessage;
+  const legacy = { t: "bye", from: "a" } satisfies SignalMessage;
+  assert.equal(leave.reason, "leave");
+  assert.equal(rebuild.reason, "rebuild");
+  assert.equal("reason" in legacy, false);
+});
+
+// ---------------------------------------------------------------------------
+// Addressing — two broadcasters listening on one viewer's inbox
+// ---------------------------------------------------------------------------
+
+test("an answer addressed to the other host is not ours", () => {
+  // Staff host A and guest speaker B both offer to viewer V, on V's inbox,
+  // and both are subscribed there. V's answer to B must not be applied by A.
+  const toB = { t: "answer", from: "V", name: "", sdp: "x", to: "B" } satisfies SignalMessage;
+  assert.equal(isAddressedTo(toB, "A"), false);
+  assert.equal(isAddressedTo(toB, "B"), true);
+});
+
+test("candidates and byes are filtered the same way", () => {
+  const ice = { t: "ice", from: "V", candidates: [], to: "B" } satisfies SignalMessage;
+  const bye = { t: "bye", from: "V", reason: "rebuild", to: "B" } satisfies SignalMessage;
+  assert.equal(isAddressedTo(ice, "A"), false);
+  assert.equal(isAddressedTo(ice, "B"), true);
+  // A viewer rebuilding its link to B must not make A drop a healthy one.
+  assert.equal(isAddressedTo(bye, "A"), false);
+  assert.equal(isAddressedTo(bye, "B"), true);
+});
+
+test("a message with no addressee is accepted — older tabs keep working mid-deploy", () => {
+  const legacyAnswer = { t: "answer", from: "V", name: "", sdp: "x" } satisfies SignalMessage;
+  const legacyIce = { t: "ice", from: "V", candidates: [] } satisfies SignalMessage;
+  const legacyBye = { t: "bye", from: "V", reason: "leave" } satisfies SignalMessage;
+  for (const m of [legacyAnswer, legacyIce, legacyBye]) {
+    assert.equal(isAddressedTo(m, "A"), true, m.t);
+  }
+  // An empty string is "no addressee", not "addressed to nobody".
+  assert.equal(
+    isAddressedTo({ t: "ice", from: "V", candidates: [], to: "" }, "A"),
+    true,
+  );
+  // Variants that never carry `to` are always accepted.
+  assert.equal(
+    isAddressedTo({ t: "offer", from: "H", name: "Host", sdp: "x" }, "V"),
+    true,
+  );
+  assert.equal(
+    isAddressedTo(
+      { t: "media", from: "H", slots: { camera: true, screen: false, audio: true } },
+      "V",
+    ),
+    true,
+  );
+});
+
+test("an answer is applied only while our own offer is outstanding", () => {
+  assert.equal(shouldApplyAnswer("have-local-offer"), true);
+  // A duplicate or stray answer on a settled connection is dropped quietly —
+  // it used to throw "Called in wrong state: stable" into a permanent banner.
+  for (const state of ["stable", "have-remote-offer", "closed", "have-local-pranswer"]) {
+    assert.equal(shouldApplyAnswer(state), false, state);
+  }
 });

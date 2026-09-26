@@ -4,6 +4,15 @@ import { emailLayout as layout, escapeEmail as escape } from "@/lib/email/layout
 import { formatTicketAmount as fmtTicketMoney } from "@/lib/demo-day-ticket-input";
 import { formatEasternDateTime } from "@/lib/call-lifecycle";
 
+/**
+ * An event start for an email: Eastern, with the zone named. Falls back to
+ * the raw value only for an unparseable date (never a real row). Unescaped —
+ * the layout escapes a preheader itself; a body escapes it at the call site.
+ */
+function eventWhen(startsAt: string): string {
+  return formatEasternDateTime(startsAt) ?? startsAt;
+}
+
 // The shell and the escaper live in lib/email/layout.ts so the compiled
 // templates below and the admin-authored ones in `email_templates` render
 // inside the same chrome. See lib/email/render.ts for the database path.
@@ -576,6 +585,12 @@ One account, one pass — the code stops working the moment it's claimed.`,
     }),
   }),
 
+  /**
+   * An event is coming up. The time is rendered in Eastern with its zone
+   * named (formatEasternDateTime, the same as the 1:1 invite): this runs on
+   * the server, where `toLocaleString()` meant UTC with no label — hours out
+   * for every reader, with nothing to say so.
+   */
   eventReminder: (args: {
     title: string;
     startsAt: string;
@@ -583,10 +598,10 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }) => ({
     subject: `Coming up: ${args.title}`,
     html: layout({
-      preheader: new Date(args.startsAt).toLocaleString(),
+      preheader: eventWhen(args.startsAt),
       body: `
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
-        <p>Starts <strong>${new Date(args.startsAt).toLocaleString()}</strong>.</p>
+        <p>Starts <strong>${escape(eventWhen(args.startsAt))}</strong>.</p>
         ${args.zoomUrl ? `<p>Join: <a href="${args.zoomUrl}" style="color:#ffbb00">${escape(args.zoomUrl)}</a></p>` : ""}
       `,
       cta: { url: `${env.siteUrl}/dashboard/events`, label: "All events" },
@@ -650,6 +665,11 @@ One account, one pass — the code stops working the moment it's claimed.`,
    * attach that account to the speaker row an admin already created. Said
    * plainly in the copy, because a link that silently does nothing for a
    * logged-out reader is a support request.
+   *
+   * The start time names its zone (formatEasternDateTime). A guest is the one
+   * reader with no batch0 page open to check it against, and the server's
+   * `toLocaleString()` told a New York speaker an 18:00 EDT webinar started
+   * at "10:00:00 PM" — the time in UTC, unlabelled.
    */
   speakerInvite: (args: {
     eventTitle: string;
@@ -659,11 +679,11 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }) => ({
     subject: `You're speaking at ${args.eventTitle}`,
     html: layout({
-      preheader: new Date(args.startsAt).toLocaleString(),
+      preheader: eventWhen(args.startsAt),
       body: `
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">You're speaking at ${escape(args.eventTitle)}</h1>
         <p><strong>${escape(args.hostName)}</strong> has added you as a speaker.</p>
-        <p>Starts <strong>${new Date(args.startsAt).toLocaleString()}</strong>.</p>
+        <p>Starts <strong>${escape(eventWhen(args.startsAt))}</strong>.</p>
         <p style="margin:12px 0">Open the link below once while signed in to batch0 and your camera and mic will be enabled for this session. You can do that any time before it starts.</p>
       `,
       cta: { url: args.inviteUrl, label: "Claim your speaker slot" },
@@ -843,7 +863,7 @@ One account, one pass — the code stops working the moment it's claimed.`,
     const eventItems = args.upcomingEvents
       .map(
         (e) =>
-          `<li style="margin:0 0 6px 0;color:#bbb">${escape(e.title)} · <span style="color:#888">${new Date(e.startsAt).toLocaleString()}</span></li>`,
+          `<li style="margin:0 0 6px 0;color:#bbb">${escape(e.title)} · <span style="color:#888">${escape(eventWhen(e.startsAt))}</span></li>`,
       )
       .join("");
     return {

@@ -34,9 +34,11 @@ export default async function DashboardLayout({
 
   // Middleware gates /dashboard to roles carrying `student.dashboard` (plus
   // admins, via the wildcard). Anyone else only lands here on a shared
-  // subroute (pay-fine / billing, or the 1:1 room at /dashboard/calls/<id>/live
-  // that a mentor or investor hosts — see lib/dashboard-gate.ts); render those
-  // without the student sidebar so the chrome doesn't mislead.
+  // subroute (pay-fine / billing, or a live room — the 1:1 at
+  // /dashboard/calls/<id>/live or the webinar at /dashboard/events/<id>/live,
+  // hosted or attended by mentors, investors and events staff — see
+  // lib/dashboard-gate.ts); render those without the student sidebar so the
+  // chrome doesn't mislead.
   if (!can(caps, "student.dashboard")) {
     return (
       <div className="min-h-screen bg-paper text-ink">

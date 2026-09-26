@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bouncesFromDashboard, isCallRoomPath } from "./dashboard-gate.ts";
+import { bouncesFromDashboard, isLiveRoomPath } from "./dashboard-gate.ts";
 
 // Run with `npm test`. The rule the middleware applies to /dashboard for a
 // viewer without `student.dashboard` — a mentor or an investor.
@@ -8,10 +8,19 @@ import { bouncesFromDashboard, isCallRoomPath } from "./dashboard-gate.ts";
 const mentor = { studentDashboard: false, home: "/mentor" };
 const investor = { studentDashboard: false, home: "/investor" };
 const ROOM = "/dashboard/calls/5b1e2f0a-8c7d-4e6f-9a0b-1c2d3e4f5a6b/live";
+const WEBINAR = "/dashboard/events/5b1e2f0a-8c7d-4e6f-9a0b-1c2d3e4f5a6b/live";
+const intern = { studentDashboard: false, home: "/admin" };
 
 test("a mentor or investor host can open their own 1:1 room", () => {
   assert.equal(bouncesFromDashboard({ path: ROOM, ...mentor }), false);
   assert.equal(bouncesFromDashboard({ path: `${ROOM}/`, ...investor }), false);
+});
+
+test("a webinar host or attendee without the student view can open the webinar room", () => {
+  // An intern with Manage events, a mentor guest speaker, an investor watching.
+  assert.equal(bouncesFromDashboard({ path: WEBINAR, ...intern }), false);
+  assert.equal(bouncesFromDashboard({ path: WEBINAR, ...mentor }), false);
+  assert.equal(bouncesFromDashboard({ path: `${WEBINAR}/`, ...investor }), false);
 });
 
 test("the rest of the student area still bounces them home", () => {
@@ -20,6 +29,9 @@ test("the rest of the student area still bounces them home", () => {
     "/dashboard/calls",
     "/dashboard/calls/abc",
     `${ROOM}/extra`,
+    "/dashboard/events",
+    "/dashboard/events/abc",
+    `${WEBINAR}/extra`,
     "/dashboard/course",
   ]) {
     assert.equal(bouncesFromDashboard({ path, ...mentor }), true, path);
@@ -42,10 +54,15 @@ test("a role whose home IS /dashboard is never bounced at itself", () => {
   );
 });
 
-test("only the room matches, not look-alikes", () => {
-  assert.equal(isCallRoomPath(ROOM), true);
-  assert.equal(isCallRoomPath("/dashboard/calls//live"), false);
-  assert.equal(isCallRoomPath("/dashboard/calls/x/live/y"), false);
-  assert.equal(isCallRoomPath("/dashboard/events/x/live"), false);
-  assert.equal(isCallRoomPath("/mentor/calls/x/live"), false);
+test("only the two rooms match, not look-alikes", () => {
+  assert.equal(isLiveRoomPath(ROOM), true);
+  assert.equal(isLiveRoomPath(WEBINAR), true);
+  assert.equal(isLiveRoomPath(`${WEBINAR}/`), true);
+  assert.equal(isLiveRoomPath("/dashboard/calls//live"), false);
+  assert.equal(isLiveRoomPath("/dashboard/calls/x/live/y"), false);
+  assert.equal(isLiveRoomPath("/dashboard/events//live"), false);
+  assert.equal(isLiveRoomPath("/dashboard/events/x"), false);
+  assert.equal(isLiveRoomPath("/dashboard/teams/x/live"), false);
+  assert.equal(isLiveRoomPath("/mentor/calls/x/live"), false);
+  assert.equal(isLiveRoomPath("/admin/events/x/live"), false);
 });

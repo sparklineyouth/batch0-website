@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { EventCard } from "@/components/live/event-card";
-import { joinState, type LiveEvent } from "@/lib/live";
+import { eventLiveStatus, type LiveEvent } from "@/lib/live";
 
 export const metadata = { title: "Events · batch0" };
 
@@ -32,12 +32,16 @@ function toLiveEvent(e: any): LiveEvent {
       e.live_mode === "hosted" || e.live_mode === "premiere"
         ? e.live_mode
         : "external",
-    externalUrl: e.zoom_url,
+    // The card only ever offers this for an external event; see EventCard.
+    externalUrl: e.zoom_url ?? null,
     recordingUrl: e.recording_url,
     hostName: null,
     displayViewerCount: e.display_viewer_count ?? null,
     roomName: e.daily_room_name ?? null,
     roomUrl: e.daily_room_url ?? null,
+    // Selected by the `*` below. Absent on a database that predates 0084,
+    // where nothing can have been ended, so null is the honest default.
+    liveEndedAt: e.live_ended_at ?? null,
   };
 }
 
@@ -78,12 +82,30 @@ export default async function StudentEventsPage() {
   // if its join window is still open it is happening RIGHT NOW — not over. Pull
   // those out so a live webinar shows under "Live now" with a Join button
   // instead of being buried, looking finished, in "Past".
-  const liveNow = (past ?? []).filter(
-    (e: any) => joinState(e.starts_at, e.ends_at, nowDate) !== "ended",
-  );
-  const endedPast = (past ?? []).filter(
-    (e: any) => joinState(e.starts_at, e.ends_at, nowDate) === "ended",
-  );
+  //
+  // `eventLiveStatus` reads `live_ended_at` before the clock, so a webinar the
+  // host ended at 7:40 goes to Past at 7:40 — it used to sit under "Live now"
+  // with a Join button until ends_at + 30 minutes. An event ended before its
+  // own start time (a rehearsal someone closed) leaves Upcoming the same way.
+  const status = (e: any) =>
+    eventLiveStatus(
+      {
+        startsAt: e.starts_at,
+        endsAt: e.ends_at,
+        liveEndedAt: e.live_ended_at ?? null,
+      },
+      nowDate,
+    );
+  const isOver = (e: any) => {
+    const s = status(e);
+    return s === "ended" || s === "past";
+  };
+  const liveNow = (past ?? []).filter((e: any) => !isOver(e));
+  const stillUpcoming = (upcoming ?? []).filter((e: any) => !isOver(e));
+  const endedPast = [
+    ...(upcoming ?? []).filter(isOver),
+    ...(past ?? []).filter(isOver),
+  ];
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -111,13 +133,13 @@ export default async function StudentEventsPage() {
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
           Upcoming
         </h2>
-        {(upcoming?.length ?? 0) === 0 ? (
+        {stillUpcoming.length === 0 ? (
           <Card>
             <p className="text-sm text-ink-faint">Nothing scheduled yet.</p>
           </Card>
         ) : (
           <div className="space-y-3">
-            {(upcoming ?? []).map((e: any) => (
+            {stillUpcoming.map((e: any) => (
               <EventCard key={e.id} event={toLiveEvent(e)} upcoming />
             ))}
           </div>

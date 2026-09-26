@@ -16,19 +16,37 @@
  *     never enter their own call: the student sat alone in the room being told
  *     the call was recorded, and nothing was, because only the host's browser
  *     records. The page itself 404s anyone who is not one of the two people on
- *     that call, and the dashboard layout renders bare chrome (no student nav)
- *     for a viewer without `student.dashboard`.
+ *     that call.
+ *   - /dashboard/events/<id>/live — the WEBINAR room, for the same reason:
+ *     the people who host a webinar are mostly not students. Interns and
+ *     custom staff roles with Manage events, mentor or investor guest
+ *     speakers, and mentors or investors attending all lack
+ *     `student.dashboard`, and were bounced before the room rendered — only
+ *     admins (through `*`) ever got in. The page authorizes itself
+ *     (lib/live-access.ts): the caller's own RLS read of the event decides
+ *     whether they may see it at all, Manage events or a claimed speaker row
+ *     decides whether they host, and anyone else gets a 404.
  *
- * Only the room — not /dashboard/calls, which is the student's inbox and would
- * show a mentor an empty page.
+ * In both cases the dashboard layout renders bare chrome (no student nav) for
+ * a viewer without `student.dashboard`.
+ *
+ * Only the rooms — not /dashboard/calls or /dashboard/events, which are the
+ * student's own lists and would show a mentor an empty page. And only this
+ * gate: the pre-cohort lockdown in the middleware still applies to the rooms
+ * as to every other /dashboard path (the 1:1 room is on its allowed list, the
+ * webinar room is not, like the events list that links to it).
  *
  * Pure and import-free, because middleware imports it (Edge) and
  * lib/dashboard-gate.test.ts runs it under plain `node --test`.
  */
 
-/** The 1:1 room, `/dashboard/calls/<id>/live` (a trailing slash allowed). */
-export function isCallRoomPath(path: string): boolean {
-  return /^\/dashboard\/calls\/[^/]+\/live\/?$/.test(path);
+/**
+ * A live room — a webinar (`/dashboard/events/<id>/live`) or a 1:1
+ * (`/dashboard/calls/<id>/live`), a trailing slash allowed. Anything deeper
+ * (`…/live/anything`) or shallower (the list, the event itself) is not a room.
+ */
+export function isLiveRoomPath(path: string): boolean {
+  return /^\/dashboard\/(events|calls)\/[^/]+\/live\/?$/.test(path);
 }
 
 /**
@@ -53,6 +71,6 @@ export function bouncesFromDashboard({
   if (home === "/dashboard") return false;
   if (path.startsWith("/dashboard/pay-fine")) return false;
   if (path.startsWith("/dashboard/billing")) return false;
-  if (isCallRoomPath(path)) return false;
+  if (isLiveRoomPath(path)) return false;
   return true;
 }
