@@ -14,6 +14,7 @@ import {
   fulfillmentFor,
   hasAnyPerk,
   hasMoney,
+  liveStatusesInCohort,
   normalizeCents,
   normalizeMentorCalls,
   normalizePercent,
@@ -32,8 +33,21 @@ import {
   type AwardTerms,
   type ScholarshipOffer,
 } from "./scholarship-award.ts";
+import { NO_COHORT_REASON, type ScholarshipCohort } from "./scholarship-window.ts";
 
 const NOW = new Date("2026-09-15T12:00:00Z");
+
+/** Fall 2026 as it stands in production: running, late entry through Sep 30 Eastern. */
+const FALL: ScholarshipCohort = {
+  id: "fall",
+  name: "Fall 2026",
+  status: "active",
+  starts_on: "2026-09-14",
+  ends_on: "2026-11-13",
+  applications_close_at: "2026-10-01T03:59:59.999Z",
+  late_entry_until: "2026-10-01T03:59:59.999Z",
+  catch_up_plan: "Complete the Week 1 field guide, then catch-up with the team.",
+};
 
 function perks(over: Partial<AwardPerks> = {}): AwardPerks {
   return { ...NO_PERKS, ...over };
@@ -58,8 +72,6 @@ function offer(over: Partial<ScholarshipOffer> = {}): ScholarshipOffer {
   return {
     name: "Need-based grant",
     enabled: true,
-    opensAt: null,
-    closesAt: null,
     seats: null,
     awardedCount: 0,
     eligibleStages: ["accepted", "enrolled"],
@@ -72,6 +84,7 @@ function state(over: Partial<ApplicantState> = {}): ApplicantState {
     applicationStatus: "accepted",
     enrolled: false,
     liveStatuses: [],
+    cohort: FALL,
     ...over,
   };
 }
@@ -318,7 +331,12 @@ test("stageOf refuses everyone who isn't accepted yet", () => {
 
 test("checkEligibility passes an accepted student on an open scholarship", () => {
   const out = checkEligibility(offer(), state(), NOW);
-  assert.deepEqual(out, { ok: true, stage: "accepted" });
+  assert.equal(out.ok, true);
+  if (out.ok) {
+    assert.equal(out.stage, "accepted");
+    // Open until Fall's enrollment deadline, which is what checkout honours.
+    assert.equal(out.window.until, FALL.late_entry_until);
+  }
 });
 
 test("checkEligibility passes an enrolled student — awards work after enrollment", () => {
@@ -327,43 +345,72 @@ test("checkEligibility passes an enrolled student — awards work after enrollme
     state({ enrolled: true, applicationStatus: "enrolled" }),
     NOW,
   );
-  assert.deepEqual(out, { ok: true, stage: "enrolled" });
-});
-
-test("checkEligibility respects the open/close window", () => {
-  const early = checkEligibility(
-    offer({ opensAt: "2026-10-01T00:00:00Z" }),
-    state(),
-    NOW,
-  );
-  assert.equal(early.ok, false);
-  if (!early.ok) assert.equal(early.reason, "closed");
-
-  const late = checkEligibility(
-    offer({ closesAt: "2026-09-01T00:00:00Z" }),
-    state(),
-    NOW,
-  );
-  assert.equal(late.ok, false);
-  if (!late.ok) assert.equal(late.reason, "closed");
-
-  const inWindow = checkEligibility(
-    offer({ opensAt: "2026-09-01T00:00:00Z", closesAt: "2026-10-01T00:00:00Z" }),
-    state(),
-    NOW,
-  );
-  assert.equal(inWindow.ok, true);
-});
-
-test("checkEligibility ignores an unparseable date rather than locking everyone out", () => {
-  const out = checkEligibility(offer({ closesAt: "not a date" }), state(), NOW);
   assert.equal(out.ok, true);
+  if (out.ok) {
+    assert.equal(out.stage, "enrolled");
+    assert.equal(out.window.until, "2026-11-14T04:59:59.000Z");
+  }
 });
 
-test("checkEligibility closes when seats run out", () => {
+test("checkEligibility follows the student's cohort, not a date on the scholarship", () => {
+  // The live bug: an enrolled-only perks scholarship whose own closes_at was
+  // Sep 20 told every Fall student "closed" for the second half of Fall.
+  const learners = offer({ eligibleStages: ["enrolled"], awardType: "perks" });
+  const enrolled = state({ enrolled: true, applicationStatus: "enrolled" });
+  const sep26 = checkEligibility(learners, enrolled, new Date("2026-09-26T16:00:00Z"));
+  assert.equal(sep26.ok, true);
+  if (sep26.ok) assert.equal(sep26.window.cohortName, "Fall 2026");
+
+  const afterFall = checkEligibility(learners, enrolled, new Date("2026-11-14T05:00:00Z"));
+  assert.equal(afterFall.ok, false);
+  if (!afterFall.ok) {
+    assert.equal(afterFall.reason, "closed");
+    assert.equal(afterFall.message, "Fall 2026 has ended.");
+  }
+});
+
+test("checkEligibility closes an accepted student's window at the enrollment deadline", () => {
+  const out = checkEligibility(
+    offer({ awardType: "discount" }),
+    state(),
+    new Date("2026-10-01T04:00:00Z"),
+  );
+  assert.equal(out.ok, false);
+  if (!out.ok) {
+    assert.equal(out.reason, "closed");
+    assert.match(out.message, /Enrollment in Fall 2026 has closed/);
+  }
+  // The same moment, enrolled: still open — their window runs to the end.
+  assert.equal(
+    checkEligibility(offer(), state({ enrolled: true }), new Date("2026-10-01T04:00:00Z")).ok,
+    true,
+  );
+});
+
+test("checkEligibility refuses a student with no cohort, and says why", () => {
+  const out = checkEligibility(offer(), state({ cohort: null }), NOW);
+  assert.equal(out.ok, false);
+  if (!out.ok) {
+    assert.equal(out.reason, "closed");
+    assert.equal(out.message, NO_COHORT_REASON);
+  }
+});
+
+test("checkEligibility asks for the stage before the window", () => {
+  // The window depends on the stage, and "not accepted yet" is the truer
+  // answer for someone with no cohort either.
+  const out = checkEligibility(offer(), state({ applicationStatus: "submitted", cohort: null }), NOW);
+  assert.equal(out.ok, false);
+  if (!out.ok) assert.equal(out.reason, "stage");
+});
+
+test("checkEligibility closes when seats in the student's cohort run out", () => {
   const out = checkEligibility(offer({ seats: 3, awardedCount: 3 }), state(), NOW);
   assert.equal(out.ok, false);
-  if (!out.ok) assert.equal(out.reason, "full");
+  if (!out.ok) {
+    assert.equal(out.reason, "full");
+    assert.match(out.message, /for Fall 2026/);
+  }
 
   const open = checkEligibility(offer({ seats: 3, awardedCount: 2 }), state(), NOW);
   assert.equal(open.ok, true);
@@ -422,6 +469,24 @@ test("checkEligibility reports a repeat application to the same scholarship", ()
   const out = checkEligibility(offer(), state(), NOW, { alreadyAppliedHere: true });
   assert.equal(out.ok, false);
   if (!out.ok) assert.equal(out.reason, "already_applied");
+});
+
+test("liveStatusesInCohort scopes one-at-a-time to the cohort, and counts cohortless rows everywhere", () => {
+  const rows = [
+    { status: "awarded" as const, cohortId: "summer" },
+    { status: "submitted" as const, cohortId: "fall" },
+    { status: "declined" as const, cohortId: "fall" },
+    { status: "draft" as const, cohortId: "fall" },
+  ];
+  // A Summer award doesn't block a Fall application…
+  assert.deepEqual(liveStatusesInCohort(rows, "fall"), ["submitted"]);
+  assert.deepEqual(liveStatusesInCohort(rows, "summer"), ["awarded"]);
+  // …but a row with no cohort can't be told apart, so it counts in all of them.
+  assert.deepEqual(
+    liveStatusesInCohort([{ status: "awarded", cohortId: null }], "fall"),
+    ["awarded"],
+  );
+  assert.deepEqual(liveStatusesInCohort(rows, null), ["awarded", "submitted"]);
 });
 
 test("checkEligibility ignores a declined or withdrawn past attempt", () => {

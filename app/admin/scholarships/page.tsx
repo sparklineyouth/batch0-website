@@ -4,13 +4,16 @@ import { can } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
-import { LocalTime } from "@/components/ui/local-time";
 import {
   listScholarships,
-  awardedCounts,
+  awardedCountsByCohort,
+  awardedIn,
+  awardedTotal,
+  listLiveCohorts,
   describeAward,
 } from "@/lib/scholarships";
-import { SCHOLARSHIP_KIND_LABELS } from "@/lib/scholarship-award";
+import { SCHOLARSHIP_KIND_LABELS, awardTypeOf } from "@/lib/scholarship-award";
+import { describeCohortWindows } from "@/lib/scholarship-window";
 import { ScholarshipRowActions } from "./row-actions";
 
 export const metadata = { title: "Scholarships · Admin" };
@@ -22,10 +25,12 @@ export default async function AdminScholarshipsPage() {
   const canManage = can(viewer.caps, "scholarships.manage");
 
   const admin = createAdminClient();
-  const [{ scholarships, missingTable }, counts] = await Promise.all([
+  const [{ scholarships, missingTable }, counts, liveCohorts] = await Promise.all([
     listScholarships(admin),
-    awardedCounts(admin),
+    awardedCountsByCohort(admin),
+    listLiveCohorts(admin),
   ]);
+  const now = new Date();
 
   // Pending applications per scholarship, so the list says where the work is.
   const { data: pendingRows } = await admin
@@ -45,7 +50,10 @@ export default async function AdminScholarshipsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Scholarships</h1>
           <p className="mt-1 text-sm text-ink-soft">
             Need-based, merit, and the learner's grant. Students hold one at a
-            time and can apply after acceptance or after enrolling.
+            time and can apply after acceptance or after enrolling. There are no
+            dates to set: each student&apos;s window follows their cohort —
+            accepted students until its enrollment deadline, enrolled students
+            until it ends — and seat limits count per cohort.
           </p>
         </div>
         {canManage && (
@@ -92,10 +100,9 @@ export default async function AdminScholarshipsPage() {
       ) : (
         <div className="mt-6 space-y-3">
           {scholarships.map((s) => {
-            const awarded = counts.get(s.id) ?? 0;
+            const awarded = awardedTotal(counts, s.id);
             const waiting = pending.get(s.id) ?? 0;
-            const seatsLeft =
-              s.seats === null ? null : Math.max(0, s.seats - awarded);
+            const awardType = awardTypeOf(s.terms);
             return (
               <Card key={s.id} className={s.enabled ? "" : "opacity-60"}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -122,16 +129,43 @@ export default async function AdminScholarshipsPage() {
                     <p className="mt-1 text-xs text-ink-faint">
                       <code>/{s.slug}</code> · {s.eligibleStages.join(" + ")} ·{" "}
                       {awarded} awarded
-                      {seatsLeft !== null && ` of ${s.seats} seats`}
+                      {s.seats !== null && ` · ${s.seats} seats per cohort`}
                       {s.questions.filter((q) => !q.hidden).length > 0 &&
                         ` · ${s.questions.filter((q) => !q.hidden).length} questions`}
-                      {s.closesAt && (
-                        <>
-                          {" · closes "}
-                          <LocalTime value={s.closesAt} />
-                        </>
-                      )}
                     </p>
+                    {/* The live windows, one line per upcoming or running
+                        cohort — what a student in each would see right now. */}
+                    {s.enabled && (
+                      <ul className="mt-2 space-y-0.5 text-xs text-ink-soft">
+                        {liveCohorts.length === 0 ? (
+                          <li>
+                            No upcoming or running cohort, so nobody can apply
+                            until one is set up.
+                          </li>
+                        ) : (
+                          liveCohorts.map((c) => {
+                            const taken = awardedIn(counts, s.id, c.id);
+                            return (
+                              <li key={c.id}>
+                                <span className="font-medium text-ink">
+                                  {c.name ?? "Unnamed cohort"}
+                                </span>
+                                {" — "}
+                                {describeCohortWindows(
+                                  { cohort: c, stages: s.eligibleStages, awardType },
+                                  now,
+                                )}
+                                {s.seats !== null
+                                  ? ` · ${taken} of ${s.seats} seats awarded`
+                                  : taken > 0
+                                    ? ` · ${taken} awarded`
+                                    : ""}
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    )}
                     {waiting > 0 && (
                       <Link
                         href={`/admin/scholarships/applications?scholarship=${s.id}`}

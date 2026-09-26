@@ -40,8 +40,6 @@ export default function ScholarshipFormPreviewPage() {
       perks: { mentorCalls: 3, feedbackCredits: 1, demoDayTickets: 2, aiBoost: true },
     },
     seats: 5,
-    opensAt: null,
-    closesAt: null,
     eligibleStages: ["accepted", "enrolled"],
     enabled: true,
     sortIndex: 100,

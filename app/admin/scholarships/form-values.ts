@@ -16,15 +16,6 @@ import type { ScholarshipInput } from "./actions";
  */
 export type ScholarshipFormValues = ScholarshipInput;
 
-/** An ISO timestamp as a <input type="datetime-local"> value, in local time. */
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export function emptyScholarshipForm(): ScholarshipFormValues {
   return {
     id: null,
@@ -47,8 +38,6 @@ export function emptyScholarshipForm(): ScholarshipFormValues {
     demoDayTickets: "2",
     aiBoost: false,
     seats: "",
-    opensAt: "",
-    closesAt: "",
     eligibleStages: ["accepted", "enrolled"],
     enabled: true,
     sortIndex: "100",
@@ -73,8 +62,6 @@ export function scholarshipToForm(s: {
     };
   };
   seats: number | null;
-  opensAt: string | null;
-  closesAt: string | null;
   eligibleStages: string[];
   enabled: boolean;
   sortIndex: number;
@@ -102,8 +89,6 @@ export function scholarshipToForm(s: {
     demoDayTickets: String(perks.demoDayTickets || 2),
     aiBoost: perks.aiBoost,
     seats: s.seats === null ? "" : String(s.seats),
-    opensAt: toLocalInput(s.opensAt),
-    closesAt: toLocalInput(s.closesAt),
     eligibleStages: s.eligibleStages,
     enabled: s.enabled,
     sortIndex: String(s.sortIndex),

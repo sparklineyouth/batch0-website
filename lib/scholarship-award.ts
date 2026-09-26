@@ -11,8 +11,18 @@
 //
 // IMPORT-FREE ON PURPOSE — same contract as lib/question-schema.ts. `npm test`
 // runs this through Node's native type stripping, and the admin editor imports
-// it into a client component to preview an award before saving.
+// it into a client component to preview an award before saving. The one
+// exception is ./scholarship-window.ts, the cohort-date rules eligibility is
+// decided on: it is pure too, reached by a relative `.ts` path, and imports
+// nothing but the equally pure ./cohort-eligibility.ts.
 // ---------------------------------------------------------------------------
+
+import {
+  scholarshipWindow,
+  type OpenScholarshipWindow,
+  type ScholarshipCohort,
+  type ScholarshipWindow,
+} from "./scholarship-window.ts";
 
 /**
  * What a scholarship is for. Drives copy, the review queue's grouping, and
@@ -473,10 +483,23 @@ export function formatMoney(cents: number): string {
 export type ApplicantState = {
   /** The student's `applications.status`. */
   applicationStatus: string | null;
-  /** True once they hold an `enrollments` row (i.e. tuition is paid/waived). */
+  /**
+   * True when the cohort below is one they're enrolled in (tuition paid or
+   * waived). Not "holds any enrollment row": an old, finished enrollment must
+   * not make a student count as enrolled in the cohort they've just been
+   * accepted into.
+   */
   enrolled: boolean;
-  /** Live scholarship applications this student already holds. */
+  /**
+   * Live scholarship applications that count against them in THIS cohort —
+   * see liveStatusesInCohort.
+   */
   liveStatuses: readonly ScholarshipAppStatus[];
+  /**
+   * The cohort whose dates their window follows (resolveScholarshipCohort in
+   * lib/scholarship-window.ts), or null when they aren't tied to one yet.
+   */
+  cohort: ScholarshipCohort | null;
 };
 
 /**
@@ -495,27 +518,65 @@ export function stageOf(state: ApplicantState): EligibleStage | null {
 }
 
 export type Eligibility =
-  | { ok: true; stage: EligibleStage }
-  | { ok: false; reason: EligibilityDenial; message: string };
+  | {
+      ok: true;
+      stage: EligibleStage;
+      /** Their window, so the card can say "Open until Nov 13 — while Fall 2026 runs". */
+      window: OpenScholarshipWindow;
+    }
+  | {
+      ok: false;
+      reason: EligibilityDenial;
+      message: string;
+      /** Set once the stage was known and the window was worked out. */
+      window?: ScholarshipWindow;
+    };
 
 export type EligibilityDenial =
-  | "closed" // disabled, or outside its window
-  | "full" // every seat taken
+  | "closed" // disabled, or outside the student's cohort window
+  | "full" // every seat in their cohort taken
   | "stage" // not accepted/enrolled yet, or the wrong stage for this one
   | "already_applied" // they have a live application to THIS scholarship
   | "holds_award"; // the one-at-a-time rule
 
-/** The scholarship-side facts eligibility is decided on. */
+/**
+ * The scholarship-side facts eligibility is decided on.
+ *
+ * No dates: when a scholarship is open is decided by the student's cohort
+ * (lib/scholarship-window.ts), not by the scholarship.
+ */
 export type ScholarshipOffer = {
   name: string;
   enabled: boolean;
-  opensAt: string | null;
-  closesAt: string | null;
-  /** null = unlimited. */
+  /** null = unlimited. A limit is PER COHORT. */
   seats: number | null;
+  /** Awards already made on this scholarship in the student's cohort. */
   awardedCount: number;
   eligibleStages: readonly EligibleStage[];
+  /** What it pays out. Only changes how the window is worded. */
+  awardType?: AwardType;
 };
+
+/**
+ * The live statuses that count against a student in `cohortId`.
+ *
+ * One scholarship at a time is a per-COHORT rule — it is what 0071's unique
+ * index enforces, so a returning student can hold one in a later cohort — and
+ * the application-side checks have to match it, or an award from a finished
+ * cohort blocks a student for good. A row with no cohort on file counts in
+ * every cohort: the index can't see it (NULLs are distinct), so the check here
+ * is the only thing standing in for it, and the conservative reading is the
+ * one that can't hand out two.
+ */
+export function liveStatusesInCohort(
+  rows: readonly { status: ScholarshipAppStatus; cohortId: string | null }[],
+  cohortId: string | null,
+): ScholarshipAppStatus[] {
+  return rows
+    .filter((r) => r.cohortId === null || cohortId === null || r.cohortId === cohortId)
+    .map((r) => r.status)
+    .filter((s) => (LIVE_SCHOLARSHIP_STATUSES as readonly string[]).includes(s));
+}
 
 /**
  * Whether `state` may apply to `offer` right now.
@@ -524,6 +585,10 @@ export type ScholarshipOffer = {
  * testable and so a server render and its subsequent action agree on the
  * moment. Denials carry applicant-facing copy: this text is shown directly on
  * the dashboard card, so it explains rather than just refusing.
+ *
+ * Stage comes before the window because the window depends on it: an
+ * accepted student's closes at the enrollment deadline, an enrolled one's when
+ * the cohort ends.
  */
 export function checkEligibility(
   offer: ScholarshipOffer,
@@ -533,24 +598,6 @@ export function checkEligibility(
 ): Eligibility {
   if (!offer.enabled) {
     return { ok: false, reason: "closed", message: "This scholarship isn't open right now." };
-  }
-
-  const t = now.getTime();
-  if (offer.opensAt) {
-    const opens = Date.parse(offer.opensAt);
-    if (Number.isFinite(opens) && t < opens) {
-      return { ok: false, reason: "closed", message: "This scholarship hasn't opened yet." };
-    }
-  }
-  if (offer.closesAt) {
-    const closes = Date.parse(offer.closesAt);
-    if (Number.isFinite(closes) && t > closes) {
-      return { ok: false, reason: "closed", message: "Applications for this scholarship have closed." };
-    }
-  }
-
-  if (offer.seats !== null && offer.awardedCount >= offer.seats) {
-    return { ok: false, reason: "full", message: "Every spot on this scholarship has been awarded." };
   }
 
   const stage = stageOf(state);
@@ -572,6 +619,23 @@ export function checkEligibility(
     };
   }
 
+  const win = scholarshipWindow(
+    { cohort: state.cohort, stage, awardType: offer.awardType },
+    now,
+  );
+  if (!win.open) {
+    return { ok: false, reason: "closed", message: win.reason, window: win };
+  }
+
+  if (offer.seats !== null && offer.awardedCount >= offer.seats) {
+    return {
+      ok: false,
+      reason: "full",
+      message: `Every spot on this scholarship has been awarded for ${win.cohortName}.`,
+      window: win,
+    };
+  }
+
   // The one-at-a-time rule. Checked before already_applied so that a student
   // holding an award elsewhere gets told WHY rather than being shown a
   // confusing "you've already applied" on a scholarship they never touched.
@@ -579,7 +643,7 @@ export function checkEligibility(
     return {
       ok: false,
       reason: "holds_award",
-      message: "You already hold a batch0 scholarship — only one per student.",
+      message: "You already hold a batch0 scholarship — only one per student in a cohort.",
     };
   }
 
@@ -602,7 +666,7 @@ export function checkEligibility(
     };
   }
 
-  return { ok: true, stage };
+  return { ok: true, stage, window: win };
 }
 
 /**

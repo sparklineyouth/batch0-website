@@ -76,9 +76,10 @@ export type ScholarshipInput = {
   demoDayTicketsOn: boolean;
   demoDayTickets: string;
   aiBoost: boolean;
+  /** Per cohort — see awardedCountsByCohort. */
   seats: string;
-  opensAt: string;
-  closesAt: string;
+  // No opens/closes: when a student may apply follows their cohort's dates
+  // (lib/scholarship-window.ts), so there is nothing for the admin to set.
   eligibleStages: string[];
   enabled: boolean;
   sortIndex: string;
@@ -176,18 +177,6 @@ function buildRow(input: ScholarshipInput) {
     throw new Error("Seats must be a whole number, or blank for unlimited.");
   }
 
-  const opensAt = input.opensAt?.trim() ? new Date(input.opensAt) : null;
-  const closesAt = input.closesAt?.trim() ? new Date(input.closesAt) : null;
-  if (opensAt && Number.isNaN(opensAt.getTime())) {
-    throw new Error("That opening date isn't valid.");
-  }
-  if (closesAt && Number.isNaN(closesAt.getTime())) {
-    throw new Error("That closing date isn't valid.");
-  }
-  if (opensAt && closesAt && closesAt <= opensAt) {
-    throw new Error("It has to close after it opens.");
-  }
-
   const sortIndex = Number(input.sortIndex);
 
   return {
@@ -208,8 +197,13 @@ function buildRow(input: ScholarshipInput) {
     perk_demo_day_tickets: perks.demoDayTickets,
     perk_ai_boost: perks.aiBoost,
     seats: seatsNum === null ? null : Math.floor(seatsNum),
-    opens_at: opensAt ? opensAt.toISOString() : null,
-    closes_at: closesAt ? closesAt.toISOString() : null,
+    // Written as null on every save so the row itself says these are unused:
+    // each student's window follows their cohort (lib/scholarship-window.ts).
+    // A stale date left behind here reads, to the next person looking at the
+    // table, like a window that still applies. The columns stay only because
+    // dropping them is a migration.
+    opens_at: null,
+    closes_at: null,
     eligible_stages: [...new Set(stages)],
     enabled: input.enabled !== false,
     sort_index: Number.isFinite(sortIndex) ? Math.floor(sortIndex) : 100,

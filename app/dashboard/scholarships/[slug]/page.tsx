@@ -4,19 +4,13 @@ import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
-import { LocalTime } from "@/components/ui/local-time";
 import {
   getScholarshipBySlug,
-  awardedCounts,
-  loadApplicantState,
-  listApplicationsForUser,
-  offerOf,
+  eligibilityForScholarship,
   describeAward,
 } from "@/lib/scholarships";
-import {
-  checkEligibility,
-  SCHOLARSHIP_KIND_LABELS,
-} from "@/lib/scholarship-award";
+import { SCHOLARSHIP_KIND_LABELS } from "@/lib/scholarship-award";
+import { windowHeadline } from "@/lib/scholarship-window";
 import { visibleQuestions } from "@/lib/question-schema";
 import { ScholarshipApplyForm } from "./apply-form";
 
@@ -41,36 +35,14 @@ export default async function ScholarshipApplyPage(props: {
   const scholarship = await getScholarshipBySlug(admin, slug);
   if (!scholarship) notFound();
 
-  const [counts, state, mineAll] = await Promise.all([
-    awardedCounts(admin),
-    loadApplicantState(admin, user.id),
-    listApplicationsForUser(admin, user.id),
-  ]);
-
-  const mine = mineAll.find((a) => a.scholarshipId === scholarship.id) ?? null;
-
-  // A row they're still editing isn't "already applied" against themselves,
-  // and neither is one they withdrew or that was declined. Mirrors the same
-  // distinction saveScholarshipApplication makes, so the page and the action
-  // agree about whether the form should be usable.
-  const blocking =
-    !!mine &&
-    mine.status !== "draft" &&
-    mine.status !== "withdrawn" &&
-    mine.status !== "declined";
-
-  const otherLive = mineAll
-    .filter((a) => a.scholarshipId !== scholarship.id)
-    .map((a) => a.status)
-    .filter(
-      (s) => s === "submitted" || s === "under_review" || s === "awarded",
-    );
-
-  const eligibility = checkEligibility(
-    offerOf(scholarship, counts.get(scholarship.id) ?? 0),
-    { ...state, liveStatuses: otherLive as any },
+  // The same read-and-decide saveScholarshipApplication makes, so the page
+  // and the action agree about whether the form should be usable — including
+  // the student's cohort window, which is what decides "open until".
+  const { eligibility, existing: mine, blocking } = await eligibilityForScholarship(
+    admin,
+    user.id,
+    scholarship,
     new Date(),
-    { alreadyAppliedHere: blocking },
   );
 
   // Already submitted, or already decided: there's nothing to fill in, so send
@@ -103,9 +75,9 @@ export default async function ScholarshipApplyPage(props: {
             {scholarship.description}
           </p>
         )}
-        {scholarship.closesAt && (
+        {eligibility.ok && (
           <p className="mt-4 text-xs text-ink-faint">
-            Applications close <LocalTime value={scholarship.closesAt} />.
+            {windowHeadline(eligibility.window)}.
           </p>
         )}
       </div>
