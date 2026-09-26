@@ -288,6 +288,44 @@ export const RECORDING_AUDIO_BITRATE = 96_000;
 /** Frame rate the composed canvas is captured at. */
 export const RECORDING_FPS = 24;
 
+/**
+ * Which `sort_order` a newly uploaded recording segment should be registered
+ * at, given the segments the event already has.
+ *
+ *   - The same file registered again (the same storage path) is the SAME
+ *     segment — a retried register after a dropped response. It keeps its
+ *     slot, so the recording can never play those five minutes twice.
+ *   - A free index is taken as asked.
+ *   - An index already held by a DIFFERENT file is appended after the last
+ *     segment instead of replacing it.
+ *
+ * That third case is the one the old upsert got wrong in the other direction.
+ * `useRecorder` numbers segments from zero each time the page loads, so a host
+ * who reloads twenty minutes into a webinar starts a second run whose
+ * segment 0 arrives while the first run's segment 0 is already registered.
+ * "Replace" — which is what `onConflict` meant — silently deleted the start of
+ * the webinar. The recorder never retries an upload itself (its header says
+ * why), so a different file at a taken index is never a retry; it is always a
+ * later run, and later belongs after.
+ *
+ * Pure so the rule is pinned in lib/webinars.test.ts. The caller re-reads and
+ * re-asks if its insert then loses a race for the slot (23505).
+ */
+export function recordingSegmentSlot(
+  requested: number,
+  storagePath: string,
+  taken: readonly { sortOrder: number; storagePath: string }[],
+): { kind: "existing"; sortOrder: number } | { kind: "insert"; sortOrder: number } {
+  const same = taken.find((t) => t.storagePath === storagePath);
+  if (same) return { kind: "existing", sortOrder: same.sortOrder };
+  const index = Number.isInteger(requested) && requested >= 0 ? requested : 0;
+  if (!taken.some((t) => t.sortOrder === index)) {
+    return { kind: "insert", sortOrder: index };
+  }
+  const last = taken.reduce((m, t) => Math.max(m, t.sortOrder), -1);
+  return { kind: "insert", sortOrder: last + 1 };
+}
+
 // ---------------------------------------------------------------------------
 // Guest speakers
 // ---------------------------------------------------------------------------

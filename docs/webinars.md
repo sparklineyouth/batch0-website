@@ -129,8 +129,13 @@ version.
 
 ## Recording
 
-Auto-record starts when the host starts broadcasting. There is no button to
-forget.
+Auto-record starts when the host starts broadcasting — once their camera and
+mic have settled, so the first segment is not a second of silence. There is no
+button to forget.
+
+Until September 2026 it never started at all: `useRecorder` returned a
+`start()` that nothing called, and the register step below failed on every
+segment. Both are fixed; there are no recordings from before that.
 
 **It records what the audience saw, not what the camera captured.** The host's
 picture changes mid-webinar — camera, then slides, then back — and a
@@ -142,18 +147,28 @@ picture changes mid-webinar — camera, then slides, then back — and a
 an hour in a tab and pushing it at the end fails three ways at the worst moment:
 memory grows all hour, the upload starts exactly when the host wants to close
 the laptop, and any failure costs the whole recording. Each segment is a
-self-contained file; `event_assets.sort_order` is its index, and a partial
-unique index turns a retry into a replacement so a recovering recorder cannot
-make the recording play the same five minutes twice.
+self-contained file; `event_assets.sort_order` is its index.
+
+Registering a segment reads the event's segments and then inserts
+(`registerRecordingSegment` in `app/admin/events/webinar-actions.ts`, rule in
+`recordingSegmentSlot`). It is not an upsert: the unique index is partial
+(`where kind = 'recording'`), PostgREST cannot repeat that predicate in an
+`ON CONFLICT`, and Postgres refuses with 42P10 — pinned in
+`lib/webinars-migration-db.test.ts`. The same file registered twice keeps its
+slot, so nothing plays twice; a different file at a taken index — a host who
+reloaded, whose recorder numbers from zero again — is appended after the last
+segment rather than written over the start of the webinar.
 
 The cost is a seam of tens of milliseconds every five minutes, because a
 `MediaRecorder` has to be stopped and restarted for each file to carry its own
 header.
 
-### The End button
+### The End button (and Leave)
 
 `await recorder.stop()` runs **before** the media tracks are stopped and before
-the server is told. That ordering is the whole point: `media.stop()` ends the
+the server is told. Leave does the same flush now — it used to stop the tracks
+first, which cut the last segment off any recording whose host left rather
+than ended. That ordering is the whole point: `media.stop()` ends the
 tracks the recorder is reading, so stopping them first truncates the final
 segment — reliably the Q&A, reliably the part people re-watch.
 
@@ -237,6 +252,9 @@ mailing the whole cohort twice on the next run.
 It goes to everyone enrolled, not only to attendees. The people who most need a
 recording are the ones who missed it.
 
+The email and the bell link to `/dashboard/events`. They used to link to
+`/dashboard/events/<id>`, which has no page.
+
 ---
 
 ## Files touched
@@ -268,6 +286,10 @@ recording are the ones who missed it.
   bounded to one segment, but a host with five minutes of dead network loses
   five minutes of the talk. Retry belongs in `onSegment`, where the caller can
   tell a network failure from a rejected file.
+- **Students have no player for auto-recorded segments.** The follow-up says the
+  recording is up, and `/dashboard/events` still only shows the manual
+  `events.recording_url`. The segments are listed (as a count) on the admin
+  event page only.
 - **No PDF/PPTX rendering.** A deck is a download, not an in-page viewer — there
   is no renderer in the repo and adding one would be a new dependency.
 - **Existing webinars are not backfilled** to `type = 'webinar'`. They are still

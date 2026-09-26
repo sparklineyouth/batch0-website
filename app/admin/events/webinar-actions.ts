@@ -9,6 +9,7 @@ import { env } from "@/lib/env";
 import {
   isDeckFile,
   MAX_UPLOAD_BYTES,
+  recordingSegmentSlot,
   type AssetKind,
   type EventAsset,
   type EventSpeaker,
@@ -197,22 +198,10 @@ export async function registerWebinarAsset(
     uploaded_by: userId,
   };
 
-  // A recording segment upserts on (event_id, sort_order) — the partial unique
-  // index in 0084. A recorder that retries a segment after a dropped connection
-  // must REPLACE it, not add a second copy, or the recording plays the same
-  // five minutes twice.
-  const query =
+  const { data, error } =
     input.kind === "recording"
-      ? admin
-          .from("event_assets")
-          .upsert(row, { onConflict: "event_id,sort_order" })
-      : admin.from("event_assets").insert(row);
-
-  const { data, error } = await query
-    .select(
-      "id, event_id, kind, storage_path, filename, mime_type, size_bytes, duration_seconds, sort_order, created_at",
-    )
-    .single();
+      ? await registerRecordingSegment(admin, row)
+      : await admin.from("event_assets").insert(row).select(ASSET_COLUMNS).single();
   if (error) throw new Error(error.message);
 
   // A premiere's length is what positions every viewer's player, so it is
@@ -251,6 +240,76 @@ export async function registerWebinarAsset(
     durationSeconds: r.duration_seconds ?? null,
     sortOrder: r.sort_order ?? 0,
     createdAt: r.created_at,
+  };
+}
+
+const ASSET_COLUMNS =
+  "id, event_id, kind, storage_path, filename, mime_type, size_bytes, duration_seconds, sort_order, created_at";
+
+/**
+ * Register one recording segment without ever writing over another.
+ *
+ * This used to be an upsert with `onConflict: "event_id,sort_order"`, and it
+ * could not work: the unique index it names is PARTIAL (`where kind =
+ * 'recording'`, migration 0084), Postgres only accepts a partial index as an
+ * ON CONFLICT target when the statement repeats the predicate, and PostgREST
+ * has no way to say it. Every segment was refused with 42P10 — pinned in
+ * lib/webinars-migration-db.test.ts.
+ *
+ * So: read the segments the event already has, let `recordingSegmentSlot`
+ * decide (the same file again keeps its row; a free index is taken; an index
+ * held by a different file — a reloaded recorder numbering from zero — goes
+ * after the last one), and insert. The partial unique index still guards the
+ * insert; a 23505 means another segment took the slot between the read and the
+ * write, so read again and ask again. Three rounds is far more than two
+ * five-minute segments can race for.
+ */
+async function registerRecordingSegment(
+  admin: ReturnType<typeof createAdminClient>,
+  row: {
+    event_id: string;
+    storage_path: string;
+    sort_order: number;
+    [k: string]: unknown;
+  },
+): Promise<{ data: any; error: { message: string } | null }> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: taken, error: readErr } = await admin
+      .from("event_assets")
+      .select("sort_order, storage_path")
+      .eq("event_id", row.event_id)
+      .eq("kind", "recording");
+    if (readErr) return { data: null, error: readErr };
+
+    const slot = recordingSegmentSlot(
+      row.sort_order,
+      row.storage_path,
+      (taken ?? []).map((t: any) => ({
+        sortOrder: t.sort_order,
+        storagePath: t.storage_path,
+      })),
+    );
+
+    if (slot.kind === "existing") {
+      return admin
+        .from("event_assets")
+        .select(ASSET_COLUMNS)
+        .eq("event_id", row.event_id)
+        .eq("kind", "recording")
+        .eq("sort_order", slot.sortOrder)
+        .single();
+    }
+
+    const res = await admin
+      .from("event_assets")
+      .insert({ ...row, sort_order: slot.sortOrder })
+      .select(ASSET_COLUMNS)
+      .single();
+    if (!res.error || (res.error as any).code !== "23505") return res;
+  }
+  return {
+    data: null,
+    error: { message: "Couldn't file that recording segment — try again." },
   };
 }
 

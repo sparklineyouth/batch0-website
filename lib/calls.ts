@@ -10,6 +10,12 @@ import type { CallInvite, CallInviteStatus } from "@/lib/live";
  * takes the viewer's id and filters on it. RLS is still the backstop on the
  * table; these filters are what make the backstop never the thing that saves
  * us.
+ *
+ * These return calls in storage order (newest start first) and no more. What
+ * a call IS right now — upcoming, live, over — depends on the clock as much as
+ * on `status`, and is decided by lib/call-lifecycle.ts at the point of display
+ * (`splitCalls` re-sorts Upcoming soonest-first). Filtering by time here would
+ * be a second copy of that rule, frozen at query time.
  */
 
 // Both foreign keys point at `profiles`, so PostgREST can't infer which one an

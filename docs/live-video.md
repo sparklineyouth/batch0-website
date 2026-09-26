@@ -419,6 +419,49 @@ is the one product decision worth making deliberately** — an unscoped picker
 means any investor can cold-invite any student, which is a safeguarding question
 as much as a technical one.
 
+#### Lifecycle — what the clock does to a call
+
+`call_invites.status` records decisions; it does not record time passing.
+`lib/call-lifecycle.ts` derives a call's *phase* from status + `starts_at` +
+`duration_minutes`, using the same join window as the gate (`joinState`):
+
+| Phase | When |
+|---|---|
+| `needs_answer` | invited, window not yet closed |
+| `expired` | invited, window closed unanswered (derived — no status for it) |
+| `upcoming` / `joinable` / `live` | accepted: before the room opens / early window / after the start |
+| `ended` | accepted, window closed — what `completed` looks like before the sweep |
+| `completed` / `declined` / `cancelled` | the stored decision |
+
+Every list splits on it (Upcoming soonest-first, Past newest-first and folded),
+and the server actions enforce it: an expired invite cannot be accepted, and a
+call that is over — or already cancelled/declined/completed — cannot be
+cancelled (which is what used to refund a scholarship credit twice).
+`/api/cron/call-lifecycle` (every 15 min) stamps `completed` on accepted calls
+whose window has closed; the End call button stamps it for calls ended by hand.
+The interview card reads its request *through the call it booked*, so a
+cancelled call is no longer "Interview booked".
+
+#### Recording
+
+Every 1:1 on batch0 Live is recorded, from the **host's** browser only (the
+invitee never records — two recorders would double the file and make the
+student's laptop do the work). `useRecorder` is given the other participant's
+streams (`remotes`): both people side by side with name tags (or the shared
+screen with both faces inset), and both voices mixed through an
+`AudioContext` into one track. Webinars pass no `remotes` and record exactly as
+before.
+
+No schema: segments go to the existing private `webinar-media` bucket at
+`calls/<inviteId>/recording/segment-NNNN-<ts>.webm` (`lib/call-recording.ts`);
+the storage listing *is* the index. Upload URLs come from
+`getCallRecordingUploadToken` (host, accepted-or-completed, window open plus a
+ten-minute grace for the final flush).
+Playback is `/api/calls/<id>/recording/<n>`, which checks the viewer is on the
+call or an admin, then redirects to a ten-minute signed URL; an admin watching
+someone else's call is audited. Both people see a recording notice before they
+join and a Recording indicator in the room.
+
 ---
 
 ## 5. Suggested order

@@ -15,6 +15,7 @@ import {
   normalizePoll,
   pollPercentages,
   premiereState,
+  recordingSegmentSlot,
   AUDIENCE_MODES,
   MAX_CHAT_LENGTH,
   MAX_POLL_OPTIONS,
@@ -408,4 +409,63 @@ test("only the fixed reaction alphabet is accepted", () => {
   assert.equal(isReaction(""), false);
   assert.equal(isReaction(null), false);
   assert.equal(isReaction(42), false);
+});
+
+// ---------------------------------------------------------------------------
+// Recording segments
+// ---------------------------------------------------------------------------
+
+test("a re-registered segment keeps its slot, so nothing plays twice", () => {
+  const taken = [
+    { sortOrder: 0, storagePath: "e/recording/segment-0000-1.webm" },
+    { sortOrder: 1, storagePath: "e/recording/segment-0001-2.webm" },
+  ];
+  assert.deepEqual(
+    recordingSegmentSlot(1, "e/recording/segment-0001-2.webm", taken),
+    { kind: "existing", sortOrder: 1 },
+  );
+});
+
+test("a free index is taken as asked", () => {
+  assert.deepEqual(recordingSegmentSlot(0, "e/recording/a.webm", []), {
+    kind: "insert",
+    sortOrder: 0,
+  });
+  assert.deepEqual(
+    recordingSegmentSlot(2, "e/recording/c.webm", [
+      { sortOrder: 0, storagePath: "e/recording/a.webm" },
+      { sortOrder: 1, storagePath: "e/recording/b.webm" },
+    ]),
+    { kind: "insert", sortOrder: 2 },
+  );
+});
+
+test("a reloaded recorder's segment 0 is appended, never written over the first run", () => {
+  // The host reloaded after three segments; the new run numbers from zero.
+  const taken = [0, 1, 2].map((i) => ({
+    sortOrder: i,
+    storagePath: `e/recording/segment-000${i}-100${i}.webm`,
+  }));
+  assert.deepEqual(
+    recordingSegmentSlot(0, "e/recording/segment-0000-2000.webm", taken),
+    { kind: "insert", sortOrder: 3 },
+  );
+  assert.deepEqual(
+    recordingSegmentSlot(1, "e/recording/segment-0001-2001.webm", [
+      ...taken,
+      { sortOrder: 3, storagePath: "e/recording/segment-0000-2000.webm" },
+    ]),
+    { kind: "insert", sortOrder: 4 },
+  );
+});
+
+test("a nonsense index falls back to zero rather than a NaN sort order", () => {
+  assert.deepEqual(recordingSegmentSlot(Number.NaN, "e/r/a.webm", []), {
+    kind: "insert",
+    sortOrder: 0,
+  });
+  assert.deepEqual(recordingSegmentSlot(-3, "e/r/a.webm", []), {
+    kind: "insert",
+    sortOrder: 0,
+  });
 });
