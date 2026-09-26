@@ -16,7 +16,12 @@ import { FeaturedGuides } from "@/components/featured-guides";
 import { getPublicSiteConfig, metaDescription } from "@/lib/site-config";
 import { activePromo, promoTitle, promoMetaDescription } from "@/lib/promo";
 import { getFeaturedPosts, getAllPostsMeta } from "@/lib/blog";
-import { getActiveChallenge, getPublicWinners } from "@/lib/challenges";
+import {
+  getActiveChallenge,
+  getPublicWinners,
+  prizeHeadline,
+  KIND_LABELS,
+} from "@/lib/challenges";
 import { RegionalPrice } from "@/components/regional-price";
 
 // The homepage snippet is the single highest-leverage string on the site: it
@@ -102,9 +107,10 @@ export default async function Home() {
         <ChallengeMarquee
           challenge={{
             slug: activeChallenge.slug,
+            kindLabel: KIND_LABELS[activeChallenge.kind],
             title: activeChallenge.title,
             marqueeText: activeChallenge.marqueeText,
-            prizeLabel: activeChallenge.prizeLabel,
+            prizeLabel: prizeHeadline(activeChallenge),
             ctaLabel: activeChallenge.ctaLabel,
             ctaHref: activeChallenge.ctaHref,
           }}

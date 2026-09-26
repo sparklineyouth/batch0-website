@@ -147,6 +147,24 @@ function perkList(heading: string, items: string[]): string {
         </table>`;
 }
 
+/**
+ * A deadline as a reader in the US expects it: "Sat, Oct 4, 11:59 PM ET".
+ * Emails render once, server-side, for a reader in an unknown zone; batch0 runs
+ * on Eastern time, so dates say so explicitly rather than silently printing UTC.
+ */
+function etTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  })} ET`;
+}
+
 export const Templates = {
   /**
    * Admin-composed blast email (the /admin/email/blast composer). Body
@@ -1343,5 +1361,96 @@ ${env.siteUrl}/dashboard/billing`,
 It takes a few minutes to apply.
 ${args.note ? `\n${args.note}\n` : ""}
 ${env.siteUrl}/dashboard/scholarships/${args.slug}`,
+  }),
+  /**
+   * Registered for a challenge / hackathon / giveaway. The one email a
+   * registrant gets before the deadline, so it carries the dates and — when
+   * the challenge gates submitting on referrals — says so up front, rather
+   * than letting them find out at the submit button.
+   */
+  challengeRegistered: (args: {
+    name?: string | null;
+    title: string;
+    kindLabel: string;
+    pageUrl: string;
+    submitUrl: string;
+    opensAt: string | null;
+    closesAt: string | null;
+    referralsRequired: number;
+  }) => {
+    const opensLater =
+      !!args.opensAt && new Date(args.opensAt).getTime() > Date.now();
+    const rows = [
+      opensLater ? ["Submissions open", etTime(args.opensAt!)] : null,
+      args.closesAt ? ["Submissions due", etTime(args.closesAt)] : null,
+    ].filter(Boolean) as string[][];
+    return {
+      subject: `You're in: ${args.title}`,
+      html: layout({
+        preheader: args.closesAt
+          ? `Submissions due ${etTime(args.closesAt)}.`
+          : `Submit whenever you're ready.`,
+        body: `
+          <p style="margin:0 0 6px 0;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#ffbb00">${escape(args.kindLabel)}</p>
+          <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">You're registered${args.name ? `, ${escape(args.name.split(" ")[0])}` : ""}.</h1>
+          <p>You're in for <strong>${escape(args.title)}</strong>. Your submission form autosaves, so you can start now and finish later.</p>
+          ${
+            rows.length
+              ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:4px 0 16px 0">${rows
+                  .map(
+                    ([k, v]) =>
+                      `<tr><td style="padding:4px 0;color:#888;font-size:13px">${escape(k)}</td><td align="right" style="padding:4px 0;color:#e7e7e7;font-size:13px">${escape(v)}</td></tr>`,
+                  )
+                  .join("")}</table>`
+              : ""
+          }
+          ${
+            args.referralsRequired > 0
+              ? `<p style="padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">To submit, refer <strong>${args.referralsRequired} friend${args.referralsRequired === 1 ? "" : "s"}</strong>. A friend counts once they make a batch0 account through your link and register for this ${escape(args.kindLabel.toLowerCase())} or apply to a cohort. Your link is on the submission page.</p>`
+              : ""
+          }
+        `,
+        cta: { url: args.submitUrl, label: "Start your submission" },
+        footNote: `Event page: <a href="${args.pageUrl}" style="color:#ffbb00;text-decoration:none">${args.pageUrl}</a>`,
+      }),
+      text: `You're registered for ${args.title}.
+${rows.map(([k, v]) => `${k}: ${v}`).join("\n")}
+${args.referralsRequired > 0 ? `\nTo submit, refer ${args.referralsRequired} friend(s) through your link.\n` : ""}
+Start your submission: ${args.submitUrl}`,
+    };
+  },
+
+  /** Submission receipt. Says plainly whether they can still edit. */
+  challengeSubmitted: (args: {
+    name?: string | null;
+    title: string;
+    pageUrl: string;
+    submitUrl: string;
+    editableUntil: string | null;
+    resultsAt: string | null;
+  }) => ({
+    subject: `Submitted: ${args.title}`,
+    html: layout({
+      preheader: "Your entry is in.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">Your entry is in${args.name ? `, ${escape(args.name.split(" ")[0])}` : ""}.</h1>
+        <p>We've got your submission for <strong>${escape(args.title)}</strong>.</p>
+        ${
+          args.editableUntil
+            ? `<p>You can keep editing it until <strong>${escape(etTime(args.editableUntil))}</strong> — the version you have at the deadline is the one we judge.</p>`
+            : ""
+        }
+        ${
+          args.resultsAt
+            ? `<p>Winners are announced around <strong>${escape(etTime(args.resultsAt))}</strong>. We'll email you either way.</p>`
+            : `<p>We'll email you when winners are picked, either way.</p>`
+        }
+      `,
+      cta: args.editableUntil
+        ? { url: args.submitUrl, label: "View or edit your entry" }
+        : { url: args.pageUrl, label: "Back to the event" },
+    }),
+    text: `Your entry for ${args.title} is in.
+${args.editableUntil ? `You can edit it until ${etTime(args.editableUntil)}: ${args.submitUrl}` : args.pageUrl}`,
   }),
 };

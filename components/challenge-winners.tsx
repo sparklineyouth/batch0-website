@@ -11,10 +11,10 @@ export function ChallengeWinners({ winners }: { winners: PublicWinner[] }) {
     <section className="px-5 py-24 sm:px-6 md:py-32">
       <div className="mx-auto max-w-[1100px]">
         <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
-          Recently funded
+          Recent winners
         </p>
         <h2 className="mt-3 max-w-2xl font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.08] tracking-[-0.02em] text-ink">
-          Students we backed to build their idea
+          Students who built it and won
         </h2>
         <ul className="mt-8 divide-y divide-line border-t border-line">
           {winners.map((w) => (
@@ -40,9 +40,9 @@ export function ChallengeWinners({ winners }: { winners: PublicWinner[] }) {
                   </a>
                 )}
               </div>
-              {w.payoutAmountCents != null && (
-                <span className="shrink-0 font-mono text-sm text-phosphor-ink">
-                  {formatCents(w.payoutAmountCents)}
+              {(w.awardLabel || w.payoutAmountCents != null) && (
+                <span className="shrink-0 text-right font-mono text-sm text-phosphor-ink">
+                  {w.awardLabel ?? formatCents(w.payoutAmountCents)}
                 </span>
               )}
             </li>

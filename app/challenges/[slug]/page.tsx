@@ -1,194 +1,546 @@
 import Link from "next/link";
-// Aliased because this module also exports the `dynamic` route-segment config.
-import nextDynamic from "next/dynamic";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getUser } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getChallengeBySlug, isChallengeOpen, formatCents } from "@/lib/challenges";
+import {
+  ArrowLeft,
+  ExternalLink,
+  MapPin,
+  Trophy,
+  Users,
+  UserPlus,
+} from "lucide-react";
+import Navbar from "@/components/navbar";
+import Footer from "@/components/footer";
+import { getUser, viewerCan } from "@/lib/auth";
+import { getPublicSiteConfig } from "@/lib/site-config";
+import { renderMarkdown } from "@/lib/markdown";
+import { env } from "@/lib/env";
+import {
+  getChallengeBySlug,
+  getEntrantState,
+  getPublicWinners,
+  getReferralProgress,
+  getRegistrationCount,
+  challengePhase,
+  challengeReferralLink,
+  googleCalendarUrl,
+  prizeHeadline,
+  formatCents,
+  KIND_LABELS,
+  type Challenge,
+} from "@/lib/challenges";
+import { ChallengeCover } from "@/components/challenges/cover";
+import { PrizeGrid } from "@/components/challenges/prize-grid";
+import { DateTile, EventWhen, PhasePill } from "@/components/challenges/time";
 import { LocalTime } from "@/components/ui/local-time";
-
-// The entry form (and the supabase-js it pulls in for video uploads) only
-// renders for a signed-in visitor with no existing submission. next/dynamic
-// splits it into its own chunk, so the logged-out top-of-funnel majority —
-// who get SignInPanel instead — never downloads it.
-const ChallengeForm = nextDynamic(() =>
-  import("./challenge-form").then((m) => m.ChallengeForm),
-);
-
-export const metadata = {
-  title: "Weekly Challenge · batch0",
-  // Public to humans (top-of-funnel), but the marketing marquee and the
-  // /challenges index carry the SEO — keep individual entries unindexed.
-  robots: { index: false, follow: false },
-};
+import { RegisterCard } from "./register-card";
 
 export const dynamic = "force-dynamic";
 
-export default async function ChallengePage(
-  props: {
-    params: Promise<{ slug: string }>;
-    searchParams: Promise<{ ref?: string }>;
-  }
-) {
-  const searchParams = await props.searchParams;
-  const params = await props.params;
-  // The challenge itself is public — this is a top-of-funnel page, so a
-  // logged-out visitor must be able to read the whole thing. Only the
-  // entry form needs an account; they get a sign-in CTA in its place.
-  // The two lookups are independent (session cookie vs. challenge row),
-  // so they run concurrently.
-  const [user, challenge] = await Promise.all([
+export async function generateMetadata(props: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await props.params;
+  const c = await getChallengeBySlug(slug);
+  if (!c || c.status === "draft") return { title: "Challenge · batch0" };
+  const description =
+    c.tagline || `${KIND_LABELS[c.kind]} for high schoolers. ${prizeHeadline(c)}`.trim();
+  return {
+    title: `${c.title} · batch0`,
+    description,
+    alternates: { canonical: `/challenges/${c.slug}` },
+    // Shareable (OG) but unindexed: the /challenges index carries the SEO and
+    // an ended challenge shouldn't linger in results.
+    robots: { index: false, follow: true },
+    openGraph: {
+      title: c.title,
+      description,
+      ...(c.coverImageUrl ? { images: [{ url: c.coverImageUrl }] } : {}),
+    },
+  };
+}
+
+export default async function ChallengePage(props: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ ref?: string; join?: string }>;
+}) {
+  const [{ slug }, searchParams] = await Promise.all([
+    props.params,
+    props.searchParams,
+  ]);
+  // The page itself is public — top of funnel. Only the register card varies
+  // by viewer. These lookups are independent, so they run together.
+  const [user, challenge, config] = await Promise.all([
     getUser(),
-    getChallengeBySlug(params.slug),
+    getChallengeBySlug(slug),
+    getPublicSiteConfig(),
   ]);
   if (!challenge) notFound();
+  const isStaff = user ? await viewerCan("challenges.manage") : false;
+  if (challenge.status === "draft" && !isStaff) notFound();
 
-  let existing: { id: string; status: string } | null = null;
-  if (user) {
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from("challenge_submissions")
-      .select("id, status")
-      .eq("challenge_id", challenge.id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    existing = (data as any) ?? null;
-  }
+  const [registrationCount, entrant, winners, description, rules] =
+    await Promise.all([
+      getRegistrationCount(challenge.id),
+      user ? getEntrantState(challenge.id, user.id) : Promise.resolve(null),
+      challenge.winnersPublished
+        ? getPublicWinners({ challengeSlug: challenge.slug, limit: 30 })
+        : Promise.resolve([]),
+      challenge.description.trim()
+        ? renderMarkdown(challenge.description)
+        : Promise.resolve(""),
+      challenge.rules.trim() ? renderMarkdown(challenge.rules) : Promise.resolve(""),
+    ]);
 
-  const open = isChallengeOpen(challenge);
+  const referral =
+    user && entrant?.referralCode
+      ? {
+          link: challengeReferralLink(env.siteUrl, challenge.slug, entrant.referralCode),
+          count:
+            challenge.referralsRequired > 0
+              ? (
+                  await getReferralProgress(
+                    challenge,
+                    user.id,
+                    entrant.referralCode,
+                  )
+                ).count
+              : 0,
+        }
+      : null;
+
+  const pageUrl = `${env.siteUrl}/challenges/${challenge.slug}`;
+  const phase = challengePhase(challenge);
+  const headline = prizeHeadline(challenge);
+  const kindLabel = KIND_LABELS[challenge.kind];
+  const timeline = buildTimeline(challenge);
+  const refCode = (searchParams.ref ?? "").slice(0, 32) || null;
 
   return (
-    // Skip-link target for this route (no layout above it owns a <main>).
-    // Same element and classes as before, promoted from <div>; tabIndex={-1}
-    // makes it focusable so screen readers move the cursor here.
-    <main id="main-content" tabIndex={-1} className="min-h-screen bg-paper">
-      <div className="relative mx-auto max-w-3xl px-5 sm:px-6 py-10 sm:py-16">
-        <Link href="/challenges" className="text-sm text-ink-soft hover:text-ink">
-          ← All challenges
-        </Link>
-
-        <p className="mt-6 font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
-          Weekly Challenge
-        </p>
-        <h1 className="mt-3 font-display text-[30px] sm:text-4xl font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-          {challenge.title}
-        </h1>
-        {challenge.description && (
-          <p className="mt-4 max-w-2xl whitespace-pre-line text-[15px] sm:text-base leading-[1.6] text-ink-soft">
-            {challenge.description}
-          </p>
-        )}
-
-        {(challenge.prizeLabel || challenge.closesAt) && (
-          <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-line py-3 font-mono text-[13px]">
-            {challenge.prizeLabel && (
-              <span className="text-ink">
-                <span className="text-ink-faint">Prize · </span>
-                {challenge.prizeLabel}
-              </span>
-            )}
-            {challenge.closesAt && (
-              <span className="text-ink">
-                <span className="text-ink-faint">Closes · </span>
-                <LocalTime value={challenge.closesAt} mode="datetime-short" />
-              </span>
-            )}
+    <div className="min-h-screen bg-paper">
+      <Navbar cohortLabel={config.derived.cohortLabel || "the next cohort"} />
+      <main id="main-content" tabIndex={-1}>
+        {challenge.status === "draft" && (
+          <div className="border-b border-line bg-wash px-5 py-2 text-center text-[13px] text-ink-soft">
+            Draft preview — only staff can see this page.{" "}
+            <Link href={`/admin/challenges/${challenge.id}/edit`} className="font-medium text-ink underline decoration-phosphor decoration-2">
+              Edit
+            </Link>
           </div>
         )}
+        <div className="mx-auto max-w-[1100px] px-5 pb-24 pt-6 sm:px-6 md:pt-10">
+          <Link
+            href="/challenges"
+            className="inline-flex items-center gap-1.5 text-[13px] text-ink-soft hover:text-ink"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> All challenges
+          </Link>
 
-        <div className="mt-10">
-          {existing ? (
-            <AlreadyApplied />
-          ) : !open ? (
-            <ClosedPanel closesAt={challenge.closesAt} />
-          ) : !user ? (
-            <SignInPanel slug={params.slug} refCode={searchParams.ref ?? null} />
-          ) : (
-            <ChallengeForm
-              challenge={{
-                id: challenge.id,
-                slug: challenge.slug,
-                title: challenge.title,
-                questions: challenge.questions,
-              }}
-              refCode={searchParams.ref ?? null}
-            />
-          )}
+          <div className="mt-6 grid gap-8 md:grid-cols-[minmax(0,330px)_minmax(0,1fr)] md:gap-12">
+            {/* Left rail — cover + host. Sticky on desktop, like an event page. */}
+            <aside className="md:sticky md:top-24 md:self-start">
+              <ChallengeCover
+                title={challenge.title}
+                kind={challenge.kind}
+                imageUrl={challenge.coverImageUrl}
+                theme={challenge.coverTheme}
+                footer={headline}
+              />
+              <div className="mt-5 hidden space-y-4 md:block">
+                <HostBlock />
+                <GoingBlock count={registrationCount} />
+                {config.settings.contactEmail && (
+                  <p className="border-t border-line pt-4 text-[13px] text-ink-faint">
+                    Questions?{" "}
+                    <a
+                      href={`mailto:${config.settings.contactEmail}`}
+                      className="text-ink underline decoration-line underline-offset-2 hover:decoration-phosphor"
+                    >
+                      Email the team
+                    </a>
+                  </p>
+                )}
+              </div>
+            </aside>
+
+            {/* Right column — what, when, where, and the one button. */}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
+                  {kindLabel}
+                </span>
+                <PhasePill challenge={challenge} initial={phase} withCountdown />
+              </div>
+              <h1 className="mt-3 font-display text-[clamp(2.25rem,5.5vw,3.5rem)] leading-[1.02] text-ink [overflow-wrap:anywhere]">
+                {challenge.title}
+              </h1>
+              {challenge.tagline && (
+                <p className="mt-3 max-w-2xl text-[1.0625rem] leading-[1.55] text-ink-soft">
+                  {challenge.tagline}
+                </p>
+              )}
+
+              <div className="mt-6 space-y-4">
+                <MetaRow icon={<DateTile iso={challenge.opensAt ?? challenge.closesAt} />}>
+                  <EventWhen opensAt={challenge.opensAt} closesAt={challenge.closesAt} />
+                </MetaRow>
+                <MetaRow icon={<IconTile><MapPin className="h-5 w-5" /></IconTile>}>
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-medium text-ink">
+                      {challenge.locationUrl ? (
+                        <a
+                          href={challenge.locationUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 hover:underline"
+                        >
+                          {challenge.location} <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : (
+                        challenge.location
+                      )}
+                    </p>
+                    <p className="truncate text-[13px] text-ink-soft">
+                      {/online|remote|virtual/i.test(challenge.location)
+                        ? "Build from anywhere"
+                        : "In person"}
+                    </p>
+                  </div>
+                </MetaRow>
+                {headline && (
+                  <MetaRow icon={<IconTile accent><Trophy className="h-5 w-5" /></IconTile>}>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-medium text-ink">{headline}</p>
+                      <p className="text-[13px] text-ink-soft">
+                        {challenge.prizes.length > 1
+                          ? `${challenge.prizes.length} prizes`
+                          : challenge.prizes.length === 1
+                            ? challenge.prizes[0].place || "Prize"
+                            : "Prize"}
+                      </p>
+                    </div>
+                  </MetaRow>
+                )}
+                {challenge.referralsRequired > 0 && (
+                  <MetaRow icon={<IconTile><UserPlus className="h-5 w-5" /></IconTile>}>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-medium text-ink">
+                        Refer {challenge.referralsRequired} friend
+                        {challenge.referralsRequired === 1 ? "" : "s"} to submit
+                      </p>
+                      <p className="text-[13px] text-ink-soft">
+                        They count once they sign up and register or apply
+                      </p>
+                    </div>
+                  </MetaRow>
+                )}
+              </div>
+
+              <div className="mt-7">
+                <RegisterCard
+                  slug={challenge.slug}
+                  kindLabel={kindLabel}
+                  challenge={{
+                    status: challenge.status,
+                    opensAt: challenge.opensAt,
+                    closesAt: challenge.closesAt,
+                    resultsAt: challenge.resultsAt,
+                    winnersPublished: challenge.winnersPublished,
+                    allowEdits: challenge.allowEdits,
+                    referralsRequired: challenge.referralsRequired,
+                  }}
+                  signedIn={!!user}
+                  viewerName={entrant?.fullName ?? null}
+                  registered={entrant?.registered ?? false}
+                  submission={
+                    entrant?.submission
+                      ? {
+                          status: entrant.submission.status,
+                          submittedAt: entrant.submission.submittedAt,
+                        }
+                      : null
+                  }
+                  referral={referral}
+                  autoJoin={searchParams.join === "1"}
+                  refCode={refCode}
+                  calendarUrl={googleCalendarUrl(challenge, pageUrl)}
+                  icsUrl={`/api/challenges/${challenge.slug}/ics`}
+                />
+              </div>
+
+              {/* Mobile: host + count sit under the button instead of the rail. */}
+              <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 md:hidden">
+                <HostBlock />
+                <GoingBlock count={registrationCount} />
+              </div>
+
+              {winners.length > 0 && (
+                <Section title="Winners">
+                  <ul className="divide-y divide-line border-y border-line">
+                    {winners.map((w) => (
+                      <li key={w.id} className="flex items-baseline justify-between gap-4 py-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-ink">
+                            {w.publicName ?? "A student"}
+                            {w.publicProjectUrl && (
+                              <a
+                                href={w.publicProjectUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-2 text-xs text-phosphor-ink underline decoration-phosphor-ink/30 underline-offset-2"
+                              >
+                                View →
+                              </a>
+                            )}
+                          </p>
+                          {w.publicBlurb && (
+                            <p className="text-sm text-ink-soft">{w.publicBlurb}</p>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-right font-mono text-[12px] text-phosphor-ink">
+                          {w.awardLabel ?? formatCents(w.payoutAmountCents)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {description && (
+                <Section title="About">
+                  <div
+                    className="legal-prose !text-[15px] [&>*:first-child]:!mt-0"
+                    dangerouslySetInnerHTML={{ __html: description }}
+                  />
+                </Section>
+              )}
+
+              {challenge.prizes.length > 0 && (
+                <Section title="Prizes">
+                  <PrizeGrid prizes={challenge.prizes} />
+                </Section>
+              )}
+
+              {timeline.length > 0 && (
+                <Section title="Timeline">
+                  <ol className="relative ml-1.5 border-l border-line">
+                    {timeline.map((t) => (
+                      <li key={t.key} className="relative pb-5 pl-6 last:pb-0">
+                        <span
+                          className={`absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full border ${
+                            t.emphasis
+                              ? "border-phosphor bg-phosphor"
+                              : "border-line bg-paper"
+                          }`}
+                          aria-hidden
+                        />
+                        <p className="font-mono text-[12px] text-ink-faint">
+                          <LocalTime value={t.at} mode="datetime-short" />
+                        </p>
+                        <p className="text-[15px] font-medium text-ink">
+                          {t.url ? (
+                            <a href={t.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                              {t.label} ↗
+                            </a>
+                          ) : (
+                            t.label
+                          )}
+                        </p>
+                        {t.detail && (
+                          <p className="mt-0.5 text-[13px] text-ink-soft">{t.detail}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </Section>
+              )}
+
+              <Section title="How to enter">
+                <ol className="grid gap-3 sm:grid-cols-2">
+                  {howToSteps(challenge).map((s, i) => (
+                    <li key={s.title} className="flex gap-3 rounded-xl border border-line p-3.5">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-phosphor font-mono text-[12px] font-semibold text-on-phosphor">
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[14px] font-semibold text-ink">{s.title}</p>
+                        <p className="mt-0.5 text-[13px] leading-snug text-ink-soft">{s.text}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </Section>
+
+              {rules && (
+                <Section title="Rules">
+                  <div
+                    className="legal-prose !text-[14px] [&>*:first-child]:!mt-0"
+                    dangerouslySetInnerHTML={{ __html: rules }}
+                  />
+                </Section>
+              )}
+
+              {challenge.resources.length > 0 && (
+                <Section title="Resources">
+                  <ul className="divide-y divide-line border-y border-line">
+                    {challenge.resources.map((r) => (
+                      <li key={r.id}>
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group flex items-center justify-between gap-4 py-3"
+                        >
+                          <span className="min-w-0">
+                            <span className="block font-medium text-ink group-hover:underline">
+                              {r.label}
+                            </span>
+                            {r.description && (
+                              <span className="block text-[13px] text-ink-soft">{r.description}</span>
+                            )}
+                          </span>
+                          <ExternalLink className="h-4 w-4 shrink-0 text-ink-faint" />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {challenge.faq.length > 0 && (
+                <Section title="FAQ">
+                  <div className="divide-y divide-line border-y border-line">
+                    {challenge.faq.map((f) => (
+                      <details key={f.id} className="group py-3">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-ink">
+                          {f.q}
+                          <span className="font-mono text-ink-faint group-open:rotate-45">+</span>
+                        </summary>
+                        <p className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-ink-soft">
+                          {f.a}
+                        </p>
+                      </details>
+                    ))}
+                  </div>
+                </Section>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+      <Footer config={config} />
+    </div>
   );
 }
 
-function SignInPanel({
-  slug,
-  refCode,
-}: {
-  slug: string;
-  refCode: string | null;
-}) {
-  const next = `/challenges/${slug}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+type TimelineItem = {
+  key: string;
+  at: string;
+  label: string;
+  detail: string;
+  url: string;
+  emphasis: boolean;
+};
+
+/** The dates the admin set, plus their custom milestones, in order. */
+function buildTimeline(c: Challenge): TimelineItem[] {
+  const items: TimelineItem[] = [];
+  if (c.opensAt)
+    items.push({ key: "opens", at: c.opensAt, label: "Submissions open", detail: "", url: "", emphasis: false });
+  if (c.closesAt)
+    items.push({ key: "closes", at: c.closesAt, label: "Submissions due", detail: "Whatever you've submitted by now is what gets judged.", url: "", emphasis: true });
+  if (c.resultsAt)
+    items.push({ key: "results", at: c.resultsAt, label: "Winners announced", detail: "", url: "", emphasis: false });
+  for (const s of c.schedule) {
+    items.push({ key: s.id, at: s.at, label: s.label, detail: s.detail, url: s.url, emphasis: false });
+  }
+  return items.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+function howToSteps(c: Challenge) {
+  const steps = [
+    {
+      title: "Register",
+      text: "One click with a free batch0 account. You'll get the dates by email.",
+    },
+  ];
+  if (c.referralsRequired > 0) {
+    steps.push({
+      title: `Refer ${c.referralsRequired} friend${c.referralsRequired === 1 ? "" : "s"}`,
+      text: "Share your link. A friend counts once they sign up and register here or apply to a cohort.",
+    });
+  }
+  steps.push({
+    title: c.kind === "giveaway" ? "Enter" : "Build & submit",
+    text: c.allowEdits
+      ? "The form autosaves. Submit when ready — you can edit until the deadline."
+      : "The form autosaves. Submit once you're happy with it.",
+  });
+  steps.push({
+    title: "Winners picked",
+    text: c.resultsAt
+      ? "We review every entry and announce winners on the date above."
+      : "We review every entry and email everyone when winners are picked.",
+  });
+  return steps;
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-phosphor/30 bg-phosphor/5 p-6">
-      <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
-        Ready to enter?
+    <section className="mt-12">
+      <h2 className="mb-4 border-b border-line pb-2 font-mono text-[12px] font-semibold uppercase tracking-[0.18em] text-ink-faint">
+        {title}
       </h2>
-      <p className="mt-2 text-sm text-ink-soft">
-        Entering takes a free account so we can review your submission and
-        reach you if you win. Sign in or create one — you'll land right back
-        on this page.
-      </p>
-      <div className="mt-4">
-        <Link
-          href={`/login?next=${encodeURIComponent(next)}`}
-          className="press inline-flex items-center justify-center rounded-md bg-phosphor px-5 py-3 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
-        >
-          Sign in to enter — it's free
-        </Link>
+      {children}
+    </section>
+  );
+}
+
+function MetaRow({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3.5">
+      {icon}
+      {children}
+    </div>
+  );
+}
+
+function IconTile({ children, accent = false }: { children: React.ReactNode; accent?: boolean }) {
+  return (
+    <div
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md border ${
+        accent ? "border-phosphor bg-phosphor text-on-phosphor" : "border-line bg-paper text-ink-soft"
+      }`}
+      aria-hidden
+    >
+      {children}
+    </div>
+  );
+}
+
+function HostBlock() {
+  return (
+    <div>
+      <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">Hosted by</p>
+      <div className="mt-1.5 flex items-center gap-2">
+        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-phosphor font-display text-[15px] text-on-phosphor">
+          b0
+        </span>
+        <span className="text-[15px] font-medium text-ink">batch0</span>
       </div>
     </div>
   );
 }
 
-function AlreadyApplied() {
+function GoingBlock({ count }: { count: number }) {
+  if (count <= 0) return null;
   return (
-    <div className="rounded-2xl border border-phosphor/30 bg-phosphor/5 p-6">
-      <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
-        You&apos;ve already applied
-      </h2>
-      <p className="mt-2 text-sm text-ink-soft">
-        We&apos;ve got your entry for this challenge. We review funding weekly
-        and will email you.
-      </p>
-      <div className="mt-4">
-        <Link
-          href="/dashboard"
-          className="text-sm text-phosphor-ink hover:underline"
-        >
-          Go to dashboard →
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function ClosedPanel({ closesAt }: { closesAt: string | null }) {
-  return (
-    <div className="rounded-2xl border border-amber-400/40 bg-wash p-6">
-      <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
-        This challenge is closed
-      </h2>
-      <p className="mt-2 text-sm text-ink-soft">
-        {closesAt
-          ? "Applications for this one have wrapped up."
-          : "This challenge isn't open for applications right now."}{" "}
-        Keep an eye on the homepage — a new challenge drops most weeks.
-      </p>
-      <div className="mt-4">
-        <Link href="/challenges" className="text-sm text-phosphor-ink hover:underline">
-          See other challenges →
-        </Link>
-      </div>
-    </div>
+    <p className="flex items-center gap-2 text-[14px] text-ink">
+      <Users className="h-4 w-4 text-ink-faint" />
+      <span>
+        <span className="font-semibold">{count.toLocaleString("en-US")}</span>{" "}
+        <span className="text-ink-soft">registered</span>
+      </span>
+    </p>
   );
 }

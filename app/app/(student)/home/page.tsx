@@ -7,7 +7,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { isoWeekStart, formatWeekRange } from "@/lib/week";
 import { cohortWeek } from "@/lib/cohort-week";
-import { getActiveChallenge } from "@/lib/challenges";
+import { getActiveChallenge, prizeHeadline } from "@/lib/challenges";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { InstallHint } from "@/components/app/install-hint";
 import {
@@ -308,11 +308,17 @@ export default async function StudentAppHome() {
                       label={challenge.title}
                       value={
                         challengeEntry
-                          ? `Entered — ${challengeEntry.status}`
-                          : (challenge.prizeLabel || "Open for entries")
+                          ? challengeEntry.status === "draft"
+                            ? "Draft saved — finish & submit"
+                            : `Entered — ${challengeEntry.status === "funded" ? "winner" : challengeEntry.status}`
+                          : (prizeHeadline(challenge) || "Open for entries")
                       }
-                      href={`/challenges/${challenge.slug}`}
-                      muted={!!challengeEntry}
+                      href={
+                        challengeEntry?.status === "draft"
+                          ? `/challenges/${challenge.slug}/submit`
+                          : `/challenges/${challenge.slug}`
+                      }
+                      muted={!!challengeEntry && challengeEntry.status !== "draft"}
                       right={
                         <div className="flex shrink-0 items-center gap-2">
                           {challenge.closesAt && (
@@ -320,7 +326,7 @@ export default async function StudentAppHome() {
                               <LocalTime value={challenge.closesAt} mode="date" />
                             </span>
                           )}
-                          {challengeEntry ? (
+                          {challengeEntry && challengeEntry.status !== "draft" ? (
                             <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                           ) : (
                             <Circle className="h-4 w-4 text-ink-faint" />
