@@ -11,8 +11,20 @@
 //
 // IMPORT-FREE ON PURPOSE — same contract as lib/question-schema.ts. `npm test`
 // runs this through Node's native type stripping, and the admin editor imports
-// it into a client component to preview an award before saving.
+// it into a client component to preview an award before saving. The one
+// exception is ./scholarship-window.ts, the cohort-date rules eligibility is
+// decided on: it is pure too, reached by a relative `.ts` path, and imports
+// nothing but the equally pure ./cohort-eligibility.ts.
 // ---------------------------------------------------------------------------
+
+import {
+  cohortIsOver,
+  scholarshipCallWindow,
+  scholarshipWindow,
+  type OpenScholarshipWindow,
+  type ScholarshipCohort,
+  type ScholarshipWindow,
+} from "./scholarship-window.ts";
 
 /**
  * What a scholarship is for. Drives copy, the review queue's grouping, and
@@ -473,10 +485,23 @@ export function formatMoney(cents: number): string {
 export type ApplicantState = {
   /** The student's `applications.status`. */
   applicationStatus: string | null;
-  /** True once they hold an `enrollments` row (i.e. tuition is paid/waived). */
+  /**
+   * True when the cohort below is one they're enrolled in (tuition paid or
+   * waived). Not "holds any enrollment row": an old, finished enrollment must
+   * not make a student count as enrolled in the cohort they've just been
+   * accepted into.
+   */
   enrolled: boolean;
-  /** Live scholarship applications this student already holds. */
+  /**
+   * Live scholarship applications that count against them in THIS cohort —
+   * see liveStatusesInCohort.
+   */
   liveStatuses: readonly ScholarshipAppStatus[];
+  /**
+   * The cohort whose dates their window follows (resolveScholarshipCohort in
+   * lib/scholarship-window.ts), or null when they aren't tied to one yet.
+   */
+  cohort: ScholarshipCohort | null;
 };
 
 /**
@@ -495,27 +520,105 @@ export function stageOf(state: ApplicantState): EligibleStage | null {
 }
 
 export type Eligibility =
-  | { ok: true; stage: EligibleStage }
-  | { ok: false; reason: EligibilityDenial; message: string };
+  | {
+      ok: true;
+      stage: EligibleStage;
+      /** Their window, so the card can say "Open until Nov 13 — while Fall 2026 runs". */
+      window: OpenScholarshipWindow;
+    }
+  | {
+      ok: false;
+      reason: EligibilityDenial;
+      message: string;
+      /** Set once the stage was known and the window was worked out. */
+      window?: ScholarshipWindow;
+    };
 
 export type EligibilityDenial =
-  | "closed" // disabled, or outside its window
-  | "full" // every seat taken
+  | "closed" // disabled, or outside the student's cohort window
+  | "full" // every seat in their cohort taken
   | "stage" // not accepted/enrolled yet, or the wrong stage for this one
   | "already_applied" // they have a live application to THIS scholarship
   | "holds_award"; // the one-at-a-time rule
 
-/** The scholarship-side facts eligibility is decided on. */
+/**
+ * The scholarship-side facts eligibility is decided on.
+ *
+ * No dates: when a scholarship is open is decided by the student's cohort
+ * (lib/scholarship-window.ts), not by the scholarship.
+ */
 export type ScholarshipOffer = {
   name: string;
   enabled: boolean;
-  opensAt: string | null;
-  closesAt: string | null;
-  /** null = unlimited. */
+  /** null = unlimited. A limit is PER COHORT. */
   seats: number | null;
+  /** Awards already made on this scholarship in the student's cohort. */
   awardedCount: number;
   eligibleStages: readonly EligibleStage[];
+  /** What it pays out. Only changes how the window is worded. */
+  awardType?: AwardType;
 };
+
+/**
+ * What a student holding an award is told when they try for another. Shared
+ * with the save action's unique-index fallback so the two can't word the
+ * rule differently.
+ */
+export const HOLDS_AWARD_MESSAGE =
+  "You already hold a batch0 scholarship. Students hold one at a time, and another opens up once the cohort yours is for has ended.";
+
+/**
+ * Whether one of a student's scholarship rows counts against them in
+ * `cohortId` for the one-at-a-time rule.
+ *
+ * One scholarship at a time, EXCEPT that a row stops counting once its cohort
+ * is over. Two readings were wrong:
+ *
+ *   - Global (the rule before cohort windows): an award from a finished
+ *     cohort blocks a returning student for good.
+ *   - Strictly per cohort (what 0071's (user_id, cohort_id) index allows):
+ *     a Fall student accepted into Winter, or moved there, could win a Winter
+ *     award while the Fall one was still running. Every perk reader
+ *     (mentor calls, feedback credits, guest tickets, the AI boost) reads a
+ *     single award, and the newer one then hid the older one's perks
+ *     mid-cohort.
+ *
+ * So a row from ANOTHER cohort counts until that cohort has ended (or been
+ * cancelled). By then its calls window has closed, so a second award can't
+ * hide anything the student could still use. `endedCohortIds` holds the
+ * cohorts known to be over (cohortIsOver in ./scholarship-window.ts). A cohort
+ * missing from it, including one whose read failed, keeps counting, because
+ * that is the side that can't hand out two awards at once.
+ *
+ * A row with no cohort on file counts in every cohort: the index can't see it
+ * (NULLs are distinct), so this check is the only thing standing in for it.
+ * So does every row when the student has no cohort to compare against.
+ */
+export function countsAgainstCohort(
+  row: { cohortId: string | null },
+  cohortId: string | null,
+  endedCohortIds: ReadonlySet<string>,
+): boolean {
+  if (row.cohortId === null || cohortId === null || row.cohortId === cohortId) return true;
+  return !endedCohortIds.has(row.cohortId);
+}
+
+/**
+ * The live statuses that count against a student in `cohortId`: the
+ * statuses of the rows countsAgainstCohort keeps. Pending rows follow the
+ * same rule as awards. A pending application in a cohort that is still
+ * running blocks a second one, as it did before cohorts had windows.
+ */
+export function liveStatusesInCohort(
+  rows: readonly { status: ScholarshipAppStatus; cohortId: string | null }[],
+  cohortId: string | null,
+  endedCohortIds: ReadonlySet<string>,
+): ScholarshipAppStatus[] {
+  return rows
+    .filter((r) => countsAgainstCohort(r, cohortId, endedCohortIds))
+    .map((r) => r.status)
+    .filter((s) => (LIVE_SCHOLARSHIP_STATUSES as readonly string[]).includes(s));
+}
 
 /**
  * Whether `state` may apply to `offer` right now.
@@ -524,6 +627,10 @@ export type ScholarshipOffer = {
  * testable and so a server render and its subsequent action agree on the
  * moment. Denials carry applicant-facing copy: this text is shown directly on
  * the dashboard card, so it explains rather than just refusing.
+ *
+ * Stage comes before the window because the window depends on it: an
+ * accepted student's closes at the enrollment deadline, an enrolled one's when
+ * the cohort ends.
  */
 export function checkEligibility(
   offer: ScholarshipOffer,
@@ -533,24 +640,6 @@ export function checkEligibility(
 ): Eligibility {
   if (!offer.enabled) {
     return { ok: false, reason: "closed", message: "This scholarship isn't open right now." };
-  }
-
-  const t = now.getTime();
-  if (offer.opensAt) {
-    const opens = Date.parse(offer.opensAt);
-    if (Number.isFinite(opens) && t < opens) {
-      return { ok: false, reason: "closed", message: "This scholarship hasn't opened yet." };
-    }
-  }
-  if (offer.closesAt) {
-    const closes = Date.parse(offer.closesAt);
-    if (Number.isFinite(closes) && t > closes) {
-      return { ok: false, reason: "closed", message: "Applications for this scholarship have closed." };
-    }
-  }
-
-  if (offer.seats !== null && offer.awardedCount >= offer.seats) {
-    return { ok: false, reason: "full", message: "Every spot on this scholarship has been awarded." };
   }
 
   const stage = stageOf(state);
@@ -572,6 +661,23 @@ export function checkEligibility(
     };
   }
 
+  const win = scholarshipWindow(
+    { cohort: state.cohort, stage, awardType: offer.awardType },
+    now,
+  );
+  if (!win.open) {
+    return { ok: false, reason: "closed", message: win.reason, window: win };
+  }
+
+  if (offer.seats !== null && offer.awardedCount >= offer.seats) {
+    return {
+      ok: false,
+      reason: "full",
+      message: `Every spot on this scholarship has been awarded for ${win.cohortName}.`,
+      window: win,
+    };
+  }
+
   // The one-at-a-time rule. Checked before already_applied so that a student
   // holding an award elsewhere gets told WHY rather than being shown a
   // confusing "you've already applied" on a scholarship they never touched.
@@ -579,7 +685,7 @@ export function checkEligibility(
     return {
       ok: false,
       reason: "holds_award",
-      message: "You already hold a batch0 scholarship — only one per student.",
+      message: HOLDS_AWARD_MESSAGE,
     };
   }
 
@@ -602,7 +708,7 @@ export function checkEligibility(
     };
   }
 
-  return { ok: true, stage };
+  return { ok: true, stage, window: win };
 }
 
 /**
@@ -633,7 +739,7 @@ export function canAward(args: {
     return {
       ok: false,
       error:
-        "This student already holds another scholarship. Revoke that one first — students hold one at a time.",
+        "This student already holds another scholarship, in this cohort or in one that hasn't ended yet. Revoke that one first — students hold one at a time until its cohort is over.",
     };
   }
   if (args.seats !== null && args.awardedCount >= args.seats) {
@@ -675,4 +781,65 @@ export function callCredits(
 /** Whether this award can still book a scholarship-funded mentor call. */
 export function canBookCall(credits: CallCredits): boolean {
   return credits.remaining > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Choosing among a student's awards
+// ---------------------------------------------------------------------------
+
+/**
+ * One award as the perk readers choose between them: its snapshot, plus the
+ * cohort it was made in. null is a legacy row with no cohort on file, or one
+ * whose cohort couldn't be read.
+ */
+export type HeldAwardChoice = {
+  app: { credits: CallCredits; perks: AwardPerks };
+  cohort: ScholarshipCohort | null;
+};
+
+/**
+ * The award whose mentor calls a student books against, from every award
+ * they hold, NEWEST DECIDED FIRST.
+ *
+ * Normally they hold one award (countsAgainstCohort). They can hold two when
+ * an earlier cohort's award sits beside a later one, or when rows predate the
+ * rule. Taking the newest award blindly was the bug: a Winter award with no
+ * calls hid a running Fall award's calls, so the calls card vanished and
+ * requestScholarshipCall said they held no calls. So the pick is the newest
+ * award that can book right now (calls granted, calls left, cohort still
+ * running). If none can, it falls back to the newest award that granted calls
+ * at all, so the card can still say why booking is closed ("all 3 used", "Fall
+ * 2026 has ended") instead of disappearing. null when no award granted calls.
+ */
+export function pickCallAward<T extends HeldAwardChoice>(
+  awards: readonly T[],
+  now: Date,
+): T | null {
+  const withCalls = awards.filter((a) => a.app.credits.granted > 0);
+  return (
+    withCalls.find(
+      (a) =>
+        canBookCall(a.app.credits) && scholarshipCallWindow(a.cohort, now).open,
+    ) ??
+    withCalls[0] ??
+    null
+  );
+}
+
+/**
+ * The award whose perks (feedback credits, guest tickets, the AI boost) a
+ * student is honoured for, from every award they hold, NEWEST DECIDED FIRST.
+ *
+ * The newest award carrying any perk whose cohort isn't over, so a newer
+ * perk-less award can't switch off a running one's perks. If none is running,
+ * the newest award carrying any perk: a perk doesn't lapse just because its
+ * cohort ended, and before a student could hold two awards this read never
+ * looked at the cohort at all. null when no award carries a perk.
+ */
+export function pickPerkAward<T extends HeldAwardChoice>(
+  awards: readonly T[],
+  now: Date,
+): T | null {
+  const withPerks = awards.filter((a) => hasAnyPerk(a.app.perks));
+  return withPerks.find((a) => !cohortIsOver(a.cohort, now)) ?? withPerks[0] ?? null;
 }

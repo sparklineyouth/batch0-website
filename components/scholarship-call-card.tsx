@@ -13,7 +13,26 @@ export type ScholarshipCallState = {
   remaining: number;
   /** True when a request is already waiting on the team. */
   hasOpenRequest: boolean;
+  /**
+   * Set once the award's cohort is over — the calls were for that cohort, so
+   * the card explains instead of offering a booking. Null while it runs.
+   */
+  closedReason?: string | null;
+  /** The last instant a call can be proposed for (ISO): the end of the cohort's last day. */
+  bookableUntil?: string | null;
+  /** The same, as people read it: "Nov 13". */
+  bookableUntilLabel?: string | null;
+  cohortName?: string | null;
 };
+
+/** An ISO instant as a datetime-local value in the browser's own zone, for `max`. */
+function toLocalInput(iso: string | null | undefined): string | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 /**
  * Book a mentor call funded by a learner's scholarship.
@@ -34,6 +53,9 @@ export function ScholarshipCallCard({ state }: { state: ScholarshipCallState }) 
   const [pending, start] = useTransition();
 
   const used = state.granted - state.remaining;
+  // Rendered only after the student opens the form, which is client-side, so
+  // the browser's own zone is the right one for the picker's ceiling.
+  const maxLocal = toLocalInput(state.bookableUntil);
 
   function submit() {
     setError(undefined);
@@ -79,7 +101,12 @@ export function ScholarshipCallCard({ state }: { state: ScholarshipCallState }) 
         in the program.
       </p>
 
-      {state.hasOpenRequest ? (
+      {state.closedReason ? (
+        <p className="mt-3 text-sm text-ink-soft">
+          {state.closedReason} Regular office hours and the team are still
+          there — nothing about this closes a door.
+        </p>
+      ) : state.hasOpenRequest ? (
         <p className="mt-3 text-sm text-ink-soft">
           You've got a request waiting on the team. Once they book it, you can
           ask for the next one.
@@ -95,6 +122,13 @@ export function ScholarshipCallCard({ state }: { state: ScholarshipCallState }) 
           <p className="mt-2 text-xs text-ink-faint">
             Tell us roughly when, and what you want to dig into. The more
             specific the topic, the more useful the call.
+            {state.bookableUntilLabel && (
+              <>
+                {" "}
+                Book one for any time up to {state.bookableUntilLabel}
+                {state.cohortName ? `, while ${state.cohortName} runs` : ""}.
+              </>
+            )}
           </p>
         </div>
       ) : (
@@ -107,6 +141,7 @@ export function ScholarshipCallCard({ state }: { state: ScholarshipCallState }) 
               <Input
                 id="sc-preferred"
                 type="datetime-local"
+                max={maxLocal}
                 value={preferredAt}
                 onChange={(e) => setPreferredAt(e.target.value)}
               />
@@ -116,6 +151,7 @@ export function ScholarshipCallCard({ state }: { state: ScholarshipCallState }) 
               <Input
                 id="sc-alt"
                 type="datetime-local"
+                max={maxLocal}
                 value={altAt}
                 onChange={(e) => setAltAt(e.target.value)}
               />

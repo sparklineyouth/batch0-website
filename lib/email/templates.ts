@@ -2,6 +2,7 @@ import { env } from "@/lib/env";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { emailLayout as layout, escapeEmail as escape } from "@/lib/email/layout";
 import { formatTicketAmount as fmtTicketMoney } from "@/lib/demo-day-ticket-input";
+import { formatEasternDateTime } from "@/lib/call-lifecycle";
 
 // The shell and the escaper live in lib/email/layout.ts so the compiled
 // templates below and the admin-authored ones in `email_templates` render
@@ -709,9 +710,12 @@ One account, one pass — the code stops working the moment it's claimed.`,
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">A 1:1 call invite</h1>
         <p><strong>${escape(args.hostName)}</strong> would like ${args.durationMinutes} minutes with you.</p>
         ${args.topic ? `<p style="margin:12px 0">About: <strong>${escape(args.topic)}</strong></p>` : ""}
-        <p style="margin:12px 0">Proposed for <strong>${new Date(
-          args.startsAt,
-        ).toUTCString()}</strong>. Open your calls to see it in your own timezone.</p>
+        <p style="margin:12px 0">Proposed for <strong>${escape(
+          // Eastern, with the zone named — not toUTCString(), which read as
+          // Saturday evening for a call that was Saturday afternoon in New
+          // York. See formatEasternDateTime.
+          formatEasternDateTime(args.startsAt) ?? args.startsAt,
+        )}</strong>. Open your calls to see it in your own timezone.</p>
         <p style="color:#8b949e;font-size:13px">You can accept or decline — declining is a normal answer, and the host is told either way.</p>
       `,
       cta: { url: `${env.siteUrl}/dashboard/calls`, label: "Accept or decline" },

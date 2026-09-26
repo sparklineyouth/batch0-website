@@ -1,6 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAllRoles } from "@/lib/roles";
+import type { CallTiming } from "@/lib/call-lifecycle";
+import type { CallInviteStatus } from "@/lib/live";
 
 /**
  * Reads for student-initiated "getting to know you" interview requests
@@ -31,6 +33,17 @@ export type InterviewRequest = {
   note: string | null;
   status: InterviewRequestStatus;
   callInviteId: string | null;
+  /**
+   * The call this request booked, as lib/call-lifecycle.ts reads it — null
+   * until it is scheduled, or if the call was deleted.
+   *
+   * Carried on the request because the request's own status stops at
+   * `scheduled` forever: whether that call was then cancelled, declined, or
+   * has already happened is only knowable from the call, and a card that
+   * says "Interview booked" without looking is how a student ended up being
+   * told a cancelled interview was on the calendar.
+   */
+  call: CallTiming | null;
   createdAt: string;
 };
 
@@ -38,7 +51,8 @@ const SELECT = `
   id, student_id, cohort_id, preferred_at, alt_at, note, status,
   call_invite_id, created_at,
   student:profiles!interview_requests_student_id_fkey(full_name, email),
-  cohort:cohorts(name)
+  cohort:cohorts(name),
+  call:call_invites!interview_requests_call_invite_id_fkey(status, starts_at, duration_minutes)
 `;
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -48,6 +62,7 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 function toRequest(row: any): InterviewRequest {
   const student = one<any>(row.student);
   const cohort = one<any>(row.cohort);
+  const call = one<any>(row.call);
   return {
     id: row.id,
     studentId: row.student_id,
@@ -59,6 +74,13 @@ function toRequest(row: any): InterviewRequest {
     note: row.note,
     status: row.status as InterviewRequestStatus,
     callInviteId: row.call_invite_id,
+    call: call
+      ? {
+          status: call.status as CallInviteStatus,
+          startsAt: call.starts_at,
+          durationMinutes: call.duration_minutes,
+        }
+      : null,
     createdAt: row.created_at,
   };
 }
@@ -71,6 +93,11 @@ function toRequest(row: any): InterviewRequest {
  * history and doesn't block a fresh ask, so it isn't returned here; the card
  * falls back to the compose state, which is what a student who was turned down
  * should see.
+ *
+ * "Scheduled" is not the end of the story, though: the booked call may since
+ * have been cancelled, declined, or already happened. Callers read that
+ * through `interviewStage` (lib/call-lifecycle.ts) off the embedded `call`,
+ * never off `status` alone.
  */
 export async function getInterviewRequestForStudent(
   studentId: string,

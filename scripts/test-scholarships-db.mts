@@ -392,6 +392,48 @@ test("a student can hold an award in a second cohort", async () => {
   assert.equal(r.rows[0].n, 2);
 });
 
+test("moving a student's award into a cohort where they already hold one is refused", async () => {
+  // moveToCohort restamps a moved student's live rows with the new cohort
+  // (app/admin/students/[id]/actions.ts) and relies on this index to refuse
+  // the one move it must never make: two awards in one cohort. Pending rows
+  // aren't in the index, so they move freely.
+  const user = await newProfile("moved@example.com");
+  const fall = await newCohort("Fall (move)");
+  const winter = await newCohort("Winter (move)");
+  const a = await newScholarship({ slug: "move-a" });
+  const b = await newScholarship({ slug: "move-b" });
+  const c = await newScholarship({ slug: "move-c" });
+  await q(
+    `insert into public.scholarship_applications (scholarship_id, user_id, cohort_id, status)
+     values ($1,$2,$3,'awarded'), ($4,$2,$5,'awarded'), ($6,$2,$3,'submitted')`,
+    [a, user, fall, b, winter, c],
+  );
+
+  const restamp = `update public.scholarship_applications set cohort_id = $1
+     where user_id = $2 and cohort_id = $3
+       and status in ('draft','submitted','under_review','awarded')`;
+  const msg = await fails(() => q(restamp, [winter, user, fall]));
+  assert.match(msg, /duplicate key|unique/i);
+  // The statement is atomic: the pending row didn't move without the award.
+  const stayed = await q<{ n: number }>(
+    "select count(*)::int as n from public.scholarship_applications where user_id = $1 and cohort_id = $2",
+    [user, fall],
+  );
+  assert.equal(stayed.rows[0].n, 2);
+
+  // With the Winter award revoked, the whole set moves.
+  await q(
+    "update public.scholarship_applications set status = 'declined' where scholarship_id = $1 and user_id = $2",
+    [b, user],
+  );
+  await q(restamp, [winter, user, fall]);
+  const moved = await q<{ n: number }>(
+    "select count(*)::int as n from public.scholarship_applications where user_id = $1 and cohort_id = $2 and status <> 'declined'",
+    [user, winter],
+  );
+  assert.equal(moved.rows[0].n, 2);
+});
+
 test("status and fulfillment only accept their documented values", async () => {
   const user = await newProfile("bogus@example.com");
   const s = await newScholarship({ slug: "bogus" });

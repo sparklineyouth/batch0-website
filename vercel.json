@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/webinar-followups",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/call-lifecycle",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

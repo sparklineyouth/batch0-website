@@ -23,6 +23,11 @@ import {
   fulfillmentFor,
   hasAnyPerk,
   hasMoney,
+  liveStatusesInCohort,
+  pickCallAward,
+  pickPerkAward,
+  HOLDS_AWARD_MESSAGE,
+  LIVE_SCHOLARSHIP_STATUSES,
   normalizeCents,
   normalizeMentorCalls,
   normalizePercent,
@@ -40,6 +45,15 @@ import {
   type ScholarshipKind,
   type ScholarshipOffer,
 } from "@/lib/scholarship-award";
+import {
+  cohortIsOver,
+  resolveScholarshipCohort,
+  scholarshipCallWindow,
+  scholarshipWindow,
+  type CallWindow,
+  type CohortCandidate,
+  type ScholarshipCohort,
+} from "@/lib/scholarship-window";
 import { mintTicketToken, getDemoDayDetails } from "@/lib/demo-day-tickets";
 import { normalizeTicketEmail, TICKET_NAME_MAX } from "@/lib/demo-day-ticket-input";
 
@@ -87,9 +101,8 @@ export type Scholarship = {
   tagline: string | null;
   description: string | null;
   terms: AwardTerms;
+  /** Per cohort: a limit of 5 means 5 awards in each cohort. null = unlimited. */
   seats: number | null;
-  opensAt: string | null;
-  closesAt: string | null;
   eligibleStages: EligibleStage[];
   questions: CustomQuestion[];
   enabled: boolean;
@@ -184,8 +197,10 @@ export function mapScholarship(row: Record<string, any>): Scholarship {
       }),
     },
     seats: typeof row.seats === "number" ? row.seats : null,
-    opensAt: row.opens_at ?? null,
-    closesAt: row.closes_at ?? null,
+    // opens_at / closes_at are deliberately NOT read. When a student may apply
+    // is decided by their cohort (lib/scholarship-window.ts); the columns stay
+    // in the table only because dropping them needs a migration, and the
+    // admin form now saves them as null.
     eligibleStages: asStages(row.eligible_stages),
     questions: normalizeQuestions(row.questions),
     enabled: row.enabled !== false,
@@ -318,25 +333,176 @@ export async function getScholarshipById(
   return mapScholarship(data);
 }
 
+/** Awards made: scholarship id → cohort id (or NO_COHORT) → count. */
+export type AwardedCounts = Map<string, Map<string, number>>;
+
+const NO_COHORT = "none";
+
 /**
- * How many awards each scholarship has handed out.
+ * Awards handed out, per scholarship and per cohort.
  *
- * One grouped read rather than a count per card: the dashboard renders every
- * open scholarship at once, and seats are shown on each.
+ * Per cohort because a seat limit is per cohort: "5 seats" means five awards
+ * in Fall and five more in Winter, not five for the life of the scholarship —
+ * the one-global-count reading meant a scholarship filled up once and then sat
+ * full, cohort after cohort. Rows with no cohort on file count under their own
+ * key (NO_COHORT), which only ever matches another cohortless row.
+ *
+ * One read of every awarded row rather than a count per card: the dashboard
+ * renders every open scholarship at once, and seats are shown on each.
  */
-export async function awardedCounts(
+export async function awardedCountsByCohort(
   client: SupabaseClient,
-): Promise<Map<string, number>> {
+): Promise<AwardedCounts> {
   const { data, error } = await client
     .from("scholarship_applications")
-    .select("scholarship_id")
+    .select("scholarship_id, cohort_id")
     .eq("status", "awarded");
-  const out = new Map<string, number>();
+  const out: AwardedCounts = new Map();
   if (error || !data) return out;
-  for (const row of data as Array<{ scholarship_id: string }>) {
-    out.set(row.scholarship_id, (out.get(row.scholarship_id) ?? 0) + 1);
+  for (const row of data as Array<{ scholarship_id: string; cohort_id: string | null }>) {
+    const perCohort = out.get(row.scholarship_id) ?? new Map<string, number>();
+    const key = row.cohort_id ?? NO_COHORT;
+    perCohort.set(key, (perCohort.get(key) ?? 0) + 1);
+    out.set(row.scholarship_id, perCohort);
   }
   return out;
+}
+
+/** Seats taken on one scholarship in one cohort. */
+export function awardedIn(
+  counts: AwardedCounts,
+  scholarshipId: string,
+  cohortId: string | null,
+): number {
+  return counts.get(scholarshipId)?.get(cohortId ?? NO_COHORT) ?? 0;
+}
+
+/** Every award one scholarship has ever made, across cohorts. */
+export function awardedTotal(counts: AwardedCounts, scholarshipId: string): number {
+  let total = 0;
+  for (const n of counts.get(scholarshipId)?.values() ?? []) total += n;
+  return total;
+}
+
+// ---------------------------------------------------------------------------
+// Cohorts, as the scholarship window reads them
+// ---------------------------------------------------------------------------
+
+/**
+ * The cohort columns a scholarship window is decided on. One string, so every
+ * read feeding lib/scholarship-window.ts selects the same thing.
+ */
+const WINDOW_COHORT_COLUMNS =
+  "id, name, status, starts_on, ends_on, applications_close_at, late_entry_until, catch_up_plan";
+
+/** A cohorts row — or a to-one embed, which arrives as an object or a one-element array. */
+function asWindowCohort(raw: unknown): ScholarshipCohort | null {
+  const c = (Array.isArray(raw) ? raw[0] : raw) as Record<string, any> | null | undefined;
+  if (!c || typeof c.id !== "string") return null;
+  return {
+    id: c.id,
+    name: c.name ?? null,
+    status: String(c.status ?? ""),
+    starts_on: c.starts_on ?? null,
+    ends_on: c.ends_on ?? null,
+    applications_close_at: c.applications_close_at ?? null,
+    late_entry_until: c.late_entry_until ?? null,
+    catch_up_plan: c.catch_up_plan ?? null,
+  };
+}
+
+/** One cohort by id, for a window. Null when there's no id or no row. */
+export async function loadWindowCohort(
+  client: SupabaseClient,
+  cohortId: string | null,
+): Promise<ScholarshipCohort | null> {
+  if (!cohortId) return null;
+  const { data, error } = await client
+    .from("cohorts")
+    .select(WINDOW_COHORT_COLUMNS)
+    .eq("id", cohortId)
+    .maybeSingle();
+  if (error) console.error("[scholarships] cohort read failed:", error.message);
+  return asWindowCohort(data);
+}
+
+/**
+ * Several cohorts by id, for windows, in one read. An id with no row (or a
+ * failed read, which is logged) is simply absent from the map.
+ */
+async function loadWindowCohorts(
+  client: SupabaseClient,
+  ids: readonly (string | null)[],
+): Promise<Map<string, ScholarshipCohort>> {
+  const out = new Map<string, ScholarshipCohort>();
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  if (unique.length === 0) return out;
+  const { data, error } = await client
+    .from("cohorts")
+    .select(WINDOW_COHORT_COLUMNS)
+    .in("id", unique);
+  if (error) {
+    console.error("[scholarships] cohorts read failed:", error.message);
+    return out;
+  }
+  for (const raw of data ?? []) {
+    const cohort = asWindowCohort(raw);
+    if (cohort) out.set(cohort.id, cohort);
+  }
+  return out;
+}
+
+/**
+ * The cohorts, among this student's live rows from cohorts OTHER than
+ * `cohortId`, that are over: the set countsAgainstCohort needs. Only those
+ * rows can stop counting, so only their cohorts are read, and nothing is read
+ * at all for the usual student whose rows are all in one cohort.
+ *
+ * A cohort that can't be read is left out, so its rows keep counting. Failing
+ * that way can only keep a student waiting; it can't hand out two awards at
+ * once.
+ */
+export async function endedCohortIdsAmong(
+  client: SupabaseClient,
+  rows: readonly { status: ScholarshipAppStatus; cohortId: string | null }[],
+  cohortId: string | null,
+  now: Date,
+): Promise<Set<string>> {
+  // With no cohort to compare against, every row counts whatever this says.
+  if (!cohortId) return new Set();
+  const ids = rows
+    .filter(
+      (r) =>
+        r.cohortId !== null &&
+        r.cohortId !== cohortId &&
+        LIVE_SCHOLARSHIP_STATUSES.includes(r.status),
+    )
+    .map((r) => r.cohortId);
+  const cohorts = await loadWindowCohorts(client, ids);
+  return new Set(
+    [...cohorts.values()].filter((c) => cohortIsOver(c, now)).map((c) => c.id),
+  );
+}
+
+/**
+ * The cohorts a scholarship can currently be applied in — upcoming or
+ * running, soonest first. The admin list shows each one's window.
+ */
+export async function listLiveCohorts(
+  client: SupabaseClient,
+): Promise<ScholarshipCohort[]> {
+  const { data, error } = await client
+    .from("cohorts")
+    .select(WINDOW_COHORT_COLUMNS)
+    .in("status", ["upcoming", "active"])
+    .order("starts_on", { ascending: true });
+  if (error) {
+    console.error("[scholarships] live cohorts read failed:", error.message);
+    return [];
+  }
+  return (data ?? [])
+    .map(asWindowCohort)
+    .filter((c): c is ScholarshipCohort => !!c);
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +529,10 @@ export async function listApplicationsForUser(
  * Used by checkout and the accepted page. Returns the AWARDED row only —
  * a pending application is worth nothing at the till, and treating it as a
  * discount would let anyone lower their own price by submitting a form.
+ *
+ * Pass `cohortId`. Without it this is just the newest award, and a student can
+ * hold one award per cohort, so the newest is not necessarily the one that
+ * matters. The perk readers choose from listAwardsForUser instead.
  */
 export async function getAwardForUser(
   client: SupabaseClient,
@@ -388,6 +558,53 @@ export async function getAwardForUser(
     app: mapScholarshipApplication(row),
     scholarship: mapScholarship(row.scholarship),
   };
+}
+
+/** One award a student holds, with the cohort it was made in. */
+export type HeldAward = {
+  app: ScholarshipApplication;
+  scholarship: Scholarship;
+  /** null for a legacy row with no cohort on file, or a cohort that couldn't be read. */
+  cohort: ScholarshipCohort | null;
+};
+
+/**
+ * Every award the student holds, newest decided first, each with its cohort.
+ *
+ * What the perk readers choose from (pickCallAward / pickPerkAward in
+ * lib/scholarship-award.ts). getAwardForUser's single newest row was not
+ * enough: a student can hold an award from an earlier cohort beside a later
+ * one, and the newer award must not hide the older one's perks while its
+ * cohort still runs. Fails closed to [] on a read error, which reads as "no
+ * award", the same as getAwardForUser.
+ */
+export async function listAwardsForUser(
+  client: SupabaseClient,
+  userId: string,
+): Promise<HeldAward[]> {
+  const { data, error } = await client
+    .from("scholarship_applications")
+    .select("*, scholarship:scholarships(*)")
+    .eq("user_id", userId)
+    .eq("status", "awarded")
+    .order("decided_at", { ascending: false });
+  if (error) {
+    console.error("[scholarships] awards read failed:", error.message);
+    return [];
+  }
+  const rows = ((data ?? []) as Array<Record<string, any>>).filter((r) => !!r.scholarship);
+  const cohorts = await loadWindowCohorts(
+    client,
+    rows.map((r) => (r.cohort_id as string | null) ?? null),
+  );
+  return rows.map((row) => {
+    const app = mapScholarshipApplication(row);
+    return {
+      app,
+      scholarship: mapScholarship(row.scholarship),
+      cohort: app.cohortId ? cohorts.get(app.cohortId) ?? null : null,
+    };
+  });
 }
 
 /**
@@ -458,69 +675,170 @@ export async function scholarshipDiscountCentsForUser(
 }
 
 /**
+ * The student-side facts eligibility is decided on, plus what a new
+ * scholarship application gets stamped with.
+ */
+export type ApplicantContext = ApplicantState & {
+  /** The batch0 application behind their cohort, when known. */
+  applicationId: string | null;
+  /**
+   * The cohort their window follows: stamped on a scholarship application
+   * they save, and the cohort seats are counted in.
+   */
+  cohortId: string | null;
+  /** Every scholarship application of theirs, newest first. */
+  rows: ScholarshipApplication[];
+  /**
+   * Cohorts of their live rows elsewhere that are over, so those rows no
+   * longer count against them (countsAgainstCohort).
+   */
+  endedCohortIds: ReadonlySet<string>;
+};
+
+/**
  * Assemble the facts lib/scholarship-award.ts needs to decide eligibility.
  *
  * Deliberately returns the raw state rather than a verdict, because the same
  * state answers the question for every scholarship on the page and re-reading
  * it per card would be an N+1 on the dashboard's hot path.
+ *
+ * The cohort is RESOLVED, not picked: every enrollment plus the latest
+ * application's cohort (when it's accepted or paid) go to
+ * resolveScholarshipCohort, which applies the lib/access.ts rule — soonest
+ * cohort not yet started, else the most recently started. The old version read
+ * one enrollment row with no order and no filter, so a student with a
+ * finished enrollment and a new application counted as "enrolled" in whichever
+ * cohort Postgres returned first, and their scholarship row was stamped with
+ * the other one.
  */
 export async function loadApplicantState(
   client: SupabaseClient,
   userId: string,
-): Promise<ApplicantState & { applicationId: string | null; cohortId: string | null }> {
-  const [{ data: app }, { data: enrollment }, apps] = await Promise.all([
+  now: Date = new Date(),
+): Promise<ApplicantContext> {
+  const [appRead, enrollmentRead, rows] = await Promise.all([
     client
       .from("applications")
-      .select("id, status, cohort_id")
+      .select(`id, status, cohort_id, cohort:cohorts(${WINDOW_COHORT_COLUMNS})`)
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
     client
       .from("enrollments")
-      .select("id, cohort_id")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle(),
+      .select(`cohort_id, application_id, cohort:cohorts(${WINDOW_COHORT_COLUMNS})`)
+      .eq("user_id", userId),
     listApplicationsForUser(client, userId),
   ]);
+  // Logged rather than thrown: a failed read resolves to "no cohort", which
+  // closes every window — the safe direction — but it should not be silent.
+  if (appRead.error) console.error("[scholarships] application read failed:", appRead.error.message);
+  if (enrollmentRead.error) console.error("[scholarships] enrollment read failed:", enrollmentRead.error.message);
+  const app = appRead.data as Record<string, any> | null;
 
-  const liveStatuses = apps
-    .map((a) => a.status)
-    .filter(
-      (s): s is ScholarshipAppStatus =>
-        s === "submitted" || s === "under_review" || s === "awarded",
-    );
+  const candidates: CohortCandidate[] = [];
+  for (const e of (enrollmentRead.data ?? []) as Array<Record<string, any>>) {
+    const cohort = asWindowCohort(e.cohort);
+    if (cohort) {
+      candidates.push({ cohort, stage: "enrolled", applicationId: e.application_id ?? null });
+    }
+  }
+  if (app?.cohort_id) {
+    const cohort = asWindowCohort(app.cohort);
+    // The same reading stageOf gives the status: paid/enrolled is enrolled.
+    const stage =
+      app.status === "paid" || app.status === "enrolled"
+        ? "enrolled"
+        : app.status === "accepted"
+          ? "accepted"
+          : null;
+    if (cohort && stage) candidates.push({ cohort, stage, applicationId: app.id });
+  }
+  const resolved = resolveScholarshipCohort(candidates, now);
+  const cohortId = resolved?.cohort.id ?? null;
+  const endedCohortIds = await endedCohortIdsAmong(client, rows, cohortId, now);
 
   return {
-    applicationStatus: (app as any)?.status ?? null,
-    enrolled: !!enrollment,
-    liveStatuses,
-    applicationId: (app as any)?.id ?? null,
-    cohortId: (app as any)?.cohort_id ?? (enrollment as any)?.cohort_id ?? null,
+    applicationStatus: app?.status ?? null,
+    enrolled: resolved?.stage === "enrolled",
+    liveStatuses: liveStatusesInCohort(rows, cohortId, endedCohortIds),
+    cohort: resolved?.cohort ?? null,
+    applicationId: resolved?.applicationId ?? app?.id ?? null,
+    cohortId,
+    rows,
+    endedCohortIds,
   };
 }
 
 /** The offer shape checkEligibility wants, built from a row plus its count. */
 export function offerOf(
   scholarship: Scholarship,
+  /** Awards already made on it in the student's cohort — see awardedIn. */
   awardedCount: number,
 ): ScholarshipOffer {
   return {
     name: scholarship.name,
     enabled: scholarship.enabled,
-    opensAt: scholarship.opensAt,
-    closesAt: scholarship.closesAt,
     seats: scholarship.seats,
     awardedCount,
     eligibleStages: scholarship.eligibleStages,
+    awardType: awardTypeOf(scholarship.terms),
   };
+}
+
+/**
+ * Whether this student may apply to THIS scholarship right now — read once and
+ * decided once for the apply page, the save action and the admin invite, so
+ * the three can never disagree about it.
+ */
+export async function eligibilityForScholarship(
+  client: SupabaseClient,
+  userId: string,
+  scholarship: Scholarship,
+  now: Date,
+): Promise<{
+  eligibility: Eligibility;
+  state: ApplicantContext;
+  /** Their row for this scholarship, if they have one. */
+  existing: ScholarshipApplication | null;
+  /**
+   * That row already stands as an application. A draft they're still editing
+   * doesn't, and neither does one they withdrew or that was declined — those
+   * are reopened in place rather than blocking.
+   */
+  blocking: boolean;
+}> {
+  const [counts, state] = await Promise.all([
+    awardedCountsByCohort(client),
+    loadApplicantState(client, userId, now),
+  ]);
+  const existing = state.rows.find((r) => r.scholarshipId === scholarship.id) ?? null;
+  const blocking =
+    !!existing &&
+    existing.status !== "draft" &&
+    existing.status !== "withdrawn" &&
+    existing.status !== "declined";
+
+  // Their own row for THIS scholarship must not count against them via the
+  // one-at-a-time rule — that rule is about OTHER scholarships.
+  const others = state.rows.filter((r) => r.scholarshipId !== scholarship.id);
+  const eligibility = checkEligibility(
+    offerOf(scholarship, awardedIn(counts, scholarship.id, state.cohortId)),
+    {
+      ...state,
+      liveStatuses: liveStatusesInCohort(others, state.cohortId, state.endedCohortIds),
+    },
+    now,
+    { alreadyAppliedHere: blocking },
+  );
+  return { eligibility, state, existing, blocking };
 }
 
 export type ScholarshipCard = {
   scholarship: Scholarship;
   eligibility: Eligibility;
   mine: ScholarshipApplication | null;
+  /** Awards already made on it in the student's cohort. */
   awardedCount: number;
 };
 
@@ -532,16 +850,16 @@ export async function loadScholarshipCards(
   client: SupabaseClient,
   userId: string,
   now: Date,
-): Promise<{ cards: ScholarshipCard[]; state: Awaited<ReturnType<typeof loadApplicantState>>; missingTable: boolean }> {
+): Promise<{ cards: ScholarshipCard[]; state: ApplicantContext; missingTable: boolean }> {
   const [{ scholarships, missingTable }, counts, state] = await Promise.all([
     listScholarships(client),
-    awardedCounts(client),
-    loadApplicantState(client, userId),
+    awardedCountsByCohort(client),
+    loadApplicantState(client, userId, now),
   ]);
 
   const mineById = new Map<string, ScholarshipApplication>();
-  for (const a of await listApplicationsForUser(client, userId)) {
-    mineById.set(a.scholarshipId, a);
+  for (const a of state.rows) {
+    if (!mineById.has(a.scholarshipId)) mineById.set(a.scholarshipId, a);
   }
 
   const cards = scholarships
@@ -550,7 +868,7 @@ export async function loadScholarshipCards(
     // everyone else.
     .filter((s) => s.enabled || mineById.has(s.id))
     .map((scholarship) => {
-      const awardedCount = counts.get(scholarship.id) ?? 0;
+      const awardedCount = awardedIn(counts, scholarship.id, state.cohortId);
       const mine = mineById.get(scholarship.id) ?? null;
       const alreadyAppliedHere =
         !!mine && mine.status !== "withdrawn" && mine.status !== "declined";
@@ -603,40 +921,15 @@ export async function saveScholarshipApplication(args: {
   const scholarship = await getScholarshipBySlug(admin, args.slug);
   if (!scholarship) return { ok: false, error: "That scholarship doesn't exist." };
 
-  const [counts, state, existingRows] = await Promise.all([
-    awardedCounts(admin),
-    loadApplicantState(admin, args.userId),
-    listApplicationsForUser(admin, args.userId),
-  ]);
-
-  const existing = existingRows.find((r) => r.scholarshipId === scholarship.id) ?? null;
-  const alreadyAppliedHere =
-    !!existing && existing.status !== "withdrawn" && existing.status !== "declined";
-
   // A draft the student is still editing must not be treated as "already
   // applied" against themselves, and neither must a row they're re-opening
-  // after withdrawing. Everything else is a genuine block.
-  const blocking =
-    alreadyAppliedHere && existing?.status !== "draft" ? true : false;
-
-  // Their own live row for THIS scholarship must not count against them via
-  // the one-at-a-time rule — that rule is about OTHER scholarships. Recomputed
-  // from existingRows rather than filtering state.liveStatuses positionally:
-  // that array is itself already filtered, so its indices don't line up with
-  // existingRows and the wrong row would be dropped.
-  const otherLiveStatuses = existingRows
-    .filter((r) => r.scholarshipId !== scholarship.id)
-    .map((r) => r.status)
-    .filter(
-      (s): s is ScholarshipAppStatus =>
-        s === "submitted" || s === "under_review" || s === "awarded",
-    );
-
-  const eligibility = checkEligibility(
-    offerOf(scholarship, counts.get(scholarship.id) ?? 0),
-    { ...state, liveStatuses: otherLiveStatuses },
+  // after withdrawing — eligibilityForScholarship draws that line, the same
+  // one the apply page draws.
+  const { eligibility, state } = await eligibilityForScholarship(
+    admin,
+    args.userId,
+    scholarship,
     now,
-    { alreadyAppliedHere: blocking },
   );
   if (!eligibility.ok) return { ok: false, error: eligibility.message };
 
@@ -673,7 +966,7 @@ export async function saveScholarshipApplication(args: {
     if (/duplicate key|unique constraint/i.test(error.message)) {
       return {
         ok: false,
-        error: "You already hold a batch0 scholarship — only one per student.",
+        error: HOLDS_AWARD_MESSAGE,
       };
     }
     console.error("[scholarships] save failed:", error.message);
@@ -843,11 +1136,22 @@ export type DecisionResult =
 /**
  * How much this student actually paid toward tuition, and how much of it has
  * already come back. Bounds the refund — see awardRefundCents.
+ *
+ * Matched on the award's cohort OR its batch0 application. The application
+ * matters for a student an admin moved to another cohort (moveToCohort): their
+ * award is restamped with the new cohort, but the payment they made keeps the
+ * old one, and the application is the thread between the two. Matching on the
+ * cohort alone would read that student as unpaid, so a money award would
+ * become a checkout discount they can never use, and an award already marked
+ * refund_due could never be refunded. A returning student's payment for an
+ * EARLIER cohort doesn't match either way: it carries its own cohort and its
+ * own application.
  */
 async function tuitionPayment(
   admin: SupabaseClient,
   userId: string,
   cohortId: string | null,
+  applicationId: string | null,
 ): Promise<{
   paymentId: string;
   paymentIntentId: string | null;
@@ -859,7 +1163,11 @@ async function tuitionPayment(
     .select("id, stripe_payment_intent_id, amount_cents, stripe_receipt_url, status")
     .eq("user_id", userId)
     .eq("status", "succeeded");
-  if (cohortId) query = query.eq("cohort_id", cohortId);
+  if (cohortId && applicationId) {
+    query = query.or(`cohort_id.eq.${cohortId},application_id.eq.${applicationId}`);
+  } else if (cohortId) {
+    query = query.eq("cohort_id", cohortId);
+  }
 
   const { data } = await query
     .order("created_at", { ascending: false })
@@ -911,28 +1219,66 @@ export async function awardScholarship(args: {
   }
   const scholarship = mapScholarship(scholarshipRow);
 
-  const [counts, others] = await Promise.all([
-    awardedCounts(admin),
+  const [counts, others, cohort, enrollmentRead] = await Promise.all([
+    awardedCountsByCohort(admin),
     listApplicationsForUser(admin, app.userId),
+    loadWindowCohort(admin, app.cohortId),
+    app.cohortId
+      ? admin
+          .from("enrollments")
+          .select("id")
+          .eq("user_id", app.userId)
+          .eq("cohort_id", app.cohortId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
-  const otherLive = others
-    .filter((o) => o.id !== app.id)
-    .map((o) => o.status)
-    .filter(
-      (s): s is ScholarshipAppStatus =>
-        s === "submitted" || s === "under_review" || s === "awarded",
-    );
+  // One at a time until the other award's cohort is over (see
+  // countsAgainstCohort); seats are per cohort.
+  const otherRows = others.filter((o) => o.id !== app.id);
+  const otherLive = liveStatusesInCohort(
+    otherRows,
+    app.cohortId,
+    await endedCohortIdsAmong(admin, otherRows, app.cohortId, now),
+  );
 
   const guard = canAward({
     status: app.status,
     otherLiveStatuses: otherLive,
     seats: scholarship.seats,
-    awardedCount: counts.get(scholarship.id) ?? 0,
+    awardedCount: awardedIn(counts, scholarship.id, app.cohortId),
   });
   if (!guard.ok) return { ok: false, error: guard.error };
 
-  const payment = await tuitionPayment(admin, app.userId, app.cohortId);
+  const payment = await tuitionPayment(admin, app.userId, app.cohortId, app.applicationId);
   const hasPaid = !!payment && payment.amountCents > 0;
+
+  // The cohort window, checked again at decision time — the same one the
+  // student applied inside, for the stage they're at NOW. An accepted student
+  // who never paid by the enrollment deadline can no longer reach checkout,
+  // so a discount awarded now would be a promise nothing can keep; once the
+  // cohort has ended, neither a refund-for-the-program nor its perks have
+  // anything left to attach to. A row with no cohort has no window at all.
+  if (!cohort) {
+    return {
+      ok: false,
+      error:
+        "This application isn't tied to a cohort, so there are no dates to award it inside — that happens when its cohort was deleted. Decline it and ask the student to apply again; the new application picks up their current cohort.",
+    };
+  }
+  const win = scholarshipWindow(
+    {
+      cohort,
+      stage: enrollmentRead.data || hasPaid ? "enrolled" : "accepted",
+      awardType: awardTypeOf(scholarship.terms),
+    },
+    now,
+  );
+  if (!win.open) {
+    return {
+      ok: false,
+      error: `This can't be awarded any more. ${win.reason} A scholarship follows the dates of the cohort it was applied in.`,
+    };
+  }
 
   // The terms, with any per-student override folded in. An override is a flat
   // cents figure, so it replaces the percentage too — a reviewer typing a
@@ -1458,7 +1804,7 @@ export async function issueScholarshipRefund(args: {
     };
   }
 
-  const payment = await tuitionPayment(admin, app.userId, app.cohortId);
+  const payment = await tuitionPayment(admin, app.userId, app.cohortId, app.applicationId);
   if (!payment) {
     return {
       ok: false,
@@ -1601,14 +1947,37 @@ export async function issueScholarshipRefund(args: {
 // Inviting a student to apply
 // ---------------------------------------------------------------------------
 
+/**
+ * Email a student a nudge to apply.
+ *
+ * Refuses when they couldn't act on it: an invite whose link lands on "you
+ * can't apply to this one" — their cohort's window has closed, they're at the
+ * wrong stage, the seats in their cohort are gone, they already hold one — is
+ * worse than no email. Decided by the same eligibilityForScholarship the apply
+ * page uses, so the invite and the page they land on agree.
+ */
 export async function inviteToScholarship(args: {
   userId: string;
   scholarshipId: string;
   note?: string | null;
+  now?: Date;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const scholarship = await getScholarshipById(admin, args.scholarshipId);
   if (!scholarship) return { ok: false, error: "That scholarship doesn't exist." };
+
+  const { eligibility } = await eligibilityForScholarship(
+    admin,
+    args.userId,
+    scholarship,
+    args.now ?? new Date(),
+  );
+  if (!eligibility.ok) {
+    return {
+      ok: false,
+      error: `They can't apply to this right now, so an invite would land on a dead end. They'd see: "${eligibility.message}"`,
+    };
+  }
 
   const to = await loadRecipient(admin, args.userId);
   if (!to.email) {
@@ -1660,21 +2029,40 @@ export async function inviteToScholarship(args: {
  * The student's live mentor-call balance, or null if they hold no calls award.
  *
  * Read by /dashboard/calls and /dashboard/scholarships to decide whether to
- * offer the scholarship-funded booking path.
+ * offer the scholarship-funded booking path, and by requestScholarshipCall.
+ *
+ * Carries the AWARD's cohort and the call window it implies: the calls are
+ * extra mentor time for that cohort, bookable up to the end of its last day
+ * (scholarshipCallWindow). Read from the award row, not from wherever the
+ * student is now — a Fall award is a Fall perk.
+ *
+ * Which award, when they hold more than one, is pickCallAward's call: the
+ * newest one that can book right now, not simply the newest. A newer award
+ * without calls must not hide a running one's calls.
  */
 export async function callCreditsForUser(
   client: SupabaseClient,
   userId: string,
-): Promise<{ applicationId: string; scholarshipName: string; credits: CallCredits } | null> {
-  const held = await getAwardForUser(client, userId);
-  if (!held) return null;
+  now: Date = new Date(),
+): Promise<{
+  applicationId: string;
+  scholarshipName: string;
+  credits: CallCredits;
+  /** The cohort the award was made in; null on a legacy row with none. */
+  cohortId: string | null;
+  window: CallWindow;
+} | null> {
   // The snapshot decides, not the catalog: a scholarship edited to drop its
-  // calls after the award must not take back calls already granted.
-  if (held.app.credits.granted <= 0) return null;
+  // calls after the award must not take back calls already granted, so the
+  // pick reads each award's own credits.
+  const held = pickCallAward(await listAwardsForUser(client, userId), now);
+  if (!held) return null;
   return {
     applicationId: held.app.id,
     scholarshipName: held.scholarship.name,
     credits: held.app.credits,
+    cohortId: held.app.cohortId,
+    window: scholarshipCallWindow(held.cohort, now),
   };
 }
 
@@ -1698,14 +2086,19 @@ export type HeldPerks = {
  * catalog, for the reason callCreditsForUser gives. Fails closed to null on
  * any error: a perk that can't be read is a perk not granted, never one
  * granted by accident.
+ *
+ * Which award, when they hold more than one, is pickPerkAward's call: the
+ * newest one with perks whose cohort isn't over, so a newer perk-less award
+ * can't switch off a running one's perks.
  */
 export async function scholarshipPerksForUser(
   client: SupabaseClient,
   userId: string,
+  now: Date = new Date(),
 ): Promise<HeldPerks | null> {
   try {
-    const held = await getAwardForUser(client, userId);
-    if (!held || !hasAnyPerk(held.app.perks)) return null;
+    const held = pickPerkAward(await listAwardsForUser(client, userId), now);
+    if (!held) return null;
     return {
       applicationId: held.app.id,
       scholarshipName: held.scholarship.name,

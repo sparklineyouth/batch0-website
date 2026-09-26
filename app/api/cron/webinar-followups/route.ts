@@ -33,7 +33,7 @@ export const maxDuration = 300;
  *  1. The recording is not finished then. Segments upload while the webinar
  *     runs, and the last one is still in flight at the moment the host clicks
  *     away — so a follow-up sent from the End button promises a recording that
- *     is missing its final five minutes.
+ *     is missing its final segment.
  *  2. Hosts do not always press End. They close the laptop. A webinar that
  *     ended by the tab going away has no client left to run anything, and the
  *     students who missed it are exactly the ones the email is for.
@@ -148,7 +148,11 @@ export async function GET(req: Request) {
         ((attended ?? []) as any[]).map((r) => r.user_id),
       );
       const recipients = (enrollments ?? []) as any[];
-      const eventUrl = `${env.siteUrl}/dashboard/events/${ev.id}`;
+      // The events list, not /dashboard/events/<id>: there is no page at that
+      // path (only /<id>/live, which closes with the join window), so both the
+      // email button and the bell linked every recipient to a 404. The list is
+      // the student page that exists, and it is where a past webinar is shown.
+      const eventUrl = `${env.siteUrl}/dashboard/events`;
 
       await notifyMany(
         recipients.map((r) => ({
@@ -158,7 +162,7 @@ export async function GET(req: Request) {
           body: hasRecording
             ? "The recording and the slides are up."
             : "The slides are up.",
-          link: `/dashboard/events/${ev.id}`,
+          link: "/dashboard/events",
         })),
       );
 

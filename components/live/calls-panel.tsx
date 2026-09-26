@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getActionError } from "@/lib/action-error";
 import { InviteForm, type InviteeOption } from "@/components/live/invite-form";
-import { InviteList } from "@/components/live/invite-card";
+import { CallSections } from "@/components/live/invite-card";
 import { createInvite, cancelInvite } from "@/app/calls/actions";
 import type { CallInvite } from "@/lib/live";
 import { Plus } from "lucide-react";
@@ -22,10 +22,16 @@ import { Plus } from "lucide-react";
 export function CallsPanel({
   invites,
   students,
+  now,
+  recordings,
   emptyMessage = "You haven't invited anyone yet.",
 }: {
   invites: CallInvite[];
   students: InviteeOption[];
+  /** The server's render time (ISO) — the clock the Upcoming/Past split starts on. */
+  now: string;
+  /** inviteId → recorded parts, for this host's own past calls. */
+  recordings?: Record<string, number>;
   emptyMessage?: string;
 }) {
   const router = useRouter();
@@ -88,9 +94,11 @@ export function CallsPanel({
         </Button>
       </div>
 
-      <InviteList
+      <CallSections
         invites={invites}
         perspective="host"
+        now={now}
+        recordings={recordings}
         emptyMessage={emptyMessage}
         onCancel={cancel}
         pending={pending}

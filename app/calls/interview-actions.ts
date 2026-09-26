@@ -27,6 +27,11 @@ import { Templates } from "@/lib/email/templates";
  */
 
 const INTERVIEW_TOPIC = "Getting to know you";
+// A learner's-scholarship call rides the same request row and the same action
+// (migration 0071), but it is a mentor call during the cohort, not an
+// onboarding interview — and labelling it "Getting to know you" on both
+// people's calendars told the mentor the wrong thing about why they were there.
+const SCHOLARSHIP_TOPIC = "Scholarship mentor call";
 
 // The interview request card lives on these three surfaces (the calls page,
 // the dashboard home, and the enrolled page), plus the team's queue on
@@ -209,6 +214,12 @@ export async function scheduleInterviewRequest(input: {
     throw new Error("Calls run between 5 and 240 minutes.");
   }
 
+  // Read before the insert so the call carries the right topic. Tolerant (see
+  // lib/scholarships.ts): null on a database where 0071 hasn't run, which is
+  // simply an ordinary interview.
+  const scholarshipAppId = await scholarshipApplicationIdForRequest(admin, req.id);
+  const topic = scholarshipAppId ? SCHOLARSHIP_TOPIC : INTERVIEW_TOPIC;
+
   const { data: invite, error: inviteErr } = await admin
     .from("call_invites")
     .insert({
@@ -216,7 +227,7 @@ export async function scheduleInterviewRequest(input: {
       invitee_id: req.studentId,
       starts_at: startsAt.toISOString(),
       duration_minutes: duration,
-      topic: INTERVIEW_TOPIC,
+      topic,
       status: "invited",
     })
     .select("id")
@@ -257,7 +268,6 @@ export async function scheduleInterviewRequest(input: {
   // Read tolerantly (see lib/scholarships.ts) so this whole block is a no-op on
   // a database where 0071 hasn't run, rather than breaking the ordinary
   // getting-to-know-you interview it shares an action with.
-  const scholarshipAppId = await scholarshipApplicationIdForRequest(admin, req.id);
   if (scholarshipAppId) {
     const spent = await spendCallCredit(admin, scholarshipAppId);
     if (!spent) {
@@ -296,7 +306,9 @@ export async function scheduleInterviewRequest(input: {
     await notify({
       userId: req.studentId,
       type: "call_invited",
-      title: "Your getting-to-know-you interview is booked",
+      title: scholarshipAppId
+        ? "Your scholarship mentor call is booked"
+        : "Your getting-to-know-you interview is booked",
       body: "Open your 1:1 calls to accept the time.",
       link: "/dashboard/calls",
     });
@@ -306,7 +318,7 @@ export async function scheduleInterviewRequest(input: {
         hostName,
         startsAt: startsAt.toISOString(),
         durationMinutes: duration,
-        topic: INTERVIEW_TOPIC,
+        topic,
       });
       await sendEmail({ to: req.studentEmail, subject: t.subject, html: t.html });
     }

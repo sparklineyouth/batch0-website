@@ -263,6 +263,10 @@ export default async function EventLivePage(
     return (
       <BuiltinEventRoom
         eventId={ev.id}
+        // requireUser() above guarantees a signed-in user; the empty string
+        // only satisfies the type, and a viewer never records either way.
+        selfUserId={profile?.id ?? ""}
+        selfName={profile?.full_name || "Host"}
         title={ev.title}
         role={role}
         isStaffHost={isStaffHost}

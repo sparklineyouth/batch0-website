@@ -24,9 +24,16 @@ export function PreJoin({
   onJoin,
   joinLabel = "Join now",
   busy = false,
+  notice,
 }: {
   title: string;
   subtitle?: string;
+  /**
+   * Something the person must see BEFORE the Join button — a 1:1's recording
+   * notice. Rendered above the button, never below it, so joining is the act
+   * of having read it.
+   */
+  notice?: React.ReactNode;
   role: LiveRole;
   onJoin: (opts: { cameraOn: boolean; micOn: boolean }) => void;
   joinLabel?: string;
@@ -99,6 +106,8 @@ export function PreJoin({
             {title}
           </h1>
           {subtitle && <p className="mt-1 text-sm text-ink-soft">{subtitle}</p>}
+
+          {notice}
 
           {blocked && (
             <div className="mt-4 flex gap-2.5 rounded-xl border border-amber-500/40 bg-amber-400/10 p-3">

@@ -419,6 +419,78 @@ is the one product decision worth making deliberately** — an unscoped picker
 means any investor can cold-invite any student, which is a safeguarding question
 as much as a technical one.
 
+#### Lifecycle — what the clock does to a call
+
+`call_invites.status` records decisions; it does not record time passing.
+`lib/call-lifecycle.ts` derives a call's *phase* from status + `starts_at` +
+`duration_minutes`, using the same join window as the gate (`joinState`):
+
+| Phase | When |
+|---|---|
+| `needs_answer` | invited, window not yet closed |
+| `expired` | invited, window closed unanswered (derived — no status for it) |
+| `upcoming` / `joinable` / `live` | accepted: before the room opens / early window / after the start |
+| `ended` | accepted, window closed — what `completed` looks like before the sweep |
+| `completed` / `declined` / `cancelled` | the stored decision |
+
+Every list splits on it (Upcoming soonest-first, Past newest-first and folded),
+and the server actions enforce it: an expired invite cannot be accepted, and an
+accepted call that is over — or anything already cancelled/declined/completed —
+cannot be cancelled (which is what used to refund a scholarship credit twice).
+An invite that *expired* unanswered can still be **withdrawn** by its host
+(Withdraw on the Past card): nobody can decline it any more, and withdrawing is
+what hands back a scholarship credit spent at booking. No notification goes to
+the student for that — they never agreed to the call.
+`/api/cron/call-lifecycle` (every 15 min) stamps `completed` on accepted calls
+whose window has closed, and withdraws expired invites that hold a scholarship
+credit (refunding it once, for the rows that run actually changed). The End
+call button stamps `completed` for calls ended by hand — and is only offered
+once both people have been in the room and the start has come. Before that
+it would have closed the room on a latecomer and marked an interview done that
+never happened; the lone person gets Leave, and an early press that the server
+declines (`{ completed: false }`) is shown as leaving, not as the call ending.
+The interview card reads its request *through the call it booked*, so a
+cancelled call is no longer "Interview booked".
+
+#### Recording
+
+Every 1:1 on batch0 Live is recorded, from the **host's** browser only (the
+invitee never records — two recorders would double the file and make the
+student's laptop do the work). `useRecorder` is given the other participant's
+streams (`remotes`): both people side by side with name tags (or the shared
+screen with both faces inset), and both voices mixed through an
+`AudioContext` into one track. A webinar's elected recorder is given every
+live co-host the same way, so the whole stage is recorded whichever host's
+browser does it (see docs/webinars.md).
+
+No schema: segments go to a dedicated private `call-recordings` bucket at
+`calls/<inviteId>/recording/segment-NNNN-<ts>.webm` (`lib/call-recording.ts`);
+the storage listing *is* the index. Not `webinar-media`: that bucket's
+staff-direct storage policy (`events.manage`, which interns hold) would let
+roles the app never shows a 1:1 recording to download them straight from
+Storage — and these are calls with minors. `call-recordings` has no storage
+policies; only the service role touches it. The app creates it on first use
+(`ensureCallRecordingBucket`) with `public: false` and nothing else: a
+`fileSizeLimit` sent through the Storage API is checked against the project's
+global upload limit and refused if larger (Supabase's default is 50 MB), and a
+MIME allow-list can refuse the recorder's `video/webm;codecs=…` types.
+Segments are two minutes (~19 MB) so they sit well inside that global limit.
+Upload URLs come from `getCallRecordingUploadToken` (host; accepted, completed
+or cancelled; window open plus a ten-minute grace for the final flush). The
+Past list looks for recordings on accepted/completed calls and on calls
+cancelled once their room could have opened (a host who cancels mid-room has
+segments).
+
+The room itself is `/dashboard/calls/<id>/live` for both people, including a
+mentor or investor host who otherwise never sees `/dashboard`: middleware lets
+exactly that path past the `student.dashboard` bounce (`lib/dashboard-gate.ts`),
+the page 404s anyone who is not one of the two, and the dashboard layout
+renders bare chrome for a viewer without `student.dashboard`.
+Playback is `/api/calls/<id>/recording/<n>`, which checks the viewer is on the
+call or an admin, then redirects to a ten-minute signed URL; an admin watching
+someone else's call is audited. Both people see a recording notice before they
+join and a Recording indicator in the room.
+
 ---
 
 ## 5. Suggested order

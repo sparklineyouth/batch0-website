@@ -7,7 +7,8 @@ import { logAudit } from "@/lib/audit";
 import { notifyMany } from "@/lib/notifications";
 import { listInterviewTeamIds } from "@/lib/interview-requests";
 import { runAction, type ActionResult } from "@/lib/action-result";
-import { callCreditsForUser } from "@/lib/scholarships";
+import { callCreditsForUser, loadWindowCohort } from "@/lib/scholarships";
+import { callTimeProblem, scholarshipCallWindow } from "@/lib/scholarship-window";
 
 // ---------------------------------------------------------------------------
 // Booking a mentor call funded by a learner's scholarship.
@@ -27,6 +28,13 @@ import { callCreditsForUser } from "@/lib/scholarships";
 // the call — see scheduleInterviewRequest. A student whose request is never
 // picked up hasn't used anything, and charging them for it would quietly eat a
 // grant they never got the benefit of.
+//
+// THE CALL BELONGS TO THE AWARD'S COHORT. The grant is extra mentor time for
+// the cohort it was awarded in, so a request is refused once that cohort has
+// ended, a proposed time after its last day is refused, and the request row is
+// stamped with the award's cohort rather than whichever cohort the student is
+// tied to today (getStudentAccess picks the soonest upcoming one, which for a
+// student already accepted into the next cohort is not the one paying).
 // ---------------------------------------------------------------------------
 
 export async function requestScholarshipCall(input: {
@@ -48,9 +56,20 @@ export async function requestScholarshipCall(input: {
     }
 
     const admin = createAdminClient();
-    const held = await callCreditsForUser(admin, actor.userId);
+    const now = new Date();
+    const held = await callCreditsForUser(admin, actor.userId, now);
     if (!held) {
       throw new Error("You don't hold a scholarship that includes mentor calls.");
+    }
+    // A legacy award with no cohort on file borrows the student's current one
+    // rather than going unbounded — see scholarshipCallWindow.
+    const cohortId = held.cohortId ?? access.cohortId;
+    const callWindow =
+      held.cohortId || !cohortId
+        ? held.window
+        : scholarshipCallWindow(await loadWindowCohort(admin, cohortId), now);
+    if (!callWindow.open) {
+      throw new Error(callWindow.reason);
     }
     if (held.credits.remaining <= 0) {
       throw new Error(
@@ -62,25 +81,29 @@ export async function requestScholarshipCall(input: {
     if (Number.isNaN(preferredAt.getTime())) {
       throw new Error("That preferred time isn't valid.");
     }
-    if (preferredAt.getTime() < Date.now()) {
+    if (preferredAt.getTime() < now.getTime()) {
       throw new Error("Pick a time in the future.");
     }
+    const preferredProblem = callTimeProblem(preferredAt, callWindow, "preferred");
+    if (preferredProblem) throw new Error(preferredProblem);
     let altAt: Date | null = null;
     if (input.altAt) {
       altAt = new Date(input.altAt);
       if (Number.isNaN(altAt.getTime())) {
         throw new Error("That alternate time isn't valid.");
       }
-      if (altAt.getTime() < Date.now()) {
+      if (altAt.getTime() < now.getTime()) {
         throw new Error("Your alternate time is in the past.");
       }
+      const altProblem = callTimeProblem(altAt, callWindow, "backup");
+      if (altProblem) throw new Error(altProblem);
     }
 
     const { data: created, error } = await admin
       .from("interview_requests")
       .insert({
         student_id: actor.userId,
-        cohort_id: access.cohortId,
+        cohort_id: cohortId,
         preferred_at: preferredAt.toISOString(),
         alt_at: altAt ? altAt.toISOString() : null,
         note: input.note?.trim() || null,
