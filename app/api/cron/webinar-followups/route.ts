@@ -33,7 +33,7 @@ export const maxDuration = 300;
  *  1. The recording is not finished then. Segments upload while the webinar
  *     runs, and the last one is still in flight at the moment the host clicks
  *     away — so a follow-up sent from the End button promises a recording that
- *     is missing its final five minutes.
+ *     is missing its final segment.
  *  2. Hosts do not always press End. They close the laptop. A webinar that
  *     ended by the tab going away has no client left to run anything, and the
  *     students who missed it are exactly the ones the email is for.

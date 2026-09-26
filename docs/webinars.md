@@ -143,11 +143,29 @@ picture changes mid-webinar — camera, then slides, then back — and a
 `use-recorder.ts` composites onto a `<canvas>` and records
 `canvas.captureStream()`, which survives every switch as one continuous track.
 
-**It uploads in ~5-minute segments while the webinar is still running.** Holding
+**It uploads in 2-minute segments while the webinar is still running.** Holding
 an hour in a tab and pushing it at the end fails three ways at the worst moment:
 memory grows all hour, the upload starts exactly when the host wants to close
 the laptop, and any failure costs the whole recording. Each segment is a
-self-contained file; `event_assets.sort_order` is its index.
+self-contained file; `event_assets.sort_order` is its position. Two minutes
+(~19 MB at the recording bitrates) rather than five (~49 MB before VBR
+overshoot) because Supabase's default global upload limit is 50 MB and binds
+every signed upload whatever the bucket says.
+
+**Exactly one host's browser records.** Every host (staff and guest speakers)
+runs the same room, and each recorder captures only its own camera and mic —
+so left alone, every host recorded into the same event and the recording came
+out as alternating slices of different solo feeds. Each host's browser elects
+one recorder from the co-hosts it can see (`electRecorder` in
+`lib/webinars.ts`: staff before guests, then lowest user id; a peer's id is its
+user id, the speaker list is in the page, so every browser agrees). The
+recorder stands down and flushes when someone who outranks it arrives; the
+next in line takes over when it leaves. The server backs this up
+(`recordingRival`): a segment is refused — before its upload is signed, and
+again at registration — when a *different*, higher-ranked host registered a
+segment within two segment lengths and is still in the room
+(`live_participants`). A refusal is returned as a value, and the room stands
+its recorder down for that lease before looking again.
 
 Registering a segment reads the event's segments and then inserts
 (`registerRecordingSegment` in `app/admin/events/webinar-actions.ts`, rule in
@@ -155,11 +173,17 @@ Registering a segment reads the event's segments and then inserts
 (`where kind = 'recording'`), PostgREST cannot repeat that predicate in an
 `ON CONFLICT`, and Postgres refuses with 42P10 — pinned in
 `lib/webinars-migration-db.test.ts`. The same file registered twice keeps its
-slot, so nothing plays twice; a different file at a taken index — a host who
-reloaded, whose recorder numbers from zero again — is appended after the last
-segment rather than written over the start of the webinar.
+slot, so nothing plays twice. Each segment's name carries its **run** (the
+recording tab's mount time) and index — `segment-<run>-<index>-<stamp>.webm` —
+and each run is laid out as its own contiguous block: a slow segment still
+lands in order behind its successors, and a reload (or a second host taking
+over) starts a new block after everything registered instead of filling the
+first run's gaps. Registering a segment never revalidates a path: Next
+re-renders the *current* route on any revalidate, and from inside the live room
+that re-ran the page — which, past the join window, replaced the host's room
+with "This event has ended".
 
-The cost is a seam of tens of milliseconds every five minutes, because a
+The cost is a seam of tens of milliseconds every two minutes, because a
 `MediaRecorder` has to be stopped and restarted for each file to carry its own
 header.
 
@@ -282,9 +306,14 @@ The email and the bell link to `/dashboard/events`. They used to link to
   choppy picture for that stretch; audio is continuous throughout and it
   recovers on return. Holding the frame rate properly would need a Web Worker
   timer or an audio-clock-driven loop.
+- **The elected recorder is chosen by presence, not by capability.** If the
+  host's browser that wins the election cannot record at all (no
+  `MediaRecorder`, no canvas capture), it says so to that host and nobody else
+  records — the other hosts defer to it. The server backstop only ever
+  *refuses* segments; it never asks a second browser to start.
 - **A failed segment upload is dropped, not retried.** That is what keeps memory
-  bounded to one segment, but a host with five minutes of dead network loses
-  five minutes of the talk. Retry belongs in `onSegment`, where the caller can
+  bounded to one segment, but a host with two minutes of dead network loses
+  two minutes of the talk. Retry belongs in `onSegment`, where the caller can
   tell a network failure from a rejected file.
 - **Students have no player for auto-recorded segments.** The follow-up says the
   recording is up, and `/dashboard/events` still only shows the manual

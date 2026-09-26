@@ -16,7 +16,17 @@ import {
   pollPercentages,
   premiereState,
   recordingSegmentSlot,
+  compareRecorders,
+  electRecorder,
+  parseSegmentRun,
+  presentForRecording,
+  recordingRival,
+  webinarSegmentName,
   AUDIENCE_MODES,
+  RECORDER_LEASE_MS,
+  RECORDING_AUDIO_BITRATE,
+  RECORDING_SEGMENT_SECONDS,
+  RECORDING_VIDEO_BITRATE,
   MAX_CHAT_LENGTH,
   MAX_POLL_OPTIONS,
   type AudienceMode,
@@ -468,4 +478,211 @@ test("a nonsense index falls back to zero rather than a NaN sort order", () => {
     kind: "insert",
     sortOrder: 0,
   });
+});
+
+// Stored paths as the live room now writes them: the server appends its own
+// upload stamp to `segment-<run>-<index>.webm`.
+function runPath(run: number, index: number, stamp = run + index): string {
+  return `e/recording/${webinarSegmentName(run, index).replace(".webm", "")}-${stamp}.webm`;
+}
+
+test("a segment path carries its run and index; a pre-run path carries neither", () => {
+  assert.equal(webinarSegmentName(1790000000000, 3), "segment-1790000000000-0003.webm");
+  assert.deepEqual(parseSegmentRun(runPath(1790000000000, 3)), {
+    run: 1790000000000,
+    index: 3,
+  });
+  assert.equal(parseSegmentRun("e/recording/segment-0003-1790000000000.webm"), null);
+  assert.equal(parseSegmentRun("e/recording/a.webm"), null);
+});
+
+test("a reload's segments never fill the gaps an earlier run left", () => {
+  // The reviewer's case: run 1 registers 0 and 1, segment 2's upload fails
+  // (the recorder never retries), segment 3 registers. The host reloads and
+  // run 2 numbers from zero again.
+  const RUN1 = 1000;
+  const RUN2 = 2000;
+  const taken = [
+    { sortOrder: 0, storagePath: runPath(RUN1, 0) },
+    { sortOrder: 1, storagePath: runPath(RUN1, 1) },
+    { sortOrder: 3, storagePath: runPath(RUN1, 3) },
+  ];
+  const register = (run: number, index: number) => {
+    const slot = recordingSegmentSlot(index, runPath(run, index), taken);
+    assert.equal(slot.kind, "insert");
+    taken.push({ sortOrder: slot.sortOrder, storagePath: runPath(run, index) });
+    return slot.sortOrder;
+  };
+  const s0 = register(RUN2, 0);
+  const s1 = register(RUN2, 1);
+  const s2 = register(RUN2, 2);
+  assert.ok(s0 > 3, "run 2 starts after everything run 1 registered");
+  assert.ok(s1 > s0 && s2 > s1, "run 2 plays in its own order");
+  assert.notEqual(s2, 2, "run 2's segment 2 must not land in run 1's gap");
+
+  const order = [...taken]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((t) => parseSegmentRun(t.storagePath));
+  assert.deepEqual(order, [
+    { run: RUN1, index: 0 },
+    { run: RUN1, index: 1 },
+    { run: RUN1, index: 3 },
+    { run: RUN2, index: 0 },
+    { run: RUN2, index: 1 },
+    { run: RUN2, index: 2 },
+  ]);
+});
+
+test("a slow segment from a run still files in order behind its successors", () => {
+  const RUN = 5000;
+  const taken = [
+    { sortOrder: 0, storagePath: runPath(RUN, 0) },
+    { sortOrder: 1, storagePath: runPath(RUN, 1) },
+    { sortOrder: 3, storagePath: runPath(RUN, 3) },
+  ];
+  assert.deepEqual(recordingSegmentSlot(2, runPath(RUN, 2), taken), {
+    kind: "insert",
+    sortOrder: 2,
+  });
+});
+
+test("a new run whose first segment is not index 0 still leaves room for its earlier ones", () => {
+  const taken = [{ sortOrder: 0, storagePath: runPath(1, 0) }];
+  // Run 2's segments 0 and 1 are still uploading when segment 2 registers.
+  const s2 = recordingSegmentSlot(2, runPath(2, 2), taken);
+  assert.deepEqual(s2, { kind: "insert", sortOrder: 3 });
+  taken.push({ sortOrder: 3, storagePath: runPath(2, 2) });
+  assert.deepEqual(recordingSegmentSlot(0, runPath(2, 0), taken), {
+    kind: "insert",
+    sortOrder: 1,
+  });
+});
+
+test("a run's slot held by a different file goes after the last, never over it", () => {
+  const taken = [
+    { sortOrder: 0, storagePath: runPath(1, 0) },
+    // A pre-run file squatting on run 1's next slot.
+    { sortOrder: 1, storagePath: "e/recording/segment-0001-99.webm" },
+  ];
+  assert.deepEqual(recordingSegmentSlot(1, runPath(1, 1), taken), {
+    kind: "insert",
+    sortOrder: 2,
+  });
+});
+
+test("two minutes of recording fits well inside a 50 MB upload limit", () => {
+  // Supabase's default global upload limit binds every signed upload, whatever
+  // the bucket says. Nominal size must leave room for VBR overshoot.
+  const bytes =
+    ((RECORDING_VIDEO_BITRATE + RECORDING_AUDIO_BITRATE) / 8) *
+    RECORDING_SEGMENT_SECONDS;
+  assert.ok(bytes * 2 < 50 * 1024 * 1024, `${bytes} bytes per segment`);
+});
+
+// ---------------------------------------------------------------------------
+// One recorder per webinar
+// ---------------------------------------------------------------------------
+
+test("staff record before guests, and the lowest id breaks a tie", () => {
+  assert.equal(
+    electRecorder([
+      { userId: "a-guest", guest: true },
+      { userId: "z-staff", guest: false },
+      { userId: "m-staff", guest: false },
+    ]),
+    "m-staff",
+  );
+  assert.equal(
+    electRecorder([
+      { userId: "b", guest: true },
+      { userId: "a", guest: true },
+    ]),
+    "a",
+    "a room of guests still records",
+  );
+  assert.equal(electRecorder([]), null);
+  assert.ok(compareRecorders({ userId: "z", guest: false }, { userId: "a", guest: true }) < 0);
+});
+
+test("every browser in the room elects the same recorder", () => {
+  const room = [
+    { userId: "u3", guest: true },
+    { userId: "u2", guest: false },
+    { userId: "u1", guest: false },
+  ];
+  // Each browser sees itself plus the others, in whatever order its
+  // connections came up.
+  const views = [room, [...room].reverse(), [room[1], room[0], room[2]]];
+  const elected = views.map((v) => electRecorder(v));
+  assert.deepEqual(elected, ["u1", "u1", "u1"]);
+});
+
+test("a co-host still connecting counts as present only while settling", () => {
+  assert.equal(presentForRecording("live", false), true);
+  assert.equal(presentForRecording("reconnecting", false), true);
+  assert.equal(presentForRecording("connecting", true), true);
+  assert.equal(presentForRecording("connecting", false), false);
+  assert.equal(presentForRecording("failed", true), false);
+  assert.equal(presentForRecording("idle", true), false);
+});
+
+const NOW = new Date("2026-09-26T18:00:00.000Z");
+const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
+
+test("the server refuses a guest's segment while a present staff host is recording", () => {
+  const guest = { userId: "g", guest: true };
+  const recent = [{ userId: "s", guest: false, at: ago(60_000) }];
+  assert.equal(
+    recordingRival({ caller: guest, recent, present: new Set(["s", "g"]), now: NOW }),
+    "s",
+  );
+});
+
+test("the rightful recorder is never refused by a stub from someone ranked below", () => {
+  // A second host recorded a few seconds before seeing the first, and that
+  // stub registered first. The staff host's segment must still land.
+  const staff = { userId: "s", guest: false };
+  const recent = [{ userId: "g", guest: true, at: ago(5_000) }];
+  assert.equal(
+    recordingRival({ caller: staff, recent, present: null, now: NOW }),
+    null,
+  );
+});
+
+test("a handover works once the old recorder has left or its lease has run out", () => {
+  const guest = { userId: "g", guest: true };
+  const staffRecent = [{ userId: "s", guest: false, at: ago(30_000) }];
+  // Still in the room: refused.
+  assert.equal(
+    recordingRival({ caller: guest, recent: staffRecent, present: new Set(["s"]), now: NOW }),
+    "s",
+  );
+  // Left the room: the guest carries on at once.
+  assert.equal(
+    recordingRival({ caller: guest, recent: staffRecent, present: new Set(["g"]), now: NOW }),
+    null,
+  );
+  // Attendance unreadable: the lease is the only clock, and it runs out.
+  assert.equal(
+    recordingRival({
+      caller: guest,
+      recent: [{ userId: "s", guest: false, at: ago(RECORDER_LEASE_MS + 1) }],
+      present: null,
+      now: NOW,
+    }),
+    null,
+  );
+});
+
+test("a host is never their own rival, so a reload carries straight on", () => {
+  const me = { userId: "s", guest: false };
+  assert.equal(
+    recordingRival({
+      caller: me,
+      recent: [{ userId: "s", guest: false, at: ago(1_000) }],
+      present: null,
+      now: NOW,
+    }),
+    null,
+  );
 });

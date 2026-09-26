@@ -16,9 +16,11 @@ import {
   interviewCardState,
   interviewStage,
   isPastPhase,
+  mayHaveCallRecording,
   proposalsAllPast,
   RECORDING_UPLOAD_GRACE_MINUTES,
   shouldAutoComplete,
+  shouldAutoWithdraw,
   splitCalls,
   type CallPhase,
   type CallTiming,
@@ -115,12 +117,20 @@ test("a past invite can no longer be accepted or declined", () => {
   assert.equal(canRespondToCall(call("accepted"), at(-600)), false);
 });
 
-test("a call can be cancelled until its window closes, and never after", () => {
+test("an accepted call can be cancelled until its window closes, and never after", () => {
   assert.equal(canCancelCall(call("invited"), at(-600)), true);
   assert.equal(canCancelCall(call("accepted"), at(-600)), true);
   assert.equal(canCancelCall(call("accepted"), at(10)), true, "a no-show can still be called off");
   assert.equal(canCancelCall(call("accepted"), at(FIRST_CLOSED)), false);
-  assert.equal(canCancelCall(call("invited"), at(FIRST_CLOSED)), false);
+});
+
+test("an invite that expired unanswered can still be withdrawn, so its credit comes back", () => {
+  // Nobody can decline it any more and it never happened, so withdrawing is
+  // the only path left that hands a scholarship credit back.
+  assert.equal(callPhase(call("invited"), at(FIRST_CLOSED)), "expired");
+  assert.equal(canRespondToCall(call("invited"), at(FIRST_CLOSED)), false);
+  assert.equal(canCancelCall(call("invited"), at(FIRST_CLOSED)), true);
+  assert.equal(canCancelCall(call("invited"), at(FIRST_CLOSED + 60 * 24 * 30)), true);
 });
 
 test("cancelled, declined and completed calls can't be cancelled again (no second refund)", () => {
@@ -157,9 +167,36 @@ test("recording uploads are open from the room opening to a short grace after it
 
 test("the host may finish uploading after the student ends the call, but never for a dead call", () => {
   assert.equal(canUploadCallRecording(call("completed"), at(10)), true);
-  for (const s of ["invited", "declined", "cancelled"] as const) {
+  for (const s of ["invited", "declined"] as const) {
     assert.equal(canUploadCallRecording(call(s), at(10)), false, s);
   }
+});
+
+test("a call cancelled mid-room keeps its last segment, inside the window only", () => {
+  // The host cancels from another tab while sitting in the room; the room
+  // notices and flushes, and that flush must land with the rest.
+  assert.equal(canUploadCallRecording(call("cancelled"), at(10)), true);
+  assert.equal(
+    canUploadCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE - 1)),
+    false,
+  );
+  assert.equal(
+    canUploadCallRecording(call("cancelled"), at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES + 1)),
+    false,
+  );
+});
+
+test("the Past list looks for recordings on calls whose room could have opened", () => {
+  assert.equal(mayHaveCallRecording(call("accepted"), at(FIRST_CLOSED)), true);
+  assert.equal(mayHaveCallRecording(call("completed"), at(FIRST_CLOSED)), true);
+  // Cancelled while the host sat in the room — the ended screen sends them
+  // to Past for it.
+  assert.equal(mayHaveCallRecording(call("cancelled"), at(FIRST_CLOSED)), true);
+  assert.equal(mayHaveCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE)), true);
+  // Cancelled before the room could ever open: nothing to find.
+  assert.equal(mayHaveCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE - 1)), false);
+  assert.equal(mayHaveCallRecording(call("declined"), at(FIRST_CLOSED)), false);
+  assert.equal(mayHaveCallRecording(call("invited"), at(FIRST_CLOSED)), false);
 });
 
 test("the sweep completes accepted calls whose window has closed, and nothing else", () => {
@@ -168,6 +205,14 @@ test("the sweep completes accepted calls whose window has closed, and nothing el
   assert.equal(shouldAutoComplete(call("invited"), at(FIRST_CLOSED)), false);
   assert.equal(shouldAutoComplete(call("completed"), at(FIRST_CLOSED)), false);
   assert.equal(shouldAutoComplete(call("cancelled"), at(FIRST_CLOSED)), false);
+});
+
+test("the sweep withdraws invites that expired unanswered, and nothing else", () => {
+  assert.equal(shouldAutoWithdraw(call("invited"), at(LAST_OPEN)), false);
+  assert.equal(shouldAutoWithdraw(call("invited"), at(FIRST_CLOSED)), true);
+  for (const s of ["accepted", "completed", "declined", "cancelled"] as const) {
+    assert.equal(shouldAutoWithdraw(call(s), at(FIRST_CLOSED)), false, s);
+  }
 });
 
 test("the sweep's prefilter never excludes a call that is due", () => {
@@ -185,6 +230,11 @@ test("the sweep's prefilter never excludes a call that is due", () => {
       startsAt: new Date(latestDueStart).toISOString(),
     });
     assert.equal(shouldAutoComplete(c, now), true, `duration ${duration}`);
+    assert.equal(
+      shouldAutoWithdraw({ ...c, status: "invited" }, now),
+      true,
+      `duration ${duration} (unanswered)`,
+    );
     assert.ok(latestDueStart <= cutoff, `duration ${duration} passes the prefilter`);
   }
 });

@@ -141,3 +141,46 @@ export async function listInvitableStudents(): Promise<InviteeOption[]> {
     teamName: null,
   }));
 }
+
+/**
+ * Hand back the learner's-scholarship credit a call was booked with, if any.
+ *
+ * The credit is spent at SCHEDULE time (scheduleInterviewRequest), so a call
+ * that then never happens — cancelled by the host, declined by the student,
+ * or left unanswered until its time passed — would otherwise silently consume
+ * one of three without the student ever having spoken to anyone.
+ *
+ * Callers invoke this only after THEIR conditional status update actually
+ * changed a row. That is what makes it once-per-call: the update's status
+ * guard lets exactly one transition out of a live status win, so a
+ * double-clicked Cancel, a cancel racing a decline, or the call-lifecycle
+ * sweep withdrawing an invite the host is withdrawing by hand, refunds once
+ * rather than once per request.
+ *
+ * Here rather than in app/calls/actions.ts because the sweep needs it too, and
+ * a helper exported from a "use server" file would itself become a server
+ * action anyone could call with any invite id.
+ *
+ * Best-effort and tolerant: a database where 0071 hasn't run has no such
+ * requests, and a failure here must not undo a cancellation that has already
+ * happened.
+ */
+export async function refundScholarshipCreditFor(
+  admin: ReturnType<typeof createAdminClient>,
+  inviteId: string,
+): Promise<void> {
+  try {
+    const { data: linked } = await admin
+      .from("interview_requests")
+      .select("id, scholarship_application_id")
+      .eq("call_invite_id", inviteId)
+      .maybeSingle();
+    const scholarshipAppId = (linked as any)?.scholarship_application_id ?? null;
+    if (scholarshipAppId) {
+      const { refundCallCredit } = await import("@/lib/scholarships");
+      await refundCallCredit(admin, scholarshipAppId);
+    }
+  } catch (err) {
+    console.error("[calls] scholarship credit refund failed", err);
+  }
+}

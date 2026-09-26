@@ -181,7 +181,7 @@ export function InviteCard({
             <p className="mt-2 text-xs text-ink-faint">
               {perspective === "invitee"
                 ? "This invite's time passed before it was answered."
-                : "They didn't answer before the time passed. Send a new invite if you'd still like to talk."}
+                : "They didn't answer before the time passed. Withdraw it to close it out (a scholarship call's credit goes back to them), and send a new invite if you'd still like to talk."}
             </p>
           )}
 
@@ -237,7 +237,9 @@ export function InviteCard({
                 disabled={pending}
                 onClick={() => onCancel(invite.id)}
               >
-                Cancel
+                {/* An expired invite was never agreed to, so nothing is being
+                    called off — it is being withdrawn (see canCancelCall). */}
+                {phase === "expired" ? "Withdraw" : "Cancel"}
               </Button>
             )}
         </div>
@@ -252,7 +254,7 @@ export function InviteCard({
  * Each part is a link to /api/calls/<id>/recording/<n>, which checks the
  * viewer against the call and only then mints a ten-minute signed URL — so
  * nothing on this page is itself a working link to the file. Parts rather
- * than one file because that is what the recorder writes (five-minute
+ * than one file because that is what the recorder writes (two-minute
  * segments, so a crash costs one and not the call), and stitching them
  * server-side is a transcode this change does not take on.
  */
@@ -405,12 +407,16 @@ export function CallSections({
         pending={pending}
       />
       <PastCalls count={past.length} className="mt-8">
+        {/* Cancel is wired here too, for the one past card that offers it:
+            an invite that expired unanswered, which the host can withdraw
+            (canCancelCall decides; every other past card shows no button). */}
         <InviteList
           invites={past}
           perspective={perspective}
           now={now}
           recordings={recordings}
           emptyMessage=""
+          onCancel={onCancel}
           pending={pending}
         />
       </PastCalls>

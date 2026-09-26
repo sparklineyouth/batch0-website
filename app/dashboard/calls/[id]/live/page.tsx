@@ -105,6 +105,7 @@ export default async function CallLivePage(
     return (
       <BuiltinCallRoom
         inviteId={invite.id}
+        startsAt={invite.startsAt}
         title={callTitle}
         isHost={isHost}
         selfName={

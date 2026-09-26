@@ -18,7 +18,7 @@ import {
  *
  * The webinar recorder's three-step dance (see app/admin/events/
  * webinar-actions.ts) minus the third step: this mints a signed upload URL,
- * the browser PUTs the segment straight to Storage — a five-minute segment is
+ * the browser PUTs the segment straight to Storage — a two-minute segment is
  * tens of megabytes, far over a server action's 1 MB body limit — and that is
  * the end of it. There is no row to register, because for a call the file
  * name IS the record (lib/call-recording.ts), and the path is built here from
@@ -31,15 +31,16 @@ import {
  *     but if both recorded, the call would be on tape twice with two sets of
  *     segment numbers, and the student's laptop would be doing the work for a
  *     recording they did not ask to make;
- *   - the call is accepted — or completed, and the window is open plus a
- *     short grace (canUploadCallRecording). Those two widenings over
- *     resolveRoom are the whole of the difference, and both exist for the
+ *   - the call is accepted — or completed, or cancelled — and the window is
+ *     open plus a short grace (canUploadCallRecording). Those widenings over
+ *     resolveRoom are the whole of the difference, and all exist for the
  *     LAST segment: when the student presses End call the row flips to
- *     completed while the host's recorder is still flushing, and when a call
+ *     completed while the host's recorder is still flushing, when the host
+ *     cancels from another tab the room notices and flushes, and when a call
  *     runs to the end of its window the room closes itself and flushes just
- *     after the window has shut. Refusing either upload cut the end off the
- *     conversation. A token for a call next week, or last week, is still an
- *     upload slot nobody holds.
+ *     after the window has shut. Refusing any of those uploads cut the end
+ *     off what was recorded. A token for a call next week, or last week, is
+ *     still an upload slot nobody holds.
  */
 export async function getCallRecordingUploadToken(
   inviteId: string,

@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { refundScholarshipCreditFor } from "@/lib/calls";
 import type { CallInviteStatus } from "@/lib/live";
 import {
   callPhase,
@@ -51,44 +52,6 @@ function timingOf(row: any): CallTiming {
     startsAt: row.starts_at,
     durationMinutes: row.duration_minutes,
   };
-}
-
-/**
- * Hand back the learner's-scholarship credit a call was booked with, if any.
- *
- * The credit is spent at SCHEDULE time (scheduleInterviewRequest), so a call
- * that then never happens — cancelled by the host, or declined by the student —
- * would otherwise silently consume one of three without the student ever
- * having spoken to anyone.
- *
- * Callers invoke this only after THEIR conditional status update actually
- * changed a row. That is what makes it once-per-call: the update's
- * `.in("status", …)` guard lets exactly one transition out of a live status
- * win, so a double-clicked Cancel, or a cancel racing a decline, refunds once
- * rather than once per request.
- *
- * Best-effort and tolerant: a database where 0071 hasn't run has no such
- * requests, and a failure here must not undo a cancellation that has already
- * happened.
- */
-async function refundScholarshipCreditFor(
-  admin: ReturnType<typeof createAdminClient>,
-  inviteId: string,
-) {
-  try {
-    const { data: linked } = await admin
-      .from("interview_requests")
-      .select("id, scholarship_application_id")
-      .eq("call_invite_id", inviteId)
-      .maybeSingle();
-    const scholarshipAppId = (linked as any)?.scholarship_application_id ?? null;
-    if (scholarshipAppId) {
-      const { refundCallCredit } = await import("@/lib/scholarships");
-      await refundCallCredit(admin, scholarshipAppId);
-    }
-  } catch (err) {
-    console.error("[calls] scholarship credit refund failed", err);
-  }
 }
 
 export async function createInvite(input: {
@@ -286,7 +249,14 @@ export async function respondToInvite(
   revalidateAll();
 }
 
-/** Cancel. Host (or an admin) only. */
+/**
+ * Cancel. Host (or an admin) only.
+ *
+ * Also how an invite that EXPIRED unanswered is withdrawn (see canCancelCall):
+ * the same once-only transition and the same scholarship refund, but no
+ * "your call was cancelled" notification — the student never agreed to that
+ * call, and telling them it was called off would be news about nothing.
+ */
 export async function cancelInvite(id: string) {
   const actor = await requireActor();
   const admin = createAdminClient();
@@ -309,16 +279,20 @@ export async function cancelInvite(id: string) {
   // again used to re-run the whole path — a second "your call was cancelled"
   // notification, and a SECOND scholarship credit refund, once per click.
   //
-  // A call whose window has closed: it happened (or the student never came),
-  // and "cancelling" it afterwards told the student that a meeting they had
-  // already had was called off, and refunded the credit it had genuinely used.
+  // An accepted call whose window has closed: it happened (or the student
+  // never came), and "cancelling" it afterwards told the student that a
+  // meeting they had already had was called off, and refunded the credit it
+  // had genuinely used. An unanswered invite past its time is different —
+  // canCancelCall lets that one be withdrawn.
   const status = (invite as any).status as CallInviteStatus;
   if (status !== "invited" && status !== "accepted") {
     throw new Error(`That call was already ${status}.`);
   }
+  const phase = callPhase(timingOf(invite));
   if (!canCancelCall(timingOf(invite))) {
     throw new Error("That call is already over, so there's nothing to cancel.");
   }
+  const withdrawingExpired = phase === "expired";
 
   const { data: updated, error } = await admin
     .from("call_invites")
@@ -354,18 +328,21 @@ export async function cancelInvite(id: string) {
     action: "call_invite.cancelled",
     targetType: "call_invite",
     targetId: id,
+    payload: withdrawingExpired ? { expired_unanswered: true } : undefined,
   });
 
-  try {
-    await notify({
-      userId: (invite as any).invitee_id,
-      type: "call_cancelled",
-      title: "A 1:1 call was cancelled",
-      body: (invite as any).topic || null,
-      link: "/dashboard/calls",
-    });
-  } catch (err) {
-    console.error("[calls] cancel notify failed", err);
+  if (!withdrawingExpired) {
+    try {
+      await notify({
+        userId: (invite as any).invitee_id,
+        type: "call_cancelled",
+        title: "A 1:1 call was cancelled",
+        body: (invite as any).topic || null,
+        link: "/dashboard/calls",
+      });
+    } catch (err) {
+      console.error("[calls] cancel notify failed", err);
+    }
   }
 
   revalidateAll();

@@ -434,11 +434,21 @@ as much as a technical one.
 | `completed` / `declined` / `cancelled` | the stored decision |
 
 Every list splits on it (Upcoming soonest-first, Past newest-first and folded),
-and the server actions enforce it: an expired invite cannot be accepted, and a
-call that is over — or already cancelled/declined/completed — cannot be
-cancelled (which is what used to refund a scholarship credit twice).
+and the server actions enforce it: an expired invite cannot be accepted, and an
+accepted call that is over — or anything already cancelled/declined/completed —
+cannot be cancelled (which is what used to refund a scholarship credit twice).
+An invite that *expired* unanswered can still be **withdrawn** by its host
+(Withdraw on the Past card): nobody can decline it any more, and withdrawing is
+what hands back a scholarship credit spent at booking. No notification goes to
+the student for that — they never agreed to the call.
 `/api/cron/call-lifecycle` (every 15 min) stamps `completed` on accepted calls
-whose window has closed; the End call button stamps it for calls ended by hand.
+whose window has closed, and withdraws expired invites that hold a scholarship
+credit (refunding it once, for the rows that run actually changed). The End
+call button stamps `completed` for calls ended by hand — and is only offered
+once both people have been in the room and the start has come. Before that
+it would have closed the room on a latecomer and marked an interview done that
+never happened; the lone person gets Leave, and an early press that the server
+declines (`{ completed: false }`) is shown as leaving, not as the call ending.
 The interview card reads its request *through the call it booked*, so a
 cancelled call is no longer "Interview booked".
 
@@ -459,9 +469,22 @@ staff-direct storage policy (`events.manage`, which interns hold) would let
 roles the app never shows a 1:1 recording to download them straight from
 Storage — and these are calls with minors. `call-recordings` has no storage
 policies; only the service role touches it. The app creates it on first use
-(`ensureCallRecordingBucket`). Upload URLs come from
-`getCallRecordingUploadToken` (host, accepted-or-completed, window open plus a
-ten-minute grace for the final flush).
+(`ensureCallRecordingBucket`) with `public: false` and nothing else: a
+`fileSizeLimit` sent through the Storage API is checked against the project's
+global upload limit and refused if larger (Supabase's default is 50 MB), and a
+MIME allow-list can refuse the recorder's `video/webm;codecs=…` types.
+Segments are two minutes (~19 MB) so they sit well inside that global limit.
+Upload URLs come from `getCallRecordingUploadToken` (host; accepted, completed
+or cancelled; window open plus a ten-minute grace for the final flush). The
+Past list looks for recordings on accepted/completed calls and on calls
+cancelled once their room could have opened (a host who cancels mid-room has
+segments).
+
+The room itself is `/dashboard/calls/<id>/live` for both people, including a
+mentor or investor host who otherwise never sees `/dashboard`: middleware lets
+exactly that path past the `student.dashboard` bounce (`lib/dashboard-gate.ts`),
+the page 404s anyone who is not one of the two, and the dashboard layout
+renders bare chrome for a viewer without `student.dashboard`.
 Playback is `/api/calls/<id>/recording/<n>`, which checks the viewer is on the
 call or an admin, then redirects to a ten-minute signed URL; an admin watching
 someone else's call is audited. Both people see a recording notice before they

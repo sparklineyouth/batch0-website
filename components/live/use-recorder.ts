@@ -43,7 +43,7 @@ import { callInsetBoxes, callTileBoxes } from "@/lib/call-recording";
  * flight, not the hour behind it. The talk is fully uploaded seconds after it
  * ends rather than ten minutes later.
  *
- * The cost is a seam — tens of milliseconds every five minutes — because a
+ * The cost is a seam — tens of milliseconds every two minutes — because a
  * `MediaRecorder` has to be stopped and restarted for each file to carry its
  * own header and be independently playable. A segment that is only playable
  * when concatenated with its neighbours is not a safeguard against losing one;
@@ -266,14 +266,14 @@ export function useRecorder({
    * by design a new segment is begun BEFORE the previous one's upload is
    * awaited, so on a slow uplink two or three files are in flight at once.
    * `stop()` used to await `doneRef` alone, and the consequence was silent
-   * data loss: the host clicks End at 12:00 while segment 2 (minutes 5-10) is
-   * still climbing hotel wifi, `stop()` resolves on segment 3 only, the caller
+   * data loss: the host clicks End at 12:00 while segment 4 (minutes 8-10) is
+   * still climbing hotel wifi, `stop()` resolves on segment 5 only, the caller
    * tears the room down, the component unmounts, the page navigates, and
-   * segment 2's request dies in flight. The recording is missing five minutes
+   * segment 4's request dies in flight. The recording is missing a segment
    * of the talk and nothing — no error, no counter, no state — ever says so.
    * So every upload registers here for the length of its flight and `runStop`
    * waits for all of them. A Set rather than an array because entries are
-   * removed as they land; an hour-long webinar must not finish holding twelve
+   * removed as they land; an hour-long webinar must not finish holding thirty
    * settled promises it will never look at again.
    */
   const inFlightRef = useRef<Set<Promise<void>>>(new Set());
@@ -636,9 +636,9 @@ export function useRecorder({
 
       // Restart BEFORE the upload is awaited, not after. The seam between two
       // segments is meant to be the recorder's restart — tens of milliseconds
-      // — and awaiting a 45MB upload first would make it however long the
+      // — and awaiting a 19 MB upload first would make it however long the
       // host's upstream takes, which is to say the recording would skip a
-      // minute of the talk every time the network had a bad five minutes.
+      // minute of the talk every time the network had a bad few minutes.
       if (runningRef.current) beginSegmentRef.current();
 
       if (blob.size === 0) {
@@ -668,8 +668,8 @@ export function useRecorder({
           // A failed upload must never stop the recording. The segment is
           // gone — we do not hold it, because holding failures is how the
           // memory bound this whole design exists to keep gets lost — but the
-          // next one is already being written, and losing five minutes of an
-          // hour is a far better outcome than losing the other fifty-five.
+          // next one is already being written, and losing two minutes of an
+          // hour is a far better outcome than losing the other fifty-eight.
           failuresRef.current += 1;
           if (mountedRef.current) setError(uploadErrorText(err, failuresRef.current));
         } finally {
@@ -1105,37 +1105,49 @@ export function useRecorder({
         done = null;
       }
     }
+    // ONE deadline for the whole drain, started here and shared by both
+    // waits below. Its bound is the point: `stop()` is awaited by the host's
+    // End button (and a 1:1's Leave) before it stops the tracks and tells the
+    // server the call or webinar ended, so an unbounded wait here is a host
+    // trapped in a room they have already finished — on dead hotel wifi, a
+    // stalled PUT holds that button until the OS gives up on the socket,
+    // which can be many minutes, with nothing on screen but "Saving the
+    // recording…" and the other person's room still open.
+    //
+    // Ninety seconds is well past a healthy upload of the two or three files
+    // that can realistically be in flight, and short enough that a host who
+    // has genuinely lost the network gets out. Losing the tail of a recording
+    // is a bad outcome; being unable to end a call is a worse one, and the
+    // abandoned uploads may well still land on their own afterwards — the
+    // caller's next step is a client-side navigation, which does not cancel
+    // them.
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<void>((resolve) => {
+      deadlineTimer = setTimeout(resolve, UPLOAD_DRAIN_TIMEOUT_MS);
+    });
+
     // `done` resolves inside `onstop`, after the final `dataavailable` has been
     // collected AND after `onSegment` has settled. Awaiting the recorder's
-    // `onstop` alone would resolve while the last five minutes were still on
-    // the wire, and the caller would tear the tracks down under it.
-    await (done ?? Promise.resolve());
+    // `onstop` alone would resolve while the last segment was still on the
+    // wire, and the caller would tear the tracks down under it. Raced against
+    // the deadline like everything else: `onSegment` is a server action and a
+    // storage PUT, neither of which has a timeout of its own, and this await
+    // used to be the one wait in here with no bound at all.
+    await Promise.race([done ?? Promise.resolve(), deadline]);
     // And then everything queued BEHIND the final segment. By the time `done`
     // resolves the last file has landed, but earlier segments can still be
     // uploading — that is the whole point of starting the next segment before
     // awaiting the previous one's upload. Settled, not `all`: a segment that
     // failed to upload has already reported itself through `setError`, and
-    // rejecting here would turn one lost five-minute file into a `stop()` that
-    // throws into the End button and skips stamping the webinar as ended.
-    //
-    // BOUNDED, and the bound is the point. `stop()` is awaited by the host's
-    // End button before it stops the tracks and tells the server the webinar
-    // ended, so an unbounded wait here is a host trapped in a room they have
-    // already finished — on dead hotel wifi, two 45 MB segments could hold that
-    // button for minutes with nothing on screen but "Saving the recording…".
-    //
-    // Ninety seconds is well past a healthy upload of the two or three files
-    // that can realistically be in flight, and short enough that a host who has
-    // genuinely lost the network gets out. Losing the tail of a recording is a
-    // bad outcome; being unable to end a webinar is a worse one, and the
-    // abandoned uploads may well still land on their own afterwards.
+    // rejecting here would turn one lost file into a `stop()` that throws into
+    // the End button and skips stamping the webinar as ended. Snapshotted only
+    // now, not before `rec.stop()`: `onstop` fires asynchronously, and a
+    // snapshot taken up front would miss the final segment's own flight.
     const flights = Array.from(inFlightRef.current);
     if (flights.length > 0) {
-      await Promise.race([
-        Promise.allSettled(flights),
-        new Promise((resolve) => setTimeout(resolve, UPLOAD_DRAIN_TIMEOUT_MS)),
-      ]);
+      await Promise.race([Promise.allSettled(flights), deadline]);
     }
+    clearTimeout(deadlineTimer);
     teardown();
     stoppingRef.current = false;
     syncState();

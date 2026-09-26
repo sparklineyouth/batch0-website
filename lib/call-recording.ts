@@ -37,20 +37,14 @@
 
 export const CALL_RECORDING_BUCKET = "call-recordings";
 
-/**
- * Same ceiling as webinar-media (0084), which a five-minute segment is far
- * inside; it bounds what one signed upload can put in the bucket.
- */
-export const CALL_RECORDING_MAX_BYTES = 2 * 1024 * 1024 * 1024;
-
 /** A call's segment folder inside the `call-recordings` bucket. */
 export function callRecordingFolder(inviteId: string): string {
   return `calls/${inviteId}/recording`;
 }
 
 /**
- * Largest segment index accepted. Five-minute segments make a 240-minute call
- * (the longest the CHECK allows) 48 files; this is headroom for many reloads,
+ * Largest segment index accepted. Two-minute segments make a 240-minute call
+ * (the longest the CHECK allows) 120 files; this is headroom for many reloads,
  * and a ceiling on what a tampered client can ask to have signed.
  */
 export const MAX_SEGMENT_INDEX = 9_999;

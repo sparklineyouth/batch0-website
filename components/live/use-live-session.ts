@@ -110,6 +110,14 @@ export type LiveSession = {
   /** Broadcasters you can see. For a viewer, this is the whole call. */
   remotes: RemotePeer[];
   /**
+   * The join has landed AND every peer it named has been handed to the
+   * engine — so `remotes` now includes every broadcaster who was already in
+   * the room when this one arrived (most still "connecting"). The webinar
+   * room waits for this before deciding who records: deciding earlier is
+   * deciding with an empty roster, and every host would elect themselves.
+   */
+  joined: boolean;
+  /**
    * How many viewers are watching, for the host's header. Always null for a
    * viewer — the audience count is the one number a webinar exists to keep
    * from them.
@@ -230,6 +238,7 @@ export function useLiveSession({
   const [error, setError] = useState<string | null>(null);
   const [remotes, setRemotes] = useState<RemotePeer[]>([]);
   const [audienceCount, setAudienceCount] = useState<number | null>(null);
+  const [joined, setJoined] = useState(false);
   const [topics, setTopics] = useState<{
     roomTopic: string | null;
     moderationTopic: string | null;
@@ -873,6 +882,10 @@ export function useLiveSession({
 
       for (const peer of creds.peers) void connectTo(peer);
       recomputeOverall();
+      // After the loop, not before: connectTo publishes each peer
+      // synchronously, so by this line `remotes` names everyone the server
+      // said was here.
+      setJoined(true);
 
       // The heartbeat is the retry path as well as the keepalive: every peer
       // the server told us about is re-attempted, and connectTo's wedged
@@ -903,6 +916,7 @@ export function useLiveSession({
 
     return () => {
       cancelled = true;
+      setJoined(false);
       for (const t of timers) clearInterval(t);
       for (const peerId of [...connections.current.keys()]) {
         disconnectFromRef.current(peerId, true);
@@ -948,13 +962,14 @@ export function useLiveSession({
     () => ({
       state,
       remotes,
+      joined,
       audienceCount,
       error,
       refreshTracks,
       roomTopic: topics.roomTopic,
       moderationTopic: topics.moderationTopic,
     }),
-    [state, remotes, audienceCount, error, refreshTracks, topics],
+    [state, remotes, joined, audienceCount, error, refreshTracks, topics],
   );
 }
 

@@ -134,13 +134,25 @@ export function canRespondToCall(call: CallTiming, now: Date = new Date()): bool
  * Right up to the window closing, including while the call is live — a host
  * waiting on a student who never arrived is exactly who needs this, and it is
  * what hands a scholarship credit back for a call that never happened. After
- * the window closes, never: the call is history, and cancelling history would
- * tell a student that a meeting they already had was called off.
+ * an ACCEPTED call's window closes, never: the call is history, and
+ * cancelling history would tell a student that a meeting they already had was
+ * called off.
+ *
+ * An invite that EXPIRED unanswered is the exception, and it is withdrawing
+ * rather than cancelling: nobody ever agreed to that call, so nothing that
+ * happened is being rewritten. It matters because of what the invite may be
+ * holding. A scholarship call spends its credit when it is booked, and an
+ * expired invite can no longer be declined (the student's refund path) or
+ * cancelled by the old rule — so without this the credit was gone for good,
+ * for a call nobody had. Withdrawing runs the same once-only refund a cancel
+ * does. (The call-lifecycle sweep also withdraws scholarship invites on its
+ * own; this is the host's way to tidy one up before it runs.)
  */
 export function canCancelCall(call: CallTiming, now: Date = new Date()): boolean {
   const phase = callPhase(call, now);
   return (
     phase === "needs_answer" ||
+    phase === "expired" ||
     phase === "upcoming" ||
     phase === "joinable" ||
     phase === "live"
@@ -171,7 +183,7 @@ export function canMarkCallCompleted(call: CallTiming, now: Date = new Date()): 
  * closing FLUSHES the recorder — so the last segment of a call that ran right
  * to the wire is finished at the moment the window shuts and uploaded just
  * after it. Without a grace, the gate that refuses uploads for a closed call
- * refused that segment: up to five minutes, and always the end of the
+ * refused that segment: up to two minutes, and always the end of the
  * conversation. Ten minutes covers the recorder's ninety-second drain on a
  * slow uplink with room to spare, and is still a door that shuts.
  */
@@ -182,15 +194,24 @@ export const RECORDING_UPLOAD_GRACE_MINUTES = 10;
  *
  * Accepted, or completed — when the OTHER person presses End call the row
  * flips to completed while the host's recorder is still flushing, and refusing
- * that upload would cut the end off every call the student closed. From the
- * moment the room opens until the grace after it closes; never for a call
- * next week or last week.
+ * that upload would cut the end off every call the student closed. Or
+ * cancelled, for the same reason: a host who cancels from another tab while
+ * sitting in the room (waiting on a student who never came) has a recorder
+ * that flushes when the room notices, and that last segment belongs with the
+ * rest. From the moment the room opens until the grace after it closes; never
+ * for a call next week or last week, whatever its status.
  */
 export function canUploadCallRecording(
   call: CallTiming,
   now: Date = new Date(),
 ): boolean {
-  if (call.status !== "accepted" && call.status !== "completed") return false;
+  if (
+    call.status !== "accepted" &&
+    call.status !== "completed" &&
+    call.status !== "cancelled"
+  ) {
+    return false;
+  }
   const start = new Date(call.startsAt).getTime();
   const closes =
     callEndsAt(call.startsAt, call.durationMinutes).getTime() +
@@ -202,6 +223,37 @@ export function canUploadCallRecording(
 /** What /api/cron/call-lifecycle stamps `completed`: accepted, window closed. */
 export function shouldAutoComplete(call: CallTiming, now: Date = new Date()): boolean {
   return call.status === "accepted" && callPhase(call, now) === "ended";
+}
+
+/**
+ * What /api/cron/call-lifecycle withdraws: an invite whose window closed with
+ * nobody answering. The sweep narrows this further to invites that are holding
+ * a scholarship credit (a fact on another table), because withdrawing one is
+ * how that credit is handed back; an ordinary expired invite is left alone.
+ */
+export function shouldAutoWithdraw(call: CallTiming, now: Date = new Date()): boolean {
+  return call.status === "invited" && callPhase(call, now) === "expired";
+}
+
+/**
+ * Could this call have recording segments in storage?
+ *
+ * Accepted or completed: the host was recording from the moment the room
+ * opened. Cancelled, too, once the room could have opened — a call cancelled
+ * mid-room (a host giving up on a no-show) has segments, and the room tells
+ * the host they are "under Past", so the Past list has to look. A call
+ * cancelled days before its time has nothing, but cannot be told apart from
+ * one cancelled mid-room without a timestamp the table does not have; the
+ * cost of asking is one empty storage listing. Declined and never-answered
+ * invites never had a room.
+ */
+export function mayHaveCallRecording(call: CallTiming, now: Date = new Date()): boolean {
+  if (call.status === "accepted" || call.status === "completed") return true;
+  if (call.status !== "cancelled") return false;
+  return (
+    new Date(call.startsAt).getTime() - JOIN_OPENS_MINUTES_BEFORE * MINUTE <=
+    now.getTime()
+  );
 }
 
 /**

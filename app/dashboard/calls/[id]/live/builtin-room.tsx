@@ -28,6 +28,7 @@ import { CALL_RECORDING_BUCKET } from "@/lib/call-recording";
  */
 export function BuiltinCallRoom({
   inviteId,
+  startsAt,
   title,
   isHost,
   selfName,
@@ -35,6 +36,8 @@ export function BuiltinCallRoom({
   backHref,
 }: {
   inviteId: string;
+  /** The scheduled start — End call is offered from here on. */
+  startsAt: string;
   title: string;
   /** call_invites.host_id — the side that records. */
   isHost: boolean;
@@ -58,7 +61,7 @@ export function BuiltinCallRoom({
    *
    * Two steps, not the webinar's three: the server mints a signed upload URL
    * for a path it builds itself (calls/<id>/recording/segment-NNNN-<ts>), and
-   * the bytes go straight from this tab to Storage — a five-minute segment is
+   * the bytes go straight from this tab to Storage — a two-minute segment is
    * far over a server action's 1 MB body limit. There is no row to register;
    * for a call the file name is the record (lib/call-recording.ts).
    *
@@ -91,6 +94,7 @@ export function BuiltinCallRoom({
   const call = useMemo<CallRoom>(
     () => ({
       inviteId,
+      startsAt,
       isRecorder: isHost,
       selfName,
       otherName,
@@ -98,7 +102,7 @@ export function BuiltinCallRoom({
       onEndCall,
       fetchStatus,
     }),
-    [inviteId, isHost, selfName, otherName, onSegment, onEndCall, fetchStatus],
+    [inviteId, startsAt, isHost, selfName, otherName, onSegment, onEndCall, fetchStatus],
   );
 
   return (

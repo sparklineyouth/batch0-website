@@ -18,10 +18,15 @@ import { SpeakerStrip } from "@/components/live/speaker-strip";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { headcountLabel, type LiveRole, type WebinarQuestion } from "@/lib/live";
 import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
-import type {
-  AudienceMode,
-  EventSpeaker,
-  PremiereState,
+import {
+  electRecorder,
+  presentForRecording,
+  RECORDER_LEASE_MS,
+  RECORDER_SETTLE_MS,
+  type AudienceMode,
+  type EventSpeaker,
+  type PremiereState,
+  type RecorderCandidate,
 } from "@/lib/webinars";
 import type { RoomState } from "@/app/dashboard/events/[id]/live/room-actions";
 import { AlertTriangle, Users, Loader2, CircleDot } from "lucide-react";
@@ -65,6 +70,13 @@ type Phase = "prejoin" | "live" | "left" | "ended";
 export type CallRoom = {
   inviteId: string;
   /**
+   * When the call is scheduled to start. End call is offered from here on:
+   * the room opens fifteen minutes early, and before the start the server
+   * will not mark the call completed (canMarkCallCompleted), so a button
+   * saying "End call" there would promise something it cannot do.
+   */
+  startsAt: string;
+  /**
    * This person is the call's host (call_invites.host_id), and so the one
    * whose browser records. Exactly one side records: two recorders would put
    * the call on tape twice, and make the student's laptop do the work.
@@ -86,8 +98,17 @@ export type CallRoom = {
 /** How often a call room asks whether the other person ended it. */
 const CALL_STATUS_POLL_MS = 15_000;
 
+/**
+ * What became of a webinar segment. `refused` is the server saying another
+ * host's browser is this webinar's recorder — not a failure, an instruction
+ * to stand down (see `recordingRival` in lib/webinars.ts).
+ */
+export type SegmentOutcome = "saved" | "refused";
+
 export type WebinarRoom = {
   eventId: string;
+  /** The signed-in person's id — their peer id as every other host sees it. */
+  selfUserId: string;
   audienceMode: AudienceMode;
   /** Staff, as opposed to a guest speaker who also broadcasts. */
   isStaffHost: boolean;
@@ -99,7 +120,11 @@ export type WebinarRoom = {
   deck: { id: string; filename: string; sizeBytes: number | null }[];
   initialQuestions: WebinarQuestion[];
   initialRoomState: RoomState | null;
-  onSegment: (blob: Blob, index: number, seconds: number) => Promise<void>;
+  onSegment: (
+    blob: Blob,
+    index: number,
+    seconds: number,
+  ) => Promise<SegmentOutcome>;
   onGoLive: () => Promise<string | null>;
   onEndLive: () => Promise<void>;
   onReopenLive: () => Promise<void>;
@@ -271,7 +296,7 @@ export function BroadcastRoom({
   // slides mid-sentence produces one continuous file rather than a recording
   // that stops at the switch. Segments upload while the webinar is still
   // running — see the header of use-recorder.ts for why that is not an
-  // optimisation but the difference between losing five minutes and losing an
+  // optimisation but the difference between losing two minutes and losing an
   // hour.
   //
   // Gated on `!inPremiere` as well as on the host: a premiere is already a
@@ -290,11 +315,105 @@ export function BroadcastRoom({
   // then has to rotate away from a second later, leaving a one-second file at
   // the head of every recording.
   const mediaSettled = media.status !== "idle" && media.status !== "requesting";
+
+  // ---- Who records a webinar ---------------------------------------------
+  //
+  // Exactly one browser in the room. Every host — staff and guest speakers
+  // alike — runs this component, and each one's recorder captures only its
+  // own camera and mic; left to itself, every host's tab recorded, and the
+  // event's recording came out as alternating slices of different people's
+  // solo feeds. So each host's browser works out, from the co-hosts it can
+  // see, which ONE of them records (electRecorder: staff before guests, then
+  // the lowest id), and only that one does. Every browser holds the same
+  // inputs — a peer's id is its user id, and the speaker list is in the
+  // page — so they agree without talking to each other. When the recorder
+  // leaves, the next in line sees it go and takes over; when someone who
+  // outranks the recorder arrives, the recorder sees them and stands down,
+  // flushing what it has.
+  //
+  // Nothing is decided until the join has landed (`session.joined`), or every
+  // host would elect themselves off an empty roster. For RECORDER_SETTLE_MS
+  // after that, a co-host still "connecting" counts as present: the join
+  // payload named them, and their connection simply has not come up yet.
+  const [settling, setSettling] = useState(true);
+  useEffect(() => {
+    if (!session.joined) {
+      setSettling(true);
+      return;
+    }
+    const t = setTimeout(() => setSettling(false), RECORDER_SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [session.joined]);
+
+  const speakers = webinar?.speakers;
+  const guestIds = useMemo(
+    () =>
+      new Set(
+        (speakers ?? [])
+          .map((sp) => sp.userId)
+          .filter((id): id is string => !!id),
+      ),
+    [speakers],
+  );
+  const selfUserId = webinar?.selfUserId ?? "";
+  const recorderId = useMemo(() => {
+    if (!webinar || !isHost || !session.joined) return null;
+    const present: RecorderCandidate[] = [
+      { userId: selfUserId, guest: guestIds.has(selfUserId) },
+    ];
+    for (const p of session.remotes) {
+      if (p.role !== "host" || !presentForRecording(p.state, settling)) continue;
+      present.push({ userId: p.peerId, guest: guestIds.has(p.peerId) });
+    }
+    return electRecorder(present);
+  }, [webinar, isHost, session.joined, session.remotes, settling, selfUserId, guestIds]);
+
+  // The server's backstop refusing this browser's segment means another
+  // host's browser IS recording, whatever this one can see (their connection
+  // to us may never have come up). Stand down for a lease, then look again.
+  const [standDownUntil, setStandDownUntil] = useState<number | null>(null);
+  useEffect(() => {
+    if (standDownUntil === null) return;
+    const t = setTimeout(
+      () => setStandDownUntil(null),
+      Math.max(0, standDownUntil - Date.now()),
+    );
+    return () => clearTimeout(t);
+  }, [standDownUntil]);
+  const webinarSegment = webinar?.onSegment;
+  const onWebinarSegment = useCallback(
+    async (blob: Blob, index: number, seconds: number) => {
+      if (!webinarSegment) return;
+      const outcome = await webinarSegment(blob, index, seconds);
+      if (outcome === "refused") {
+        setStandDownUntil(Date.now() + RECORDER_LEASE_MS);
+      }
+    },
+    [webinarSegment],
+  );
+
   // Not once the webinar has been ENDED, either — by this host or a co-host
   // (RoomPanel's onLiveEnded sets `endedAt` live). The gate closing flushes
   // what was recorded; a host lingering in an ended room is not more talk.
   const recordWebinar =
-    !!webinar?.autoRecord && isHost && !inPremiere && !endedAt;
+    !!webinar?.autoRecord &&
+    isHost &&
+    !inPremiere &&
+    !endedAt &&
+    !!selfUserId &&
+    recorderId === selfUserId &&
+    standDownUntil === null;
+  // Who IS recording, when it is not this browser — named to the other hosts
+  // so a co-host does not wonder why their header has no Recording badge.
+  const recordingElsewhere =
+    !!webinar?.autoRecord &&
+    isHost &&
+    !inPremiere &&
+    !endedAt &&
+    !!recorderId &&
+    recorderId !== selfUserId
+      ? session.remotes.find((p) => p.peerId === recorderId)?.name || "another host"
+      : null;
   const recordCall = !!call?.isRecorder;
   const recorderRemotes = useMemo<RecorderRemote[] | undefined>(() => {
     if (!call) return undefined;
@@ -327,7 +446,7 @@ export function BroadcastRoom({
     micStream: media.stream,
     cameraOn: media.cameraOn,
     micOn: media.micOn,
-    onSegment: webinar?.onSegment ?? call?.onSegment ?? noopSegment,
+    onSegment: webinar ? onWebinarSegment : call?.onSegment ?? noopSegment,
     remotes: recorderRemotes,
     localName: call?.selfName,
   });
@@ -370,6 +489,44 @@ export function BroadcastRoom({
     setPhase("left");
   }, [leaving, media, recorder, screen]);
 
+  // ---- Ending a 1:1 -------------------------------------------------------
+  //
+  // End call is only offered once BOTH people have been in the room and the
+  // scheduled start has come. Before that, the one person here pressing the
+  // red button beside Leave is almost always trying to get out of an empty
+  // room — and writing `completed` then shut the room on a mentor three
+  // minutes late, moved the call to Past for both, refused the cancel that
+  // would have refunded its scholarship credit, and told the student their
+  // interview was done when it never happened. Leave is still there for
+  // them; the sweep completes a call that genuinely ran once its window
+  // closes.
+  //
+  // "Been in the room" is latched: someone whose connection drops after the
+  // conversation has still had it, and must still be able to end it.
+  const peerLive = !!call && session.remotes.some((p) => p.state === "live");
+  const [peerSeen, setPeerSeen] = useState(false);
+  useEffect(() => {
+    if (peerLive) setPeerSeen(true);
+  }, [peerLive]);
+  const peerSeenRef = useRef(peerSeen);
+  peerSeenRef.current = peerSeen;
+
+  const callStartsAt = call?.startsAt;
+  const [callStarted, setCallStarted] = useState(false);
+  useEffect(() => {
+    if (!callStartsAt) return;
+    const wait = Date.parse(callStartsAt) - Date.now();
+    if (!(wait > 0)) {
+      setCallStarted(true);
+      return;
+    }
+    setCallStarted(false);
+    // Capped at setTimeout's ceiling; the room is only open from fifteen
+    // minutes before the start, so the cap never binds in practice.
+    const t = setTimeout(() => setCallStarted(true), Math.min(wait, 2_147_483_647));
+    return () => clearTimeout(t);
+  }, [callStartsAt]);
+
   /**
    * End a 1:1, for both people — or close this side because it already ended.
    *
@@ -382,6 +539,12 @@ export function BroadcastRoom({
    * `elsewhere` is that other side: the call is over and this room is only
    * catching up, so it skips the server call.
    *
+   * The ended screen is shown only when the call REALLY ended. `endCall`
+   * answers `{ completed: false }` before the start, and a request can fail;
+   * either way the call is still on (still under Upcoming, the other person
+   * still in the room), so this side has LEFT it, and says so, rather than
+   * announcing an end and a recording "under Past" that are not there.
+   *
    * Guarded by a ref rather than the `ending` state, because the poll and the
    * button can both fire inside one render and the second must not run the
    * flush twice.
@@ -390,6 +553,12 @@ export function BroadcastRoom({
   const finishCall = useCallback(
     async (how: "mine" | "elsewhere") => {
       if (!call || finishingRef.current) return;
+      // Nobody else has been here: this is a Leave, not an end. The button is
+      // not shown in that state; this holds if something calls it anyway.
+      if (how === "mine" && !peerSeenRef.current) {
+        void hangUp();
+        return;
+      }
       finishingRef.current = true;
       setEnding(true);
       try {
@@ -397,9 +566,10 @@ export function BroadcastRoom({
       } catch (err) {
         console.error("[live] recording flush failed", err);
       }
+      let completed = how === "elsewhere";
       if (how === "mine") {
         try {
-          await call.onEndCall();
+          completed = (await call.onEndCall()).completed;
         } catch (err) {
           // A failed request must not trap anyone in the room. The sweep
           // (/api/cron/call-lifecycle) completes the call when its window
@@ -410,10 +580,13 @@ export function BroadcastRoom({
       screen.stop();
       media.stop();
       setEnding(false);
-      setPhase("ended");
+      // A call that did not end can be rejoined, so the guard is released
+      // for the next time this person is in the room.
+      if (!completed) finishingRef.current = false;
+      setPhase(completed ? "ended" : "left");
       if (how === "mine") router.push(backHref);
     },
-    [backHref, call, media, recorder, router, screen],
+    [backHref, call, hangUp, media, recorder, router, screen],
   );
   const finishCallRef = useRef(finishCall);
   finishCallRef.current = finishCall;
@@ -626,19 +799,28 @@ export function BroadcastRoom({
                   ? "Saving recording…"
                   : "Recording"}
             </span>
+          ) : recorder.state === "recording" ? (
+            <span
+              className="inline-flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400"
+              // The host is recording a room full of students. That fact gets an
+              // aria-live region rather than a silent dot, because it is the
+              // kind of thing a screen-reader user must not have to go looking
+              // for.
+              role="status"
+              aria-live="polite"
+            >
+              <CircleDot className="h-3.5 w-3.5 animate-pulse" />
+              Recording
+            </span>
           ) : (
-            recorder.state === "recording" && (
+            recordingElsewhere && (
               <span
-                className="inline-flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400"
-                // The host is recording a room full of students. That fact gets an
-                // aria-live region rather than a silent dot, because it is the
-                // kind of thing a screen-reader user must not have to go looking
-                // for.
+                className="inline-flex items-center gap-1.5 text-xs text-ink-faint"
                 role="status"
                 aria-live="polite"
               >
-                <CircleDot className="h-3.5 w-3.5 animate-pulse" />
-                Recording
+                <CircleDot className="h-3.5 w-3.5" />
+                Recorded from {recordingElsewhere}&rsquo;s browser
               </span>
             )
           )}
@@ -824,7 +1006,7 @@ export function BroadcastRoom({
           canBroadcast={isHost && !inPremiere}
         />
 
-        {call && (
+        {call && peerSeen && callStarted && (
           <Button
             variant="danger"
             onClick={() => void finishCall("mine")}
