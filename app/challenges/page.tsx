@@ -231,6 +231,14 @@ function Row({
             {c.title}
           </p>
           <p className="mt-0.5 truncate text-[13px] text-ink-faint">
+            {/* The date column is desktop-only; phones get it inline. */}
+            {when && (
+              <span className="sm:hidden">
+                {c.closesAt ? "Due " : "Opens "}
+                <LocalTime value={when} mode="date" />
+                {(headline || c.registrationCount > 0) && " · "}
+              </span>
+            )}
             {[
               headline,
               c.registrationCount > 0 ? `${c.registrationCount} registered` : null,

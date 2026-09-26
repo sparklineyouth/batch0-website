@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getUser, viewerCan } from "@/lib/auth";
 import { getPublicSiteConfig } from "@/lib/site-config";
-import { renderMarkdown } from "@/lib/markdown";
+import { renderSafeMarkdown } from "@/lib/markdown-safe";
 import { env } from "@/lib/env";
 import {
   getChallengeBySlug,
@@ -68,9 +68,9 @@ export default async function ChallengePage(props: {
         ? getPublicWinners({ challengeSlug: challenge.slug, limit: 30 })
         : Promise.resolve([]),
       challenge.description.trim()
-        ? renderMarkdown(challenge.description)
+        ? renderSafeMarkdown(challenge.description)
         : Promise.resolve(""),
-      challenge.rules.trim() ? renderMarkdown(challenge.rules) : Promise.resolve(""),
+      challenge.rules.trim() ? renderSafeMarkdown(challenge.rules) : Promise.resolve(""),
     ]);
 
   const referral =

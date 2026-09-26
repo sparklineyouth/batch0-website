@@ -1442,8 +1442,8 @@ Start your submission: ${args.submitUrl}`,
         }
         ${
           args.resultsAt
-            ? `<p>Winners are announced around <strong>${escape(etTime(args.resultsAt))}</strong>. We'll email you either way.</p>`
-            : `<p>We'll email you when winners are picked, either way.</p>`
+            ? `<p>Winners are announced around <strong>${escape(etTime(args.resultsAt))}</strong> on the event page, and we'll let you know how it went.</p>`
+            : `<p>Winners are announced on the event page, and we'll let you know how it went.</p>`
         }
       `,
       cta: args.editableUntil
@@ -1452,5 +1452,36 @@ Start your submission: ${args.submitUrl}`,
     }),
     text: `Your entry for ${args.title} is in.
 ${args.editableUntil ? `You can edit it until ${etTime(args.editableUntil)}: ${args.submitUrl}` : args.pageUrl}`,
+  }),
+  /**
+   * Results are out. Sent once per entrant by the admin "Email results" action
+   * (stamped in challenge_submissions.results_notified_at), after winners are
+   * published — never as a side effect of marking someone a winner, which can
+   * still change during judging.
+   */
+  challengeResult: (args: {
+    name?: string | null;
+    title: string;
+    won: boolean;
+    awardLabel?: string | null;
+    pageUrl: string;
+  }) => ({
+    subject: args.won ? `You won: ${args.title}` : `Results are in: ${args.title}`,
+    html: layout({
+      preheader: args.won ? "Congratulations — you're a winner." : "Winners have been picked.",
+      body: args.won
+        ? `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">You won${args.name ? `, ${escape(args.name.split(" ")[0])}` : ""}! 🏆</h1>
+        <p>Your entry to <strong>${escape(args.title)}</strong> was picked${args.awardLabel ? ` for <strong>${escape(args.awardLabel)}</strong>` : ""}.</p>
+        <p>We'll be in touch at this address about your prize — just reply here if you have questions.</p>`
+        : `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">Winners are in</h1>
+        <p>Thanks for entering <strong>${escape(args.title)}</strong>${args.name ? `, ${escape(args.name.split(" ")[0])}` : ""}. You weren't picked this time — but shipping something is the whole point, and you did.</p>
+        <p>The winners are on the event page, and the next challenge is never far off.</p>`,
+      cta: { url: args.pageUrl, label: args.won ? "See the winners" : "See who won" },
+    }),
+    text: args.won
+      ? `You won ${args.title}${args.awardLabel ? ` (${args.awardLabel})` : ""}! We'll be in touch about your prize. ${args.pageUrl}`
+      : `Winners are in for ${args.title}. You weren't picked this time — thanks for entering. ${args.pageUrl}`,
   }),
 };

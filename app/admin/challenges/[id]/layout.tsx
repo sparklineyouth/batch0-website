@@ -59,7 +59,7 @@ export default async function ChallengeAdminLayout(props: {
           >
             View page <ExternalLink className="h-3.5 w-3.5" />
           </a>
-          <ChallengeRowActions id={challenge.id} status={challenge.status} />
+          <ChallengeRowActions id={challenge.id} status={challenge.status} closesAt={challenge.closesAt} />
         </div>
       </div>
       <ChallengeTabs

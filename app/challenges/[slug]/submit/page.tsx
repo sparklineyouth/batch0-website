@@ -116,6 +116,7 @@ export default async function SubmitPage(props: {
             slug: challenge.slug,
             title: challenge.title,
             kindLabel: KIND_LABELS[challenge.kind],
+            kind: challenge.kind,
             questions: challenge.questions,
             status: challenge.status,
             opensAt: challenge.opensAt,
@@ -135,6 +136,7 @@ export default async function SubmitPage(props: {
           initialAnswers={sub?.answers ?? {}}
           initialStatus={sub?.status ?? null}
           initialSubmittedAt={sub?.submittedAt ?? null}
+          initialVersion={sub?.updatedAt ?? null}
           initialPreviews={previews}
           referral={
             referral

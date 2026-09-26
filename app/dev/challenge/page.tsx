@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPublicSiteConfig } from "@/lib/site-config";
-import { renderMarkdown } from "@/lib/markdown";
+import { renderSafeMarkdown } from "@/lib/markdown-safe";
 import {
   QUESTION_PRESETS,
   blankQuestion,
@@ -100,7 +100,9 @@ export default async function ChallengePreviewPage(props: {
   const sp = await props.searchParams;
   const view = sp.view === "submit" || sp.view === "editor" ? sp.view : "event";
   const state = sp.state ?? "signedout";
-  const phase = sp.phase ?? (state === "closed" ? "ended" : "live");
+  // A decision is only visible once winners are published, so the "winner"
+  // state previews a finished challenge.
+  const phase = sp.phase ?? (state === "closed" || state === "winner" ? "ended" : "live");
   const gate = sp.gate != null ? Number(sp.gate) : 3;
   const refs = sp.refs != null ? Number(sp.refs) : 1;
   const c = fixture(phase, gate);
@@ -171,6 +173,7 @@ export default async function ChallengePreviewPage(props: {
             slug: c.slug,
             title: c.title,
             kindLabel: "Hackathon",
+            kind: c.kind,
             questions: c.questions,
             status: c.status,
             opensAt: c.opensAt,
@@ -182,6 +185,7 @@ export default async function ChallengePreviewPage(props: {
           initialAnswers={submission?.answers ?? {}}
           initialStatus={submission?.status ?? null}
           initialSubmittedAt={submission?.submittedAt ?? null}
+          initialVersion={submission?.updatedAt ?? null}
           initialPreviews={{}}
           referral={
             gate > 0
@@ -205,8 +209,8 @@ export default async function ChallengePreviewPage(props: {
 
   const [config, descriptionHtml, rulesHtml] = await Promise.all([
     getPublicSiteConfig(),
-    renderMarkdown(c.description),
-    renderMarkdown(c.rules),
+    renderSafeMarkdown(c.description),
+    renderSafeMarkdown(c.rules),
   ]);
   return (
     <>

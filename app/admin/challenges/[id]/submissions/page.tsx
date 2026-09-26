@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { formatCents, sanitizeQuestions, type ChallengeQuestion } from "@/lib/challenges";
+import { EmailResultsButton } from "./email-results-button";
 
 export const metadata = { title: "Submissions · Admin" };
 export const dynamic = "force-dynamic";
@@ -53,7 +54,16 @@ export default async function ChallengeSubmissionsPage(props: {
     .order("updated_at", { ascending: false });
   if (filter === "all") q = q.neq("status", "draft");
   else q = q.eq("status", filter);
-  const { data: subs } = await q;
+  const [{ data: subs }, { data: ch }, { count: unnotified }] = await Promise.all([
+    q,
+    admin.from("challenges").select("winners_published").eq("id", id).maybeSingle(),
+    admin
+      .from("challenge_submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("challenge_id", id)
+      .neq("status", "draft")
+      .is("results_notified_at", null),
+  ]);
 
   const rows = (subs ?? []).map((s: any) => {
     const applicant = Array.isArray(s.applicant) ? s.applicant[0] : s.applicant;
@@ -89,12 +99,19 @@ export default async function ChallengeSubmissionsPage(props: {
             );
           })}
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+        <EmailResultsButton
+          challengeId={id}
+          pending={unnotified ?? 0}
+          winnersPublished={(ch as any)?.winners_published === true}
+        />
         <a
           href={`/api/admin/export/challenge-submissions?id=${id}`}
           className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-soft hover:border-ink/30 hover:text-ink"
         >
           <Download className="h-3.5 w-3.5" /> Export CSV
         </a>
+        </div>
       </div>
 
       {rows.length === 0 ? (

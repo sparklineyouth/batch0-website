@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
@@ -14,6 +15,9 @@ import {
   challengeWindowState,
   canRegister,
   validateAnswers,
+  sanitizeQuestions,
+  isUploadAnswer,
+  uploadPathOf,
   extensionsFor,
   fileExtension,
   KIND_LABELS,
@@ -22,7 +26,10 @@ import {
   MAX_VIDEO_BYTES,
   MAX_FILE_BYTES,
   type Challenge,
+  type ChallengeAnswers,
+  type ChallengeQuestion,
   type ReferralProgress,
+  type UploadedFile,
 } from "@/lib/challenges";
 
 // ---------------------------------------------------------------------------
@@ -133,44 +140,51 @@ async function ensureRegistration(ctx: Ctx, refRaw: unknown): Promise<boolean> {
     throw new Error(error.message);
   }
 
-  // Best-effort welcome — never blocks registering.
-  try {
-    const { data: profile } = await ctx.admin
-      .from("profiles")
-      .select("full_name")
-      .eq("id", ctx.userId)
-      .maybeSingle();
-    const c = ctx.challenge;
-    if (ctx.email) {
-      const t = Templates.challengeRegistered({
-        name: profile?.full_name ?? null,
-        title: c.title,
-        kindLabel: KIND_LABELS[c.kind],
-        pageUrl: pageUrl(c.slug),
-        submitUrl: `${pageUrl(c.slug)}/submit`,
-        opensAt: c.opensAt,
-        closesAt: c.closesAt,
-        referralsRequired: c.referralsRequired,
+  // Best-effort welcome, AFTER the response: registering is the thing the
+  // entrant is waiting on, and an email provider having a slow second
+  // shouldn't be.
+  const c = ctx.challenge;
+  const userId = ctx.userId;
+  const email = ctx.email;
+  after(async () => {
+    try {
+      const admin = createAdminClient();
+      const { data: profile } = await admin
+        .from("profiles")
+        .select("full_name")
+        .eq("id", userId)
+        .maybeSingle();
+      if (email) {
+        const t = Templates.challengeRegistered({
+          name: profile?.full_name ?? null,
+          title: c.title,
+          kindLabel: KIND_LABELS[c.kind],
+          pageUrl: pageUrl(c.slug),
+          submitUrl: `${pageUrl(c.slug)}/submit`,
+          opensAt: c.opensAt,
+          closesAt: c.closesAt,
+          referralsRequired: c.referralsRequired,
+        });
+        await sendEmail({
+          to: email,
+          subject: t.subject,
+          html: t.html,
+          templateKey: "challenge.registered",
+        }).catch(() => null);
+      }
+      await notify({
+        userId,
+        type: "challenge_registered",
+        title: `You're registered for ${c.title}`,
+        body: c.closesAt
+          ? `Submissions are due ${new Date(c.closesAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}.`
+          : "Submit whenever you're ready.",
+        link: `/challenges/${c.slug}`,
       });
-      await sendEmail({
-        to: ctx.email,
-        subject: t.subject,
-        html: t.html,
-        templateKey: "challenge.registered",
-      }).catch(() => null);
+    } catch (err) {
+      console.error("[challenge] registration fan-out failed", err);
     }
-    await notify({
-      userId: ctx.userId,
-      type: "challenge_registered",
-      title: `You're registered for ${c.title}`,
-      body: c.closesAt
-        ? `Submissions are due ${new Date(c.closesAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}.`
-        : "Submit your project whenever you're ready.",
-      link: `/challenges/${c.slug}`,
-    });
-  } catch (err) {
-    console.error("[challenge] registration fan-out failed", err);
-  }
+  });
   revalidatePath("/challenges");
   revalidatePath(`/admin/challenges/${ctx.challenge.id}/registrations`);
   return true;
@@ -215,28 +229,133 @@ function uploadPrefix(ctx: Ctx) {
   return `${ctx.challenge.id}/${ctx.userId}/`;
 }
 
+/** Every storage path an answer set references (file answers + uploaded videos). */
+function referencedPaths(answers: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const v of Object.values(answers ?? {})) {
+    if (isUploadAnswer(v)) out.push(uploadPathOf(v));
+    else if (Array.isArray(v)) {
+      for (const f of v) {
+        if (f && typeof f === "object" && typeof (f as any).path === "string") out.push((f as any).path);
+      }
+    }
+  }
+  return out;
+}
+
+/** Active content a browser would execute if staff opened the file directly. */
+const BLOCKED_MIME = /^(text\/html|application\/xhtml\+xml|image\/svg\+xml|application\/(x-)?javascript|text\/javascript)/i;
+
+/**
+ * Check uploads the entrant hasn't had checked before against what is REALLY
+ * in storage. getChallengeUploadToken's type/size checks run on values the
+ * browser reports, and a signed upload URL can't carry a size or type limit,
+ * so a tampered client could park anything up to the bucket cap behind an
+ * "image". Here each NEW path is looked up: missing, oversize or active-content
+ * objects are dropped from the answer (and deleted), and the stored size/type
+ * are replaced with storage's own. Paths already in the saved row were checked
+ * on an earlier save, which keeps autosave from listing storage every second.
+ */
+async function verifyNewUploads(
+  ctx: Ctx,
+  questions: ChallengeQuestion[],
+  answers: ChallengeAnswers,
+  alreadySaved: Record<string, unknown> | null,
+): Promise<ChallengeAnswers> {
+  const known = new Set(referencedPaths(alreadySaved ?? {}));
+  const fresh = referencedPaths(answers).filter((p) => !known.has(p));
+  if (fresh.length === 0) return answers;
+
+  const bucket = ctx.admin.storage.from(CHALLENGE_UPLOAD_BUCKET);
+  const meta = new Map<string, { size: number; mimetype: string } | null>();
+  await Promise.all(
+    fresh.map(async (path) => {
+      const slash = path.lastIndexOf("/");
+      const dir = path.slice(0, slash);
+      const name = path.slice(slash + 1);
+      const { data } = await bucket.list(dir, { search: name, limit: 5 });
+      const hit = (data ?? []).find((o: any) => o.name === name);
+      meta.set(
+        path,
+        hit
+          ? {
+              size: Number((hit as any).metadata?.size ?? 0),
+              mimetype: String((hit as any).metadata?.mimetype ?? ""),
+            }
+          : null,
+      );
+    }),
+  );
+
+  const reject: string[] = [];
+  const ok = (path: string, cap: number) => {
+    const m = meta.get(path);
+    if (m === undefined) return true; // not new
+    if (!m || m.size <= 0 || m.size > cap || BLOCKED_MIME.test(m.mimetype)) {
+      if (m) reject.push(path);
+      return false;
+    }
+    return true;
+  };
+
+  const out: ChallengeAnswers = { ...answers };
+  for (const q of questions) {
+    const v = out[q.id];
+    if (q.type === "video" && isUploadAnswer(v)) {
+      if (!ok(uploadPathOf(v), MAX_VIDEO_BYTES)) out[q.id] = "";
+    } else if (q.type === "file" && Array.isArray(v)) {
+      out[q.id] = (v as UploadedFile[])
+        .filter((f) => ok(f.path, MAX_FILE_BYTES))
+        .map((f) => {
+          const m = meta.get(f.path);
+          return m ? { ...f, size: m.size, type: m.mimetype || f.type } : f;
+        });
+    }
+  }
+  if (reject.length) {
+    await bucket.remove(reject).catch(() => null);
+  }
+  return out;
+}
+
 export type DraftResult = {
   ok: boolean;
   error?: string;
+  signIn?: boolean;
   savedAt?: string;
+  /** The row's new updated_at — send it back with the next save. */
+  version?: string;
   alreadySubmitted?: boolean;
+  /** Someone saved newer answers from another tab/device. */
+  conflict?: boolean;
+  latest?: { answers: ChallengeAnswers; version: string };
+  /** Worth retrying automatically (rate limit), vs a permanent refusal. */
+  retryable?: boolean;
+  closed?: boolean;
 };
 
 /**
  * Autosave. Keeps whatever the entrant has typed so far — no required checks —
  * and registers them if they weren't. Only touches a DRAFT: once an entry is
  * submitted, changes go through submitChallengeEntry so they're re-validated.
+ *
+ * Optimistic concurrency: the client sends the updated_at it last saw. If the
+ * row has moved on (another tab or device saved since), nothing is written and
+ * the newer answers come back, so a stale tab can never silently replace work
+ * done elsewhere. `force` overwrites anyway — the entrant chose "keep mine".
  */
 export async function saveChallengeDraft(input: {
   slug: string;
   answers: Record<string, unknown>;
+  version?: string | null;
+  force?: boolean;
   refCode?: string | null;
 }): Promise<DraftResult> {
   const loaded = await loadContext(input.slug);
   if (!loaded.ok) return loaded;
   const { ctx } = loaded;
   if (!canRegister(ctx.challenge)) {
-    return { ok: false, error: "This challenge has closed." };
+    return { ok: false, closed: true, error: "This challenge has closed." };
   }
   const rl = await checkRateLimit({
     kind: "challenge-draft",
@@ -244,11 +363,11 @@ export async function saveChallengeDraft(input: {
     limit: 60,
     windowSeconds: 60,
   });
-  if (!rl.ok) return { ok: false, error: "Saving too fast — pausing autosave." };
+  if (!rl.ok) return { ok: false, retryable: true, error: "Saving too fast — retrying shortly." };
 
   const { data: existing } = await ctx.admin
     .from("challenge_submissions")
-    .select("id, status")
+    .select("id, status, updated_at, answers")
     .eq("challenge_id", ctx.challenge.id)
     .eq("user_id", ctx.userId)
     .maybeSingle();
@@ -256,39 +375,92 @@ export async function saveChallengeDraft(input: {
     return { ok: false, alreadySubmitted: true };
   }
 
-  const { answers } = validateAnswers(ctx.challenge.questions, input.answers ?? {}, {
+  const { answers: cleaned } = validateAnswers(ctx.challenge.questions, input.answers ?? {}, {
     mode: "draft",
     uploadPrefix: uploadPrefix(ctx),
   });
+  const answers = await verifyNewUploads(
+    ctx,
+    ctx.challenge.questions,
+    cleaned,
+    (existing?.answers as Record<string, unknown>) ?? null,
+  );
 
   try {
     await ensureRegistration(ctx, input.refCode);
   } catch (err: any) {
-    return { ok: false, error: err?.message ?? "Couldn't save." };
+    return { ok: false, retryable: true, error: err?.message ?? "Couldn't save." };
   }
 
   const now = new Date().toISOString();
   if (existing) {
-    const { error } = await ctx.admin
+    // A tab that has never seen this row (it was created elsewhere after the
+    // tab loaded) has no version to offer — that is a conflict too, not a
+    // licence to overwrite.
+    if (!input.force && !input.version) {
+      return {
+        ok: false,
+        conflict: true,
+        latest: { answers: (existing.answers ?? {}) as ChallengeAnswers, version: existing.updated_at },
+      };
+    }
+    let q = ctx.admin
       .from("challenge_submissions")
       .update({ answers, questions_snapshot: ctx.challenge.questions })
       .eq("id", existing.id)
       .eq("status", "draft");
-    if (error) return { ok: false, error: error.message };
-  } else {
-    const { error } = await ctx.admin.from("challenge_submissions").insert({
+    if (!input.force) q = q.eq("updated_at", input.version!);
+    const { data: row, error } = await q.select("updated_at").maybeSingle();
+    if (error) return { ok: false, retryable: true, error: error.message };
+    if (!row) {
+      // Zero rows: either it was submitted meanwhile, or another tab saved.
+      const { data: now2 } = await ctx.admin
+        .from("challenge_submissions")
+        .select("status, updated_at, answers")
+        .eq("id", existing.id)
+        .maybeSingle();
+      if (now2 && now2.status !== "draft") return { ok: false, alreadySubmitted: true };
+      return {
+        ok: false,
+        conflict: true,
+        latest: now2
+          ? { answers: (now2.answers ?? {}) as ChallengeAnswers, version: now2.updated_at }
+          : undefined,
+      };
+    }
+    return { ok: true, savedAt: now, version: row.updated_at };
+  }
+
+  const { data: created, error } = await ctx.admin
+    .from("challenge_submissions")
+    .insert({
       challenge_id: ctx.challenge.id,
       user_id: ctx.userId,
       answers,
       questions_snapshot: ctx.challenge.questions,
       status: "draft",
-    });
-    // A concurrent autosave from another tab won the insert — fine.
-    if (error && (error as any).code !== "23505") {
-      return { ok: false, error: error.message };
+    })
+    .select("updated_at")
+    .single();
+  if (error) {
+    // Another tab created the row first — hand its answers back.
+    if ((error as any).code === "23505") {
+      const { data: row } = await ctx.admin
+        .from("challenge_submissions")
+        .select("status, updated_at, answers")
+        .eq("challenge_id", ctx.challenge.id)
+        .eq("user_id", ctx.userId)
+        .maybeSingle();
+      if (row && row.status !== "draft") return { ok: false, alreadySubmitted: true };
+      return {
+        ok: false,
+        conflict: true,
+        latest: row ? { answers: (row.answers ?? {}) as ChallengeAnswers, version: row.updated_at } : undefined,
+      };
     }
+    return { ok: false, retryable: true, error: error.message };
   }
-  return { ok: true, savedAt: now };
+  return { ok: true, savedAt: now, version: created!.updated_at };
 }
 
 export type SubmitResult = {
@@ -298,16 +470,50 @@ export type SubmitResult = {
   fieldErrors?: Record<string, string>;
   referral?: ReferralProgress;
   edited?: boolean;
+  version?: string;
+  conflict?: boolean;
+  latest?: { answers: ChallengeAnswers; version: string };
 };
+
+/**
+ * Carry answers the current form can't show — a question removed since this
+ * entry was submitted, or the pre-0087 standalone demo video — into an edit,
+ * so pressing "Save changes" never erases part of an entry.
+ */
+function carryOver(
+  current: ChallengeQuestion[],
+  answers: ChallengeAnswers,
+  prevAnswers: Record<string, unknown> | null,
+  prevSnapshot: unknown,
+): { answers: ChallengeAnswers; snapshot: ChallengeQuestion[] } {
+  const ids = new Set(current.map((q) => q.id));
+  const extraQs: ChallengeQuestion[] = [];
+  const extraAnswers: ChallengeAnswers = {};
+  for (const q of sanitizeQuestions(prevSnapshot)) {
+    if (ids.has(q.id)) continue;
+    const v = prevAnswers?.[q.id];
+    if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
+    extraQs.push(q);
+    extraAnswers[q.id] = v as any;
+  }
+  return { answers: { ...answers, ...extraAnswers }, snapshot: [...current, ...extraQs] };
+}
 
 /**
  * Submit (or, when edits are allowed, re-submit) an entry. Validates against
  * the challenge's own questions, enforces the referral gate on the FIRST
  * submit, and fans out notifications once.
+ *
+ * Every state change is a CONDITIONAL write (draft→submitted only if still a
+ * draft; an edit only if still 'submitted'), and the result is decided by
+ * whether a row changed — not by a read taken earlier in the request — so two
+ * tabs can't both "first-submit" (double emails), and an edit that races an
+ * admin's review is refused rather than reported as saved.
  */
 export async function submitChallengeEntry(input: {
   slug: string;
   answers: Record<string, unknown>;
+  version?: string | null;
   refCode?: string | null;
 }): Promise<SubmitResult> {
   const loaded = await loadContext(input.slug);
@@ -336,32 +542,50 @@ export async function submitChallengeEntry(input: {
 
   const { data: existing } = await ctx.admin
     .from("challenge_submissions")
-    .select("id, status, submitted_at")
+    .select("id, status, submitted_at, updated_at, answers, questions_snapshot")
     .eq("challenge_id", c.id)
     .eq("user_id", ctx.userId)
     .maybeSingle();
   const alreadySubmitted = !!existing && existing.status !== "draft";
   if (alreadySubmitted) {
     if (existing!.status !== "submitted") {
-      return {
-        ok: false,
-        error: "Your entry has already been reviewed, so it's locked.",
-      };
+      return { ok: false, error: "Your entry has already been reviewed, so it's locked." };
     }
     if (!c.allowEdits) {
       return { ok: false, error: "Entries can't be edited once submitted." };
     }
   }
+  // A stale tab must not replace newer answers saved elsewhere (and a tab
+  // that never saw the row can't vouch for it either).
+  if (existing && existing.updated_at !== input.version) {
+    return {
+      ok: false,
+      conflict: true,
+      error: "Newer changes were saved from another tab or device.",
+      latest: { answers: (existing.answers ?? {}) as ChallengeAnswers, version: existing.updated_at },
+    };
+  }
 
-  const { answers, errors } = validateAnswers(c.questions, input.answers ?? {}, {
+  const { answers: cleaned, errors } = validateAnswers(c.questions, input.answers ?? {}, {
     mode: "submit",
     uploadPrefix: uploadPrefix(ctx),
   });
   if (Object.keys(errors).length) {
+    return { ok: false, error: "A few answers need another look.", fieldErrors: errors };
+  }
+  const verified = await verifyNewUploads(
+    ctx,
+    c.questions,
+    cleaned,
+    (existing?.answers as Record<string, unknown>) ?? null,
+  );
+  // An upload that failed verification may have emptied a required answer.
+  const recheck = validateAnswers(c.questions, verified, { mode: "submit" });
+  if (Object.keys(recheck.errors).length) {
     return {
       ok: false,
-      error: "A few answers need another look.",
-      fieldErrors: errors,
+      error: "One of your uploads couldn't be accepted — please upload it again.",
+      fieldErrors: recheck.errors,
     };
   }
 
@@ -396,20 +620,48 @@ export async function submitChallengeEntry(input: {
   }
 
   const now = new Date().toISOString();
+  const { answers, snapshot } = alreadySubmitted
+    ? carryOver(c.questions, verified, existing!.answers as any, existing!.questions_snapshot)
+    : { answers: verified, snapshot: c.questions };
+
   let submissionId: string;
-  if (existing) {
-    const { error } = await ctx.admin
+  let version: string | undefined;
+  let firstSubmit = false;
+
+  if (existing && !alreadySubmitted) {
+    const { data: row, error } = await ctx.admin
       .from("challenge_submissions")
-      .update({
-        answers,
-        questions_snapshot: c.questions,
-        status: "submitted",
-        submitted_at: existing.submitted_at ?? now,
-      })
+      .update({ answers, questions_snapshot: snapshot, status: "submitted", submitted_at: now })
       .eq("id", existing.id)
-      .in("status", ["draft", "submitted"]);
+      .eq("status", "draft")
+      .eq("updated_at", existing.updated_at)
+      .select("id, updated_at")
+      .maybeSingle();
     if (error) return { ok: false, error: error.message };
-    submissionId = existing.id;
+    if (!row) {
+      return { ok: false, error: "This entry changed in another tab or device just now — reload to see it." };
+    }
+    submissionId = row.id;
+    version = row.updated_at;
+    firstSubmit = true;
+  } else if (existing) {
+    const { data: row, error } = await ctx.admin
+      .from("challenge_submissions")
+      .update({ answers, questions_snapshot: snapshot })
+      .eq("id", existing.id)
+      .eq("status", "submitted")
+      .eq("updated_at", existing.updated_at)
+      .select("id, updated_at")
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (!row) {
+      return {
+        ok: false,
+        error: "Your entry changed at the same moment (another tab, or it was just reviewed) — reload to see where it stands. Nothing was changed.",
+      };
+    }
+    submissionId = row.id;
+    version = row.updated_at;
   } else {
     const referralCode = await attributableRef(ctx, input.refCode);
     const { data: created, error } = await ctx.admin
@@ -418,30 +670,50 @@ export async function submitChallengeEntry(input: {
         challenge_id: c.id,
         user_id: ctx.userId,
         answers,
-        questions_snapshot: c.questions,
+        questions_snapshot: snapshot,
         status: "submitted",
         submitted_at: now,
         referral_code: referralCode,
       })
-      .select("id")
+      .select("id, updated_at")
       .single();
     if (error) {
       if ((error as any).code === "23505") {
-        return { ok: false, error: "Looks like this was submitted from another tab — reload to see it." };
+        // Another tab created the row (usually a draft autosave) first. If
+        // it's still a draft, promote it with these answers.
+        const { data: row } = await ctx.admin
+          .from("challenge_submissions")
+          .update({ answers, questions_snapshot: snapshot, status: "submitted", submitted_at: now })
+          .eq("challenge_id", c.id)
+          .eq("user_id", ctx.userId)
+          .eq("status", "draft")
+          .select("id, updated_at")
+          .maybeSingle();
+        if (!row) {
+          return { ok: false, error: "Looks like this was submitted from another tab — reload to see it." };
+        }
+        submissionId = row.id;
+        version = row.updated_at;
+        firstSubmit = true;
+      } else {
+        return { ok: false, error: error.message };
       }
-      return { ok: false, error: error.message };
+    } else {
+      submissionId = created!.id;
+      version = created!.updated_at;
+      firstSubmit = true;
     }
-    submissionId = created!.id;
   }
 
-  if (!alreadySubmitted) {
-    await fanOutSubmitted(ctx, submissionId);
+  if (firstSubmit) {
+    const id = submissionId;
+    after(() => fanOutSubmitted(ctx, id));
   }
 
   revalidatePath("/dashboard");
   revalidatePath("/admin/challenges");
   revalidatePath(`/admin/challenges/${c.id}/submissions`);
-  return { ok: true, edited: alreadySubmitted };
+  return { ok: true, edited: !firstSubmit, version };
 }
 
 /** Best-effort post-submit fan-out — never affects the submit result. */
@@ -583,9 +855,13 @@ export type UploadToken = {
 /**
  * Mint a one-shot signed upload URL for a file or video answer. The browser
  * uploads straight to the private bucket (server actions cap bodies at ~1 MB),
- * and the signed URL is what authorizes the write. The file type and size are
- * checked here against the QUESTION it's for, so a screenshots field can't be
- * used to park a 200 MB zip.
+ * and the signed URL is what authorizes the write.
+ *
+ * The type/size checks here are ADVISORY: they run on what the browser says
+ * about the file, and a signed upload URL can't carry a limit. They give an
+ * honest entrant an instant, specific error. The enforcement is
+ * verifyNewUploads(), which checks the real stored object before any answer
+ * is allowed to reference it.
  */
 export async function getChallengeUploadToken(input: {
   slug: string;

@@ -655,6 +655,28 @@ export async function submitApplicationAction(
 }
 
 /**
+ * True while any live challenge gates submitting on referrals. A friend
+ * applying to a cohort is one of the two ways such a referral counts
+ * (lib/challenges.ts getReferralProgress), so attribution has to stay on for
+ * that even when the site-wide referral program is switched off — otherwise
+ * the challenge promises a path that silently can't work.
+ */
+async function challengeNeedsReferrals(): Promise<boolean> {
+  try {
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const { data } = await createAdminClient()
+      .from("challenges")
+      .select("id")
+      .eq("status", "active")
+      .gt("referrals_required", 0)
+      .limit(1);
+    return (data ?? []).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Attach a referral code to the user's draft application without
  * touching any other fields. Used by the apply form on mount when a
  * `?ref=` query param or stashed localStorage code is present —
@@ -666,7 +688,9 @@ export async function attachReferralCodeAction(code: string) {
   // to attach a code so the feature is truly inert.
   const { getSiteConfig } = await import("@/lib/site-config");
   const cfg = await getSiteConfig();
-  if (!cfg.settings.referralsEnabled) return { ok: false };
+  if (!cfg.settings.referralsEnabled && !(await challengeNeedsReferrals())) {
+    return { ok: false };
+  }
 
   const supabase = await createClient();
   const {

@@ -55,7 +55,12 @@ export function ScheduleBuilder({
             type="datetime-local"
             aria-label="When"
             value={isoToLocalInput(s.at)}
-            onChange={(e) => update(i, { at: localInputToIso(e.target.value) ?? "" })}
+            onChange={(e) => {
+              // A half-typed date reads as "" — keep the last good value
+              // rather than wiping the milestone's time.
+              if (e.target.validity.badInput) return;
+              update(i, { at: localInputToIso(e.target.value) ?? "" });
+            }}
           />
           <div className="space-y-2">
             <Input aria-label="Milestone" value={s.label} onChange={(e) => update(i, { label: e.target.value })} placeholder="Kickoff call" />

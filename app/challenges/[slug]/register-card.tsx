@@ -6,7 +6,14 @@ import { CalendarPlus, CheckCircle2, Lock, PartyPopper } from "lucide-react";
 import { buttonClasses, Button } from "@/components/ui/button";
 import { Countdown } from "@/components/challenges/time";
 import { ShareLink } from "@/components/challenges/share-link";
-import { REF_STORAGE_KEY, stashRefFromLocation } from "@/lib/referral-code";
+import { stashRefFromLocation } from "@/lib/referral-code";
+import {
+  clearChallengeRef,
+  consumeJoinIntent,
+  markJoinIntent,
+  readChallengeRef,
+  stashChallengeRef,
+} from "@/lib/challenge-ref";
 import {
   canRegister,
   challengePhase,
@@ -18,7 +25,10 @@ import { registerForChallenge } from "./actions";
 
 type Props = {
   slug: string;
+  kind: Challenge["kind"];
   kindLabel: string;
+  /** How many winners are publicly listed below (0 = none shown). */
+  winnersShown: number;
   challenge: Pick<
     Challenge,
     | "status"
@@ -32,7 +42,10 @@ type Props = {
   signedIn: boolean;
   viewerName: string | null;
   registered: boolean;
-  submission: { status: SubmissionStatus; submittedAt: string | null } | null;
+  /** `status` is what the entrant may see (outcomes stay "submitted" until
+   *  winners are published); `locked` says the entry can't be edited any more
+   *  without saying why. Both are decided on the server. */
+  submission: { status: SubmissionStatus; submittedAt: string | null; locked: boolean } | null;
   referral: { link: string; count: number } | null;
   /** ?join=1 — they clicked Register while signed out and just came back. */
   autoJoin: boolean;
@@ -41,14 +54,10 @@ type Props = {
   icsUrl: string;
 };
 
-/** Read the referral code: URL first, then the funnel's localStorage stash. */
-function currentRef(fromUrl: string | null): string | null {
-  if (fromUrl) return fromUrl;
-  try {
-    return window.localStorage.getItem(REF_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+/** The referral code: the URL's first, then the one stashed for THIS
+ *  challenge (never another challenge's, and never the cohort funnel's). */
+function currentRef(slug: string, fromUrl: string | null): string | null {
+  return fromUrl || readChallengeRef(slug);
 }
 
 /**
@@ -66,7 +75,10 @@ export function RegisterCard(p: Props) {
   const autoRan = useRef(false);
 
   useEffect(() => {
+    // The cohort funnel's stash (so a friend who goes on to apply is still
+    // attributed) and this challenge's own.
     stashRefFromLocation();
+    stashChallengeRef(p.slug);
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
@@ -87,10 +99,11 @@ export function RegisterCard(p: Props) {
     start(async () => {
       const res = await registerForChallenge({
         slug: p.slug,
-        refCode: currentRef(p.refCode),
+        refCode: currentRef(p.slug, p.refCode),
       });
       if (!res.ok) {
         if (res.signIn) {
+          markJoinIntent(p.slug);
           window.location.assign(`/signup?next=${encodeURIComponent(joinNext)}`);
           return;
         }
@@ -99,11 +112,14 @@ export function RegisterCard(p: Props) {
       }
       setRegistered(true);
       setJustJoined(true);
+      clearChallengeRef(p.slug);
       router.refresh();
     });
   }
 
-  // Came back from signup with ?join=1: finish the click they already made.
+  // Came back from signup with ?join=1: finish the click they already made —
+  // but ONLY if this browser actually made it (markJoinIntent on the click).
+  // ?join=1 by itself is just a URL anyone can post in a group chat.
   useEffect(() => {
     if (!p.autoJoin || autoRan.current) return;
     autoRan.current = true;
@@ -112,7 +128,8 @@ export function RegisterCard(p: Props) {
       url.searchParams.delete("join");
       window.history.replaceState(null, "", url.pathname + url.search);
     } catch {}
-    if (p.signedIn && !p.registered && c.status === "active") register();
+    const intended = consumeJoinIntent(p.slug);
+    if (intended && p.signedIn && !p.registered && c.status === "active") register();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -120,19 +137,28 @@ export function RegisterCard(p: Props) {
   const submitted = !!sub && sub.status !== "draft";
   const needsRefs = c.referralsRequired > 0 && !submitted;
   const refsLeft = p.referral ? Math.max(0, c.referralsRequired - p.referral.count) : c.referralsRequired;
+  const isGiveaway = p.kind === "giveaway";
 
   let body: React.ReactNode;
 
   if (submitted) {
     const s = sub!.status;
+    const canEditNow = c.allowEdits && subOpen && !sub!.locked;
     const verdict =
       s === "funded"
-        ? { title: "You won! 🏆", text: "Check your email — we'll reach out about your prize." }
-        : s === "shortlisted"
-          ? { title: "You're shortlisted", text: "Your project made the final round. Results soon." }
-          : s === "rejected" && c.winnersPublished
-            ? { title: "Thanks for building", text: "You weren't picked this time — but the next one's coming. Keep shipping." }
-            : { title: "You're submitted", text: c.allowEdits && subOpen ? "You can keep editing until the deadline." : "We'll email you when winners are picked." };
+        ? { title: "You won! 🏆", text: "Congrats — we'll be in touch about your prize." }
+        : c.winnersPublished
+          ? {
+              title: "Thanks for taking part",
+              text: p.winnersShown > 0
+                ? "Winners are out — see them below. You weren't picked this time, but the next one's coming."
+                : "Winners have been picked, and you weren't one of them this time. The next one's coming.",
+            }
+          : s === "shortlisted"
+            ? { title: "You're shortlisted", text: "You made the final round. Results soon." }
+            : canEditNow
+              ? { title: isGiveaway ? "You're entered" : "You're submitted", text: "You can keep editing until the deadline." }
+              : { title: isGiveaway ? "You're entered" : "You're submitted", text: "Winners will be announced here." };
     body = (
       <>
         <div className="flex items-start gap-3">
@@ -143,8 +169,8 @@ export function RegisterCard(p: Props) {
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Link href={`${selfPath}/submit`} className={buttonClasses(c.allowEdits && subOpen && s === "submitted" ? "primary" : "secondary", "md")}>
-            {c.allowEdits && subOpen && s === "submitted" ? "Edit submission" : "View submission"}
+          <Link href={`${selfPath}/submit`} className={buttonClasses(canEditNow ? "primary" : "secondary", "md")}>
+            {canEditNow ? "Edit your entry" : "View your entry"}
           </Link>
         </div>
       </>
@@ -178,7 +204,13 @@ export function RegisterCard(p: Props) {
             href={`${selfPath}/submit`}
             className={`${buttonClasses("primary", "lg")} mt-4 w-full`}
           >
-            {sub ? "Continue your submission →" : opensLater ? "Start a draft →" : "Submit your project →"}
+            {sub
+              ? "Continue your entry →"
+              : opensLater
+                ? "Start a draft →"
+                : isGiveaway
+                  ? "Enter →"
+                  : "Submit your project →"}
           </Link>
         )}
         {needsRefs && regOpen && (
@@ -199,7 +231,9 @@ export function RegisterCard(p: Props) {
         </p>
         <p className="mt-1 text-sm text-ink-soft">
           {c.winnersPublished
-            ? "Winners are out — see them below."
+            ? p.winnersShown > 0
+              ? "Winners are out — see them below."
+              : "Winners have been picked."
             : now != null && challengePhase(c, now) === "judging"
               ? "We're judging entries now. New challenges drop often."
               : "This one has wrapped up. New challenges drop often."}
@@ -213,11 +247,12 @@ export function RegisterCard(p: Props) {
     body = (
       <>
         <p className="text-sm text-ink-soft">
-          Welcome! Register to get updates and submit your project. It takes a
-          free batch0 account — about 20 seconds.
+          Welcome! Register to get updates and {isGiveaway ? "enter" : "submit your project"}.
+          It takes a free batch0 account — about 20 seconds.
         </p>
         <Link
           href={`/signup?next=${encodeURIComponent(joinNext)}`}
+          onClick={() => markJoinIntent(p.slug)}
           className={`${buttonClasses("primary", "lg")} mt-4 w-full`}
         >
           Register — it&apos;s free
@@ -226,6 +261,7 @@ export function RegisterCard(p: Props) {
           Have an account?{" "}
           <Link
             href={`/login?next=${encodeURIComponent(joinNext)}`}
+            onClick={() => markJoinIntent(p.slug)}
             className="font-medium text-ink underline decoration-phosphor decoration-2 underline-offset-2"
           >
             Sign in
@@ -280,7 +316,7 @@ export function RegisterCard(p: Props) {
           </p>
         )}
 
-        {registered && regOpen && !submitted && (p.calendarUrl || p.icsUrl) && (
+        {registered && regOpen && !submitted && c.closesAt && (
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
             <span className="inline-flex items-center gap-1.5 text-ink-faint">
               <CalendarPlus className="h-3.5 w-3.5" /> Add the deadline:

@@ -6,6 +6,7 @@ import { Input, Textarea, Label, Select } from "@/components/ui/input";
 import { Toggle } from "@/components/ui/toggle";
 import { getActionError } from "@/lib/action-error";
 import { awardLabelFor, type ChallengePrize } from "@/lib/challenges-shared";
+import { LocalTime } from "@/components/ui/local-time";
 import { reviewChallengeSubmission } from "../../../actions";
 
 type ReviewStatus = "submitted" | "shortlisted" | "funded" | "rejected";
@@ -19,14 +20,18 @@ const STATUSES: { value: ReviewStatus; label: string }[] = [
 export function SubmissionReview({
   prizes,
   winnersPublished,
+  editWindowOpenUntil,
   initial,
 }: {
   prizes: ChallengePrize[];
   winnersPublished: boolean;
+  /** Set while entrants may still edit: decisions (which lock an entry) wait. */
+  editWindowOpenUntil: string | null;
   initial: {
     submissionId: string;
     status: ReviewStatus;
     prizeId: string | null;
+    awardLabel: string | null;
     payoutCents: number | null;
     reviewNotes: string | null;
     winnerPublic: boolean;
@@ -49,6 +54,10 @@ export function SubmissionReview({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const touch = () => setSaved(false);
+  // The prize this winner was awarded may since have been removed from the
+  // list; keep it selectable so a save doesn't silently change what they won.
+  const orphan = !!initial.prizeId && !prizes.some((p) => p.id === initial.prizeId);
+  const decisionsLocked = !!editWindowOpenUntil && initial.status === "submitted";
 
   function pickPrize(id: string) {
     setPrizeId(id);
@@ -91,17 +100,24 @@ export function SubmissionReview({
     <div className="space-y-5">
       <div>
         <Label>Decision</Label>
+        {decisionsLocked && (
+          <p className="mb-2 rounded-md border border-line bg-wash px-2.5 py-2 text-[12px] text-ink-soft">
+            Entrants can keep editing until <LocalTime value={editWindowOpenUntil} mode="datetime-short" />. A
+            decision would lock this entry, so decisions unlock when submissions close. Notes save anytime.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-1.5">
           {STATUSES.map((s) => (
             <button
               key={s.value}
               type="button"
+              disabled={decisionsLocked && s.value !== "submitted"}
               onClick={() => {
                 setStatus(s.value);
                 if (s.value !== "funded") setWinnerPublic(false);
                 touch();
               }}
-              className={`rounded-md border px-3 py-2 text-xs font-medium ${
+              className={`rounded-md border px-3 py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
                 status === s.value
                   ? s.value === "funded"
                     ? "border-phosphor bg-phosphor text-on-phosphor"
@@ -117,11 +133,16 @@ export function SubmissionReview({
 
       {status === "funded" && (
         <>
-          {prizes.length > 0 && (
+          {(prizes.length > 0 || orphan) && (
             <div>
               <Label htmlFor="prize">Prize won</Label>
               <Select id="prize" value={prizeId} onChange={(e) => pickPrize(e.target.value)}>
                 <option value="">— none / custom —</option>
+                {orphan && (
+                  <option value={initial.prizeId!}>
+                    {(initial.awardLabel ?? "Removed prize") + " (no longer listed)"}
+                  </option>
+                )}
                 {prizes.map((p) => (
                   <option key={p.id} value={p.id}>
                     {awardLabelFor(p)}
@@ -136,7 +157,7 @@ export function SubmissionReview({
               id="payout"
               type="number"
               min={0}
-              step="1"
+              step="0.01"
               value={payout}
               onChange={(e) => {
                 setPayout(e.target.value);

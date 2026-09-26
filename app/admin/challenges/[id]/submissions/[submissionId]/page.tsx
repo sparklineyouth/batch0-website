@@ -9,6 +9,7 @@ import {
   rowToSubmission,
   getChallengeById,
   getReferralProgress,
+  challengeWindowState,
   CHALLENGE_UPLOAD_BUCKET,
 } from "@/lib/challenges";
 import { SubmissionReview } from "./submission-review";
@@ -116,10 +117,16 @@ export default async function SubmissionDetailPage(props: {
             <SubmissionReview
               prizes={challenge.prizes}
               winnersPublished={challenge.winnersPublished}
+              editWindowOpenUntil={
+                challenge.allowEdits && challenge.closesAt && challengeWindowState(challenge) === "open"
+                  ? challenge.closesAt
+                  : null
+              }
               initial={{
                 submissionId: sub.id,
                 status: sub.status === "withdrawn" ? "submitted" : (sub.status as any),
                 prizeId: sub.prizeId,
+                awardLabel: sub.awardLabel,
                 payoutCents: sub.payoutAmountCents,
                 reviewNotes: sub.reviewNotes,
                 winnerPublic: sub.winnerPublic,

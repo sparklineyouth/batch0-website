@@ -40,13 +40,18 @@ export * from "@/lib/challenges-shared";
 export async function getActiveChallenge(): Promise<Challenge | null> {
   try {
     const db = createPublicReadClient();
+    // Filter past-deadline rows in SQL, BEFORE the limit: nothing auto-closes
+    // a challenge, so several "active but judging" ones can pile up and would
+    // otherwise fill the page ahead of the one that's actually open.
+    const nowIso = new Date().toISOString();
     const { data } = await db
       .from("challenges")
       .select("*")
       .eq("status", "active")
+      .or(`closes_at.is.null,closes_at.gt.${nowIso}`)
       .order("featured", { ascending: false })
       .order("closes_at", { ascending: true, nullsFirst: false })
-      .limit(5);
+      .limit(20);
     const now = Date.now();
     const rows = (data ?? []).map(rowToChallenge);
     // Skip one that's past its deadline but not yet closed by an admin — the

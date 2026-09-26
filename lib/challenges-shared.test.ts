@@ -84,6 +84,8 @@ import {
   blankQuestion,
   shortName,
   QUESTION_PRESETS,
+  visibleSubmissionStatus,
+  googleCalendarUrl,
 } from "./challenges-shared.ts";
 
 const Q = (over: Parameters<typeof blankQuestion>[0]) => blankQuestion({ label: "Q", ...over });
@@ -225,4 +227,27 @@ test("shortName keeps first name and last initial", () => {
   assert.equal(shortName("Maya Rodriguez"), "Maya R.");
   assert.equal(shortName("Cher"), "Cher");
   assert.equal(shortName(null), "A friend");
+});
+
+test("decisions stay private until winners are published", () => {
+  assert.equal(visibleSubmissionStatus("funded", false), "submitted");
+  assert.equal(visibleSubmissionStatus("rejected", false), "submitted");
+  assert.equal(visibleSubmissionStatus("shortlisted", false), "shortlisted");
+  assert.equal(visibleSubmissionStatus("funded", true), "funded");
+  assert.equal(visibleSubmissionStatus("rejected", true), "rejected");
+  assert.equal(visibleSubmissionStatus("draft", false), "draft");
+});
+
+test("Google Calendar link is the deadline, not the whole window", () => {
+  const url = googleCalendarUrl(
+    { title: "Hack", tagline: "", opensAt: "2026-10-01T00:00:00Z", closesAt: "2026-10-05T03:59:00Z", location: "Online" },
+    "https://batch0.org/challenges/hack",
+  )!;
+  const dates = new URL(url).searchParams.get("dates");
+  assert.equal(dates, "20261005T032900Z/20261005T035900Z");
+  assert.match(new URL(url).searchParams.get("text")!, /^Submissions due: Hack/);
+  assert.equal(
+    googleCalendarUrl({ title: "x", tagline: "", opensAt: "2026-10-01T00:00:00Z", closesAt: null, location: "" }, "u"),
+    null,
+  );
 });

@@ -156,7 +156,7 @@ export default async function AdminChallengesPage(props: {
                   </Link>
                 </div>
                 <div className="w-full sm:w-auto">
-                  <ChallengeRowActions id={c.id} status={c.status} compact />
+                  <ChallengeRowActions id={c.id} status={c.status} closesAt={c.closesAt} compact />
                 </div>
               </li>
             );

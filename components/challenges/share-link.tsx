@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy, Share2 } from "lucide-react";
 
 /**
@@ -15,7 +15,8 @@ export function ShareLink({
   shareText?: string;
   compact?: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"no" | "yes" | "selected">("no");
+  const inputRef = useRef<HTMLInputElement>(null);
   // Read after mount: the server has no navigator, and deciding during render
   // would hydrate a different button row than the server sent.
   const [canShare, setCanShare] = useState(false);
@@ -24,15 +25,27 @@ export function ShareLink({
   }, []);
 
   async function copy() {
+    let ok = false;
     try {
       await navigator.clipboard.writeText(url);
+      ok = true;
     } catch {
-      // Clipboard can be blocked (http, iframes) — select the text instead.
-      const el = document.getElementById(`share-${url}`) as HTMLInputElement | null;
-      el?.select();
+      // Clipboard API refused (in-app webviews, http, permissions): fall back
+      // to selecting the text and the legacy copy command.
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.select();
+        try {
+          ok = document.execCommand("copy");
+        } catch {
+          ok = false;
+        }
+      }
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    // Only claim "Copied" when something was actually copied.
+    setCopied(ok ? "yes" : "selected");
+    setTimeout(() => setCopied("no"), 2200);
   }
 
   async function share() {
@@ -43,13 +56,12 @@ export function ShareLink({
     }
   }
 
-  const display = url.replace(/^https?:\/\//, "");
   return (
     <div className="flex items-stretch gap-2">
       <input
-        id={`share-${url}`}
+        ref={inputRef}
         readOnly
-        value={display}
+        value={url}
         onFocus={(e) => e.currentTarget.select()}
         className={`min-w-0 flex-1 rounded-md border border-line bg-paper px-3 font-mono text-ink ${
           compact ? "h-9 text-[12px]" : "h-10 text-[13px]"
@@ -63,8 +75,8 @@ export function ShareLink({
           compact ? "h-9 text-[12px]" : "h-10 text-[13px]"
         }`}
       >
-        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-        {copied ? "Copied" : "Copy"}
+        {copied === "yes" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+        {copied === "yes" ? "Copied" : copied === "selected" ? "Selected — copy it" : "Copy"}
       </button>
       {canShare && (
         <button

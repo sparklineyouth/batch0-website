@@ -21,8 +21,10 @@
 --   submit     validated against the challenge's own questions, optionally
 --              gated on N qualified referrals (referrals_required).
 --
--- Everything here is additive. Every new column defaults to what the code did
--- before, so a challenge written under 0036 reads identically after this.
+-- Everything here is additive and safe under the currently deployed code:
+-- every new column defaults to what that code did (existing challenges stay
+-- non-editable), and the self-insert policy is narrowed, not dropped — see
+-- section 3 and 0088, which finishes the job after deploy.
 --
 -- The one removal: `challenges_one_active`. It existed because the homepage
 -- marquee was a single slot. Running a hackathon and a giveaway at the same
@@ -35,6 +37,47 @@
 -- ----------------------------------------------------------------------------
 -- 1. challenges — event details
 -- ----------------------------------------------------------------------------
+-- `prizes` is added on its own, inside the same block as its backfill, so the
+-- backfill runs exactly once — in the run that creates the column. After
+-- deploy, `prize_label` is the editor's optional headline override, so a
+-- re-run that backfilled every "headline but no prizes" row would inject a
+-- prize card an admin never asked for.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'challenges' and column_name = 'prizes'
+  ) then
+    alter table public.challenges add column prizes jsonb not null default '[]'::jsonb;
+    -- A pre-0087 prize was one sentence plus an optional amount. Lift it into
+    -- a single structured prize so old pages have something to show.
+    update public.challenges
+    set prizes = jsonb_build_array(
+      jsonb_build_object(
+        'id', 'legacy',
+        'place', 'Prize',
+        'kind', case when prize_amount_cents is not null then 'cash' else 'item' end,
+        'title', prize_label,
+        'description', '',
+        'valueCents', prize_amount_cents,
+        'quantity', 1,
+        'imageUrl', null
+      )
+    )
+    where coalesce(prize_label, '') <> '';
+  end if;
+
+  -- Existing challenges keep the old rule (an entry is final); new ones
+  -- default to editable. Same once-only guard, same reason.
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'challenges' and column_name = 'allow_edits'
+  ) then
+    alter table public.challenges add column allow_edits boolean not null default false;
+    alter table public.challenges alter column allow_edits set default true;
+  end if;
+end $$;
+
 alter table public.challenges
   -- What the page calls itself. A label, not behaviour: all three kinds
   -- register, submit, and award the same way.
@@ -50,14 +93,12 @@ alter table public.challenges
   add column if not exists results_at timestamptz,
   -- Structured content. Shapes are validated in code (lib/challenges-shared.ts
   -- sanitize*), exactly like `questions` — the DB only promises an array.
-  add column if not exists prizes jsonb not null default '[]'::jsonb,
   add column if not exists schedule jsonb not null default '[]'::jsonb,
   add column if not exists faq jsonb not null default '[]'::jsonb,
   add column if not exists resources jsonb not null default '[]'::jsonb,
   add column if not exists rules text not null default '',
   -- Entry requirements.
   add column if not exists referrals_required integer not null default 0,
-  add column if not exists allow_edits boolean not null default true,
   -- Homepage marquee preference when more than one challenge is live.
   add column if not exists featured boolean not null default false;
 
@@ -74,26 +115,6 @@ alter table public.challenges add constraint challenges_referrals_required_check
   check (referrals_required between 0 and 50);
 
 drop index if exists public.challenges_one_active;
-
--- Backfill: a pre-0087 challenge's prize was one sentence plus an optional
--- amount. Lift it into a single structured prize so the new prize section has
--- something to show for the old pages. Only touches rows that have no prizes
--- yet, so a re-run never overwrites an admin's edits.
-update public.challenges
-set prizes = jsonb_build_array(
-  jsonb_build_object(
-    'id', 'legacy',
-    'place', 'Prize',
-    'kind', case when prize_amount_cents is not null then 'cash' else 'item' end,
-    'title', prize_label,
-    'description', '',
-    'valueCents', prize_amount_cents,
-    'quantity', 1,
-    'imageUrl', null
-  )
-)
-where prizes = '[]'::jsonb
-  and coalesce(prize_label, '') <> '';
 
 -- ----------------------------------------------------------------------------
 -- 2. challenge_registrations — "I'm in"
@@ -154,7 +175,10 @@ alter table public.challenge_submissions
   -- ("1st place — Ray-Ban Meta glasses") so the public winners strip stays
   -- right even if the prize list is edited later.
   add column if not exists prize_id text,
-  add column if not exists award_label text;
+  add column if not exists award_label text,
+  -- When the "email results" action told this entrant how it went. Makes that
+  -- action safe to press twice.
+  add column if not exists results_notified_at timestamptz;
 
 update public.challenge_submissions
 set submitted_at = created_at
@@ -169,11 +193,32 @@ alter table public.challenge_submissions
 alter table public.challenge_submissions alter column status set default 'draft';
 
 -- 0036 let a signed-in user INSERT their own row with any status — including
--- 'funded' — straight through PostgREST. Every write now goes through a server
--- action that validates answers and the referral gate first, so the self-insert
--- path is closed rather than patched.
+-- 'funded' — straight through PostgREST. The new code writes only through
+-- validated server actions (service role), so the policy is not needed by it.
+--
+-- It is NARROWED here rather than dropped, because the code deployed while
+-- this migration runs (pre-0087) still inserts entries through that policy:
+-- dropping it would break every entry in the gap between migrating and
+-- deploying. The narrowed form admits exactly the old code's row shape and
+-- nothing an entrant could use to award themselves. 0088 drops it once the
+-- new code is live.
 drop policy if exists "challenge_submissions self insert"
   on public.challenge_submissions;
+create policy "challenge_submissions self insert" on public.challenge_submissions
+  for insert with check (
+    user_id = auth.uid()
+    and status = 'submitted'
+    and payout_amount_cents is null
+    and winner_public = false
+    and reviewed_by is null
+    and reviewed_at is null
+    and review_notes is null
+    and public_name is null
+    and public_blurb is null
+    and public_project_url is null
+    and prize_id is null
+    and award_label is null
+  );
 
 -- ----------------------------------------------------------------------------
 -- 4. Public winners view — now carries what they won

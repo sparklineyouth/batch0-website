@@ -16,6 +16,7 @@ import {
   googleCalendarUrl,
   prizeHeadline,
   formatCents,
+  visibleSubmissionStatus,
   KIND_LABELS,
   type Challenge,
   type PublicWinner,
@@ -147,11 +148,12 @@ export function EventView({
                         challenge.location
                       )}
                     </p>
-                    <p className="truncate text-[13px] text-ink-soft">
-                      {/online|remote|virtual/i.test(challenge.location)
-                        ? "Build from anywhere"
-                        : "In person"}
-                    </p>
+                    {/online|remote|virtual|anywhere|worldwide|discord|zoom|livestream/i.test(challenge.location) ||
+                    /discord\.(gg|com)|zoom\.us|meet\.google\.com/i.test(challenge.locationUrl ?? "") ? (
+                      <p className="truncate text-[13px] text-ink-soft">Build from anywhere</p>
+                    ) : /google\.[a-z.]+\/maps|maps\.app\.goo\.gl|maps\.apple\.com/i.test(challenge.locationUrl ?? "") ? (
+                      <p className="truncate text-[13px] text-ink-soft">In person</p>
+                    ) : null}
                   </div>
                 </MetaRow>
                 {headline && (
@@ -186,7 +188,9 @@ export function EventView({
               <div className="mt-7">
                 <RegisterCard
                   slug={challenge.slug}
+                  kind={challenge.kind}
                   kindLabel={kindLabel}
+                  winnersShown={winners.length}
                   challenge={{
                     status: challenge.status,
                     opensAt: challenge.opensAt,
@@ -202,8 +206,14 @@ export function EventView({
                   submission={
                     entrant?.submission
                       ? {
-                          status: entrant.submission.status,
+                          // Mapped HERE, on the server, so an unpublished
+                          // decision never reaches the browser at all.
+                          status: visibleSubmissionStatus(
+                            entrant.submission.status,
+                            challenge.winnersPublished,
+                          ),
                           submittedAt: entrant.submission.submittedAt,
+                          locked: !["draft", "submitted"].includes(entrant.submission.status),
                         }
                       : null
                   }
@@ -225,7 +235,7 @@ export function EventView({
                 <Section title="Winners">
                   <ul className="divide-y divide-line border-y border-line">
                     {winners.map((w) => (
-                      <li key={w.id} className="flex items-baseline justify-between gap-4 py-3">
+                      <li key={w.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                         <div className="min-w-0">
                           <p className="font-medium text-ink">
                             {w.publicName ?? "A student"}
@@ -244,7 +254,7 @@ export function EventView({
                             <p className="text-sm text-ink-soft">{w.publicBlurb}</p>
                           )}
                         </div>
-                        <span className="shrink-0 text-right font-mono text-[12px] text-phosphor-ink">
+                        <span className="font-mono text-[12px] text-phosphor-ink sm:max-w-[45%] sm:text-right">
                           {w.awardLabel ?? formatCents(w.payoutAmountCents)}
                         </span>
                       </li>
@@ -426,8 +436,8 @@ function howToSteps(c: Challenge) {
   steps.push({
     title: "Winners picked",
     text: c.resultsAt
-      ? "We review every entry and announce winners on the date above."
-      : "We review every entry and email everyone when winners are picked.",
+      ? "We review every entry and announce winners on the date above, right here."
+      : "We review every entry and announce winners right here.",
   });
   return steps;
 }

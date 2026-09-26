@@ -20,8 +20,9 @@ import {
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Countdown } from "@/components/challenges/time";
+import { LocalTime } from "@/components/ui/local-time";
 import { ShareLink } from "@/components/challenges/share-link";
-import { REF_STORAGE_KEY } from "@/lib/referral-code";
+import { challengeRefKey, readChallengeRef } from "@/lib/challenge-ref";
 import {
   acceptFor,
   answerIsEmpty,
@@ -66,7 +67,7 @@ type FormChallenge = Pick<
   | "closesAt"
   | "allowEdits"
   | "referralsRequired"
-> & { kindLabel: string };
+> & { kindLabel: string; kind: Challenge["kind"] };
 
 type Referral = {
   required: number;
@@ -78,10 +79,10 @@ type Referral = {
 type Answers = Record<string, any>;
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
-function readRef(): string | null {
+function readRef(slug: string): string | null {
   try {
     const u = new URL(window.location.href).searchParams.get("ref");
-    return u || window.localStorage.getItem(REF_STORAGE_KEY);
+    return u || readChallengeRef(slug);
   } catch {
     return null;
   }
@@ -127,14 +128,6 @@ function fmtBytes(n: number) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function useTicker(ms: number) {
-  const [, setN] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setN((n) => n + 1), ms);
-    return () => clearInterval(t);
-  }, [ms]);
-}
-
 function ago(iso: string | null): string {
   if (!iso) return "";
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
@@ -151,6 +144,7 @@ export function SubmissionForm({
   initialAnswers,
   initialStatus,
   initialSubmittedAt,
+  initialVersion,
   initialPreviews,
   referral: initialReferral,
   preview,
@@ -160,13 +154,15 @@ export function SubmissionForm({
   initialAnswers: Answers;
   initialStatus: SubmissionStatus | null;
   initialSubmittedAt: string | null;
+  /** The saved row's updated_at: the optimistic-concurrency token. */
+  initialVersion: string | null;
   initialPreviews: Record<string, string>;
   referral: Referral | null;
   preview: boolean;
 }) {
   const router = useRouter();
-  useTicker(15_000);
   const questions = challenge.questions;
+  const isGiveaway = challenge.kind === "giveaway";
   const [answers, setAnswers] = useState<Answers>(initialAnswers);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -181,77 +177,146 @@ export function SubmissionForm({
   const [referral, setReferral] = useState<Referral | null>(initialReferral);
   const [previews, setPreviews] = useState<Record<string, string>>(initialPreviews);
   const [uploading, setUploading] = useState<Record<string, number>>({});
-  const [now, setNow] = useState<number | null>(null);
+  const [conflict, setConflict] = useState<null | { answers: Answers; version: string }>(null);
+  const [signedOut, setSignedOut] = useState(false);
+  const [closedNow, setClosedNow] = useState(false);
 
-  useEffect(() => setNow(Date.now()), []);
+  // A live clock, not a one-shot: a tab left open across kickoff or the
+  // deadline has to flip "Opens soon" → "Submit" (and back) on its own. A
+  // timer aimed at the exact open time makes the switch land on the second.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 15_000);
+    const opensIn = challenge.opensAt ? new Date(challenge.opensAt).getTime() - Date.now() : -1;
+    const kick = opensIn > 0 && opensIn < 2 ** 31 - 1 ? setTimeout(() => setNow(Date.now()), opensIn + 250) : null;
+    return () => {
+      clearInterval(t);
+      if (kick) clearTimeout(kick);
+    };
+  }, [challenge.opensAt]);
 
   const isSubmitted = !!status && status !== "draft";
   // Autosave only a draft. A submitted entry is edited deliberately and saved
   // with "Save changes", which re-validates everything.
-  const autosave = !preview && !isSubmitted;
-  const open = now == null ? challenge.status === "active" : isChallengeOpen(challenge, now);
+  const autosave = !preview && !isSubmitted && !conflict && !signedOut && !closedNow;
+  const open =
+    !closedNow && (now == null ? challenge.status === "active" : isChallengeOpen(challenge, now));
   const opensLater =
     now != null && !!challenge.opensAt && new Date(challenge.opensAt).getTime() > now;
-  const canEdit = preview || !isSubmitted || challenge.allowEdits;
+  // Only a still-'submitted' entry can be edited; a reviewed one is locked.
+  const canEdit = preview || !isSubmitted || (challenge.allowEdits && status === "submitted" && open);
   const gateLocked =
     !preview && !isSubmitted && !!referral && referral.count < referral.required;
 
   // --- autosave --------------------------------------------------------------
   const answersRef = useRef(answers);
   answersRef.current = answers;
+  const versionRef = useRef<string | null>(initialVersion);
   const dirty = useRef(false);
-  const inFlight = useRef(false);
+  const inFlight = useRef<Promise<void> | null>(null);
   const again = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryDelay = useRef(4000);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      // Don't leave a retry loop running for a form nobody is looking at.
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
 
-  const flush = useCallback(async () => {
+  const schedule = useCallback((ms: number, fn: () => void) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(fn, ms);
+  }, []);
+
+  const flush = useCallback(async (): Promise<void> => {
     if (!autosave) return;
     if (inFlight.current) {
       again.current = true;
-      return;
+      return inFlight.current;
     }
     if (!dirty.current) return;
     dirty.current = false;
-    inFlight.current = true;
     setSaveState("saving");
-    const res = await saveChallengeDraft({
-      slug: challenge.slug,
-      answers: answersRef.current,
-      refCode: readRef(),
-    }).catch(() => ({ ok: false, error: "You're offline — we'll retry." }) as const);
-    inFlight.current = false;
-    if (res.ok) {
-      setSaveState(dirty.current ? "dirty" : "saved");
-      setSavedAt((res as any).savedAt ?? new Date().toISOString());
-      if (!status) setStatus("draft");
-    } else if ((res as any).alreadySubmitted) {
-      router.refresh();
-    } else {
+    const run = (async () => {
+      const res: any = await saveChallengeDraft({
+        slug: challenge.slug,
+        answers: answersRef.current,
+        version: versionRef.current,
+        refCode: readRef(challenge.slug),
+      }).catch(() => ({ ok: false, transient: true, error: "You're offline — we'll keep trying." }));
+      if (res.ok) {
+        retryDelay.current = 4000;
+        if (res.version) versionRef.current = res.version;
+        setSaveState(dirty.current ? "dirty" : "saved");
+        setSavedAt(res.savedAt ?? new Date().toISOString());
+        setStatus((s) => s ?? "draft");
+        setFormError(null);
+        return;
+      }
+      // Anything unsaved stays pending, whatever went wrong.
       dirty.current = true;
-      setSaveState("error");
-      setFormError((res as any).error ?? "Couldn't save.");
-      // Retry on its own — a dropped connection shouldn't need a keystroke.
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(flush, 6000);
+      if (res.alreadySubmitted) {
+        // Submitted from another tab or device. Keep what was typed here;
+        // "Save changes" can still apply it if edits are allowed.
+        setStatus("submitted");
+        setSaveState("dirty");
+        setFormError(
+          challenge.allowEdits
+            ? "This entry was submitted from another tab or device. Press Save changes to keep the edits you just made here."
+            : "This entry was already submitted from another tab or device, so these edits can't be saved.",
+        );
+      } else if (res.conflict) {
+        setSaveState("error");
+        if (res.latest) setConflict({ answers: res.latest.answers, version: res.latest.version });
+      } else if (res.signIn) {
+        setSaveState("error");
+        setSignedOut(true);
+      } else if (res.closed) {
+        setSaveState("error");
+        setClosedNow(true);
+        setFormError("This challenge has closed, so changes can no longer be saved.");
+      } else if (res.transient || res.retryable) {
+        // Only transport hiccups and rate limits retry, with backoff.
+        setSaveState("error");
+        setFormError(res.error ?? "Couldn't save — retrying.");
+        const d = retryDelay.current;
+        retryDelay.current = Math.min(d * 2, 60_000);
+        schedule(d, () => void flush());
+      } else {
+        setSaveState("error");
+        setFormError(res.error ?? "Couldn't save.");
+      }
+    })();
+    inFlight.current = run;
+    try {
+      await run;
+    } finally {
+      inFlight.current = null;
     }
     if (again.current) {
       again.current = false;
-      timer.current = setTimeout(flush, 800);
+      schedule(800, () => void flush());
     }
-  }, [autosave, challenge.slug, router, status]);
+  }, [autosave, challenge.allowEdits, challenge.slug, schedule]);
 
   const markDirty = useCallback(() => {
     if (preview) return;
     dirty.current = true;
     setSaveState("dirty");
     if (!autosave) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(flush, 1200);
-  }, [autosave, flush, preview]);
+    schedule(1200, () => void flush());
+  }, [autosave, flush, preview, schedule]);
 
   useEffect(() => {
-    const onHide = () => {
-      if (document.visibilityState === "hidden") flush();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") void flush();
+      // Coming back from sharing the link: the count may have moved.
+      else if (gateLocked) void refreshReferrals();
     };
     const onUnload = (e: BeforeUnloadEvent) => {
       if (dirty.current || Object.values(uploading).some((n) => n > 0)) {
@@ -259,30 +324,57 @@ export function SubmissionForm({
         e.returnValue = "";
       }
     };
-    document.addEventListener("visibilitychange", onHide);
+    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("beforeunload", onUnload);
     return () => {
-      document.removeEventListener("visibilitychange", onHide);
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("beforeunload", onUnload);
     };
-  }, [flush, uploading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flush, uploading, gateLocked]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        if (autosave) flush();
+        if (autosave) void flush();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [autosave, flush]);
 
+  /** Write through the ref first, so an upload that finishes after the page
+   *  was left still reaches the next save instead of vanishing with state. */
+  function write(id: string, value: any) {
+    answersRef.current = { ...answersRef.current, [id]: value };
+    if (mounted.current) setAnswers(answersRef.current);
+  }
+
   function set(id: string, value: any) {
-    setAnswers((a) => ({ ...a, [id]: value }));
+    write(id, value);
     setErrors((e) => (e[id] ? { ...e, [id]: "" } : e));
     setFormError(null);
     markDirty();
+  }
+
+  function resolveConflict(choice: "theirs" | "mine") {
+    if (!conflict) return;
+    versionRef.current = conflict.version;
+    if (choice === "theirs") {
+      answersRef.current = conflict.answers;
+      setAnswers(conflict.answers);
+      dirty.current = false;
+      setSaveState("saved");
+      setConflict(null);
+      setFormError(null);
+      return;
+    }
+    // Keep mine: retry against the latest version, which now matches.
+    setConflict(null);
+    setFormError(null);
+    dirty.current = true;
+    schedule(0, () => void flush());
   }
 
   // --- uploads ---------------------------------------------------------------
@@ -324,7 +416,7 @@ export function SubmissionForm({
           contentType: file.type || undefined,
         });
       if (up.error) throw up.error;
-      if (isImageFile(file)) {
+      if (isImageFile(file) && mounted.current) {
         const local = URL.createObjectURL(file);
         setPreviews((p) => ({ ...p, [tok.path!]: local }));
       }
@@ -359,10 +451,8 @@ export function SubmissionForm({
     const results = await Promise.all(files.slice(0, room).map((f) => uploadOne(q, f)));
     const ok = results.filter(Boolean) as UploadedFile[];
     if (!ok.length) return;
-    setAnswers((a) => {
-      const prev: UploadedFile[] = Array.isArray(a[q.id]) ? a[q.id] : [];
-      return { ...a, [q.id]: [...prev, ...ok].slice(0, q.maxFiles) };
-    });
+    const prev: UploadedFile[] = Array.isArray(answersRef.current[q.id]) ? answersRef.current[q.id] : [];
+    write(q.id, [...prev, ...ok].slice(0, q.maxFiles));
     markDirty();
   }
 
@@ -377,10 +467,18 @@ export function SubmissionForm({
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
+  async function refreshReferrals(): Promise<Referral | null> {
+    const res = await refreshReferralProgress({ slug: challenge.slug }).catch(() => null);
+    if (!res?.ok || !res.progress || !referral) return null;
+    const fresh = { ...referral, ...res.progress };
+    setReferral(fresh);
+    return fresh;
+  }
+
   async function submit() {
     setFormError(null);
+    const { errors: errs } = validateAnswers(questions, answersRef.current, { mode: "submit" });
     if (preview) {
-      const { errors: errs } = validateAnswers(questions, answers, { mode: "submit" });
       setErrors(errs);
       setFormError(
         Object.keys(errs).length
@@ -389,7 +487,6 @@ export function SubmissionForm({
       );
       return;
     }
-    const { errors: errs } = validateAnswers(questions, answers, { mode: "submit" });
     if (Object.keys(errs).length) {
       setErrors(errs);
       const first = questions.find((q) => errs[q.id]);
@@ -397,22 +494,32 @@ export function SubmissionForm({
       setFormError("A few answers need another look.");
       return;
     }
-    if (gateLocked) {
-      scrollTo("referral-gate");
-      setFormError(
-        `Refer ${referral!.required - referral!.count} more friend${referral!.required - referral!.count === 1 ? "" : "s"} to unlock submitting. Your answers are saved.`,
-      );
-      return;
-    }
-    if (timer.current) clearTimeout(timer.current);
     setSubmitting(true);
-    const res = await submitChallengeEntry({
+    // The local count can be stale (a friend just signed up) — ask first.
+    if (gateLocked) {
+      const fresh = await refreshReferrals();
+      if (fresh && fresh.count < fresh.required) {
+        setSubmitting(false);
+        scrollTo("referral-gate");
+        const left = fresh.required - fresh.count;
+        setFormError(`Refer ${left} more friend${left === 1 ? "" : "s"} to unlock submitting. Your answers are saved.`);
+        return;
+      }
+    }
+    // Let an autosave that's already running land first, so the version we
+    // send is the one the server now holds.
+    if (timer.current) clearTimeout(timer.current);
+    if (inFlight.current) await inFlight.current.catch(() => null);
+    const res: any = await submitChallengeEntry({
       slug: challenge.slug,
-      answers,
-      refCode: readRef(),
-    }).catch(() => ({ ok: false, error: "Network hiccup — try again." }) as any);
+      answers: answersRef.current,
+      version: versionRef.current,
+      refCode: readRef(challenge.slug),
+    }).catch(() => ({ ok: false, error: "Network hiccup — try again." }));
     setSubmitting(false);
     if (!res.ok) {
+      if (res.signIn) setSignedOut(true);
+      if (res.conflict && res.latest) setConflict({ answers: res.latest.answers, version: res.latest.version });
       if (res.fieldErrors) {
         setErrors(res.fieldErrors);
         const first = questions.find((q) => res.fieldErrors[q.id]);
@@ -423,23 +530,22 @@ export function SubmissionForm({
         scrollTo("referral-gate");
       }
       setFormError(res.error ?? "Couldn't submit.");
+      // Whatever was typed in the last second still needs saving.
+      if (dirty.current && autosave) schedule(0, () => void flush());
       return;
     }
+    if (res.version) versionRef.current = res.version;
     dirty.current = false;
     setSaveState("saved");
     setSavedAt(new Date().toISOString());
     setStatus("submitted");
     if (!submittedAt) setSubmittedAt(new Date().toISOString());
     setDone(res.edited ? "updated" : "submitted");
+    try {
+      window.localStorage.removeItem(challengeRefKey(challenge.slug));
+    } catch {}
     window.scrollTo({ top: 0, behavior: "smooth" });
     router.refresh();
-  }
-
-  async function refreshReferrals() {
-    const res = await refreshReferralProgress({ slug: challenge.slug });
-    if (res.ok && res.progress) {
-      setReferral((r) => (r ? { ...r, ...res.progress! } : r));
-    }
   }
 
   const progress = useMemo(() => requiredProgress(questions, answers), [questions, answers]);
@@ -454,14 +560,14 @@ export function SubmissionForm({
           <Check className="h-7 w-7" />
         </div>
         <h1 className="mt-5 font-display text-5xl text-ink">
-          {done === "updated" ? "Changes saved" : "You're submitted!"}
+          {done === "updated" ? "Changes saved" : isGiveaway ? "You're entered!" : "You're submitted!"}
         </h1>
         <p className="mx-auto mt-3 max-w-md text-[15px] text-ink-soft">
           {done === "updated"
             ? "Your entry is updated. The version you have at the deadline is the one we judge."
             : challenge.allowEdits
               ? "Your entry for " + challenge.title + " is in. You can keep improving it until the deadline — we judge whatever's there when it closes."
-              : "Your entry for " + challenge.title + " is in. We'll email you when winners are picked."}
+              : "Your entry for " + challenge.title + " is in. Winners are announced on the event page."}
         </p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">
           <ButtonLink href={eventHref} size="lg">
@@ -490,7 +596,18 @@ export function SubmissionForm({
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-line bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-5 py-3 sm:px-6">
-          <Link href={eventHref} aria-label="Back to event" className="rounded-md p-1 text-ink-soft hover:bg-wash hover:text-ink">
+          <Link
+            href={eventHref}
+            aria-label="Back to event"
+            onClick={(e) => {
+              if (anyUploading && !window.confirm("An upload is still in progress. Leave anyway? It won't be attached.")) {
+                e.preventDefault();
+              } else if (dirty.current && autosave) {
+                void flush();
+              }
+            }}
+            className="rounded-md p-1 text-ink-soft hover:bg-wash hover:text-ink"
+          >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div className="w-9 shrink-0">{cover}</div>
@@ -499,7 +616,7 @@ export function SubmissionForm({
             <p className="truncate font-mono text-[11px] text-ink-faint">
               {challenge.closesAt ? (
                 opensLater && challenge.opensAt ? (
-                  <>Submissions open in <Countdown to={challenge.opensAt} /></>
+                  <>Submissions open in <Countdown to={challenge.opensAt} ended="moments" /></>
                 ) : (
                   <>Due in <Countdown to={challenge.closesAt} ended="closed" /></>
                 )
@@ -520,28 +637,68 @@ export function SubmissionForm({
           </p>
         )}
 
+        {conflict && (
+          <div role="alert" className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-[14px] text-ink">
+            <p className="font-medium">Newer answers were saved from another tab or device.</p>
+            <p className="mt-0.5 text-[13px] text-ink-soft">Autosave is paused so nothing gets overwritten. Which version do you want?</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => resolveConflict("theirs")}>Load the newer version</Button>
+              <Button size="sm" variant="secondary" onClick={() => resolveConflict("mine")}>Keep what&apos;s on this screen</Button>
+            </div>
+          </div>
+        )}
+        {signedOut && (
+          <div role="alert" className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-[14px] text-ink">
+            You&apos;ve been signed out, so changes aren&apos;t saving.{" "}
+            <a
+              href={`/login?next=${encodeURIComponent(`/challenges/${challenge.slug}/submit`)}`}
+              className="font-medium underline decoration-phosphor decoration-2 underline-offset-2"
+            >
+              Sign back in
+            </a>{" "}
+            — copy anything long first.
+          </div>
+        )}
+
         <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
-          {isSubmitted ? "Your submission" : "Submit your project"}
+          {isSubmitted ? "Your entry" : isGiveaway ? "Enter the giveaway" : "Submit your project"}
         </p>
         <h1 className="mt-2 font-display text-[clamp(2rem,5vw,2.75rem)] leading-[1.05] text-ink">
           {isSubmitted
-            ? challenge.allowEdits && open
+            ? canEdit
               ? "Edit your entry"
               : "Your entry"
-            : "Show us what you built"}
+            : isGiveaway
+              ? "Enter to win"
+              : "Show us what you built"}
         </h1>
         <p className="mt-2 text-[15px] text-ink-soft">
-          {isSubmitted
-            ? `Submitted ${submittedAt ? new Date(submittedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}.${challenge.allowEdits && open ? " Changes aren't live until you press Save changes." : ""}`
-            : "Everything autosaves as you go, so you can close this tab and come back on any device."}
+          {isSubmitted ? (
+            <>
+              Submitted{submittedAt ? <> <LocalTime value={submittedAt} mode="date" /></> : null}.
+              {canEdit
+                ? " Changes aren't live until you press Save changes."
+                : status === "submitted"
+                  ? ""
+                  : " It's been reviewed, so it's locked."}
+            </>
+          ) : (
+            "Everything autosaves as you go, so you can close this tab and come back on any device."
+          )}
         </p>
 
         {referral && !isSubmitted && (
-          <ReferralGate referral={referral} onRefresh={refreshReferrals} kindLabel={challenge.kindLabel} />
+          <ReferralGate
+            referral={referral}
+            onRefresh={async () => {
+              await refreshReferrals();
+            }}
+            kindLabel={challenge.kindLabel}
+          />
         )}
 
         <div className="mt-8 space-y-7">
-          {questions.length === 0 && (
+          {inputQuestions.length === 0 && (
             <p className="rounded-lg border border-line bg-wash p-5 text-sm text-ink-soft">
               The organisers haven&apos;t added questions yet — check back shortly.
             </p>
@@ -596,7 +753,7 @@ export function SubmissionForm({
                 <span className="font-mono text-[11px] text-ink-faint">All questions optional</span>
               )}
             </div>
-            {isSubmitted && !challenge.allowEdits ? (
+            {isSubmitted && !canEdit ? (
               <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ink">
                 <CheckCircle2 className="h-4 w-4 text-phosphor-ink" /> Submitted
               </span>
@@ -607,7 +764,9 @@ export function SubmissionForm({
                 disabled={
                   submitting ||
                   anyUploading ||
-                  questions.length === 0 ||
+                  inputQuestions.length === 0 ||
+                  !!conflict ||
+                  signedOut ||
                   (!open && !preview) ||
                   (isSubmitted && saveState !== "dirty" && !preview)
                 }
@@ -626,6 +785,8 @@ export function SubmissionForm({
                   <>
                     <Lock className="h-4 w-4" /> Submit
                   </>
+                ) : isGiveaway ? (
+                  "Enter"
                 ) : (
                   "Submit project"
                 )}
@@ -801,6 +962,12 @@ function QuestionField({
 }) {
   const id = `q-${q.id}`;
   const inputId = `${id}-input`;
+  const labelId = `${id}-label`;
+  const helpId = q.help ? `${id}-help` : undefined;
+  // Choice, scale, team and file questions are groups, not single inputs: a
+  // <label htmlFor> has nothing to point at, so they're named by aria-labelledby.
+  const isGroup = ["select", "multi_select", "scale", "team", "file"].includes(q.type) &&
+    !(q.type === "select" && q.options.length > 8);
 
   if (q.type === "section") {
     return (
@@ -815,23 +982,36 @@ function QuestionField({
   const labelEl =
     q.type === "checkbox" ? null : (
       <div className="mb-2">
-        <label htmlFor={inputId} className="flex items-baseline gap-2 text-[15px] font-semibold text-ink">
-          <span
-            className={`font-mono text-[11px] font-medium ${filled ? "text-phosphor-ink" : "text-ink-faint"}`}
-            aria-hidden
-          >
-            {String(index + 1).padStart(2, "0")}
-          </span>
-          <span>
-            {q.label}
-            {q.required ? (
-              <span className="text-phosphor-ink" aria-label="required"> *</span>
-            ) : (
-              <span className="ml-1.5 font-mono text-[11px] font-normal text-ink-faint">optional</span>
-            )}
-          </span>
-        </label>
-        {q.help && <p className="mt-1 pl-7 whitespace-pre-line text-[13px] text-ink-soft">{q.help}</p>}
+        {(() => {
+          const inner = (
+            <>
+              <span
+                className={`font-mono text-[11px] font-medium ${filled ? "text-phosphor-ink" : "text-ink-faint"}`}
+                aria-hidden
+              >
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span>
+                {q.label}
+                {q.required ? (
+                  <>
+                    <span className="text-phosphor-ink" aria-hidden> *</span>
+                    <span className="sr-only"> (required)</span>
+                  </>
+                ) : (
+                  <span className="ml-1.5 font-mono text-[11px] font-normal text-ink-faint">optional</span>
+                )}
+              </span>
+            </>
+          );
+          const cls = "flex items-baseline gap-2 text-[15px] font-semibold text-ink";
+          return isGroup ? (
+            <p id={labelId} className={cls}>{inner}</p>
+          ) : (
+            <label id={labelId} htmlFor={inputId} className={cls}>{inner}</label>
+          );
+        })()}
+        {q.help && <p id={helpId} className="mt-1 pl-7 whitespace-pre-line text-[13px] text-ink-soft">{q.help}</p>}
       </div>
     );
 
@@ -847,6 +1027,8 @@ function QuestionField({
           {q.type === "long_text" ? (
             <Textarea
               id={inputId}
+              aria-required={q.required || undefined}
+              aria-describedby={helpId}
               rows={6}
               value={s}
               disabled={disabled}
@@ -859,6 +1041,8 @@ function QuestionField({
           ) : (
             <Input
               id={inputId}
+              aria-required={q.required || undefined}
+              aria-describedby={helpId}
               value={s}
               disabled={disabled}
               onChange={(e) => onChange(e.target.value)}
@@ -869,7 +1053,7 @@ function QuestionField({
           )}
           {showCount && (
             <p className={`mt-1 text-right font-mono text-[11px] ${s.length >= cap ? "text-red-600" : "text-ink-faint"}`}>
-              {s.length.toLocaleString()}/{cap.toLocaleString()}
+              {s.length.toLocaleString("en-US")}/{cap.toLocaleString("en-US")}
             </p>
           )}
         </div>
@@ -921,6 +1105,7 @@ function QuestionField({
       break;
     case "file":
       control = (
+        <div role="group" aria-labelledby={labelId} aria-describedby={helpId}>
         <FileControl
           q={q}
           inputId={inputId}
@@ -933,6 +1118,7 @@ function QuestionField({
           }
           onFiles={onFiles}
         />
+        </div>
       );
       break;
     case "select": {
@@ -941,6 +1127,7 @@ function QuestionField({
         q.options.length > 8 ? (
           <select
             id={inputId}
+            aria-required={q.required || undefined}
             value={s}
             disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
@@ -954,7 +1141,7 @@ function QuestionField({
             ))}
           </select>
         ) : (
-          <div role="radiogroup" aria-labelledby={inputId} className="flex flex-wrap gap-2">
+          <div role="radiogroup" aria-labelledby={labelId} aria-describedby={helpId} aria-required={q.required || undefined} className="flex flex-wrap gap-2">
             {q.options.map((o) => {
               const on = s === o;
               return (
@@ -980,7 +1167,7 @@ function QuestionField({
     case "multi_select": {
       const arr: string[] = Array.isArray(value) ? value : [];
       control = (
-        <div role="group" aria-labelledby={inputId} className="flex flex-wrap gap-2">
+        <div role="group" aria-labelledby={labelId} aria-describedby={helpId} className="flex flex-wrap gap-2">
           {q.options.map((o) => {
             const on = arr.includes(o);
             return (
@@ -1009,6 +1196,8 @@ function QuestionField({
       control = (
         <Input
           id={inputId}
+          aria-required={q.required || undefined}
+          aria-describedby={helpId}
           type="number"
           inputMode="decimal"
           value={value == null ? "" : String(value)}
@@ -1025,7 +1214,7 @@ function QuestionField({
       control = (
         // inline-flex so the end labels span exactly the width of the buttons.
         <div className="inline-flex max-w-full flex-col">
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={inputId}>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={labelId} aria-describedby={helpId} aria-required={q.required || undefined}>
             {Array.from({ length: q.scaleMax }, (_, i) => i + 1).map((k) => (
               <button
                 key={k}
@@ -1054,12 +1243,14 @@ function QuestionField({
     }
     case "team":
       control = (
+        <div role="group" aria-labelledby={labelId} aria-describedby={helpId}>
         <TeamControl
           members={Array.isArray(value) ? value : []}
           max={q.maxTeam}
           disabled={disabled}
           onChange={onChange}
         />
+        </div>
       );
       break;
     case "checkbox":

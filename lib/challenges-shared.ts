@@ -788,6 +788,20 @@ export function formatRemaining(msLeft: number): string {
   return "<1m";
 }
 
+/**
+ * The status an ENTRANT may see. A decision ('funded' / 'rejected') stays
+ * private until the admin publishes winners — marking someone a winner during
+ * judging and changing your mind must not have already told them. Shortlisted
+ * is shown: it is by nature a pre-results state.
+ */
+export function visibleSubmissionStatus(
+  status: SubmissionStatus,
+  winnersPublished: boolean,
+): SubmissionStatus {
+  if (!winnersPublished && (status === "funded" || status === "rejected")) return "submitted";
+  return status;
+}
+
 // --- Money & prizes --------------------------------------------------------
 
 /** "$500" from cents, or "" when null. Shared by admin + public surfaces. */
@@ -1262,19 +1276,24 @@ function gcalDate(iso: string): string {
   return new Date(iso).toISOString().replace(/[-:]|\.\d{3}/g, "");
 }
 
-/** Google Calendar "add event" URL spanning opens → closes. */
+/**
+ * Google Calendar "add event" URL for the DEADLINE — a 30-minute block ending
+ * at closes_at, the same shape as the .ics route. A block spanning the whole
+ * open→close window lands in the all-day strip where nobody looks. Null when
+ * there's no deadline to add.
+ */
 export function googleCalendarUrl(
   c: Pick<Challenge, "title" | "tagline" | "opensAt" | "closesAt" | "location">,
   pageUrl: string,
 ): string | null {
-  const end = c.closesAt ?? c.opensAt;
-  if (!end) return null;
-  const start = c.opensAt ?? new Date(new Date(end).getTime() - 3600_000).toISOString();
+  if (!c.closesAt) return null;
+  const end = c.closesAt;
+  const start = new Date(new Date(end).getTime() - 30 * 60_000).toISOString();
   const params = new URLSearchParams({
     action: "TEMPLATE",
-    text: c.title,
+    text: `Submissions due: ${c.title}`,
     dates: `${gcalDate(start)}/${gcalDate(end)}`,
-    details: `${c.tagline ? c.tagline + "\n\n" : ""}${pageUrl}`,
+    details: `${c.tagline ? c.tagline + "\n\n" : ""}Submit here: ${pageUrl}/submit`,
     location: c.location || "Online",
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;

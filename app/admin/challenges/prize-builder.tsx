@@ -125,7 +125,7 @@ export function PrizeBuilder({
                 <div className="grid gap-3 sm:grid-cols-[10rem_7rem_minmax(0,1fr)]">
                   <div>
                     <Label htmlFor={`${p.id}-val`}>{p.kind === "cash" ? "Amount (USD)" : "Value (USD, optional)"}</Label>
-                    <Input id={`${p.id}-val`} type="number" min={0} step="1" value={dollars(p.valueCents)} onChange={(e) => update(i, { valueCents: cents(e.target.value) })} placeholder="500" />
+                    <Input id={`${p.id}-val`} type="number" min={0} step="0.01" value={dollars(p.valueCents)} onChange={(e) => update(i, { valueCents: cents(e.target.value) })} placeholder="500" />
                   </div>
                   <div>
                     <Label htmlFor={`${p.id}-qty`}>Winners</Label>

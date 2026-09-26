@@ -30,13 +30,15 @@ function escapeIcs(s: string) {
 export async function GET(_req: Request, props: { params: Promise<{ slug: string }> }) {
   const { slug } = await props.params;
   const c = await getChallengeBySlug(slug);
-  if (!c || c.status === "draft" || !(c.closesAt || c.opensAt)) {
+  // Only a real deadline gets a calendar entry — that's what "Add the
+  // deadline" promises, and what the day-before reminder below is about.
+  if (!c || c.status === "draft" || !c.closesAt) {
     return new Response("Not found", { status: 404 });
   }
   const url = `${env.siteUrl}/challenges/${c.slug}`;
-  const end = c.closesAt ?? c.opensAt!;
+  const end = c.closesAt;
   const start = new Date(new Date(end).getTime() - 30 * 60_000).toISOString();
-  const summary = c.closesAt ? `Submissions due: ${c.title}` : c.title;
+  const summary = `Submissions due: ${c.title}`;
 
   const lines = [
     "BEGIN:VCALENDAR",

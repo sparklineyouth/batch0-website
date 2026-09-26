@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, ExternalLink, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
   COVER_THEMES,
   KIND_LABELS,
   MAX_REFERRALS_REQUIRED,
+  isInputQuestion,
   prizeHeadline,
   type ChallengeKind,
   type CoverTheme,
@@ -82,6 +83,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
   const [ctaHref, setCtaHref] = useState(initial?.ctaHref ?? "");
   const [winnersPublished, setWinnersPublished] = useState(initial?.winnersPublished ?? false);
 
+  const formRef = useRef<HTMLFormElement>(null);
   const [pending, start] = useTransition();
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | undefined>();
@@ -130,6 +132,24 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [dirty]);
 
+  // In-app links (the tabs above, "All challenges", the sidebar) are client
+  // navigations that beforeunload never sees. Catch them while dirty.
+  useEffect(() => {
+    if (!dirty) return;
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (formRef.current?.contains(a) && a.getAttribute("href")?.startsWith("#")) return;
+      if (a.origin !== window.location.origin) return;
+      if (!window.confirm("You have unsaved changes. Leave without saving?")) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [dirty]);
+
   function save(e?: React.FormEvent) {
     e?.preventDefault();
     setError(undefined);
@@ -140,14 +160,34 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
           setError(res.error);
           return;
         }
-        // The server may have minted/deduped the slug; adopt it without it
-        // reading as an unsaved change.
-        const savedSlug = res.data?.slug;
-        if (savedSlug) setSlug(savedSlug);
-        setBaseline(JSON.stringify({ ...payload, slug: savedSlug || payload.slug }));
+        // Adopt what the server actually stored (deduped slug, blank rows
+        // skipped, lists normalised), so "saved" means what's on screen is
+        // what's live — and none of it reads as an unsaved change.
+        const d = res.data;
+        if (d) {
+          setSlug(d.slug);
+          setSchedule(d.schedule);
+          setFaq(d.faq);
+          setResources(d.resources);
+          setPrizes(d.prizes);
+          setQuestions(d.questions);
+          setBaseline(
+            JSON.stringify({
+              ...payload,
+              slug: d.slug || payload.slug,
+              prizes: d.prizes,
+              schedule: d.schedule,
+              faq: d.faq,
+              resources: d.resources,
+              questions: d.questions,
+            }),
+          );
+        } else {
+          setBaseline(snapshot);
+        }
         setSavedAt(Date.now());
-        if (!initial?.id && res.data?.id) {
-          router.push(`/admin/challenges/${res.data.id}/edit`);
+        if (!initial?.id && d?.id) {
+          router.push(`/admin/challenges/${d.id}/edit`);
         } else {
           router.refresh();
         }
@@ -161,7 +201,9 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        if (!pending) save();
+        // Through the form, so the browser's own validation (e.g. a half-typed
+        // date) runs exactly as it does for the Save button.
+        if (!pending) formRef.current?.requestSubmit();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -178,7 +220,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
     "Your banner text will appear here";
 
   return (
-    <form onSubmit={save} className="grid gap-8 lg:grid-cols-[11rem_minmax(0,1fr)]">
+    <form ref={formRef} onSubmit={save} className="grid gap-8 lg:grid-cols-[11rem_minmax(0,1fr)]">
       <nav className="hidden lg:block">
         <ul className="sticky top-24 space-y-0.5 text-[13px]">
           {SECTIONS.map(([id, label]) => (
@@ -355,6 +397,12 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
             ) : null
           }
         >
+          {questions.filter(isInputQuestion).length === 0 && (
+            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[13px] text-ink">
+              Entrants can&apos;t submit until there&apos;s at least one question. For a giveaway,
+              quick-add <strong>Agree to rules</strong> — that makes entering a single tick and a click.
+            </p>
+          )}
           <ChallengeQuestionBuilder value={questions} onChange={setQuestions} />
           <Hint>Editing questions never changes answers already submitted — each entry keeps a copy of the form it was submitted against.</Hint>
         </Section>

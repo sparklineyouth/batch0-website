@@ -8,10 +8,12 @@ import type { ChallengeStatus } from "@/lib/challenges-shared";
 export function ChallengeRowActions({
   id,
   status,
+  closesAt = null,
   compact = false,
 }: {
   id: string;
   status: ChallengeStatus;
+  closesAt?: string | null;
   compact?: boolean;
 }) {
   const router = useRouter();
@@ -60,6 +62,13 @@ export function ChallengeRowActions({
           type="button"
           disabled={pending}
           onClick={() => {
+            const passed = !!closesAt && new Date(closesAt).getTime() <= Date.now();
+            if (passed) {
+              if (confirm("Its deadline has already passed, so publishing alone wouldn't let anyone in. Move the deadline first?")) {
+                router.push(`/admin/challenges/${id}/edit#when`);
+              }
+              return;
+            }
             if (status === "draft" || confirm("Reopen it? Registration and submissions will reopen until the deadline.")) {
               run(() => setChallengeStatus(id, "active"));
             }

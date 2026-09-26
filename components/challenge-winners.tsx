@@ -20,9 +20,9 @@ export function ChallengeWinners({ winners }: { winners: PublicWinner[] }) {
           {winners.map((w) => (
             <li
               key={w.id}
-              className="flex items-baseline justify-between gap-4 py-4"
+              className="flex flex-col gap-1 py-4 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 sm:flex-1">
                 <span className="font-medium text-ink">
                   {w.publicName ?? "A student"}
                 </span>
@@ -41,7 +41,7 @@ export function ChallengeWinners({ winners }: { winners: PublicWinner[] }) {
                 )}
               </div>
               {(w.awardLabel || w.payoutAmountCents != null) && (
-                <span className="shrink-0 text-right font-mono text-sm text-phosphor-ink">
+                <span className="font-mono text-sm text-phosphor-ink sm:max-w-[45%] sm:text-right">
                   {w.awardLabel ?? formatCents(w.payoutAmountCents)}
                 </span>
               )}

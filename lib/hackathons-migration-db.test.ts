@@ -20,10 +20,11 @@ import { PGlite } from "@electric-sql/pglite";
 
 const read = (f: string) =>
   readFile(new URL(`../supabase/migrations/${f}`, import.meta.url), "utf8");
-const [m0036, m0047, m0087] = await Promise.all([
+const [m0036, m0047, m0087, m0088] = await Promise.all([
   read("0036_weekly_challenges.sql"),
   read("0047_challenge_uploads_bucket.sql"),
   read("0087_hackathons.sql"),
+  read("0088_hackathons_contract.sql"),
 ]);
 
 const ALICE = "11111111-1111-4111-8111-111111111111";
@@ -91,7 +92,8 @@ test("0087 applies over 0036/0047 with live rows, and re-applies", async () => {
   assert.equal(ch[0].cover_theme, "phosphor");
   assert.equal(ch[0].location, "Online");
   assert.equal(ch[0].referrals_required, 0);
-  assert.equal(ch[0].allow_edits, true);
+  // Existing challenges keep the old rule: an entry is final.
+  assert.equal(ch[0].allow_edits, false);
   assert.equal(ch[0].prizes.length, 1);
   assert.equal(ch[0].prizes[0].title, "up to $250");
   assert.equal(ch[0].prizes[0].kind, "cash");
@@ -158,15 +160,66 @@ test("one registration per user per challenge", async () => {
   );
 });
 
-test("the self-insert submission policy is gone; the winners view gained award columns", async () => {
+test("0087 narrows the self-insert policy (old code keeps working); 0088 removes it", async () => {
   const db = await setup();
   await db.exec(m0087);
-  const { rows: pol } = await db.query<any>(
-    `select policyname from pg_policies where tablename = 'challenge_submissions'`,
+  const policy = async () =>
+    (
+      await db.query<any>(
+        `select policyname, with_check from pg_policies where tablename = 'challenge_submissions' and policyname = 'challenge_submissions self insert'`,
+      )
+    ).rows[0];
+  const narrowed = await policy();
+  assert.ok(narrowed, "0087 must keep a self-insert path for the code deployed during the migration");
+  assert.match(narrowed.with_check, /'submitted'/);
+  assert.match(narrowed.with_check, /winner_public = false/);
+  assert.match(narrowed.with_check, /payout_amount_cents IS NULL/i);
+
+  // An entry the old code writes in the deploy window (no submitted_at)…
+  await db.query(
+    `insert into public.challenge_submissions (challenge_id, user_id, status, created_at) values ($1, $2, 'submitted', now())`,
+    [OLD_CHALLENGE, BOB],
   );
-  const names = pol.map((p) => p.policyname);
-  assert.ok(!names.includes("challenge_submissions self insert"));
-  assert.ok(names.includes("challenge_submissions self select"));
+  await db.exec(m0088);
+  await db.exec(m0088); // idempotent
+  assert.equal(await policy(), undefined);
+  // …gets its submitted_at and its registration row from 0088.
+  const { rows } = await db.query<any>(
+    `select s.submitted_at is not null as stamped,
+            exists(select 1 from public.challenge_registrations r where r.challenge_id = s.challenge_id and r.user_id = s.user_id) as registered
+     from public.challenge_submissions s where s.user_id = $1`,
+    [BOB],
+  );
+  assert.equal(rows[0].stamped, true);
+  assert.equal(rows[0].registered, true);
+});
+
+test("new challenges default to editable; the results stamp column exists", async () => {
+  const db = await setup();
+  await db.exec(m0087);
+  await db.exec(`insert into public.challenges (slug, title) values ('fresh', 'Fresh')`);
+  const { rows } = await db.query<any>(`select allow_edits from public.challenges where slug = 'fresh'`);
+  assert.equal(rows[0].allow_edits, true);
+  const { rows: col } = await db.query<any>(
+    `select 1 from information_schema.columns where table_name = 'challenge_submissions' and column_name = 'results_notified_at'`,
+  );
+  assert.equal(col.length, 1);
+});
+
+test("re-running 0087 never re-adds a prize an admin removed", async () => {
+  const db = await setup();
+  await db.exec(m0087);
+  // After deploy, prize_label is just the headline override; an admin clears
+  // the lifted prize but keeps the headline.
+  await db.query(`update public.challenges set prizes = '[]'::jsonb where id = $1`, [OLD_CHALLENGE]);
+  await db.exec(m0087);
+  const { rows } = await db.query<any>(`select prizes from public.challenges where id = $1`, [OLD_CHALLENGE]);
+  assert.deepEqual(rows[0].prizes, []);
+});
+
+test("the winners view gained award columns", async () => {
+  const db = await setup();
+  await db.exec(m0087);
 
   const { rows: cols } = await db.query<any>(
     `select column_name from information_schema.columns where table_name = 'challenge_winners_public' order by ordinal_position`,
