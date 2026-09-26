@@ -3,13 +3,14 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
 import { Pencil, Trash2, Plus, Activity, Flag, Megaphone } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
 import { activePromo, promoPriceCents, type PromoConfig } from "@/lib/promo";
+import { easternDateOf } from "@/lib/cohort-eligibility";
 
 type Cohort = CohortInput & {
   id: string;
@@ -25,6 +26,8 @@ const empty: CohortInput = {
   status: "upcoming",
   price_cents: 13000,
   applications_close_at: null,
+  late_entry_until: null,
+  catch_up_plan: null,
 };
 
 export function CohortsManager({
@@ -57,6 +60,8 @@ export function CohortsManager({
           status: input.status,
           price_cents: input.price_cents,
           applications_close_at: input.applications_close_at ?? null,
+          late_entry_until: input.late_entry_until ?? null,
+          catch_up_plan: input.catch_up_plan ?? null,
         };
         const res = await saveCohort(clean);
         if (!res.ok) {
@@ -396,6 +401,39 @@ function CohortForm({
         <p className="mt-1 text-xs text-ink-faint">
           Optional. When set, the landing page shows a countdown
           ("Applications close in N days").
+        </p>
+      </div>
+      <div>
+        <Label htmlFor="late_entry_until">Late entry until</Label>
+        <Input
+          id="late_entry_until"
+          type="date"
+          // Stored as an instant; shown and entered as the Eastern calendar
+          // date the deadline falls on, which is how it is advertised.
+          value={easternDateOf(c.late_entry_until)}
+          onChange={(e) =>
+            setC({ ...c, late_entry_until: e.target.value || null })
+          }
+        />
+        <p className="mt-1 text-xs text-ink-faint">
+          Optional, and only applies once the cohort has started. Ends at
+          11:59:59 p.m. Eastern on this date. Needs a catch-up plan below —
+          set one without the other and enrollment stays closed.
+        </p>
+      </div>
+      <div>
+        <Label htmlFor="catch_up_plan">Catch-up plan</Label>
+        <Textarea
+          id="catch_up_plan"
+          rows={4}
+          value={c.catch_up_plan ?? ""}
+          onChange={(e) =>
+            setC({ ...c, catch_up_plan: e.target.value || null })
+          }
+        />
+        <p className="mt-1 text-xs text-ink-faint">
+          Shown to late entrants on the apply and enrollment pages: what they
+          need to do to join mid-cohort, and who to contact for help.
         </p>
       </div>
       {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
