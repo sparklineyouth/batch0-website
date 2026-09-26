@@ -273,16 +273,34 @@ export function rowToSubmission(row: any): ChallengeSubmission {
 
 export { rowToChallenge };
 
-/** The challenge is open for submissions right now. */
-export function isChallengeOpen(challenge: Challenge, now = Date.now()): boolean {
-  if (challenge.status !== "active") return false;
+/**
+ * Where "now" sits in a challenge's entry window.
+ *
+ * `upcoming` is the case a plain open/closed boolean gets wrong: an active
+ * challenge whose `opensAt` is still ahead isn't open, but it hasn't wrapped
+ * up either. Collapsing the two told visitors a challenge that starts next
+ * week was over — so the public surfaces branch on this instead.
+ */
+export type ChallengeWindowState = "upcoming" | "open" | "closed";
+
+export function challengeWindowState(
+  challenge: Challenge,
+  now = Date.now(),
+): ChallengeWindowState {
+  // draft / closed / archived all read as closed publicly, same as before.
+  if (challenge.status !== "active") return "closed";
   if (challenge.opensAt && new Date(challenge.opensAt).getTime() > now) {
-    return false;
+    return "upcoming";
   }
   if (challenge.closesAt && new Date(challenge.closesAt).getTime() < now) {
-    return false;
+    return "closed";
   }
-  return true;
+  return "open";
+}
+
+/** The challenge is open for submissions right now. */
+export function isChallengeOpen(challenge: Challenge, now = Date.now()): boolean {
+  return challengeWindowState(challenge, now) === "open";
 }
 
 /** "$500" from cents, or "" when null. Shared by admin + public surfaces. */

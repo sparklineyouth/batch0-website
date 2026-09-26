@@ -3,7 +3,11 @@ import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { ChallengeWinners } from "@/components/challenge-winners";
 import { getPublicSiteConfig } from "@/lib/site-config";
-import { getActiveChallenge, getPublicWinners } from "@/lib/challenges";
+import {
+  getActiveChallenge,
+  getPublicWinners,
+  challengeWindowState,
+} from "@/lib/challenges";
 import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = {
@@ -19,6 +23,12 @@ export default async function ChallengesIndexPage() {
     getActiveChallenge(),
     getPublicWinners(),
   ]);
+
+  // An active challenge whose window hasn't started yet is "Up next", not
+  // "This week" — and its CTA must not promise an entry form that won't accept
+  // one until it opens.
+  const state = active ? challengeWindowState(active) : null;
+  const upcoming = state === "upcoming";
 
   return (
     // <main> wraps the content only: containing the navbar and footer in it
@@ -45,7 +55,7 @@ export default async function ChallengesIndexPage() {
           {active ? (
             <div className="mt-10 rounded-2xl border border-line bg-wash p-6 sm:p-8">
               <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
-                This week
+                {upcoming ? "Up next" : "This week"}
               </p>
               <h2 className="mt-2 font-display text-2xl font-bold tracking-[-0.02em] text-ink sm:text-3xl">
                 {active.title}
@@ -55,12 +65,20 @@ export default async function ChallengesIndexPage() {
                   {active.description}
                 </p>
               )}
-              {(active.prizeLabel || active.closesAt) && (
+              {(active.prizeLabel ||
+                active.closesAt ||
+                (upcoming && active.opensAt)) && (
                 <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[13px]">
                   {active.prizeLabel && (
                     <span className="text-ink">
                       <span className="text-ink-faint">Prize · </span>
                       {active.prizeLabel}
+                    </span>
+                  )}
+                  {upcoming && active.opensAt && (
+                    <span className="text-ink">
+                      <span className="text-ink-faint">Opens · </span>
+                      <LocalTime value={active.opensAt} mode="datetime-short" />
                     </span>
                   )}
                   {active.closesAt && (
@@ -76,7 +94,7 @@ export default async function ChallengesIndexPage() {
                   href={`/challenges/${active.slug}`}
                   className="press inline-flex items-center justify-center gap-2 rounded-md bg-phosphor px-5 py-3 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                 >
-                  Apply to this challenge →
+                  {upcoming ? "Read the brief →" : "Apply to this challenge →"}
                 </a>
               </div>
             </div>
