@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import Navbar from "@/components/navbar";
 import Hero from "@/components/hero";
 import HowItWorks from "@/components/how-it-works";
@@ -39,23 +40,15 @@ import { RegionalPrice } from "@/components/regional-price";
 // Title inherits from the root layout. The canonical is set here, not in the
 // layout, so child routes don't all inherit "/".
 export async function generateMetadata(): Promise<Metadata> {
+  await connection();
   const config = await getPublicSiteConfig({
     // Deliberately region-agnostic: crawlers hit us from arbitrary IPs, and a
     // snippet quoting a regional discount to everyone would misprice the
     // program for most searchers. The page body still localises.
     countryCode: null,
   });
-  // The 40%-off push. It lives HERE rather than on the root layout's static
-  // `metadata` for one reason: this function re-runs per request (behind the
-  // 300s ISR window below), so the promo drops off the homepage within five
-  // minutes of its deadline with no deploy. A string in the layout is frozen
-  // at build time and would keep advertising an expired sale until someone
-  // remembered to push. See lib/promo.ts.
-  //
-  // The homepage is also the page that ranks for "batch0", so it is the one
-  // whose title tag the offer actually needs to reach. Every other route keeps
-  // the plain layout title, which is why an expiry can never strand the promo
-  // on 130+ pages.
+  // Resolve the promotion at request time, alongside the current admission
+  // window, so expired prices and cohort dates do not linger in metadata.
   const promo = activePromo(new Date(), config.settings.promo);
   const description = promo
     ? promoMetaDescription(
@@ -73,16 +66,12 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-// Prerendered with ISR — nothing here is per-visitor. The auth-dependent CTA
-// resolves in the browser (/home + AuthLabel), and regional tuition, the last
-// per-request input, is a client-side text swap: the pricing override table
-// has exactly one country, so the server renders the base price and
-// <RegionalPrice> corrects the label for visitors whose clock says India.
-// Admin edits revalidate SITE_CONFIG_TAG and this path directly, so the
-// 300s window is only the fallback horizon.
-export const revalidate = 300;
+// Admissions change at an exact Eastern deadline. Render on the request,
+// while getPublicSiteConfig caches the underlying cohort/settings facts.
+// Regional labels still use the same client-side localization as before.
 
 export default async function Home() {
+  await connection();
   const [config, regionalConfig, activeChallenge, winners, featured, allPosts] =
     await Promise.all([
       getPublicSiteConfig({ countryCode: null }),

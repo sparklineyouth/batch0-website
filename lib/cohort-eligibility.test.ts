@@ -33,13 +33,13 @@ test("payer invitations expire within 24 hours and never outlive admissions", ()
 
 test("an admin-entered late-entry date ends at the close of that Eastern day", () => {
   // The same instant migration 0083 wrote by hand for Fall.
-  assert.equal(easternEndOfDay("2026-09-22"), "2026-09-23T03:59:59.000Z");
+  assert.equal(easternEndOfDay("2026-09-22"), "2026-09-23T03:59:59.999Z");
   assert.equal(cohortEligibility({ ...fall, late_entry_until: easternEndOfDay("2026-09-22") }, new Date("2026-09-23T03:59:58Z")).mode, "late_entry");
   assert.equal(cohortEligibility({ ...fall, late_entry_until: easternEndOfDay("2026-09-22") }, new Date("2026-09-23T04:00:00Z")).eligible, false);
 });
 test("a late-entry date after daylight saving ends still closes at Eastern midnight", () => {
   // -05:00 in November, not the -04:00 that a fixed offset would assume.
-  assert.equal(easternEndOfDay("2026-11-13"), "2026-11-14T04:59:59.000Z");
+  assert.equal(easternEndOfDay("2026-11-13"), "2026-11-14T04:59:59.999Z");
 });
 test("a late-entry date round-trips through the admin date input", () => {
   for (const date of ["2026-09-22", "2026-11-13", "2026-03-08"]) {
