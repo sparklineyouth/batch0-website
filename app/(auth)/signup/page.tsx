@@ -1,5 +1,4 @@
 import { SignupCard } from "./signup-form";
-import { getPublicSiteConfig } from "@/lib/site-config";
 
 export const metadata = {
   title: "Create Your Account · batch0",
@@ -7,11 +6,11 @@ export const metadata = {
     "Create your free batch0 account. Applying to a cohort is optional and free; tuition is charged only if you're accepted.",
 };
 
-export default async function SignupPage() {
-  // Cached public read (tag-busted on admin edits, ≤300s stale): the price
-  // here is one sentence of marketing copy, not a gate, and the no-store
-  // getSiteConfig() variant would force this page dynamic.
-  const { derived } = await getPublicSiteConfig();
+export default function SignupPage() {
+  // No price on this page any more: with more than one cohort open there is no
+  // single number to quote, and the apply flow shows each cohort's exact price
+  // on the card the applicant picks. That also leaves this page with no data
+  // read at all.
   // SignupCard reads ?next from window.location in effects/handlers (no
   // useSearchParams, no Suspense), so the page prerenders with the whole
   // card — heading, form, links — in the static HTML (asserted by
@@ -23,7 +22,7 @@ export default async function SignupPage() {
   // makes it focusable so screen readers move the cursor to it.
   return (
     <main id="main-content" tabIndex={-1}>
-      <SignupCard priceLabel={derived.priceLabel} />
+      <SignupCard />
     </main>
   );
 }

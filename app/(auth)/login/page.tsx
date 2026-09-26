@@ -13,8 +13,8 @@ export default function LoginPage() {
   // element is focusable and screen readers move the cursor to it.
   return (
     <main id="main-content" tabIndex={-1}>
-      <h1 className="text-2xl font-bold tracking-tight text-white">Welcome back</h1>
-      <p className="mt-1 text-sm text-white/50">
+      <h1 className="font-display text-[clamp(2.5rem,9vw,3.25rem)] leading-[1.04] text-ink">Welcome back.</h1>
+      <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
         Log in to your batch0 account.
       </p>
       <LoginForm />

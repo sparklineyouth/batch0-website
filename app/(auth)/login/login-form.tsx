@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { Input, Label, FieldError } from "@/components/ui/input";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { stashRefFromLocation } from "@/lib/referral-code";
@@ -27,6 +27,10 @@ function safeNext(raw: string | null | undefined): string | undefined {
 function nextFromLocation(): string | undefined {
   return safeNext(new URLSearchParams(window.location.search).get("next"));
 }
+
+// `!` because Input's own `md:text-sm` is emitted later in Tailwind's output
+// and would otherwise win at the same specificity.
+const FIELD = "h-12 text-base md:!text-base";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -89,7 +93,7 @@ export function LoginForm() {
 
   return (
     <>
-      <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
+      <form onSubmit={onSubmit} className="mt-8 space-y-5" noValidate>
         <div>
           <Label htmlFor="email" required>
             Email
@@ -111,6 +115,7 @@ export function LoginForm() {
             aria-describedby={error ? "login-error" : undefined}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className={FIELD}
             onFocus={() => {
               // Warm the lazily-loaded supabase-js chunk (see onSubmit) so
               // the submit click doesn't stall on a network fetch.
@@ -132,21 +137,34 @@ export function LoginForm() {
             aria-describedby={error ? "login-error" : undefined}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className={FIELD}
           />
         </div>
         <FieldError id="login-error">{error}</FieldError>
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Logging in…" : "Log in"}
-        </Button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-phosphor px-6 text-base font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Logging in…
+            </>
+          ) : (
+            <>
+              Log in <ArrowRight className="h-4 w-4" aria-hidden />
+            </>
+          )}
+        </button>
       </form>
-      <p className="mt-6 text-center text-sm text-white/50">
+      <p className="mt-8 text-sm text-ink-soft">
         New here?{" "}
-        <Link href={signupHref} className="text-phosphor hover:underline">
+        <Link href={signupHref} className="link-ink">
           Create an account
         </Link>
       </p>
-      <p className="mt-2 text-center text-xs text-white/40">
-        <Link href="/forgot-password" className="hover:text-white">
+      <p className="mt-3 text-sm text-ink-faint">
+        <Link href="/forgot-password" className="hover:text-ink">
           Forgot your password?
         </Link>
       </p>

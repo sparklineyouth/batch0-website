@@ -10,10 +10,11 @@ import {
 // ---------------------------------------------------------------------------
 // Renders admin-authored questions on a public form.
 //
-// Shared by /apply (the extra questions and the scholarship-interest block)
-// and by each scholarship's own application, because all three render the same
-// CustomQuestion shape. One renderer means one place where "required" gets its
-// asterisk and one place where a checkbox's label association can be wrong.
+// Used by each scholarship's own application. /apply asks the same
+// CustomQuestion shape one question per screen (app/apply/apply-flow.tsx) and
+// so renders its own inputs, but shares seedAnswers() and the answer-state
+// contract below — the part where the two could otherwise disagree about what
+// was actually answered.
 //
 // The answer state is a flat Record<string, string> keyed by the POSTED field
 // name (prefix__id), not by the bare question id. That's deliberate: it is

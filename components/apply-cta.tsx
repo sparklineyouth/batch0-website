@@ -6,7 +6,8 @@ import { AuthLabel } from "@/components/auth-label";
  * The one conversion action, with one name everywhere: "Apply for Cohort N".
  * Client component so every instance fires the same analytics event; the
  * form-submit end of the funnel fires "application_submitted" in
- * app/apply/application-form.tsx.
+ * app/dashboard/application/track-submitted.tsx, where a successful submit
+ * lands.
  */
 export function ApplyCta({
   // /home, not /apply: middleware resolves it at the edge in one hop —

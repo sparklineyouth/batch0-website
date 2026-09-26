@@ -264,4 +264,4 @@ running before pasting a migration anywhere, since that step is done by hand.
 | `app/admin/scholarships/**` | Catalog, queue, review screen, refund button |
 | `app/dashboard/scholarships/**` | Student list + application form |
 | `components/admin/question-list-editor.tsx` | The question editor, shared by all three sections |
-| `components/forms/custom-question-fields.tsx` | The public renderer, shared by `/apply` and scholarships |
+| `components/forms/custom-question-fields.tsx` | The public renderer for scholarship applications (`/apply` renders the same questions one per screen, in `app/apply/apply-flow.tsx`) |

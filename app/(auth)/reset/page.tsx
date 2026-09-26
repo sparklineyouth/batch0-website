@@ -53,10 +53,10 @@ export default function ResetPasswordPage() {
           (lib/auth-flag.ts), which is set before paint, so there's no flash of
           the wrong one and the page stays fully prerendered. */}
       <div className="when-anon">
-        <h1 className="text-2xl font-bold tracking-tight text-white">
+        <h1 className="font-display text-[clamp(2.25rem,8vw,3rem)] leading-[1.04] text-ink">
           This link has expired
         </h1>
-        <p className="mt-1 text-sm text-white/65">
+        <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
           Reset links work once and last an hour. Request a fresh one and
           we'll email it right over.
         </p>
@@ -74,10 +74,10 @@ export default function ResetPasswordPage() {
       </div>
 
       <div className="when-authed">
-        <h1 className="text-2xl font-bold tracking-tight text-white">
+        <h1 className="font-display text-[clamp(2.25rem,8vw,3rem)] leading-[1.04] text-ink">
           Set a new password
         </h1>
-        <p className="mt-1 text-sm text-white/65">
+        <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
           Choose something only you'll know. You'll stay signed in after this.
         </p>
         <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
