@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cohortEligibility } from "@/lib/cohort-eligibility";
-import { easternDeadline, formatUsd } from "@/lib/offer-format";
+import { formatUsd } from "@/lib/offer-format";
 import { loadPromoConfig } from "@/lib/promo-settings";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -14,7 +14,10 @@ import {
   reviewerOverrodePass,
   resolveApplicationCohort,
 } from "@/lib/reapply";
-import { ApplicationForm } from "./application-form";
+import { formatDateSentence } from "@/lib/seo-meta";
+import { FORM_KEYS } from "@/lib/apply-flow";
+import { ApplyFlow, type CohortOption } from "./apply-flow";
+import { ApplyMessage } from "./apply-message";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
 import { getApplicationForm } from "@/lib/application-questions";
 import { getScholarshipInterestQuestions } from "@/lib/scholarships";
@@ -40,6 +43,22 @@ export const metadata = {
   // engines out even though middleware also redirects unauthed crawlers.
   robots: { index: false, follow: false },
 };
+
+/** A stored instant as the Eastern calendar day it falls on: "Dec 12". */
+function easternDay(iso: string | null | undefined): string {
+  if (!iso || !Number.isFinite(Date.parse(iso))) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(iso));
+}
+
+function weeksBetween(startsOn: string | null, endsOn: string | null): number | null {
+  if (!startsOn || !endsOn) return null;
+  const days = (Date.parse(`${endsOn}T00:00:00Z`) - Date.parse(`${startsOn}T00:00:00Z`)) / 86_400_000;
+  return Number.isFinite(days) && days > 0 ? Math.round(days / 7) : null;
+}
 
 export default async function ApplyPage(
   props: {
@@ -92,12 +111,6 @@ export default async function ApplyPage(
     getScholarshipInterestQuestions(),
   ]);
 
-  // The 17 column-backed fields and the admin's own additions are two
-  // different things to the form — one renders through the bespoke layout,
-  // the other through the generic renderer — so they're handed over apart.
-  const questions = form.builtins;
-  const customQuestions = form.custom;
-
   const settings: Record<string, any> = {};
   for (const r of settingsRows ?? []) settings[r.key] = r.value;
 
@@ -136,43 +149,27 @@ export default async function ApplyPage(
     (await canBypassClosedApplications(admin, user.id));
   if (!applicationsOpen) {
     return (
-      // The page's own root doubles as the skip-link target — same element,
-      // same classes, just promoted from <div> to <main> so "Skip to content"
-      // has somewhere to land. tabIndex={-1} makes it focusable.
-      <main id="main-content" tabIndex={-1} className="min-h-screen bg-paper">
-        <div className="relative mx-auto max-w-2xl px-5 sm:px-6 py-24">
-          <Link
-            href="/dashboard"
-            className="text-sm text-ink-soft hover:text-ink"
-          >
-            ← Dashboard
-          </Link>
-          <div className="mt-8 rounded-2xl border border-amber-400/40 bg-wash p-6">
-            <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-ink">
-              Applications are closed
-            </h1>
-            <p className="mt-3 text-sm text-ink-soft">
-              {settings.applications_closed_message ??
-                "Applications are currently closed. Check back soon for the next cohort."}
-            </p>
-          </div>
-        </div>
-      </main>
+      <ApplyMessage eyebrow="Applications" title="Applications are closed.">
+        <p>
+          {settings.applications_closed_message ??
+            "Applications are currently closed. Check back soon for the next cohort."}
+        </p>
+      </ApplyMessage>
     );
   }
 
   // Only the cohorts still open to THIS user. A decline shuts the cohort that
-  // issued it (lib/reapply.ts), so the picker below must not offer it and the
-  // default selection must not land on it — the old chain ended at
-  // `cohorts[0]`, which meant a student declined from the soonest cohort was
-  // silently pointed straight back at it.
+  // issued it (lib/reapply.ts), so the chooser must not offer it and the
+  // default selection must not land on it.
   const cohorts = plan.allowed;
   const pinnedId =
     typeof settings.active_cohort_id === "string"
       ? settings.active_cohort_id
       : null;
   // Cohort selection order: explicit ?cohort= → user's existing draft
-  // → admin-pinned active → most upcoming still open to them.
+  // → admin-pinned active → most upcoming still open to them — the same chain
+  // the submit action resolves. Used here to decide whether anything is open;
+  // what the chooser starts on is `initialCohortId` below.
   const queryCohort =
     typeof searchParams.cohort === "string" ? searchParams.cohort : null;
   const draftCohortId =
@@ -183,224 +180,152 @@ export default async function ApplyPage(
   if (unavailableCohortId) {
     const name = (openCohorts ?? []).find(cohort => cohort.id === unavailableCohortId)?.name ?? "That cohort";
     return (
-      <main id="main-content" tabIndex={-1} className="min-h-screen bg-paper">
-        <div className="mx-auto max-w-2xl px-5 py-24 sm:px-6">
-          <Link href="/dashboard/application" className="text-sm text-ink-soft hover:text-ink">← Your application</Link>
-          <h1 className="mt-8 font-display text-3xl font-bold">{name} is no longer available for applications</h1>
-          <p className="mt-4 text-sm leading-relaxed text-ink-soft">
-            {draftCohortId ? "Your saved draft and answers have not been moved. Choose a cohort below to continue your draft for that intake." : "Choose an available cohort below to start your application."}
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            {cohorts.map(cohort => <Link key={cohort.id} href={`/apply?cohort=${cohort.id}`} className="press rounded-md border border-line px-4 py-3 text-sm">Choose {cohort.name}</Link>)}
-          </div>
-          {!cohorts.length && <p className="mt-6 text-sm text-ink-soft">No cohort is open right now. Your existing application remains on file.</p>}
-        </div>
-      </main>
+      <ApplyMessage
+        eyebrow="Applications"
+        title={`${name} is no longer available for applications.`}
+        actions={cohorts.map(cohort => (
+          <Link key={cohort.id} href={`/apply?cohort=${cohort.id}`} className="press inline-flex h-11 items-center rounded-md border border-line px-5 text-sm text-ink hover:border-ink/30 hover:bg-wash">
+            Choose {cohort.name}
+          </Link>
+        ))}
+      >
+        <p>
+          {draftCohortId ? "Your saved draft and answers have not been moved. Choose a cohort below to continue your draft for that intake." : "Choose an available cohort below to start your application."}
+        </p>
+        {!cohorts.length && <p>No cohort is open right now. Your existing application remains on file.</p>}
+        <p><Link href="/dashboard/application" className="link-ink">View your application</Link></p>
+      </ApplyMessage>
     );
   }
-  const selected = cohorts.find((c) => c.id === selectedId) ?? null;
 
   // Nothing left to apply to. Two shapes, and they need different words: the
   // cohort that declined them is the only one open (come back next season), or
-  // no cohort is open at all (the ordinary between-cohorts lull). Rendering an
-  // empty picker and a live submit button, which is what the old code did, sent
-  // the application to whatever getActiveCohortId() happened to return.
-  if (!selected) {
+  // no cohort is open at all (the ordinary between-cohorts lull).
+  if (!selectedId) {
     const declinedFromOnly = plan.blocked.length > 0;
     return (
-      <main id="main-content" tabIndex={-1} className="min-h-screen bg-paper">
-        <div className="relative mx-auto max-w-2xl px-5 sm:px-6 py-24">
-          <Link href="/dashboard" className="text-sm text-ink-soft hover:text-ink">
-            ← Dashboard
+      <ApplyMessage
+        eyebrow="Applications"
+        title={declinedFromOnly ? "No other cohort is open yet." : "No cohort is open right now."}
+        actions={
+          <Link
+            href="/dashboard/application"
+            className="press inline-flex h-11 items-center rounded-md border border-line px-5 text-sm text-ink hover:border-ink/30 hover:bg-wash"
+          >
+            View your last application
           </Link>
-          <div className="mt-8 rounded-2xl border border-line bg-wash p-6">
-            <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-ink">
-              {declinedFromOnly
-                ? "No other cohort is open yet"
-                : "No cohort is open right now"}
-            </h1>
-            <p className="mt-3 text-sm text-ink-soft">
-              {declinedFromOnly
-                ? `You've already had a decision on ${plan.blocked
-                    .map((c) => c.name)
-                    .join(" and ")}, so applying again means a different cohort — and there isn't one open yet. We'll email you when the next one opens; your answers stay on file.`
-                : "Applications reopen when the next cohort is announced. We'll email you then."}
-            </p>
-            {declinedFromOnly && (
-              <p className="mt-3 text-sm text-ink-soft">
-                A Founder Pass reopens the current cohort for another run —{" "}
-                <Link href="/pass" className="text-phosphor-ink hover:underline">
-                  see what it carries
-                </Link>
-                .
-              </p>
-            )}
-            <Link
-              href="/dashboard/application"
-              className="press mt-6 inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm text-ink-soft hover:border-ink/30"
-            >
-              View your last application
+        }
+      >
+        <p>
+          {declinedFromOnly
+            ? `You've already had a decision on ${plan.blocked
+                .map((c) => c.name)
+                .join(" and ")}, so applying again means a different cohort — and there isn't one open yet. We'll email you when the next one opens; your answers stay on file.`
+            : "Applications reopen when the next cohort is announced. We'll email you then."}
+        </p>
+        {declinedFromOnly && (
+          <p>
+            A Founder Pass reopens the current cohort for another run —{" "}
+            <Link href="/pass" className="link-ink">
+              see what it carries
             </Link>
-          </div>
-        </div>
-      </main>
+            .
+          </p>
+        )}
+      </ApplyMessage>
     );
   }
 
-  const cohortName =
-    selected?.name ?? settings.active_cohort_name ?? "the next cohort";
-  const capacity = selected?.capacity ?? 24;
+  // Every open cohort as a card: the same regional + promo price chain the
+  // single-cohort page always quoted, applied per cohort, because cohorts can
+  // carry different tuition.
   const country = getCountryFromHeaders(await headers());
-  const regional = getRegionalPrice(
-    listPriceCents(selected?.price_cents ?? 13000),
-    country,
+  const promo = await loadPromoConfig();
+  const now = new Date();
+  const cohortOptions: CohortOption[] = cohorts.map((c: any) => {
+    const eligibility = cohortEligibility(c, now);
+    const regional = getRegionalPrice(listPriceCents(c.price_cents ?? 13000), country);
+    const lateEntry = eligibility.mode === "late_entry";
+    const deadline = easternDay(eligibility.deadline);
+    return {
+      id: c.id,
+      name: c.name,
+      dates: formatDateSentence(c.starts_on, c.ends_on) || "Dates coming soon",
+      weeks: weeksBetween(c.starts_on, c.ends_on),
+      priceLabel: formatUsd(promoPriceCents(regional.amountCents, now, promo)),
+      lateEntry,
+      deadlineLabel: deadline
+        ? lateEntry
+          ? `Late entry ends ${deadline}`
+          : `Applications close ${deadline}`
+        : "",
+      catchUpPlan: lateEntry ? c.catch_up_plan ?? null : null,
+      capacity: c.capacity ?? 24,
+    };
+  });
+  const selected = cohortOptions.find((c) => c.id === selectedId) ?? cohortOptions[0];
+  // What the chooser starts on. One open cohort: that one, and the question
+  // is never asked. Several: only a preference the applicant (or an admin pin)
+  // actually expressed — never the bare "soonest" fallback, which can be a
+  // cohort already weeks into late entry. Picking is the whole point of the
+  // question, so an unexpressed choice starts unselected.
+  // A draft's cohort counts only if the draft holds a real answer: blank rows
+  // created by a referral link (before that stopped attaching a cohort) carry
+  // the server's soonest-cohort fallback, not anything the applicant picked.
+  const draftHasAnswers =
+    !!existing &&
+    FORM_KEYS.some((key) => {
+      const value = (existing as Record<string, unknown>)[key];
+      return value !== null && value !== undefined && value !== 0 && String(value).trim() !== "";
+    });
+  const expressed = [queryCohort, draftHasAnswers ? draftCohortId : null, pinnedId].find(
+    (id) => !!id && cohortOptions.some((c) => c.id === id),
   );
-  const priceLabel = formatUsd(promoPriceCents(regional.amountCents, new Date(), await loadPromoConfig()));
-  const selectedRow = (openCohorts ?? []).find(cohort => cohort.id === selectedId);
-  const admission = selectedRow ? cohortEligibility(selectedRow) : null;
-  const hasMultiple = cohorts.length > 1;
+  const initialCohortId = cohortOptions.length === 1 ? cohortOptions[0].id : expressed ?? null;
+
+  const notices: { tone: "accent" | "neutral"; title: string; body: string }[] = [];
+  if (reapplying) {
+    notices.push({
+      tone: "neutral",
+      title: "Starting a fresh application",
+      body:
+        existing!.status !== "rejected"
+          ? "You withdrew from a previous application, so you can apply again — including to the same cohort."
+          : plan.passReopened
+            ? `Your last application wasn't accepted. Your Founder Pass reopens ${selected.name} — you can go straight back at it.`
+            : "Your last application wasn't accepted. You can apply again, to a cohort you haven't been decided on.",
+    });
+  }
+  // The auto-admit perk, said before they start rather than after they
+  // submit. A holder who doesn't know the outcome is guaranteed writes the
+  // whole form braced for a wait that isn't coming.
+  if (willAutoAdmit) {
+    notices.push({
+      tone: "accent",
+      title: "Your Founder Pass carries a seat",
+      body: `Submit this and you're admitted on the spot — no review queue, no wait. Fill it in properly anyway: it's what your mentors read first.`,
+    });
+  }
+
+  const suggestedName =
+    typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name.trim() : "";
 
   return (
-    // Skip-link target (see the closed-applications branch above).
-    <main id="main-content" tabIndex={-1} className="min-h-screen bg-paper">
-      <div className="relative mx-auto max-w-3xl px-5 sm:px-6 py-10 sm:py-16">
-        <div className="mb-6 sm:mb-8 flex items-center justify-between">
-          <Link href="/dashboard" className="text-sm text-ink-soft hover:text-ink">
-            ← Dashboard
-          </Link>
-          {existing?.status === "draft" && (
-            <Link
-              href="/dashboard/application"
-              className="text-xs text-ink-faint hover:text-ink"
-            >
-              View draft summary
-            </Link>
-          )}
-        </div>
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
-          {reapplying ? "Reapply" : "Apply"}
-        </p>
-        <h1 className="mt-3 font-display text-[30px] sm:text-4xl font-bold tracking-[-0.02em] text-ink leading-[1.1]">
-          Apply to batch0
-        </h1>
-        <p className="mt-3 max-w-2xl text-[15px] sm:text-base text-ink-soft leading-[1.55]">
-          {cohortName} is capped at {capacity} students. Applications are
-          reviewed on a rolling basis. After your application is accepted,
-          you'll see your final tuition before paying. Current tuition for your region is {priceLabel}.
-        </p>
-
-        <p className="mt-4 text-sm leading-relaxed text-ink-soft">Four steps: about you, background, your idea, then review. Your draft saves as you work. Fields marked optional can be skipped. <Link className="link-ink" href={`/parents?cohort=${selectedId}`}>Share the schedule and parent guide →</Link></p>
-        {admission?.mode === "late_entry" && <div className="mt-5 border-l-2 border-phosphor bg-wash p-4 text-sm leading-relaxed"><p className="font-semibold">This cohort has started. Late entry ends {easternDeadline(admission.deadline)}.</p><p className="mt-2 text-ink-soft">{selectedRow?.catch_up_plan}</p></div>}
-
-        {hasMultiple && (
-          <div className="mt-6 rounded-xl border border-line bg-wash px-4 py-3">
-            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
-              Choose a cohort
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {cohorts.map((c) => {
-                const active = c.id === selectedId;
-                return (
-                  <Link
-                    key={c.id}
-                    href={`/apply?cohort=${c.id}`}
-                    className={`press inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs ${
-                      active
-                        ? "border-phosphor bg-phosphor/10 text-phosphor-ink"
-                        : "border-line text-ink-soft hover:border-ink/30"
-                    }`}
-                  >
-                    {c.name}
-                    {c.starts_on && (
-                      <span
-                        className={active ? "text-phosphor-ink" : "text-ink-faint"}
-                      >
-                        · {c.starts_on}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-xs text-ink-soft">
-              Your application is tied to the cohort you pick. You can
-              switch at any time before submitting.
-              {plan.blocked.length > 0 &&
-                ` ${plan.blocked
-                  .map((c) => c.name)
-                  .join(" and ")} isn't listed — you've already had a decision there.`}
-            </p>
-          </div>
-        )}
-
-        {reapplying && (
-          <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-400/40 bg-wash p-4 text-sm">
-            <div>
-              <p className="font-medium text-ink">
-                Starting a fresh application
-              </p>
-              <p className="mt-1 text-ink-soft">
-                {existing!.status !== "rejected"
-                  ? "You withdrew from a previous application. You can reapply to the cohort below."
-                  : plan.passReopened
-                    ? `Your last application wasn't accepted. Your Founder Pass reopens ${cohortName} — you can go straight back at it below.`
-                    : "Your last application wasn't accepted. You can apply again, to a cohort you haven't been decided on."}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* The auto-admit perk, said before they start rather than after they
-            submit. A holder who doesn't know the outcome is guaranteed writes
-            the whole form braced for a wait that isn't coming. */}
-        {willAutoAdmit && (
-          <div className="mt-6 flex items-start gap-3 rounded-xl border border-phosphor/40 bg-phosphor/5 p-4 text-sm">
-            <div>
-              <p className="font-medium text-phosphor-ink">
-                Your Founder Pass carries a seat
-              </p>
-              <p className="mt-1 text-ink-soft">
-                Submit this and you&apos;re admitted to {cohortName} on the spot —
-                no review queue, no wait. Fill it in properly anyway: it&apos;s
-                what your mentors read first.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {existing?.status === "draft" && (
-          <div className="mt-6 flex items-start gap-3 rounded-xl border border-phosphor/40 bg-phosphor/5 p-4 text-sm">
-            <div>
-              <p className="font-medium text-phosphor-ink">
-                Picking up where you left off
-              </p>
-              <p className="mt-1 text-ink-soft">
-                We loaded your saved draft. Edits autosave as you type.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-10">
-          <ApplicationForm
-            defaults={reapplying ? null : existing ?? null}
-            email={user.email ?? ""}
-            priceLabel={priceLabel}
-            cohortId={selectedId}
-            questions={questions}
-            customQuestions={customQuestions}
-            scholarshipQuestions={scholarshipQuestions}
-          />
-        </div>
-        <div className="mt-10">
-          <Link
-            href="/dashboard"
-            className="text-sm text-ink-soft hover:text-ink"
-          >
-            Save and return later →
-          </Link>
-        </div>
-      </div>
-    </main>
+    <ApplyFlow
+      // A reapply starts blank; a draft continues where it stopped.
+      mode={reapplying ? "reapply" : existing?.status === "draft" ? "draft" : "new"}
+      email={user.email ?? ""}
+      defaults={reapplying ? null : existing ?? null}
+      suggestedName={suggestedName}
+      questions={form.builtins}
+      customQuestions={form.custom}
+      scholarshipQuestions={scholarshipQuestions}
+      cohorts={cohortOptions}
+      initialCohortId={initialCohortId}
+      explicitCohortId={queryCohort}
+      notices={notices}
+      blockedCohortNames={plan.blocked.map((c) => c.name)}
+      parentGuideHref={`/parents?cohort=${selected.id}`}
+    />
   );
 }

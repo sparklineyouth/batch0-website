@@ -178,7 +178,7 @@ The repo deploys cleanly to Vercel:
 ```
 app/
   (auth)/                login, signup, forgot, reset
-  apply/                 multi-step application
+  apply/                 application, one question per screen (rules in lib/apply-flow.ts)
   dashboard/             student: home, application, course, billing, settings
   admin/                 admin: overview, applications, students, cohorts, course, payments, settings
   api/stripe/            checkout, webhook

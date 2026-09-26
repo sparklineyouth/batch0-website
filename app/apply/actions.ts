@@ -14,13 +14,15 @@ import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { canBypassClosedApplications, hasFounderPass } from "@/lib/founder-pass";
 import { autoAdmitOnSubmit } from "@/lib/admissions";
-import { planReapply, selectCohortId, resolveApplicationCohort } from "@/lib/reapply";
+import { planReapply, resolveApplicationCohort } from "@/lib/reapply";
 import { isValidPhone, PHONE_MAX_LENGTH } from "@/lib/phone";
-import { getVisibleCustomQuestions } from "@/lib/application-questions";
+import { getApplicationForm } from "@/lib/application-questions";
+import { buildQuestionMap, requiredBuiltinErrors } from "@/lib/apply-flow";
 import { getScholarshipInterestQuestions } from "@/lib/scholarships";
 import {
   checkAnswers,
   readAnswers,
+  visibleQuestions,
   CUSTOM_PREFIX,
   SCHOLARSHIP_PREFIX,
 } from "@/lib/question-schema";
@@ -31,6 +33,7 @@ import {
 } from "@/lib/discord";
 import { env } from "@/lib/env";
 import { attachCampaignAttribution } from "@/lib/campaign-attribution-server";
+import { getUser as getVerifiedTokenUser } from "@/lib/auth";
 
 // Optional URL: empty string allowed, otherwise must be a valid URL
 const optionalUrl = z
@@ -47,8 +50,8 @@ const optionalUrl = z
 const optionalString = (max = 200) =>
   z.string().trim().max(max).optional().or(z.literal(""));
 
-// Submit-time schema — strict. Mirrors the client validation in
-// application-form.tsx so error messages match on both sides.
+// Submit-time schema — strict. Mirrors the client rules in lib/apply-flow.ts
+// (fieldError), which gate each question before the applicant can move on.
 const SubmitSchema = z
   .object({
     full_name: z.string().trim().min(1, "Required").max(120),
@@ -80,13 +83,11 @@ const SubmitSchema = z
       .max(2000),
     startup_idea: optionalString(2000),
     experience: optionalString(2000),
-    hours_per_week: z.coerce
-      .number()
-      .int()
-      .min(0)
-      .max(168)
-      .optional()
-      .or(z.literal("")),
+    // "" first: z.coerce.number() turns a blank into 0, so with the number
+    // branch first every blank "hours" answer was stored as 0 hours.
+    hours_per_week: z
+      .union([z.literal(""), z.coerce.number().int().min(0).max(168)])
+      .optional(),
     team_size: z.coerce
       .number()
       .int()
@@ -120,7 +121,9 @@ const SubmitSchema = z
 const DraftSchema = z.object({
   full_name: optionalString(120),
   age: z
-    .union([z.coerce.number().int().min(0).max(120), z.literal("")])
+    // "" first, for the reason on SubmitSchema.hours_per_week: a blank draft
+    // age was being saved as 0.
+    .union([z.literal(""), z.coerce.number().int().min(0).max(120)])
     .optional(),
   grade: optionalString(40),
   school: optionalString(160),
@@ -141,10 +144,10 @@ const DraftSchema = z.object({
   startup_idea: optionalString(2000),
   experience: optionalString(2000),
   hours_per_week: z
-    .union([z.coerce.number().int().min(0).max(168), z.literal("")])
+    .union([z.literal(""), z.coerce.number().int().min(0).max(168)])
     .optional(),
   team_size: z
-    .union([z.coerce.number().int().min(1).max(5), z.literal("")])
+    .union([z.literal(""), z.coerce.number().int().min(1).max(5)])
     .optional(),
   referral_source: optionalString(200),
   referral_code: optionalString(32),
@@ -154,15 +157,86 @@ const DraftSchema = z.object({
   cohort_id: optionalString(64),
 });
 
+/**
+ * checkAnswers for the admin-authored questions, with the same draft rule as
+ * the built-in fields above: on a draft save an invalid answer is dropped
+ * rather than failing the save of everything else. Submit is strict.
+ */
+function checkDraftable(
+  questions: Awaited<ReturnType<typeof getScholarshipInterestQuestions>>,
+  raw: Record<string, unknown>,
+  prefix: string,
+  submit: boolean,
+) {
+  const answers = readAnswers(questions, raw, prefix);
+  const check = checkAnswers(questions, answers, { partial: !submit });
+  if (check.ok || submit) return check;
+  const kept = { ...answers };
+  for (const id of Object.keys(check.errors)) delete kept[id];
+  return checkAnswers(questions, kept, { partial: true });
+}
+
 type ActionResult = {
   ok: boolean;
   error?: string;
+  /**
+   * Why a save didn't happen, for the form to act on:
+   *   signed_out        the session is gone — sign in again; retrying won't help
+   *   auth_unavailable  couldn't confirm who you are right now — retry
+   *   rate_limited      too many saves in a minute — retry shortly
+   */
+  code?: "signed_out" | "auth_unavailable" | "rate_limited";
   fieldErrors?: Record<string, string>;
   applicationId?: string;
   savedAt?: string;
   /** Set on submit when a virtual founder pass admitted them outright. */
   autoAdmitted?: boolean;
 };
+
+type SessionUser = { id: string; email?: string | null };
+
+/**
+ * Who is saving.
+ *
+ * getUser() — a round trip to Supabase Auth — stays the authority, as it is
+ * for every mutation (lib/server-guards.ts explains why): a deleted or
+ * signed-out account must stop writing immediately, and a 401/403 from Auth
+ * is exactly that. What this adds is what a FAILED check means. Before, any
+ * failure — Auth slow, a 5xx, a network blip — returned "Not signed in", the
+ * form showed "Couldn't save" on a loop, and nothing was logged anywhere.
+ *
+ *   - Auth rejects the session (401/403, or no session at all) → signed_out.
+ *   - Auth errors any other way → retried once, then, for a DRAFT only, the
+ *     session's locally verified token (lib/auth getUser, getClaims — what
+ *     every page already trusts). A draft is the applicant's own row and RLS
+ *     still checks their token on the write, and a deleted account never gets
+ *     here: Auth answers it with a 403 above, not an outage. Submit has no
+ *     fallback — it waits for a real answer.
+ */
+async function resolveSessionUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  allowVerifiedToken: boolean,
+): Promise<{ user: SessionUser } | { code: "signed_out" | "auth_unavailable" }> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const { data, error } = await supabase.auth.getUser();
+    if (data.user) return { user: data.user };
+    const status = (error as { status?: number } | null)?.status;
+    const name = error?.name ?? "";
+    if (status === 401 || status === 403 || name === "AuthSessionMissingError") {
+      console.warn("[apply] save refused: session rejected by auth", status ?? name);
+      return { code: "signed_out" };
+    }
+    console.warn(`[apply] auth check failed (attempt ${attempt})`, status ?? "(no status)", name, error?.message);
+  }
+  if (allowVerifiedToken) {
+    const tokenUser = await getVerifiedTokenUser();
+    if (tokenUser) {
+      console.warn("[apply] auth unreachable; saving draft on the verified token");
+      return { user: tokenUser };
+    }
+  }
+  return { code: "auth_unavailable" };
+}
 
 /** The admin-pinned active cohort, or null. Not validated as open here — the
  *  caller only ever looks it up inside a list that already is. */
@@ -179,28 +253,54 @@ async function getPinnedCohortId(
     : null;
 }
 
-async function getActiveCohortId(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<string | null> {
-  const { data: open } = await supabase
-    .from("cohorts")
-    .select("id, name, starts_on, ends_on, status, applications_close_at, late_entry_until, catch_up_plan, capacity")
-    .in("status", ["upcoming", "active"])
-    .order("starts_on", { ascending: true });
-  return selectCohortId((open ?? []).filter((c) => cohortEligibility(c).eligible), [await getPinnedCohortId(supabase)]);
-}
-
 async function upsertApplication(
   formData: FormData,
   submit: boolean,
 ): Promise<ActionResult> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in" };
+  const session = await resolveSessionUser(supabase, !submit);
+  if ("code" in session) {
+    return {
+      ok: false,
+      code: session.code,
+      error:
+        session.code === "signed_out"
+          ? "You've been signed out. Sign in again to keep saving."
+          : "We couldn't confirm you're signed in just now. Trying again…",
+    };
+  }
+  const user = session.user;
+
+  // Throttle draft saves — without this, a runaway autosave loop or a bot
+  // hammering the form burns DB writes and audit rows. 30/min per user covers
+  // normal typing comfortably (the form saves after a pause, not per key).
+  if (!submit) {
+    const rl = await checkRateLimit({
+      kind: "apply-draft",
+      identifier: user.id,
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!rl.ok) {
+      console.warn("[apply] draft save rate-limited", rl.count);
+      return { ok: false, code: "rate_limited", error: "Saving paused for a moment — too many edits in a row." };
+    }
+  }
 
   const raw = Object.fromEntries(formData.entries());
   const schema = submit ? SubmitSchema : DraftSchema;
-  const parsed = schema.safeParse(raw);
+  let parsed = schema.safeParse(raw);
+  // A draft is saved field by field. One answer the applicant stepped back past
+  // before finishing it ("mom@gmail", 200 hours) used to fail the WHOLE save —
+  // every autosave after it, whatever screen they were on, silently dropped.
+  // Drop just the fields that don't parse (they save as empty, and the form
+  // still holds and flags them) and keep everything else. Submit stays strict.
+  if (!parsed.success && !submit) {
+    const bad = new Set(parsed.error.issues.map((i) => String(i.path[0] ?? "")));
+    parsed = schema.safeParse(
+      Object.fromEntries(Object.entries(raw).filter(([k]) => !bad.has(k))),
+    );
+  }
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
     for (const issue of parsed.error.issues) {
@@ -225,21 +325,34 @@ async function upsertApplication(
   // `partial` on the draft path for the same reason the zod DraftSchema is
   // loose: /apply autosaves every few seconds, and enforcing "required" on a
   // half-typed form would make autosave fail continuously.
-  const [customQuestions, scholarshipQuestions] = await Promise.all([
-    getVisibleCustomQuestions(),
+  const [applicationForm, scholarshipQuestions] = await Promise.all([
+    getApplicationForm(),
     getScholarshipInterestQuestions(),
   ]);
+  const customQuestions = visibleQuestions(applicationForm.custom);
 
-  const customCheck = checkAnswers(
-    customQuestions,
-    readAnswers(customQuestions, raw, CUSTOM_PREFIX),
-    { partial: !submit },
-  );
-  const scholarshipCheck = checkAnswers(
-    scholarshipQuestions,
-    readAnswers(scholarshipQuestions, raw, SCHOLARSHIP_PREFIX),
-    { partial: !submit },
-  );
+  // Built-in fields an admin marked required (Country, say). SubmitSchema only
+  // knows the five cores, so without this an admin's "required" was an asterisk
+  // and nothing else. The same rule the form gates Continue on — see
+  // requiredBuiltinErrors in lib/apply-flow.ts.
+  if (submit) {
+    // The raw posted strings, not parsed.data: SubmitSchema coerces a blank
+    // hours_per_week to 0, which would read as answered.
+    const missing = requiredBuiltinErrors(
+      buildQuestionMap(applicationForm.builtins),
+      raw,
+    );
+    if (Object.keys(missing).length > 0) {
+      return {
+        ok: false,
+        error: "Please fix the highlighted fields.",
+        fieldErrors: missing,
+      };
+    }
+  }
+
+  const customCheck = checkDraftable(customQuestions, raw, CUSTOM_PREFIX, submit);
+  const scholarshipCheck = checkDraftable(scholarshipQuestions, raw, SCHOLARSHIP_PREFIX, submit);
 
   if (!customCheck.ok || !scholarshipCheck.ok) {
     // Field errors are keyed by the POSTED name so the form can highlight the
@@ -421,7 +534,10 @@ async function upsertApplication(
       .from("applications")
       .update(payload)
       .eq("id", existing!.id);
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[apply] application update failed", submit ? "submit" : "draft", error.code, error.message);
+      return { ok: false, error: error.message };
+    }
     applicationId = existing!.id;
   } else {
     const { data: created, error } = await supabase
@@ -429,7 +545,10 @@ async function upsertApplication(
       .insert(payload)
       .select("id")
       .single();
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[apply] application insert failed", submit ? "submit" : "draft", error.code, error.message);
+      return { ok: false, error: error.message };
+    }
     applicationId = created!.id;
   }
 
@@ -440,7 +559,10 @@ async function upsertApplication(
     const { error: pricingError } = await createAdminClient().from("applications")
       .update({ pricing_country: pricingCountry }).eq("id", applicationId)
       .is("pricing_country", null);
-    if (pricingError) return { ok: false, error: "We could not save your tuition region. Please try again." };
+    if (pricingError) {
+      console.error("[apply] pricing_country write failed", pricingError.code, pricingError.message);
+      return { ok: false, error: "We could not save your tuition region. Please try again." };
+    }
   }
 
   // The auto-admit perk: a virtual founder pass turns "submitted" into
@@ -459,7 +581,10 @@ async function upsertApplication(
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/accepted");
   revalidatePath("/dashboard/application");
-  revalidatePath("/apply");
+  // Not on a draft save: revalidating the page the action was called from
+  // re-renders all of /apply server-side and ships it back with every
+  // autosave, for a client that already holds every answer.
+  if (submit) revalidatePath("/apply");
 
   // Send "we got it" email + notify admins on first submission.
   if (submit) {
@@ -584,28 +709,11 @@ export async function saveDraftAction(
   _: ActionResult | null,
   formData: FormData,
 ) {
-  // Throttle draft saves — without this, a runaway autosave loop or a
-  // bot hammering the form burns DB writes + audit log + revalidation.
-  // 30/min per user covers normal typing comfortably.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) {
-    const rl = await checkRateLimit({
-      kind: "apply-draft",
-      identifier: user.id,
-      limit: 30,
-      windowSeconds: 60,
-    });
-    if (!rl.ok) {
-      return {
-        ok: false,
-        errors: { _form: "Too many edits in a row — wait a moment." },
-      } as ActionResult;
-    }
-  }
-  return upsertApplication(formData, false);
+  // Auth and the rate limit both live in upsertApplication now, so a save
+  // costs one round trip to Supabase Auth instead of two.
+  const result = await upsertApplication(formData, false);
+  if (!result.ok && !result.code) console.warn("[apply] draft save refused:", result.error);
+  return result;
 }
 
 export async function submitApplicationAction(
@@ -675,11 +783,12 @@ export async function attachReferralCodeAction(code: string) {
   }
 
   // No application yet: create a fresh draft with just the code so we
-  // remember it. Cohort attachment happens on the next real save.
-  const cohortId = await getActiveCohortId(supabase);
+  // remember it. No cohort: this row is created on page load, before the
+  // applicant has chosen one, and /apply reads a draft's cohort back as their
+  // choice. It is attached on the first real save.
   const { data: created, error } = await supabase.from("applications").insert({
     user_id: user.id,
-    cohort_id: cohortId,
+    cohort_id: null,
     status: "draft",
     referral_code: trimmed,
   }).select("id").single();

@@ -2,6 +2,10 @@
 
 The release keeps Fall admissions available through September 30 at 11:59:59.999 p.m. Eastern. At October 1 midnight Eastern, new unqualified admissions select the next eligible intake, currently Winter (December 14, 2026–February 12, 2027). Existing Fall students retain their cohort and course access. Explicit cohort links and saved drafts require an intentional choice before changing intake.
 
+The application flow retains its one-question screens, Auth outage retries, draft-only verified-token fallback, and device backups. A current explicit cohort link wins over an older device choice. If a recovered device-only draft names a closed intake, its answers stay on the device until the student chooses an open intake, including when Winter is the only option; refreshes and background saves cannot silently move it. Sign-in recovery and the parent-guide link preserve the selected cohort.
+
+The integration with main through `b6ce20bc` passed 593 unit/database tests and the production build, including TypeScript checks and the static-rendering guard (137 blog posts and 8 marketing routes). The unchanged Winter preparation tool previously passed its 7 tests. Nine new integration/recovery tests cover deadline and Auth interactions, attribution after saves, referral-only drafts, and explicit cohort choice during device recovery. A second read-only code review found no remaining integration blocker. The updated preview and final production smoke remain separate release gates below.
+
 The Search destination is `/parents` with final URL suffix `utm_source=google&utm_medium=cpc&utm_campaign=batch0_search_2026`. Apply the same suffix to the campaign's Parents, Program, Sample lesson, and Apply sitelinks. The private campaign-payment report follows the application through a parent paying on another device and uses actual charges after discounts and refunds. It does not upload conversions to Google Ads. See [campaign attribution](campaign-attribution.md) for the accounting rules and device limitations.
 
 ## Release order

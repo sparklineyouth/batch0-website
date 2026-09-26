@@ -4,7 +4,11 @@ import nextDynamic from "next/dynamic";
 import { notFound } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getChallengeBySlug, isChallengeOpen, formatCents } from "@/lib/challenges";
+import {
+  getChallengeBySlug,
+  challengeWindowState,
+  formatCents,
+} from "@/lib/challenges";
 import { LocalTime } from "@/components/ui/local-time";
 
 // The entry form (and the supabase-js it pulls in for video uploads) only
@@ -55,7 +59,7 @@ export default async function ChallengePage(
     existing = (data as any) ?? null;
   }
 
-  const open = isChallengeOpen(challenge);
+  const windowState = challengeWindowState(challenge);
 
   return (
     // Skip-link target for this route (no layout above it owns a <main>).
@@ -79,12 +83,21 @@ export default async function ChallengePage(
           </p>
         )}
 
-        {(challenge.prizeLabel || challenge.closesAt) && (
+        {(challenge.prizeLabel ||
+          challenge.closesAt ||
+          (windowState === "upcoming" && challenge.opensAt)) && (
           <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-line py-3 font-mono text-[13px]">
             {challenge.prizeLabel && (
               <span className="text-ink">
                 <span className="text-ink-faint">Prize · </span>
                 {challenge.prizeLabel}
+              </span>
+            )}
+            {/* Only while it's ahead — after it opens, the open date is noise. */}
+            {windowState === "upcoming" && challenge.opensAt && (
+              <span className="text-ink">
+                <span className="text-ink-faint">Opens · </span>
+                <LocalTime value={challenge.opensAt} mode="datetime-short" />
               </span>
             )}
             {challenge.closesAt && (
@@ -99,7 +112,9 @@ export default async function ChallengePage(
         <div className="mt-10">
           {existing ? (
             <AlreadyApplied />
-          ) : !open ? (
+          ) : windowState === "upcoming" ? (
+            <UpcomingPanel opensAt={challenge.opensAt} />
+          ) : windowState === "closed" ? (
             <ClosedPanel closesAt={challenge.closesAt} />
           ) : !user ? (
             <SignInPanel slug={params.slug} refCode={searchParams.ref ?? null} />
@@ -166,6 +181,33 @@ function AlreadyApplied() {
           className="text-sm text-phosphor-ink hover:underline"
         >
           Go to dashboard →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function UpcomingPanel({ opensAt }: { opensAt: string | null }) {
+  return (
+    <div className="rounded-2xl border border-phosphor/30 bg-phosphor/5 p-6">
+      <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
+        Entries open soon
+      </h2>
+      <p className="mt-2 text-sm text-ink-soft">
+        {opensAt ? (
+          <>
+            Entries for this one open{" "}
+            <LocalTime value={opensAt} mode="datetime-short" />.
+          </>
+        ) : (
+          "Entries for this one aren't open yet."
+        )}{" "}
+        Read the brief now, line up your build, and come back to enter —
+        entering is free and takes an account.
+      </p>
+      <div className="mt-4">
+        <Link href="/challenges" className="text-sm text-phosphor-ink hover:underline">
+          See other challenges →
         </Link>
       </div>
     </div>

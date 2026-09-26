@@ -43,8 +43,8 @@ export default function ForgotPasswordPage() {
   // focusable and screen readers actually move the cursor to it.
   return (
     <main id="main-content" tabIndex={-1}>
-      <h1 className="text-2xl font-bold tracking-tight text-white">Reset password</h1>
-      <p className="mt-1 text-sm text-white/65">
+      <h1 className="font-display text-[clamp(2.25rem,8vw,3rem)] leading-[1.04] text-ink">Reset password</h1>
+      <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
         Enter your email and we'll send you a reset link.
       </p>
       {sent ? (

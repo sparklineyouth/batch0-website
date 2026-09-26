@@ -11,7 +11,7 @@ import { env } from "@/lib/env";
 import {
   getChallengeBySlug,
   buildAnswerSchema,
-  isChallengeOpen,
+  challengeWindowState,
   HTTP_URL_RE,
   CHALLENGE_UPLOAD_BUCKET,
   CHALLENGE_UPLOAD_PREFIX,
@@ -110,8 +110,15 @@ export async function getChallengeUploadToken(input: {
   if (enabledSetting?.value === false) {
     return { ok: false, error: "Challenges are currently unavailable." };
   }
-  if (!isChallengeOpen(challenge)) {
-    return { ok: false, error: "This challenge is closed." };
+  const windowState = challengeWindowState(challenge);
+  if (windowState !== "open") {
+    return {
+      ok: false,
+      error:
+        windowState === "upcoming"
+          ? "This challenge hasn't opened for entries yet."
+          : "This challenge is closed.",
+    };
   }
 
   const dot = input.filename.lastIndexOf(".");
@@ -174,8 +181,15 @@ export async function submitChallengeApplication(
     return { ok: false, error: "Challenges are currently unavailable." };
   }
 
-  if (!isChallengeOpen(challenge)) {
-    return { ok: false, error: "This challenge is closed." };
+  const windowState = challengeWindowState(challenge);
+  if (windowState !== "open") {
+    return {
+      ok: false,
+      error:
+        windowState === "upcoming"
+          ? "This challenge hasn't opened for entries yet."
+          : "This challenge is closed.",
+    };
   }
 
   // Throttle: 5 submit attempts / minute / user. Fail-open on DB trouble.
