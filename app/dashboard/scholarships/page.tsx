@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
+import { windowHeadline } from "@/lib/scholarship-window";
 import {
   loadScholarshipCards,
   describeAward,
@@ -49,13 +50,25 @@ export const revalidate = 0;
 export default async function ScholarshipsPage() {
   const user = await requireUser();
   const admin = createAdminClient();
-  const { cards, missingTable } = await loadScholarshipCards(
+  const { cards, state, missingTable } = await loadScholarshipCards(
     admin,
     user.id,
     new Date(),
   );
 
-  const award = cards.find((c) => c.mine?.status === "awarded") ?? null;
+  // The award to headline. One per cohort is allowed, so a returning student
+  // can hold an old cohort's award alongside the current one: prefer the award
+  // in the cohort their window follows, then the most recently decided.
+  const awarded = cards
+    .filter((c) => c.mine?.status === "awarded")
+    .sort((a, b) => {
+      const here = (c: ScholarshipCard) => (c.mine?.cohortId === state.cohortId ? 1 : 0);
+      return (
+        here(b) - here(a) ||
+        (b.mine?.decidedAt ?? "").localeCompare(a.mine?.decidedAt ?? "")
+      );
+    });
+  const award = awarded[0] ?? null;
 
   // The perks on the award are redeemed from this page, so their balances
   // load here — only the ones the award actually carries, and only when it
@@ -81,7 +94,9 @@ export default async function ScholarshipsPage() {
       <p className="mt-1 text-sm text-ink-soft">
         batch0 runs scholarships so money isn't what decides who gets to build.
         You can hold one at a time, and you can apply after you're accepted or
-        after you've enrolled.
+        after you've enrolled. When each one is open follows your cohort's
+        dates: until the enrollment deadline while you're accepted, and until
+        the cohort ends once you've enrolled.
       </p>
 
       {missingTable && (
@@ -392,7 +407,8 @@ function MyApplicationRow({ card }: { card: ScholarshipCard }) {
 }
 
 function OfferCard({ card }: { card: ScholarshipCard }) {
-  const { scholarship, awardedCount } = card;
+  const { scholarship, awardedCount, eligibility } = card;
+  // Seats are per cohort, and awardedCount is already the student's cohort's.
   const seatsLeft =
     scholarship.seats === null ? null : Math.max(0, scholarship.seats - awardedCount);
 
@@ -414,15 +430,12 @@ function OfferCard({ card }: { card: ScholarshipCard }) {
             {describeAward(scholarship.terms)}
           </p>
           <p className="mt-1 text-xs text-ink-faint">
+            {eligibility.ok && windowHeadline(eligibility.window)}
             {seatsLeft !== null && (
               <>
+                {eligibility.ok ? " · " : ""}
                 {seatsLeft} {seatsLeft === 1 ? "spot" : "spots"} left
-                {scholarship.closesAt ? " · " : ""}
-              </>
-            )}
-            {scholarship.closesAt && (
-              <>
-                closes <LocalTime value={scholarship.closesAt} />
+                {eligibility.ok ? ` in ${eligibility.window.cohortName}` : ""}
               </>
             )}
           </p>

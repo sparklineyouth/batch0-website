@@ -6,6 +6,7 @@ import type { Role } from "@/lib/types";
 import { StudentCalls } from "./student-calls";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callCreditsForUser } from "@/lib/scholarships";
+import { windowUntilLabel } from "@/lib/scholarship-window";
 import type { ScholarshipCallState } from "@/components/scholarship-call-card";
 
 export const metadata = { title: "1:1 calls · batch0" };
@@ -36,6 +37,16 @@ export default async function StudentCallsPage() {
         // migration 0061) — so the card says so rather than letting them hit
         // a duplicate-key error they can't interpret.
         hasOpenRequest: interviewRequest?.status === "requested",
+        // The calls belong to the cohort the award was made in. Once it has
+        // ended the card says so instead of offering a booking the action
+        // would refuse; while it runs, the card names the last bookable day.
+        closedReason: callAward.window.open ? null : callAward.window.reason,
+        bookableUntil: callAward.window.open ? callAward.window.until : null,
+        bookableUntilLabel:
+          callAward.window.open && callAward.window.until
+            ? windowUntilLabel(callAward.window.until)
+            : null,
+        cohortName: callAward.window.open ? callAward.window.cohortName : null,
       }
     : null;
 
