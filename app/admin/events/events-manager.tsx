@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
 import { normalizeDisplayViewers } from "@/lib/live";
+import { isHostedOnBatch0, isPremiere } from "@/lib/webinars";
 import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { LocalTime } from "@/components/ui/local-time";
@@ -18,9 +20,10 @@ import { saveEvent, deleteEvent, type EventInput } from "./actions";
 import { fetchWebinarExtras, saveSpeakers } from "./webinar-actions";
 import {
   WebinarFields,
+  type SpeakerDraft,
   type WebinarFieldsValue,
 } from "./webinar-fields";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Video, ClipboardList } from "lucide-react";
 
 type Cohort = { id: string; name: string };
 type EventRow = EventInput & { id: string };
@@ -98,12 +101,27 @@ function webinarInitialFor(e: EventInput): WebinarFieldsValue {
 export function EventsManager({
   events,
   cohorts,
+  initialEditId = null,
 }: {
   events: EventRow[];
   cohorts: Cohort[];
+  /** From `?edit=<id>`: open this event's form on arrival. */
+  initialEditId?: string | null;
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState<EventInput | null>(null);
+  const [editing, setEditing] = useState<EventInput | null>(
+    () => events.find((e) => e.id === initialEditId) ?? null,
+  );
+
+  /**
+   * Leave the form. When it was opened by `?edit=<id>`, drop the parameter
+   * too — otherwise a reload after saving would reopen the form the admin
+   * just closed.
+   */
+  function closeEditor() {
+    setEditing(null);
+    if (initialEditId) router.replace("/admin/events", { scroll: false });
+  }
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
@@ -152,7 +170,7 @@ export function EventsManager({
           })),
         );
 
-        setEditing(null);
+        closeEditor();
         router.refresh();
       } catch (err: any) {
         setError(getActionError(err));
@@ -180,7 +198,7 @@ export function EventsManager({
       <EventForm
         cohorts={cohorts}
         initial={editing}
-        onCancel={() => setEditing(null)}
+        onCancel={closeEditor}
         onSave={save}
         webinarInitial={webinarInitialFor(editing)}
         pending={pending}
@@ -241,9 +259,12 @@ export function EventsManager({
               <td className="py-3 text-ink">{e.title}</td>
               <td className="py-3 text-ink-soft">
                 {e.type}
-                {e.live_mode === "hosted" && (
+                {/* isHostedOnBatch0, not `=== "hosted"`: a premiere is a
+                    batch0 room too, and used to be listed as if it were an
+                    external link. */}
+                {isHostedOnBatch0(e.live_mode) && (
                   <span className="ml-1.5 font-mono text-[10px] uppercase tracking-wider text-phosphor-ink">
-                    hosted
+                    {isPremiere(e.live_mode) ? "premiere" : "hosted"}
                   </span>
                 )}
               </td>
@@ -254,7 +275,29 @@ export function EventsManager({
                 <LocalTime value={e.starts_at} />
               </td>
               <td className="py-3 text-ink-soft">{e.visibility}</td>
-              <td className="py-3 text-right">
+              <td className="whitespace-nowrap py-3 text-right">
+                {/* The room and the record, one click from the row. The room
+                    link is permanent — the event id IS the room — and the page
+                    behind it says "opens at…" when it is too early. An admin
+                    who opens it is a host (events.manage), never a viewer. */}
+                {isHostedOnBatch0(e.live_mode) && (
+                  <Link
+                    href={`/dashboard/events/${e.id}/live`}
+                    className="p-1.5 text-ink-faint hover:text-ink"
+                    aria-label="Host room"
+                    title="Host room — opens an hour before the start"
+                  >
+                    <Video className="inline h-4 w-4" />
+                  </Link>
+                )}
+                <Link
+                  href={`/admin/events/${e.id}`}
+                  className="p-1.5 text-ink-faint hover:text-ink"
+                  aria-label="Record: live status, attendance, recording"
+                  title="Record: live status, attendance, recording"
+                >
+                  <ClipboardList className="inline h-4 w-4" />
+                </Link>
                 <button
                   onClick={() => setEditing(e)}
                   className="p-1.5 text-ink-faint hover:text-ink"
@@ -336,8 +379,11 @@ function EventForm({
             email: sp.email ?? "",
             photoUrl: sp.photoUrl ?? "",
             linkUrl: sp.linkUrl ?? "",
-            claimed: !!sp.userId,
-          })),
+            // The claimed account, as SpeakerDraft.userId. This used to be
+            // written to a `claimed` field WebinarFields never reads, so every
+            // saved speaker showed "Invite not claimed yet" forever.
+            userId: sp.userId ?? null,
+          } satisfies SpeakerDraft)),
           assets: extra.assets
             .filter((a) => a.kind !== "recording")
             .map((a) => ({
@@ -476,7 +522,7 @@ function EventForm({
         label="Host the video on batch0"
         description={
           w.liveMode !== "external"
-            ? "Students join at batch0.org. Only you get camera and mic — they watch, and can't see how many others are here."
+            ? "Students join at batch0.org and watch, without seeing how many others are here. Admins and staff with Manage events, plus any guest speakers you add, can broadcast."
             : "Off: paste an external link below instead. Students leave the site to join it."
         }
         checked={w.liveMode !== "external"}
@@ -502,6 +548,10 @@ function EventForm({
         // start is usually moving it because of what the schedule line says,
         // and a line computed from disk would keep describing the old plan.
         startsAt={startsLocal ? fromLocal(startsLocal) : null}
+        // A staff-only rehearsal emails nobody (the server forces auto_share
+        // off for it, and the follow-up job skips it), so the form says so
+        // instead of offering a toggle that would be ignored.
+        visibility={e.visibility}
         disabled={pending}
       />
 
@@ -516,20 +566,24 @@ function EventForm({
           />
         </div>
       ) : (
+        // batch0 Live has no provider-side room to create or expire: the event
+        // id IS the room, so the link is permanent from the first save. This
+        // used to show Daily-era copy ("a private room is created when you
+        // save… expires two hours after") and never the link itself.
         <p className="rounded-md border border-line bg-wash px-3 py-2.5 text-xs text-ink-soft">
-          {initial.daily_room_name ? (
+          {initial.id ? (
             <>
-              Room ready. Students join at{" "}
-              <code className="text-phosphor-ink">
-                /dashboard/events/{initial.id}/live
-              </code>{" "}
-              from 15 minutes before the start.
+              <Link
+                href={`/dashboard/events/${initial.id}/live`}
+                className="text-phosphor-ink hover:underline"
+              >
+                /dashboard/events/{initial.id}/live — Host room
+              </Link>
+              . Hosts can open it from an hour before the start; students from
+              15 minutes before.
             </>
           ) : (
-            <>
-              A private room is created when you save. It expires two hours
-              after the event ends, so nothing is left open.
-            </>
+            <>The room link appears here once you save the event.</>
           )}
         </p>
       )}

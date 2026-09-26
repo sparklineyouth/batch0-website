@@ -6,8 +6,10 @@ import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
-import { env } from "@/lib/env";
-import type { CallInviteStatus } from "@/lib/live";
+import { callPhase, type CallInviteStatus } from "@/lib/live";
+import { callsHomeFor } from "@/lib/permissions";
+import { capabilitiesForRole } from "@/lib/roles";
+import { notifyStage } from "@/lib/live-rooms";
 
 /**
  * Server actions for staff-initiated 1:1 calls.
@@ -183,17 +185,26 @@ export async function respondToInvite(
   });
 
   try {
-    const { data: me } = await admin
-      .from("profiles")
-      .select("full_name")
-      .eq("id", actor.userId)
-      .maybeSingle();
+    const [{ data: me }, { data: host }] = await Promise.all([
+      admin.from("profiles").select("full_name").eq("id", actor.userId).maybeSingle(),
+      admin
+        .from("profiles")
+        .select("role")
+        .eq("id", (invite as any).host_id)
+        .maybeSingle(),
+    ]);
+    // The HOST's calls page, not the student view: a mentor sent to
+    // /dashboard/calls is bounced to /mentor, and an admin lands on a list of
+    // calls where they are the invitee — none — so the call seems to vanish.
+    const hostCaps = await capabilitiesForRole(
+      ((host as any)?.role as any) ?? "student",
+    );
     await notify({
       userId: (invite as any).host_id,
       type: "call_response",
       title: `${(me as any)?.full_name || "A student"} ${response} your 1:1`,
       body: (invite as any).topic || null,
-      link: "/dashboard/calls",
+      link: callsHomeFor(hostCaps),
     });
   } catch (err) {
     console.error("[calls] response notify failed", err);
@@ -202,30 +213,88 @@ export async function respondToInvite(
   revalidateAll();
 }
 
-/** Cancel. Host (or an admin) only. */
+/**
+ * Cancel a call.
+ *
+ * Who: the host (inviter) or a superAdmin at any time before the call is
+ * over, and the invitee — "Can't make it" — before it starts. Before this the
+ * invitee had no way out of an accepted call at all.
+ *
+ * When: only while the invite is `invited` or `accepted` and the call is not
+ * already over (callPhase 'completed' — including an accepted call whose
+ * window has closed). Cancelling a call that already happened used to be
+ * possible, told the student a completed call was cancelled, and refunded the
+ * scholarship credit it had legitimately spent.
+ *
+ * The write is conditional on the status (`in ('invited','accepted')`) and
+ * only its winner does the side effects — room delete, credit refund,
+ * notification — so a double click or a second tab can no longer refund the
+ * same credit twice.
+ *
+ * Cancelling a call that is in progress disconnects both people: the
+ * content-free `room-changed` on the call's stage topic makes each client
+ * re-ask the server, which now answers 'cancelled', and both see "This call
+ * was cancelled" instead of talking on while a notification says otherwise.
+ */
 export async function cancelInvite(id: string) {
   const actor = await requireActor();
   const admin = createAdminClient();
 
   const { data: invite } = await admin
     .from("call_invites")
-    .select("id, host_id, invitee_id, daily_room_name, topic")
+    .select(
+      "id, host_id, invitee_id, daily_room_name, topic, status, starts_at, duration_minutes",
+    )
     .eq("id", id)
     .maybeSingle();
   if (!invite) throw new Error("That invite no longer exists.");
+  const inv = invite as any;
 
-  const isHost = (invite as any).host_id === actor.userId;
-  if (!isHost && !actor.caps.superAdmin) throw new Error("Forbidden");
+  const isHost = inv.host_id === actor.userId;
+  const isInvitee = inv.invitee_id === actor.userId;
+  const beforeStart = Date.now() < new Date(inv.starts_at).getTime();
+  const allowed =
+    isHost || actor.caps.superAdmin || (isInvitee && beforeStart);
+  if (!allowed) {
+    throw new Error(
+      isInvitee
+        ? "The call has already started — use Leave to step out."
+        : "Forbidden",
+    );
+  }
 
-  const { error } = await admin
+  const phase = callPhase({
+    status: inv.status as CallInviteStatus,
+    startsAt: inv.starts_at,
+    durationMinutes: inv.duration_minutes,
+  });
+  if (inv.status !== "invited" && inv.status !== "accepted") {
+    throw new Error("That call can't be cancelled any more.");
+  }
+  if (phase === "completed") {
+    throw new Error("That call is already over.");
+  }
+
+  const { data: changed, error } = await admin
     .from("call_invites")
     .update({ status: "cancelled" })
-    .eq("id", id);
+    .eq("id", id)
+    .in("status", ["invited", "accepted"])
+    .select("id")
+    .maybeSingle();
   if (error) throw new Error(error.message);
+  // Somebody else changed it first (another tab, the other party, End call).
+  // Their write already did the side effects; doing them again is exactly the
+  // double refund this guards against.
+  if (!changed) throw new Error("That call can't be cancelled any more.");
+
+  // Close the room for anyone in it, first — it is the part the two people on
+  // the call notice.
+  await notifyStage(`call:${id}`, { t: "room-changed" });
 
   // Drop the room if one was ever created. Best-effort — rooms expire on
   // their own, so a failure here costs nothing.
-  const roomName = (invite as any).daily_room_name as string | null;
+  const roomName = inv.daily_room_name as string | null;
   if (roomName) {
     try {
       const { deleteRoom } = await import("@/lib/daily");
@@ -262,16 +331,54 @@ export async function cancelInvite(id: string) {
     action: "call_invite.cancelled",
     targetType: "call_invite",
     targetId: id,
+    payload: { by: isHost ? "host" : isInvitee ? "invitee" : "admin" },
   });
 
+  // Tell whichever party did NOT cancel. An invitee backing out tells the
+  // host (on the host's own calls page); a host cancelling tells the invitee;
+  // a superAdmin cancelling someone else's call tells both of them.
   try {
-    await notify({
-      userId: (invite as any).invitee_id,
-      type: "call_cancelled",
-      title: "A 1:1 call was cancelled",
-      body: (invite as any).topic || null,
-      link: "/dashboard/calls",
-    });
+    if (isInvitee && !isHost) {
+      const [{ data: me }, { data: host }] = await Promise.all([
+        admin.from("profiles").select("full_name").eq("id", actor.userId).maybeSingle(),
+        admin.from("profiles").select("role").eq("id", inv.host_id).maybeSingle(),
+      ]);
+      const hostCaps = await capabilitiesForRole(
+        ((host as any)?.role as any) ?? "student",
+      );
+      await notify({
+        userId: inv.host_id,
+        type: "call_cancelled",
+        title: `${(me as any)?.full_name || "A student"} can't make your 1:1`,
+        body: inv.topic || null,
+        link: callsHomeFor(hostCaps),
+      });
+    } else {
+      await notify({
+        userId: inv.invitee_id,
+        type: "call_cancelled",
+        title: "A 1:1 call was cancelled",
+        body: inv.topic || null,
+        link: "/dashboard/calls",
+      });
+      if (!isHost) {
+        const { data: host } = await admin
+          .from("profiles")
+          .select("role")
+          .eq("id", inv.host_id)
+          .maybeSingle();
+        const hostCaps = await capabilitiesForRole(
+          ((host as any)?.role as any) ?? "student",
+        );
+        await notify({
+          userId: inv.host_id,
+          type: "call_cancelled",
+          title: "An admin cancelled your 1:1",
+          body: inv.topic || null,
+          link: callsHomeFor(hostCaps),
+        });
+      }
+    }
   } catch (err) {
     console.error("[calls] cancel notify failed", err);
   }

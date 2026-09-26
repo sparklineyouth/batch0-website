@@ -175,6 +175,14 @@ export type LiveEvent = {
    * Null = the private default (see `headcountLabel`). Display only.
    */
   displayViewerCount: number | null;
+  /**
+   * When a host pressed End for everyone (`events.live_ended_at`), or null.
+   *
+   * Required rather than optional on purpose: every list that decides "Live
+   * now / Join" has to have read it, because the clock alone keeps an ended
+   * webinar looking live for up to fifty minutes. See `eventLiveStatus`.
+   */
+  liveEndedAt: string | null;
 } & LiveRoom;
 
 export type CallInvite = {
@@ -241,9 +249,10 @@ export function normalizeQuestion(input: string): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * How early someone may enter the room, and how long it stays open past the
- * end. The early window exists so a host can set up before an audience
- * arrives; the late window covers calls that run over.
+ * How early the AUDIENCE may enter the room, and how long it stays open past
+ * the end. The late window covers calls that run over. Hosts have their own,
+ * wider window (HOST_JOIN_OPENS_MINUTES_BEFORE / ROOM_HARD_CLOSE_MINUTES_AFTER
+ * below) — see `roomAccess`.
  */
 export const JOIN_OPENS_MINUTES_BEFORE = 15;
 export const JOIN_CLOSES_MINUTES_AFTER = 30;
@@ -270,10 +279,12 @@ const MINUTE = 60_000;
  * stays a pure function — the tests pin it, and a server render can pass the
  * request time so every card on a page agrees with itself.
  *
- * This is the same gate the server must apply before minting a token. Doing it
- * here too is not duplication: this one decides what the UI shows, that one
- * decides what is actually allowed, and a token minted for an event three
- * weeks out is a live door standing open in the meantime.
+ * This is the audience's window, and what the cards draw. The server's gate is
+ * `roomAccess` below, which applies this same window to viewers and a wider
+ * one to hosts. Doing it in both places is not duplication: this one decides
+ * what the UI shows, that one decides what is actually allowed, and a token
+ * minted for an event three weeks out is a live door standing open in the
+ * meantime.
  */
 export function joinState(
   startsAt: string | Date,
@@ -296,10 +307,256 @@ export function canJoin(state: JoinState): boolean {
 }
 
 /** End time for an invite, derived from its duration. */
-export function inviteEndsAt(invite: CallInvite): string {
+export function inviteEndsAt(
+  invite: Pick<CallInvite, "startsAt" | "durationMinutes">,
+): string {
   return new Date(
     new Date(invite.startsAt).getTime() + invite.durationMinutes * MINUTE,
   ).toISOString();
+}
+
+// ---------------------------------------------------------------------------
+// Room access — who may be in a room right now, by role
+// ---------------------------------------------------------------------------
+//
+// `joinState` above is the AUDIENCE's window, and for a long time it was
+// applied to everybody: the page, the join action, the chat gate and the admin
+// list all asked it, so an admin could not open the room more than fifteen
+// minutes early to set up, and a webinar that ran past end+30 lost its host's
+// End button mid-sentence (endLive threw Forbidden, the client swallowed it,
+// and the webinar was never ended). `roomAccess` is the per-role answer every
+// server gate now shares, so the page and the actions cannot disagree about
+// whether someone is allowed in.
+
+/**
+ * How early a HOST (staff or guest speaker) may open the room.
+ *
+ * An hour, not the audience's fifteen minutes: checking the camera, loading
+ * the deck and rehearsing a handover is the whole reason to arrive early, and
+ * nobody is watching yet for a host to disturb.
+ */
+export const HOST_JOIN_OPENS_MINUTES_BEFORE = 60;
+
+/**
+ * The hard stop for any room, measured from the scheduled end.
+ *
+ * Hosts may stay (and End, and Reopen) until here, and a viewer's window is
+ * extended up to here while a host is still genuinely present. Past it the
+ * room is closed for everybody: a webinar still "running" three hours after
+ * its scheduled end is a tab someone forgot, not a talk.
+ */
+export const ROOM_HARD_CLOSE_MINUTES_AFTER = 180;
+
+/**
+ * Where a person stands with respect to a room.
+ *
+ *   early   Before their window opens.
+ *   open    Inside their window, before the scheduled start.
+ *   live    Inside their window, at or after the scheduled start.
+ *   ended   A host pressed End for everyone (`live_ended_at` is set). Only
+ *           ever returned for a viewer — a host keeps their window so staff
+ *           can reach the ended screen and Reopen.
+ *   closed  Their window has passed.
+ */
+export type RoomAccess = "early" | "open" | "live" | "ended" | "closed";
+
+/**
+ * The answer a room gives a heartbeat, a join, or a status poll.
+ *
+ *   ok         Carry on.
+ *   ended      The webinar was ended for everyone, or the 1:1 was completed.
+ *              Terminal: tear down, show "ended".
+ *   cancelled  The 1:1 was cancelled. Terminal.
+ *   closed     The window has closed (the last host left and the grace ran
+ *              out). The client acts on the SECOND consecutive answer, so one
+ *              read at the boundary does not end anybody's session.
+ *   revoked    The caller no longer has access (unenrolled, speaker row
+ *              removed). Also acted on only when repeated.
+ *   error      The server could not tell — a query failed. Never terminal: a
+ *              database blip must not look like a revocation.
+ *
+ * Mirrored structurally by `nextStatusAction` in lib/live-signal.ts, which
+ * decides what the client does with each answer.
+ */
+export type RoomStatus =
+  | "ok"
+  | "ended"
+  | "cancelled"
+  | "closed"
+  | "revoked"
+  | "error";
+
+/**
+ * The instants that bound one room, in epoch milliseconds.
+ *
+ * `ends_at` is nullable and defaults to DEFAULT_EVENT_MINUTES past the start,
+ * the same rule `joinState` applies — computed here once so the page, the
+ * gates and the tests all read the same numbers.
+ */
+export function roomWindow(
+  startsAt: string | Date,
+  endsAt: string | Date | null | undefined,
+): {
+  start: number;
+  end: number;
+  hostOpensAt: number;
+  viewerOpensAt: number;
+  viewerClosesAt: number;
+  hardCloseAt: number;
+} {
+  const start = new Date(startsAt).getTime();
+  const end = endsAt
+    ? new Date(endsAt).getTime()
+    : start + DEFAULT_EVENT_MINUTES * MINUTE;
+  return {
+    start,
+    end,
+    hostOpensAt: start - HOST_JOIN_OPENS_MINUTES_BEFORE * MINUTE,
+    viewerOpensAt: start - JOIN_OPENS_MINUTES_BEFORE * MINUTE,
+    viewerClosesAt: end + JOIN_CLOSES_MINUTES_AFTER * MINUTE,
+    hardCloseAt: end + ROOM_HARD_CLOSE_MINUTES_AFTER * MINUTE,
+  };
+}
+
+/**
+ * May this person be in this room right now?
+ *
+ * Two windows, because hosts and viewers need different things:
+ *
+ *   host    [start-60m, end+3h], whatever `liveEndedAt` says. A staff host has
+ *           to be able to reach the ended screen to Reopen, and an overrunning
+ *           webinar must never lose its End button.
+ *   viewer  [start-15m, end+30m] as always, with two changes:
+ *             - 'ended' as soon as `liveEndedAt` is set. An ended webinar hands
+ *               out no more credentials and records no more attendance.
+ *             - past end+30m the room stays open while a host is still
+ *               genuinely present (`hostPresent`: a fresh host heartbeat) and
+ *               nobody has ended it, up to the hard stop at end+3h. That is
+ *               what lets a talk run over without its audience being cut off,
+ *               while "the last host left and never pressed End" still closes
+ *               on its own — there is deliberately no silent auto-stamp of
+ *               `live_ended_at`, so a wifi drop can never end a webinar.
+ *
+ * `hostPresent` is only consulted past end+30m, so a caller may pass `false`
+ * first and look presence up only when the answer comes back 'closed' — which
+ * is exactly what lib/live-access.ts does, keeping the common case to zero
+ * extra queries.
+ */
+export function roomAccess({
+  startsAt,
+  endsAt,
+  liveEndedAt,
+  isHost,
+  hostPresent,
+  now = new Date(),
+}: {
+  startsAt: string | Date;
+  endsAt: string | Date | null | undefined;
+  liveEndedAt: string | Date | null | undefined;
+  isHost: boolean;
+  hostPresent: boolean;
+  now?: Date;
+}): RoomAccess {
+  const w = roomWindow(startsAt, endsAt);
+  const t = now.getTime();
+
+  if (isHost) {
+    if (t < w.hostOpensAt) return "early";
+    if (t > w.hardCloseAt) return "closed";
+    return t < w.start ? "open" : "live";
+  }
+
+  if (liveEndedAt) return "ended";
+  if (t < w.viewerOpensAt) return "early";
+  if (t <= w.viewerClosesAt) return t < w.start ? "open" : "live";
+  if (hostPresent && t <= w.hardCloseAt) return "live";
+  return "closed";
+}
+
+/** Is this access answer one that lets someone into the room? */
+export function roomIsOpen(access: RoomAccess): boolean {
+  return access === "open" || access === "live";
+}
+
+/**
+ * An event's state for a LIST — the dashboard, the admin webinars page, cards.
+ *
+ *   upcoming  Before the audience's window opens.
+ *   open      Joinable, not started.
+ *   live      Joinable, started.
+ *   ended     A host pressed End for everyone. Shown as "Ended" with no Join,
+ *             whatever the clock says — the bug this replaces kept an ended
+ *             webinar under "Live now / Join now" for up to fifty minutes.
+ *   past      The window closed without anyone pressing End.
+ *
+ * Deliberately knows nothing about host presence: a list has no business
+ * querying heartbeats per card, so an overrunning webinar moves to Past at
+ * end+30m here even though anyone already inside keeps their seat. The room
+ * itself (via `roomAccess`) is the authority on who may still enter.
+ */
+export type EventLiveStatus = "upcoming" | "open" | "live" | "ended" | "past";
+
+export function eventLiveStatus(
+  {
+    startsAt,
+    endsAt,
+    liveEndedAt,
+  }: {
+    startsAt: string | Date;
+    endsAt: string | Date | null | undefined;
+    liveEndedAt: string | Date | null | undefined;
+  },
+  now: Date = new Date(),
+): EventLiveStatus {
+  if (liveEndedAt) return "ended";
+  const w = roomWindow(startsAt, endsAt);
+  const t = now.getTime();
+  if (t < w.viewerOpensAt) return "upcoming";
+  if (t <= w.viewerClosesAt) return t < w.start ? "open" : "live";
+  return "past";
+}
+
+/**
+ * Where a 1:1 stands, for the cards and for every server gate.
+ *
+ *   invited    Sent, not answered.
+ *   upcoming   Accepted, before the join window opens.
+ *   joinable   Accepted, inside the window — the only phase with a Join.
+ *   completed  Someone pressed End call, OR the call was accepted and its
+ *              window has closed. The second half is derived: the database
+ *              status stays 'accepted' until someone presses End, but a call
+ *              whose time is over is over everywhere — Past, no Join, no Add
+ *              to calendar, no Cancel (and so no credit refund for a call that
+ *              already happened).
+ *   cancelled / declined  As stored.
+ */
+export type CallPhase =
+  | "invited"
+  | "upcoming"
+  | "joinable"
+  | "completed"
+  | "cancelled"
+  | "declined";
+
+export function callPhase(
+  invite: Pick<CallInvite, "status" | "startsAt" | "durationMinutes">,
+  now: Date = new Date(),
+): CallPhase {
+  switch (invite.status) {
+    case "completed":
+    case "cancelled":
+    case "declined":
+      return invite.status;
+    case "invited":
+      return "invited";
+    case "accepted":
+    default: {
+      const state = joinState(invite.startsAt, inviteEndsAt(invite), now);
+      if (state === "early") return "upcoming";
+      if (state === "ended") return "completed";
+      return "joinable";
+    }
+  }
 }
 
 /**

@@ -28,6 +28,20 @@
  * the viewer cannot broadcast, the viewer cannot see the audience, and the
  * host can.
  *
+ * And it walks the exits, because a room nobody can leave or close properly is
+ * as broken as one nobody can enter:
+ *   - the host is an ADMIN (profiles.role = 'admin') — an admin must host,
+ *     never be downgraded to a viewer;
+ *   - a viewer presses Leave, lands on "You've left", presses Rejoin and
+ *     decodes the host again on a fresh connection;
+ *   - the host presses End for everyone (arm, then confirm): every viewer is
+ *     moved to "This webinar has ended" within seconds, their connections
+ *     close and frames stop, and a fresh join is refused;
+ *   - the host presses Reopen, goes back on air, and the ended viewer is
+ *     offered Rejoin (the ended screen's slow poll) and decodes video again;
+ *   - the 1:1 is hosted by a MENTOR (the live-room middleware exemption), and
+ *     the owner's End call puts both sides on "The call has ended".
+ *
  * Every account and row it creates is removed in a finally block, including
  * on failure.
  */
@@ -78,6 +92,7 @@ function check(cond: boolean, m: string) {
 const stamp = String(process.pid);
 const HOST_EMAIL = `e2e-webinar-host-${stamp}@example.invalid`;
 const VIEWER_EMAIL = `e2e-webinar-viewer-${stamp}@example.invalid`;
+const MENTOR_EMAIL = `e2e-webinar-mentor-${stamp}@example.invalid`;
 /**
  * A fresh password every run, and never one that is written down.
  *
@@ -142,7 +157,12 @@ async function createUser(email: string, role: string): Promise<string> {
     headers: { ...adm, Prefer: "return=representation" },
     body: JSON.stringify({
       role,
-      full_name: role === "admin" ? "E2E Host" : "E2E Student",
+      full_name:
+        role === "admin"
+          ? "E2E Host"
+          : role === "mentor"
+            ? "E2E Mentor"
+            : "E2E Student",
     }),
   });
   if (!patch.ok) throw new Error(`setRole ${email}: ${await patch.text()}`);
@@ -229,6 +249,15 @@ async function createAcceptedCall(
 }
 
 async function cleanup() {
+  // End / Reopen / End call write audit entries against the test event and
+  // call. They name only these throwaway rows, so they go with them.
+  for (const target of [createdEventId, createdInviteId]) {
+    if (!target) continue;
+    await fetch(`${url}/rest/v1/audit_log?target_id=eq.${target}`, {
+      method: "DELETE",
+      headers: adm,
+    }).catch(() => {});
+  }
   if (createdInviteId) {
     await fetch(`${url}/rest/v1/call_invites?id=eq.${createdInviteId}`, {
       method: "DELETE",
@@ -354,7 +383,8 @@ async function openAs(
 
 /** Click the green room's join button, whatever it is labelled. */
 async function enterRoom(page: Page, label: string): Promise<boolean> {
-  const button = page.getByRole("button", { name: /^(start|join)$/i });
+  // "Start" (webinar host), "Join" (viewer), "Join call" (either side of a 1:1).
+  const button = page.getByRole("button", { name: /^(start|join|join call)$/i });
   const ok = await until(
     `${label} green room`,
     async () =>
@@ -368,6 +398,86 @@ async function enterRoom(page: Page, label: string): Promise<boolean> {
   }
   await button.first().click();
   return true;
+}
+
+/**
+ * Decoded inbound video frames on the peer connections built AFTER the first
+ * `from` — i.e. on a fresh session. A Rejoin builds new connections; the old,
+ * closed ones must not be allowed to make a stalled rejoin look healthy.
+ */
+const framesSince = (from: number) => `(async () => {
+  const pcs = (window.__b0pcs || []).slice(${from});
+  let frames = 0;
+  for (const pc of pcs) {
+    let report;
+    try { report = await pc.getStats(); } catch { continue; }
+    report.forEach((s) => {
+      if (s.type === "inbound-rtp" && s.kind === "video") frames += s.framesDecoded || 0;
+    });
+  }
+  return { frames, pcs: pcs.length };
+})()`;
+
+/** Every peer connection on the page has been closed (torn down, not idle). */
+const ALL_PCS_CLOSED = `(() => (window.__b0pcs || []).every(
+  (pc) => pc.signalingState === "closed" || pc.connectionState === "closed"
+))()`;
+
+const pcCount = (page: Page) =>
+  page.evaluate(`(window.__b0pcs || []).length`) as Promise<number>;
+
+/** Wait for decoded frames on connections built after `from`, climbing. */
+async function decodesAgain(
+  page: Page,
+  from: number,
+  label: string,
+): Promise<boolean> {
+  const first = await until(
+    label,
+    async () => {
+      const s: any = await page.evaluate(framesSince(from));
+      return s && s.frames > 0 ? s : null;
+    },
+    60_000,
+  );
+  if (!first) return false;
+  await new Promise((r) => setTimeout(r, 2000));
+  const next: any = await page.evaluate(framesSince(from));
+  return next.frames > (first as any).frames;
+}
+
+/** Wait for a visible button by accessible name, then click it. */
+async function press(
+  page: Page,
+  name: RegExp,
+  label: string,
+  timeoutMs = 20_000,
+): Promise<boolean> {
+  const button = page.getByRole("button", { name });
+  const ok = await until(
+    label,
+    async () =>
+      (await button.count()) > 0 &&
+      (await button.first().isVisible()) &&
+      (await button.first().isEnabled()),
+    timeoutMs,
+  );
+  if (!ok) return false;
+  await button.first().click();
+  return true;
+}
+
+const hasText = async (page: Page, re: RegExp) =>
+  (await page.getByText(re).count()) > 0;
+
+/** The event's End stamp, read from the database rather than any UI. */
+async function liveEndedAt(eventId: string): Promise<string | null> {
+  const res = await fetch(
+    `${url}/rest/v1/events?id=eq.${eventId}&select=live_ended_at`,
+    { headers: adm },
+  );
+  const rows = (await res.json()) as { live_ended_at: string | null }[];
+  return rows[0]?.live_ended_at ?? null;
 }
 
 // --- the test ---------------------------------------------------------------
@@ -395,9 +505,20 @@ async function main() {
   console.log("fixtures");
   const hostUserId = await createUser(HOST_EMAIL, "admin");
   const viewerUserId = await createUser(VIEWER_EMAIL, "student");
+  const mentorUserId = await createUser(MENTOR_EMAIL, "mentor");
   const eventId = await createLiveWebinar();
-  pass(`admin + student accounts, and a webinar that is live now`);
+  pass(`admin + mentor + student accounts, and a webinar that is live now`);
   info(`event ${eventId}`);
+
+  // The webinar host is an ADMIN, and nothing else — not a speaker row, not an
+  // events.manage custom role. An admin being shown the viewer's page is the
+  // bug this proves gone, so read the role back rather than trusting the PATCH.
+  const roleRes = await fetch(
+    `${url}/rest/v1/profiles?id=eq.${hostUserId}&select=role`,
+    { headers: adm },
+  );
+  const roleRows = (await roleRes.json()) as { role: string }[];
+  check(roleRows[0]?.role === "admin", "the webinar host's profile role is 'admin'");
 
   let browser: Browser | null = null;
   const contexts: BrowserContext[] = [];
@@ -424,7 +545,7 @@ async function main() {
     const hosting = await until("host to be hosting", async () =>
       (await host.page.getByText(/hosting/i).count()) > 0,
     );
-    check(!!hosting, "host is in the room, broadcasting");
+    check(!!hosting, "the ADMIN is in the room as host, broadcasting");
 
     // --- viewer joins ------------------------------------------------------
     console.log("\nviewer");
@@ -653,19 +774,195 @@ async function main() {
     );
     check(!!cameraBack, "video resumes when the camera comes back on");
 
+    // --- Leave, then Rejoin --------------------------------------------------
+    //
+    // Leave means "I go; the room keeps running". It used to leave the viewer
+    // on a "You've left" screen whose Rejoin did nothing until a reload.
+    console.log("\nviewer leaves and rejoins");
+    check(
+      await press(viewer.page, /^leave$/i, "viewer's Leave button"),
+      "viewer pressed Leave",
+    );
+    const leftScreen = await until(
+      "viewer's left screen",
+      async () => hasText(viewer.page, /you.ve left/i),
+      15_000,
+    );
+    check(!!leftScreen, "viewer sees \"You've left\"");
+    const leftClosed = await until(
+      "viewer's connections to close",
+      async () => (await viewer.page.evaluate(ALL_PCS_CLOSED)) as boolean,
+      10_000,
+    );
+    check(!!leftClosed, "leaving closes the viewer's connection (no media after Leave)");
+
+    // The room kept running for everyone else: the host's count drops to the
+    // one student still watching rather than holding a ghost.
+    const countsOne = await until("host count to drop to 1", async () => {
+      const body = (await host.page.locator("body").innerText()) || "";
+      return /(^|\D)1\s+watching/i.test(body);
+    }, 30_000);
+    check(!!countsOne, "host's headcount drops when a viewer leaves");
+
+    const beforeRejoin = await pcCount(viewer.page);
+    check(
+      await press(viewer.page, /^rejoin$/i, "viewer's Rejoin button"),
+      "viewer pressed Rejoin",
+    );
+    check(
+      await enterRoom(viewer.page, "viewer rejoin"),
+      "Rejoin goes back through the green room",
+    );
+    check(
+      await decodesAgain(viewer.page, beforeRejoin, "rejoined viewer to decode video"),
+      "rejoined viewer decodes the host's video again, on a fresh connection",
+    );
+
+    // --- End for everyone ----------------------------------------------------
+    //
+    // One control, two steps, and it must reach every viewer: not by the
+    // viewer's next 8s poll alone but by the stage hint, and in every case
+    // well inside ~15s. After it, the room is shut: no media, no rejoin, no
+    // fresh join.
+    console.log("\nhost ends the webinar for everyone");
+    const viewerPcsAtEnd = await pcCount(viewer.page);
+    check(
+      await press(host.page, /^end for everyone$/i, "host's End for everyone"),
+      "host armed End for everyone",
+    );
+    check(
+      await press(host.page, /^confirm end$/i, "End confirm step", 5_000),
+      "host confirmed the end",
+    );
+    const endPressedAt = Date.now();
+
+    const viewerEnded = await until(
+      "viewer's ended screen",
+      async () => hasText(viewer.page, /this webinar has ended/i),
+      15_000,
+    );
+    check(!!viewerEnded, "viewer is moved to \"This webinar has ended\" within 15s");
+    if (viewerEnded) info(`reached the viewer in ${Date.now() - endPressedAt}ms`);
+
+    const viewer2Ended = await until(
+      "second student's ended screen",
+      async () => hasText(viewer2.page, /this webinar has ended/i),
+      15_000,
+    );
+    check(!!viewer2Ended, "the second student sees it too");
+
+    const hostEnded = await until(
+      "host's ended screen",
+      async () => hasText(host.page, /you ended the webinar for everyone/i),
+      20_000,
+    );
+    check(!!hostEnded, "host lands on the ended screen");
+    check(!!(await liveEndedAt(eventId)), "live_ended_at is stamped in the database");
+
+    const endedClosed = await until(
+      "viewer's connections to close after End",
+      async () => (await viewer.page.evaluate(ALL_PCS_CLOSED)) as boolean,
+      10_000,
+    );
+    check(!!endedClosed, "End closes the viewer's connections");
+    const frozenA: any = await viewer.page.evaluate(INBOUND_FRAMES);
+    await new Promise((r) => setTimeout(r, 3000));
+    const frozenB: any = await viewer.page.evaluate(INBOUND_FRAMES);
+    check(
+      frozenB.frames <= frozenA.frames,
+      "viewer stops receiving frames after End",
+    );
+    check(
+      (await pcCount(viewer.page)) === viewerPcsAtEnd,
+      "nothing reconnects the viewer on its own after End",
+    );
+    check(
+      (await viewer.page.getByRole("button", { name: /^rejoin$/i }).count()) === 0,
+      "the viewer's ended screen offers no Rejoin while the webinar is ended",
+    );
+
+    // A fresh join — a new tab, a reload — is refused, by the page itself.
+    const late = await openAs(browser, VIEWER_EMAIL, live, "late viewer");
+    contexts.push(late.ctx);
+    const lateRefused = await until(
+      "late viewer to be refused",
+      async () => hasText(late.page, /this webinar has ended/i),
+      30_000,
+    );
+    check(!!lateRefused, "a fresh viewer join after End is shown the ended page");
+    check(
+      (await late.page.getByRole("button", { name: /^(join|start)$/i }).count()) === 0,
+      "and there is no Join button to press",
+    );
+
+    // --- Reopen ------------------------------------------------------------
+    //
+    // Staff only, on the ended screen. Reopen alone puts nobody on air: the
+    // host goes back through the green room and presses Start.
+    console.log("\nhost reopens");
+    check(
+      await press(host.page, /^reopen$/i, "host's Reopen button"),
+      "host pressed Reopen",
+    );
+    const cleared = await until(
+      "live_ended_at to clear",
+      async () => (await liveEndedAt(eventId)) === null,
+      15_000,
+    );
+    check(!!cleared, "Reopen clears live_ended_at");
+    check(
+      await enterRoom(host.page, "host after reopen"),
+      "host is back in the green room and starts again",
+    );
+    // The in-room "Hosting" chip exactly — the green room's "You're hosting —
+    // your camera…" copy must not pass for being on air.
+    const hostingAgain = await until("host to be hosting again", async () =>
+      hasText(host.page, /^\s*hosting\s*$/i),
+    );
+    check(!!hostingAgain, "host is broadcasting again");
+
+    // The ended viewer is not reconnected behind their back; their ended
+    // screen polls every 30s and offers Rejoin once the webinar is open.
+    const beforeReopenRejoin = await pcCount(viewer.page);
+    check(
+      await press(
+        viewer.page,
+        /^rejoin$/i,
+        "ended viewer to be offered Rejoin",
+        45_000,
+      ),
+      "the ended viewer is offered Rejoin after Reopen, and pressed it",
+    );
+    check(
+      await enterRoom(viewer.page, "viewer after reopen"),
+      "viewer goes back through the green room",
+    );
+    check(
+      await decodesAgain(
+        viewer.page,
+        beforeReopenRejoin,
+        "viewer to decode video after Reopen",
+      ),
+      "after Reopen the viewer decodes the host's video again",
+    );
+
     // --- 1:1 calls: the other shape the same engine has to run ------------
     //
     // A 1:1 is two BROADCASTERS, which exercises code a webinar never
     // touches: sendrecv transceivers on both sides, and the id-comparison
     // tie-break that decides which of them offers. A webinar passing proves
     // nothing about this path.
-    console.log("\n1:1 call");
-    const inviteId = await createAcceptedCall(hostUserId, viewerUserId);
+    //
+    // The owner is a MENTOR, not an admin: live rooms sit under /dashboard,
+    // and a mentor used to be bounced out of the room they were hosting by
+    // the student-dashboard role gate.
+    console.log("\n1:1 call (mentor host)");
+    const inviteId = await createAcceptedCall(mentorUserId, viewerUserId);
     const callPath = `/dashboard/calls/${inviteId}/live`;
 
-    const caller = await openAs(browser, HOST_EMAIL, callPath, "caller");
+    const caller = await openAs(browser, MENTOR_EMAIL, callPath, "caller");
     contexts.push(caller.ctx);
-    check(await enterRoom(caller.page, "caller"), "host opened the 1:1");
+    check(await enterRoom(caller.page, "caller"), "the mentor opened the 1:1");
 
     const callee = await openAs(browser, VIEWER_EMAIL, callPath, "callee");
     contexts.push(callee.ctx);
@@ -717,6 +1014,33 @@ async function main() {
       !!bothSending,
       "BOTH sides send media (a 1:1 is two broadcasters, not a broadcast)",
     );
+
+    // End call is the owner's, two-step, and final for both people.
+    console.log("\nthe owner ends the call");
+    check(
+      await press(caller.page, /^end call$/i, "owner's End call"),
+      "owner armed End call",
+    );
+    check(
+      await press(caller.page, /^end for both$/i, "End call confirm step", 5_000),
+      "owner confirmed End for both",
+    );
+    const callEnded = /(the|this) call has ended/i;
+    const bothEnded = await until(
+      "both sides to see the call ended",
+      async () =>
+        (await hasText(caller.page, callEnded)) &&
+        (await hasText(callee.page, callEnded)),
+      15_000,
+    );
+    check(!!bothEnded, "both sides see \"The call has ended\"");
+    await callee.page.reload({ waitUntil: "domcontentloaded" });
+    const calleeRefused = await until(
+      "student's reload to be refused",
+      async () => hasText(callee.page, callEnded),
+      30_000,
+    );
+    check(!!calleeRefused, "the student cannot walk back into an ended call");
 
     if (headed) {
       info("--headed: holding the windows open for 20s");

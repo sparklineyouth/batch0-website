@@ -151,7 +151,11 @@ export function useRecorder({
   onSegment,
 }: {
   eventId: string;
-  /** Gates the whole machine: host, joined, and recording turned on. */
+  /**
+   * Gates the whole machine: auto-record on, this host picked as the room's
+   * one recorder, live and not ended. Going false is a stop (see the effect
+   * below). Going true starts nothing on its own — the caller calls `start`.
+   */
   enabled: boolean;
   cameraStream: MediaStream | null;
   screenStream: MediaStream | null;
@@ -171,7 +175,22 @@ export function useRecorder({
   /** Seconds recorded so far, across all segments. */
   seconds: number;
   error: string | null;
-  start: () => void;
+  /**
+   * Begin recording. Never called by the hook itself: the room owns the
+   * trigger (it knows whether this host is the one recorder, whether the
+   * camera is up, whether the webinar has ended), and an auto-start in here
+   * would be a second opinion that could disagree with it.
+   *
+   * `startIndex` is the first segment number to use, seeded from the server
+   * (`nextRecordingIndex`: the highest registered segment + 1). A fresh mount
+   * counts from 0, so without the seed a host who reloads mid-webinar — or a
+   * second staff host taking over — numbered their first file segment 0 and
+   * replaced the one already registered there: the opening of the talk,
+   * silently overwritten by the middle of it. The seed never moves the
+   * counter backwards, so segments this tab has numbered but not yet
+   * registered are never reused.
+   */
+  start: (opts?: { startIndex?: number }) => void;
   /**
    * Flush the current segment and await its upload. Awaitable because the
    * host's End button awaits it before tearing the tracks down — stopping the
@@ -672,9 +691,10 @@ export function useRecorder({
   /**
    * The event the CURRENT (or most recent) run started under.
    *
-   * `index` is the only identifier `onSegment` gets, and the server upserts on
-   * `(event_id, sort_order)` — so restarting the recorder inside one webinar
-   * and numbering from zero again does not append, it OVERWRITES. A host who
+   * `index` is the only identifier `onSegment` gets, and the server treats a
+   * second registration at the same `(event, recording, sort_order)` as a
+   * replacement — so restarting the recorder inside one webinar and numbering
+   * from zero again does not append, it OVERWRITES. A host who
    * stopped recording to take a phone call and started again twenty minutes
    * later used to come back to a recording whose first segments had been
    * silently replaced by the second run's. The counter therefore survives a
@@ -683,7 +703,7 @@ export function useRecorder({
    */
   const runEventIdRef = useRef<string | null>(null);
 
-  const start = useCallback(() => {
+  const start = useCallback((opts?: { startIndex?: number }) => {
     // `fatalRef` is sticky on purpose. Everything that sets it is a statement
     // about the browser — no MediaRecorder, no codec, no canvas capture — and
     // none of those become true on a second press. Re-running the probes would
@@ -763,6 +783,13 @@ export function useRecorder({
     if (runEventIdRef.current !== eventIdRef.current) {
       nextIndexRef.current = 0;
       runEventIdRef.current = eventIdRef.current;
+    }
+    // The server's count, where we have it. `max`, not assignment: this tab
+    // may have numbered segments whose upload has not registered yet, and the
+    // server cannot know about those.
+    const seed = opts?.startIndex;
+    if (typeof seed === "number" && Number.isFinite(seed) && seed > 0) {
+      nextIndexRef.current = Math.max(nextIndexRef.current, Math.floor(seed));
     }
     failuresRef.current = 0;
     lastDrawRef.current = now();
@@ -860,12 +887,24 @@ export function useRecorder({
   /**
    * Stop, idempotently.
    *
-   * Every caller gets the same promise. The host's End button is the caller,
-   * and a double-click on it must not stop a recorder that is already stopping
-   * and resolve early on a segment that has not finished uploading.
+   * Every caller gets the same promise WHILE a stop is in flight. The host's
+   * End button is the caller, and a double-click on it must not stop a
+   * recorder that is already stopping and resolve early on a segment that has
+   * not finished uploading.
+   *
+   * Released once that stop has finished. The promise used to be kept for the
+   * life of the hook, so after an End → Reopen in the same tab every later
+   * `stop()` resolved instantly on the OLD run's promise — the second run's
+   * final segment was never flushed, and the End button tore the tracks down
+   * under it.
    */
   const stop = useCallback((): Promise<void> => {
-    if (!stopPromiseRef.current) stopPromiseRef.current = runStop();
+    if (!stopPromiseRef.current) {
+      const p = runStop().finally(() => {
+        if (stopPromiseRef.current === p) stopPromiseRef.current = null;
+      });
+      stopPromiseRef.current = p;
+    }
     return stopPromiseRef.current;
   }, [runStop]);
 

@@ -4,19 +4,29 @@ import { createClient } from "@/lib/supabase/client";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import {
   connectionTopic,
+  countLiveAudience,
   HEARTBEAT_MS,
   ICE_BATCH_MS,
   MEDIA_SLOTS,
+  nextStatusAction,
+  ROOM_CHANGED_THROTTLE_MS,
+  shouldPruneConnection,
   SIGNAL_EVENT,
   slotForMid,
   slotIsActive,
   type LobbyMessage,
   type MediaSlot,
+  type PeerLinkState,
   type SignalMessage,
   type SignalRole,
   type StageMessage,
 } from "@/lib/live-signal";
 import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
+import type {
+  JoinRefusal,
+  JoinResult,
+  PresenceResult,
+} from "@/app/live/actions";
 
 /**
  * batch0 Live, browser side: the WebRTC engine behind a webinar or a 1:1.
@@ -47,6 +57,12 @@ import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
  * The fixed order is also how the receiver tells camera from screen: slot i
  * is transceiver i is `mid` i (see slotForMid).
  *
+ * A corollary the receiving side relies on: a SECOND offer from the same peer
+ * can only mean that peer threw its connection away and built a new one (a
+ * reload, or a rebuild whose `bye` was lost). It is never a renegotiation of
+ * ours, so it is answered on a fresh connection rather than applied to the
+ * old one, whose DTLS identity no longer matches anything on the far side.
+ *
  * ---------------------------------------------------------------------------
  * Track presence vs. track existence
  * ---------------------------------------------------------------------------
@@ -70,28 +86,77 @@ import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
  * for camera and audio so a dropped message cannot cost the webinar, and an
  * unannounced screen slot is off, because nobody is presenting until a host
  * says so.
+ *
+ * ---------------------------------------------------------------------------
+ * Leaving, being ended, and being shut out
+ * ---------------------------------------------------------------------------
+ *
+ * The session ends in exactly one way — `teardown` below — whichever of these
+ * set it off:
+ *
+ *   - the room disabling it (Leave, End, the phase moving on), or unmounting;
+ *   - the SERVER saying so. Every heartbeat and every re-check asks
+ *     announcePresence for a status, and `nextStatusAction` decides what that
+ *     answer means: 'ended' / 'cancelled' close at once, 'closed' / 'revoked'
+ *     close on the second consecutive answer, and 'error' (or a request that
+ *     failed outright) is ignored, because a database blip must not look like
+ *     a revocation. The status used to be a boolean nobody read, so an ended
+ *     webinar, a cancelled call and a removed speaker all kept streaming.
+ *
+ * A `room-changed` hint on the stage makes that re-check happen now rather
+ * than at the next heartbeat — End reaches every engine in a second or two —
+ * and is throttled, because the stage is public and a forged hint must cost
+ * a query and nothing more.
+ *
+ * Teardown says a `bye` with reason `leave` on every connection BEFORE it
+ * forgets its credentials, removes every channel, and bumps the run token so
+ * a negotiation still awaiting something can see it has been orphaned and
+ * close its peer connection instead of resurrecting the session. A tab being
+ * closed takes the same `bye`s plus a beacon to /api/live/leave, because a
+ * server action fired from `pagehide` is usually aborted by the browser.
+ *
+ * A peer who said `bye: leave` is remembered as DEPARTED: drawn as "left"
+ * rather than as a camera-off tile, and (in a webinar) not re-dialled by the
+ * heartbeat until they signal again. Nothing about a departure is ever
+ * treated as a reason to reconnect automatically.
  */
 
-export type ConnectionState =
-  | "idle"
-  | "connecting"
-  | "live"
-  /** Connected once, currently re-establishing. Not an error. */
-  | "reconnecting"
-  | "failed";
+/** A connection's state as the UI sees it — see PeerLinkState in lib/live-signal. */
+export type ConnectionState = PeerLinkState;
 
 /** A remote participant as the UI sees them. */
 export type RemotePeer = {
   peerId: string;
   name: string;
   role: SignalRole;
+  /**
+   * `left` is a peer who said a deliberate `bye` (Leave, End, tab closed) and
+   * has not signalled since. Their tile says so instead of pretending they
+   * are still here with the camera off.
+   */
   state: ConnectionState;
+  /**
+   * Whether this session has ever been connected to them. Separates "waiting
+   * for them to arrive" from "they were here and the link dropped".
+   */
+  seenLive: boolean;
   /**
    * Inbound tracks, by slot — present only while actually carrying media.
    * A slot whose track is muted is absent, not black.
    */
   streams: Partial<Record<MediaSlot, MediaStream>>;
 };
+
+/**
+ * Why the SERVER ended this session. Terminal: the engine has already torn
+ * itself down by the time this is set, and nothing reconnects it.
+ *
+ *   ended      a webinar ended for everyone, or a 1:1 completed
+ *   cancelled  the 1:1 was cancelled
+ *   closed     the window ran out (and, for a webinar, no host is left)
+ *   revoked    this person no longer has access to the room
+ */
+export type CloseReason = "ended" | "cancelled" | "closed" | "revoked";
 
 export type LiveSession = {
   state: ConnectionState;
@@ -110,12 +175,38 @@ export type LiveSession = {
   /** Broadcasters you can see. For a viewer, this is the whole call. */
   remotes: RemotePeer[];
   /**
-   * How many viewers are watching, for the host's header. Always null for a
-   * viewer — the audience count is the one number a webinar exists to keep
-   * from them.
+   * How many viewers are watching RIGHT NOW (live connections only), for the
+   * host's header. Always null for a viewer — the audience count is the one
+   * number a webinar exists to keep from them — and null in a 1:1, which has
+   * no audience to count.
    */
   audienceCount: number | null;
   error: string | null;
+  /**
+   * The role the server minted the credentials with — the only one to trust.
+   * Null until joined. The room compares it with the role it rendered and
+   * remounts on a mismatch, rather than running a host engine on viewer
+   * credentials (or the reverse).
+   */
+  serverRole: SignalRole | null;
+  /** Set once the server has ended this session. See CloseReason. */
+  closed: { reason: CloseReason } | null;
+  /**
+   * The join itself was refused or failed for a reason that is NOT terminal —
+   * a transient error, or the window not open yet. The room offers Retry.
+   */
+  joinFailed: { reason: JoinRefusal } | null;
+  /**
+   * Webinar staff hosts: has the server picked THIS tab as the room's one
+   * recorder? Recomputed on every heartbeat (see pickRecorder).
+   */
+  isRecorder: boolean;
+  /**
+   * Ask the server for this room's status now (throttled). What the room
+   * calls when it hears, from somewhere other than the stage, that the room
+   * may have changed — the panel's `stage-change` bump, for one.
+   */
+  recheck: () => void;
 };
 
 type PeerConnection = {
@@ -157,6 +248,13 @@ type PeerConnection = {
    * wedged" and not "how long has this call been running".
    */
   progressAt: number;
+  /** When this connection object was built. */
+  createdAt: number;
+  /**
+   * When it was last seen live (stamped on connecting and on leaving 'live'),
+   * or null if it never was. What the pruning rules measure staleness from.
+   */
+  lastLiveAt: number | null;
 };
 
 /**
@@ -175,6 +273,14 @@ type PeerConnection = {
  * next heartbeat instead of being allowed to recover on its own.
  */
 const STUCK_MS = 12_000;
+
+/**
+ * How long an offer may sit unanswered before a fresh `host-online` from its
+ * addressee makes us rebuild it on the spot. Short, because the case it
+ * exists for is "they were not listening yet when we offered"; not zero, so
+ * an offer that is simply still in flight is not thrown away.
+ */
+const UNANSWERED_OFFER_MS = 2_000;
 
 /**
  * Floor on how often an untrusted stage message may make us re-announce.
@@ -202,6 +308,7 @@ export function useLiveSession({
   listPeers,
 }: {
   kind: "event" | "call";
+  /** The raw event or invite id — also what the leave beacon names. */
   roomId: string;
   role: SignalRole;
   /** Gate the whole machine on the green room being done. */
@@ -221,8 +328,13 @@ export function useLiveSession({
    */
   cameraOn: boolean;
   micOn: boolean;
-  join: () => Promise<LiveCredentials | null>;
-  announce: () => Promise<boolean>;
+  join: () => Promise<JoinResult>;
+  /**
+   * The heartbeat. `joinedAs` is the role our credentials were minted with,
+   * so the server can tell a host whose grant was removed mid-session
+   * ('revoked') from one it should keep announcing.
+   */
+  announce: (joinedAs?: SignalRole) => Promise<PresenceResult>;
   leave: () => Promise<void>;
   listPeers: () => Promise<LivePeer[]>;
 }): LiveSession & { refreshTracks: () => void } {
@@ -234,6 +346,12 @@ export function useLiveSession({
     roomTopic: string | null;
     moderationTopic: string | null;
   }>({ roomTopic: null, moderationTopic: null });
+  const [serverRole, setServerRole] = useState<SignalRole | null>(null);
+  const [closed, setClosed] = useState<{ reason: CloseReason } | null>(null);
+  const [joinFailed, setJoinFailed] = useState<{ reason: JoinRefusal } | null>(
+    null,
+  );
+  const [isRecorder, setIsRecorder] = useState(false);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const credsRef = useRef<LiveCredentials | null>(null);
@@ -260,6 +378,23 @@ export function useLiveSession({
    * are only accepted from the peer whose topic they arrived on.
    */
   const topicOwner = useRef(new Map<string, string>());
+  /**
+   * Broadcasters who said `bye` with reason `leave` and have not signalled
+   * since, by peer id. Only hosts are ever recorded here — a viewer leaving
+   * is a headcount change, not something anybody draws.
+   */
+  const departed = useRef(new Map<string, LivePeer>());
+  /** Peers this session has been connected to at least once. */
+  const everLive = useRef(new Set<string>());
+  /**
+   * Bumped whenever a run starts or is torn down. A negotiation that awaited
+   * something (a channel subscribe, createOffer) compares it on the way back
+   * and closes its peer connection if the session it belonged to is gone —
+   * otherwise a late signal could rebuild a connection after Leave that
+   * nothing would ever close.
+   */
+  const runRef = useRef(0);
+  const recheckRef = useRef<() => void>(() => {});
   const lastReannounce = useRef(0);
   const localRef = useRef<MediaStream | null>(localStream);
   const screenRef = useRef<MediaStream | null>(screenStream);
@@ -273,34 +408,66 @@ export function useLiveSession({
   // --- UI projection -------------------------------------------------------
   const publish = useCallback(() => {
     const all = [...connections.current.values()];
-    setRemotes(
-      all
-        // A viewer is shown the hosts. A host is shown other hosts; the
-        // audience is a count in the header, not a wall of tiles.
-        .filter((c) => c.peer.role === "host")
-        .map((c) => {
-          // Only slots actually carrying media. A muted track is absent
-          // rather than black — see the note at the top of this file.
-          const streams: Partial<Record<MediaSlot, MediaStream>> = {};
-          for (const slot of MEDIA_SLOTS) {
-            if (c.active[slot] && c.streams[slot]) streams[slot] = c.streams[slot];
-          }
-          return {
-            peerId: c.peer.peerId,
-            name: c.peer.name,
-            role: c.peer.role,
-            state: c.state,
-            streams,
-          };
-        }),
-    );
+    const shown: RemotePeer[] = all
+      // A viewer is shown the hosts. A host is shown other hosts; the
+      // audience is a count in the header, not a wall of tiles.
+      .filter((c) => c.peer.role === "host")
+      .map((c) => {
+        // Only slots actually carrying media. A muted track is absent
+        // rather than black — see the note at the top of this file.
+        const streams: Partial<Record<MediaSlot, MediaStream>> = {};
+        for (const slot of MEDIA_SLOTS) {
+          if (c.active[slot] && c.streams[slot]) streams[slot] = c.streams[slot];
+        }
+        // A departed peer we are still (re)dialling — a 1:1 keeps trying the
+        // other party — reads as "left" until the link is actually up, never
+        // as a connecting tile that looks like they are here.
+        const gone = departed.current.has(c.peer.peerId) && c.state !== "live";
+        return {
+          peerId: c.peer.peerId,
+          name: c.peer.name,
+          role: c.peer.role,
+          state: gone ? ("left" as const) : c.state,
+          seenLive: everLive.current.has(c.peer.peerId),
+          streams: gone ? {} : streams,
+        };
+      });
+    // Departed broadcasters with no connection at all still get a "left"
+    // entry, so the room can say "<name> left" instead of silently dropping
+    // the tile and leaving the reader to wonder.
+    for (const [peerId, peer] of departed.current) {
+      if (connections.current.has(peerId) || peer.role !== "host") continue;
+      shown.push({
+        peerId,
+        name: peer.name,
+        role: peer.role,
+        state: "left",
+        seenLive: everLive.current.has(peerId),
+        streams: {},
+      });
+    }
+    setRemotes(shown);
     setAudienceCount(
-      isBroadcaster ? all.filter((c) => c.peer.role === "viewer").length : null,
+      isBroadcaster && kind === "event"
+        ? countLiveAudience(
+            all.map((c) => ({ role: c.peer.role, state: c.state })),
+          )
+        : null,
     );
-  }, [isBroadcaster]);
+  }, [isBroadcaster, kind]);
 
   const recomputeOverall = useCallback(() => {
     const all = [...connections.current.values()];
+    if (kind === "call") {
+      // A 1:1 is live only while the other person is actually connected. A
+      // lone party — the other side not here yet, or gone — is waiting, not
+      // "live", whatever the connection map happens to hold.
+      if (all.some((c) => c.state === "live")) setState("live");
+      else if (all.some((c) => c.state === "reconnecting"))
+        setState("reconnecting");
+      else setState("connecting");
+      return;
+    }
     if (all.length === 0) {
       // A host alone is live — they are broadcasting, there is simply nobody
       // here yet. A viewer alone is still waiting for the host to start.
@@ -311,7 +478,7 @@ export function useLiveSession({
     else if (all.some((c) => c.state === "reconnecting")) setState("reconnecting");
     else if (all.every((c) => c.state === "failed")) setState("failed");
     else setState("connecting");
-  }, [isBroadcaster]);
+  }, [isBroadcaster, kind]);
 
   // --- signalling transport -----------------------------------------------
   const onSignalRef = useRef<(m: SignalMessage, expectFrom?: string) => void>(
@@ -357,9 +524,18 @@ export function useLiveSession({
         });
         return;
       }
-      await supabase
-        .channel(topic, { config: { broadcast: { ack: false } } })
-        .send({ type: "broadcast", event: SIGNAL_EVENT, payload: message });
+      // A topic we do not hold: send once (realtime-js falls back to its REST
+      // endpoint for an unjoined channel) and remove the channel again. It
+      // used to be left registered, so every such send leaked a channel that
+      // no teardown knew about.
+      const ch = supabase.channel(topic, {
+        config: { broadcast: { ack: false } },
+      });
+      try {
+        await ch.send({ type: "broadcast", event: SIGNAL_EVENT, payload: message });
+      } finally {
+        void supabase.removeChannel(ch).catch(() => {});
+      }
     },
     [],
   );
@@ -433,15 +609,25 @@ export function useLiveSession({
   }, [localStream, screenStream, cameraOn, micOn, refreshTracks]);
 
   // --- connection lifecycle ------------------------------------------------
+  /**
+   * Drop one connection. `bye` says whether (and why) to tell the far side:
+   * `leave` when this person is going, `rebuild` when only this connection is
+   * being replaced, `false` when the far side already knows (it said bye, or
+   * it is gone).
+   */
   const disconnectFrom = useCallback(
-    (peerId: string, sayBye: boolean) => {
+    (peerId: string, bye: false | "leave" | "rebuild") => {
       const conn = connections.current.get(peerId);
       if (!conn) return;
       connections.current.delete(peerId);
       if (conn.flushTimer) clearTimeout(conn.flushTimer);
       const creds = credsRef.current;
-      if (sayBye && creds) {
-        void sendOn(conn.topic, { t: "bye", from: creds.peerId });
+      if (bye && creds) {
+        void sendOn(conn.topic, {
+          t: "bye",
+          from: creds.peerId,
+          reason: bye,
+        }).catch(() => {});
       }
       // The channel is NOT removed here — it belongs to the session, and
       // tearing it down under a rebuild is what used to double-register
@@ -465,23 +651,26 @@ export function useLiveSession({
    * Idempotent per peer id: a duplicate lobby message, a heartbeat that
    * re-announces someone already connected, and a reconcile poll all land
    * here, and only the first creates anything — unless the existing
-   * connection is wedged, in which case this is also the retry.
+   * connection is wedged, in which case this is also the retry. `force`
+   * treats any connection that is not live as wedged; it is only passed when
+   * the peer has just told us they (re)arrived.
    */
   const connectTo = useCallback(
-    async (peer: LivePeer) => {
+    async (peer: LivePeer, opts?: { force?: boolean }) => {
       const creds = credsRef.current;
       const supabase = supabaseRef.current;
       if (!creds || !supabase || peer.peerId === creds.peerId) return;
+      const run = runRef.current;
 
       const existing = connections.current.get(peer.peerId);
       if (existing) {
         const wedged =
           existing.state !== "live" &&
-          Date.now() - existing.progressAt > STUCK_MS;
+          (opts?.force || Date.now() - existing.progressAt > STUCK_MS);
         if (!wedged) return;
         // Tell the far side, so it drops its half instead of holding a dead
         // peer connection that our new offer would be applied to.
-        disconnectFromRef.current(peer.peerId, true);
+        disconnectFromRef.current(peer.peerId, "rebuild");
       }
 
       // A viewer only ever connects to a host. The server already refuses to
@@ -502,6 +691,7 @@ export function useLiveSession({
         iceCandidatePoolSize: 1,
       });
 
+      const now = Date.now();
       const conn: PeerConnection = {
         pc,
         peer,
@@ -516,10 +706,16 @@ export function useLiveSession({
         earlyCandidates: [],
         state: "connecting",
         wasLive: false,
-        progressAt: Date.now(),
+        progressAt: now,
+        createdAt: now,
+        lastLiveAt: null,
       };
       connections.current.set(peer.peerId, conn);
       publish();
+
+      /** Has this connection been orphaned (teardown, or a newer rebuild)? */
+      const stale = () =>
+        runRef.current !== run || connections.current.get(peer.peerId) !== conn;
 
       // A host talking to a viewer negotiates on the VIEWER's inbox, so it
       // subscribes there — pinned to that viewer, so nothing arriving on it
@@ -527,6 +723,17 @@ export function useLiveSession({
       // subscribed and is open to any host, so it carries no owner pin.
       if (topic !== creds.inboxTopic) {
         await ensureChannel(topic, peer.peerId);
+        // The session may have been torn down (or this connection replaced)
+        // while we waited on the subscribe. Nothing would ever close a peer
+        // connection finished after that point, so close it here.
+        if (stale()) {
+          try {
+            pc.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
       }
 
       pc.ontrack = (ev) => {
@@ -567,19 +774,32 @@ export function useLiveSession({
         conn.flushTimer = setTimeout(() => {
           conn.flushTimer = null;
           const candidates = conn.pending.splice(0);
-          if (candidates.length === 0) return;
-          void sendOn(conn.topic, { t: "ice", from: creds.peerId, candidates });
+          if (candidates.length === 0 || stale()) return;
+          void sendOn(conn.topic, {
+            t: "ice",
+            from: creds.peerId,
+            candidates,
+          }).catch(() => {});
         }, ICE_BATCH_MS);
       };
 
       pc.onconnectionstatechange = () => {
+        // A replaced or orphaned connection reports its own close; that is
+        // not news about the peer.
+        if (stale()) return;
         const s = pc.connectionState;
+        const at = Date.now();
         // Any transition is progress: it resets the wedged clock, so the
         // watchdog only fires on a connection that is genuinely going nowhere.
-        conn.progressAt = Date.now();
+        conn.progressAt = at;
+        if (conn.state === "live") conn.lastLiveAt = at;
         if (s === "connected") {
           conn.state = "live";
           conn.wasLive = true;
+          conn.lastLiveAt = at;
+          everLive.current.add(peer.peerId);
+          // Connected to them again, so whatever "left" we remembered is over.
+          departed.current.delete(peer.peerId);
         } else if (s === "disconnected") {
           // Not fatal on its own — ICE routinely dips through "disconnected"
           // on a network change and recovers by itself.
@@ -594,21 +814,26 @@ export function useLiveSession({
       // Whoever offers creates the transceivers, in the fixed slot order, so
       // both ends agree that mid 0 is camera, 1 is screen, 2 is audio.
       if (shouldOffer(creds.peerId, role, peer)) {
-        for (const slot of MEDIA_SLOTS) {
-          const direction: RTCRtpTransceiverDirection = isBroadcasterRef.current
-            ? peer.role === "host"
-              ? "sendrecv" // two broadcasters: a 1:1
-              : "sendonly" // host -> viewer
-            : "recvonly";
-          const tr = pc.addTransceiver(slot === "audio" ? "audio" : "video", {
-            direction,
-          });
-          conn.senders[slot] = tr.sender;
-        }
-        attachLocalTracks(conn);
+        // Transceiver creation is inside the try as well: on a peer connection
+        // that teardown closed a moment ago, addTransceiver throws, and that
+        // used to surface as an unhandled rejection after Leave.
         try {
+          for (const slot of MEDIA_SLOTS) {
+            const direction: RTCRtpTransceiverDirection = isBroadcasterRef.current
+              ? peer.role === "host"
+                ? "sendrecv" // two broadcasters: a 1:1
+                : "sendonly" // host -> viewer
+              : "recvonly";
+            const tr = pc.addTransceiver(slot === "audio" ? "audio" : "video", {
+              direction,
+            });
+            conn.senders[slot] = tr.sender;
+          }
+          attachLocalTracks(conn);
           const offer = await pc.createOffer();
+          if (stale()) return;
           await pc.setLocalDescription(offer);
+          if (stale()) return;
           await sendOn(conn.topic, {
             t: "offer",
             from: creds.peerId,
@@ -616,6 +841,8 @@ export function useLiveSession({
             sdp: offer.sdp ?? "",
           });
         } catch (err) {
+          // Torn down under us is not an error anyone needs to read.
+          if (stale()) return;
           conn.state = "failed";
           conn.progressAt = Date.now();
           publish();
@@ -625,6 +852,16 @@ export function useLiveSession({
     },
     [attachLocalTracks, ensureChannel, publish, recomputeOverall, role, sendOn],
   );
+
+  /** A peer we know how to reach, from any of the places we might know them. */
+  const knownPeer = useCallback((peerId: string): LivePeer | null => {
+    return (
+      connections.current.get(peerId)?.peer ??
+      credsRef.current?.peers.find((p) => p.peerId === peerId) ??
+      departed.current.get(peerId) ??
+      null
+    );
+  }, []);
 
   const onSignal = useCallback(
     async (msg: SignalMessage, expectFrom?: string) => {
@@ -636,22 +873,41 @@ export function useLiveSession({
       if (expectFrom && msg.from !== expectFrom) return;
 
       if (msg.t === "bye") {
+        // `leave` is a person going; anything else (`rebuild`, or an older
+        // tab that does not say) is only this connection being replaced.
+        if (msg.reason === "leave") {
+          const peer = knownPeer(msg.from);
+          if (peer && peer.role === "host") departed.current.set(msg.from, peer);
+        }
         disconnectFrom(msg.from, false);
+        // disconnectFrom publishes only when a connection existed; a
+        // departure is news either way.
+        publish();
         return;
       }
 
       if (msg.t === "offer") {
+        // They are here: whatever "left" we remembered is over.
+        departed.current.delete(msg.from);
+        // One offer per connection, ever (see the header). A second offer on
+        // a connection that has already applied one is the peer's NEW
+        // connection — they reloaded, or rebuilt and their `bye` was lost —
+        // and belongs on a fresh one of ours.
+        const existing = connections.current.get(msg.from);
+        if (existing?.pc.remoteDescription) disconnectFrom(msg.from, false);
         // An offer is also how a viewer first learns a host exists: the
         // server never told it, so the peer is constructed from the message.
         // It answers on the topic the offer arrived on — for a viewer that is
         // its own inbox, so it never needs to know the host's.
         if (!connections.current.has(msg.from)) {
-          await connectTo({
-            peerId: msg.from,
-            name: msg.name,
-            role: "host",
-            inbox: creds.inboxTopic,
-          });
+          await connectTo(
+            creds.peers.find((p) => p.peerId === msg.from) ?? {
+              peerId: msg.from,
+              name: msg.name,
+              role: "host",
+              inbox: creds.inboxTopic,
+            },
+          );
         }
         const conn = connections.current.get(msg.from);
         if (!conn) return;
@@ -687,6 +943,10 @@ export function useLiveSession({
             sdp: answer.sdp ?? "",
           });
         } catch (err) {
+          // Torn down or replaced mid-answer is not a failure to report.
+          if (connections.current.get(msg.from) !== conn || !credsRef.current) {
+            return;
+          }
           conn.state = "failed";
           conn.progressAt = Date.now();
           publish();
@@ -719,14 +979,18 @@ export function useLiveSession({
       }
 
       if (msg.t === "answer") {
+        departed.current.delete(msg.from);
         try {
           await conn.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
           for (const c of conn.earlyCandidates.splice(0)) {
             await conn.pc.addIceCandidate(c).catch(() => {});
           }
         } catch (err) {
-          setError(readableError(err));
+          if (connections.current.get(msg.from) === conn && credsRef.current) {
+            setError(readableError(err));
+          }
         }
+        publish();
         return;
       }
 
@@ -742,7 +1006,7 @@ export function useLiveSession({
         }
       }
     },
-    [attachLocalTracks, connectTo, disconnectFrom, publish, sendOn],
+    [attachLocalTracks, connectTo, disconnectFrom, knownPeer, publish, sendOn],
   );
 
   onSignalRef.current = (m, expectFrom) => void onSignal(m, expectFrom);
@@ -757,155 +1021,46 @@ export function useLiveSession({
      * Deliberately a local `let` and not a shared ref: a ref is re-armed by
      * the next mount, which under StrictMode let a torn-down run's async
      * bootstrap continue and install intervals that nothing would ever clear.
+     * Every handler this run installs checks it first, so a message that was
+     * already queued when teardown ran is dropped rather than acted on.
      */
     let cancelled = false;
+    let tornDown = false;
+    runRef.current += 1;
     const timers: ReturnType<typeof setInterval>[] = [];
     /** Install a timer, or immediately drop it if teardown already ran. */
     const addTimer = (t: ReturnType<typeof setInterval>) => {
       if (cancelled) clearInterval(t);
       else timers.push(t);
     };
+    let strikes = 0;
+    let lastCheck = 0;
+    let trailing: ReturnType<typeof setTimeout> | null = null;
 
-    (async () => {
-      setState("connecting");
-      setError(null);
+    // A fresh run starts from nothing, whatever the last one left behind.
+    departed.current.clear();
+    everLive.current.clear();
+    setClosed(null);
+    setJoinFailed(null);
+    setServerRole(null);
+    setIsRecorder(false);
 
-      const creds = await join().catch((err) => {
-        setError(readableError(err));
-        return null;
-      });
-      if (cancelled) return;
-      if (!creds) {
-        setState("failed");
-        setError((e) => e ?? "You can't join this room right now.");
-        return;
-      }
-      credsRef.current = creds;
-      // Published to the UI so the text panels can subscribe. Set before any
-      // channel work below, so a panel mounting alongside the room does not
-      // have to wait out the whole media handshake to start listening.
-      setTopics({
-        roomTopic: creds.roomTopic,
-        moderationTopic: creds.moderationTopic,
-      });
-
-      const supabase = createClient();
-      supabaseRef.current = supabase;
-
-      // My inbox: every offer/answer/candidate addressed to me — and, when I
-      // am a viewer, the line I answer on too. No owner pin: only a host can
-      // publish here, and any host is legitimate.
-      await ensureChannel(creds.inboxTopic);
-      if (cancelled) return;
-
-      // The stage: host announcements, heard by everyone. Nothing here is
-      // trusted (the topic is derivable from the event id by design) — the
-      // only action it triggers is an idempotent re-announce, throttled so it
-      // cannot be used to generate load.
-      const supabaseStage = supabase.channel(creds.stageTopic);
-      supabaseStage.on("broadcast", { event: SIGNAL_EVENT }, (m) => {
-        const msg = m.payload as StageMessage;
-        if (msg?.t !== "host-online" || msg.hostId === creds.peerId) return;
-        const now = Date.now();
-        if (now - lastReannounce.current < REANNOUNCE_FLOOR_MS) return;
-        lastReannounce.current = now;
-        // A host came up. Re-announce so it discovers us now rather than at
-        // our next heartbeat — this is what makes a room of waiting students
-        // assemble the instant the host presses Start.
-        void announce();
-        if (isBroadcasterRef.current) {
-          // Another broadcaster: connect directly. Only a host is ever given
-          // a host's inbox, so only a host can do this.
-          const known = creds.peers.find((p) => p.peerId === msg.hostId);
-          if (known) void connectTo(known);
-        }
-        // `host-offline` is deliberately ignored: acting on an unauthenticated
-        // "the host left" would let any student end the webinar for everyone.
-      });
-      channels.current.set(creds.stageTopic, supabaseStage);
-      await subscribe(supabaseStage);
-      if (cancelled) return;
-
-      // The lobby: arrivals, hosts only.
-      if (creds.lobbyTopic) {
-        const lobby = supabase.channel(creds.lobbyTopic);
-        lobby.on("broadcast", { event: SIGNAL_EVENT }, (m) => {
-          const msg = m.payload as LobbyMessage;
-          if (!msg) return;
-          if (msg.t === "peer-online" && msg.peerId !== creds.peerId) {
-            void connectTo({
-              peerId: msg.peerId,
-              name: msg.name,
-              role: msg.role,
-              inbox: msg.inbox,
-            });
-          } else if (msg.t === "peer-offline") {
-            disconnectFrom(msg.peerId, false);
-          }
-        });
-        channels.current.set(creds.lobbyTopic, lobby);
-        await subscribe(lobby);
-        if (cancelled) return;
-      }
-
-      // Say I'm hosting, so anyone already waiting re-announces at once.
-      if (isBroadcasterRef.current && creds.stageProof) {
-        await supabaseStage.send({
-          type: "broadcast",
-          event: SIGNAL_EVENT,
-          payload: {
-            t: "host-online",
-            hostId: creds.peerId,
-            name: creds.name,
-            proof: creds.stageProof,
-          } satisfies StageMessage,
-        });
-      }
-      if (cancelled) return;
-
-      // ONLY NOW announce. Every channel above is subscribed, so the offer a
-      // host sends in response cannot land before we are listening. joinRoom
-      // deliberately does not announce for exactly this reason — doing it
-      // there raced the subscription and silently dropped the offer, leaving
-      // the host at `have-local-offer` and the student with no connection.
-      await announce();
-      if (cancelled) return;
-
-      for (const peer of creds.peers) void connectTo(peer);
-      recomputeOverall();
-
-      // The heartbeat is the retry path as well as the keepalive: every peer
-      // the server told us about is re-attempted, and connectTo's wedged
-      // check makes that a no-op for healthy connections and a rebuild for
-      // stuck ones. A 1:1 has no reconcile poll, so without this a single
-      // lost offer would deadlock the call forever.
-      addTimer(
-        setInterval(() => {
-          void announce();
-          const held = credsRef.current;
-          if (held) for (const peer of held.peers) void connectTo(peer);
-        }, HEARTBEAT_MS),
-      );
-
-      // Reconcile is the backstop for a webinar host, catching whatever a
-      // dropped lobby message lost. Hosts only — it is the one call that
-      // returns the audience.
-      if (isBroadcasterRef.current && kind === "event") {
-        addTimer(
-          setInterval(() => {
-            void listPeers()
-              .then((peers) => peers.forEach((p) => void connectTo(p)))
-              .catch(() => {});
-          }, HEARTBEAT_MS * 2),
-        );
-      }
-    })();
-
-    return () => {
+    /**
+     * End this run: the one teardown, whoever calls it. Idempotent, because
+     * the server can close the session and the room can then disable it.
+     */
+    const teardown = () => {
+      if (tornDown) return;
+      tornDown = true;
       cancelled = true;
+      runRef.current += 1;
       for (const t of timers) clearInterval(t);
+      if (trailing) clearTimeout(trailing);
+      // `bye: leave` on every connection, while the credentials and channels
+      // still exist to send it on. The far side then draws "left" (or "the
+      // host stepped away") instead of waiting out ICE on a frozen frame.
       for (const peerId of [...connections.current.keys()]) {
-        disconnectFromRef.current(peerId, true);
+        disconnectFromRef.current(peerId, "leave");
       }
       const supabase = supabaseRef.current;
       for (const ch of channels.current.values()) {
@@ -917,32 +1072,358 @@ export function useLiveSession({
       }
       channels.current.clear();
       topicOwner.current.clear();
+      departed.current.clear();
+      // Forgotten last, so nothing that arrives from here on — a late stage
+      // message, a lobby arrival, an offer — can find credentials to act on.
+      credsRef.current = null;
+      supabaseRef.current = null;
+      setRemotes([]);
+      setAudienceCount(null);
+      setIsRecorder(false);
+      setTopics({ roomTopic: null, moderationTopic: null });
+      setState("idle");
       void leave().catch(() => {});
     };
+
+    /** The server said this session is over. */
+    const closeWith = (reason: CloseReason) => {
+      if (cancelled) return;
+      teardown();
+      setClosed({ reason });
+    };
+
+    /** Act on one status answer (a heartbeat, or a re-check). */
+    const onStatus = (res: PresenceResult | null) => {
+      if (cancelled) return;
+      const next = nextStatusAction(res?.status ?? null, strikes);
+      strikes = next.strikes;
+      if (res?.status === "ok") setIsRecorder(res.isRecorder);
+      if (next.close && res) closeWith(res.status as CloseReason);
+    };
+
+    /** Announce and act on the answer. Never rejects. */
+    const runAnnounce = async () => {
+      const held = credsRef.current;
+      if (cancelled || !held) return;
+      const res = await announce(held.role).catch(() => null);
+      onStatus(res);
+    };
+
+    /**
+     * Re-ask the server now — the answer to a `room-changed` hint. Throttled
+     * to one per ROOM_CHANGED_THROTTLE_MS with a trailing call, so a burst of
+     * hints (forged or real) costs one query a second, and a real hint that
+     * lands just after a forged one is still acted on.
+     */
+    const recheck = () => {
+      if (cancelled) return;
+      const wait = lastCheck + ROOM_CHANGED_THROTTLE_MS - Date.now();
+      if (wait > 0) {
+        trailing ??= setTimeout(() => {
+          trailing = null;
+          recheck();
+        }, wait);
+        return;
+      }
+      lastCheck = Date.now();
+      void runAnnounce();
+    };
+    recheckRef.current = recheck;
+
+    /**
+     * Housekeeping on every heartbeat.
+     *
+     * Hosts drop VIEWER connections that are dead or have not been live for
+     * PEER_TIMEOUT_MS (a laptop that slept sends no bye) — a viewer who is
+     * really still there re-announces and gets a fresh one. Viewers drop a
+     * host connection that has been down for two stuck-periods, so the host's
+     * next offer lands on a fresh connection and the stage can say the host
+     * stepped away instead of holding a frozen frame.
+     */
+    const prune = () => {
+      const now = Date.now();
+      for (const c of [...connections.current.values()]) {
+        if (isBroadcasterRef.current) {
+          if (
+            shouldPruneConnection({
+              peerRole: c.peer.role,
+              state: c.state,
+              lastLiveAt: c.lastLiveAt,
+              createdAt: c.createdAt,
+              now,
+            })
+          ) {
+            disconnectFromRef.current(c.peer.peerId, false);
+          }
+        } else if (
+          c.peer.role === "host" &&
+          c.state !== "live" &&
+          now - (c.lastLiveAt ?? c.createdAt) > 2 * STUCK_MS
+        ) {
+          disconnectFromRef.current(c.peer.peerId, false);
+        }
+      }
+    };
+
+    (async () => {
+      try {
+        setState("connecting");
+        setError(null);
+
+        const result = await join().catch((err) => {
+          setError(readableError(err));
+          return null;
+        });
+        if (cancelled) return;
+        if (!result) {
+          setState("failed");
+          setJoinFailed({ reason: "error" });
+          setError((e) => e ?? "You can't join this room right now.");
+          return;
+        }
+        if (!result.ok) {
+          const reason = closeReasonForRefusal(result.reason);
+          setState(reason ? "idle" : "failed");
+          if (reason) setClosed({ reason });
+          else {
+            setJoinFailed({ reason: result.reason });
+            setError(refusalText(result.reason));
+          }
+          return;
+        }
+        const creds = result.creds;
+        credsRef.current = creds;
+        setServerRole(result.role);
+        // Published to the UI so the text panels can subscribe. Set before any
+        // channel work below, so a panel mounting alongside the room does not
+        // have to wait out the whole media handshake to start listening.
+        setTopics({
+          roomTopic: creds.roomTopic,
+          moderationTopic: creds.moderationTopic,
+        });
+
+        const supabase = createClient();
+        supabaseRef.current = supabase;
+
+        // My inbox: every offer/answer/candidate addressed to me — and, when I
+        // am a viewer, the line I answer on too. No owner pin: only a host can
+        // publish here, and any host is legitimate.
+        await ensureChannel(creds.inboxTopic);
+        if (cancelled) return;
+
+        // The stage: room-wide hints, heard by everyone. Nothing here is
+        // trusted (the topic is derivable from the room id by design), so
+        // each message only makes us do something we were allowed to do
+        // anyway — re-announce, re-check the server, or retry a connection
+        // that is not up. See StageMessage in lib/live-signal.ts.
+        const supabaseStage = supabase.channel(creds.stageTopic);
+        supabaseStage.on("broadcast", { event: SIGNAL_EVENT }, (m) => {
+          if (cancelled) return;
+          const msg = m.payload as StageMessage;
+          if (!msg) return;
+          if (msg.t === "room-changed") {
+            // Ended, reopened, cancelled or completed — ask the server which.
+            recheck();
+            return;
+          }
+          if (msg.t !== "host-online" || msg.hostId === creds.peerId) return;
+          if (isBroadcasterRef.current) {
+            // Another broadcaster came up. Only a host is ever given a host's
+            // inbox, so only a host can dial one directly.
+            const known = knownPeer(msg.hostId);
+            if (known) {
+              departed.current.delete(msg.hostId);
+              const existing = connections.current.get(msg.hostId);
+              // Our offer to them has been sitting unanswered — they were not
+              // listening yet when we sent it — so rebuild it NOW rather than
+              // up to a heartbeat later. Never touches a live connection, so
+              // a forged host-online cannot tear anything down.
+              const stalled =
+                !!existing &&
+                existing.state !== "live" &&
+                (existing.state === "failed" ||
+                  (existing.pc.signalingState === "have-local-offer" &&
+                    Date.now() - existing.createdAt > UNANSWERED_OFFER_MS));
+              void connectTo(known, { force: stalled });
+              publish();
+            }
+          }
+          const now = Date.now();
+          if (now - lastReannounce.current < REANNOUNCE_FLOOR_MS) return;
+          lastReannounce.current = now;
+          // A host came up. Re-announce so it discovers us now rather than at
+          // our next heartbeat — this is what makes a room of waiting students
+          // assemble the instant the host presses Start.
+          void runAnnounce();
+        });
+        channels.current.set(creds.stageTopic, supabaseStage);
+        await subscribe(supabaseStage);
+        if (cancelled) return;
+
+        // The lobby: arrivals, hosts only.
+        if (creds.lobbyTopic) {
+          const lobby = supabase.channel(creds.lobbyTopic);
+          lobby.on("broadcast", { event: SIGNAL_EVENT }, (m) => {
+            if (cancelled) return;
+            const msg = m.payload as LobbyMessage;
+            if (!msg) return;
+            if (msg.t === "peer-online" && msg.peerId !== creds.peerId) {
+              departed.current.delete(msg.peerId);
+              void connectTo({
+                peerId: msg.peerId,
+                name: msg.name,
+                role: msg.role,
+                inbox: msg.inbox,
+              });
+            } else if (msg.t === "peer-offline") {
+              // The server's word that they left (leaveRoom / the beacon). A
+              // co-host is remembered as departed; a viewer is just gone.
+              const peer = knownPeer(msg.peerId);
+              if (peer && peer.role === "host") {
+                departed.current.set(msg.peerId, peer);
+              }
+              disconnectFromRef.current(msg.peerId, false);
+              publish();
+            }
+          });
+          channels.current.set(creds.lobbyTopic, lobby);
+          await subscribe(lobby);
+          if (cancelled) return;
+        }
+
+        // Say I'm hosting, so anyone already waiting re-announces at once.
+        if (isBroadcasterRef.current && creds.stageProof) {
+          await supabaseStage.send({
+            type: "broadcast",
+            event: SIGNAL_EVENT,
+            payload: {
+              t: "host-online",
+              hostId: creds.peerId,
+              name: creds.name,
+              proof: creds.stageProof,
+            } satisfies StageMessage,
+          });
+        }
+        if (cancelled) return;
+
+        // The heartbeat goes in BEFORE the first announce, so a first announce
+        // that fails (a blip, a cold function) costs twelve seconds instead of
+        // stalling the session forever with no retry installed.
+        //
+        // It is the retry path as well as the keepalive: every BROADCASTER the
+        // server told us about is re-attempted, and connectTo's wedged check
+        // makes that a no-op for healthy connections and a rebuild for stuck
+        // ones. A 1:1 has no reconcile poll, so without this a single lost
+        // offer would deadlock the call forever — and a 1:1 keeps dialling the
+        // other party even after they left, drawing them as "left" until they
+        // are actually back. In a webinar a departed co-host is not re-dialled
+        // until they signal again, and viewers are never dialled from here at
+        // all: a viewer who is still present re-announces, which reaches us
+        // through the lobby.
+        addTimer(
+          setInterval(() => {
+            if (cancelled) return;
+            void runAnnounce();
+            const held = credsRef.current;
+            if (held) {
+              for (const peer of held.peers) {
+                if (peer.role !== "host") continue;
+                if (kind === "event" && departed.current.has(peer.peerId)) {
+                  continue;
+                }
+                void connectTo(peer);
+              }
+            }
+            prune();
+            publish();
+            recomputeOverall();
+          }, HEARTBEAT_MS),
+        );
+
+        // Reconcile is the backstop for a webinar host, catching whatever a
+        // dropped lobby message lost. Hosts only — it is the one call that
+        // returns the audience.
+        if (isBroadcasterRef.current && kind === "event") {
+          addTimer(
+            setInterval(() => {
+              if (cancelled) return;
+              void listPeers()
+                .then((peers) => {
+                  if (cancelled) return;
+                  for (const p of peers) {
+                    if (p.role === "host" && departed.current.has(p.peerId)) {
+                      continue;
+                    }
+                    void connectTo(p);
+                  }
+                })
+                .catch(() => {});
+            }, HEARTBEAT_MS * 2),
+          );
+        }
+
+        // ONLY NOW announce. Every channel above is subscribed, so the offer a
+        // host sends in response cannot land before we are listening. joinRoom
+        // deliberately does not announce for exactly this reason — doing it
+        // there raced the subscription and silently dropped the offer, leaving
+        // the host at `have-local-offer` and the student with no connection.
+        await runAnnounce();
+        if (cancelled) return;
+
+        for (const peer of creds.peers) void connectTo(peer);
+        recomputeOverall();
+      } catch (err) {
+        // Anything the bootstrap did not expect. Said out loud, with a retry
+        // offered by the room, rather than a spinner that never resolves.
+        if (cancelled) return;
+        setState("failed");
+        setJoinFailed({ reason: "error" });
+        setError(readableError(err));
+      }
+    })();
+
+    return teardown;
     // The server-action props are stable references from the page. Including
     // them would tear down every live connection on each render, so they are
     // deliberately omitted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, roomId, kind]);
 
-  // Closing the tab still tells the host, so they stop showing a tile for
-  // someone who has gone. `pagehide` rather than `beforeunload`: it fires on
-  // mobile Safari's back-forward cache path, which `beforeunload` does not.
+  // Closing the tab counts as Leave: `bye` (reason leave) on every connection,
+  // so the far side draws "left" at once, and a beacon to /api/live/leave for
+  // the server's half (markLeft, peer-offline). A beacon rather than the
+  // `leave` server action, which the browser usually aborts on unload.
+  // `pagehide` rather than `beforeunload`: it fires on mobile Safari's
+  // back-forward cache path, which `beforeunload` does not.
   useEffect(() => {
     if (!enabled) return;
-    const bye = () => {
+    const onHide = () => {
       const creds = credsRef.current;
-      if (creds) {
-        for (const conn of connections.current.values()) {
-          void sendOn(conn.topic, { t: "bye", from: creds.peerId });
-        }
+      if (!creds) return;
+      for (const conn of connections.current.values()) {
+        void sendOn(conn.topic, {
+          t: "bye",
+          from: creds.peerId,
+          reason: "leave",
+        }).catch(() => {});
       }
-      void leave().catch(() => {});
+      beaconLeave(kind, roomId);
     };
-    window.addEventListener("pagehide", bye);
-    return () => window.removeEventListener("pagehide", bye);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, sendOn]);
+    // Back from the back-forward cache, the page would resume a session every
+    // peer has already been told is over. A reload goes back through the
+    // green room, which is what a refresh does too.
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) window.location.reload();
+    };
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("pageshow", onShow);
+    };
+  }, [enabled, kind, roomId, sendOn]);
+
+  const recheck = useCallback(() => recheckRef.current(), []);
 
   return useMemo(
     () => ({
@@ -953,8 +1434,25 @@ export function useLiveSession({
       refreshTracks,
       roomTopic: topics.roomTopic,
       moderationTopic: topics.moderationTopic,
+      serverRole,
+      closed,
+      joinFailed,
+      isRecorder,
+      recheck,
     }),
-    [state, remotes, audienceCount, error, refreshTracks, topics],
+    [
+      state,
+      remotes,
+      audienceCount,
+      error,
+      refreshTracks,
+      topics,
+      serverRole,
+      closed,
+      joinFailed,
+      isRecorder,
+      recheck,
+    ],
   );
 }
 
@@ -978,6 +1476,65 @@ function shouldOffer(
   if (selfRole !== "host") return false;
   if (peer.role === "viewer") return true;
   return selfId < peer.peerId;
+}
+
+/**
+ * Which join refusals are terminal (the room is over for this person) and
+ * which the room should offer a Retry for. Terminal ones become `closed`.
+ */
+function closeReasonForRefusal(reason: JoinRefusal): CloseReason | null {
+  switch (reason) {
+    case "ended":
+    case "completed":
+      return "ended";
+    case "cancelled":
+      return "cancelled";
+    case "closed":
+      return "closed";
+    case "declined":
+    case "no-access":
+      return "revoked";
+    default:
+      // early, not-hosted, error
+      return null;
+  }
+}
+
+function refusalText(reason: JoinRefusal): string {
+  switch (reason) {
+    case "early":
+      return "This room isn't open yet.";
+    case "not-hosted":
+      return "This event isn't hosted on batch0.";
+    default:
+      return "Couldn't reach the room — try again.";
+  }
+}
+
+/**
+ * Leave from a page that is going away. `sendBeacon` is the one request a
+ * browser promises to deliver after unload; a string body goes as text/plain,
+ * which needs no CORS preflight. `fetch` with `keepalive` is the fallback for
+ * a browser that refuses the beacon (a queue limit, a privacy extension).
+ */
+function beaconLeave(kind: "event" | "call", id: string): void {
+  const body = JSON.stringify({ kind, id });
+  try {
+    if (navigator.sendBeacon?.("/api/live/leave", body)) return;
+  } catch {
+    /* fall through to fetch */
+  }
+  try {
+    void fetch("/api/live/leave", {
+      method: "POST",
+      body,
+      keepalive: true,
+      credentials: "same-origin",
+      headers: { "content-type": "text/plain" },
+    }).catch(() => {});
+  } catch {
+    /* nothing left to try on a page that is closing */
+  }
 }
 
 /** Subscribe, resolving when the channel is actually joined. */

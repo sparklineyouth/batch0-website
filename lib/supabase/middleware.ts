@@ -11,6 +11,7 @@ import {
   canAccessAdmin,
   canViewAdminPath,
   capabilitiesFrom,
+  isLiveRoomPath,
   resolveHome,
   type Capabilities,
 } from "@/lib/permissions";
@@ -529,10 +530,18 @@ export async function updateSession(request: NextRequest) {
       // through as an opt-in (the admin sidebar has a "Student view" link), but
       // their default home stays /admin. Billing + pay-fine are shared per-user
       // views every role can reach.
+      //
+      // Live rooms are the exception (isLiveRoomPath): they are filed under
+      // /dashboard but hosted by mentors, investors, events staff and guest
+      // speakers who have no student.dashboard. Each room page authorizes
+      // itself — the webinar through the caller's RLS read, the 1:1 through
+      // the two-party check — so this navigational gate has nothing to add
+      // there and only ever bounced the person who was meant to be hosting.
       if (
         path.startsWith("/dashboard") &&
         !path.startsWith("/dashboard/pay-fine") &&
         !path.startsWith("/dashboard/billing") &&
+        !isLiveRoomPath(path) &&
         !can(caps, "student.dashboard") &&
         // Never bounce /dashboard at /dashboard. A role with no permissions at
         // all resolves its home to /dashboard, and redirecting there would spin
@@ -565,10 +574,15 @@ export async function updateSession(request: NextRequest) {
       // Every other /dashboard route bounces home. The sidebar hides the
       // links too; this is the hard server-side gate, so a typed URL, a
       // stale link, or a prefetch can't reach past the designated pages.
-      // Staff previewing the student view are exempt.
+      // Staff previewing the student view are exempt, and so are live rooms
+      // (isLiveRoomPath): the lockdown is navigational, and a room authorizes
+      // itself — a pre-cohort student invited as a guest speaker, or to a
+      // 1:1, must be able to reach it. A pre-cohort student opening a cohort
+      // webinar their RLS read allows is an accepted consequence.
       if (
         path.startsWith("/dashboard") &&
         !canAccessAdmin(caps) &&
+        !isLiveRoomPath(path) &&
         !isPreCohortAllowedPath(path)
       ) {
         // On any query error, fail open — a transient DB blip must not lock

@@ -55,24 +55,27 @@ export type SignalRole = "host" | "viewer";
 const NS = "b0live";
 
 /**
- * The stage: host announcements, heard by everybody in the room.
+ * The stage: room-wide hints, heard by everybody in the room.
  *
- * Deliberately NOT secret — every participant subscribes, and its name is
- * derivable from the event id alone. That is safe because only hosts ever
- * publish here and the only thing they publish is "I am live now" / "I have
- * stopped". Nothing about the audience crosses this channel, so a viewer
- * listening in learns exactly what they already knew: whether the webinar has
- * started.
+ * Deliberately NOT secret — every participant subscribes, including a viewer
+ * in a `private` room who holds no room topic, and its name is derivable from
+ * the event id alone. That is safe because nothing about the audience crosses
+ * this channel: hosts publish "I am live now", and the server publishes a
+ * content-free "something about this room changed" when it is ended, reopened,
+ * cancelled or completed. A viewer listening in learns exactly what they
+ * already knew — whether the webinar is on.
  *
- * It exists to solve one ordering problem. Students arrive before the host
- * does. Without a stage ping, a host starting up would have to wait for the
- * next viewer heartbeat to discover a room full of people already waiting.
- * Instead the host says "I'm live", every viewer re-announces at once, and
- * the room assembles in about a round trip.
+ * It exists to solve two ordering problems. Students arrive before the host
+ * does; without a stage ping, a host starting up would wait for the next
+ * viewer heartbeat to discover a room full of people already waiting. Instead
+ * the host says "I'm live", every viewer re-announces at once, and the room
+ * assembles in about a round trip. And End has to reach every engine in the
+ * room — co-hosts, speakers, and private-mode viewers alike — within a second
+ * or two rather than on an 8-second poll.
  *
- * Because it is public, a stage message is only believed when it carries the
- * `proof` a host is issued (see StageMessage) — otherwise a student in
- * devtools could publish `host-offline` and blank everyone's screen.
+ * Because it is public, ANYTHING on it can be forged by a student in devtools
+ * (see StageMessage), so no message here is ever acted on as a fact. Each is a
+ * hint to re-ask the server, which is the authority.
  */
 export function stageTopic(eventId: string): string {
   return `${NS}:${eventId}:stage`;
@@ -163,9 +166,24 @@ export type SignalMessage =
   | { t: "offer"; from: string; name: string; sdp: string }
   | { t: "answer"; from: string; name: string; sdp: string }
   | { t: "ice"; from: string; candidates: unknown[] }
-  /** Sender is going away — tear the connection down now, don't wait for ICE
-   *  to notice. Makes "the host left" instant instead of ~10 seconds frozen. */
-  | { t: "bye"; from: string }
+  /**
+   * Sender is going away — tear the connection down now, don't wait for ICE
+   * to notice. Makes "the host left" instant instead of ~10 seconds frozen.
+   *
+   * `reason` tells the receiver what to draw next:
+   *   leave    The person left (Leave, End, tab closed). Show them as gone —
+   *            "<name> left the call", "the host stepped away" — and do NOT
+   *            rebuild a connection to them until they signal again. Treating
+   *            this like a network drop is what produced the ghost
+   *            "camera off" tile that came back every heartbeat.
+   *   rebuild  Only this connection is being replaced (a wedged negotiation);
+   *            the sender is still here and a fresh offer follows.
+   * Absent means what it meant before this field existed — drop this
+   * connection and let the heartbeat decide — so a tab still running an older
+   * bundle is never mistaken for a deliberate departure. Senders should always
+   * say which.
+   */
+  | { t: "bye"; from: string; reason?: "leave" | "rebuild" }
   /**
    * Which of the sender's slots are actually carrying media right now.
    *
@@ -191,17 +209,36 @@ export type SignalMessage =
   | { t: "media"; from: string; slots: Record<MediaSlot, boolean> };
 
 /**
- * Host announcements on the stage channel.
+ * Messages on the stage channel. BOTH ARE UNAUTHENTICATED HINTS.
  *
- * `proof` is an HMAC the server issues only to hosts. The stage channel is
- * public by design, so every receiver checks the proof before acting: without
- * it, any student could publish `host-offline` and end the webinar for the
- * whole room. Viewers cannot forge it and cannot mint one, because deriving
- * it needs the server secret.
+ * The stage topic is derivable from the event id, so any participant can
+ * publish anything here. `host-online` carries a `proof` (an HMAC the server
+ * issues to hosts with their credentials), but NOTHING IN THE BROWSER VERIFIES
+ * IT: a viewer is never given a host's proof or the key to check one, by
+ * design — it would be one more secret in a viewer's payload. So no receiver
+ * may treat a stage message as a fact. Each one only makes the receiver do
+ * something it was allowed to do anyway:
+ *
+ *   host-online   "A host may have just arrived" — re-announce now instead of
+ *                 at the next heartbeat. A forged one costs one server action.
+ *   room-changed  "This room's state changed" — sent by the SERVER (service
+ *                 role) when a webinar is ended or reopened and when a 1:1 is
+ *                 cancelled or completed. Content-free on purpose: the client
+ *                 answers it by re-asking the server for its status (throttled
+ *                 to once a second), and acts only on what the server says. A
+ *                 forged one costs a re-check, never a torn-down room.
+ *
+ * There used to be a `host-offline` variant "with proof". It was never sent,
+ * every client ignored it, and its comment implied viewers verified proofs,
+ * which invited someone to start trusting it. Ending a room is a server stamp
+ * announced by `room-changed`; departures are inbox `bye` messages.
  */
 export type StageMessage =
   | { t: "host-online"; hostId: string; name: string; proof: string }
-  | { t: "host-offline"; hostId: string; proof: string };
+  | { t: "room-changed" };
+
+/** Least time between two status re-checks triggered by `room-changed`. */
+export const ROOM_CHANGED_THROTTLE_MS = 1_000;
 
 /**
  * Arrivals and departures, delivered to hosts on the lobby channel.
@@ -319,6 +356,116 @@ export const PEER_TIMEOUT_MS = 40_000;
 export const ICE_BATCH_MS = 120;
 
 // ---------------------------------------------------------------------------
+// Connection housekeeping — pruning, headcount, and what a status answer means
+// ---------------------------------------------------------------------------
+
+/**
+ * The states a peer connection moves through, as the engine tracks them.
+ * Mirrors `ConnectionState` in components/live/use-live-session.ts, plus
+ * `left` for a peer that said a deliberate `bye` (reason `leave`).
+ */
+export type PeerLinkState =
+  | "idle"
+  | "connecting"
+  | "live"
+  | "reconnecting"
+  | "failed"
+  | "left";
+
+/**
+ * Should a host drop this connection?
+ *
+ * A viewer whose laptop sleeps sends no `bye` and no leave, and before this
+ * rule nothing ever removed their connection: it sat in 'reconnecting' for the
+ * rest of the webinar, the host held one dead RTCPeerConnection per departed
+ * viewer, and the "N watching" figure only ever went up.
+ *
+ * Pruned: a VIEWER connection that has failed or left, or that has not been
+ * live for longer than PEER_TIMEOUT_MS (measured from when it was last live,
+ * or from when it was created if it never was). If the viewer is really still
+ * there, their next heartbeat re-announces them and the host builds a fresh
+ * connection — which is also the cure for a wedged one.
+ *
+ * Never pruned: a HOST peer. A co-host or the other party to a 1:1 is someone
+ * we must keep trying to reach; the engine shows them as reconnecting or left
+ * instead, and the heartbeat's rebuild logic owns them.
+ */
+export function shouldPruneConnection({
+  peerRole,
+  state,
+  lastLiveAt,
+  createdAt,
+  now = Date.now(),
+}: {
+  peerRole: SignalRole;
+  state: PeerLinkState;
+  /** Epoch ms this connection was last seen live, or null if it never was. */
+  lastLiveAt: number | null;
+  /** Epoch ms the connection was created. */
+  createdAt: number;
+  now?: number;
+}): boolean {
+  if (peerRole === "host") return false;
+  if (state === "live") return false;
+  if (state === "failed" || state === "left") return true;
+  const since = lastLiveAt ?? createdAt;
+  return now - since > PEER_TIMEOUT_MS;
+}
+
+/**
+ * The real headcount a host sees: viewer connections that are live now.
+ *
+ * Not "every viewer connection we hold" — that counted the dead and the
+ * still-negotiating, which is how a room of ten became "30 watching". A
+ * connection that is still coming up is not yet someone watching.
+ */
+export function countLiveAudience(
+  conns: Iterable<{ role: SignalRole; state: PeerLinkState }>,
+): number {
+  let n = 0;
+  for (const c of conns) if (c.role === "viewer" && c.state === "live") n += 1;
+  return n;
+}
+
+/**
+ * What a client does with one status answer from the server (a heartbeat, or
+ * a re-check after `room-changed`).
+ *
+ * `status` mirrors RoomStatus in lib/live.ts (kept structural here so this
+ * module stays import-free); `null` means the request itself failed. `strikes`
+ * is how many consecutive soft refusals came before this one.
+ *
+ *   ended / cancelled   close now. The server stamped it; there is nothing to
+ *                       wait for.
+ *   closed / revoked    close on the SECOND consecutive answer. One read at a
+ *                       window boundary, or during a role change that is
+ *                       still settling, must not end anyone's session.
+ *   error / null        ignored, strikes unchanged. A database blip or a
+ *                       dropped request is not a revocation, and treating it
+ *                       as one would kick a whole room out on one bad second.
+ *   ok                  carry on, strikes reset.
+ */
+export function nextStatusAction(
+  status: "ok" | "ended" | "cancelled" | "closed" | "revoked" | "error" | null,
+  strikes: number,
+): { close: boolean; strikes: number } {
+  switch (status) {
+    case "ended":
+    case "cancelled":
+      return { close: true, strikes: strikes + 1 };
+    case "closed":
+    case "revoked": {
+      const next = strikes + 1;
+      return { close: next >= 2, strikes: next };
+    }
+    case "ok":
+      return { close: false, strikes: 0 };
+    default:
+      return { close: false, strikes };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The room channel — chat, questions, polls, reactions, and the premiere
 // handover
 // ---------------------------------------------------------------------------
@@ -401,14 +548,17 @@ export type RoomMessage =
   /** Ephemeral, never stored, published by viewers directly. */
   | { t: "react"; emoji: string }
   /**
-   * A premiere is handing over to the live room, now — because the recording
-   * finished or because a host pressed "go live" early.
+   * The room's live state changed — a premiere handed over to the live room
+   * (the recording finished, or a host pressed "go live" early), or a host
+   * ended or reopened the webinar.
    *
    * Carries no proof and is therefore only ever a HINT: the client re-reads
-   * `live_started_at` from the server before it switches, so a forged message
-   * costs one query and changes nothing. The page also computes the handover
-   * from the clock on its own, which is what makes the switch happen at all
-   * for anyone whose channel dropped the message.
+   * `live_started_at` / `live_ended_at` from the server before it acts, so a
+   * forged message costs one query and changes nothing. The page also computes
+   * the handover from the clock on its own, which is what makes the switch
+   * happen at all for anyone whose channel dropped the message. End and Reopen
+   * ALSO go out as `room-changed` on the public stage topic, because a viewer
+   * in a `private` room has no room topic to hear this on.
    */
   | { t: "stage-change" };
 

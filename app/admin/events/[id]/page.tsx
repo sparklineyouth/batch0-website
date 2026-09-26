@@ -13,8 +13,26 @@ import {
   signAssets,
 } from "@/lib/webinar-data";
 import { listQuestionsForEvent } from "@/lib/webinar-questions";
-import { formatBytes, normalizeAudienceMode } from "@/lib/webinars";
-import { FileDown, Users, MessageCircleQuestion, Video } from "lucide-react";
+import {
+  formatBytes,
+  isHostedOnBatch0,
+  normalizeAudienceMode,
+} from "@/lib/webinars";
+import {
+  eventLiveStatus,
+  roomAccess,
+  roomIsOpen,
+  type EventLiveStatus,
+} from "@/lib/live";
+import { LiveDot } from "@/components/live/call-stage";
+import { LiveControls } from "@/app/admin/webinars/webinars-manager";
+import {
+  FileDown,
+  Users,
+  MessageCircleQuestion,
+  Radio,
+  Video,
+} from "lucide-react";
 
 export const metadata = {
   title: "Webinar · batch0 admin",
@@ -34,9 +52,17 @@ export const dynamic = "force-dynamic";
  * to the database with nowhere to read them: attendance has been recorded since
  * migration 0076 and had no reader at all.
  *
- * Read-only on purpose. Moderation happens in the room, while it can still
- * change what the audience sees; by the time anyone opens this page the webinar
- * is over and the useful thing is an honest record, not another set of buttons.
+ * Read-only on purpose, with one exception. Moderation happens in the room,
+ * while it can still change what the audience sees; by the time anyone opens
+ * this page the webinar is usually over and the useful thing is an honest
+ * record, not another set of buttons.
+ *
+ * The exception is the live status at the top: whether the room is running,
+ * when it went live and when it was ended, a "Host room" link, and End for
+ * everyone / Reopen. Those are the controls an admin needs WITHOUT going on
+ * air — closing a room a host walked away from, undoing an accidental End —
+ * and they are the same room-actions the in-room End uses, not a second
+ * implementation.
  */
 export default async function AdminWebinarPage(props: {
   params: Promise<{ id: string }>;
@@ -48,7 +74,7 @@ export default async function AdminWebinarPage(props: {
   const { data: event } = await admin
     .from("events")
     .select(
-      "id, title, type, starts_at, ends_at, live_mode, audience_mode, auto_record, auto_share, assets_shared_at, live_started_at, live_ended_at, premiere_seconds",
+      "id, title, type, starts_at, ends_at, visibility, live_mode, audience_mode, auto_record, auto_share, assets_shared_at, live_started_at, live_ended_at, premiere_seconds",
     )
     .eq("id", id)
     .maybeSingle();
@@ -81,6 +107,32 @@ export default async function AdminWebinarPage(props: {
   );
   const mode = normalizeAudienceMode(ev.audience_mode);
 
+  // Live state for the status card. The request's clock: this page is
+  // force-dynamic, and End / Reopen refresh it.
+  const now = new Date();
+  const hosted = isHostedOnBatch0(ev.live_mode);
+  const liveStatus = eventLiveStatus(
+    {
+      startsAt: ev.starts_at,
+      endsAt: ev.ends_at,
+      liveEndedAt: ev.live_ended_at,
+    },
+    now,
+  );
+  // The host window (start-60m to end+3h, whatever End says), not the
+  // audience's: an admin is a host, and a staff host entering an ended room
+  // lands on the ended screen, where Reopen is.
+  const hostWindowOpen = roomIsOpen(
+    roomAccess({
+      startsAt: ev.starts_at,
+      endsAt: ev.ends_at,
+      liveEndedAt: ev.live_ended_at,
+      isHost: true,
+      hostPresent: false,
+      now,
+    }),
+  );
+
   return (
     <div className="mx-auto max-w-4xl">
       <Link
@@ -103,6 +155,61 @@ export default async function AdminWebinarPage(props: {
             ? "moderated chat"
             : "open chat"}
       </p>
+
+      {/* ---- Live status ------------------------------------------------ */}
+      {hosted && (
+        <Card className="mt-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                <Radio className="h-4 w-4 text-phosphor-ink" />
+                {STATUS_LABEL[liveStatus]}
+                {liveStatus === "live" && <LiveDot />}
+              </h2>
+              <p className="mt-1.5 text-xs text-ink-faint">
+                {ev.live_started_at && (
+                  <>
+                    Went live <LocalTime value={ev.live_started_at} mode="time" />
+                    {" · "}
+                  </>
+                )}
+                {ev.live_ended_at ? (
+                  <>
+                    Ended for everyone{" "}
+                    <LocalTime value={ev.live_ended_at} mode="time" />
+                  </>
+                ) : liveStatus === "past" ? (
+                  // Not "closed": past end+30m a room stays open to its
+                  // audience while a host is still on, up to end+3h. It is
+                  // deliberately never auto-ended, so a wifi drop cannot end a
+                  // webinar.
+                  "Nobody pressed End. The room closes on its own once no host is left, and three hours after the scheduled end at the latest."
+                ) : liveStatus === "live" ? (
+                  "Running. End for everyone closes it for the whole room."
+                ) : (
+                  "Hosts can open the room from an hour before the start; students from 15 minutes before."
+                )}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {hostWindowOpen && (
+                <ButtonLink size="sm" href={`/dashboard/events/${ev.id}/live`}>
+                  <Video className="h-4 w-4" />
+                  Host room
+                </ButtonLink>
+              )}
+              <LiveControls
+                eventId={ev.id}
+                startsAt={ev.starts_at}
+                endsAt={ev.ends_at}
+                liveStartedAt={ev.live_started_at ?? null}
+                liveEndedAt={ev.live_ended_at ?? null}
+                now={now.toISOString()}
+              />
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* The numbers, above everything else. An admin opening this page after a
           webinar is asking "did anyone come and did they stay", and the answer
@@ -143,7 +250,7 @@ export default async function AdminWebinarPage(props: {
         {recordings.length === 0 ? (
           <p className="mt-2 text-sm text-ink-soft">
             {ev.auto_record
-              ? "Nothing recorded. Either the host never started broadcasting, or the tab was closed before the first five-minute segment finished uploading."
+              ? "Nothing recorded yet. Recording runs in one staff host's browser while they are on air (guest speakers never record), so either no staff host went live, or the tab was closed before the first five-minute segment finished uploading."
               : "Auto-record was off for this webinar."}
           </p>
         ) : (
@@ -200,8 +307,10 @@ export default async function AdminWebinarPage(props: {
               <>
                 Follow-up sent <LocalTime value={ev.assets_shared_at} />.
               </>
+            ) : ev.visibility === "staff" ? (
+              "Staff-only rehearsal — nothing is emailed."
             ) : ev.auto_share ? (
-              "Follow-up goes out within 15 minutes of the webinar ending."
+              "Follow-up goes out about 15 minutes after a host presses End — or 45 minutes after the scheduled end if nobody does."
             ) : (
               "Auto-share is off — nothing will be emailed."
             )}
@@ -289,6 +398,14 @@ export default async function AdminWebinarPage(props: {
     </div>
   );
 }
+
+const STATUS_LABEL: Record<EventLiveStatus, string> = {
+  upcoming: "Not open yet",
+  open: "Open — not started",
+  live: "Live now",
+  ended: "Ended",
+  past: "Over",
+};
 
 function Stat({
   icon,

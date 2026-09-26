@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import {
   audienceCanSeeEachOther,
   canBroadcast,
+  canEndForEveryone,
+  pickRecorder,
+  RECORDER_STICKY_MS,
+  RECORDING_SEGMENT_SECONDS,
   chatMessageIsLive,
   formatBytes,
   isDeckFile,
@@ -20,6 +24,7 @@ import {
   MAX_POLL_OPTIONS,
   type AudienceMode,
 } from "./webinars.ts";
+import { can, capabilitiesFrom } from "./permissions.ts";
 
 // Run with `npm test`. No framework, no transpile step — Node strips the types
 // natively, which is why lib/webinars.ts is kept import-free.
@@ -145,6 +150,144 @@ test("a signed-out caller never broadcasts, even against an unclaimed row", () =
   );
 });
 
+test("an admin is always a host: events.manage arrives through the '*' wildcard", () => {
+  // "Admin is always host" rests on this chain: the admin role holds '*', `can`
+  // turns that into events.manage, and canBroadcast needs nothing else — no
+  // speaker row, no visibility, no join window.
+  const admin = capabilitiesFrom("admin", ["*"]);
+  assert.equal(
+    canBroadcast({
+      hasEventsManage: can(admin, "events.manage"),
+      userId: "admin",
+      speakers: [],
+    }),
+    true,
+  );
+  // So does any custom role an admin ticks Manage events on (the seeded intern).
+  const intern = capabilitiesFrom("intern", ["events.manage"]);
+  assert.equal(
+    canBroadcast({
+      hasEventsManage: can(intern, "events.manage"),
+      userId: "intern",
+      speakers: [],
+    }),
+    true,
+  );
+  // A mentor is not a host by role — only through a claimed speaker row.
+  const mentor = capabilitiesFrom("mentor", ["mentor.panel"]);
+  assert.equal(
+    canBroadcast({
+      hasEventsManage: can(mentor, "events.manage"),
+      userId: "mentor",
+      speakers: [],
+    }),
+    false,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Ending for everyone
+// ---------------------------------------------------------------------------
+
+test("staff may always end a webinar for everyone", () => {
+  assert.equal(canEndForEveryone({ isStaff: true, isSpeaker: false, staffPresent: true }), true);
+  assert.equal(canEndForEveryone({ isStaff: true, isSpeaker: false, staffPresent: false }), true);
+});
+
+test("a guest speaker may end only when no staff host is in the room", () => {
+  // The founder who presses End thinking it ends their segment, while the
+  // admin is still presenting, must be refused.
+  assert.equal(canEndForEveryone({ isStaff: false, isSpeaker: true, staffPresent: true }), false);
+  // A guest-only webinar must still be closable by its last speaker.
+  assert.equal(canEndForEveryone({ isStaff: false, isSpeaker: true, staffPresent: false }), true);
+});
+
+test("a viewer never ends anything", () => {
+  assert.equal(canEndForEveryone({ isStaff: false, isSpeaker: false, staffPresent: false }), false);
+});
+
+// ---------------------------------------------------------------------------
+// The one recorder
+// ---------------------------------------------------------------------------
+
+const NOW = new Date("2026-09-21T18:30:00Z");
+const minsAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
+
+test("the sticky window outlasts a whole segment, so the pick cannot flap between uploads", () => {
+  assert.ok(RECORDER_STICKY_MS > RECORDING_SEGMENT_SECONDS * 1000);
+});
+
+test("the host who uploaded the latest segment keeps recording while present", () => {
+  const pick = pickRecorder({
+    presentHosts: [
+      { userId: "early-admin", joinedAt: minsAgo(40), isSpeaker: false },
+      { userId: "recorder", joinedAt: minsAgo(20), isSpeaker: false },
+    ],
+    lastSegment: { userId: "recorder", at: minsAgo(4) },
+    now: NOW,
+  });
+  assert.equal(pick, "recorder", "no handover when nothing is wrong");
+});
+
+test("an uploader who has gone hands over to the earliest-joined present staff host", () => {
+  const pick = pickRecorder({
+    presentHosts: [
+      { userId: "b", joinedAt: minsAgo(20), isSpeaker: false },
+      { userId: "a", joinedAt: minsAgo(30), isSpeaker: false },
+    ],
+    lastSegment: { userId: "gone", at: minsAgo(1) },
+    now: NOW,
+  });
+  assert.equal(pick, "a");
+});
+
+test("a stale last segment is not sticky", () => {
+  const pick = pickRecorder({
+    presentHosts: [
+      { userId: "a", joinedAt: minsAgo(30), isSpeaker: false },
+      { userId: "b", joinedAt: minsAgo(20), isSpeaker: false },
+    ],
+    lastSegment: { userId: "b", at: minsAgo(60) },
+    now: NOW,
+  });
+  assert.equal(pick, "a");
+});
+
+test("guest speakers never record, even as the earliest or the last uploader", () => {
+  const pick = pickRecorder({
+    presentHosts: [
+      { userId: "guest", joinedAt: minsAgo(50), isSpeaker: true },
+      { userId: "staff", joinedAt: minsAgo(10), isSpeaker: false },
+    ],
+    lastSegment: { userId: "guest", at: minsAgo(1) },
+    now: NOW,
+  });
+  assert.equal(pick, "staff");
+});
+
+test("nobody present, or only speakers present, means nobody records", () => {
+  assert.equal(pickRecorder({ presentHosts: [], lastSegment: null, now: NOW }), null);
+  assert.equal(
+    pickRecorder({
+      presentHosts: [{ userId: "guest", joinedAt: minsAgo(5), isSpeaker: true }],
+      lastSegment: null,
+      now: NOW,
+    }),
+    null,
+  );
+});
+
+test("two hosts who joined at the same instant still agree on one recorder", () => {
+  const hosts = [
+    { userId: "zed", joinedAt: minsAgo(5), isSpeaker: false },
+    { userId: "amy", joinedAt: minsAgo(5), isSpeaker: false },
+  ];
+  const a = pickRecorder({ presentHosts: hosts, lastSegment: null, now: NOW });
+  const b = pickRecorder({ presentHosts: [...hosts].reverse(), lastSegment: null, now: NOW });
+  assert.equal(a, b);
+  assert.equal(a, "amy");
+});
+
 // ---------------------------------------------------------------------------
 // Premieres — the clock
 // ---------------------------------------------------------------------------
@@ -250,6 +393,62 @@ test("an event with no premiere video is live from its start time", () => {
     startsAt: START,
     premiereSeconds: null,
     now: at(1),
+  });
+  assert.equal(s.phase, "live");
+});
+
+test("a hosted webinar opened early is live, not a premiere 'waiting'", () => {
+  // Regression: an admin setting up ten minutes early had their camera
+  // controls and End button hidden, and the camera switched itself on at the
+  // scheduled start. With nothing to play there is nothing to wait for.
+  const s = premiereState({
+    startsAt: START,
+    premiereSeconds: null,
+    now: at(-10),
+  });
+  assert.equal(s.phase, "live");
+  assert.equal(s.secondsUntilNext, null);
+});
+
+test("End for everyone ends a premiere mid-recording", () => {
+  const s = premiereState({
+    startsAt: START,
+    premiereSeconds: SECONDS,
+    liveEndedAt: at(15),
+    now: at(20),
+  });
+  assert.equal(s.phase, "ended");
+});
+
+test("End beats a host having gone live, and a hosted webinar, too", () => {
+  assert.equal(
+    premiereState({
+      startsAt: START,
+      premiereSeconds: SECONDS,
+      liveStartedAt: at(10),
+      liveEndedAt: at(30),
+      now: at(31),
+    }).phase,
+    "ended",
+  );
+  assert.equal(
+    premiereState({
+      startsAt: START,
+      premiereSeconds: null,
+      liveEndedAt: at(30),
+      now: at(31),
+    }).phase,
+    "ended",
+  );
+});
+
+test("liveStartedAt still wins over the schedule when nobody has ended it", () => {
+  const s = premiereState({
+    startsAt: START,
+    premiereSeconds: SECONDS,
+    liveStartedAt: at(-5),
+    liveEndedAt: null,
+    now: at(-2),
   });
   assert.equal(s.phase, "live");
 });

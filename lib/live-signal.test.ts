@@ -10,6 +10,11 @@ import {
   MEDIA_SLOTS,
   HEARTBEAT_MS,
   PEER_TIMEOUT_MS,
+  countLiveAudience,
+  nextStatusAction,
+  shouldPruneConnection,
+  type SignalMessage,
+  type StageMessage,
 } from "./live-signal.ts";
 
 /**
@@ -216,4 +221,148 @@ test("an unannounced screen slot is off — nobody presents by default", () => {
     slotIsActive({ slot: "screen", announced: undefined, trackLive: false }),
     false,
   );
+});
+
+
+// ---------------------------------------------------------------------------
+// Pruning and the headcount
+// ---------------------------------------------------------------------------
+
+const T0 = 1_000_000;
+
+test("a failed or departed viewer connection is pruned at once", () => {
+  for (const state of ["failed", "left"] as const) {
+    assert.equal(
+      shouldPruneConnection({
+        peerRole: "viewer",
+        state,
+        lastLiveAt: T0,
+        createdAt: T0,
+        now: T0 + 1,
+      }),
+      true,
+      state,
+    );
+  }
+});
+
+test("a viewer connection not live for longer than PEER_TIMEOUT_MS is pruned", () => {
+  const base = { peerRole: "viewer" as const, createdAt: T0 };
+  // Was live, then went quiet (a laptop lid closing sends no bye).
+  assert.equal(
+    shouldPruneConnection({ ...base, state: "reconnecting", lastLiveAt: T0, now: T0 + PEER_TIMEOUT_MS }),
+    false,
+    "exactly the timeout is still within it",
+  );
+  assert.equal(
+    shouldPruneConnection({ ...base, state: "reconnecting", lastLiveAt: T0, now: T0 + PEER_TIMEOUT_MS + 1 }),
+    true,
+  );
+  // Never came up at all: measured from creation.
+  assert.equal(
+    shouldPruneConnection({ ...base, state: "connecting", lastLiveAt: null, now: T0 + PEER_TIMEOUT_MS + 1 }),
+    true,
+  );
+  assert.equal(
+    shouldPruneConnection({ ...base, state: "connecting", lastLiveAt: null, now: T0 + 5_000 }),
+    false,
+  );
+});
+
+test("a live connection is never pruned, however old", () => {
+  assert.equal(
+    shouldPruneConnection({
+      peerRole: "viewer",
+      state: "live",
+      lastLiveAt: T0,
+      createdAt: T0,
+      now: T0 + 10 * PEER_TIMEOUT_MS,
+    }),
+    false,
+  );
+});
+
+test("a host-role peer is never pruned — co-hosts and the other party are retried", () => {
+  for (const state of ["failed", "left", "reconnecting", "connecting"] as const) {
+    assert.equal(
+      shouldPruneConnection({
+        peerRole: "host",
+        state,
+        lastLiveAt: null,
+        createdAt: T0,
+        now: T0 + 10 * PEER_TIMEOUT_MS,
+      }),
+      false,
+      state,
+    );
+  }
+});
+
+test("the headcount counts only live viewer connections", () => {
+  assert.equal(
+    countLiveAudience([
+      { role: "viewer", state: "live" },
+      { role: "viewer", state: "live" },
+      { role: "viewer", state: "connecting" },
+      { role: "viewer", state: "reconnecting" },
+      { role: "viewer", state: "failed" },
+      { role: "host", state: "live" },
+    ]),
+    2,
+  );
+  assert.equal(countLiveAudience([]), 0);
+});
+
+// ---------------------------------------------------------------------------
+// What a status answer does to a session
+// ---------------------------------------------------------------------------
+
+test("'ended' and 'cancelled' close the session immediately", () => {
+  assert.equal(nextStatusAction("ended", 0).close, true);
+  assert.equal(nextStatusAction("cancelled", 0).close, true);
+});
+
+test("'closed' and 'revoked' close only on the second consecutive answer", () => {
+  for (const status of ["closed", "revoked"] as const) {
+    const first = nextStatusAction(status, 0);
+    assert.equal(first.close, false, `${status} once`);
+    const second = nextStatusAction(status, first.strikes);
+    assert.equal(second.close, true, `${status} twice`);
+  }
+  // Not consecutive: an 'ok' in between resets the count.
+  const a = nextStatusAction("closed", 0);
+  const b = nextStatusAction("ok", a.strikes);
+  assert.equal(b.strikes, 0);
+  assert.equal(nextStatusAction("closed", b.strikes).close, false);
+});
+
+test("'error' and a failed request never close anything", () => {
+  assert.deepEqual(nextStatusAction("error", 0), { close: false, strikes: 0 });
+  assert.deepEqual(nextStatusAction(null, 0), { close: false, strikes: 0 });
+  // ...and do not reset a soft-refusal streak either.
+  assert.deepEqual(nextStatusAction("error", 1), { close: false, strikes: 1 });
+  assert.equal(nextStatusAction("closed", nextStatusAction(null, 1).strikes).close, true);
+});
+
+// ---------------------------------------------------------------------------
+// Message shapes
+// ---------------------------------------------------------------------------
+
+test("the stage carries a content-free room-changed hint, and no host-offline", () => {
+  const hint = { t: "room-changed" } satisfies StageMessage;
+  assert.deepEqual(hint, { t: "room-changed" });
+  // Compile-time: `host-offline` is no longer a StageMessage. If someone adds
+  // it back, this @ts-expect-error stops being an error and `npx tsc` fails.
+  // @ts-expect-error — removed variant
+  const gone: StageMessage = { t: "host-offline", hostId: "h", proof: "p" };
+  assert.equal(gone.t, "host-offline");
+});
+
+test("a bye may say whether the sender left or is only rebuilding", () => {
+  const leave = { t: "bye", from: "a", reason: "leave" } satisfies SignalMessage;
+  const rebuild = { t: "bye", from: "a", reason: "rebuild" } satisfies SignalMessage;
+  const legacy = { t: "bye", from: "a" } satisfies SignalMessage;
+  assert.equal(leave.reason, "leave");
+  assert.equal(rebuild.reason, "rebuild");
+  assert.equal("reason" in legacy, false);
 });

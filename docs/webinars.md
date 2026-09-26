@@ -98,6 +98,16 @@ great deal more. Not a trade worth making for someone talking for forty minutes.
 So broadcast rights are per-event: a row in `event_speakers` says "this person
 may host **this** webinar", and nothing else.
 
+A claimed speaker broadcasts and moderates (chat, questions, polls) exactly
+like a staff host. What separates them is in `docs/batch0-live.md` under
+*Who is a host*: a speaker never sees names, never records, cannot Reopen, and
+can End for everyone only when no staff host is in the room — their normal
+exit is Leave. That keeps a guest-only webinar closable without letting a
+founder who presses End "for their segment" end a room an admin is running.
+(If attendance can't be read, the rule fails open and the speaker may End:
+ending is reversible by staff, and failing closed would strand a guest-only
+webinar.)
+
 ### What a guest speaker is deliberately NOT given
 
 A star topology gives a broadcaster no choice about reaching every viewer —
@@ -117,6 +127,14 @@ authentication**: the guest must already be a signed-in batch0 user, and all the
 token does is attach that account to the speaker row an admin created. It is
 cleared on first use, so a forwarded link is spent.
 
+In the event form, every saved speaker who has not claimed yet has **Copy
+invite link** (`speakerInviteLink`) and **Send invite** (`sendSpeakerInvite`,
+which emails the address on the *saved* row — never one typed into the form —
+and refuses once the slot is claimed). A claimed row says so. The room page
+runs the claim before it reads the event, so a guest outside the event's
+audience (a mentor, or a guest on an enrolled-only webinar) is not turned away
+before their link is spent.
+
 `claim_token` and `email` are revoked from `anon` and `authenticated` at the
 column level. Note the spelling in the migration — a column-level `REVOKE` is a
 **no-op** against a role holding a table-level grant, and Supabase grants
@@ -129,8 +147,23 @@ version.
 
 ## Recording
 
-Auto-record starts when the host starts broadcasting. There is no button to
-forget.
+**Exactly one recorder per webinar**, and it starts on its own — there is no
+button to forget. On every host heartbeat the server picks the recorder
+(`pickRecorder` in `lib/webinars.ts`) and tells each host whether it is them:
+
+1. **Sticky:** whoever registered the most recent segment within
+   `RECORDER_STICKY_MS` (one five-minute segment plus two minutes for the
+   upload) keeps recording while they are present. A handover mid-talk costs a
+   seam; not handing over when nothing is wrong costs nothing.
+2. Otherwise, the **earliest-joined staff host** who is present.
+
+Guest speakers never record. The recording is the program's record of a room
+that may contain minors, and it belongs to the staff accountable for it. A
+webinar hosted only by guest speakers is therefore not recorded, and the
+record page (`/admin/events/[id]`) says why when a recording is missing.
+
+The recorder runs only while its host is live, not during a premiere's
+recording, and never after End.
 
 **It records what the audience saw, not what the camera captured.** The host's
 picture changes mid-webinar — camera, then slides, then back — and a
@@ -142,9 +175,16 @@ picture changes mid-webinar — camera, then slides, then back — and a
 an hour in a tab and pushing it at the end fails three ways at the worst moment:
 memory grows all hour, the upload starts exactly when the host wants to close
 the laptop, and any failure costs the whole recording. Each segment is a
-self-contained file; `event_assets.sort_order` is its index, and a partial
-unique index turns a retry into a replacement so a recovering recorder cannot
-make the recording play the same five minutes twice.
+self-contained file and `event_assets.sort_order` is its index. The index is
+seeded from the server (`nextRecordingIndex`: the highest recording index plus
+one), so a reload or a handover to another host **appends** instead of
+overwriting segment 0. Registration replaces the row for (event, `recording`,
+index) in application code — select, then update (removing the old storage
+object) or insert, retrying a unique-violation as an update — so a recovering
+recorder cannot make the recording play the same five minutes twice. It is
+done that way rather than as a PostgREST upsert because the unique index is
+*partial*, and `ON CONFLICT` cannot target a partial index: every segment
+upsert used to fail with `42P10` and no recording was ever attached.
 
 The cost is a seam of tens of milliseconds every five minutes, because a
 `MediaRecorder` has to be stopped and restarted for each file to carry its own
@@ -152,15 +192,39 @@ header.
 
 ### The End button
 
-`await recorder.stop()` runs **before** the media tracks are stopped and before
-the server is told. That ordering is the whole point: `media.stop()` ends the
-tracks the recorder is reading, so stopping them first truncates the final
-segment — reliably the Q&A, reliably the part people re-watch.
+There is **one** End for everyone, in the room's control bar, with a two-step
+confirm. Staff hosts always see it (during a premiere too); a guest speaker sees
+it only in the last-host Leave prompt, and only when no staff host is present.
+Admins also have End for everyone and Reopen on `/admin/webinars` and
+`/admin/events/[id]`, so a webinar a host walked away from can be closed
+without going on air.
 
-Ending also stamps `live_ended_at`. Without it, a viewer's browser cannot tell a
-host who ended from a host who dropped off hotel wifi, and the audience sits on
-"waiting for the host to start" until the join window closes half an hour later.
-It is reversible — a host who ends by accident presses Reopen.
+The order, and why:
+
+1. **`endLive` first.** It stamps `live_ended_at` (the first End wins; a retry
+   returns the stored time), closes open polls and attendance rows, and sends
+   the content-free `room-changed` hint that makes every other client re-check
+   and tear down. Without the stamp a viewer's browser cannot tell a host who
+   ended from a host who dropped off hotel wifi. If it fails, **nothing** is
+   torn down: the host stays live with an error and can retry.
+2. **`await recorder.stop()`**, before the media tracks are stopped.
+   `media.stop()` ends the tracks the recorder is reading, so stopping them
+   first truncates the final segment — reliably the Q&A, reliably the part
+   people re-watch.
+3. Screen, camera and mic stop, and the host lands on the ended screen.
+   The room stops them itself, after the flush: `useLocalMedia` deliberately
+   does not stop the devices when its auto-start gate turns off, because an
+   End that arrives by poll would otherwise kill the tracks before the
+   recorder had flushed.
+
+End is reversible, but only deliberately: **staff** press Reopen (on the ended
+screen or on the admin pages). Pressing Start again does **not** reopen an
+ended webinar, and a host who arrives after End sees when it ended and a
+"Reopen and go live" choice instead of their camera switching on.
+
+After End, viewers see "This webinar has ended" with no media and no Rejoin;
+chat, questions and polls close for the audience (moderators can still read
+and tidy them); the webinar shows **Ended** on every list.
 
 ---
 
@@ -179,6 +243,9 @@ clock is four minutes fast would otherwise sit four minutes ahead of the room �
 visibly, in chat, reacting to something nobody has seen yet — and one whose
 clock is out by an hour would watch a black screen and conclude the webinar
 never started.
+
+`live_ended_at` beats everything: End for everyone stops a playing premiere
+too, rather than leaving the recording running under an "Ended" badge.
 
 `live_started_at` beats the schedule absolutely. A host who presses "Go live
 now" thirty minutes into a forty-minute recording has made a decision about the
@@ -230,6 +297,14 @@ happened: the last recording segment is still uploading when the host clicks
 away, and hosts do not always press End — they close the laptop, and the
 students who missed it are exactly the ones the email is for.
 
+When it is due: 15 minutes after `live_ended_at` when a host pressed End;
+otherwise 15 minutes after the audience window closed (scheduled end + 30
+minutes), so an overrunning webinar is never mailed about while it is still
+live. An auto-recorded webinar with no recording attached yet is left for later
+runs (up to two hours) rather than being marked as having nothing to share.
+A **staff-only** event is never shared — it is a rehearsal — and the form shows
+"Share afterwards" off for one.
+
 `assets_shared_at` is the claim, and it is stamped **before** the sending
 starts. A run that dies halfway costs one webinar's follow-up rather than
 mailing the whole cohort twice on the next run.
@@ -249,7 +324,9 @@ recording are the ones who missed it.
 | Server reads | `lib/webinar-data.ts` |
 | Signalling | `lib/live-signal.ts`, `lib/live-rooms.ts` |
 | Room actions | `app/dashboard/events/[id]/live/room-actions.ts` |
+| Who is a host | `lib/live-access.ts` |
 | Admin actions | `app/admin/events/webinar-actions.ts` |
+| Admin pages | `app/admin/webinars/*` (live status, Host room, End / Reopen), `app/admin/events/[id]/page.tsx` |
 | Follow-up job | `app/api/cron/webinar-followups/route.ts` |
 | Room | `components/live/broadcast-room.tsx`, `room-panel.tsx`, `use-recorder.ts`, `premiere-player.tsx`, `speaker-strip.tsx` |
 | Admin form | `app/admin/events/webinar-fields.tsx` |

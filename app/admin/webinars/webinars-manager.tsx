@@ -5,16 +5,24 @@ import Link from "next/link";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Input, Textarea, Label, Select, FieldError } from "@/components/ui/input";
 import { LocalTime } from "@/components/ui/local-time";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { LiveDot } from "@/components/live/call-stage";
 import { getActionError } from "@/lib/action-error";
 import { saveEvent } from "@/app/admin/events/actions";
 import {
-  canJoin,
-  joinState,
+  endLive,
+  reopenLive,
+} from "@/app/dashboard/events/[id]/live/room-actions";
+import {
+  eventLiveStatus,
   relativeTime,
+  roomAccess,
+  roomIsOpen,
+  roomWindow,
   normalizeDisplayViewers,
   type LiveEvent,
 } from "@/lib/live";
+import { isHostedOnBatch0, isPremiere } from "@/lib/webinars";
 import {
   isSunday,
   localDateTime,
@@ -23,9 +31,24 @@ import {
   webinarTitle,
   webinarWeek,
 } from "@/lib/webinar-schedule";
-import { Plus, Pencil, Video, Radio } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Video,
+  Radio,
+  ExternalLink,
+  ClipboardList,
+} from "lucide-react";
 
-type Webinar = LiveEvent & { visibility: string };
+/**
+ * One row of the list. `liveEndedAt` (on LiveEvent) and `liveStartedAt` are
+ * the server's stamps: End for everyone, and the premiere's early handover.
+ */
+export type Webinar = LiveEvent & {
+  visibility: string;
+  /** Optional so fixtures (app/dev/live/preview.tsx) need not invent one. */
+  liveStartedAt?: string | null;
+};
 type Cohort = { id: string; name: string; startsOn: string | null };
 
 const DURATIONS = [30, 45, 60, 90, 120];
@@ -46,7 +69,7 @@ const VISIBILITIES = [
   {
     value: "staff",
     label: "Staff only — rehearsal",
-    hint: "Nobody but staff can see or join. Use this to test before going live to students.",
+    hint: "Students never see it. Staff can open it to test before going live to students, and nothing is emailed afterwards.",
   },
   { value: "public", label: "Public", hint: "Anyone signed in can join." },
 ];
@@ -70,12 +93,20 @@ export function WebinarsManager({
   live,
   upcoming,
   past,
+  now: nowProp,
   cohorts,
   needsProviderRoom,
 }: {
   live: Webinar[];
   upcoming: Webinar[];
   past: Webinar[];
+  /**
+   * The server's clock for this render (ISO). Every row reads it, so the rows
+   * agree with the server's grouping and the first client paint matches the
+   * server's. Optional only for the dev preview, which falls back to the
+   * mount-time clock.
+   */
+  now?: string;
   cohorts: Cohort[];
   /**
    * True only on the Daily path, where a webinar is not joinable until a
@@ -89,6 +120,8 @@ export function WebinarsManager({
   const [composing, setComposing] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
+  const [fallbackNow] = useState(() => new Date().toISOString());
+  const now = nowProp ?? fallbackNow;
 
   // "Same time as last week." The most useful default for a weekly series is
   // whatever the series already runs at; the next upcoming one is the best
@@ -200,6 +233,7 @@ export function WebinarsManager({
                 <Row
                   key={w.id}
                   webinar={w}
+                  now={now}
                   needsProviderRoom={needsProviderRoom}
                 />
               ))}
@@ -211,6 +245,7 @@ export function WebinarsManager({
                 <Row
                   key={w.id}
                   webinar={w}
+                  now={now}
                   needsProviderRoom={needsProviderRoom}
                 />
               ))}
@@ -222,6 +257,7 @@ export function WebinarsManager({
                 <Row
                   key={w.id}
                   webinar={w}
+                  now={now}
                   needsProviderRoom={needsProviderRoom}
                 />
               ))}
@@ -262,15 +298,35 @@ function Section({
 
 function Row({
   webinar: w,
+  now,
   needsProviderRoom,
 }: {
   webinar: Webinar;
+  now: string;
   needsProviderRoom: boolean;
 }) {
-  // Server-rendered, so this is the request's clock rather than the viewer's.
-  // Good enough for a coarse status chip; LocalTime handles the exact time.
-  const state = joinState(w.startsAt, w.endsAt);
-  const joinable = canJoin(state);
+  // The request's clock, not the viewer's — the same instant the page grouped
+  // by, so a row never disagrees with the section it sits in.
+  const at = new Date(now);
+  const status = eventLiveStatus(w, at);
+  const hosted = isHostedOnBatch0(w.liveMode);
+  // "Host room" follows the HOST window (an hour before the start to three
+  // hours after the end — roomAccess with isHost), not the audience's
+  // fifteen minutes. Checking the camera and loading the deck is why an admin
+  // arrives early, and the button used to be hidden until fifteen minutes
+  // out. It stays after End too: a staff host entering an ended room lands on
+  // the ended screen, which is where Reopen lives.
+  const hostWindowOpen = roomIsOpen(
+    roomAccess({
+      startsAt: w.startsAt,
+      endsAt: w.endsAt,
+      liveEndedAt: w.liveEndedAt,
+      isHost: true,
+      hostPresent: false,
+      now: at,
+    }),
+  );
+  const canHost = hosted && hostWindowOpen && (!needsProviderRoom || !!w.roomName);
 
   return (
     <div className="rounded-2xl border border-line bg-wash p-4">
@@ -278,12 +334,11 @@ function Row({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-ink">{w.title}</h3>
-            {state === "live" && <LiveDot />}
-            {w.visibility === "staff" && (
-              <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
-                staff only
-              </span>
-            )}
+            {status === "live" && <LiveDot />}
+            {status === "ended" && <Chip>Ended</Chip>}
+            {isPremiere(w.liveMode) && <Chip>premiere</Chip>}
+            {!hosted && <Chip>external link</Chip>}
+            {w.visibility === "staff" && <Chip>staff only</Chip>}
           </div>
           {w.description && (
             <p className="mt-1 line-clamp-2 text-xs text-ink-soft">
@@ -292,8 +347,15 @@ function Row({
           )}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-faint">
             <LocalTime value={w.startsAt} mode="datetime-short" />
-            {state === "early" && <span>{relativeTime(w.startsAt)}</span>}
-            {needsProviderRoom && !w.roomName && (
+            {status === "upcoming" && (
+              <span suppressHydrationWarning>{relativeTime(w.startsAt, at)}</span>
+            )}
+            {w.liveEndedAt && (
+              <span>
+                ended <LocalTime value={w.liveEndedAt} mode="time" />
+              </span>
+            )}
+            {needsProviderRoom && hosted && !w.roomName && (
               <span className="text-amber-600 dark:text-amber-400">
                 no room yet — re-save to create one
               </span>
@@ -316,15 +378,44 @@ function Row({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {joinable && (!needsProviderRoom || w.roomName) && (
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {canHost && (
             <ButtonLink size="sm" href={`/dashboard/events/${w.id}/live`}>
               <Video className="h-4 w-4" />
-              {state === "live" ? "Join now" : "Open"}
+              Host room
             </ButtonLink>
           )}
+          {!hosted && w.externalUrl && (
+            <a
+              href={w.externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-phosphor-ink hover:underline"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Zoom link
+            </a>
+          )}
+          {hosted && (
+            <LiveControls
+              eventId={w.id}
+              startsAt={w.startsAt}
+              endsAt={w.endsAt}
+              liveStartedAt={w.liveStartedAt ?? null}
+              liveEndedAt={w.liveEndedAt}
+              now={now}
+            />
+          )}
           <Link
-            href="/admin/events"
+            href={`/admin/events/${w.id}`}
+            aria-label="Record: attendance, questions, recording"
+            title="Record: attendance, questions, recording"
+            className="p-1.5 text-ink-faint hover:text-ink"
+          >
+            <ClipboardList className="h-4 w-4" />
+          </Link>
+          <Link
+            href={`/admin/events?edit=${encodeURIComponent(w.id)}`}
             aria-label="Edit in the events editor"
             title="Edit in the events editor"
             className="p-1.5 text-ink-faint hover:text-ink"
@@ -334,6 +425,129 @@ function Row({
         </div>
       </div>
     </div>
+  );
+}
+
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+      {children}
+    </span>
+  );
+}
+
+/**
+ * End for everyone / Reopen, from outside the room.
+ *
+ * Exported because /admin/events/[id] shows the same pair beside its live
+ * status. Both call the room's own server actions (endLive / reopenLive in
+ * room-actions.ts), which are staff-gated, idempotent, and bounded only by the
+ * hard stop (end + 3h) — not by the audience window — so an admin can close a
+ * webinar a host walked away from, or undo an accidental End, without going
+ * on air. End does exactly what the in-room End does: everyone in the room is
+ * told within a second or two (the stage `room-changed` hint), viewers land on
+ * "This webinar has ended", attendance and polls close.
+ *
+ * What is offered, by the same clock the page grouped with:
+ *   - End for everyone: not ended, started (or handed over early), and before
+ *     the hard stop. Not before the start — ending a webinar nobody has begun
+ *     would show students "Ended" for a talk that never happened; to take one
+ *     off the calendar, edit or delete the event.
+ *   - Reopen: ended, and before the hard stop.
+ *
+ * Nothing here reconnects anybody. After a Reopen, viewers on the ended screen
+ * are offered Rejoin, and a host goes back through the green room.
+ */
+export function LiveControls({
+  eventId,
+  startsAt,
+  endsAt,
+  liveStartedAt,
+  liveEndedAt,
+  now,
+}: {
+  eventId: string;
+  startsAt: string;
+  endsAt: string | null;
+  liveStartedAt: string | null;
+  liveEndedAt: string | null;
+  /** ISO. The server's clock for this render. */
+  now: string;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | undefined>();
+  const [confirmEnd, setConfirmEnd] = useState(false);
+
+  const t = new Date(now).getTime();
+  const w = roomWindow(startsAt, endsAt);
+  const beforeHardStop = t <= w.hardCloseAt;
+  const started = t >= w.start || !!liveStartedAt;
+  const canEndNow = !liveEndedAt && started && beforeHardStop;
+  const canReopen = !!liveEndedAt && beforeHardStop;
+
+  function run(action: () => Promise<unknown>) {
+    setError(undefined);
+    start(async () => {
+      try {
+        await action();
+        setConfirmEnd(false);
+        router.refresh();
+      } catch (err: any) {
+        setConfirmEnd(false);
+        setError(getActionError(err));
+      }
+    });
+  }
+
+  if (!canEndNow && !canReopen) return null;
+
+  return (
+    <>
+      {canEndNow && (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => setConfirmEnd(true)}
+        >
+          End for everyone
+        </Button>
+      )}
+      {canReopen && (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => run(() => reopenLive(eventId))}
+        >
+          {pending ? "Reopening…" : "Reopen"}
+        </Button>
+      )}
+      {error && (
+        <span className="basis-full text-right text-xs text-red-700 dark:text-red-400">
+          {error}
+        </span>
+      )}
+      <ConfirmDialog
+        open={confirmEnd}
+        title="End this webinar for everyone?"
+        description={
+          <p>
+            Everyone in the room is disconnected and sees &ldquo;This webinar
+            has ended&rdquo; — hosts and guest speakers included. Chat,
+            questions and polls close for the audience. You can Reopen it
+            afterwards, until three hours past the scheduled end.
+          </p>
+        }
+        confirmLabel="End for everyone"
+        cancelLabel="Keep it running"
+        destructive
+        pending={pending}
+        onConfirm={() => run(() => endLive(eventId))}
+        onCancel={() => !pending && setConfirmEnd(false)}
+      />
+    </>
   );
 }
 
@@ -528,15 +742,25 @@ function ScheduleForm({
           <span className="mt-0.5 block text-ink-faint">
             {visibility === "staff"
               ? "Unavailable for a staff-only rehearsal — there's nobody to tell."
-              : "Sends an announcement now, with a link that opens 15 minutes before the start."}
+              : "Sends an announcement now, with a link students can use from 15 minutes before the start."}
           </span>
         </span>
       </label>
 
+      {/*
+        Said plainly because every half of it used to be wrong: the room is not
+        "yours alone" (every admin and anyone with Manage events can broadcast,
+        and so can a guest speaker added in the events editor), and it does not
+        simply close at end+30 — it stays open while a host is still on, and it
+        ends when a host presses End for everyone.
+      */}
       <p className="rounded-md border border-line bg-wash px-3 py-2.5 text-xs text-ink-soft">
-        The room opens 15 minutes before the start and closes 30 minutes
-        after the end. Only you get camera, mic, and screen share — students
-        watch, ask questions beside the video, and can&rsquo;t see each other
+        Students can come in from 15 minutes before the start; hosts from an
+        hour before. It runs until a host presses End for everyone — or, if
+        nobody does, closes 30 minutes after the end once no host is left.
+        Admins and staff with Manage events, plus any guest speakers you add,
+        can broadcast — students watch, ask questions beside the video, and
+        can&rsquo;t see each other
         {displayViewerCount !== null
           ? ". They see the shown-attendees count above, not the real one."
           : " or how many are here."}

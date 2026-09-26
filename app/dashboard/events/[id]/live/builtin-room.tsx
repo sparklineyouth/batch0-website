@@ -15,10 +15,12 @@ import {
 } from "./room-actions";
 import {
   getWebinarUploadToken,
+  nextRecordingIndex,
   registerWebinarAsset,
 } from "@/app/admin/events/webinar-actions";
 import type { RoomState } from "./room-actions";
 import type { LiveRole, WebinarQuestion } from "@/lib/live";
+import type { SignalRole } from "@/lib/live-signal";
 import type { AudienceMode, EventSpeaker, PremiereState } from "@/lib/webinars";
 
 /**
@@ -48,6 +50,8 @@ export function BuiltinEventRoom({
   title,
   role,
   isStaffHost,
+  canEnd,
+  backHref,
   audienceMode,
   displayViewerCount,
   autoRecord,
@@ -71,6 +75,17 @@ export function BuiltinEventRoom({
    * empty column where the roster would be.
    */
   isStaffHost: boolean;
+  /**
+   * May this reader end the webinar for everyone, as the server saw it at
+   * render time (staff always; a guest speaker only with no staff host
+   * present). The room keeps it current from then on.
+   */
+  canEnd: boolean;
+  /**
+   * Back / after-leave destination, decided by the page from the role: staff
+   * go back to /admin/webinars, speakers and students to /dashboard/events.
+   */
+  backHref: string;
   audienceMode: AudienceMode;
   /** Admin-announced headcount, shown to everyone. Null = hidden roster. */
   displayViewerCount: number | null;
@@ -88,7 +103,11 @@ export function BuiltinEventRoom({
   const actions = useMemo(
     () => ({
       join: () => joinRoom("event", eventId),
-      announce: () => announcePresence("event", eventId),
+      // `joinedAs` lets the server answer 'revoked' to a host whose grant was
+      // removed mid-session, rather than silently re-announcing them as a
+      // viewer while they still hold host credentials.
+      announce: (joinedAs?: SignalRole) =>
+        announcePresence("event", eventId, joinedAs),
       leave: () => leaveRoom("event", eventId),
       listPeers: () => listAudience("event", eventId),
     }),
@@ -105,10 +124,13 @@ export function BuiltinEventRoom({
    * signed URL, the bytes go straight from the tab to Supabase Storage without
    * touching a Vercel function, and a second action records the path.
    *
-   * `sortOrder` is the segment index, and the unique index behind it (0084)
-   * turns a retry into a replacement. A recorder that re-uploads segment 4
-   * after a dropped connection must not leave two copies, or the recording
-   * plays the same five minutes twice.
+   * `sortOrder` is the segment index, and registering the same index twice
+   * REPLACES the row (registerWebinarAsset selects it and updates, falling
+   * back to insert). A recorder that re-uploads segment 4 after a dropped
+   * connection must not leave two copies, or the recording plays the same five
+   * minutes twice. The index itself is seeded from the server
+   * (`nextRecordingIndex`), so a reload or a second staff recorder appends
+   * rather than replacing segment 0.
    *
    * Throws on failure, which is deliberate: `useRecorder` catches, counts the
    * failure, and KEEPS RECORDING. Losing one segment must never stop the next
@@ -147,6 +169,10 @@ export function BuiltinEventRoom({
     [eventId],
   );
 
+  const seedRecordingIndex = useCallback(
+    () => nextRecordingIndex(eventId),
+    [eventId],
+  );
   const onGoLive = useCallback(() => goLive(eventId), [eventId]);
   const onEndLive = useCallback(() => endLive(eventId), [eventId]);
   const onReopenLive = useCallback(() => reopenLive(eventId), [eventId]);
@@ -163,11 +189,13 @@ export function BuiltinEventRoom({
       autoRecord,
       premiere,
       liveEndedAt,
+      canEnd,
       speakers,
       deck,
       initialQuestions,
       initialRoomState,
       onSegment,
+      nextRecordingIndex: seedRecordingIndex,
       onGoLive,
       onEndLive,
       onReopenLive,
@@ -183,11 +211,13 @@ export function BuiltinEventRoom({
       autoRecord,
       premiere,
       liveEndedAt,
+      canEnd,
       speakers,
       deck,
       initialQuestions,
       initialRoomState,
       onSegment,
+      seedRecordingIndex,
       onGoLive,
       onEndLive,
       onReopenLive,
@@ -201,7 +231,7 @@ export function BuiltinEventRoom({
       roomId={eventId}
       title={title}
       role={role}
-      backHref="/dashboard/events"
+      backHref={backHref}
       displayViewerCount={displayViewerCount}
       webinar={webinar}
       {...actions}

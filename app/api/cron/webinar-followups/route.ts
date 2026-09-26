@@ -4,7 +4,7 @@ import { notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { env } from "@/lib/env";
-import { DEFAULT_EVENT_MINUTES } from "@/lib/live";
+import { JOIN_CLOSES_MINUTES_AFTER, roomWindow } from "@/lib/live";
 import { listAssets } from "@/lib/webinar-data";
 
 export const runtime = "nodejs";
@@ -56,10 +56,38 @@ export const maxDuration = 300;
  * A webinar with no cohort (a public one) has no invite list to work from, so
  * it is skipped and stamped: there is nobody to send to, and leaving it unstamped
  * would have this job reconsider it on every run forever.
+ *
+ * A STAFF-visibility event is never shared. That is a rehearsal or an internal
+ * session, and an admin who ticked auto-share on the form (or copied a row that
+ * had it) must not end up mailing a rehearsal recording to a whole cohort.
+ *
+ * ---------------------------------------------------------------------------
+ * When a webinar counts as over
+ * ---------------------------------------------------------------------------
+ *
+ *   - A host pressed End (`live_ended_at` set): SETTLE_MINUTES after that. This
+ *     is the accurate case — it catches a webinar that ended early, and it
+ *     never fires on one that is still running past its scheduled end.
+ *   - Nobody pressed End: SETTLE_MINUTES after the audience's window closed
+ *     (scheduled end + JOIN_CLOSES_MINUTES_AFTER). This used to be end + 15,
+ *     which mailed "the recording is up" while an overrunning host was still
+ *     live and before their last segments had uploaded.
  */
 
 /** Wait this long after the end before sending. */
 const SETTLE_MINUTES = 15;
+
+/**
+ * How long to keep waiting for a recording that auto-record should have made.
+ *
+ * With auto-record on, "no assets yet" right after the end usually means the
+ * final segments are still uploading (or registering) — not that there is
+ * nothing to share. Stamping `nothing-to-share` then would permanently skip a
+ * webinar whose recording lands five minutes later. So such a webinar is left
+ * unclaimed and reconsidered on later runs, up to this long past its due time,
+ * after which it really is treated as having nothing.
+ */
+const RECORDING_GRACE_MINUTES = 120;
 
 export async function GET(req: Request) {
   // Fail closed when CRON_SECRET isn't configured. An open endpoint here
@@ -82,9 +110,12 @@ export async function GET(req: Request) {
   // as SQL interval arithmetic here would be a second copy to keep in step.
   const { data: rows, error } = await admin
     .from("events")
-    .select("id, title, cohort_id, starts_at, ends_at")
+    .select(
+      "id, title, cohort_id, starts_at, ends_at, live_ended_at, visibility, auto_record",
+    )
     .eq("auto_share", true)
     .is("assets_shared_at", null)
+    .neq("visibility", "staff")
     .lte("starts_at", new Date(now).toISOString())
     .limit(20);
   if (error) {
@@ -95,16 +126,31 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 200 });
   }
 
-  const due = (rows ?? []).filter((e: any) => {
-    const end = e.ends_at
-      ? new Date(e.ends_at).getTime()
-      : new Date(e.starts_at).getTime() + DEFAULT_EVENT_MINUTES * 60_000;
-    return now >= end + SETTLE_MINUTES * 60_000;
-  });
+  const dueAt = (e: any): number =>
+    (e.live_ended_at
+      ? new Date(e.live_ended_at).getTime()
+      : roomWindow(e.starts_at, e.ends_at).end +
+        JOIN_CLOSES_MINUTES_AFTER * 60_000) +
+    SETTLE_MINUTES * 60_000;
+  const due = (rows ?? []).filter((e: any) => now >= dueAt(e));
 
   const report: Record<string, unknown>[] = [];
 
   for (const ev of due as any[]) {
+    // Look before claiming, for one case only: an auto-recorded webinar with
+    // no recording attached yet, still inside the grace period, is left
+    // UNCLAIMED so a later run can share the recording once its segments land
+    // (rather than stamping `nothing-to-share`, or mailing "the slides are up"
+    // an hour before the recording would have been). Reading first costs
+    // nothing — the claim below is still the atomic guard.
+    if (ev.auto_record && now < dueAt(ev) + RECORDING_GRACE_MINUTES * 60_000) {
+      const early = await listAssets(ev.id, ["recording"]);
+      if (early.length === 0) {
+        report.push({ id: ev.id, skipped: "waiting-for-recording" });
+        continue;
+      }
+    }
+
     // CLAIM FIRST. Stamping before the fan-out is what makes a run that dies
     // halfway — a timeout, a deploy, a Resend outage — cost one webinar's
     // follow-up rather than mailing the whole cohort twice on the next run.

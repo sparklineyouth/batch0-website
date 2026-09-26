@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { requireUser, getProfile } from "@/lib/auth";
+import { requireUser, getProfile, getCapabilities } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getInvite } from "@/lib/calls";
 import { createRoom, dailyConfigured, mintToken, roomIsLive } from "@/lib/daily";
-import { canJoin, joinState, inviteEndsAt } from "@/lib/live";
+import { callsHomeFor } from "@/lib/permissions";
+import { resolveCallAccess } from "@/lib/live-access";
 import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
 import { BuiltinCallRoom } from "./builtin-room";
 import { env } from "@/lib/env";
@@ -25,52 +26,86 @@ export default async function CallLivePage(
 ) {
   const params = await props.params;
   await requireUser();
-  const profile = await getProfile();
-  if (!profile) notFound();
-
-  const invite = await getInvite(params.id);
-  if (!invite) notFound();
 
   // A 1:1 is private to its two people. Not "can you see this page" but
   // "are you one of the two" — an admin browsing the safeguarding list can
-  // read that a call happened without being able to walk into it.
-  const isHost = invite.hostId === profile.id;
-  const isInvitee = invite.inviteeId === profile.id;
-  if (!isHost && !isInvitee) notFound();
-
-  if (invite.status !== "accepted") {
+  // read that a call happened without being able to walk into it. A
+  // non-party gets the same 404 as a call that does not exist; that is the
+  // deliberate safeguarding rule, not a gap. (An admin who BOOKED a call is
+  // its owner, and is let in like any other owner.)
+  //
+  // The same resolution joinRoom and endCall use (lib/live-access.ts), so the
+  // page, the credentials and End call agree about who owns the call and
+  // whether it is still running.
+  const [access, caps, profile] = await Promise.all([
+    resolveCallAccess(params.id),
+    getCapabilities(),
+    getProfile(),
+  ]);
+  if (!access.ok) {
+    if (access.reason === "no-access") notFound();
     return (
-      <Shell title={invite.topic || "1:1 call"}>
+      <Shell title="1:1 call">
         <p className="text-sm text-ink-soft">
-          {invite.status === "invited"
-            ? "This call hasn't been accepted yet."
-            : `This call was ${invite.status}.`}
+          We couldn&rsquo;t load this call just now. Try again in a moment.
         </p>
-        <BackLink />
+        <BackLink href="/dashboard/calls" />
       </Shell>
     );
   }
 
-  const endsAt = inviteEndsAt(invite);
-  const state = joinState(invite.startsAt, endsAt);
-  if (!canJoin(state)) {
-    return (
-      <Shell title={invite.topic || "1:1 call"}>
-        {state === "early" ? (
+  // Back goes where each person manages their calls: the owner to their
+  // admin, mentor or investor calls page; the invitee (always a student) to
+  // theirs. Sending everyone to /dashboard/calls bounced mentors to /mentor
+  // and showed admins a list where their call seemed to have vanished.
+  const isOwner = access.isOwner;
+  const backHref = isOwner ? callsHomeFor(caps) : "/dashboard/calls";
+  const title = access.topic || "1:1 call";
+
+  // Everything but "joinable" is said in words. Note that an accepted call
+  // whose window has closed counts as completed here, exactly as it does on
+  // the cards and in joinRoom — nobody pressing End call does not make a call
+  // from last week still "on".
+  switch (access.phase) {
+    case "invited":
+      return (
+        <Shell title={title}>
+          <p className="text-sm text-ink-soft">
+            This call hasn&rsquo;t been accepted yet.
+          </p>
+          <BackLink href={backHref} />
+        </Shell>
+      );
+    case "upcoming":
+      return (
+        <Shell title={title}>
           <p className="text-sm text-ink-soft">
             This opens 15 minutes before it starts —{" "}
-            <LocalTime value={invite.startsAt} />.
+            <LocalTime value={access.startsAt} />.
           </p>
-        ) : (
+          <BackLink href={backHref} />
+        </Shell>
+      );
+    case "completed":
+      return (
+        <Shell title={title}>
           <p className="text-sm text-ink-soft">This call has ended.</p>
-        )}
-        <BackLink />
-      </Shell>
-    );
+          <BackLink href={backHref} />
+        </Shell>
+      );
+    case "cancelled":
+    case "declined":
+      return (
+        <Shell title={title}>
+          <p className="text-sm text-ink-soft">This call was {access.phase}.</p>
+          <BackLink href={backHref} />
+        </Shell>
+      );
+    case "joinable":
+      break;
   }
 
-  const callTitle =
-    invite.topic || `1:1 with ${isHost ? invite.inviteeName : invite.hostName}`;
+  const callTitle = access.topic || `1:1 with ${access.otherName}`;
 
   // ---- batch0 Live (the default) ------------------------------------------
   //
@@ -82,9 +117,22 @@ export default async function CallLivePage(
   // provider-side room. None of it has an equivalent here.
   if (env.liveProvider === "builtin") {
     return (
-      <BuiltinCallRoom inviteId={invite.id} title={callTitle} />
+      <BuiltinCallRoom
+        inviteId={access.inviteId}
+        title={callTitle}
+        backHref={backHref}
+        isOwner={isOwner}
+        otherName={access.otherName}
+        endsAt={access.endsAt}
+      />
     );
   }
+
+  const endsAt = access.endsAt;
+  // The Daily branch needs the provider room columns, which only the invite
+  // row carries.
+  const invite = await getInvite(access.inviteId);
+  if (!invite) notFound();
 
   // ---- Daily (opt-in via LIVE_PROVIDER=daily) -----------------------------
   if (!dailyConfigured()) {
@@ -93,7 +141,7 @@ export default async function CallLivePage(
         <p className="text-sm text-ink-soft">
           Live video isn&rsquo;t configured on this environment.
         </p>
-        <BackLink />
+        <BackLink href={backHref} />
       </Shell>
     );
   }
@@ -154,8 +202,8 @@ export default async function CallLivePage(
 
   const token = await mintToken({
     roomName,
-    userId: profile.id,
-    userName: profile.full_name || "Guest",
+    userId: access.userId,
+    userName: profile?.full_name || "Guest",
     // Both parties are hosts in a 1:1 — there is no audience to hide, and a
     // viewer token would leave one of them unable to speak.
     role: "host",
@@ -168,7 +216,8 @@ export default async function CallLivePage(
       roomUrl={roomUrl}
       token={token}
       role="host"
-      backHref="/dashboard/calls"
+      kind="call"
+      backHref={backHref}
     />
   );
 }
@@ -190,10 +239,10 @@ function Shell({
   );
 }
 
-function BackLink() {
+function BackLink({ href }: { href: string }) {
   return (
     <Link
-      href="/dashboard/calls"
+      href={href}
       className="mt-4 inline-block text-sm text-phosphor-ink hover:underline"
     >
       ← All calls

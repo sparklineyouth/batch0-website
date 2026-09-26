@@ -237,6 +237,9 @@ function buildMocks(): Mocks {
     roomName: null,
     roomUrl: null,
     externalUrl: null,
+    // Nobody has pressed End on any of these. `liveEndedAt` is required on
+    // LiveEvent so every list has to have read it.
+    liveEndedAt: null,
   };
 
   return {

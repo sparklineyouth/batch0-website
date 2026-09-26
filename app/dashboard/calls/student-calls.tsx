@@ -1,10 +1,14 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { InviteList } from "@/components/live/invite-card";
+import {
+  InviteList,
+  splitInvitesByPhase,
+} from "@/components/live/invite-card";
 import { InterviewRequestCard } from "@/components/interview-request-card";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { getActionError } from "@/lib/action-error";
-import { respondToInvite } from "@/app/calls/actions";
+import { cancelInvite, respondToInvite } from "@/app/calls/actions";
 import type { CallInvite } from "@/lib/live";
 import type { InterviewRequest } from "@/lib/interview-requests";
 import {
@@ -19,6 +23,11 @@ import {
  * this page is really for is the first group — an unanswered invite is a task,
  * and burying it in a reverse-chronological list of past calls is how it gets
  * missed.
+ *
+ * "Upcoming" and "Past" are split by `callPhase`, not by status: the row stays
+ * 'accepted' until someone presses End call, and a call that happened last
+ * week used to sit under Upcoming with a Join button and "Add to calendar"
+ * forever. It moves to Past, marked Completed, once its window has closed.
  */
 export function StudentCalls({
   invites,
@@ -36,11 +45,20 @@ export function StudentCalls({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
 
-  const pendingInvites = invites.filter((i) => i.status === "invited");
-  const upcoming = invites.filter((i) => i.status === "accepted");
-  const past = invites.filter(
-    (i) => !["invited", "accepted"].includes(i.status),
-  );
+  // The split needs a clock. Taken once at first render (server and client
+  // agree unless a call's window closes in the second between them) and
+  // re-taken every minute, so a call that ends while the page is open moves
+  // to Past without a reload.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const {
+    pending: pendingInvites,
+    upcoming,
+    past,
+  } = splitInvitesByPhase(invites, now);
 
   function respond(id: string, response: "accepted" | "declined") {
     setError(undefined);
@@ -49,6 +67,26 @@ export function StudentCalls({
         await respondToInvite(id, response);
         router.refresh();
       } catch (err: any) {
+        setError(getActionError(err));
+      }
+    });
+  }
+
+  // "Can't make it": the invitee backing out of an accepted call before it
+  // starts. The card offers it only then, and cancelInvite enforces the same
+  // window and tells the host. Once the call has started, Leave inside the
+  // room is how a student steps out. Confirmed first, because it cannot be
+  // undone from this side — the host would have to book again.
+  const [confirmWithdraw, setConfirmWithdraw] = useState<string | null>(null);
+  function withdraw(id: string) {
+    setError(undefined);
+    start(async () => {
+      try {
+        await cancelInvite(id);
+        setConfirmWithdraw(null);
+        router.refresh();
+      } catch (err: any) {
+        setConfirmWithdraw(null);
         setError(getActionError(err));
       }
     });
@@ -104,6 +142,7 @@ export function StudentCalls({
           invites={upcoming}
           perspective="invitee"
           emptyMessage="No calls booked. Mentors and investors can invite you here."
+          onCancel={setConfirmWithdraw}
           pending={pending}
         />
       </section>
@@ -121,6 +160,23 @@ export function StudentCalls({
           />
         </section>
       )}
+
+      <ConfirmDialog
+        open={confirmWithdraw !== null}
+        title="Can’t make this call?"
+        description={
+          <p>
+            The call is cancelled and whoever booked it is told you can&rsquo;t
+            make it. They can invite you again for another time.
+          </p>
+        }
+        confirmLabel="Cancel the call"
+        cancelLabel="Keep it"
+        destructive
+        pending={pending}
+        onConfirm={() => confirmWithdraw && withdraw(confirmWithdraw)}
+        onCancel={() => !pending && setConfirmWithdraw(null)}
+      />
     </div>
   );
 }

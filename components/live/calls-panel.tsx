@@ -1,10 +1,13 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getActionError } from "@/lib/action-error";
 import { InviteForm, type InviteeOption } from "@/components/live/invite-form";
-import { InviteList } from "@/components/live/invite-card";
+import {
+  InviteList,
+  splitInvitesByPhase,
+} from "@/components/live/invite-card";
 import { createInvite, cancelInvite } from "@/app/calls/actions";
 import type { CallInvite } from "@/lib/live";
 import { Plus } from "lucide-react";
@@ -18,6 +21,13 @@ import { Plus } from "lucide-react";
  * are decided by the server page that renders this. Behaviour that must be
  * identical everywhere — what the form validates, what cancelling does — has
  * exactly one implementation.
+ *
+ * Split into "Upcoming" and "Past" by `callPhase`. A call is Past once it was
+ * completed, cancelled or declined — or, being accepted, once its window has
+ * closed, even if nobody pressed End call. It used to stay in the one list
+ * with a Cancel button, and "tidying up" a finished call with Cancel told the
+ * student it was cancelled and refunded a credit it had spent. The card no
+ * longer offers Cancel on a finished call, and cancelInvite refuses one.
  */
 export function CallsPanel({
   invites,
@@ -32,6 +42,19 @@ export function CallsPanel({
   const [composing, setComposing] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
+  // Taken at first render and re-taken each minute, so a call that finishes
+  // while the panel is open moves to Past on its own. See StudentCalls.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const split = splitInvitesByPhase(invites, now);
+  // An unanswered invite is still ahead of the host; it belongs with the
+  // accepted ones, in start order as the server sent them.
+  const ahead = invites.filter(
+    (i) => split.pending.includes(i) || split.upcoming.includes(i),
+  );
 
   function submit(draft: {
     inviteeId: string;
@@ -89,12 +112,28 @@ export function CallsPanel({
       </div>
 
       <InviteList
-        invites={invites}
+        invites={ahead}
         perspective="host"
-        emptyMessage={emptyMessage}
+        emptyMessage={
+          split.past.length > 0 ? "Nothing coming up." : emptyMessage
+        }
         onCancel={cancel}
         pending={pending}
       />
+
+      {split.past.length > 0 && (
+        <section className="mt-8">
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
+            Past
+          </h3>
+          <InviteList
+            invites={split.past}
+            perspective="host"
+            emptyMessage=""
+            pending={pending}
+          />
+        </section>
+      )}
 
       {error && (
         <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>

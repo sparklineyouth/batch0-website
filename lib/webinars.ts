@@ -310,10 +310,17 @@ export type EventSpeaker = {
 /**
  * May this person broadcast in this room?
  *
- * The rule the live role is derived from, in one place so the page, the join
- * action and the announce action cannot drift. `events.manage` is the staff
- * grant; a speaker row is the per-event grant that exists so a guest does not
- * have to be handed the admin panel for forty minutes of talking.
+ * The rule the live role is derived from. `events.manage` is the staff grant
+ * (admins hold it through the `*` wildcard, and so does any custom role an
+ * admin ticks it on); a CLAIMED speaker row is the per-event grant that exists
+ * so a guest does not have to be handed the admin panel for forty minutes of
+ * talking. An unclaimed row (`userId` null) grants nobody anything.
+ *
+ * It is called in exactly one place — `resolveEventAccess` in
+ * lib/live-access.ts — and every consumer (the page, joinRoom/announce/leave,
+ * the room gates, the upload gate, the Q&A actions) reads the answer from
+ * there. That single call site is what actually keeps them from drifting; this
+ * function is where the rule is written down and tested.
  *
  * Takes ids rather than objects so the server can call it with whatever it has
  * already fetched, and so it has nothing to import.
@@ -332,6 +339,101 @@ export function canBroadcast({
   return speakers.some((s) => s.userId === userId);
 }
 
+/**
+ * May this host end the webinar for EVERYONE?
+ *
+ * Staff always. A guest speaker only when no staff host is present in the room
+ * — which keeps a guest-only webinar closable (otherwise the last speaker to
+ * finish could only Leave, and the audience would sit on "the host stepped
+ * away" until the window ran out) without letting a guest end a room an admin
+ * is running. A founder who presses "End" thinking it ends their segment is
+ * exactly the case this refuses; their normal exit is Leave.
+ *
+ * `staffPresent` comes from the attendance table (fresh host rows that belong
+ * to non-speakers). When that table cannot be read the server passes `false`,
+ * i.e. the rule fails OPEN for speakers: ending is reversible by staff and is
+ * not a privacy risk, while failing closed would strand guest-only webinars.
+ */
+export function canEndForEveryone({
+  isStaff,
+  isSpeaker,
+  staffPresent,
+}: {
+  isStaff: boolean;
+  isSpeaker: boolean;
+  staffPresent: boolean;
+}): boolean {
+  if (isStaff) return true;
+  if (isSpeaker) return !staffPresent;
+  return false;
+}
+
+/**
+ * How long the host who uploaded the latest recording segment keeps the
+ * recorder while present, in milliseconds.
+ *
+ * One segment's length plus two minutes. A segment is registered only when it
+ * finishes (every RECORDING_SEGMENT_SECONDS), so a window shorter than a
+ * segment would drop the stickiness between every pair of uploads and let the
+ * pick flap to another host mid-recording. The extra two minutes cover the
+ * upload itself.
+ */
+export const RECORDER_STICKY_MS = RECORDING_SEGMENT_SECONDS * 1000 + 2 * 60_000;
+
+/**
+ * Which host records this webinar right now. Exactly one, or nobody.
+ *
+ * The server calls this on every host heartbeat and tells each host whether
+ * they are it, which is what stops two admins in the same room from each
+ * running a recorder and interleaving (or, before segment indexes were seeded
+ * from the server, overwriting) each other's segments.
+ *
+ *   1. Sticky: whoever registered the most recent segment within
+ *      RECORDER_STICKY_MS keeps recording while they are still present. A
+ *      handover mid-talk costs a seam and risks a gap; not handing over when
+ *      nothing is wrong costs nothing.
+ *   2. Otherwise the earliest-joined present staff host. Deterministic, so
+ *      every host's heartbeat computes the same answer.
+ *
+ * Guest speakers never record: the recording is the program's record of a
+ * room that may contain minors, and it is owned by the staff accountable for
+ * it. (A speaker's tab would also be uploading an hour of video over the same
+ * connection it is broadcasting on.)
+ */
+export function pickRecorder({
+  presentHosts,
+  lastSegment,
+  now = new Date(),
+  stickyMs = RECORDER_STICKY_MS,
+}: {
+  presentHosts: readonly {
+    userId: string;
+    joinedAt: string | Date;
+    isSpeaker: boolean;
+  }[];
+  lastSegment: { userId: string | null; at: string | Date } | null;
+  now?: Date;
+  stickyMs?: number;
+}): string | null {
+  const staff = presentHosts.filter((h) => !h.isSpeaker);
+  if (staff.length === 0) return null;
+
+  if (lastSegment?.userId) {
+    const fresh = now.getTime() - new Date(lastSegment.at).getTime() <= stickyMs;
+    if (fresh && staff.some((h) => h.userId === lastSegment.userId)) {
+      return lastSegment.userId;
+    }
+  }
+
+  // Earliest joined wins; ties broken by id so two hosts whose rows share a
+  // timestamp still agree on one answer.
+  const sorted = [...staff].sort((a, b) => {
+    const d = new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+    return d !== 0 ? d : a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0;
+  });
+  return sorted[0].userId;
+}
+
 // ---------------------------------------------------------------------------
 // Premieres
 // ---------------------------------------------------------------------------
@@ -346,8 +448,10 @@ export function canBroadcast({
  *            read as live rather than as a video that started when they
  *            pressed play.
  *   live     A host is genuinely on camera. Either the recording has finished
- *            and the Q&A has opened, or a host went live early.
- *   ended    The window has closed.
+ *            and the Q&A has opened, or a host went live early. Also the
+ *            answer for any event with nothing to play (a hosted webinar),
+ *            from before its start onwards.
+ *   ended    A host pressed End for everyone, or the window has closed.
  */
 export type PremierePhase = "waiting" | "playing" | "live" | "ended";
 
@@ -376,27 +480,50 @@ export type PremiereState = {
  * schedule must yield to it immediately — the alternative is an audience
  * watching a recording of a person who is, at that moment, live on the other
  * side of the same page. Everything else is arithmetic on `startsAt`.
+ *
+ * With one exception above even that: **`liveEndedAt` ends it.** A host who
+ * pressed End for everyone has ended the premiere too — a recording that kept
+ * playing to viewers under an "Ended" badge was the bug that added this.
+ *
+ * And one rule about what a premiere IS: with `premiereSeconds` null there is
+ * nothing to play, so there is nothing to wait for either. A hosted webinar
+ * (which is what passes null) is 'live' from before its start — reading it as
+ * a premiere in 'waiting' hid the host's camera controls and End button for
+ * the whole early set-up window and then switched the camera on by itself at
+ * the scheduled start.
  */
 export function premiereState({
   startsAt,
   premiereSeconds,
   qaOpensAt,
   liveStartedAt,
+  liveEndedAt,
   endsAt,
   now = new Date(),
 }: {
   startsAt: string | Date;
-  /** Length of the recording. Null means there is nothing to play. */
+  /**
+   * Length of the recording. Null means there is nothing to play — a hosted
+   * webinar, or a premiere whose file has not been uploaded — and the room is
+   * simply live.
+   */
   premiereSeconds: number | null;
   /** Explicit switch-over time, when a host wanted one. */
   qaOpensAt?: string | Date | null;
   /** Set once a host has actually gone live. */
   liveStartedAt?: string | Date | null;
+  /** Set once a host has pressed End for everyone. Beats everything. */
+  liveEndedAt?: string | Date | null;
   endsAt?: string | Date | null;
   now?: Date;
 }): PremiereState {
   const t = now.getTime();
   const start = new Date(startsAt).getTime();
+
+  // Ended for everyone. Terminal for the premiere as for the live room.
+  if (liveEndedAt) {
+    return { phase: "ended", offsetSeconds: 0, secondsUntilNext: null };
+  }
 
   // A host is on camera. Nothing about the schedule matters any more.
   if (liveStartedAt) {
@@ -406,7 +533,10 @@ export function premiereState({
     }
   }
 
-  if (t < start) {
+  // Only a premiere with something to play waits for its start. Everything
+  // else — and in particular every hosted webinar — is live the moment anyone
+  // is let in.
+  if (t < start && premiereSeconds) {
     return {
       phase: "waiting",
       offsetSeconds: 0,

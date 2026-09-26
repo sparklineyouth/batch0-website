@@ -1,7 +1,6 @@
 import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { CallsPanel } from "@/components/live/calls-panel";
-import { InviteList } from "@/components/live/invite-card";
 import { InterviewRequestsPanel } from "@/components/live/interview-requests-panel";
 import {
   listInvitesForHost,
@@ -9,6 +8,7 @@ import {
   listInvitableStudents,
 } from "@/lib/calls";
 import { listOpenInterviewRequests } from "@/lib/interview-requests";
+import { ObservedCalls } from "./observed-calls";
 
 export const metadata = { title: "1:1 calls · Admin" };
 
@@ -23,8 +23,18 @@ export default async function AdminCallsPage() {
 
   // Everything anyone else has booked. This is the safeguarding view: in a
   // programme of minors, someone has to be able to answer "who has been
-  // meeting my students" without asking the participants. Read-only —
-  // cancelling someone else's call is the host's or the student's to do.
+  // meeting my students" without asking the participants.
+  //
+  // Observer cards, never host cards: an admin who is not one of the two
+  // people in a 1:1 can never enter it (the room page 404s and joinRoom says
+  // no-access for non-parties — the safeguarding rule and the privacy between
+  // two people, both kept on purpose). So there is no Join here. "Admin is
+  // always host" holds for the calls an admin BOOKS — those are in the panel
+  // above, where they are the owner, with Join and End call.
+  //
+  // Cancelling someone else's call is normally the host's or the student's to
+  // do. A superAdmin alone gets a Cancel, as the escalation path; cancelInvite
+  // accepts exactly that, and it disconnects both people if the call is live.
   const others = all.filter((i) => !mine.some((m) => m.id === i.id));
 
   return (
@@ -56,10 +66,9 @@ export default async function AdminCallsPage() {
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
           Booked by everyone else
         </h2>
-        <InviteList
+        <ObservedCalls
           invites={others}
-          perspective="host"
-          emptyMessage="Nobody else has booked a 1:1 yet."
+          canCancel={viewer.caps.superAdmin}
         />
       </section>
     </div>

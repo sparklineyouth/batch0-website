@@ -28,8 +28,8 @@ import {
  *
  * 2. Nothing here decides who may call it. There is deliberately no
  *    `listChatFor(userId)` that works out a role — the caller has already done
- *    the authorization (it is the same `resolveRoom` gate the live room runs)
- *    and passes the answer down. A function that guesses its own permissions is
+ *    the authorization (it is the same `resolveEventAccess` gate the live room
+ *    runs, lib/live-access.ts) and passes the answer down. A function that guesses its own permissions is
  *    a function with two sources of truth.
  */
 
@@ -499,46 +499,67 @@ export type AttendanceRow = {
  * and it is exactly the thing a guest speaker is not given (see `discloseNames`
  * in lib/live-rooms.ts). There is deliberately no viewer-shaped variant.
  *
- * `minutes` is last-seen minus joined, which over-counts someone who closed
- * their laptop mid-session by up to one heartbeat interval and under-counts
- * nobody. That asymmetry is the right one for an attendance figure: the error
- * is bounded, it is in the student's favour, and the alternative — summing
- * heartbeat gaps — would need a row per beat.
+ * `minutes` is (left, or last seen) minus joined, capped at the moment a host
+ * pressed End for everyone (`events.live_ended_at`), and a row that joined
+ * after End is dropped. What that does and does not get right:
+ *
+ *   - A tab closed without a Leave over-counts by up to PEER_TIMEOUT_MS (the
+ *     heartbeat stops; last_seen_at is at most one beat stale). Bounded, and in
+ *     the student's favour.
+ *   - A viewer idling on the ended screen is NOT credited past End, whether or
+ *     not their tab ever heard about it — End also closes every open row, and
+ *     announcePresence stops touching attendance for an ended event.
+ *   - Leaving and rejoining counts the gap as attended. The row keeps its
+ *     FIRST joined_at (it is one row per person per event), and exact minutes
+ *     across gaps would need per-session rows or an accumulated counter — a
+ *     migration this record does not have yet. This is an over-count, never
+ *     an under-count.
  */
 export async function listAttendance(
   eventId: string,
 ): Promise<AttendanceRow[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("live_participants")
-    .select(
-      "user_id, role, display_name, joined_at, last_seen_at, left_at, " +
-        "profile:profiles!live_participants_user_id_fkey(email)",
-    )
-    .eq("event_id", eventId)
-    .order("joined_at", { ascending: true })
-    .limit(1000);
+  const [{ data, error }, { data: ev }] = await Promise.all([
+    admin
+      .from("live_participants")
+      .select(
+        "user_id, role, display_name, joined_at, last_seen_at, left_at, " +
+          "profile:profiles!live_participants_user_id_fkey(email)",
+      )
+      .eq("event_id", eventId)
+      .order("joined_at", { ascending: true })
+      .limit(1000),
+    admin.from("events").select("live_ended_at").eq("id", eventId).maybeSingle(),
+  ]);
   if (error) {
     if (!isMissingTable(error)) {
       console.error("[webinars] attendance read failed", error.message);
     }
     return [];
   }
-  return (data ?? []).map((r: any) => {
-    const end = new Date(r.left_at ?? r.last_seen_at).getTime();
-    const start = new Date(r.joined_at).getTime();
-    const profile = one<any>(r.profile);
-    return {
-      userId: r.user_id,
-      name: r.display_name || "Student",
-      email: profile?.email ?? null,
-      role: r.role,
-      joinedAt: r.joined_at,
-      lastSeenAt: r.last_seen_at,
-      leftAt: r.left_at ?? null,
-      minutes: Math.max(0, Math.round((end - start) / 60_000)),
-    };
-  });
+  const endedAt = (ev as any)?.live_ended_at
+    ? new Date((ev as any).live_ended_at).getTime()
+    : null;
+  return (data ?? [])
+    .filter(
+      (r: any) => endedAt === null || new Date(r.joined_at).getTime() <= endedAt,
+    )
+    .map((r: any) => {
+      const seen = new Date(r.left_at ?? r.last_seen_at).getTime();
+      const end = endedAt === null ? seen : Math.min(seen, endedAt);
+      const start = new Date(r.joined_at).getTime();
+      const profile = one<any>(r.profile);
+      return {
+        userId: r.user_id,
+        name: r.display_name || "Student",
+        email: profile?.email ?? null,
+        role: r.role,
+        joinedAt: r.joined_at,
+        lastSeenAt: r.last_seen_at,
+        leftAt: r.left_at ?? null,
+        minutes: Math.max(0, Math.round((end - start) / 60_000)),
+      };
+    });
 }
 
 /**

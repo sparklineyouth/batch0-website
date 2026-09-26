@@ -21,25 +21,31 @@ import {
 import {
   DEFAULT_EVENT_MINUTES,
   normalizeDisplayViewers,
+  roomWindow,
   type LiveMode,
 } from "@/lib/live";
-import { normalizeAudienceMode, type AudienceMode } from "@/lib/webinars";
+import {
+  isHostedOnBatch0,
+  normalizeAudienceMode,
+  type AudienceMode,
+} from "@/lib/webinars";
 import { env } from "@/lib/env";
 
 /**
  * Where "join" should point for this event, in email and on Discord.
  *
- * Hosted events link to batch0.org, never to the room URL directly. The room
- * is private, so a raw link is useless without a token — and the page that
- * mints the token is the same page that checks whether the viewer is allowed
- * in at all.
+ * Both batch0-hosted modes (hosted and premiere) link to batch0.org, never to
+ * a room URL directly. The room is private, so a raw link is useless without
+ * credentials — and the page that mints them is the same page that checks
+ * whether the viewer is allowed in at all. This used to test `=== "hosted"`,
+ * so every premiere announcement went out with no link.
  */
 function joinUrl(
   mode: LiveMode,
   eventId: string,
   externalUrl: string | null,
 ): string | null {
-  return mode === "hosted"
+  return isHostedOnBatch0(mode)
     ? `${env.siteUrl}/dashboard/events/${eventId}/live`
     : externalUrl;
 }
@@ -189,6 +195,52 @@ export async function saveEvent(
     roomUrl = null;
   }
 
+  // ---- Live state on a rescheduled event ---------------------------------
+  //
+  // `live_started_at`, `live_ended_at` and `assets_shared_at` describe ONE
+  // run of an event. The recommended staff-only rehearsal on the same row, or
+  // simply moving an event to next week, used to carry the old run's stamps
+  // into the new one: the real webinar opened already "Ended" (and, since End
+  // is now enforced, refused everyone), a premiere read the old
+  // live_started_at as "a host went live" and never played, and the follow-up
+  // email never went out because the rehearsal had already claimed it.
+  //
+  // So a stamp that predates the new schedule's host window (start - 60m) is
+  // from a previous run and is cleared; a stamp inside the window is this
+  // run's and is kept (an admin fixing a typo in the title mid-webinar must
+  // not reopen it). The follow-up claim is cleared whenever the new end is
+  // still ahead — nothing can have been shared about a webinar that has not
+  // happened yet.
+  const liveReset: {
+    live_started_at?: null;
+    live_ended_at?: null;
+    assets_shared_at?: null;
+  } = {};
+  if (input.id) {
+    const { data: prior } = await admin
+      .from("events")
+      .select("live_started_at, live_ended_at, assets_shared_at")
+      .eq("id", input.id)
+      .maybeSingle();
+    const p = prior as any;
+    if (p) {
+      const w = roomWindow(input.starts_at, input.ends_at || null);
+      const stale = (at: string | null) =>
+        !!at && new Date(at).getTime() < w.hostOpensAt;
+      if (stale(p.live_started_at)) liveReset.live_started_at = null;
+      if (stale(p.live_ended_at)) liveReset.live_ended_at = null;
+      if (p.assets_shared_at && w.end > Date.now()) {
+        liveReset.assets_shared_at = null;
+      }
+    }
+  }
+
+  // A staff-only event is a rehearsal or an internal session. Emailing its
+  // recording to a cohort is never what anyone meant, so auto-share is forced
+  // off for it here as well as in the form (and the follow-up cron skips staff
+  // events too).
+  const autoShare = input.visibility === "staff" ? false : !!input.auto_share;
+
   const payload = {
     cohort_id: input.cohort_id || null,
     type: input.type,
@@ -197,7 +249,11 @@ export async function saveEvent(
     starts_at: input.starts_at,
     ends_at: input.ends_at || null,
     location: input.location?.trim() || null,
-    zoom_url: input.zoom_url?.trim() || null,
+    // An external link only means something for an external event. A leftover
+    // Zoom URL on a hosted webinar is a second, wrong "join" in the admin list
+    // and a stale link in anything that reads the column.
+    zoom_url:
+      input.live_mode === "external" ? input.zoom_url?.trim() || null : null,
     recording_url: input.recording_url?.trim() || null,
     visibility: input.visibility,
     live_mode: input.live_mode,
@@ -213,12 +269,13 @@ export async function saveEvent(
     // nothing, or a value this build does not recognise, stores 'private'.
     audience_mode: normalizeAudienceMode(input.audience_mode),
     auto_record: !!input.auto_record,
-    auto_share: !!input.auto_share,
+    auto_share: autoShare,
     // Only meaningful for a premiere. Cleared otherwise, so switching an event
     // away from premiere cannot leave a handover time behind that a later
     // switch back would silently resurrect.
     qa_opens_at:
       input.live_mode === "premiere" ? input.qa_opens_at || null : null,
+    ...liveReset,
   };
   let id = input.id;
   if (id) {
