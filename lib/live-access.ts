@@ -1,6 +1,7 @@
 import "server-only";
 import { requireActor } from "@/lib/server-guards";
 import { can, type Capabilities } from "@/lib/permissions";
+import { capabilitiesForRole } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -227,6 +228,67 @@ export async function roomAccessFor(
 }
 
 /**
+ * The hosts present in an event's room right now, each marked staff or not
+ * by THEIR OWN role — never by whether they are on the speaker list.
+ *
+ * The one place the speaker End rule ("is a staff host here?") and the
+ * recorder pick ("which staff host records?") learn who is who. Both used to
+ * call a present host staff only if they were NOT on the speaker list, which
+ * went wrong for anyone who is both: a staff member who opened a guest's claim
+ * link to test it (claiming is now refused for staff, but rows from before
+ * that stay), or a guest later promoted to a role with `events.manage`. Such
+ * a person was never picked to record — an auto-record webinar they ran alone
+ * was silently not recorded — and their presence did not stop a guest speaker
+ * from ending the room under them. Now staff means `events.manage` on the
+ * person's role, the same test resolveEventAccess applies to the caller.
+ *
+ * Null when presence cannot be read at all (see presentHosts: callers decide
+ * what "could not tell" means for them). If only the roles cannot be read, it
+ * falls back to the speaker list — the old rule, right for everyone who is
+ * not both — rather than guessing.
+ */
+export async function presentHostRoles(
+  eventId: string,
+): Promise<{ userId: string; joinedAt: string; isStaff: boolean }[] | null> {
+  const hosts = await presentHosts(eventId, PEER_TIMEOUT_MS);
+  if (hosts === null) return null;
+  if (hosts.length === 0) return [];
+  const staff = await staffAmong(hosts.map((h) => h.userId));
+  if (staff) return hosts.map((h) => ({ ...h, isStaff: staff.has(h.userId) }));
+  const speakers = new Set((await readSpeakerIds(eventId)) ?? []);
+  return hosts.map((h) => ({ ...h, isStaff: !speakers.has(h.userId) }));
+}
+
+/**
+ * Which of these users hold `events.manage`, from each one's profile role.
+ * Null when the profiles could not be read.
+ */
+async function staffAmong(userIds: readonly string[]): Promise<Set<string> | null> {
+  const ids = [...new Set(userIds)].filter(Boolean);
+  if (ids.length === 0) return new Set();
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id, role")
+    .in("id", ids);
+  if (error) {
+    console.error("[live-access] host role read failed", error.message);
+    return null;
+  }
+  const staff = new Set<string>();
+  // capabilitiesForRole reads the (request-cached) role table once, so this
+  // is one query however many hosts there are.
+  await Promise.all(
+    ((data ?? []) as { id: string; role: string | null }[]).map(async (r) => {
+      if (can(await capabilitiesForRole(r.role), "events.manage")) {
+        staff.add(r.id);
+      }
+    }),
+  );
+  return staff;
+}
+
+/**
  * Is `now` still inside this event's hard stop (end + 3h)?
  *
  * The one bound on End and Reopen, which are otherwise never window-gated: an
@@ -442,7 +504,8 @@ const UUID =
  * Separate from `speakerUserIds` in lib/webinar-data.ts, which returns [] on
  * any error — right for a display list, wrong here, where "the query failed"
  * would silently demote a guest speaker to a viewer mid-webinar. A missing
- * table (0084 not applied) is still "no speakers", which is the truth.
+ * table (0084 not applied) is still "no speakers", which is the truth. Also
+ * presentHostRoles' fallback when roles cannot be read.
  */
 async function readSpeakerIds(eventId: string): Promise<string[] | null> {
   const admin = createAdminClient();

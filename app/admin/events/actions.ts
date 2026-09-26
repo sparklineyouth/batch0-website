@@ -208,9 +208,14 @@ export async function saveEvent(
   // So a stamp that predates the new schedule's host window (start - 60m) is
   // from a previous run and is cleared; a stamp inside the window is this
   // run's and is kept (an admin fixing a typo in the title mid-webinar must
-  // not reopen it). The follow-up claim is cleared whenever the new end is
-  // still ahead — nothing can have been shared about a webinar that has not
-  // happened yet.
+  // not reopen it). The follow-up claim follows the SAME rule. It used to be
+  // cleared whenever the scheduled end was still ahead, which is also true
+  // right after an early End: host ends at 18:25 of an 18:00-19:00 webinar,
+  // the follow-up goes out at 18:45, an admin pastes the recording link at
+  // 18:50 and saves — and the claim was wiped, so the 19:00 run mailed every
+  // student a second time. A claim made during this run is inside the host
+  // window and survives a plain re-save; one left over from an earlier run
+  // (a reschedule, a reused row) predates it and is cleared.
   const liveReset: {
     live_started_at?: null;
     live_ended_at?: null;
@@ -229,9 +234,7 @@ export async function saveEvent(
         !!at && new Date(at).getTime() < w.hostOpensAt;
       if (stale(p.live_started_at)) liveReset.live_started_at = null;
       if (stale(p.live_ended_at)) liveReset.live_ended_at = null;
-      if (p.assets_shared_at && w.end > Date.now()) {
-        liveReset.assets_shared_at = null;
-      }
+      if (stale(p.assets_shared_at)) liveReset.assets_shared_at = null;
     }
   }
 

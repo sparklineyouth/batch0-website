@@ -19,10 +19,16 @@ import {
   listQuestionsForEvent,
   listQuestionsForAsker,
 } from "@/lib/webinar-questions";
-import { isHostedOnBatch0, isPremiere, premiereState } from "@/lib/webinars";
+import {
+  isHostedOnBatch0,
+  isPremiere,
+  premiereState,
+  type EventAsset,
+} from "@/lib/webinars";
 import {
   listAssets,
   listSpeakers,
+  signAssets,
   signedAssetUrl,
 } from "@/lib/webinar-data";
 import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
@@ -144,6 +150,7 @@ export default async function EventLivePage(
   if (where === "ended") {
     // Viewers only — a host's window ignores End. The ended shell, rather
     // than a green room that would hand out a Join into a finished webinar.
+    const files = await sharedSessionFiles(ev.id);
     return (
       <Shell title={ev.title}>
         <p className="text-sm text-ink-soft">
@@ -166,6 +173,7 @@ export default async function EventLivePage(
             Watch the recording
           </a>
         )}
+        {files && <SessionFiles files={files} />}
         <BackLink href={backHref} />
       </Shell>
     );
@@ -173,6 +181,7 @@ export default async function EventLivePage(
   if (where === "early" || where === "closed") {
     const opensMinutes =
       role === "host" ? HOST_JOIN_OPENS_MINUTES_BEFORE : JOIN_OPENS_MINUTES_BEFORE;
+    const files = where === "closed" ? await sharedSessionFiles(ev.id) : null;
     return (
       <Shell title={ev.title}>
         {where === "early" ? (
@@ -185,6 +194,17 @@ export default async function EventLivePage(
         ) : (
           <p className="text-sm text-ink-soft">This webinar is over.</p>
         )}
+        {where === "closed" && ev.recordingUrl && (
+          <a
+            href={ev.recordingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-block text-sm text-phosphor-ink hover:underline"
+          >
+            Watch the recording
+          </a>
+        )}
+        {files && <SessionFiles files={files} />}
         <BackLink href={backHref} />
       </Shell>
     );
@@ -289,6 +309,8 @@ export default async function EventLivePage(
       <BuiltinEventRoom
         eventId={ev.id}
         title={ev.title}
+        startsAt={ev.startsAt}
+        endsAt={ev.endsAt}
         role={role}
         isStaffHost={isStaffHost}
         // Staff always; a guest speaker only while no staff host is present.
@@ -394,6 +416,105 @@ export default async function EventLivePage(
       displayViewerCount={displayViewerCount}
       qa={{ eventId: ev.id, initialQuestions }}
     />
+  );
+}
+
+type SignedFile = EventAsset & { url: string | null };
+
+/**
+ * The recording and the slides, once the follow-up has gone out — or null.
+ *
+ * The follow-up email says "everything from the session is on the event
+ * page" and links here, and the ended screen used to show at most an
+ * admin-pasted `recording_url`: the segments the room itself recorded, and
+ * the deck, were on no page a student could reach. They are listed now, but
+ * only once `assets_shared_at` is set — the moment the email promising them
+ * went out. That is the auto-share decision, not an access decision (the
+ * reader already passed the room's gate): a webinar without auto-share, or
+ * one whose follow-up has not been sent, shows exactly what it showed before.
+ *
+ * Signed per render, for an hour, like the admin record page: short enough
+ * that a copied link goes stale, long enough to click through the parts.
+ */
+async function sharedSessionFiles(
+  eventId: string,
+): Promise<{ recordings: SignedFile[]; decks: SignedFile[] } | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("events")
+    .select("assets_shared_at")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (!(data as any)?.assets_shared_at) return null;
+  const assets = await listAssets(eventId, ["recording", "deck", "handout"]);
+  if (assets.length === 0) return null;
+  const [recordings, decks] = await Promise.all([
+    // Recordings open in the browser (no download filename), decks download.
+    Promise.all(
+      assets
+        .filter((a) => a.kind === "recording")
+        .map(async (a) => ({
+          ...a,
+          url: await signedAssetUrl(a.storagePath, 60 * 60),
+        })),
+    ),
+    signAssets(
+      assets.filter((a) => a.kind !== "recording"),
+      60 * 60,
+    ),
+  ]);
+  return { recordings, decks };
+}
+
+function SessionFiles({
+  files,
+}: {
+  files: { recordings: SignedFile[]; decks: SignedFile[] };
+}) {
+  const parts = files.recordings.length;
+  return (
+    <div className="mt-4 space-y-3 text-sm">
+      {parts > 0 && (
+        <div>
+          <p className="font-medium text-ink">The recording</p>
+          <ul className="mt-1 space-y-1">
+            {files.recordings.map((r, i) =>
+              r.url ? (
+                <li key={r.id}>
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-phosphor-ink hover:underline"
+                  >
+                    {parts === 1 ? "Watch" : `Part ${i + 1} of ${parts}`}
+                    {r.durationSeconds
+                      ? ` · ${Math.max(1, Math.round(r.durationSeconds / 60))} min`
+                      : ""}
+                  </a>
+                </li>
+              ) : null,
+            )}
+          </ul>
+        </div>
+      )}
+      {files.decks.length > 0 && (
+        <div>
+          <p className="font-medium text-ink">The slides</p>
+          <ul className="mt-1 space-y-1">
+            {files.decks.map((d) =>
+              d.url ? (
+                <li key={d.id}>
+                  <a href={d.url} className="text-phosphor-ink hover:underline">
+                    {d.filename}
+                  </a>
+                </li>
+              ) : null,
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

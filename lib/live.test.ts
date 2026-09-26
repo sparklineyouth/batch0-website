@@ -20,6 +20,7 @@ import {
   roomWindow,
   eventLiveStatus,
   callPhase,
+  formatEventTime,
   type CallInvite,
   type LiveRole,
   type RoomAccess,
@@ -460,4 +461,29 @@ test("a call owner's Back goes to their own calls page", () => {
     callsHomeFor(capabilitiesFrom("custom", ["mentor.panel", "calls.invite", "events.manage"])),
     "/admin/calls",
   );
+});
+
+// ---------------------------------------------------------------------------
+// Server-rendered event times (emails)
+// ---------------------------------------------------------------------------
+
+test("an email's event time is Eastern and says so, whatever the server's zone", () => {
+  // 22:00 UTC on 27 Sep 2026 is 18:00 EDT. The invite used to print
+  // "9/27/2026, 10:00:00 PM" from a UTC server, with no zone.
+  const summer = formatEventTime("2026-09-27T22:00:00Z");
+  assert.match(summer, /Sep 27, 2026/);
+  assert.match(summer, /6:00 PM/);
+  assert.match(summer, /EDT$/);
+  assert.doesNotMatch(summer, /10:00/);
+  // Standard time gets the other label.
+  const winter = formatEventTime(new Date("2026-12-06T23:30:00Z"));
+  assert.match(winter, /Dec 6, 2026/);
+  assert.match(winter, /6:30 PM/);
+  assert.match(winter, /EST$/);
+  // Plain spaces only — no narrow no-break space before "PM" in a mail body.
+  assert.doesNotMatch(summer + winter, /[\u202f\u00a0]/);
+});
+
+test("an unparseable time is passed through rather than printed as 'Invalid Date'", () => {
+  assert.equal(formatEventTime("not a date"), "not a date");
 });

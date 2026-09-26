@@ -88,6 +88,14 @@ a stronger guarantee — and it is enforced in four independent places:
    carrying a user id and a display name. Routing both directions through the
    viewer's own channel means a viewer never learns any topic but its own.
    Pinned by `connectionTopic()` and its tests in `lib/live-signal.test.ts`.
+   The corollary: every host connected to a viewer listens on that viewer's
+   inbox, so with two broadcasters on air each hears the viewer's traffic for
+   the other. A viewer's `answer`, `ice` and `bye` therefore carry `to` (the
+   host they are for), and a host drops anything addressed to someone else
+   (`isAddressedTo`). A message without `to` — a tab from before the field —
+   is still accepted, so a deploy never splits a live room; as a backstop an
+   answer is applied only while our own offer is outstanding
+   (`shouldApplyAnswer`), and a stray one is dropped quietly.
 
 4. **RLS.** `live_participants` lets a host read the room and a viewer read
    only their own row. There is deliberately no insert/update policy at all —
@@ -170,7 +178,8 @@ The ordering problem is that students arrive before the host does.
   nothing. A forged one costs one throttled re-check. `host-online` is a hint
   in exactly the same sense.
 - A departure is a `bye` with `reason: "leave"` (a connection being rebuilt
-  sends `reason: "rebuild"`, which is not a departure). The other side marks
+  sends `reason: "rebuild"`, which is not a departure), addressed with `to` to
+  the one peer it concerns. The other side marks
   that peer as **left** instead of drawing a frozen tile, and the heartbeat
   never resurrects a peer who left on purpose — reconnecting after a Leave is
   always the leaver's own Rejoin. Hosts also prune viewer connections that
@@ -204,6 +213,12 @@ intern or custom role with `events.manage` ticked. There are two kinds:
 | Records | the one the server picks | never |
 
 Every host is on air. There is no backstage mode.
+
+Who among the hosts *present in a room* is staff — for the speaker End rule
+and the recorder pick — is decided by each person's own role
+(`presentHostRoles` in `lib/live-access.ts`), never by "not on the speaker
+list". Staff cannot claim a speaker slot at all: opening a guest's claim link
+while signed in as staff is a no-op, and the link stays good for the guest.
 
 An admin is **never downgraded to viewer**. The event is read through the
 caller's own RLS first, and a caller with `events.manage` who gets no row
@@ -257,19 +272,30 @@ student to `/dashboard/events` or `/dashboard/calls`.
 **Leave means "I go; the room keeps running."** A viewer who leaves stops
 their tracks, tears down, is marked left, and sees "You've left" with a Rejoin
 that really goes back through the green room. A host who leaves while another
-host is on air just leaves (the recorder flushes first). The **last** host on
+host is on air just leaves. Leaving takes a host off air at once — the
+session (and every peer connection) goes down the moment Leave is confirmed;
+the recorder then captures its final segment, the devices stop, and any upload
+still running finishes behind the "You've left" screen, which says "keep this
+tab open" and arms the unload prompt until it lands. The **last** host on
 air in a webinar nobody has ended gets a choice: End for everyone, Leave and
 keep the room open, or Cancel. While no host is on, viewers see "The host
 stepped away — you'll reconnect automatically", not "waiting for the host to
-start".
+start". A viewer who (re)joins during the gap has not seen the host this
+session, so past the scheduled start they get the neutral "The host isn't on
+air right now" instead — never "waiting for the host to start" mid-webinar.
+
+A viewer on the ended screen keeps polling (30s, 60s after an empty answer)
+for a Reopen until the hard stop, so a reopen is noticed even when the first
+answers come back empty because no host is on air yet.
 
 **End for everyone** is one control, in the room's control bar, with a
 two-step confirm (admins also have it on `/admin/webinars` and
 `/admin/events/[id]`, without going on air). `endLive` stamps
 `live_ended_at` — the first End wins and later presses return the same stamp —
 closes open polls and open attendance rows, and sends `room-changed`. Only
-then does the host's own client flush the recorder and stop its tracks; if
-`endLive` fails, nothing is torn down and the host can retry. Everyone else
+then does the host's own client go off air, capture the recorder's final
+segment and stop its tracks (the upload finishes on the ended screen, as for
+Leave); if `endLive` fails, nothing is torn down and the host can retry. Everyone else
 tears down when they hear it (the hint, the next heartbeat, or the room's
 poll): other hosts see "The webinar was ended", viewers a terminal "This
 webinar has ended" with no Rejoin. From then on the server refuses

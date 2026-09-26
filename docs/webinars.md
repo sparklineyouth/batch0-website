@@ -133,7 +133,9 @@ which emails the address on the *saved* row — never one typed into the form �
 and refuses once the slot is claimed). A claimed row says so. The room page
 runs the claim before it reads the event, so a guest outside the event's
 audience (a mentor, or a guest on an enrolled-only webinar) is not turned away
-before their link is spent.
+before their link is spent. Staff never claim: an admin who opens a copied
+link to check it hosts through `events.manage` as always, and the token is
+left for the guest.
 
 `claim_token` and `email` are revoked from `anon` and `authenticated` at the
 column level. Note the spelling in the migration — a column-level `REVOKE` is a
@@ -151,11 +153,18 @@ version.
 button to forget. On every host heartbeat the server picks the recorder
 (`pickRecorder` in `lib/webinars.ts`) and tells each host whether it is them:
 
-1. **Sticky:** whoever registered the most recent segment within
+1. **Sticky:** whoever registered the most recent real segment within
    `RECORDER_STICKY_MS` (one five-minute segment plus two minutes for the
    upload) keeps recording while they are present. A handover mid-talk costs a
-   seam; not handing over when nothing is wrong costs nothing.
-2. Otherwise, the **earliest-joined staff host** who is present.
+   seam; not handing over when nothing is wrong costs nothing. "Real" means at
+   least `RECORDER_STICKY_MIN_SECONDS` long (`stickySegment`): the short flush
+   a recorder uploads when it loses the pick must not hand the recording back
+   to it, or two hosts can ping-pong it every heartbeat.
+2. Otherwise, the **earliest-joined staff host** who is present — staff by
+   their own role, so a staff member who also holds a speaker row is eligible.
+
+If presence cannot be read, a staff host records blind only when nobody else
+has registered a real segment recently (`mayRecordBlind`).
 
 Guest speakers never record. The recording is the program's record of a room
 that may contain minors, and it belongs to the staff accountable for it. A
@@ -177,14 +186,26 @@ memory grows all hour, the upload starts exactly when the host wants to close
 the laptop, and any failure costs the whole recording. Each segment is a
 self-contained file and `event_assets.sort_order` is its index. The index is
 seeded from the server (`nextRecordingIndex`: the highest recording index plus
-one), so a reload or a handover to another host **appends** instead of
-overwriting segment 0. Registration replaces the row for (event, `recording`,
-index) in application code — select, then update (removing the old storage
-object) or insert, retrying a unique-violation as an update — so a recovering
-recorder cannot make the recording play the same five minutes twice. It is
-done that way rather than as a PostgREST upsert because the unique index is
-*partial*, and `ON CONFLICT` cannot target a partial index: every segment
-upsert used to fail with `42P10` and no recording was ever attached.
+one), so a reload or a handover to another host starts past everything
+already there. Registration (`saveRecordingSegment`, staff only) never lets
+one segment destroy another:
+
+- the same file registered twice returns the row it already has, and a file
+  already attached to a different segment is refused;
+- the same recorder registering the same segment name again
+  (`segment-0004.webm` — a re-upload after a dropped connection) **replaces**
+  that row and deletes its old file (unless another row still points at it),
+  so the recording never plays the same five minutes twice;
+- anything else is a new segment: inserted at the index the recorder asked
+  for, or — if that index is taken, say by a second staff recorder
+  overlapping this one during a handover — at the next free index. It never
+  replaces someone else's segment.
+
+It is done in application code rather than as a PostgREST upsert because the
+unique index is *partial*, and `ON CONFLICT` cannot target a partial index:
+every segment upsert used to fail with `42P10` and no recording was ever
+attached. The index still makes a clash atomic (a 23505 sends registration to
+the next free index).
 
 The cost is a seam of tens of milliseconds every five minutes, because a
 `MediaRecorder` has to be stopped and restarted for each file to carry its own
@@ -207,15 +228,24 @@ The order, and why:
    and tear down. Without the stamp a viewer's browser cannot tell a host who
    ended from a host who dropped off hotel wifi. If it fails, **nothing** is
    torn down: the host stays live with an error and can retry.
-2. **`await recorder.stop()`**, before the media tracks are stopped.
+2. **Off air.** The session goes down at once — `bye` to every peer — so the
+   host stops broadcasting now, not after anything uploads.
+3. **`await recorder.stop()`**, before the media tracks are stopped.
    `media.stop()` ends the tracks the recorder is reading, so stopping them
    first truncates the final segment — reliably the Q&A, reliably the part
-   people re-watch.
-3. Screen, camera and mic stop, and the host lands on the ended screen.
-   The room stops them itself, after the flush: `useLocalMedia` deliberately
-   does not stop the devices when its auto-start gate turns off, because an
-   End that arrives by poll would otherwise kill the tracks before the
-   recorder had flushed.
+   people re-watch. `stop()` resolves once the final segment is *captured*
+   (its blob built — milliseconds, capped at a few seconds), never on its
+   upload. It used to wait for the upload with no bound on the final
+   segment, which on a host's Leave meant staying on air to the whole room
+   for as long as ~27 MB took to climb their uplink.
+4. Screen, camera and mic stop, and the host lands on the ended screen, which
+   shows "Saving the recording — keep this tab open" and arms the unload
+   prompt until the upload lands. Reopen (and Rejoin after a Leave) waits for
+   those uploads first, bounded at 90 seconds, because it remounts the room.
+   The room stops the devices itself, after the capture: `useLocalMedia`
+   deliberately does not stop them when its auto-start gate turns off,
+   because an End that arrives by poll would otherwise kill the tracks
+   before the recorder had its last frame.
 
 End is reversible, but only deliberately: **staff** press Reopen (on the ended
 screen or on the admin pages). Pressing Start again does **not** reopen an
@@ -297,10 +327,19 @@ happened: the last recording segment is still uploading when the host clicks
 away, and hosts do not always press End — they close the laptop, and the
 students who missed it are exactly the ones the email is for.
 
-When it is due: 15 minutes after `live_ended_at` when a host pressed End;
-otherwise 15 minutes after the audience window closed (scheduled end + 30
-minutes), so an overrunning webinar is never mailed about while it is still
-live. An auto-recorded webinar with no recording attached yet is left for later
+When it is due: 15 minutes after `live_ended_at` when a host pressed End
+during the run (an End stamped before the scheduled start is a rehearsal's
+and is ignored); otherwise 15 minutes after the audience window closed
+(scheduled end + 30 minutes) — but a webinar nobody ended is skipped as
+`still-running` while a host is still in the room, up to the hard stop at
+end + 3h, so an overrunning talk is never mailed about while it is live. The
+claim is conditional on the `live_ended_at` the run read, so a Reopen in
+between cancels the send. The email and the notification link to the event's
+room page (`/dashboard/events/<id>/live`; the bare `/dashboard/events/<id>`
+redirects there), which after the webinar lists the recording and the slides
+once the follow-up has gone out. Editing the event later does not re-arm the
+follow-up: the claim is cleared only when it predates the event's (new) host
+window, like the other live stamps. An auto-recorded webinar with no recording attached yet is left for later
 runs (up to two hours) rather than being marked as having nothing to share.
 A **staff-only** event is never shared — it is a rehearsal — and the form shows
 "Share afterwards" off for one.

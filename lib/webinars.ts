@@ -385,13 +385,15 @@ export const RECORDER_STICKY_MS = RECORDING_SEGMENT_SECONDS * 1000 + 2 * 60_000;
  *
  * The server calls this on every host heartbeat and tells each host whether
  * they are it, which is what stops two admins in the same room from each
- * running a recorder and interleaving (or, before segment indexes were seeded
- * from the server, overwriting) each other's segments.
+ * running a recorder and interleaving each other's segments. (Registration
+ * no longer lets one overwrite the other — it appends on a clash — but two
+ * cameras cut together in five-minute pieces is not a recording.)
  *
- *   1. Sticky: whoever registered the most recent segment within
- *      RECORDER_STICKY_MS keeps recording while they are still present. A
- *      handover mid-talk costs a seam and risks a gap; not handing over when
- *      nothing is wrong costs nothing.
+ *   1. Sticky: whoever registered the most recent REAL segment (see
+ *      stickySegment — a flush from a recorder that just lost the pick does
+ *      not count) within RECORDER_STICKY_MS keeps recording while they are
+ *      still present. A handover mid-talk costs a seam and risks a gap; not
+ *      handing over when nothing is wrong costs nothing.
  *   2. Otherwise the earliest-joined present staff host. Deterministic, so
  *      every host's heartbeat computes the same answer.
  *
@@ -432,6 +434,71 @@ export function pickRecorder({
     return d !== 0 ? d : a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0;
   });
   return sorted[0].userId;
+}
+
+/**
+ * The shortest segment that counts for stickiness, in seconds.
+ *
+ * A recorder that loses the pick stops, and stopping flushes whatever it had
+ * — usually one heartbeat's worth (about 12s) of a recording it should never
+ * have started. Keyed on "the most recent segment" alone, that flush made the
+ * loser sticky, so the NEXT heartbeat handed the recording back to it and
+ * stopped the real recorder, whose own flush then took it back again: the
+ * pick could ping-pong for as long as the heartbeats stayed in phase, cutting
+ * the recording into twelve-second pieces from two cameras. A minute is far
+ * above any such flush and far below a real five-minute segment.
+ */
+export const RECORDER_STICKY_MIN_SECONDS = 60;
+
+/**
+ * Which registered segment the sticky rule should key on: the most recently
+ * registered one long enough to be real recording (RECORDER_STICKY_MIN_SECONDS),
+ * or null. Pass the last few segments by registration time; feed the answer to
+ * pickRecorder as `lastSegment`.
+ */
+export function stickySegment(
+  segments: readonly {
+    userId: string | null;
+    at: string | Date;
+    seconds: number | null;
+  }[],
+  minSeconds: number = RECORDER_STICKY_MIN_SECONDS,
+): { userId: string | null; at: string | Date } | null {
+  let best: { userId: string | null; at: string | Date } | null = null;
+  let bestAt = -Infinity;
+  for (const s of segments) {
+    if ((s.seconds ?? 0) < minSeconds) continue;
+    const t = new Date(s.at).getTime();
+    if (!Number.isFinite(t) || t <= bestAt) continue;
+    best = { userId: s.userId, at: s.at };
+    bestAt = t;
+  }
+  return best;
+}
+
+/**
+ * Host presence could not be read at all: should this staff host record anyway?
+ *
+ * Yes, unless someone ELSE registered a real segment within the sticky window
+ * — then they are recording, and a second recorder would only interleave with
+ * them. This used to be an unconditional yes ("a duplicate is recoverable, a
+ * webinar nobody recorded is not"), so one failed attendance read turned every
+ * staff host in the room into a recorder for a heartbeat, each numbering
+ * segments from the same seed as the real one.
+ */
+export function mayRecordBlind({
+  userId,
+  lastSegment,
+  now = new Date(),
+  stickyMs = RECORDER_STICKY_MS,
+}: {
+  userId: string;
+  lastSegment: { userId: string | null; at: string | Date } | null;
+  now?: Date;
+  stickyMs?: number;
+}): boolean {
+  if (!lastSegment?.userId || lastSegment.userId === userId) return true;
+  return now.getTime() - new Date(lastSegment.at).getTime() > stickyMs;
 }
 
 // ---------------------------------------------------------------------------

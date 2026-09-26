@@ -83,10 +83,26 @@ import {
  */
 
 /**
- * Longest `stop()` will wait for segments already on the wire.
+ * Longest `stop()` will wait for the recorder to hand over its final file.
  *
- * See the note in `runStop`. This is the ceiling on how long the host's End
- * button can block, not a target — a healthy drain is a second or two.
+ * `stop()` waits for the CAPTURE of the last segment — `onstop` building the
+ * blob, which takes milliseconds — and never for its upload (see `runStop`).
+ * This is only the guard for a recorder whose `onstop` never comes, so that a
+ * browser bug cannot keep a host on air after they pressed Leave.
+ */
+const CAPTURE_TIMEOUT_MS = 3_000;
+
+/**
+ * Longest `drain()` will wait for segments already on the wire.
+ *
+ * Neither Leave nor End waits for an upload any more — the host is taken off
+ * air as soon as the final blob exists, and the uploads finish on the
+ * left/ended screen, which says "keep this tab open" and arms the unload
+ * prompt while they do. `drain()` is for the one caller that must not move on
+ * until they land: a Rejoin or Reopen, which remounts the room and would
+ * otherwise drop them from the screen and from the unload guard. This is the
+ * ceiling on how long that button can block, not a target — a healthy drain is
+ * a second or two.
  */
 const UPLOAD_DRAIN_TIMEOUT_MS = 90_000;
 
@@ -183,20 +199,38 @@ export function useRecorder({
    *
    * `startIndex` is the first segment number to use, seeded from the server
    * (`nextRecordingIndex`: the highest registered segment + 1). A fresh mount
-   * counts from 0, so without the seed a host who reloads mid-webinar — or a
-   * second staff host taking over — numbered their first file segment 0 and
-   * replaced the one already registered there: the opening of the talk,
-   * silently overwritten by the middle of it. The seed never moves the
+   * counts from 0, so without the seed a host who reloads mid-webinar
+   * numbered their first file segment 0 — the same name as their opening
+   * segment, which the server takes for a retry and replaces: the opening of
+   * the talk, silently overwritten by the middle of it. (A different host's
+   * segment at that index is never replaced — registration appends on a
+   * clash — but it would still play out of order.) The seed never moves the
    * counter backwards, so segments this tab has numbered but not yet
    * registered are never reused.
    */
   start: (opts?: { startIndex?: number }) => void;
   /**
-   * Flush the current segment and await its upload. Awaitable because the
-   * host's End button awaits it before tearing the tracks down — stopping the
-   * camera first would cut the last segment mid-frame.
+   * Stop, and resolve once the final segment has been CAPTURED — its blob
+   * built from the recorder's last chunk — not once it has uploaded.
+   * Awaitable because Leave and End await it before stopping the tracks:
+   * stopping the camera first would cut the last segment mid-frame. Bounded
+   * (CAPTURE_TIMEOUT_MS) in case `onstop` never fires.
+   *
+   * The upload keeps going after this resolves; `state` stays "uploading"
+   * until it lands. It used to resolve only once the upload had settled, and
+   * Leave awaited that with the camera and mic still on the wire: a host who
+   * pressed Leave stayed on air to the whole room for as long as a ~27 MB
+   * segment took to climb their uplink — minutes, on bad wifi, and without
+   * any bound at all on the final segment.
    */
   stop: () => Promise<void>;
+  /**
+   * Wait for every segment still uploading, bounded by
+   * UPLOAD_DRAIN_TIMEOUT_MS. For a caller about to remount the room (Rejoin,
+   * Reopen), which would otherwise lose track of uploads in flight. Never
+   * rejects; resolves at once when nothing is on the wire.
+   */
+  drain: () => Promise<void>;
 } {
   const [state, setState] = useState<RecorderState>("idle");
   const [uploaded, setUploaded] = useState(0);
@@ -222,24 +256,28 @@ export function useRecorder({
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const rotateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Resolves once the CURRENT segment has stopped and its upload has settled. */
-  const doneRef = useRef<Promise<void> | null>(null);
+  /**
+   * Resolves once the CURRENT segment has been captured: `onstop` has built
+   * its blob and put the upload on `inFlightRef` (or found it empty). Not its
+   * upload — see `stop`. What Leave and End wait for before the tracks stop.
+   */
+  const capturedRef = useRef<Promise<void> | null>(null);
   /**
    * Every segment upload still on the wire — not just the newest one.
    *
-   * `doneRef` only ever points at the segment that stopped most recently, and
-   * by design a new segment is begun BEFORE the previous one's upload is
+   * By design a new segment is begun BEFORE the previous one's upload is
    * awaited, so on a slow uplink two or three files are in flight at once.
-   * `stop()` used to await `doneRef` alone, and the consequence was silent
-   * data loss: the host clicks End at 12:00 while segment 2 (minutes 5-10) is
-   * still climbing hotel wifi, `stop()` resolves on segment 3 only, the caller
-   * tears the room down, the component unmounts, the page navigates, and
-   * segment 2's request dies in flight. The recording is missing five minutes
-   * of the talk and nothing — no error, no counter, no state — ever says so.
-   * So every upload registers here for the length of its flight and `runStop`
-   * waits for all of them. A Set rather than an array because entries are
-   * removed as they land; an hour-long webinar must not finish holding twelve
-   * settled promises it will never look at again.
+   * Waiting on the newest alone was silent data loss: the host clicks End at
+   * 12:00 while segment 2 (minutes 5-10) is still climbing hotel wifi, the
+   * wait resolves on segment 3 only, the room is torn down and remounted or
+   * navigated away from, and segment 2's request dies in flight — five
+   * minutes of the talk missing with nothing that ever says so. So every
+   * upload registers here for the length of its flight: `pendingUploadsRef`
+   * holds the state at "uploading" (the screen and the unload prompt) until
+   * the last one lands, and `drain` waits for all of them. A Set rather than
+   * an array because entries are removed as they land; an hour-long webinar
+   * must not finish holding twelve settled promises it will never look at
+   * again.
    */
   const inFlightRef = useRef<Set<Promise<void>>>(new Set());
   const nextIndexRef = useRef(0);
@@ -293,9 +331,10 @@ export function useRecorder({
       setState("recording");
       return;
     }
-    // Stopped, but the last segment is still on the wire. The host's End
-    // button leans on this: it is the difference between "you can close the
-    // laptop" and "don't".
+    // Stopped, but the last segment is still on the wire. The left and ended
+    // screens (and their unload prompt) lean on this: Leave and End no longer
+    // wait for the upload, so this is the difference between "you can close
+    // the laptop" and "don't".
     setState(pendingUploadsRef.current > 0 ? "uploading" : "idle");
   }, []);
 
@@ -487,9 +526,9 @@ export function useRecorder({
     segmentStartRef.current = startedAt;
     recorderRef.current = rec;
 
-    let settle: () => void = () => {};
-    doneRef.current = new Promise<void>((resolve) => {
-      settle = resolve;
+    let captured: () => void = () => {};
+    capturedRef.current = new Promise<void>((resolve) => {
+      captured = resolve;
     });
 
     rec.ondataavailable = (ev: BlobEvent) => {
@@ -527,24 +566,29 @@ export function useRecorder({
       if (runningRef.current) beginSegmentRef.current();
 
       if (blob.size === 0) {
-        settle();
+        captured();
         syncState();
         return;
       }
 
       pendingUploadsRef.current += 1;
       syncState();
-      // Published to `inFlightRef` before the first await, so a `stop()` that
-      // lands one tick later can already see this upload and wait for it. The
-      // promise is created here rather than being the async function's own,
-      // because the `finally` below has to be able to name the entry it is
-      // removing and the IIFE's promise does not exist until after its body
-      // has started running.
+      // Published to `inFlightRef` before the first await, so a `drain()`
+      // that lands one tick later can already see this upload and wait for
+      // it. The promise is created here rather than being the async
+      // function's own, because the `finally` below has to be able to name
+      // the entry it is removing and the IIFE's promise does not exist until
+      // after its body has started running.
       let landed: () => void = () => {};
       const flight = new Promise<void>((resolve) => {
         landed = resolve;
       });
       inFlightRef.current.add(flight);
+      // CAPTURED, from here: the blob exists, the upload is registered, and
+      // the tracks this segment was drawn from are no longer needed. Leave
+      // and End wait for exactly this and nothing after it, so the host goes
+      // off air now rather than when the upload below finishes.
+      captured();
       void (async () => {
         try {
           await onSegmentRef.current(blob, index, duration);
@@ -559,13 +603,12 @@ export function useRecorder({
           if (mountedRef.current) setError(uploadErrorText(err, failuresRef.current));
         } finally {
           pendingUploadsRef.current -= 1;
-          // Off the in-flight list whether it uploaded or threw: a `stop()`
+          // Off the in-flight list whether it uploaded or threw: a `drain()`
           // waiting on the set is waiting for flights to END, not to succeed,
-          // and an entry left behind would make every later stop wait on a
+          // and an entry left behind would make every later drain wait on a
           // promise that had already resolved.
           inFlightRef.current.delete(flight);
           landed();
-          settle();
           syncState();
         }
       })();
@@ -575,7 +618,9 @@ export function useRecorder({
       rec.start(CHUNK_MS);
     } catch {
       fail("This browser wouldn't start a recorder. The webinar is unaffected — it just won't be recorded.");
-      settle();
+      // Nothing was captured and `onstop` will never come for a recorder
+      // that never started; release anyone waiting on it.
+      captured();
       return;
     }
 
@@ -691,10 +736,11 @@ export function useRecorder({
   /**
    * The event the CURRENT (or most recent) run started under.
    *
-   * `index` is the only identifier `onSegment` gets, and the server treats a
-   * second registration at the same `(event, recording, sort_order)` as a
-   * replacement — so restarting the recorder inside one webinar and numbering
-   * from zero again does not append, it OVERWRITES. A host who
+   * `index` is the only identifier `onSegment` gets (it names the file, too:
+   * `segment-0004.webm`), and the server treats the same recorder registering
+   * the same segment name again as a retry and replaces it — so restarting
+   * the recorder inside one webinar and numbering from zero again does not
+   * append, it OVERWRITES this host's own earlier segments. A host who
    * stopped recording to take a phone call and started again twenty minutes
    * later used to come back to a recording whose first segments had been
    * silently replaced by the second run's. The counter therefore survives a
@@ -831,66 +877,80 @@ export function useRecorder({
     syncState();
 
     const rec = recorderRef.current;
-    let done = doneRef.current;
+    let captured = capturedRef.current;
     // Stopped whenever it is live, without asking whether WE were the ones who
     // thought it was running. `fail` clears `runningRef` while a recorder is
     // still open, and the old `wasRunning` guard meant that in exactly that
-    // state nobody stopped it, nobody fired `onstop`, and `done` — which only
-    // `onstop` resolves — stayed pending forever. `stop()` never returned, so
-    // the End button's `await recorder.stop()` never returned either and the
-    // host was stuck in a room with a dead recorder.
-    if (rec && rec.state !== "inactive") {
+    // state nobody stopped it, nobody fired `onstop`, and the promise only
+    // `onstop` resolves stayed pending forever — and so did the End button
+    // awaiting it, with the host stuck in a room with a dead recorder.
+    if (!rec) {
+      // Nothing open to flush: the last segment's `onstop` already ran (it
+      // clears `recorderRef`), or no segment ever started.
+      captured = null;
+    } else if (rec.state !== "inactive") {
       try {
         rec.stop();
       } catch {
-        // Refused to stop, so its `onstop` is never coming and `done` is a
-        // promise with nothing left to resolve it. Drop it rather than await
-        // it, for the same reason: a hang here traps the host.
-        done = null;
+        // Refused to stop, so its `onstop` is never coming and `captured` is
+        // a promise with nothing left to resolve it. Drop it rather than
+        // await it, for the same reason: a hang here traps the host.
+        captured = null;
       }
     }
-    // `done` resolves inside `onstop`, after the final `dataavailable` has been
-    // collected AND after `onSegment` has settled. Awaiting the recorder's
-    // `onstop` alone would resolve while the last five minutes were still on
-    // the wire, and the caller would tear the tracks down under it.
-    await (done ?? Promise.resolve());
-    // And then everything queued BEHIND the final segment. By the time `done`
-    // resolves the last file has landed, but earlier segments can still be
-    // uploading — that is the whole point of starting the next segment before
-    // awaiting the previous one's upload. Settled, not `all`: a segment that
-    // failed to upload has already reported itself through `setError`, and
-    // rejecting here would turn one lost five-minute file into a `stop()` that
-    // throws into the End button and skips stamping the webinar as ended.
+    // (An inactive recorder still in `recorderRef` is mid-rotation: stopped a
+    // moment ago, its `onstop` on the way. Awaiting `captured` is right.)
+    // CAPTURE, and nothing after it. `captured` resolves inside `onstop` once
+    // the final `dataavailable` has been collected into a blob and its upload
+    // registered — the moment the camera and mic stop mattering to the
+    // recording. The caller stops the tracks and leaves the live phase as
+    // soon as this returns, so the host is off air in milliseconds.
     //
-    // BOUNDED, and the bound is the point. `stop()` is awaited by the host's
-    // End button before it stops the tracks and tells the server the webinar
-    // ended, so an unbounded wait here is a host trapped in a room they have
-    // already finished — on dead hotel wifi, two 45 MB segments could hold that
-    // button for minutes with nothing on screen but "Saving the recording…".
+    // It used to wait for the final segment's UPLOAD too (plus up to 90s of
+    // earlier ones), with no bound at all on the final one, while Leave held
+    // the session and the tracks open: a host who pressed Leave kept
+    // broadcasting to the room for as long as ~27 MB took to climb their
+    // uplink, and on dead wifi forever. The uploads now finish in the
+    // background — `pendingUploadsRef` keeps `state` at "uploading", which
+    // the left/ended screen shows as "keep this tab open" and which arms the
+    // unload prompt — and `drain()` is there for a caller that must wait.
     //
-    // Ninety seconds is well past a healthy upload of the two or three files
-    // that can realistically be in flight, and short enough that a host who has
-    // genuinely lost the network gets out. Losing the tail of a recording is a
-    // bad outcome; being unable to end a webinar is a worse one, and the
-    // abandoned uploads may well still land on their own afterwards.
-    const flights = Array.from(inFlightRef.current);
-    if (flights.length > 0) {
+    // Bounded all the same, by CAPTURE_TIMEOUT_MS, in case `onstop` never
+    // fires: nothing about a broken recorder may keep a host on air.
+    if (captured) {
       await Promise.race([
-        Promise.allSettled(flights),
-        new Promise((resolve) => setTimeout(resolve, UPLOAD_DRAIN_TIMEOUT_MS)),
+        captured,
+        new Promise((resolve) => setTimeout(resolve, CAPTURE_TIMEOUT_MS)),
       ]);
     }
     teardown();
     syncState();
   }, [stopLoop, syncState, teardown]);
 
+  /** See the return type. Bounded; never rejects. */
+  const drain = useCallback(async (): Promise<void> => {
+    const flights = Array.from(inFlightRef.current);
+    if (flights.length === 0) return;
+    // Settled, not `all`: a segment that failed to upload has already
+    // reported itself through `setError`. BOUNDED, and the bound is the
+    // point: ninety seconds is well past a healthy upload of the two or three
+    // files that can realistically be in flight, and short enough that a host
+    // who has genuinely lost the network is not trapped behind a spinner. The
+    // abandoned uploads may still land on their own afterwards.
+    await Promise.race([
+      Promise.allSettled(flights),
+      new Promise((resolve) => setTimeout(resolve, UPLOAD_DRAIN_TIMEOUT_MS)),
+    ]);
+  }, []);
+
   /**
    * Stop, idempotently.
    *
    * Every caller gets the same promise WHILE a stop is in flight. The host's
-   * End button is the caller, and a double-click on it must not stop a
-   * recorder that is already stopping and resolve early on a segment that has
-   * not finished uploading.
+   * End and Leave buttons are the callers (and the gate closing, which fires
+   * alongside them), and a double-click must not stop a recorder that is
+   * already stopping and resolve early, before the final segment has been
+   * captured, letting the tracks be stopped under it.
    *
    * Released once that stop has finished. The promise used to be kept for the
    * life of the hook, so after an End → Reopen in the same tab every later
@@ -960,7 +1020,7 @@ export function useRecorder({
     };
   }, [teardown]);
 
-  return { state, uploaded, seconds, error, start, stop };
+  return { state, uploaded, seconds, error, start, stop, drain };
 }
 
 // ---------------------------------------------------------------------------

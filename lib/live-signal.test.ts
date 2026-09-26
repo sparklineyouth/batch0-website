@@ -11,7 +11,9 @@ import {
   HEARTBEAT_MS,
   PEER_TIMEOUT_MS,
   countLiveAudience,
+  isAddressedTo,
   nextStatusAction,
+  shouldApplyAnswer,
   shouldPruneConnection,
   type SignalMessage,
   type StageMessage,
@@ -365,4 +367,61 @@ test("a bye may say whether the sender left or is only rebuilding", () => {
   assert.equal(leave.reason, "leave");
   assert.equal(rebuild.reason, "rebuild");
   assert.equal("reason" in legacy, false);
+});
+
+// ---------------------------------------------------------------------------
+// Addressing — two broadcasters listening on one viewer's inbox
+// ---------------------------------------------------------------------------
+
+test("an answer addressed to the other host is not ours", () => {
+  // Staff host A and guest speaker B both offer to viewer V, on V's inbox,
+  // and both are subscribed there. V's answer to B must not be applied by A.
+  const toB = { t: "answer", from: "V", name: "", sdp: "x", to: "B" } satisfies SignalMessage;
+  assert.equal(isAddressedTo(toB, "A"), false);
+  assert.equal(isAddressedTo(toB, "B"), true);
+});
+
+test("candidates and byes are filtered the same way", () => {
+  const ice = { t: "ice", from: "V", candidates: [], to: "B" } satisfies SignalMessage;
+  const bye = { t: "bye", from: "V", reason: "rebuild", to: "B" } satisfies SignalMessage;
+  assert.equal(isAddressedTo(ice, "A"), false);
+  assert.equal(isAddressedTo(ice, "B"), true);
+  // A viewer rebuilding its link to B must not make A drop a healthy one.
+  assert.equal(isAddressedTo(bye, "A"), false);
+  assert.equal(isAddressedTo(bye, "B"), true);
+});
+
+test("a message with no addressee is accepted — older tabs keep working mid-deploy", () => {
+  const legacyAnswer = { t: "answer", from: "V", name: "", sdp: "x" } satisfies SignalMessage;
+  const legacyIce = { t: "ice", from: "V", candidates: [] } satisfies SignalMessage;
+  const legacyBye = { t: "bye", from: "V", reason: "leave" } satisfies SignalMessage;
+  for (const m of [legacyAnswer, legacyIce, legacyBye]) {
+    assert.equal(isAddressedTo(m, "A"), true, m.t);
+  }
+  // An empty string is "no addressee", not "addressed to nobody".
+  assert.equal(
+    isAddressedTo({ t: "ice", from: "V", candidates: [], to: "" }, "A"),
+    true,
+  );
+  // Variants that never carry `to` are always accepted.
+  assert.equal(
+    isAddressedTo({ t: "offer", from: "H", name: "Host", sdp: "x" }, "V"),
+    true,
+  );
+  assert.equal(
+    isAddressedTo(
+      { t: "media", from: "H", slots: { camera: true, screen: false, audio: true } },
+      "V",
+    ),
+    true,
+  );
+});
+
+test("an answer is applied only while our own offer is outstanding", () => {
+  assert.equal(shouldApplyAnswer("have-local-offer"), true);
+  // A duplicate or stray answer on a settled connection is dropped quietly —
+  // it used to throw "Called in wrong state: stable" into a permanent banner.
+  for (const state of ["stable", "have-remote-offer", "closed", "have-local-pranswer"]) {
+    assert.equal(shouldApplyAnswer(state), false, state);
+  }
 });

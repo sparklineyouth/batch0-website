@@ -22,6 +22,7 @@ import { getActionError } from "@/lib/action-error";
 import {
   headcountLabel,
   JOIN_CLOSES_MINUTES_AFTER,
+  roomWindow,
   type LiveRole,
   type WebinarQuestion,
 } from "@/lib/live";
@@ -62,12 +63,12 @@ import { AlertTriangle, Users, Loader2, CircleDot, PhoneOff } from "lucide-react
  * Leave vs End — the two ways out, and why they are different buttons
  * ---------------------------------------------------------------------------
  *
- *   Leave        "I go; the room keeps running." Flush this tab's recording,
- *                stop the devices, tear the session down, "You've left" with a
- *                Rejoin that really rejoins. The last broadcaster on air in a
- *                webinar is asked first — End for everyone, or Leave and keep
- *                the room open — because a sole host who simply leaves strands
- *                the audience on "the host stepped away".
+ *   Leave        "I go; the room keeps running." Off air at once, capture this
+ *                tab's final recording segment, stop the devices, "You've
+ *                left" with a Rejoin that really rejoins. The last broadcaster
+ *                on air in a webinar is asked first — End for everyone, or
+ *                Leave and keep the room open — because a sole host who simply
+ *                leaves strands the audience on "the host stepped away".
  *   End          Webinar: staff (and a guest speaker only when no staff host
  *                is present) end it for EVERYONE — the server stamps it, every
  *                other client hears `room-changed` and closes, and this tab
@@ -76,9 +77,14 @@ import { AlertTriangle, Users, Loader2, CircleDot, PhoneOff } from "lucide-react
  *
  * Whichever way the room ends — this tab's End, another host's, a heartbeat
  * saying 'ended', the stage hint, the 8s poll — the teardown is the same and
- * in the same order: flush the recorder, stop screen/camera/mic, and only then
- * leave the live phase (which tears the session down). An End that fails
- * tears nothing down: the host stays live with the error and can retry.
+ * in the same order. The session goes down the moment the exit is committed
+ * (bye to every peer: the host is off air now, not after anything uploads).
+ * Then the recorder's final segment is CAPTURED — milliseconds, bounded — and
+ * only then are screen/camera/mic stopped, so the file is not cut mid-frame.
+ * Then the phase changes. The final upload finishes in the background on the
+ * left/ended screen, which says "keep this tab open" and guards the tab until
+ * it lands. An End that fails tears nothing down: the host stays live with the
+ * error and can retry.
  *
  * ---------------------------------------------------------------------------
  * Rejoin is a remount
@@ -95,6 +101,14 @@ type Phase = "prejoin" | "live" | "left" | "ended" | "closed";
 
 export type WebinarRoom = {
   eventId: string;
+  /**
+   * The schedule, as the server rendered it (`endsAt` null means the default
+   * length — see roomWindow). A viewer's stage uses the start to stop saying
+   * "waiting for the host to start" once it has started, and the ended screen
+   * uses the hard stop to know when to stop watching for a Reopen.
+   */
+  startsAt: string;
+  endsAt: string | null;
   audienceMode: AudienceMode;
   /** Staff, as opposed to a guest speaker who also broadcasts. */
   isStaffHost: boolean;
@@ -372,7 +386,8 @@ function BroadcastSession({
   // are not on air yet, and lighting up a webcam (and its indicator light) for
   // forty minutes before anyone can see it is both wasteful and alarming. Nor
   // on an ended webinar. The gate closing does not stop the devices (see
-  // useLocalMedia) — the teardown below does, after the recorder has flushed.
+  // useLocalMedia) — the teardown below does, once the recorder has captured
+  // its final segment.
   const media = useLocalMedia({
     autoStart: isHost && phase === "live" && !inPremiere && !endedAt,
   });
@@ -387,11 +402,25 @@ function BroadcastSession({
     if (!wanted.current.micOn && media.micOn) media.toggleMic();
   }, [media]);
 
+  // This tab is on its way out: Leave committed (`leaving`), or the room is
+  // ending under it — this tab's End succeeded, or the server / another host
+  // ended or closed it (`ending`). Not set while an End request is merely in
+  // flight: if the server refuses, the host is still live and still on air.
+  const [ending, setEnding] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  // Off air the moment the exit is committed, not when the phase changes.
+  // The phase waits for the recorder to capture its final segment (see
+  // `finish`), and gating the session on the phase alone kept the host's
+  // camera and mic on every viewer's screen for that whole wait — which,
+  // when it was the final segment's UPLOAD, was minutes. Disabling it here
+  // sends `bye` to every peer at once; the local tracks keep running only
+  // for the recorder, and stop a moment later.
   const session = useLiveSession({
     kind,
     roomId,
     role: isHost ? "host" : "viewer",
-    enabled: phase === "live",
+    enabled: phase === "live" && !leaving && !ending,
     localStream: isHost ? media.stream : null,
     screenStream: screen.stream,
     // Passed through rather than inferred from `track.enabled`: a disabled
@@ -428,8 +457,10 @@ function BroadcastSession({
   //
   // Exactly one recorder per webinar: a staff host the SERVER has picked
   // (`session.isRecorder`, recomputed every heartbeat), never a guest speaker.
-  // Two staff hosts each recording used to interleave — and, before segment
-  // numbers were seeded from the server, overwrite — each other's files.
+  // Two staff hosts each recording used to interleave — and overwrite — each
+  // other's files. Registration now appends on a clash instead of replacing,
+  // so an overlap during a handover costs a few out-of-order seconds rather
+  // than a segment, but one recorder is still the point.
   //
   // Gated on `!inPremiere` as well: a premiere is already a recording, and
   // re-recording the Q&A over the top of it would produce a second asset that
@@ -437,8 +468,6 @@ function BroadcastSession({
   // after End, or once this tab is on its way out — the gate closing is the
   // flush. (Not while an End request is merely in flight: if the server
   // refuses, the host is still live and still recording.)
-  const [ending, setEnding] = useState(false);
-  const [leaving, setLeaving] = useState(false);
   const recorderEnabled =
     !!webinar?.autoRecord &&
     isStaffHost &&
@@ -503,11 +532,18 @@ function BroadcastSession({
   // ---- Teardown -----------------------------------------------------------
 
   /**
-   * One way out of the live phase, in the one safe order: flush the recording
-   * (awaited — `media.stop()` ends the tracks the recorder reads, so stopping
-   * them first truncates the final segment, reliably the Q&A), stop screen,
-   * camera and mic, then change phase, which disables and tears down the
-   * session (bye to every peer, channels removed, leave).
+   * One way out of the live phase, in the one safe order. Every caller has
+   * already set `leaving` or `ending`, so the session is down (bye to every
+   * peer, channels removed, leave) and the host is off air before this runs.
+   *
+   * Then: capture the recording's final segment (awaited — `media.stop()`
+   * ends the tracks the recorder reads, so stopping them first truncates the
+   * final segment, reliably the Q&A), stop screen, camera and mic, change
+   * phase. `recorder.stop()` resolves on CAPTURE, in milliseconds and never
+   * more than a few seconds; the upload carries on behind the left/ended
+   * screen, which shows it and guards the tab. It used to resolve only once
+   * the upload had landed, and with no bound on the final segment, so Leave
+   * could hold a host on air — and on "Saving the recording…" — indefinitely.
    */
   const stopRecording = recorder.stop;
   const finish = useCallback(
@@ -523,6 +559,47 @@ function BroadcastSession({
     },
     [stopRecording, screen, media],
   );
+
+  /**
+   * Rejoin (or Reopen) from the left/ended screen — after the recording's
+   * uploads, when there are any.
+   *
+   * A rejoin remounts the whole room, recorder included. Segments this session
+   * is still uploading would carry on in the background but drop off the
+   * screen and out of the unload guard, so a host who rejoined and then closed
+   * the tab would lose them without a word. This is the one place anything
+   * still waits for an upload, and it is bounded by the recorder's drain
+   * ceiling (UPLOAD_DRAIN_TIMEOUT_MS) and skipped when nothing is on the wire.
+   */
+  const drainRecording = recorder.drain;
+  const recorderStateRef = useRef(recorder.state);
+  recorderStateRef.current = recorder.state;
+  /** Waiting on the drain before a remount — the button says so. */
+  const [savingBeforeRemount, setSavingBeforeRemount] = useState(false);
+  const drainBeforeRemount = useCallback(async () => {
+    if (recorderStateRef.current !== "uploading") return;
+    setSavingBeforeRemount(true);
+    try {
+      await drainRecording();
+    } finally {
+      setSavingBeforeRemount(false);
+    }
+  }, [drainRecording]);
+  const rejoinAfterUploads = useCallback(
+    async (opts?: RejoinOptions) => {
+      await drainBeforeRemount();
+      rejoin(opts);
+    },
+    [drainBeforeRemount, rejoin],
+  );
+  // Reopen drains FIRST, then reopens: the audience is let back in when the
+  // host is actually on the way back, not up to a drain's length before.
+  const onReopenLive = webinar?.onReopenLive;
+  const reopenAfterUploads = useCallback(async () => {
+    if (!onReopenLive) return;
+    await drainBeforeRemount();
+    await onReopenLive();
+  }, [drainBeforeRemount, onReopenLive]);
 
   /** Guards every exit so two of them (End + the hint it causes) never race. */
   const exitingRef = useRef(false);
@@ -784,7 +861,19 @@ function BroadcastSession({
         )}
         {recordingNote}
         <div className="flex flex-wrap justify-center gap-2">
-          <Button onClick={() => rejoin({ endedAt })}>Rejoin</Button>
+          <Button
+            disabled={savingBeforeRemount}
+            onClick={() => void rejoinAfterUploads({ endedAt })}
+          >
+            {savingBeforeRemount ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving the recording…
+              </>
+            ) : (
+              "Rejoin"
+            )}
+          </Button>
           <ButtonLink variant="secondary" href={backHref}>
             Back
           </ButtonLink>
@@ -814,6 +903,11 @@ function BroadcastSession({
           endedAt={endedAt}
           backHref={backHref}
           refresh={refreshPremiere}
+          hardCloseAt={
+            webinar
+              ? roomWindow(webinar.startsAt, webinar.endsAt).hardCloseAt
+              : null
+          }
           onRejoin={() => rejoin({ endedAt: null })}
         />
       );
@@ -824,7 +918,8 @@ function BroadcastSession({
         endedAt={endedAt}
         backHref={backHref}
         recordingNote={recordingNote}
-        onReopen={isStaffHost && webinar ? webinar.onReopenLive : null}
+        onReopen={isStaffHost && webinar ? reopenAfterUploads : null}
+        savingRecording={savingBeforeRemount}
         onReopened={() => rejoin({ endedAt: null })}
       />
     );
@@ -937,19 +1032,14 @@ function BroadcastSession({
         ]
     : broadcasters.filter((p) => p.state !== "left");
 
-  const saving =
-    recorder.state === "uploading" || recorder.state === "recording";
+  // Brief by construction: the exit waits only for the recorder to capture
+  // its final segment. Any upload still running is reported on the screen
+  // this lands on, not here.
   const busyNote = leaving
-    ? saving
-      ? "Saving the recording before you leave…"
-      : "Leaving…"
-    : ending
-      ? saving
-        ? "Saving the recording…"
-        : "Ending…"
-      : endPending
-        ? "Ending…"
-        : null;
+    ? "Leaving…"
+    : ending || endPending
+      ? "Ending…"
+      : null;
 
   return (
     <div className={panel ? "mx-auto max-w-6xl" : "mx-auto max-w-5xl"}>
@@ -1100,6 +1190,7 @@ function BroadcastSession({
             <ViewerStage
               peers={broadcasters}
               starting={premierePhase === "waiting"}
+              startsAt={webinar?.startsAt ?? null}
               joinFailed={!!session.joinFailed}
               failedMessage={session.error}
               onRetry={() => rejoin({ endedAt })}
@@ -1470,14 +1561,20 @@ function HostEnded({
   backHref,
   recordingNote,
   onReopen,
+  savingRecording,
   onReopened,
 }: {
   endedByMe: boolean;
   endedAt: string | null;
   backHref: string;
   recordingNote: React.ReactNode;
-  /** Staff only; null hides the button. */
+  /**
+   * Staff only; null hides the button. Waits for this session's recording
+   * uploads (bounded) before it reopens — see rejoinAfterUploads.
+   */
   onReopen: (() => Promise<void>) | null;
+  /** Reopen is waiting on those uploads right now. */
+  savingRecording: boolean;
   onReopened: () => void;
 }) {
   const [pending, setPending] = useState(false);
@@ -1514,7 +1611,11 @@ function HostEnded({
               }
             }}
           >
-            {pending ? "Reopening…" : "Reopen"}
+            {pending
+              ? savingRecording
+                ? "Saving the recording…"
+                : "Reopening…"
+              : "Reopen"}
           </Button>
         )}
         <ButtonLink variant="secondary" href={backHref}>
@@ -1525,49 +1626,74 @@ function HostEnded({
   );
 }
 
+/** The ended screen's slow poll, and its pace after a null answer. */
+const ENDED_POLL_MS = 30_000;
+const ENDED_POLL_BACKOFF_MS = 60_000;
+
 /**
  * A viewer's ended screen. Terminal — no media, no Rejoin — unless staff
  * reopen the webinar, which a slow poll (every 30s, paused while the tab is
  * hidden) notices and answers with a Rejoin button. Nothing reconnects them
  * automatically.
+ *
+ * The poll stops at the webinar's hard stop (end + 3h, from the schedule the
+ * page rendered) and at nothing else. A null answer used to stop it for good,
+ * but null is not "never": the server also answers null for a moment it
+ * cannot place the viewer in the room — after a Reopen past end+30m, until a
+ * host is back on air — and that is exactly the Reopen this screen is waiting
+ * for. So a null only slows the poll down (60s); a failed read (the server
+ * throws rather than answering null when it could not tell — see
+ * fetchPremiereState) is retried on the next tick like any other.
  */
 function ViewerEnded({
   endedAt,
   backHref,
   refresh,
+  hardCloseAt,
   onRejoin,
 }: {
   endedAt: string | null;
   backHref: string;
   refresh: WebinarRoom["refreshPremiere"] | undefined;
+  /** Epoch ms after which nothing can reopen this webinar; null = unknown. */
+  hardCloseAt: number | null;
   onRejoin: () => void;
 }) {
   const [reopened, setReopened] = useState(false);
   useEffect(() => {
     if (!refresh || reopened) return;
     let stopped = false;
-    const tick = async () => {
-      if (document.hidden) return;
-      try {
-        const next = await refresh();
-        if (stopped) return;
-        // Null: the room is gone for us (past the hard stop, or no access).
-        if (!next) {
-          stopped = true;
-          clearInterval(timer);
-          return;
-        }
-        if (!next.liveEndedAt) setReopened(true);
-      } catch {
-        /* the next tick will try again */
-      }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = (ms: number) => {
+      if (stopped) return;
+      // Past the hard stop nothing can reopen it: the one reason to stop.
+      if (hardCloseAt !== null && Date.now() > hardCloseAt) return;
+      timer = setTimeout(tick, ms);
     };
-    const timer = setInterval(tick, 30_000);
+    const tick = async () => {
+      if (document.hidden) {
+        schedule(ENDED_POLL_MS);
+        return;
+      }
+      let next: Awaited<ReturnType<NonNullable<typeof refresh>>> | undefined;
+      try {
+        next = await refresh();
+      } catch {
+        // Couldn't tell — the next tick will try again.
+      }
+      if (stopped) return;
+      if (next && !next.liveEndedAt) {
+        setReopened(true);
+        return;
+      }
+      schedule(next === null ? ENDED_POLL_BACKOFF_MS : ENDED_POLL_MS);
+    };
+    schedule(ENDED_POLL_MS);
     return () => {
       stopped = true;
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
     };
-  }, [refresh, reopened]);
+  }, [refresh, reopened, hardCloseAt]);
 
   return (
     <Centered title={reopened ? "The webinar was reopened" : "This webinar has ended"}>
@@ -1626,14 +1752,16 @@ function JoinFailedCard({
  * video element being shown changes — if sound rode along with a particular
  * video tag, presenting would silence the webinar.
  *
- * The placeholder copy is honest about which of four situations this is: the
- * join failed (Retry — it will not fix itself), the webinar has not started,
- * a host was here and stepped away (they will reconnect automatically when
- * someone is back on air), or the link to the host is recovering.
+ * The placeholder copy is honest about which situation this is: the join
+ * failed (Retry — it will not fix itself), a host was here and stepped away
+ * (they will reconnect automatically when someone is back on air), the link
+ * to the host is recovering, a premiere has not begun, the webinar is past
+ * its start with nobody on air, or it has genuinely not started yet.
  */
 function ViewerStage({
   peers,
   starting,
+  startsAt,
   joinFailed,
   failedMessage,
   onRetry,
@@ -1641,6 +1769,8 @@ function ViewerStage({
   peers: RemotePeer[];
   /** A premiere that has not begun: "Starting shortly". */
   starting: boolean;
+  /** The scheduled start, when this is a webinar. See `pastStart`. */
+  startsAt: string | null;
   joinFailed: boolean;
   failedMessage: string | null;
   onRetry: () => void;
@@ -1654,6 +1784,28 @@ function ViewerStage({
   // started" — that difference is what the audience most needs told.
   const hadHost = useRef(false);
   if (peers.some((p) => p.seenLive || p.state === "live")) hadHost.current = true;
+
+  // `hadHost` only knows what THIS mount has seen. A viewer who refreshes (a
+  // refresh goes back through the green room, by design) or joins while a
+  // sole host has stepped out mounts with no peers and no history — and was
+  // told "Waiting for the host to start" forty minutes into a webinar, the
+  // one sentence the audience must not be told after it has started. So past
+  // the scheduled start, silence gets neutral copy instead: "isn't on air
+  // right now" is true whether the host stepped away or is running late.
+  // Held as state and flipped by a timer, so a viewer who arrives early sees
+  // the copy change at the start without anything else re-rendering.
+  const startMs = startsAt ? new Date(startsAt).getTime() : NaN;
+  const [pastStart, setPastStart] = useState(
+    () => Number.isFinite(startMs) && Date.now() >= startMs,
+  );
+  useEffect(() => {
+    if (pastStart || !Number.isFinite(startMs)) return;
+    // Clamped: setTimeout overflows past ~24.8 days (nobody is in a room
+    // that early, but an overflow would fire at once).
+    const wait = Math.min(Math.max(0, startMs - Date.now()), 2_147_483_647);
+    const t = setTimeout(() => setPastStart(true), wait);
+    return () => clearTimeout(t);
+  }, [pastStart, startMs]);
 
   // Who gets the big frame. Presenting wins — slides are the thing being
   // discussed, and a talking head beside them is the sideshow — and otherwise
@@ -1717,10 +1869,15 @@ function ViewerStage({
             ]
           : starting
             ? ["Starting shortly", "You'll join automatically — no need to refresh."]
-            : [
-                "Waiting for the host to start",
-                "You'll join automatically — no need to refresh.",
-              ];
+            : pastStart
+              ? [
+                  "The host isn't on air right now",
+                  "You'll join automatically as soon as they are — no need to refresh.",
+                ]
+              : [
+                  "Waiting for the host to start",
+                  "You'll join automatically — no need to refresh.",
+                ];
     return (
       <>
         {audio}
@@ -1921,11 +2078,24 @@ function PeerNotice({
  * different lifecycle: the browser puts its own "Stop sharing" bar on screen,
  * and a share that ends there must be reflected here or the host keeps seeing
  * a control that claims they are still presenting.
+ *
+ * A generation counter guards the picker, the same one useLocalMedia has for
+ * the camera. `getDisplayMedia` resolves whenever the person answers the
+ * browser's picker — which can be after they pressed Leave or End, or after
+ * the room unmounted. Without the guard that late answer was stored as a live
+ * capture on a room showing "You've left" (or on nothing at all): the
+ * browser's "sharing your screen" indicator stayed on and the capture ran
+ * until the tab closed. `stop()` and unmount bump the generation, and a
+ * picker that resolves into a newer generation stops its tracks unseen.
  */
 function useScreenShare() {
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const genRef = useRef(0);
+  /** A picker is open; a second press must not open another. */
+  const pendingRef = useRef(false);
 
   const stop = useCallback(() => {
+    genRef.current += 1;
     setStream((s) => {
       s?.getTracks().forEach((t) => t.stop());
       return null;
@@ -1933,17 +2103,31 @@ function useScreenShare() {
   }, []);
 
   const start = useCallback(async () => {
+    if (pendingRef.current) return;
     const md = navigator.mediaDevices as MediaDevices & {
       getDisplayMedia?: (c: DisplayMediaStreamOptions) => Promise<MediaStream>;
     };
     if (!md?.getDisplayMedia) return;
+    const gen = ++genRef.current;
+    pendingRef.current = true;
     try {
       const s = await md.getDisplayMedia({ video: true, audio: false });
+      if (gen !== genRef.current) {
+        // Answered after Leave, End, a stop or an unmount: nobody wants it.
+        s.getTracks().forEach((t) => t.stop());
+        return;
+      }
       // The browser's own stop button ends the track, not our state.
-      s.getVideoTracks()[0]?.addEventListener("ended", () => setStream(null));
+      s.getVideoTracks()[0]?.addEventListener("ended", () =>
+        setStream((cur) => (cur === s ? null : cur)),
+      );
       setStream(s);
     } catch {
       // Cancelling the picker is a normal outcome, not an error worth showing.
+    } finally {
+      // Only ever one picker in flight (see the guard above), so this start
+      // owns the flag whatever happened to the generation meanwhile.
+      pendingRef.current = false;
     }
   }, []);
 
@@ -1953,6 +2137,14 @@ function useScreenShare() {
   }, [start, stop, stream]);
 
   useEffect(() => () => stream?.getTracks().forEach((t) => t.stop()), [stream]);
+  // Unmount-only: a picker still open when the room goes away resolves into
+  // a stale generation and is stopped, not stored.
+  useEffect(
+    () => () => {
+      genRef.current += 1;
+    },
+    [],
+  );
 
   return { stream, toggle, stop };
 }

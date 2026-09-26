@@ -7,7 +7,6 @@ import {
   notifyModerators,
   notifyRoom,
   notifyStage,
-  presentHosts,
 } from "@/lib/live-rooms";
 import {
   roomIsOpen,
@@ -29,18 +28,17 @@ import {
   type ChatMessage,
   type WebinarPoll,
 } from "@/lib/webinars";
-import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import {
   listChat,
   listPolls,
   pinnedMessage,
-  speakerUserIds,
 } from "@/lib/webinar-data";
 import {
   listQuestionsForAsker,
   listQuestionsForEvent,
 } from "@/lib/webinar-questions";
 import {
+  presentHostRoles,
   resolveEventAccess,
   roomAccessFor,
   withinHardClose,
@@ -119,10 +117,24 @@ type RoomGate = {
  * Returns null for "you can't see this event" and "this isn't a batch0-hosted
  * event" — one answer for both, so this cannot be used to probe which events
  * exist, exactly as `joinRoom` does not.
+ *
+ * `throwOnError` makes a failed read THROW instead of answering null, for a
+ * caller whose client treats null as a real answer (fetchPremiereState, which
+ * the viewer's ended screen polls): one database blip must not read as "you
+ * have no access". Off by default, where null and a throw end the same way.
  */
-async function gateVisible(eventId: string): Promise<RoomGate | null> {
+async function gateVisible(
+  eventId: string,
+  opts?: { throwOnError?: boolean },
+): Promise<RoomGate | null> {
   const access = await resolveEventAccess(eventId);
-  if (!access.ok || !isHostedOnBatch0(access.event.liveMode)) return null;
+  if (!access.ok) {
+    if (access.reason === "error" && opts?.throwOnError) {
+      throw new Error("Couldn't reach the server — try again.");
+    }
+    return null;
+  }
+  if (!isHostedOnBatch0(access.event.liveMode)) return null;
   const ev = access.event;
   return {
     eventId: ev.id,
@@ -154,8 +166,11 @@ async function gateVisible(eventId: string): Promise<RoomGate | null> {
  * poll learns about a Reopen. Every audience write below refuses once
  * `liveEndedAt` is set.
  */
-async function gateRoom(eventId: string): Promise<RoomGate | null> {
-  const gate = await gateVisible(eventId);
+async function gateRoom(
+  eventId: string,
+  opts?: { throwOnError?: boolean },
+): Promise<RoomGate | null> {
+  const gate = await gateVisible(eventId, opts);
   if (!gate) return null;
   if (roomIsOpen(gate.access)) return gate;
   if (gate.access === "ended" && withinHardClose(gate)) return gate;
@@ -173,21 +188,19 @@ function refuseIfEnded(gate: RoomGate): void {
  * May the caller end this webinar for everyone, right now?
  *
  * Staff: always. A guest speaker: only when no staff host is present (see
- * canEndForEveryone). A present host row that is not a speaker's is a staff
- * host's; an unreadable attendance table counts as no staff present, so the
- * rule fails open for speakers — ending is reversible by staff, and failing
- * closed would strand a guest-only webinar with nobody able to close it.
+ * canEndForEveryone). Who among the present hosts is staff is decided by each
+ * one's own role (presentHostRoles) — not by "not on the speaker list", which
+ * let a guest end a room run by an admin who happened to hold a speaker row.
+ * An unreadable attendance table counts as no staff present, so the rule
+ * fails open for speakers — ending is reversible by staff, and failing closed
+ * would strand a guest-only webinar with nobody able to close it.
  */
 async function canEnd(gate: RoomGate): Promise<boolean> {
   if (gate.isStaff) return true;
   if (!gate.isSpeaker) return false;
-  const [hosts, speakers] = await Promise.all([
-    presentHosts(gate.eventId, PEER_TIMEOUT_MS),
-    speakerUserIds(gate.eventId),
-  ]);
-  const speakerSet = new Set(speakers);
+  const hosts = await presentHostRoles(gate.eventId);
   const staffPresent =
-    !!hosts && hosts.some((h) => !speakerSet.has(h.userId));
+    !!hosts && hosts.some((h) => h.isStaff && h.userId !== gate.userId);
   return canEndForEveryone({
     isStaff: false,
     isSpeaker: true,
@@ -928,9 +941,15 @@ async function readLiveEndedAt(eventId: string): Promise<string | null> {
  * a recording to wait for. The premiere length is passed only when the event
  * IS a premiere, so a hosted webinar that once had a premiere file attached is
  * never mistaken for one.
+ *
+ * Null means "not in the room right now", never "could not tell": a failed
+ * access read THROWS, so the client's catch retries it. Null is also not
+ * "never" — a viewer after a Reopen past end+30m gets null until a host is
+ * back on air — which is why the ended screen keeps polling through it until
+ * the hard stop instead of taking the first null as final.
  */
 export async function fetchPremiereState(eventId: string) {
-  const gate = await gateRoom(eventId);
+  const gate = await gateRoom(eventId, { throwOnError: true });
   if (!gate) return null;
   const premiere = isPremiere(gate.liveMode);
   return {

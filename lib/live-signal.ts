@@ -161,11 +161,25 @@ export const SIGNAL_EVENT = "b0live";
  * connection trickles five to fifteen candidates in a burst, and one Realtime
  * message per candidate turns a two-second handshake into a flood; the engine
  * buffers them for a beat and sends the batch.
+ *
+ * `to` — who an answer, a candidate batch or a bye is FOR. A viewer
+ * negotiates every connection on its own inbox (see connectionTopic), and
+ * every host it is connected to is subscribed to that inbox. With two
+ * broadcasters on air (a staff host and a guest speaker), both offer to each
+ * viewer at once, and a viewer's answer carrying only `from` reached BOTH
+ * hosts: whichever was still waiting applied the other host's SDP to its own
+ * connection (the link then failed ICE/DTLS and the viewer lost that host for
+ * the better part of a minute), and the other threw "Called in wrong state:
+ * stable" into a permanent error banner. Every sender now names the one peer
+ * the message belongs to, and a receiver drops anything addressed to someone
+ * else (`isAddressedTo`). OPTIONAL on purpose: a tab still running the bundle
+ * from before this field existed sends none, and a message with no `to` is
+ * accepted exactly as it always was, so a deploy never splits a live room.
  */
 export type SignalMessage =
   | { t: "offer"; from: string; name: string; sdp: string }
-  | { t: "answer"; from: string; name: string; sdp: string }
-  | { t: "ice"; from: string; candidates: unknown[] }
+  | { t: "answer"; from: string; name: string; sdp: string; to?: string }
+  | { t: "ice"; from: string; candidates: unknown[]; to?: string }
   /**
    * Sender is going away — tear the connection down now, don't wait for ICE
    * to notice. Makes "the host left" instant instead of ~10 seconds frozen.
@@ -182,8 +196,13 @@ export type SignalMessage =
    * connection and let the heartbeat decide — so a tab still running an older
    * bundle is never mistaken for a deliberate departure. Senders should always
    * say which.
+   *
+   * `to` matters most here: a viewer rebuilding its link to ONE host says
+   * `bye: rebuild` on its own inbox, where every host it is connected to is
+   * listening, and without an addressee the other host dropped a perfectly
+   * healthy connection too.
    */
-  | { t: "bye"; from: string; reason?: "leave" | "rebuild" }
+  | { t: "bye"; from: string; reason?: "leave" | "rebuild"; to?: string }
   /**
    * Which of the sender's slots are actually carrying media right now.
    *
@@ -207,6 +226,39 @@ export type SignalMessage =
    * are reconciled.
    */
   | { t: "media"; from: string; slots: Record<MediaSlot, boolean> };
+
+/**
+ * Is this message for `selfId`?
+ *
+ * True when it names nobody (every variant but answer/ice/bye, and any
+ * message from a tab older than the `to` field) or names `selfId`. False only
+ * for a message explicitly addressed to a DIFFERENT peer — which on a viewer's
+ * inbox is the other host's answer, candidates or bye, and applying it to our
+ * own connection is the bug the field exists to stop. See SignalMessage.
+ */
+export function isAddressedTo(msg: SignalMessage, selfId: string): boolean {
+  const to = "to" in msg ? msg.to : undefined;
+  return typeof to !== "string" || to.length === 0 || to === selfId;
+}
+
+/**
+ * May an incoming answer be applied to a connection in `signalingState`?
+ *
+ * Only while our own offer is outstanding (`have-local-offer`). Anywhere else
+ * — `stable` because this connection already took its answer, `closed`
+ * because it was torn down — the answer is a duplicate, a straggler, or (from
+ * a tab older than the `to` field) another host's, and `setRemoteDescription`
+ * would throw "Called in wrong state". That throw is not a failure anyone
+ * needs to read about, so the engine drops the message quietly instead of
+ * putting a banner over a webinar that is working.
+ *
+ * Necessary but not sufficient on its own: with two hosts offering to the same
+ * viewer, BOTH are in `have-local-offer` at the same moment, and only `to`
+ * (isAddressedTo) tells them whose answer is whose.
+ */
+export function shouldApplyAnswer(signalingState: string): boolean {
+  return signalingState === "have-local-offer";
+}
 
 /**
  * Messages on the stage channel. BOTH ARE UNAUTHENTICATED HINTS.

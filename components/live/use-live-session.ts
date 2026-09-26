@@ -7,9 +7,11 @@ import {
   countLiveAudience,
   HEARTBEAT_MS,
   ICE_BATCH_MS,
+  isAddressedTo,
   MEDIA_SLOTS,
   nextStatusAction,
   ROOM_CHANGED_THROTTLE_MS,
+  shouldApplyAnswer,
   shouldPruneConnection,
   SIGNAL_EVENT,
   slotForMid,
@@ -623,10 +625,13 @@ export function useLiveSession({
       if (conn.flushTimer) clearTimeout(conn.flushTimer);
       const creds = credsRef.current;
       if (bye && creds) {
+        // Addressed: on a viewer's inbox every connected host is listening,
+        // and a rebuild of ONE of those links must not drop the others.
         void sendOn(conn.topic, {
           t: "bye",
           from: creds.peerId,
           reason: bye,
+          to: peerId,
         }).catch(() => {});
       }
       // The channel is NOT removed here — it belongs to the session, and
@@ -717,24 +722,22 @@ export function useLiveSession({
       const stale = () =>
         runRef.current !== run || connections.current.get(peer.peerId) !== conn;
 
-      // A host talking to a viewer negotiates on the VIEWER's inbox, so it
-      // subscribes there — pinned to that viewer, so nothing arriving on it
-      // can claim to be from someone else. Our own inbox is already
-      // subscribed and is open to any host, so it carries no owner pin.
-      if (topic !== creds.inboxTopic) {
-        await ensureChannel(topic, peer.peerId);
-        // The session may have been torn down (or this connection replaced)
-        // while we waited on the subscribe. Nothing would ever close a peer
-        // connection finished after that point, so close it here.
-        if (stale()) {
-          try {
-            pc.close();
-          } catch {
-            /* already closed */
-          }
-          return;
-        }
-      }
+      // The three handlers go on BEFORE anything is awaited.
+      //
+      // The connection is already in the map, so from this line on an offer
+      // from this peer can find it and be applied to it — and one routinely
+      // does: two hosts arriving together each bootstrap a `connectTo` for
+      // the other, and the offerer's offer lands while the answerer is still
+      // awaiting the channel subscribe below. The handlers used to be
+      // attached after that await, so the offer was applied to a peer
+      // connection with no `ontrack`: its three track events were lost, the
+      // early ICE candidates with them, and the link came up with no streams
+      // for its whole life — a co-host shown camera-off and inaudible, with
+      // nothing that would ever rebuild a connection that reports itself
+      // live. None of the handlers needs the subscription: each checks
+      // `stale()` or writes only to `conn`, and the ICE flush's `sendOn`
+      // finds the channel `ensureChannel` registers before it awaits (an
+      // unjoined broadcast goes over REST, as the answer already does).
 
       pc.ontrack = (ev) => {
         const slot = slotForMid(ev.transceiver?.mid ?? null);
@@ -779,6 +782,9 @@ export function useLiveSession({
             t: "ice",
             from: creds.peerId,
             candidates,
+            // Addressed, like the answer: a viewer's candidates for one host
+            // arrive on an inbox every connected host is listening to.
+            to: peer.peerId,
           }).catch(() => {});
         }, ICE_BATCH_MS);
       };
@@ -810,6 +816,25 @@ export function useLiveSession({
         publish();
         recomputeOverall();
       };
+
+      // A host talking to a viewer negotiates on the VIEWER's inbox, so it
+      // subscribes there — pinned to that viewer, so nothing arriving on it
+      // can claim to be from someone else. Our own inbox is already
+      // subscribed and is open to any host, so it carries no owner pin.
+      if (topic !== creds.inboxTopic) {
+        await ensureChannel(topic, peer.peerId);
+        // The session may have been torn down (or this connection replaced)
+        // while we waited on the subscribe. Nothing would ever close a peer
+        // connection finished after that point, so close it here.
+        if (stale()) {
+          try {
+            pc.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
+      }
 
       // Whoever offers creates the transceivers, in the fixed slot order, so
       // both ends agree that mid 0 is camera, 1 is screen, 2 is audio.
@@ -871,6 +896,12 @@ export function useLiveSession({
       // this, a student publishing on their own inbox could set `from` to a
       // classmate's id and have the host evict them.
       if (expectFrom && msg.from !== expectFrom) return;
+      // ...and a message that peer addressed to somebody else is not ours.
+      // Every host connected to a viewer listens on that viewer's inbox, so
+      // with a staff host and a guest speaker both on air, each hears the
+      // viewer's answer, candidates and byes for the OTHER one too. See `to`
+      // on SignalMessage; a message with no `to` (an older tab) still counts.
+      if (!isAddressedTo(msg, creds.peerId)) return;
 
       if (msg.t === "bye") {
         // `leave` is a person going; anything else (`rebuild`, or an older
@@ -941,6 +972,10 @@ export function useLiveSession({
             from: creds.peerId,
             name: creds.name,
             sdp: answer.sdp ?? "",
+            // For the host whose offer this answers, and nobody else. On a
+            // viewer's inbox a second host is listening, and it used to
+            // apply this SDP to its own half-built connection.
+            to: conn.peer.peerId,
           });
         } catch (err) {
           // Torn down or replaced mid-answer is not a failure to report.
@@ -980,14 +1015,28 @@ export function useLiveSession({
 
       if (msg.t === "answer") {
         departed.current.delete(msg.from);
+        // Only onto our own outstanding offer. A connection that is already
+        // `stable` has had its answer; this one is a duplicate, a straggler,
+        // or — from a tab older than `to` — another host's. Applying it
+        // throws "Called in wrong state: stable", which used to land in a
+        // permanent error banner over a webinar that was working fine.
+        if (!shouldApplyAnswer(conn.pc.signalingState)) return;
         try {
           await conn.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
           for (const c of conn.earlyCandidates.splice(0)) {
             await conn.pc.addIceCandidate(c).catch(() => {});
           }
-        } catch (err) {
+        } catch {
+          // A real refusal of our own offer's answer. Marked failed rather
+          // than bannered: a host prunes a failed viewer link on its next
+          // heartbeat and the viewer's re-announce builds a fresh one, and
+          // between two hosts the heartbeat's wedged check rebuilds it — at
+          // once, because `progressAt` is wound back rather than restarted.
+          // That rebuild IS the recovery, and a banner would outlive it.
           if (connections.current.get(msg.from) === conn && credsRef.current) {
-            setError(readableError(err));
+            conn.state = "failed";
+            conn.progressAt = 0;
+            recomputeOverall();
           }
         }
         publish();
@@ -1006,7 +1055,15 @@ export function useLiveSession({
         }
       }
     },
-    [attachLocalTracks, connectTo, disconnectFrom, knownPeer, publish, sendOn],
+    [
+      attachLocalTracks,
+      connectTo,
+      disconnectFrom,
+      knownPeer,
+      publish,
+      recomputeOverall,
+      sendOn,
+    ],
   );
 
   onSignalRef.current = (m, expectFrom) => void onSignal(m, expectFrom);
@@ -1405,6 +1462,7 @@ export function useLiveSession({
           t: "bye",
           from: creds.peerId,
           reason: "leave",
+          to: conn.peer.peerId,
         }).catch(() => {});
       }
       beaconLeave(kind, roomId);

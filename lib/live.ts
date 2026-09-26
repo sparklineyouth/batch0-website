@@ -586,3 +586,38 @@ export function relativeTime(
   }
   return rtf.format(Math.round(diffMs / 1000), "second");
 }
+
+/**
+ * An event time for anything rendered on the SERVER — emails above all — with
+ * the zone written out: "Sun, Sep 27, 2026, 6:00 PM EDT".
+ *
+ * `toLocaleString()` on the server formats in the server's zone, which on
+ * Vercel is UTC, and prints no zone at all. The guest-speaker invite did that,
+ * so a speaker in New York invited to an 18:00 EDT webinar read "9/27/2026,
+ * 10:00:00 PM" — four hours out, with nothing to say so — and the event
+ * reminder had the same bug. The program runs on Eastern time (the demo-day
+ * tickets and the promo deadlines already say so), so emails name it: pinned
+ * to America/New_York rather than "the server's locale", and labelled EDT/EST
+ * so a reader elsewhere can convert. Pages that render in the browser keep
+ * using LocalTime, which shows each reader their own zone.
+ *
+ * Deterministic for a given instant (it never reads the machine's zone), so
+ * it is safe in a test. The narrow no-break space newer ICU puts before
+ * "PM" is normalised to a plain one, which every mail client renders.
+ */
+export function formatEventTime(value: string | Date): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  })
+    .format(d)
+    .replace(/[  ]/g, " ");
+}

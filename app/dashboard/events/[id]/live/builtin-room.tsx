@@ -48,6 +48,8 @@ import type { AudienceMode, EventSpeaker, PremiereState } from "@/lib/webinars";
 export function BuiltinEventRoom({
   eventId,
   title,
+  startsAt,
+  endsAt,
   role,
   isStaffHost,
   canEnd,
@@ -64,6 +66,9 @@ export function BuiltinEventRoom({
 }: {
   eventId: string;
   title: string;
+  /** The schedule — see WebinarRoom in components/live/broadcast-room. */
+  startsAt: string;
+  endsAt: string | null;
   role: LiveRole;
   /**
    * Staff, as opposed to a guest speaker who also holds `role: "host"`.
@@ -124,13 +129,16 @@ export function BuiltinEventRoom({
    * signed URL, the bytes go straight from the tab to Supabase Storage without
    * touching a Vercel function, and a second action records the path.
    *
-   * `sortOrder` is the segment index, and registering the same index twice
-   * REPLACES the row (registerWebinarAsset selects it and updates, falling
-   * back to insert). A recorder that re-uploads segment 4 after a dropped
-   * connection must not leave two copies, or the recording plays the same five
-   * minutes twice. The index itself is seeded from the server
-   * (`nextRecordingIndex`), so a reload or a second staff recorder appends
-   * rather than replacing segment 0.
+   * `sortOrder` is the segment index this recorder wants, and the filename
+   * carries it too (`segment-0004.webm`). Registering the same segment again
+   * — same uploader, same name — REPLACES that row, so a recorder that
+   * re-uploads segment 4 after a dropped connection does not leave two copies
+   * and play the same five minutes twice. An index already held by anything
+   * else (another staff recorder overlapping this one) is never replaced: the
+   * segment is appended at the next free index instead (see
+   * saveRecordingSegment). The index itself is seeded from the server
+   * (`nextRecordingIndex`), so a reload or a handover starts past everything
+   * already registered.
    *
    * Throws on failure, which is deliberate: `useRecorder` catches, counts the
    * failure, and KEEPS RECORDING. Losing one segment must never stop the next
@@ -184,6 +192,8 @@ export function BuiltinEventRoom({
   const webinar = useMemo(
     () => ({
       eventId,
+      startsAt,
+      endsAt,
       audienceMode,
       isStaffHost,
       autoRecord,
@@ -206,6 +216,8 @@ export function BuiltinEventRoom({
     // without ever actually changing identity mid-webinar.
     [
       eventId,
+      startsAt,
+      endsAt,
       audienceMode,
       isStaffHost,
       autoRecord,

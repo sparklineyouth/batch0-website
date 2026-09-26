@@ -4,7 +4,10 @@ import {
   audienceCanSeeEachOther,
   canBroadcast,
   canEndForEveryone,
+  mayRecordBlind,
   pickRecorder,
+  stickySegment,
+  RECORDER_STICKY_MIN_SECONDS,
   RECORDER_STICKY_MS,
   RECORDING_SEGMENT_SECONDS,
   chatMessageIsLive,
@@ -286,6 +289,72 @@ test("two hosts who joined at the same instant still agree on one recorder", () 
   const b = pickRecorder({ presentHosts: [...hosts].reverse(), lastSegment: null, now: NOW });
   assert.equal(a, b);
   assert.equal(a, "amy");
+});
+
+test("a short flush from a recorder that lost the pick does not make it sticky", () => {
+  // "a" is the real recorder (a full segment four minutes ago). "b" was
+  // picked for one heartbeat by mistake and flushed 12 seconds when it
+  // stopped — registered AFTER a's segment. Keyed on the newest segment, b
+  // would take the recording back on its next heartbeat and a's own flush
+  // would take it back again: ping-pong.
+  const last = stickySegment([
+    { userId: "b", at: minsAgo(1), seconds: 12 },
+    { userId: "a", at: minsAgo(4), seconds: RECORDING_SEGMENT_SECONDS },
+  ]);
+  assert.deepEqual(last, { userId: "a", at: minsAgo(4) });
+  const pick = pickRecorder({
+    presentHosts: [
+      { userId: "b", joinedAt: minsAgo(40), isSpeaker: false },
+      { userId: "a", joinedAt: minsAgo(20), isSpeaker: false },
+    ],
+    lastSegment: last,
+    now: NOW,
+  });
+  assert.equal(pick, "a");
+});
+
+test("the sticky segment is the newest real one, by registration time", () => {
+  assert.deepEqual(
+    stickySegment([
+      { userId: "a", at: minsAgo(9), seconds: 300 },
+      { userId: "b", at: minsAgo(2), seconds: RECORDER_STICKY_MIN_SECONDS },
+      { userId: "c", at: minsAgo(5), seconds: 300 },
+    ]),
+    { userId: "b", at: minsAgo(2) },
+  );
+  assert.equal(stickySegment([]), null);
+  assert.equal(
+    stickySegment([
+      { userId: "a", at: minsAgo(1), seconds: 12 },
+      { userId: "a", at: minsAgo(2), seconds: null },
+    ]),
+    null,
+    "only flushes: nobody is sticky",
+  );
+  assert.ok(RECORDER_STICKY_MIN_SECONDS < RECORDING_SEGMENT_SECONDS);
+});
+
+test("with presence unreadable, a host records blind only if nobody else is recording", () => {
+  // Someone else registered a real segment recently: they are the recorder.
+  assert.equal(
+    mayRecordBlind({ userId: "b", lastSegment: { userId: "a", at: minsAgo(3) }, now: NOW }),
+    false,
+  );
+  // It was us, or nobody, or long enough ago that the recording has stopped.
+  assert.equal(
+    mayRecordBlind({ userId: "a", lastSegment: { userId: "a", at: minsAgo(3) }, now: NOW }),
+    true,
+  );
+  assert.equal(mayRecordBlind({ userId: "b", lastSegment: null, now: NOW }), true);
+  assert.equal(
+    mayRecordBlind({ userId: "b", lastSegment: { userId: "a", at: minsAgo(60) }, now: NOW }),
+    true,
+  );
+  assert.equal(
+    mayRecordBlind({ userId: "b", lastSegment: { userId: null, at: minsAgo(1) }, now: NOW }),
+    true,
+    "a segment whose uploader was deleted names nobody",
+  );
 });
 
 // ---------------------------------------------------------------------------

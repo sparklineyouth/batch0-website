@@ -5,8 +5,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/audit";
 import { type RoomStatus } from "@/lib/live";
-import { isHostedOnBatch0, pickRecorder, type AudienceMode } from "@/lib/webinars";
-import { speakerUserIds } from "@/lib/webinar-data";
+import {
+  isHostedOnBatch0,
+  mayRecordBlind,
+  pickRecorder,
+  stickySegment,
+  type AudienceMode,
+} from "@/lib/webinars";
 import {
   inboxTopic,
   PEER_TIMEOUT_MS,
@@ -18,7 +23,6 @@ import {
   liveParticipants,
   notifyHosts,
   notifyStage,
-  presentHosts,
   touchParticipant,
   type LiveCredentials,
   type LivePeer,
@@ -27,6 +31,7 @@ import {
   callRefusal,
   callRoomStatus,
   leaveInternal,
+  presentHostRoles,
   resolveCallAccess,
   resolveEventAccess,
   roomAccessFor,
@@ -419,60 +424,76 @@ export async function announcePresence(
  * Is this caller the room's one recorder right now? See pickRecorder.
  *
  * Only staff hosts in an auto-record webinar are ever asked. The inputs are
- * the present hosts (attendance rows, told apart from speakers by the speaker
- * list) and the uploader of the highest-numbered recording segment.
+ * the present hosts, each marked staff by their own role (presentHostRoles —
+ * a staff member who also holds a speaker row is still staff, and so still
+ * eligible; it used to be never picked, so an auto-record webinar they ran
+ * alone was silently not recorded), and the most recent real segment
+ * (stickySegment).
  *
  * When presence cannot be read at all (the attendance table is missing or
- * erroring), the caller records: a recording with a possible duplicate is
- * recoverable, a webinar nobody recorded is not. Segment indexes are seeded
- * from the server, so even two recorders append rather than overwrite.
- *
- * Known limit: a staff member who has ALSO claimed a speaker slot on this
- * event is indistinguishable from a guest here and is never picked — the pick
- * has to give every host's heartbeat the same answer, and the speaker list is
- * the only fact all of them can see about each other.
+ * erroring), the caller records blind only if nobody ELSE has registered a
+ * real segment recently (mayRecordBlind): a webinar nobody recorded is not
+ * recoverable, but neither is a recorder that a one-heartbeat read error
+ * turned into two. And if two recorders do overlap, registration appends on
+ * a clash rather than overwriting (saveRecordingSegment) — they interleave,
+ * they do not destroy each other's files.
  */
 async function isRecorderFor(access: EventAccess): Promise<boolean> {
   if (!access.isStaff || !access.event.autoRecord) return false;
   const eventId = access.event.id;
-  const [hosts, speakers, last] = await Promise.all([
-    presentHosts(eventId, PEER_TIMEOUT_MS),
-    speakerUserIds(eventId),
+  const [hosts, last] = await Promise.all([
+    presentHostRoles(eventId),
     latestRecordingSegment(eventId),
   ]);
-  if (hosts === null) return true;
-  const present = hosts.some((h) => h.userId === access.userId)
-    ? hosts
-    : [...hosts, { userId: access.userId, joinedAt: new Date().toISOString() }];
-  const speakerSet = new Set(speakers);
+  if (hosts === null) {
+    return mayRecordBlind({ userId: access.userId, lastSegment: last });
+  }
+  // The caller is staff (checked above) and present (touched just before
+  // this), whatever a read a moment earlier or the role lookup made of them.
+  const others = hosts.filter((h) => h.userId !== access.userId);
+  const self = hosts.find((h) => h.userId === access.userId);
   const pick = pickRecorder({
-    presentHosts: present.map((h) => ({
-      ...h,
-      isSpeaker: speakerSet.has(h.userId),
-    })),
+    presentHosts: [
+      ...others.map((h) => ({ ...h, isSpeaker: !h.isStaff })),
+      {
+        userId: access.userId,
+        joinedAt: self?.joinedAt ?? new Date().toISOString(),
+        isSpeaker: false,
+      },
+    ],
     lastSegment: last,
   });
   return pick === access.userId;
 }
 
-/** Uploader and time of the highest-numbered recording segment, if any. */
+/**
+ * The segment the sticky rule keys on: the most recently REGISTERED real one
+ * (see stickySegment), from the last few registrations.
+ *
+ * By registration time, not by index: with overlapping recorders appending at
+ * the next free index, the highest index and the newest registration are the
+ * same thing in practice, but "who registered most recently" is the question
+ * the sticky rule actually asks.
+ */
 async function latestRecordingSegment(
   eventId: string,
-): Promise<{ userId: string | null; at: string } | null> {
+): Promise<{ userId: string | null; at: string | Date } | null> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("event_assets")
-    .select("uploaded_by, created_at")
+    .select("uploaded_by, created_at, duration_seconds")
     .eq("event_id", eventId)
     .eq("kind", "recording")
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(10);
   if (error || !data) return null;
-  return {
-    userId: (data as any).uploaded_by ?? null,
-    at: (data as any).created_at,
-  };
+  return stickySegment(
+    (data as any[]).map((r) => ({
+      userId: r.uploaded_by ?? null,
+      at: r.created_at,
+      seconds: r.duration_seconds ?? null,
+    })),
+  );
 }
 
 /**
