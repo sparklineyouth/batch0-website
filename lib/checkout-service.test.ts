@@ -219,4 +219,17 @@ test("pricing outage and cross-origin requests cannot create a Stripe session", 
   assert.equal((await payerLink(forged)).status, 403);
 });
 
+test("Fall checkout stops at Eastern midnight without moving an accepted application to Winter", async t => {
+  reset();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-01T03:59:59.999Z") });
+  Object.assign(state.app.cohort, { status: "active", starts_on: "2026-09-14", ends_on: "2026-11-13",
+    late_entry_until: "2026-09-30T23:59:59.999-04:00", catch_up_plan: "Review Week 1 with the team." });
+  await service.checkCheckoutEligibility(db, state.app);
+  t.mock.timers.setTime(Date.parse("2026-10-01T04:00:00Z"));
+  assert.equal((await checkout(request("checkout", { applicationId }))).status, 409);
+  assert.equal((await payerLink(request("payer-link", { applicationId }))).status, 409);
+  assert.equal(state.stripeCreates.length, 0);
+  assert.equal(state.app.cohort_id, cohortId);
+});
+
 test.after(() => { hook.deregister(); delete (globalThis as any).__checkoutIntegration; });

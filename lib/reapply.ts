@@ -219,3 +219,21 @@ export function selectCohortId<C extends OpenCohort>(
   }
   return allowed[0]?.id ?? null;
 }
+
+/** Explicit links and existing drafts must never silently become a different
+ * cohort when admissions roll over. The user can choose an available cohort
+ * explicitly; until then their existing draft stays attached to its cohort. */
+export function resolveApplicationCohort<C extends OpenCohort>(
+  allowed: C[],
+  requested: string | null | undefined,
+  draftCohortId: string | null | undefined,
+  pinnedId: string | null | undefined,
+): { cohortId: string | null; unavailableCohortId: string | null } {
+  const intentional = requested || draftCohortId;
+  if (intentional) {
+    return allowed.some(cohort => cohort.id === intentional)
+      ? { cohortId: intentional, unavailableCohortId: null }
+      : { cohortId: null, unavailableCohortId: intentional };
+  }
+  return { cohortId: selectCohortId(allowed, [pinnedId]), unavailableCohortId: null };
+}

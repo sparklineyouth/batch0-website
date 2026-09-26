@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: September 13, 2026
+        Last updated: September 26, 2026
       </p>
 
       <p>
@@ -55,6 +55,16 @@ export default function PrivacyPage() {
           device type, and approximate (city-level) location, via Google
           Analytics and Vercel Analytics. Used in aggregate to understand
           which pages help people — never to build an advertising profile.
+        </li>
+        <li>
+          <strong>Campaign source:</strong> if you arrive through one of our
+          tagged Google Search ads, a first-party cookie remembers the campaign
+          label, landing page path, and visit time for up to 30 days. If you then
+          start an application, we save that source with the application and
+          compare it with actual tuition payments and refunds, including a
+          parent paying on another device. This feature does not send student
+          identity or payment results to an advertising platform, or store
+          advertising click identifiers or search terms.
         </li>
       </ul>
 
@@ -126,7 +136,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-09-13",
+          dateModified: "2026-09-26",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />

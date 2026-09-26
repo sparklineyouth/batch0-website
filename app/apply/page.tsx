@@ -12,7 +12,7 @@ import { grantAutoAdmits } from "@/lib/founder-pass-tiers";
 import {
   planReapply,
   reviewerOverrodePass,
-  selectCohortId,
+  resolveApplicationCohort,
 } from "@/lib/reapply";
 import { ApplicationForm } from "./application-form";
 import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
@@ -177,11 +177,27 @@ export default async function ApplyPage(
     typeof searchParams.cohort === "string" ? searchParams.cohort : null;
   const draftCohortId =
     existing && !reapplying ? (existing as any).cohort_id ?? null : null;
-  const selectedId = selectCohortId(cohorts, [
-    queryCohort,
-    draftCohortId,
-    pinnedId,
-  ]);
+  const { cohortId: selectedId, unavailableCohortId } = resolveApplicationCohort(
+    cohorts, queryCohort, draftCohortId, pinnedId,
+  );
+  if (unavailableCohortId) {
+    const name = (openCohorts ?? []).find(cohort => cohort.id === unavailableCohortId)?.name ?? "That cohort";
+    return (
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-paper">
+        <div className="mx-auto max-w-2xl px-5 py-24 sm:px-6">
+          <Link href="/dashboard/application" className="text-sm text-ink-soft hover:text-ink">← Your application</Link>
+          <h1 className="mt-8 font-display text-3xl font-bold">{name} is no longer available for applications</h1>
+          <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+            {draftCohortId ? "Your saved draft and answers have not been moved. Choose a cohort below to continue your draft for that intake." : "Choose an available cohort below to start your application."}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            {cohorts.map(cohort => <Link key={cohort.id} href={`/apply?cohort=${cohort.id}`} className="press rounded-md border border-line px-4 py-3 text-sm">Choose {cohort.name}</Link>)}
+          </div>
+          {!cohorts.length && <p className="mt-6 text-sm text-ink-soft">No cohort is open right now. Your existing application remains on file.</p>}
+        </div>
+      </main>
+    );
+  }
   const selected = cohorts.find((c) => c.id === selectedId) ?? null;
 
   // Nothing left to apply to. Two shapes, and they need different words: the

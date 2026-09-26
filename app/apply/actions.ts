@@ -14,7 +14,7 @@ import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { canBypassClosedApplications, hasFounderPass } from "@/lib/founder-pass";
 import { autoAdmitOnSubmit } from "@/lib/admissions";
-import { planReapply, selectCohortId } from "@/lib/reapply";
+import { planReapply, selectCohortId, resolveApplicationCohort } from "@/lib/reapply";
 import { isValidPhone, PHONE_MAX_LENGTH } from "@/lib/phone";
 import { getVisibleCustomQuestions } from "@/lib/application-questions";
 import { getScholarshipInterestQuestions } from "@/lib/scholarships";
@@ -30,6 +30,7 @@ import {
   getDiscordSettings,
 } from "@/lib/discord";
 import { env } from "@/lib/env";
+import { attachCampaignAttribution } from "@/lib/campaign-attribution-server";
 
 // Optional URL: empty string allowed, otherwise must be a valid URL
 const optionalUrl = z
@@ -338,15 +339,13 @@ async function upsertApplication(
   const requested = typeof data.cohort_id === "string" ? data.cohort_id : "";
   const draftCohortId =
     existing?.status === "draft" ? (existing as any).cohort_id ?? null : null;
-  const cohortId = selectCohortId(plan.allowed, [
-    requested,
-    draftCohortId,
-    pinnedId,
-  ]);
-
-  if (submit && requested && cohortId !== requested) {
-    return { ok: false, error: "That cohort is no longer open for applications. Please select an available cohort." };
+  const selection = resolveApplicationCohort(plan.allowed, requested, draftCohortId, pinnedId);
+  if (selection.unavailableCohortId && (submit || requested !== draftCohortId)) {
+    return { ok: false, error: "That cohort is no longer open for applications. Your draft has not been moved. Please select an available cohort." };
   }
+  // A form already open at midnight may autosave its answers, but cannot
+  // submit to the closed intake or silently move the draft to the next one.
+  const cohortId = selection.unavailableCohortId ? draftCohortId : selection.cohortId;
 
   // A submit with nowhere to go must fail loudly rather than quietly attaching
   // itself to whatever cohort happened to sort first. Drafts are let through
@@ -433,6 +432,8 @@ async function upsertApplication(
     if (error) return { ok: false, error: error.message };
     applicationId = created!.id;
   }
+
+  await attachCampaignAttribution(applicationId);
 
   const pricingCountry = getCountryFromHeaders(await headers());
   if (pricingCountry) {
@@ -669,18 +670,20 @@ export async function attachReferralCodeAction(code: string) {
       .update({ referral_code: trimmed })
       .eq("id", existing.id);
     if (error) return { ok: false, error: error.message };
+    await attachCampaignAttribution(existing.id);
     return { ok: true };
   }
 
   // No application yet: create a fresh draft with just the code so we
   // remember it. Cohort attachment happens on the next real save.
   const cohortId = await getActiveCohortId(supabase);
-  const { error } = await supabase.from("applications").insert({
+  const { data: created, error } = await supabase.from("applications").insert({
     user_id: user.id,
     cohort_id: cohortId,
     status: "draft",
     referral_code: trimmed,
-  });
+  }).select("id").single();
   if (error) return { ok: false, error: error.message };
+  await attachCampaignAttribution(created!.id);
   return { ok: true };
 }
