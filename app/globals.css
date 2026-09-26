@@ -1023,3 +1023,77 @@ a,
 @media (prefers-reduced-motion: reduce) {
   .animate-shake { animation: none; }
 }
+
+/* ============================================================================
+ * /apply — one question per screen (app/apply/apply-flow.tsx)
+ *
+ * The one place outside the hero where things move, because the applicant
+ * asked to go somewhere: each question rises in from the direction they're
+ * travelling (forward = from below, back = from above), and the progress rule
+ * eases to its new length. Same curve and distance family as `rise`; the
+ * global reduced-motion rule above zeroes both.
+ * ========================================================================= */
+@keyframes tf-in-forward {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tf-in-back {
+  from { opacity: 0; transform: translateY(-24px); }
+  to { opacity: 1; transform: none; }
+}
+.tf-in-forward { animation: tf-in-forward 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tf-in-back { animation: tf-in-back 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tf-progress { transition: width 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* The answer line: an underline, not a box, at a size you can read from a
+ * step back. Each rule is doubled under .theme-light because the light-theme
+ * compat layer's `.theme-light input { … }` (0,1,1) would otherwise repaint
+ * the background and border of every field on the page. 22px+ keeps iOS from
+ * zooming on focus. */
+.tf-field,
+.theme-light .tf-field {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-bottom: 2px solid rgb(var(--line));
+  border-radius: 0;
+  background: transparent;
+  padding: 0.5rem 0 0.625rem;
+  color: rgb(var(--ink));
+  font-size: 1.375rem;
+  line-height: 1.4;
+  outline: none;
+  box-shadow: none;
+}
+.tf-area,
+.theme-light .tf-area {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  resize: none;
+  overflow: hidden;
+}
+@media (min-width: 640px) {
+  .tf-field,
+  .theme-light .tf-field { font-size: 1.625rem; }
+  .tf-area,
+  .theme-light .tf-area { font-size: 1.25rem; }
+}
+.tf-field::placeholder,
+.theme-light .tf-field::placeholder {
+  color: rgb(var(--ink-faint));
+  opacity: 1;
+}
+.tf-field:focus,
+.theme-light .tf-field:focus { border-bottom-color: #ffbb00; }
+.tf-field[aria-invalid="true"],
+.theme-light .tf-field[aria-invalid="true"] { border-bottom-color: #b42318; }
+.dark .tf-field[aria-invalid="true"] { border-bottom-color: #fca5a5; }
+
+/* "press Enter ↵" only means something with a keyboard. Touch devices get
+ * the buttons and nothing else. The query is the one apply-flow.tsx tests
+ * (COARSE_POINTER) before letting Enter advance, so the hint and the
+ * behavior can't disagree. */
+.tf-hint { display: none; }
+@media not all and (pointer: coarse) {
+  .tf-hint { display: inline-flex; }
+}
