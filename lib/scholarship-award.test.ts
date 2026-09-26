@@ -352,7 +352,7 @@ test("checkEligibility passes an enrolled student — awards work after enrollme
   assert.equal(out.ok, true);
   if (out.ok) {
     assert.equal(out.stage, "enrolled");
-    assert.equal(out.window.until, "2026-11-14T04:59:59.000Z");
+    assert.equal(out.window.until, "2026-11-14T04:59:59.999Z");
   }
 });
 

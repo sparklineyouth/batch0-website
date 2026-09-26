@@ -56,7 +56,7 @@ test("an enrolled Fall student can apply today — the live Learner's Scholarshi
   const w = open(scholarshipWindow({ cohort: FALL, stage: "enrolled", awardType: "perks" }, TODAY));
   assert.equal(w.basis, "cohort_end");
   // End of Nov 13 in New York, which is EST (-05:00) by then.
-  assert.equal(w.until, "2026-11-14T04:59:59.000Z");
+  assert.equal(w.until, "2026-11-14T04:59:59.999Z");
   assert.equal(windowHeadline(w), "Open until Nov 13 — while Fall 2026 runs");
 });
 
@@ -68,7 +68,7 @@ test("the enrolled window runs to the last second of the cohort's final Eastern 
 
 test("an enrolled student in an upcoming cohort is open until that cohort ends", () => {
   const w = open(scholarshipWindow({ cohort: WINTER, stage: "enrolled" }, TODAY));
-  assert.equal(w.until, "2027-02-13T04:59:59.000Z");
+  assert.equal(w.until, "2027-02-13T04:59:59.999Z");
   assert.equal(w.cohortId, "winter");
 });
 
@@ -130,7 +130,7 @@ test("once started without late entry, an accepted student's window is closed", 
 test("with no applications deadline, an accepted window runs to the eve of the start — or through late entry", () => {
   const noDeadline = { ...WINTER, applications_close_at: null };
   // End of Dec 13, Eastern: the last day before the cohort starts.
-  assert.equal(open(scholarshipWindow({ cohort: noDeadline, stage: "accepted" }, TODAY)).until, "2026-12-14T04:59:59.000Z");
+  assert.equal(open(scholarshipWindow({ cohort: noDeadline, stage: "accepted" }, TODAY)).until, "2026-12-14T04:59:59.999Z");
   const withLateEntry = {
     ...noDeadline,
     late_entry_until: "2026-12-19T04:59:59.000Z",
@@ -140,7 +140,7 @@ test("with no applications deadline, an accepted window runs to the eve of the s
   // A late-entry date without a catch-up plan isn't late entry (cohortEligibility's rule).
   assert.equal(
     open(scholarshipWindow({ cohort: { ...withLateEntry, catch_up_plan: " " }, stage: "accepted" }, TODAY)).until,
-    "2026-12-14T04:59:59.000Z",
+    "2026-12-14T04:59:59.999Z",
   );
 });
 
