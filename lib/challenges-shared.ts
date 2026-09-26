@@ -688,17 +688,36 @@ function ms(iso: string | null): number | null {
   return Number.isNaN(t) ? null : t;
 }
 
+/**
+ * Where "now" sits in a challenge's submission window.
+ *
+ * `upcoming` is the case a plain open/closed boolean gets wrong: an active
+ * challenge whose `opensAt` is still ahead isn't open, but it hasn't wrapped
+ * up either — telling visitors it was over is what #317 fixed. Registration
+ * and drafting are allowed while `upcoming` (see canRegister); only the final
+ * submit waits for `open`.
+ */
+export type ChallengeWindowState = "upcoming" | "open" | "closed";
+
+export function challengeWindowState(
+  challenge: Pick<Challenge, "status" | "opensAt" | "closesAt">,
+  now = Date.now(),
+): ChallengeWindowState {
+  // draft / closed / archived all read as closed publicly.
+  if (challenge.status !== "active") return "closed";
+  const opens = ms(challenge.opensAt);
+  const closes = ms(challenge.closesAt);
+  if (opens != null && opens > now) return "upcoming";
+  if (closes != null && closes < now) return "closed";
+  return "open";
+}
+
 /** Submissions are open right now. */
 export function isChallengeOpen(
   challenge: Pick<Challenge, "status" | "opensAt" | "closesAt">,
   now = Date.now(),
 ): boolean {
-  if (challenge.status !== "active") return false;
-  const opens = ms(challenge.opensAt);
-  const closes = ms(challenge.closesAt);
-  if (opens != null && opens > now) return false;
-  if (closes != null && closes < now) return false;
-  return true;
+  return challengeWindowState(challenge, now) === "open";
 }
 
 /** Registration is open: published and the deadline hasn't passed. Opens

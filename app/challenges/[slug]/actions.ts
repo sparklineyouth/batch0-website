@@ -11,7 +11,7 @@ import { env } from "@/lib/env";
 import {
   getChallengeBySlug,
   getReferralProgress,
-  isChallengeOpen,
+  challengeWindowState,
   canRegister,
   validateAnswers,
   extensionsFor,
@@ -315,14 +315,14 @@ export async function submitChallengeEntry(input: {
   const { ctx } = loaded;
   const c = ctx.challenge;
 
-  if (!isChallengeOpen(c)) {
-    const opensLater =
-      c.status === "active" && c.opensAt && new Date(c.opensAt).getTime() > Date.now();
+  const windowState = challengeWindowState(c);
+  if (windowState !== "open") {
     return {
       ok: false,
-      error: opensLater
-        ? "Submissions haven't opened yet — your draft is saved."
-        : "Submissions for this one have closed.",
+      error:
+        windowState === "upcoming"
+          ? "Submissions haven't opened yet — your draft is saved."
+          : "Submissions for this one have closed.",
     };
   }
 
