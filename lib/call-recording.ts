@@ -14,10 +14,16 @@
  * with the service role is the whole read path, and it cannot drift from the
  * bytes because it is the bytes.
  *
- * The files go in the existing private `webinar-media` bucket, under a
- * `calls/` prefix no event can produce (event folders are bare UUIDs). The
- * bucket's only policy is staff-direct access; everything else goes through a
+ * The files go in their OWN private bucket, `call-recordings`, not beside the
+ * webinar files. `webinar-media` carries a staff-direct storage policy
+ * (0084's "webinar-media staff all", granted by `events.manage`, which interns
+ * hold by default) — so anything in it is downloadable through the Storage API
+ * by roles the app would never show a 1:1 recording to. These are recordings
+ * of calls with minors. The dedicated bucket has NO storage policies at all:
+ * only the service role can touch it, and every read and write goes through a
  * server action that checks the call first and mints a one-shot signed URL.
+ * The app creates the bucket on first use (lib/call-recordings.ts), so there is
+ * no migration.
  *
  * Why the stamp matters and the index is not enough: the recorder numbers
  * segments from zero every time the page loads, so a host who reloads
@@ -29,9 +35,15 @@
  * Pure and import-free; tested by lib/call-recording.test.ts.
  */
 
-export const CALL_RECORDING_BUCKET = "webinar-media";
+export const CALL_RECORDING_BUCKET = "call-recordings";
 
-/** A call's segment folder. Inside `webinar-media`, beside the event folders. */
+/**
+ * Same ceiling as webinar-media (0084), which a five-minute segment is far
+ * inside; it bounds what one signed upload can put in the bucket.
+ */
+export const CALL_RECORDING_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** A call's segment folder inside the `call-recordings` bucket. */
 export function callRecordingFolder(inviteId: string): string {
   return `calls/${inviteId}/recording`;
 }

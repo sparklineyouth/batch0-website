@@ -2,6 +2,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActor } from "@/lib/server-guards";
 import { getInvite } from "@/lib/calls";
+import { ensureCallRecordingBucket } from "@/lib/call-recordings";
 import { canUploadCallRecording } from "@/lib/call-lifecycle";
 import {
   CALL_RECORDING_BUCKET,
@@ -65,6 +66,7 @@ export async function getCallRecordingUploadToken(
     segmentExtension(mimeType),
   )}`;
 
+  await ensureCallRecordingBucket();
   const admin = createAdminClient();
   const { data, error } = await admin.storage
     .from(CALL_RECORDING_BUCKET)

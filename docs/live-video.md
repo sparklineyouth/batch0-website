@@ -452,9 +452,14 @@ screen with both faces inset), and both voices mixed through an
 `AudioContext` into one track. Webinars pass no `remotes` and record exactly as
 before.
 
-No schema: segments go to the existing private `webinar-media` bucket at
+No schema: segments go to a dedicated private `call-recordings` bucket at
 `calls/<inviteId>/recording/segment-NNNN-<ts>.webm` (`lib/call-recording.ts`);
-the storage listing *is* the index. Upload URLs come from
+the storage listing *is* the index. Not `webinar-media`: that bucket's
+staff-direct storage policy (`events.manage`, which interns hold) would let
+roles the app never shows a 1:1 recording to download them straight from
+Storage — and these are calls with minors. `call-recordings` has no storage
+policies; only the service role touches it. The app creates it on first use
+(`ensureCallRecordingBucket`). Upload URLs come from
 `getCallRecordingUploadToken` (host, accepted-or-completed, window open plus a
 ten-minute grace for the final flush).
 Playback is `/api/calls/<id>/recording/<n>`, which checks the viewer is on the

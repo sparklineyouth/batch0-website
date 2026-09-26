@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { splitCalls } from "@/lib/call-lifecycle";
 import {
   CALL_RECORDING_BUCKET,
+  CALL_RECORDING_MAX_BYTES,
   callRecordingFolder,
   isUuid,
   sortCallSegments,
@@ -13,7 +14,7 @@ import type { CallInvite } from "@/lib/live";
  * Service-role reads of 1:1 call recordings.
  *
  * The recording has no table — the segment files in
- * `webinar-media/calls/<id>/recording/` are the whole record (see the header
+ * `call-recordings/calls/<id>/recording/` are the whole record (see the header
  * of lib/call-recording.ts for why). So "list a call's recording" is a storage
  * listing, and "play part 2" is a signed URL for the second file in order.
  *
@@ -22,6 +23,33 @@ import type { CallInvite } from "@/lib/live";
  * the call, and admins) against the invite row; these functions sign whatever
  * they are handed.
  */
+
+/**
+ * Make sure the private `call-recordings` bucket exists — created by the app on
+ * first use rather than by a migration (see lib/call-recording.ts for why it
+ * is separate from webinar-media). Private, and deliberately given no storage
+ * policies: only the service role reaches it. Idempotent, and memoised per
+ * server instance so it costs one round trip, not one per upload.
+ */
+let bucketReady: Promise<void> | null = null;
+export function ensureCallRecordingBucket(): Promise<void> {
+  bucketReady ??= (async () => {
+    const admin = createAdminClient();
+    const { data } = await admin.storage.getBucket(CALL_RECORDING_BUCKET);
+    if (data) return;
+    const { error } = await admin.storage.createBucket(CALL_RECORDING_BUCKET, {
+      public: false,
+      fileSizeLimit: CALL_RECORDING_MAX_BYTES,
+      allowedMimeTypes: ["video/webm", "video/mp4"],
+    });
+    // Two instances racing to create it: the loser's "already exists" is fine.
+    if (error && !/exist/i.test(error.message)) throw error;
+  })().catch((err) => {
+    bucketReady = null; // let the next upload try again
+    throw err;
+  });
+  return bucketReady;
+}
 
 export type CallRecordingPart = {
   name: string;
