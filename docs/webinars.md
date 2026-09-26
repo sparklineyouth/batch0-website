@@ -152,20 +152,31 @@ self-contained file; `event_assets.sort_order` is its position. Two minutes
 overshoot) because Supabase's default global upload limit is 50 MB and binds
 every signed upload whatever the bucket says.
 
-**Exactly one host's browser records.** Every host (staff and guest speakers)
-runs the same room, and each recorder captures only its own camera and mic —
-so left alone, every host recorded into the same event and the recording came
-out as alternating slices of different solo feeds. Each host's browser elects
+**It records the whole stage, from exactly one host's browser.** The recorder
+composites every live host's camera and screen share (a presenter's screen
+full-frame with faces inset, otherwise everyone side by side, each labelled)
+and mixes every voice through an `AudioContext` — the same stage machine a 1:1
+uses (`use-recorder.ts`). So a staff moderator's intro and the guest speaker's
+slides and talk are both in the file, whichever laptop made it. Every host
+(staff and guest speakers) runs the same room, so each host's browser elects
 one recorder from the co-hosts it can see (`electRecorder` in
-`lib/webinars.ts`: staff before guests, then lowest user id; a peer's id is its
-user id, the speaker list is in the page, so every browser agrees). The
-recorder stands down and flushes when someone who outranks it arrives; the
-next in line takes over when it leaves. The server backs this up
+`lib/webinars.ts`: the lowest user id present — a peer's id is its user id, the
+one fact every browser holds identically; an earlier staff-before-guests rank
+depended on a speaker list rendered at page load, which a guest claiming their
+slot later made two browsers disagree about). The recorder stands down and
+flushes when a lower id arrives; the next in line takes over when it leaves. A
+co-host whose connection dropped counts as present for two segment lengths
+(`presentForRecording`), and the engine's heartbeat rebuilds a wedged
+connection to every co-host (not only the join-time roster), so a recorder who
+vanished without a goodbye cannot hold the election. The server backs this up
 (`recordingRival`): a segment is refused — before its upload is signed, and
-again at registration — when a *different*, higher-ranked host registered a
-segment within two segment lengths and is still in the room
-(`live_participants`). A refusal is returned as a value, and the room stands
-its recorder down for that lease before looking again.
+again at registration — when a *different*, lower-id host registered a segment
+within two segment lengths, after this segment began (worked out on the server
+from the segment's length, so a skewed client clock can't move it), and is
+still in the room (`live_participants`). A refusal is returned as a value, and
+the room stands its recorder down for that lease before looking again. A
+refused segment's bytes are deleted only when no `event_assets` row already
+claims that path, so naming someone else's registered segment deletes nothing.
 
 Registering a segment reads the event's segments and then inserts
 (`registerRecordingSegment` in `app/admin/events/webinar-actions.ts`, rule in

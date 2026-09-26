@@ -22,11 +22,11 @@ import {
   electRecorder,
   presentForRecording,
   RECORDER_LEASE_MS,
+  RECORDER_RECONNECT_GRACE_MS,
   RECORDER_SETTLE_MS,
   type AudienceMode,
   type EventSpeaker,
   type PremiereState,
-  type RecorderCandidate,
 } from "@/lib/webinars";
 import type { RoomState } from "@/app/dashboard/events/[id]/live/room-actions";
 import { AlertTriangle, Users, Loader2, CircleDot } from "lucide-react";
@@ -109,6 +109,8 @@ export type WebinarRoom = {
   eventId: string;
   /** The signed-in person's id — their peer id as every other host sees it. */
   selfUserId: string;
+  /** Their name, for their own tile if their browser is the one recording. */
+  selfName: string;
   audienceMode: AudienceMode;
   /** Staff, as opposed to a guest speaker who also broadcasts. */
   isStaffHost: boolean;
@@ -306,8 +308,9 @@ export function BroadcastRoom({
   //
   // A 1:1 records always, from the host's side only (`call.isRecorder`), and
   // hands the recorder the other person too — their tile and their voice —
-  // because half a conversation is not a record of it. See the header of
-  // use-recorder.ts.
+  // because half a conversation is not a record of it. A webinar's recorder is
+  // handed every co-host on stage for the same reason (see below, and the
+  // header of use-recorder.ts).
   //
   // Both kinds wait for the camera and mic to SETTLE (granted, refused, or
   // missing) before starting. Starting while the permission prompt is still up
@@ -318,18 +321,19 @@ export function BroadcastRoom({
 
   // ---- Who records a webinar ---------------------------------------------
   //
-  // Exactly one browser in the room. Every host — staff and guest speakers
-  // alike — runs this component, and each one's recorder captures only its
-  // own camera and mic; left to itself, every host's tab recorded, and the
-  // event's recording came out as alternating slices of different people's
-  // solo feeds. So each host's browser works out, from the co-hosts it can
-  // see, which ONE of them records (electRecorder: staff before guests, then
-  // the lowest id), and only that one does. Every browser holds the same
-  // inputs — a peer's id is its user id, and the speaker list is in the
-  // page — so they agree without talking to each other. When the recorder
-  // leaves, the next in line sees it go and takes over; when someone who
-  // outranks the recorder arrives, the recorder sees them and stands down,
-  // flushing what it has.
+  // Exactly one browser in the room, and it records the WHOLE STAGE — every
+  // live co-host's camera, screen share and voice, composited and mixed with
+  // its own (`recorderRemotes` below) — so which browser it is changes
+  // nothing about what is in the recording. Every host, staff and guest
+  // speakers alike, runs this component; left to itself every host's tab
+  // recorded, and the event's recording came out as the stage twice over,
+  // interleaved a segment at a time. So each host's browser works out, from
+  // the co-hosts it can see, which ONE of them records (electRecorder: the
+  // lowest user id present), and only that one does. A peer's id is its user
+  // id, the one fact every browser holds identically, so they agree without
+  // talking to each other. When the recorder leaves, the next in line sees it
+  // go and takes over; when a host with a lower id arrives, the recorder sees
+  // them and stands down, flushing what it has.
   //
   // Nothing is decided until the join has landed (`session.joined`), or every
   // host would elect themselves off an empty roster. For RECORDER_SETTLE_MS
@@ -345,28 +349,45 @@ export function BroadcastRoom({
     return () => clearTimeout(t);
   }, [session.joined]);
 
-  const speakers = webinar?.speakers;
-  const guestIds = useMemo(
-    () =>
-      new Set(
-        (speakers ?? [])
-          .map((sp) => sp.userId)
-          .filter((id): id is string => !!id),
-      ),
-    [speakers],
-  );
+  // A co-host whose connection DROPPED counts as present for
+  // RECORDER_RECONNECT_GRACE_MS and then stops counting, so one who vanished
+  // without a goodbye cannot stay the elected recorder while recording
+  // nothing. Nothing re-renders this component when that moment passes, so
+  // wake it then. Only future deadlines are scheduled: a peer already past
+  // its grace has been counted out, and needs no further tick.
+  const [graceClock, setGraceClock] = useState(0);
+  useEffect(() => {
+    if (!webinar || !isHost) return;
+    const now = Date.now();
+    let next = Infinity;
+    for (const p of session.remotes) {
+      if (p.role !== "host" || p.state !== "reconnecting" || p.downSince === null) {
+        continue;
+      }
+      const due = p.downSince + RECORDER_RECONNECT_GRACE_MS;
+      if (due > now) next = Math.min(next, due);
+    }
+    if (next === Infinity) return;
+    const t = setTimeout(() => setGraceClock(Date.now()), next - now + 250);
+    return () => clearTimeout(t);
+  }, [webinar, isHost, session.remotes, graceClock]);
+
   const selfUserId = webinar?.selfUserId ?? "";
   const recorderId = useMemo(() => {
     if (!webinar || !isHost || !session.joined) return null;
-    const present: RecorderCandidate[] = [
-      { userId: selfUserId, guest: guestIds.has(selfUserId) },
-    ];
+    const now = Date.now();
+    const present = [selfUserId];
     for (const p of session.remotes) {
-      if (p.role !== "host" || !presentForRecording(p.state, settling)) continue;
-      present.push({ userId: p.peerId, guest: guestIds.has(p.peerId) });
+      if (p.role !== "host") continue;
+      const downFor = p.downSince === null ? 0 : now - p.downSince;
+      if (!presentForRecording(p.state, settling, downFor)) continue;
+      present.push(p.peerId);
     }
     return electRecorder(present);
-  }, [webinar, isHost, session.joined, session.remotes, settling, selfUserId, guestIds]);
+    // `graceClock` is read by nothing here; it is what re-runs this when a
+    // dropped co-host's grace runs out.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webinar, isHost, session.joined, session.remotes, settling, selfUserId, graceClock]);
 
   // The server's backstop refusing this browser's segment means another
   // host's browser IS recording, whatever this one can see (their connection
@@ -415,7 +436,25 @@ export function BroadcastRoom({
       ? session.remotes.find((p) => p.peerId === recorderId)?.name || "another host"
       : null;
   const recordCall = !!call?.isRecorder;
+  // Who else goes into the recording. A webinar hands over every co-host whose
+  // connection is live — ALWAYS an array, empty when this host is alone, so
+  // the recorder starts in its stage mode (fixed at start) and a co-host who
+  // arrives later is one more tile rather than someone the file leaves out.
+  // Staff moderator intro, guest speaker's slides, panel of three: the elected
+  // recorder's file has all of them, whoever's laptop it is.
   const recorderRemotes = useMemo<RecorderRemote[] | undefined>(() => {
+    if (webinar) {
+      return session.remotes
+        .filter((p) => p.role === "host" && p.state === "live")
+        .map((p) => ({
+          id: p.peerId,
+          name: p.name || "Speaker",
+          camera: p.streams.camera ?? null,
+          screen: p.streams.screen ?? null,
+          audio: p.streams.audio ?? null,
+          connected: true,
+        }));
+    }
     if (!call) return undefined;
     if (session.remotes.length === 0) {
       return [
@@ -437,7 +476,7 @@ export function BroadcastRoom({
       audio: p.streams.audio ?? null,
       connected: p.state === "live",
     }));
-  }, [call, session.remotes]);
+  }, [webinar, call, session.remotes]);
   const recorder = useRecorder({
     eventId: webinar?.eventId ?? roomId,
     enabled: (recordWebinar || recordCall) && phase === "live" && mediaSettled,
@@ -448,7 +487,8 @@ export function BroadcastRoom({
     micOn: media.micOn,
     onSegment: webinar ? onWebinarSegment : call?.onSegment ?? noopSegment,
     remotes: recorderRemotes,
-    localName: call?.selfName,
+    localName: call?.selfName ?? webinar?.selfName,
+    subject: call ? "call" : "webinar",
   });
 
   const onJoin = useCallback((opts: { cameraOn: boolean; micOn: boolean }) => {

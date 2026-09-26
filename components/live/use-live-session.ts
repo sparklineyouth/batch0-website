@@ -87,6 +87,13 @@ export type RemotePeer = {
   role: SignalRole;
   state: ConnectionState;
   /**
+   * When this connection stopped being live (epoch ms) — or was created, if it
+   * never has been. Null while live. What lets the webinar room stop counting
+   * a co-host who has been "reconnecting" for too long as present (see
+   * `presentForRecording` in lib/webinars.ts).
+   */
+  downSince: number | null;
+  /**
    * Inbound tracks, by slot — present only while actually carrying media.
    * A slot whose track is muted is absent, not black.
    */
@@ -159,6 +166,13 @@ type PeerConnection = {
   state: ConnectionState;
   /** True once connected at least once — drives "reconnecting" vs "failed". */
   wasLive: boolean;
+  /**
+   * When the connection last stopped being live, or was created if it never
+   * has been. Unlike `progressAt` it does not move while the connection
+   * flaps between not-live states, so it measures how long the peer has been
+   * gone rather than how long since the last ICE event.
+   */
+  downSince: number;
   /**
    * When the CURRENT negotiation attempt started. Re-stamped on every state
    * change, so the stuck-watchdog below measures "how long has it been
@@ -299,6 +313,7 @@ export function useLiveSession({
             name: c.peer.name,
             role: c.peer.role,
             state: c.state,
+            downSince: c.state === "live" ? null : c.downSince,
             streams,
           };
         }),
@@ -525,6 +540,7 @@ export function useLiveSession({
         earlyCandidates: [],
         state: "connecting",
         wasLive: false,
+        downSince: Date.now(),
         progressAt: Date.now(),
       };
       connections.current.set(peer.peerId, conn);
@@ -586,6 +602,7 @@ export function useLiveSession({
         // Any transition is progress: it resets the wedged clock, so the
         // watchdog only fires on a connection that is genuinely going nowhere.
         conn.progressAt = Date.now();
+        const before = conn.state;
         if (s === "connected") {
           conn.state = "live";
           conn.wasLive = true;
@@ -596,6 +613,7 @@ export function useLiveSession({
         } else if (s === "failed" || s === "closed") {
           conn.state = conn.wasLive ? "reconnecting" : "failed";
         }
+        if (before === "live" && conn.state !== "live") conn.downSince = Date.now();
         publish();
         recomputeOverall();
       };
@@ -625,6 +643,7 @@ export function useLiveSession({
             sdp: offer.sdp ?? "",
           });
         } catch (err) {
+          if (conn.state === "live") conn.downSince = Date.now();
           conn.state = "failed";
           conn.progressAt = Date.now();
           publish();
@@ -696,6 +715,7 @@ export function useLiveSession({
             sdp: answer.sdp ?? "",
           });
         } catch (err) {
+          if (conn.state === "live") conn.downSince = Date.now();
           conn.state = "failed";
           conn.progressAt = Date.now();
           publish();
@@ -892,11 +912,28 @@ export function useLiveSession({
       // check makes that a no-op for healthy connections and a rebuild for
       // stuck ones. A 1:1 has no reconcile poll, so without this a single
       // lost offer would deadlock the call forever.
+      //
+      // And every OTHER broadcaster this one is connected to, not just the
+      // join-time roster. A host who arrived after us was found through the
+      // lobby and is not in `held.peers`; if they then vanish without a
+      // goodbye (battery, crash, closed lid — no pagehide, so no bye and no
+      // peer-offline), their connection sits in "reconnecting" forever with
+      // nothing to reconnect to. In a webinar that is a co-host the recorder
+      // election keeps counting as present — possibly the elected recorder,
+      // recording nothing while everyone else stands down for them. Retried
+      // here, a wedged connection is rebuilt to "connecting" like any other,
+      // which the election stops counting once settling is over. A viewer's
+      // connections are left to the host's side, as they always were.
       addTimer(
         setInterval(() => {
           void announce();
           const held = credsRef.current;
-          if (held) for (const peer of held.peers) void connectTo(peer);
+          if (!held) return;
+          for (const peer of held.peers) void connectTo(peer);
+          if (!isBroadcasterRef.current) return;
+          for (const c of [...connections.current.values()]) {
+            if (c.peer.role === "host") void connectTo(c.peer);
+          }
         }, HEARTBEAT_MS),
       );
 

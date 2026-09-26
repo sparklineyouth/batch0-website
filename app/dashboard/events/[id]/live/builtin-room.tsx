@@ -54,6 +54,7 @@ import {
 export function BuiltinEventRoom({
   eventId,
   selfUserId,
+  selfName,
   title,
   role,
   isStaffHost,
@@ -74,6 +75,8 @@ export function BuiltinEventRoom({
    * the room agree on which one of them records.
    */
   selfUserId: string;
+  /** The signed-in person's name, for their tile if their browser records. */
+  selfName: string;
   title: string;
   role: LiveRole;
   /**
@@ -149,7 +152,14 @@ export function BuiltinEventRoom({
       durationSeconds: number,
     ): Promise<SegmentOutcome> => {
       const filename = webinarSegmentName(runRef.current, index);
-      const minted = await getWebinarRecordingUploadToken(eventId, filename);
+      // The segment's length goes with the ask, so the server can tell a
+      // co-host who registered BEFORE this segment began (a recorder who has
+      // since handed over) from one recording alongside it.
+      const minted = await getWebinarRecordingUploadToken(
+        eventId,
+        filename,
+        Math.round(durationSeconds),
+      );
       if (!minted.ok) return "refused";
       // Deferred import keeps supabase-js out of the route's first-load JS;
       // it's only needed here, at the moment an upload starts.
@@ -187,6 +197,7 @@ export function BuiltinEventRoom({
     () => ({
       eventId,
       selfUserId,
+      selfName,
       audienceMode,
       isStaffHost,
       autoRecord,
@@ -208,6 +219,7 @@ export function BuiltinEventRoom({
     [
       eventId,
       selfUserId,
+      selfName,
       audienceMode,
       isStaffHost,
       autoRecord,

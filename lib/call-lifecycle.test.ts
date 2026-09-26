@@ -189,14 +189,43 @@ test("a call cancelled mid-room keeps its last segment, inside the window only",
 test("the Past list looks for recordings on calls whose room could have opened", () => {
   assert.equal(mayHaveCallRecording(call("accepted"), at(FIRST_CLOSED)), true);
   assert.equal(mayHaveCallRecording(call("completed"), at(FIRST_CLOSED)), true);
-  // Cancelled while the host sat in the room — the ended screen sends them
-  // to Past for it.
+  // No cancel timestamp to go on: whether the room could have opened yet.
   assert.equal(mayHaveCallRecording(call("cancelled"), at(FIRST_CLOSED)), true);
   assert.equal(mayHaveCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE)), true);
-  // Cancelled before the room could ever open: nothing to find.
+  // The room can't have opened yet: nothing to find, whatever the timestamp.
   assert.equal(mayHaveCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE - 1)), false);
+  assert.equal(
+    mayHaveCallRecording(
+      call("cancelled", { updatedAt: at(-JOIN_OPENS_MINUTES_BEFORE).toISOString() }),
+      at(-JOIN_OPENS_MINUTES_BEFORE - 1),
+    ),
+    false,
+  );
   assert.equal(mayHaveCallRecording(call("declined"), at(FIRST_CLOSED)), false);
   assert.equal(mayHaveCallRecording(call("invited"), at(FIRST_CLOSED)), false);
+});
+
+test("a cancelled call is looked up only when it was cancelled while the room was open", () => {
+  const cancelledAt = (minutes: number) =>
+    call("cancelled", { updatedAt: at(minutes).toISOString() });
+  // Cancelled from the room — a host giving up on a no-show — has segments.
+  assert.equal(mayHaveCallRecording(cancelledAt(5), at(FIRST_CLOSED)), true);
+  assert.equal(mayHaveCallRecording(cancelledAt(-JOIN_OPENS_MINUTES_BEFORE), at(FIRST_CLOSED)), true);
+  assert.equal(mayHaveCallRecording(cancelledAt(LAST_OPEN), at(FIRST_CLOSED + 60)), true);
+  // Cancelled days ahead: never had a room, so it must not use up the
+  // lookup cap ahead of a call that was really recorded.
+  assert.equal(mayHaveCallRecording(cancelledAt(-3 * 24 * 60), at(FIRST_CLOSED)), false);
+  assert.equal(
+    mayHaveCallRecording(cancelledAt(-JOIN_OPENS_MINUTES_BEFORE - 1), at(FIRST_CLOSED)),
+    false,
+  );
+  // An expired invite withdrawn after its window (by the sweep, or by hand).
+  assert.equal(mayHaveCallRecording(cancelledAt(FIRST_CLOSED), at(FIRST_CLOSED + 5)), false);
+  // An unreadable timestamp keeps the undated rule.
+  assert.equal(
+    mayHaveCallRecording(call("cancelled", { updatedAt: "not a date" }), at(FIRST_CLOSED)),
+    true,
+  );
 });
 
 test("the sweep completes accepted calls whose window has closed, and nothing else", () => {

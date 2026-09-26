@@ -459,8 +459,9 @@ invitee never records — two recorders would double the file and make the
 student's laptop do the work). `useRecorder` is given the other participant's
 streams (`remotes`): both people side by side with name tags (or the shared
 screen with both faces inset), and both voices mixed through an
-`AudioContext` into one track. Webinars pass no `remotes` and record exactly as
-before.
+`AudioContext` into one track. A webinar's elected recorder is given every
+live co-host the same way, so the whole stage is recorded whichever host's
+browser does it (see docs/webinars.md).
 
 No schema: segments go to a dedicated private `call-recordings` bucket at
 `calls/<inviteId>/recording/segment-NNNN-<ts>.webm` (`lib/call-recording.ts`);

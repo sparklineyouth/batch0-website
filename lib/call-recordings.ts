@@ -126,10 +126,11 @@ const RECORDING_LOOKUP_CAP = 25;
 /**
  * The calls on a list worth asking storage about: over, and could have had a
  * room with a recorder in it (mayHaveCallRecording — accepted or completed,
- * or cancelled once the room could have opened, because a call cancelled
- * mid-room has segments and the room told the host they are here). Storage is
- * the record; this only decides which folders are worth listing. Newest
- * first, capped.
+ * or cancelled while the room was open, because a call cancelled mid-room has
+ * segments and the room told the host they are here; not one cancelled ahead
+ * of time or withdrawn after it expired, which would only use up the cap).
+ * Storage is the record; this only decides which folders are worth listing.
+ * Newest first, capped.
  */
 export function recordingCandidates(
   invites: readonly CallInvite[],

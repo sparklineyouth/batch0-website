@@ -389,51 +389,38 @@ export function recordingSegmentSlot(
 // ---------------------------------------------------------------------------
 //
 // Every host in the room — staff and guest speakers alike — runs the same
-// page, and the page records from the host's own tab. Left to itself, every
-// host's tab records: each its own camera and mic, none of the others
-// (use-recorder.ts's header says why remote broadcasters are not composed in),
-// all into one event's segment sequence, interleaved a segment at a time.
-// So exactly one browser records, chosen by a rule every browser in the room
-// computes identically from what it can already see, and the server refuses
-// segments from anyone the same rule would not have chosen.
+// page, and any of their browsers could record. Whichever one does records the
+// WHOLE STAGE: every live host's camera and screen share composited onto one
+// canvas, every voice mixed into one track (use-recorder.ts). So which browser
+// records decides nothing about what ends up in the recording — only whose
+// upstream carries it. What matters is that exactly ONE does: two recorders
+// put the webinar into one event's segment sequence twice, interleaved a
+// segment at a time. So one browser is chosen by a rule every browser in the
+// room computes identically from what it can already see, and the server
+// refuses segments from anyone the same rule would not have chosen.
+//
+// The rule is deliberately the dullest one available: the lowest user id
+// among the hosts present. An earlier version ranked staff ahead of guest
+// speakers, which needed every browser to agree on who was a guest — and the
+// only place a browser could learn that was the speaker list rendered into
+// its page when it loaded. A guest who claimed their slot after a co-host's
+// page had loaded was staff to that co-host and a guest to themselves; each
+// browser elected the other, and nobody recorded. A peer's id is the one fact
+// about it that every browser holds identically from the moment it appears.
 
 /**
- * A host who could be the recorder.
- *
- * `guest` is "a claimed speaker on this event" — the one fact about another
- * host that every browser in the room holds identically (the speaker list is
- * server-rendered into the page, and the server reads the same table). A staff
- * member who ALSO claimed a speaker slot therefore ranks as a guest here: an
- * odd case, and one where agreement between browsers matters far more than
- * which of two hosts it picks.
+ * Whose browser records, among the hosts present: the lowest user id. Null
+ * when nobody is. Every browser in the room — and `recordingRival` on the
+ * server — applies this same comparison, so they cannot disagree about the
+ * winner given the same set of ids.
  */
-export type RecorderCandidate = { userId: string; guest: boolean };
-
-/**
- * Before a guest, staff; between equals, the lowest user id.
- *
- * Staff first because the recording is batch0's record of a room full of
- * students, and a guest's laptop leaving early should not be what decides
- * whether it exists. The id is only a tie-break every browser agrees on.
- */
-export function compareRecorders(
-  a: RecorderCandidate,
-  b: RecorderCandidate,
-): number {
-  if (a.guest !== b.guest) return a.guest ? 1 : -1;
-  return a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0;
-}
-
-/** Whose browser records, among the hosts present. Null when nobody is. */
-export function electRecorder(
-  candidates: readonly RecorderCandidate[],
-): string | null {
-  let best: RecorderCandidate | null = null;
-  for (const c of candidates) {
-    if (!c.userId) continue;
-    if (!best || compareRecorders(c, best) < 0) best = c;
+export function electRecorder(userIds: readonly string[]): string | null {
+  let best: string | null = null;
+  for (const id of userIds) {
+    if (!id) continue;
+    if (best === null || id < best) best = id;
   }
-  return best?.userId ?? null;
+  return best;
 }
 
 /**
@@ -444,20 +431,41 @@ export function electRecorder(
  * connections start as "connecting". Counting those as present is what stops a
  * host who arrives second from recording for the few seconds it takes the
  * connection to come up. After this, only a connection that is (or was, and is
- * re-establishing) live counts: a host whose connection never came up — or who
- * closed the lid without saying goodbye, which leaves a peer the engine keeps
- * retrying — must not hold the recording hostage for the rest of the webinar.
+ * re-establishing) live counts: a host whose connection never came up must not
+ * hold the recording hostage for the rest of the webinar.
  */
 export const RECORDER_SETTLE_MS = 15_000;
+
+/**
+ * How long a co-host whose connection DROPPED keeps counting as present: two
+ * segments.
+ *
+ * Long enough that a wifi handover — ICE dipping through "disconnected" and
+ * coming back — does not hand the recording to somebody else and back again.
+ * Bounded, because a host whose laptop died or whose lid closed never says
+ * goodbye: no `bye`, no `peer-offline`, and a connection that sits in
+ * "reconnecting" with nothing to reconnect to. Unbounded, that host would stay
+ * the elected recorder for the rest of the webinar while recording nothing.
+ * The live-session engine also rebuilds such a connection on its heartbeat
+ * (which drops it to "connecting", no longer counted once settling is over);
+ * this bound is what holds if that never happens.
+ */
+export const RECORDER_RECONNECT_GRACE_MS = 2 * RECORDING_SEGMENT_SECONDS * 1000;
 
 /**
  * Does a co-host in this connection state count as present for the election?
  *
  * `state` is a `ConnectionState` from use-live-session, taken as a string so
- * this file stays import-free.
+ * this file stays import-free. `downForMs` is how long the connection has not
+ * been live — only consulted for "reconnecting".
  */
-export function presentForRecording(state: string, settling: boolean): boolean {
-  if (state === "live" || state === "reconnecting") return true;
+export function presentForRecording(
+  state: string,
+  settling: boolean,
+  downForMs = 0,
+): boolean {
+  if (state === "live") return true;
+  if (state === "reconnecting") return downForMs <= RECORDER_RECONNECT_GRACE_MS;
   return settling && state === "connecting";
 }
 
@@ -469,47 +477,78 @@ export function presentForRecording(state: string, settling: boolean): boolean {
 export const RECORDER_LEASE_MS = 2 * RECORDING_SEGMENT_SECONDS * 1000;
 
 /**
+ * When the segment being filed began, in epoch ms on the SERVER's clock, from
+ * how long the browser says it ran. Undefined when no usable length was sent,
+ * which `recordingRival` reads as "any registration inside the lease counts".
+ *
+ * Derived from a DURATION rather than taken as a timestamp, because a duration
+ * is the one number a browser with a wrong clock still gets right: a laptop
+ * four minutes fast would otherwise put every rival's registration "before"
+ * its segment and never be refused.
+ */
+export function recordingSegmentStart(
+  now: Date,
+  durationSeconds: number | null | undefined,
+): number | undefined {
+  if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds)) {
+    return undefined;
+  }
+  return now.getTime() - Math.max(0, durationSeconds) * 1000;
+}
+
+/**
  * The server's backstop: who (if anyone) is recording this event in the
  * caller's place, such that the caller's segment must be refused?
  *
  * The client-side election is the rule; this is what holds when the clients
  * disagree — two hosts whose connection to each other never came up, a
  * transient in the first seconds after a join, a stale tab. A rival is a
- * DIFFERENT user who registered a segment within the lease, who is still in
- * the room (`present`; null when attendance can't be read, which counts
- * everyone as present), and whom the election ranks ahead of the caller.
+ * DIFFERENT user who registered a segment within the lease — and, when
+ * `segmentStartMs` is given, AFTER the caller's segment began — who is still
+ * in the room (`present`; null when attendance can't be read, which counts
+ * everyone as present), and whom the election ranks ahead of the caller
+ * (a lower id).
  *
  * Ranked, not first-come. "Whoever registered most recently keeps it" loses
  * the start of a webinar every time a second host's tab records for a few
  * seconds before seeing the first: that stub registers first and the rightful
  * recorder is refused for the whole lease. Under ranking the rightful
  * recorder is never refused by someone the room would not have chosen, and a
- * handover (the staff host leaves, the guest carries on) works as soon as the
- * departing host is no longer present.
+ * handover works as soon as the departing host is no longer present.
+ *
+ * "After the caller's segment began", because a registration only proves the
+ * rival was recording at the time it landed. The recorder who left (A) and
+ * came back three minutes later still has a registration inside the lease —
+ * but it predates everything the host who covered for them (B) recorded in
+ * between, and refusing B's handover flush for it dropped that stretch of the
+ * talk outright. A host genuinely recording ALONGSIDE the rival always sees
+ * the rival register during its own segment, and is still refused.
  *
  * The same user is never their own rival: a host who reloads starts a new run
  * that must carry straight on from the old one.
  */
 export function recordingRival({
-  caller,
+  callerId,
   recent,
   present,
   now,
+  segmentStartMs,
 }: {
-  caller: RecorderCandidate;
-  recent: readonly { userId: string | null; guest: boolean; at: string }[];
+  callerId: string;
+  recent: readonly { userId: string | null; at: string }[];
   present: ReadonlySet<string> | null;
   now: Date;
+  /** From `recordingSegmentStart`. Omitted: every registration in the lease counts. */
+  segmentStartMs?: number;
 }): string | null {
   const since = now.getTime() - RECORDER_LEASE_MS;
   for (const r of recent) {
-    if (!r.userId || r.userId === caller.userId) continue;
+    if (!r.userId || r.userId === callerId) continue;
     const at = Date.parse(r.at);
     if (!Number.isFinite(at) || at < since) continue;
+    if (segmentStartMs !== undefined && at <= segmentStartMs) continue;
     if (present && !present.has(r.userId)) continue;
-    if (compareRecorders({ userId: r.userId, guest: r.guest }, caller) < 0) {
-      return r.userId;
-    }
+    if (electRecorder([r.userId, callerId]) === r.userId) return r.userId;
   }
   return null;
 }

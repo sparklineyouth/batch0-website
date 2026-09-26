@@ -40,6 +40,11 @@ export type CallTiming = {
   status: CallInviteStatus;
   startsAt: string;
   durationMinutes: number;
+  /**
+   * When the row last changed. Only `mayHaveCallRecording` reads it, to date
+   * a cancellation; everything else is a function of the status and the clock.
+   */
+  updatedAt?: string;
 };
 
 export type CallPhase =
@@ -231,21 +236,30 @@ export function shouldAutoWithdraw(call: CallTiming, now: Date = new Date()): bo
  * Could this call have recording segments in storage?
  *
  * Accepted or completed: the host was recording from the moment the room
- * opened. Cancelled, too, once the room could have opened — a call cancelled
- * mid-room (a host giving up on a no-show) has segments, and the room tells
- * the host they are "under Past", so the Past list has to look. A call
- * cancelled days before its time has nothing, but cannot be told apart from
- * one cancelled mid-room without a timestamp the table does not have; the
- * cost of asking is one empty storage listing. Declined and never-answered
- * invites never had a room.
+ * opened. Declined and never-answered invites never had a room.
+ *
+ * Cancelled, only if it was cancelled WHILE the room was open — a host giving
+ * up on a no-show from the room has segments, and the room tells the host
+ * they are "under Past", so the Past list has to look. The row's `updatedAt`
+ * dates the cancel (nothing writes a cancelled row again). A call cancelled
+ * days ahead, or an expired invite withdrawn after its window (by the sweep
+ * or by hand), never had a room — and must not be asked about, because the
+ * list pages only look up a capped number of calls, newest first, and every
+ * one of these would push a genuinely recorded call past the cap and quietly
+ * take its recording link off the page. With no timestamp to go on it falls
+ * back to "could the room have opened yet", which errs toward looking.
  */
 export function mayHaveCallRecording(call: CallTiming, now: Date = new Date()): boolean {
   if (call.status === "accepted" || call.status === "completed") return true;
   if (call.status !== "cancelled") return false;
-  return (
-    new Date(call.startsAt).getTime() - JOIN_OPENS_MINUTES_BEFORE * MINUTE <=
-    now.getTime()
-  );
+  const opens = new Date(call.startsAt).getTime() - JOIN_OPENS_MINUTES_BEFORE * MINUTE;
+  if (!(opens <= now.getTime())) return false;
+  const at = call.updatedAt ? Date.parse(call.updatedAt) : NaN;
+  if (!Number.isFinite(at)) return true;
+  const closes =
+    callEndsAt(call.startsAt, call.durationMinutes).getTime() +
+    JOIN_CLOSES_MINUTES_AFTER * MINUTE;
+  return at >= opens && at <= closes;
 }
 
 /**

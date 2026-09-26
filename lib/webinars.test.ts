@@ -16,14 +16,15 @@ import {
   pollPercentages,
   premiereState,
   recordingSegmentSlot,
-  compareRecorders,
   electRecorder,
   parseSegmentRun,
   presentForRecording,
   recordingRival,
+  recordingSegmentStart,
   webinarSegmentName,
   AUDIENCE_MODES,
   RECORDER_LEASE_MS,
+  RECORDER_RECONNECT_GRACE_MS,
   RECORDING_AUDIO_BITRATE,
   RECORDING_SEGMENT_SECONDS,
   RECORDING_VIDEO_BITRATE,
@@ -583,35 +584,21 @@ test("two minutes of recording fits well inside a 50 MB upload limit", () => {
 // One recorder per webinar
 // ---------------------------------------------------------------------------
 
-test("staff record before guests, and the lowest id breaks a tie", () => {
-  assert.equal(
-    electRecorder([
-      { userId: "a-guest", guest: true },
-      { userId: "z-staff", guest: false },
-      { userId: "m-staff", guest: false },
-    ]),
-    "m-staff",
-  );
-  assert.equal(
-    electRecorder([
-      { userId: "b", guest: true },
-      { userId: "a", guest: true },
-    ]),
-    "a",
-    "a room of guests still records",
-  );
+test("the lowest user id present records, staff or guest alike", () => {
+  assert.equal(electRecorder(["u3", "u1", "u2"]), "u1");
+  // A guest speaker's id is just an id: nothing about who they are enters it,
+  // so no browser can hold a different fact about them than another does.
+  assert.equal(electRecorder(["b-staff", "a-guest"]), "a-guest");
   assert.equal(electRecorder([]), null);
-  assert.ok(compareRecorders({ userId: "z", guest: false }, { userId: "a", guest: true }) < 0);
+  assert.equal(electRecorder(["", "z"]), "z");
 });
 
 test("every browser in the room elects the same recorder", () => {
-  const room = [
-    { userId: "u3", guest: true },
-    { userId: "u2", guest: false },
-    { userId: "u1", guest: false },
-  ];
+  const room = ["u3", "u2", "u1"];
   // Each browser sees itself plus the others, in whatever order its
-  // connections came up.
+  // connections came up — and none of them consults the page's speaker list,
+  // which a guest who claimed their slot after a co-host's page loaded would
+  // make disagree.
   const views = [room, [...room].reverse(), [room[1], room[0], room[2]]];
   const elected = views.map((v) => electRecorder(v));
   assert.deepEqual(elected, ["u1", "u1", "u1"]);
@@ -626,47 +613,60 @@ test("a co-host still connecting counts as present only while settling", () => {
   assert.equal(presentForRecording("idle", true), false);
 });
 
+test("a co-host who dropped counts as present for a bounded grace, not forever", () => {
+  // A wifi handover: back well inside the grace, nobody else takes over.
+  assert.equal(presentForRecording("reconnecting", false, 20_000), true);
+  assert.equal(
+    presentForRecording("reconnecting", false, RECORDER_RECONNECT_GRACE_MS),
+    true,
+  );
+  // A laptop that died without a goodbye stops holding the election.
+  assert.equal(
+    presentForRecording("reconnecting", false, RECORDER_RECONNECT_GRACE_MS + 1),
+    false,
+  );
+  // The bound is about "reconnecting" only; a live connection is present.
+  assert.equal(presentForRecording("live", false, RECORDER_RECONNECT_GRACE_MS * 10), true);
+});
+
 const NOW = new Date("2026-09-26T18:00:00.000Z");
 const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
 
-test("the server refuses a guest's segment while a present staff host is recording", () => {
-  const guest = { userId: "g", guest: true };
-  const recent = [{ userId: "s", guest: false, at: ago(60_000) }];
+test("the server refuses a segment while a present, lower-id host is recording", () => {
+  const recent = [{ userId: "a", at: ago(60_000) }];
   assert.equal(
-    recordingRival({ caller: guest, recent, present: new Set(["s", "g"]), now: NOW }),
-    "s",
+    recordingRival({ callerId: "b", recent, present: new Set(["a", "b"]), now: NOW }),
+    "a",
   );
 });
 
 test("the rightful recorder is never refused by a stub from someone ranked below", () => {
   // A second host recorded a few seconds before seeing the first, and that
-  // stub registered first. The staff host's segment must still land.
-  const staff = { userId: "s", guest: false };
-  const recent = [{ userId: "g", guest: true, at: ago(5_000) }];
+  // stub registered first. The lower id's segment must still land.
+  const recent = [{ userId: "b", at: ago(5_000) }];
   assert.equal(
-    recordingRival({ caller: staff, recent, present: null, now: NOW }),
+    recordingRival({ callerId: "a", recent, present: null, now: NOW }),
     null,
   );
 });
 
 test("a handover works once the old recorder has left or its lease has run out", () => {
-  const guest = { userId: "g", guest: true };
-  const staffRecent = [{ userId: "s", guest: false, at: ago(30_000) }];
+  const recent = [{ userId: "a", at: ago(30_000) }];
   // Still in the room: refused.
   assert.equal(
-    recordingRival({ caller: guest, recent: staffRecent, present: new Set(["s"]), now: NOW }),
-    "s",
+    recordingRival({ callerId: "b", recent, present: new Set(["a"]), now: NOW }),
+    "a",
   );
-  // Left the room: the guest carries on at once.
+  // Left the room: the next in line carries on at once.
   assert.equal(
-    recordingRival({ caller: guest, recent: staffRecent, present: new Set(["g"]), now: NOW }),
+    recordingRival({ callerId: "b", recent, present: new Set(["b"]), now: NOW }),
     null,
   );
   // Attendance unreadable: the lease is the only clock, and it runs out.
   assert.equal(
     recordingRival({
-      caller: guest,
-      recent: [{ userId: "s", guest: false, at: ago(RECORDER_LEASE_MS + 1) }],
+      callerId: "b",
+      recent: [{ userId: "a", at: ago(RECORDER_LEASE_MS + 1) }],
       present: null,
       now: NOW,
     }),
@@ -674,12 +674,61 @@ test("a handover works once the old recorder has left or its lease has run out",
   );
 });
 
-test("a host is never their own rival, so a reload carries straight on", () => {
-  const me = { userId: "s", guest: false };
+test("a returning recorder's old registration does not refuse the host who covered for them", () => {
+  // A left at t0 (its final flush registered then) and came back three
+  // minutes later. B covered the gap, and is now flushing the segment it
+  // began after A's last registration — the lease alone would refuse it.
+  const recent = [{ userId: "a", at: ago(3 * 60_000) }];
+  const start = recordingSegmentStart(NOW, 65);
   assert.equal(
     recordingRival({
-      caller: me,
-      recent: [{ userId: "s", guest: false, at: ago(1_000) }],
+      callerId: "b",
+      recent,
+      present: new Set(["a", "b"]),
+      now: NOW,
+      segmentStartMs: start,
+    }),
+    null,
+  );
+  // Without a segment start (the admin upload path), the lease still binds.
+  assert.equal(
+    recordingRival({ callerId: "b", recent, present: new Set(["a", "b"]), now: NOW }),
+    "a",
+  );
+});
+
+test("a host recording alongside the recorder is still refused", () => {
+  // The rival registered DURING the caller's two-minute segment: both were
+  // recording at once, and the lower id keeps it.
+  const recent = [{ userId: "a", at: ago(40_000) }];
+  assert.equal(
+    recordingRival({
+      callerId: "b",
+      recent,
+      present: new Set(["a", "b"]),
+      now: NOW,
+      segmentStartMs: recordingSegmentStart(NOW, 120),
+    }),
+    "a",
+  );
+});
+
+test("a segment's start comes from its length on the server's clock", () => {
+  assert.equal(recordingSegmentStart(NOW, 120), NOW.getTime() - 120_000);
+  assert.equal(recordingSegmentStart(NOW, 0), NOW.getTime());
+  // A negative length is clamped rather than dating the segment in the future.
+  assert.equal(recordingSegmentStart(NOW, -5), NOW.getTime());
+  // No usable length: no start, so every registration in the lease counts.
+  assert.equal(recordingSegmentStart(NOW, undefined), undefined);
+  assert.equal(recordingSegmentStart(NOW, null), undefined);
+  assert.equal(recordingSegmentStart(NOW, Number.NaN), undefined);
+});
+
+test("a host is never their own rival, so a reload carries straight on", () => {
+  assert.equal(
+    recordingRival({
+      callerId: "s",
+      recent: [{ userId: "s", at: ago(1_000) }],
       present: null,
       now: NOW,
     }),

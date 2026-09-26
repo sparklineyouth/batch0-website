@@ -10,7 +10,7 @@ import {
 import { callInsetBoxes, callTileBoxes } from "@/lib/call-recording";
 
 /**
- * Recording a webinar from inside the host's tab.
+ * Recording a webinar — or a 1:1 — from inside one host's tab.
  *
  * There is no server in the media path — batch0 Live is browser-to-browser
  * (see the topology note at the top of lib/live-signal.ts), so nothing but the
@@ -73,32 +73,40 @@ import { callInsetBoxes, callTileBoxes } from "@/lib/call-recording";
  * It does not record the audience: there is no audience media to record. A
  * viewer is receive-only by construction, so the recording is the broadcast,
  * and a student cannot end up on tape by turning on a microphone they were
- * never given. In a webinar it does not record remote broadcasters either — a
- * co-host's inbound video is not composed in, because that would put a second
- * person's camera into a file the first person believes is theirs.
+ * never given.
  *
  * ---------------------------------------------------------------------------
- * The 1:1 exception, and why it is opt-in
+ * Everyone on stage, not just this tab's host
  * ---------------------------------------------------------------------------
  *
- * A 1:1 call is the one room where the other person IS the recording: half a
- * conversation is not a record of it. So a caller that passes `remotes` gets a
- * different machine, fixed at `start()`:
+ * The recording is the room's record of what was SAID, and the people saying
+ * it are rarely all on one laptop: the other person in a 1:1 is half the
+ * conversation, and a webinar's guest speaker is usually the talk while the
+ * staff moderator who introduced them sits muted. Exactly one browser records
+ * (a 1:1's host; a webinar's elected recorder — see `electRecorder` in
+ * lib/webinars.ts), so a recorder that captured only its own camera and mic
+ * would leave whoever was not on that laptop out of the recording entirely.
+ *
+ * So a caller that passes `remotes` — every live broadcaster other than this
+ * tab's — gets the STAGE machine, fixed at `start()`:
  *
  *   - the picture is everyone side by side (or, while someone presents, their
  *     screen with each face as an inset), each labelled with their name, drawn
  *     from off-screen `<video>` elements fed the inbound streams;
  *   - the sound is MIXED. A `MediaRecorder` records one audio track, and a
- *     conversation is two microphones, so both are routed through an
+ *     conversation is several microphones, so every one is routed through an
  *     `AudioContext` into one `MediaStreamAudioDestinationNode` whose single
  *     track is what gets recorded. That track outlives every change underneath
- *     it — the other person arriving, dropping, rejoining, a device switch —
- *     for the same reason the canvas does: the recorder never sees a source
- *     track end.
+ *     it — someone arriving, dropping, rejoining, a device switch — for the
+ *     same reason the canvas does: the recorder never sees a source track end.
  *
- * Both people are told, in the green room and in the room, before a frame is
- * written (broadcast-room.tsx). A webinar passes no `remotes` and records
- * exactly what it always has.
+ * Both 1:1 and webinar pass an array, even an empty one, so the machine is
+ * the stage one from the first frame and a co-host arriving later is one more
+ * tile rather than a different recorder. Which browser records then decides
+ * only whose upstream carries the file, never who is in it. In a 1:1 both
+ * people are told, in the green room and in the room, before a frame is
+ * written (broadcast-room.tsx). A caller passing no `remotes` gets the SOLO
+ * machine — this tab's camera, screen and mic alone.
  *
  * It also never retries an upload. `onSegment` owns that decision, because it
  * is the side that knows whether the failure was a dead network or a rejected
@@ -167,7 +175,8 @@ const TAG_FILL = "rgba(0, 0, 0, 0.6)";
 const FONT_STACK = "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif";
 
 /**
- * Someone other than the recording host, to be composed into a 1:1's recording.
+ * A broadcaster other than the recording host, to be composed into the
+ * recording: the other person in a 1:1, or a co-host on a webinar's stage.
  *
  * Streams are present only while that slot is actually carrying media — the
  * live-session engine drops a muted slot rather than handing over black frames
@@ -194,6 +203,7 @@ export function useRecorder({
   onSegment,
   remotes,
   localName,
+  subject = "webinar",
 }: {
   eventId: string;
   /** Gates the whole machine: host, joined, and recording turned on. */
@@ -210,14 +220,15 @@ export function useRecorder({
   micOn: boolean;
   onSegment: (blob: Blob, index: number, durationSeconds: number) => Promise<void>;
   /**
-   * The other people in a 1:1, to composite in and mix with the local mic.
-   * Leave undefined for a webinar, which records the host alone — see the
-   * header. An empty array still means "a call": the other person just has
-   * not arrived yet.
+   * Every other broadcaster on stage, to composite in and mix with the local
+   * mic — see the header. An empty array still means the stage machine:
+   * nobody else has arrived yet. Undefined records this tab alone.
    */
   remotes?: RecorderRemote[];
-  /** The local person's name, for their tile in a 1:1 recording. */
+  /** The local person's name, for their tile in a stage recording. */
   localName?: string;
+  /** What the host's error sentences call the thing that carries on regardless. */
+  subject?: "webinar" | "call";
 }): {
   state: RecorderState;
   /** Segments successfully handed to `onSegment`. */
@@ -295,11 +306,13 @@ export function useRecorder({
   const stoppingRef = useRef(false);
 
   /**
-   * "solo" records the local host alone (a webinar); "call" composites every
-   * participant and mixes their audio. Fixed at `start()` from whether
-   * `remotes` was passed, so a run never changes shape halfway through a file.
+   * "solo" records the local host alone; "stage" composites every broadcaster
+   * and mixes their audio. Fixed at `start()` from whether `remotes` was
+   * passed, so a run never changes shape halfway through a file.
    */
-  const modeRef = useRef<"solo" | "call">("solo");
+  const modeRef = useRef<"solo" | "stage">("solo");
+  const subjectRef = useRef(subject);
+  subjectRef.current = subject;
   const remotesRef = useRef(remotes);
   remotesRef.current = remotes;
   const localNameRef = useRef(localName);
@@ -308,7 +321,7 @@ export function useRecorder({
   const remoteElsRef = useRef(
     new Map<string, { cam: HTMLVideoElement; screen: HTMLVideoElement }>(),
   );
-  /** The call-mode audio mix: one context, one destination, one source per voice. */
+  /** The stage-mode audio mix: one context, one destination, one source per voice. */
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const audioNodesRef = useRef(
@@ -387,16 +400,16 @@ export function useRecorder({
    * single frame to give, and drawing it then paints nothing over nothing.
    */
   /**
-   * One frame of a 1:1: everyone, labelled.
+   * One frame of the stage: everyone broadcasting, labelled.
    *
-   * Side by side in equal columns — nobody in a 1:1 is the audience — unless
-   * someone is presenting, in which case the shared screen takes the frame
-   * (it is what both of them are looking at and talking about) and each face
-   * drops to an inset. The local person's camera is read through `cameraOn`
+   * Side by side in equal columns — everyone here is a speaker, nobody is the
+   * audience — unless someone is presenting, in which case the shared screen
+   * takes the frame (it is what everyone is looking at and talking about) and
+   * each face drops to an inset. The local person's camera is read through `cameraOn`
    * for the same black-frames reason as the solo path below; a remote's is
    * simply absent when off, because the engine only hands over live slots.
    */
-  const composeCallFrame = useCallback((ctx: CanvasRenderingContext2D) => {
+  const composeStageFrame = useCallback((ctx: CanvasRenderingContext2D) => {
     type Tile = {
       name: string;
       cam: HTMLVideoElement | null;
@@ -446,8 +459,8 @@ export function useRecorder({
     ctx.fillStyle = BACKDROP;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    if (modeRef.current === "call") {
-      composeCallFrame(ctx);
+    if (modeRef.current === "stage") {
+      composeStageFrame(ctx);
       return;
     }
 
@@ -493,7 +506,7 @@ export function useRecorder({
       ctx.lineWidth = 2;
       ctx.strokeRect(inset.x + 1, inset.y + 1, inset.w - 2, inset.h - 2);
     }
-  }, [composeCallFrame]);
+  }, [composeStageFrame]);
 
   // --- the draw loop, and the reason it is not just rAF --------------------
 
@@ -593,7 +606,7 @@ export function useRecorder({
       // `isTypeSupported` said yes and the constructor said no, which happens
       // on builds where the container is supported but the bitrate options are
       // not. Nothing further to try that would not be a guess.
-      fail(`This browser wouldn't start a recorder. The ${subject(modeRef.current)} is unaffected — it just won't be recorded.`);
+      fail(`This browser wouldn't start a recorder. The ${subjectRef.current} is unaffected — it just won't be recorded.`);
       return;
     }
 
@@ -689,7 +702,7 @@ export function useRecorder({
     try {
       rec.start(CHUNK_MS);
     } catch {
-      fail(`This browser wouldn't start a recorder. The ${subject(modeRef.current)} is unaffected — it just won't be recorded.`);
+      fail(`This browser wouldn't start a recorder. The ${subjectRef.current} is unaffected — it just won't be recorded.`);
       settle();
       return;
     }
@@ -717,9 +730,10 @@ export function useRecorder({
     attach(camElRef.current, cameraStream);
     attach(screenElRef.current, screenStream);
 
-    // The other people in a 1:1 — only while a call-mode run is live, so a
-    // webinar (or a call not recording yet) never creates a single element.
-    if (modeRef.current !== "call" || !runningRef.current) return;
+    // Everyone else on stage — only while a stage-mode run is live, so a
+    // room that is not recording (or not recording here) never creates a
+    // single element.
+    if (modeRef.current !== "stage" || !runningRef.current) return;
     const els = remoteElsRef.current;
     const present = new Set<string>();
     for (const r of remotes ?? []) {
@@ -741,7 +755,7 @@ export function useRecorder({
   }, [cameraStream, screenStream, remotes]);
 
   /**
-   * Keep the call-mode mix wired to exactly the voices in the room.
+   * Keep the stage-mode mix wired to exactly the voices in the room.
    *
    * One `MediaStreamAudioSourceNode` per voice, keyed by who it is and
    * remembering which TRACK it was built on. A source node binds to the track
@@ -756,9 +770,10 @@ export function useRecorder({
    * element is playing (broadcast-room's AudioSink). That matters in Chrome,
    * which does not pull remote WebRTC audio through Web Audio at all unless
    * the stream is also attached to a media element — the recording would be
-   * one side of a silent conversation.
+   * one side of a silent conversation. (A co-host's tile in a webinar mounts
+   * the same sink, so the same holds there.)
    */
-  const syncCallAudio = useCallback(() => {
+  const syncStageAudio = useCallback(() => {
     const actx = audioCtxRef.current;
     const dest = audioDestRef.current;
     if (!actx || !dest || !runningRef.current) return;
@@ -811,8 +826,8 @@ export function useRecorder({
    * costs one seam and picks the new microphone up on the next file.
    */
   const syncAudio = useCallback(() => {
-    if (modeRef.current === "call") {
-      syncCallAudio();
+    if (modeRef.current === "stage") {
+      syncStageAudio();
       return;
     }
     const mix = mixRef.current;
@@ -824,7 +839,7 @@ export function useRecorder({
     if (wanted) mix.addTrack(wanted);
     const rec = recorderRef.current;
     if (runningRef.current && rec && rec.state !== "inactive") rec.stop();
-  }, [micStream, syncCallAudio]);
+  }, [micStream, syncStageAudio]);
 
   useEffect(() => {
     syncSources();
@@ -876,7 +891,7 @@ export function useRecorder({
     canvasRef.current = null;
     ctxRef.current = null;
 
-    // Call mode. The remote elements are ours; the remote STREAMS are the
+    // Stage mode. The remote elements are ours; the remote STREAMS are the
     // room's, still playing in its tiles, and are only detached, never stopped.
     for (const e of remoteElsRef.current.values()) {
       attach(e.cam, null);
@@ -942,10 +957,10 @@ export function useRecorder({
       return;
     }
 
-    // Fixed for the whole run. See the header: `remotes` passed at all means a
-    // 1:1, composited and mixed; absent means a webinar, the host alone.
-    modeRef.current = remotesRef.current !== undefined ? "call" : "solo";
-    const what = subject(modeRef.current);
+    // Fixed for the whole run. See the header: `remotes` passed at all means
+    // the whole stage, composited and mixed; absent means this tab alone.
+    modeRef.current = remotesRef.current !== undefined ? "stage" : "solo";
+    const what = subjectRef.current;
 
     // Feature detection before anything is allocated, and never a throw: a
     // browser that cannot record is a browser where the webinar must still
@@ -1005,12 +1020,12 @@ export function useRecorder({
     const mix = new MediaStream();
     captured.getVideoTracks().forEach((t) => mix.addTrack(t));
 
-    // A 1:1 records a conversation, so its one audio track is a MIX: every
-    // voice goes into this destination (syncCallAudio) and the destination's
+    // The stage records a conversation, so its one audio track is a MIX: every
+    // voice goes into this destination (syncStageAudio) and the destination's
     // track goes into the file. It exists from the first frame, carrying
     // silence until someone speaks, so the recorder never has to be told that
     // an audio track appeared — the thing solo mode rotates a segment for.
-    if (modeRef.current === "call") {
+    if (modeRef.current === "stage") {
       const AC =
         window.AudioContext ??
         (window as unknown as { webkitAudioContext?: typeof AudioContext })
@@ -1026,7 +1041,7 @@ export function useRecorder({
         // anyway, because a context that starts suspended records silence.
         void actx.resume?.().catch(() => {});
       } catch {
-        fail(`This browser can't mix the call's audio, so it can't record. The ${what} itself is unaffected.`);
+        fail(`This browser can't mix the ${what}'s audio, so it can't record. The ${what} itself is unaffected.`);
         return;
       }
     }
@@ -1326,13 +1341,8 @@ function drawCard(ctx: CanvasRenderingContext2D, text: string) {
   ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
 }
 
-/** What the host's error sentences call the thing that carries on regardless. */
-function subject(mode: "solo" | "call"): "webinar" | "call" {
-  return mode === "call" ? "call" : "webinar";
-}
-
 /**
- * One person in a 1:1 recording: their camera (contain-fitted) or a card
+ * One person in a stage recording: their camera (contain-fitted) or a card
  * saying why there is no picture, with their name in the corner.
  *
  * Everything is clipped to the box. A long name, or a placeholder sentence in

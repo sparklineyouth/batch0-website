@@ -23,7 +23,7 @@ import type { CallInvite, CallInviteStatus } from "@/lib/live";
 // generated these names from the inline `references` in the migration.
 const SELECT = `
   id, host_id, invitee_id, starts_at, duration_minutes, topic, status,
-  daily_room_name, daily_room_url, recap, created_at,
+  daily_room_name, daily_room_url, recap, created_at, updated_at,
   host:profiles!call_invites_host_id_fkey(full_name, role),
   invitee:profiles!call_invites_invitee_id_fkey(full_name)
 `;
@@ -44,6 +44,7 @@ function toInvite(row: any): CallInvite {
     durationMinutes: row.duration_minutes,
     topic: row.topic,
     status: row.status as CallInviteStatus,
+    updatedAt: row.updated_at ?? undefined,
     roomName: row.daily_room_name,
     roomUrl: row.daily_room_url,
   };
