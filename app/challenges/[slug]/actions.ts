@@ -29,7 +29,7 @@ import {
 // Entrant actions: register → draft (autosave) → submit.
 //
 // Every write goes through the service-role client AFTER the checks here —
-// there is no RLS insert path for registrations or submissions (0085), because
+// there is no RLS insert path for registrations or submissions (0087), because
 // both carry things a client must not choose for itself: referral attribution,
 // status, and which uploaded files belong to whom.
 // ---------------------------------------------------------------------------
@@ -549,7 +549,7 @@ function safeSegment(s: string) {
     .slice(0, 60) || "file";
 }
 
-// The private challenge-uploads bucket is created by migrations 0047/0085;
+// The private challenge-uploads bucket is created by migrations 0047/0087;
 // self-heal here so uploads work on a deploy whose migration hasn't run.
 let bucketReady: Promise<void> | null = null;
 function ensureUploadBucket(admin: ReturnType<typeof createAdminClient>) {

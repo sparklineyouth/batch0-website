@@ -282,7 +282,7 @@ export const CHALLENGE_UPLOAD_BUCKET = "challenge-uploads";
 export const CHALLENGE_MEDIA_BUCKET = "challenge-media";
 
 /**
- * Reserved answer key for the standalone "Demo video" field that pre-0085
+ * Reserved answer key for the standalone "Demo video" field that pre-0087
  * forms offered on every challenge. No longer rendered, but old submissions
  * still carry it (mirrored into questions_snapshot), so the key stays known.
  */

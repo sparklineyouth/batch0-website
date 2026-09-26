@@ -168,7 +168,7 @@ export async function getEntrantState(
       .maybeSingle(),
   ]);
   return {
-    // A submission implies registration even if the row predates 0085.
+    // A submission implies registration even if the row predates 0087.
     registered: !!reg || !!sub,
     registeredAt: (reg as any)?.created_at ?? null,
     submission: sub ? rowToSubmission(sub) : null,

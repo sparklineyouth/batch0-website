@@ -140,7 +140,9 @@ export async function getStudentProgress(
     admin
       .from("challenge_submissions")
       .select("id, challenge_id, created_at, challenge:challenges(title)")
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      // An autosaved draft isn't activity worth reporting.
+      .neq("status", "draft"),
     admin
       .from("assignment_submissions")
       .select(

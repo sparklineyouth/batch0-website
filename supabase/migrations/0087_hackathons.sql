@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0085 — Hackathons: challenges become events you register for, then submit to.
+-- 0087 — Hackathons: challenges become events you register for, then submit to.
 --
 -- Why this exists
 -- ---------------
@@ -75,7 +75,7 @@ alter table public.challenges add constraint challenges_referrals_required_check
 
 drop index if exists public.challenges_one_active;
 
--- Backfill: a pre-0085 challenge's prize was one sentence plus an optional
+-- Backfill: a pre-0087 challenge's prize was one sentence plus an optional
 -- amount. Lift it into a single structured prize so the new prize section has
 -- something to show for the old pages. Only touches rows that have no prizes
 -- yet, so a re-run never overwrites an admin's edits.
@@ -138,7 +138,7 @@ create policy "challenge_registrations admin write"
   for all using (public.is_admin(auth.uid()))
   with check (public.is_admin(auth.uid()));
 
--- Every pre-0085 submitter was, in effect, registered. Give them the row so
+-- Every pre-0087 submitter was, in effect, registered. Give them the row so
 -- counts and "you're in" states are right on the old challenges.
 insert into public.challenge_registrations (challenge_id, user_id, referral_code, created_at)
 select s.challenge_id, s.user_id, s.referral_code, s.created_at
