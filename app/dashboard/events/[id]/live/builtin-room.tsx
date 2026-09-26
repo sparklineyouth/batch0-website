@@ -99,8 +99,9 @@ export function BuiltinEventRoom({
   isStaffHost: boolean;
   /**
    * May this reader end the webinar for everyone, as the server saw it at
-   * render time (staff always; a guest speaker only with no staff host
-   * present). The room keeps it current from then on.
+   * render time (nobody before the start; then staff always, and a guest
+   * speaker only with no staff host present). The room keeps it current from
+   * then on.
    */
   canEnd: boolean;
   /**
@@ -168,11 +169,14 @@ export function BuiltinEventRoom({
       const filename = webinarSegmentName(run, index);
       // The segment's length goes with the ask, so the server can tell a
       // co-host who registered BEFORE this segment began (a recorder who has
-      // since handed over) from one recording alongside it.
+      // since handed over) from one recording alongside it. Unrounded: it is
+      // only compared, never stored, and at a handover the departing
+      // recorder's last registration can sit within a second of this
+      // segment's start.
       const minted = await getWebinarRecordingUploadToken(
         eventId,
         filename,
-        Math.round(durationSeconds),
+        durationSeconds,
       );
       if (!minted.ok) return "refused";
       // Deferred import keeps supabase-js out of the route's first-load JS;

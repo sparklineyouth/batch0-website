@@ -19,6 +19,7 @@ import {
   roomIsOpen,
   roomWindow,
   eventLiveStatus,
+  webinarHasBegun,
   type CallInvite,
   type LiveRole,
   type RoomAccess,
@@ -293,6 +294,20 @@ test("the host window is wider than the audience's, and the constants say so", (
   assert.equal(w.viewerOpensAt, at(-15).getTime());
   assert.equal(w.viewerClosesAt, at(90).getTime());
   assert.equal(w.hardCloseAt, at(240).getTime());
+});
+
+test("a webinar has begun at its start, or earlier only when a host went live", () => {
+  // The host window opens an hour early for setup; a camera check at 17:10
+  // is not the webinar, and End for everyone must not exist there.
+  assert.equal(webinarHasBegun(START, null, at(-50).getTime()), false);
+  assert.equal(webinarHasBegun(START, null, at(-1).getTime()), false);
+  assert.equal(webinarHasBegun(START, null, at(0).getTime()), true);
+  assert.equal(webinarHasBegun(START, null, at(30).getTime()), true);
+  // A premiere handed over early ("Go live now") has begun, whatever the clock.
+  assert.equal(
+    webinarHasBegun(START, at(-10).toISOString(), at(-5).getTime()),
+    true,
+  );
 });
 
 test("a viewer: early before start-15m, open at start-15m, live after the start", () => {

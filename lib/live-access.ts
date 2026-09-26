@@ -102,7 +102,9 @@ export type EventAccess = {
   /**
    * Staff host: holds `events.manage` (admins through `*`, and any custom role
    * it is ticked on). Broadcasts, moderates, sees audience names and the real
-   * headcount, owns End for everyone, Reopen and recording.
+   * headcount, and owns End for everyone (always, from the start) and Reopen.
+   * Recording is not staff's alone: the room elects one recorder among every
+   * host present, guest speakers included (electRecorder in lib/webinars.ts).
    */
   isStaff: boolean;
   /**

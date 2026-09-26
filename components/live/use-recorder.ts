@@ -129,14 +129,55 @@ const CAPTURE_TIMEOUT_MS = 3_000;
  *
  * Neither Leave nor End (nor End call) waits for an upload — the host is taken
  * off air as soon as the final blob exists, and the uploads finish on the
- * left/ended screen, which says "keep this tab open" and arms the unload
- * prompt while they do. `drain()` is for the one caller that must not move on
- * until they land: a Rejoin or Reopen, which remounts the room and would
- * otherwise drop them from the screen and from the unload guard. This is the
- * ceiling on how long that button can block, not a target — a healthy drain is
- * a second or two.
+ * left/ended screen, which says "keep this tab open" while the tab-level
+ * unload prompt (below) holds. `drain()` is for the callers that must not move
+ * on until they land: a Rejoin or Reopen, which remounts the room, and Back
+ * (or a 1:1's automatic return to the calls list), which navigates away from
+ * it — either would otherwise drop the uploads off the screen. This is the
+ * ceiling on how long such a button can block, not a target — a healthy drain
+ * is a second or two.
  */
 const UPLOAD_DRAIN_TIMEOUT_MS = 90_000;
+
+/**
+ * Segment uploads on the wire in this TAB, across every recorder, and the one
+ * `beforeunload` listener that guards them.
+ *
+ * Module-level, not per hook, because the upload outlives the room that
+ * started it. Leave and End no longer wait for the final segment's upload, so
+ * it is still climbing the uplink while the host sits on the left/ended
+ * screen — and anything that takes that screen away (Back, a Rejoin's
+ * remount, the browser's back button, a sidebar link, a re-render of the
+ * route) unmounts the room, and with it any listener the room held. The
+ * request itself carries on after a client-side navigation; only closing or
+ * reloading the tab kills it. So the prompt is armed here from the moment an
+ * upload starts until the last one in the tab lands, whatever has unmounted
+ * in between, and never removed by an unmount. It is armed during a live
+ * session too, while each two-minute segment uploads: closing the tab then
+ * loses that segment as well as the one being recorded.
+ */
+let uploadsInFlight = 0;
+
+function guardUnloadWhileUploading(e: BeforeUnloadEvent) {
+  e.preventDefault();
+  // Chrome and Safari still want returnValue set before they will prompt.
+  e.returnValue = "";
+}
+
+function uploadStarted() {
+  uploadsInFlight += 1;
+  if (uploadsInFlight === 1 && typeof window !== "undefined") {
+    window.addEventListener("beforeunload", guardUnloadWhileUploading);
+  }
+}
+
+function uploadSettled() {
+  if (uploadsInFlight === 0) return;
+  uploadsInFlight -= 1;
+  if (uploadsInFlight === 0 && typeof window !== "undefined") {
+    window.removeEventListener("beforeunload", guardUnloadWhileUploading);
+  }
+}
 
 export type RecorderState = "idle" | "recording" | "uploading" | "error";
 
@@ -270,9 +311,10 @@ export function useRecorder({
   stop: () => Promise<void>;
   /**
    * Wait for every segment still uploading, bounded by
-   * UPLOAD_DRAIN_TIMEOUT_MS. For a caller about to remount the room (Rejoin,
-   * Reopen), which would otherwise lose track of uploads in flight. Never
-   * rejects; resolves at once when nothing is on the wire.
+   * UPLOAD_DRAIN_TIMEOUT_MS. For a caller about to take the room off the
+   * screen (Rejoin, Reopen, Back), which would otherwise drop the uploads in
+   * flight out of sight. Never rejects; resolves at once when nothing is on
+   * the wire.
    */
   drain: () => Promise<void>;
 } {
@@ -317,8 +359,9 @@ export function useRecorder({
    * navigated away from, and segment 4's request dies in flight — a stretch of
    * the talk missing with nothing that ever says so. So every upload
    * registers here for the length of its flight: `pendingUploadsRef` holds
-   * the state at "uploading" (the screen and the unload prompt) until the
-   * last one lands, and `drain` waits for all of them. A Set rather than an
+   * the state at "uploading" (the screen's "keep this tab open") until the
+   * last one lands, `uploadStarted` keeps the tab's unload prompt armed for
+   * as long, and `drain` waits for all of them. A Set rather than an
    * array because entries are removed as they land; an hour-long webinar must
    * not finish holding thirty settled promises it will never look at again.
    */
@@ -400,9 +443,9 @@ export function useRecorder({
       return;
     }
     // Stopped, but the last segment is still on the wire. The left and ended
-    // screens (and their unload prompt) lean on this: Leave and End no longer
-    // wait for the upload, so this is the difference between "you can close
-    // the laptop" and "don't".
+    // screens lean on this: Leave and End no longer wait for the upload, so
+    // this is the difference between "you can close the laptop" and "don't"
+    // (and between their Back navigating at once and waiting for it).
     setState(pendingUploadsRef.current > 0 ? "uploading" : "idle");
   }, []);
 
@@ -709,6 +752,7 @@ export function useRecorder({
         landed = resolve;
       });
       inFlightRef.current.add(flight);
+      uploadStarted();
       // CAPTURED, from here: the blob exists, the upload is registered, and
       // the tracks this segment was drawn from are no longer needed. Leave
       // and End wait for exactly this and nothing after it, so the host goes
@@ -733,6 +777,7 @@ export function useRecorder({
           // and an entry left behind would make every later drain wait on a
           // promise that had already resolved.
           inFlightRef.current.delete(flight);
+          uploadSettled();
           landed();
           syncState();
         }
@@ -1181,9 +1226,10 @@ export function useRecorder({
     // to the room for as long as the upload took to climb their uplink. The
     // uploads now finish in the background — `pendingUploadsRef` keeps `state`
     // at "uploading", which the left/ended screen shows as "keep this tab
-    // open" and which arms the unload prompt — and `drain()` is there for a
-    // caller that must wait. The abandoned-on-navigation case is the same as
-    // before: a client-side navigation does not cancel them.
+    // open", and the tab-level unload prompt (`uploadStarted`) holds until
+    // they land — and `drain()` is there for a caller that must wait. A
+    // client-side navigation does not cancel them, and no longer disarms the
+    // prompt either.
     //
     // Bounded all the same, by CAPTURE_TIMEOUT_MS, in case `onstop` never
     // fires: nothing about a broken recorder may keep a host on air.

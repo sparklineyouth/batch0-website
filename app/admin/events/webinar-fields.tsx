@@ -978,8 +978,10 @@ export function WebinarFields({
           What a speaker CAN do in the room is broadcast and moderate (chat,
           questions, polls). What they cannot: see who is watching (they get a
           headcount, never names — audience privacy), end a room a staff host
-          is running (their End only appears when no staff host is on), reopen
-          an ended webinar, or record.
+          is running (their End only appears when no staff host is on), or
+          reopen an ended webinar. Their browser may be the one that records
+          it: the room elects one recorder among every host present, guests
+          included (electRecorder in lib/webinars.ts).
         */}
         <p className="text-xs text-ink-faint">
           A speaker can broadcast and moderate the chat, questions and polls in
@@ -1170,9 +1172,12 @@ export function WebinarFields({
       <div className="space-y-3">
         <Toggle
           label="Record automatically"
-          // One recorder per webinar: the server picks one staff host who is
-          // on air (guest speakers never record), and it starts on its own.
-          description="Records while a staff host is on air — it starts on its own, with no button to forget. Guest speakers never record."
+          // One recorder per webinar: every host's browser elects the lowest
+          // user id present — staff or guest speaker alike (electRecorder in
+          // lib/webinars.ts) — and that browser records the whole stage. So a
+          // session with only guest speakers on air is recorded too, from a
+          // guest's laptop, and shared afterwards if "Share afterwards" is on.
+          description="Records the whole stage while anyone is on air, from one host's browser — which can be a guest speaker's, so a session with only guests on air is recorded too. It starts on its own, with no button to forget."
           checked={value.autoRecord}
           // Deliberately touches nothing but its own field. This used to clear
           // `autoShare` on the way off, which meant an admin who flicked

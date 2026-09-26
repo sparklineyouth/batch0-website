@@ -199,8 +199,10 @@ async function sessionCookies(
  *
  * Starts five minutes ago and runs an hour, so it sits squarely inside
  * joinState()'s window rather than on either boundary — a test that has to be
- * run before the top of the hour is a test nobody runs. `visibility: public`
- * so the viewer needs no enrolment, which keeps this about the video path.
+ * run before the top of the hour is a test nobody runs. It must have STARTED,
+ * too: End for everyone, which the run walks below, does not exist before a
+ * webinar's start (webinarHasBegun in lib/live.ts). `visibility: public` so
+ * the viewer needs no enrolment, which keeps this about the video path.
  */
 async function createLiveWebinar(): Promise<string> {
   const now = Date.now();
@@ -1068,6 +1070,17 @@ async function main() {
       },
       60_000,
     );
+    // A 1:1 that never connects cascades into every check below; say what
+    // each page was showing, as enterRoom does for a green room.
+    if (!callerSees || !calleeSees) {
+      for (const [label, pg] of [["caller", caller.page], ["callee", callee.page]] as const) {
+        const pcs = await pg
+          .evaluate(`(window.__b0pcs || []).map((pc) => pc.connectionState + "/" + pc.signalingState).join(", ")`)
+          .catch(() => "?");
+        const body = (await pg.locator("body").innerText().catch(() => "")) || "";
+        info(`[${label}] connections: ${pcs || "none"}; page said: ${body.slice(0, 300).replace(/\s+/g, " ")}`);
+      }
+    }
     check(!!callerSees, "host decodes the student's video");
     check(!!calleeSees, "student decodes the host's video");
 

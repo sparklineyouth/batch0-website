@@ -20,6 +20,7 @@ import {
   roomIsOpen,
   roomWindow,
   normalizeDisplayViewers,
+  webinarHasBegun,
   type LiveEvent,
 } from "@/lib/live";
 import { isHostedOnBatch0, isPremiere } from "@/lib/webinars";
@@ -452,11 +453,13 @@ function Chip({ children }: { children: React.ReactNode }) {
  *   - End for everyone: not ended, started (or handed over early), and before
  *     the hard stop. Not before the start — ending a webinar nobody has begun
  *     would show students "Ended" for a talk that never happened; to take one
- *     off the calendar, edit or delete the event.
+ *     off the calendar, edit or delete the event. `endLive` refuses it too
+ *     (webinarHasBegun, the same rule), so the room cannot do it either.
  *   - Reopen: ended, and before the hard stop.
  *
- * Nothing here reconnects anybody. After a Reopen, viewers on the ended screen
- * are offered Rejoin, and a host goes back through the green room.
+ * Nothing here reconnects anybody. After a Reopen, the room's ended screens
+ * notice on their slow poll: hosts and viewers on the ended screen are offered
+ * Rejoin, and a host in the ended green room gets the ordinary Start back.
  */
 export function LiveControls({
   eventId,
@@ -482,7 +485,8 @@ export function LiveControls({
   const t = new Date(now).getTime();
   const w = roomWindow(startsAt, endsAt);
   const beforeHardStop = t <= w.hardCloseAt;
-  const started = t >= w.start || !!liveStartedAt;
+  // The room's own rule (canEnd in room-actions.ts), which endLive enforces.
+  const started = webinarHasBegun(startsAt, liveStartedAt, t);
   const canEndNow = !liveEndedAt && started && beforeHardStop;
   const canReopen = !!liveEndedAt && beforeHardStop;
 

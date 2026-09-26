@@ -100,9 +100,12 @@ may host **this** webinar", and nothing else.
 
 A claimed speaker broadcasts and moderates (chat, questions, polls) exactly
 like a staff host. What separates them is in `docs/batch0-live.md` under
-*Who is a host*: a speaker never sees names, never records, cannot Reopen, and
-can End for everyone only when no staff host is in the room — their normal
-exit is Leave. That keeps a guest-only webinar closable without letting a
+*Who is a host*: a speaker never sees names, cannot Reopen, and can End for
+everyone only when no staff host is in the room — their normal exit is Leave.
+They record under the same election as staff: the recorder is whichever
+host's browser has the lowest user id among those present, guest speakers
+included, so a guest-only webinar with auto-record on is recorded from a
+guest's browser (see *Recording* below). That keeps a guest-only webinar closable without letting a
 founder who presses End "for their segment" end a room an admin is running.
 (If attendance can't be read, the rule fails open and the speaker may End:
 ending is reversible by staff, and failing closed would strand a guest-only
@@ -199,6 +202,16 @@ the room stands its recorder down for that lease before looking again. A
 refused segment's bytes are deleted only when no `event_assets` row already
 claims that path, so naming someone else's registered segment deletes nothing.
 
+A handover is the case that rule has to get right. The recorder who presses
+Leave is off air at once, and its final segment uploads behind the "You've
+left" screen while the co-host who takes over is already recording. That tail
+is filed *after* its uploader has left the room, so it is dated to their last
+heartbeat rather than its arrival (`recordingFiledAt`) — it can never pass for
+a registration made during the successor's segment, which would otherwise
+refuse (and delete) the successor's handover flush the moment the old
+recorder rejoined. A host still in the room is dated by arrival as before, so
+two hosts genuinely recording at once are still caught.
+
 Registering a segment reads the event's segments and then inserts
 (`registerRecordingSegment` in `app/admin/events/webinar-actions.ts`, rule in
 `recordingSegmentSlot`). It is not an upsert: the unique index is partial
@@ -211,7 +224,10 @@ one) and index — `segment-<run>-<index>-<stamp>.webm` —
 and each run is laid out as its own contiguous block: a slow segment still
 lands in order behind its successors, and a reload (or a second host taking
 over) starts a new block after everything registered instead of filling the
-first run's gaps. Registering a segment never revalidates a path: Next
+first run's gaps. A new block starts a few slots (`RECORDING_RUN_GAP`) past the
+last, so a departing recorder's tail that lands after its successor's first
+segment still files in its own block, ahead of it; empty slots are harmless.
+Registering a segment never revalidates a path: Next
 re-renders the *current* route on any revalidate, and from inside the live room
 that re-ran the page — which, past the join window, replaced the host's room
 with "This event has ended".
@@ -228,6 +244,15 @@ it only in the last-host Leave prompt, and only when no staff host is present.
 Admins also have End for everyone and Reopen on `/admin/webinars` and
 `/admin/events/[id]`, so a webinar a host walked away from can be closed
 without going on air.
+
+Nobody can End a webinar that has not begun — its scheduled start, or an early
+"Go live now" on a premiere (`webinarHasBegun`, enforced by `endLive` through
+the room's `canEnd`). Hosts can open the room an hour early to set up, and an
+End there used to end the real webinar before it started: the audience got
+"This webinar has ended" at the start, and a guest speaker who pressed it could
+not undo it. Before the start the control bar has no End, and the last-host
+prompt offers only Leave, which keeps the room ready. To take an event off the
+calendar, edit or delete it.
 
 The order, and why:
 
@@ -248,9 +273,11 @@ The order, and why:
    segment, which on a host's Leave meant staying on air to the whole room
    for as long as the final segment took to climb their uplink.
 4. Screen, camera and mic stop, and the host lands on the ended screen, which
-   shows "Saving the recording — keep this tab open" and arms the unload
-   prompt until the upload lands. Reopen (and Rejoin after a Leave) waits for
-   those uploads first, bounded at 90 seconds, because it remounts the room.
+   shows "Saving the recording — keep this tab open"; the tab's unload prompt
+   is armed until the upload lands (held by `use-recorder.ts` for the whole
+   tab, so it survives the room unmounting). Reopen, Rejoin and Back wait for
+   those uploads first, bounded at 90 seconds, because each takes the room
+   off the screen.
    The room stops the devices itself, after the capture: `useLocalMedia`
    deliberately does not stop them when its auto-start gate turns off,
    because an End that arrives by poll would otherwise kill the tracks
@@ -259,7 +286,10 @@ The order, and why:
 End is reversible, but only deliberately: **staff** press Reopen (on the ended
 screen or on the admin pages). Pressing Start again does **not** reopen an
 ended webinar, and a host who arrives after End sees when it ended and a
-"Reopen and go live" choice instead of their camera switching on.
+"Reopen and go live" choice instead of their camera switching on. Every ended
+screen — a host's, a guest speaker's, the ended green room, a viewer's —
+slowly polls for a Reopen pressed elsewhere and offers the way back (Rejoin,
+or the ordinary Start) when it comes.
 
 After End, viewers see "This webinar has ended" with no media and no Rejoin;
 chat, questions and polls close for the audience (moderators can still read
@@ -338,7 +368,8 @@ students who missed it are exactly the ones the email is for.
 
 When it is due: 15 minutes after `live_ended_at` when a host pressed End
 during the run (an End stamped before the scheduled start is a rehearsal's
-and is ignored); otherwise 15 minutes after the audience window closed
+and is ignored — the room no longer accepts one, but older stamps exist);
+otherwise 15 minutes after the audience window closed
 (scheduled end + 30 minutes) — but a webinar nobody ended is skipped as
 `still-running` while a host is still in the room, up to the hard stop at
 end + 3h, so an overrunning talk is never mailed about while it is live. The

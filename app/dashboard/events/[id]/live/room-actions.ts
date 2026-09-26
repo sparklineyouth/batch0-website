@@ -10,6 +10,7 @@ import {
 } from "@/lib/live-rooms";
 import {
   roomIsOpen,
+  webinarHasBegun,
   type QuestionStatus,
   type RoomAccess,
   type WebinarQuestion,
@@ -187,15 +188,26 @@ function refuseIfEnded(gate: RoomGate): void {
 /**
  * May the caller end this webinar for everyone, right now?
  *
- * Staff: always. A guest speaker: only when no staff host is present (see
- * canEndForEveryone). Who among the present hosts is staff is decided by each
- * one's own role (presentHostRoles) — not by "not on the speaker list", which
- * let a guest end a room run by an admin who happened to hold a speaker row.
- * An unreadable attendance table counts as no staff present, so the rule
- * fails open for speakers — ending is reversible by staff, and failing closed
- * would strand a guest-only webinar with nobody able to close it.
+ * Never before the run has begun (webinarHasBegun: the scheduled start, or an
+ * early go-live) — for anyone. The host window opens an hour early for setup,
+ * and End there ended the real webinar before it started: students arriving
+ * at the start were shown "This webinar has ended", and a guest speaker who
+ * pressed it had no way back. Leave is the way out of a rehearsal. This is
+ * the one place that rule lives for the room: `fetchRoomState` and
+ * `fetchPremiereState` report it, which hides the control bar's End and the
+ * last-host prompt's End option, and `endLive` refuses on it.
+ *
+ * From the start: staff always. A guest speaker only when no staff host is
+ * present (see canEndForEveryone). Who among the present hosts is staff is
+ * decided by each one's own role (presentHostRoles) — not by "not on the
+ * speaker list", which let a guest end a room run by an admin who happened to
+ * hold a speaker row. An unreadable attendance table counts as no staff
+ * present, so the rule fails open for speakers — ending is reversible by
+ * staff, and failing closed would strand a guest-only webinar with nobody
+ * able to close it.
  */
 async function canEnd(gate: RoomGate): Promise<boolean> {
+  if (!webinarHasBegun(gate.startsAt, gate.liveStartedAt)) return false;
   if (gate.isStaff) return true;
   if (!gate.isSpeaker) return false;
   const hosts = await presentHostRoles(gate.eventId);
@@ -239,7 +251,7 @@ export type RoomState = {
    * guest speaker only while no staff host is present. See canEndForEveryone.
    */
   canEnd: boolean;
-  /** Staff host (events.manage) — owns Reopen and recording. */
+  /** Staff host (events.manage) — owns Reopen. (Recording is elected among every host.) */
   isStaff: boolean;
 };
 
@@ -786,8 +798,12 @@ export async function goLive(eventId: string): Promise<string | null> {
  * canEnd). A founder who presses End thinking it ends their segment must not
  * end a room an admin is running.
  *
- * When: never window-gated — an overrunning webinar must always be endable —
- * but bounded by the hard stop (end + 3h).
+ * When: from the start of the run (its scheduled start, or an early go-live)
+ * until the hard stop (end + 3h). Never before it: the stamp is terminal for
+ * the audience, so an End during the hour of host setup cancelled the real
+ * webinar — a rehearsal's way out is Leave, and taking an event off the
+ * calendar is an edit on the admin pages. Otherwise never window-gated — an
+ * overrunning webinar must always be endable.
  *
  * What, in order:
  *   1. Stamp `live_ended_at` ONLY IF it is not already set, then read back the
@@ -817,6 +833,10 @@ export async function endLive(eventId: string): Promise<string> {
   if (!gate?.isModerator) throw new Error("Forbidden");
   if (!withinHardClose(gate)) {
     throw new Error("This webinar closed a while ago.");
+  }
+  // canEnd refuses this too; asked first so the refusal says why.
+  if (!webinarHasBegun(gate.startsAt, gate.liveStartedAt)) {
+    throw new Error("This webinar hasn't started yet — use Leave to step out.");
   }
   if (!(await canEnd(gate))) {
     throw new Error(
@@ -876,9 +896,14 @@ export async function endLive(eventId: string): Promise<string> {
  * stale stamp from the admin pages.
  *
  * Clears the stamp and sends `room-changed` on the stage (plus `stage-change`
- * on the room topic). Hosts on the ended screen go back to the green room;
- * viewers on theirs see the reopen on their next slow poll or on the hint and
- * are offered Rejoin. Nothing reconnects anyone automatically.
+ * on the room topic). Nobody's session is live to hear that hint once the
+ * room has ended, so the ended screens find out on their own slow poll of
+ * `fetchPremiereState` (useReopenWatch in broadcast-room.tsx): a host on the
+ * ended screen — staff or guest speaker — is offered Rejoin, a host in the
+ * ended green room gets the ordinary Start back, and a viewer on the ended
+ * screen is offered Rejoin. The staff member who pressed Reopen in the room
+ * goes straight back to the green room. Nothing reconnects anyone
+ * automatically.
  */
 export async function reopenLive(eventId: string): Promise<void> {
   const gate = await gateVisible(eventId);

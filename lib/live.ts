@@ -426,6 +426,28 @@ export function roomWindow(
 }
 
 /**
+ * Has this webinar's run begun? Its scheduled start has passed, or a host
+ * handed a premiere over early ("Go live now" stamps `live_started_at`).
+ *
+ * End for everyone exists only from here on — `canEnd` in the room's actions,
+ * which is what hides the room's End controls and what `endLive` enforces, and
+ * the admin list's LiveControls. Before it the room is open to hosts for an
+ * hour of setup, and an End pressed there (a camera check, then "End for
+ * everyone" from the last-host prompt) ended the REAL webinar before it began:
+ * every student arriving at the start was shown "This webinar has ended", the
+ * event moved to Past, and a guest speaker who pressed it could not undo it.
+ * Leave is the way out of a rehearsal.
+ */
+export function webinarHasBegun(
+  startsAt: string | Date,
+  liveStartedAt: string | Date | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (liveStartedAt) return true;
+  return now >= new Date(startsAt).getTime();
+}
+
+/**
  * May this person be in this room right now?
  *
  * Two windows, because hosts and viewers need different things:

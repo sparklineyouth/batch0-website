@@ -280,9 +280,11 @@ host is on air just leaves. Leaving takes a host off air at once — the
 session (and every peer connection) goes down the moment Leave is confirmed;
 the recorder then captures its final segment, the devices stop, and any upload
 still running finishes behind the "You've left" screen, which says "keep this
-tab open" and arms the unload prompt until it lands. The **last** host on
-air in a webinar nobody has ended gets a choice: End for everyone, Leave and
-keep the room open, or Cancel. While no host is on, viewers see "The host
+tab open" while the unload prompt stays armed until it lands; Rejoin and Back
+wait for it first (bounded at 90 s). The **last** host on air in a webinar
+nobody has ended gets a choice: End for everyone, Leave and keep the room
+open, or Cancel — or, before the scheduled start, only Leave or Cancel (see
+below). While no host is on, viewers see "The host
 stepped away — you'll reconnect automatically", not "waiting for the host to
 start". A viewer who (re)joins during the gap has not seen the host this
 session, so past the scheduled start they get the neutral "The host isn't on
@@ -294,7 +296,13 @@ answers come back empty because no host is on air yet.
 
 **End for everyone** is one control, in the room's control bar, with a
 two-step confirm (admins also have it on `/admin/webinars` and
-`/admin/events/[id]`, without going on air). `endLive` stamps
+`/admin/events/[id]`, without going on air). It exists only once the webinar
+has begun — its scheduled start, or an early "Go live now" on a premiere
+(`webinarHasBegun` in `lib/live.ts`): `endLive` refuses before that, and the
+room's `canEnd` (which the control bar and the last-host prompt read) says so.
+The host window opens an hour early for setup, and an End there used to end
+the real webinar before it started, for everyone, with no way back for a
+guest speaker. `endLive` stamps
 `live_ended_at` — the first End wins and later presses return the same stamp —
 closes open polls and open attendance rows, and sends `room-changed`. Only
 then does the host's own client go off air, capture the recorder's final
@@ -308,8 +316,11 @@ and poll writes, and stops touching attendance.
 
 **Reopen** is staff only: the ended screen's Reopen, or the admin pages. It
 clears the stamp and sends `room-changed`. Nobody is reconnected
-automatically — hosts go back to the green room, viewers on the ended screen
-are offered Rejoin. **Pressing Start never reopens** an ended webinar.
+automatically. Nobody on an ended screen has a live session to hear the hint,
+so every ended screen polls slowly (30 s) for it: hosts on the ended screen —
+staff and guest speakers alike — and viewers are offered Rejoin, and a host
+in the ended green room gets the ordinary Start back. **Pressing Start never
+reopens** an ended webinar.
 
 **The last host gone, never ended.** The room stays open. Once the audience
 window has passed with no host present, heartbeats answer `closed` and viewers
@@ -327,7 +338,9 @@ the page reloads instead of resuming a session whose peers were already told
 it left.
 The browser's "leave this page?" prompt appears only while you are the sole
 host on air in a live, un-ended webinar, or while recording segments are still
-uploading.
+uploading. The second is held for the whole tab (`use-recorder.ts`), not by the
+room, so it survives Back or anything else that takes the room off the screen
+before the last upload lands.
 
 ### 1:1 calls
 
@@ -338,7 +351,12 @@ come: `endCall` (app/calls/actions.ts) sets the invite to `completed` (only
 from `accepted`, so it is idempotent) and audits it; the side that pressed it
 sees "This call has ended", and the other side's room closes to the same
 screen on its next status poll or heartbeat. The host's recording captures
-its final segment on the way out, and the upload finishes behind that screen.
+its final segment on the way out, and the upload finishes behind that screen;
+the side that pressed End call is then taken back to their calls list (after
+the upload, bounded, and only if they are still on the room's page). `endCall`
+deliberately revalidates nothing: a revalidating action re-renders the current
+route, which for a completed call is a static "This call has ended" page, and
+that swapped the room out mid-upload.
 **Cancelling** a call that is in progress closes both rooms the same way. An
 accepted call whose window has closed counts as over everywhere — Past, no
 Join, no Cancel — even if nobody pressed End call (`callPhase` in

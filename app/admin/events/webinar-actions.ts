@@ -13,6 +13,7 @@ import {
   isDeckFile,
   MAX_UPLOAD_BYTES,
   RECORDER_LEASE_MS,
+  recordingFiledAt,
   recordingRival,
   recordingSegmentSlot,
   recordingSegmentStart,
@@ -466,6 +467,14 @@ const ASSET_COLUMNS =
  * otherwise register it at its slot. The one-recorder check and the insert
  * run back to back, so the window in which two hosts can both pass is the
  * length of one round trip rather than one segment.
+ *
+ * The row is dated by `recordingFiledAt`: now, unless the uploader has already
+ * left the room — a departing recorder's final segment, which uploads behind
+ * the "You've left" screen while a co-host has taken over — in which case it
+ * is dated to their last heartbeat, so it can never pass for a registration
+ * made during the successor's segment (and refuse that segment when they come
+ * back). `created_at` carries it because `recordingRivalFor` already reads
+ * it; nothing else orders recordings by it (sort_order is the order).
  */
 async function fileRecordingSegment(
   admin: ReturnType<typeof createAdminClient>,
@@ -477,9 +486,42 @@ async function fileRecordingSegment(
   if (await recordingRivalFor(admin, eventId, userId, segmentSeconds)) {
     return { ok: false };
   }
-  const { data, error } = await registerRecordingSegment(admin, row);
+  const filedAt = await departedFiledAt(admin, eventId, userId);
+  const { data, error } = await registerRecordingSegment(
+    admin,
+    filedAt ? { ...row, created_at: filedAt } : row,
+  );
   if (error) throw new Error(error.message);
   return { ok: true, data };
+}
+
+/**
+ * The date to file `userId`'s segment under when they are no longer in the
+ * room (see `recordingFiledAt`), or null to file it now — also the answer
+ * when attendance can't be read, which is how every segment was dated before.
+ */
+async function departedFiledAt(
+  admin: ReturnType<typeof createAdminClient>,
+  eventId: string,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("live_participants")
+    .select("left_at, last_seen_at")
+    .eq("event_id", eventId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const now = new Date();
+  const at = recordingFiledAt(
+    now,
+    {
+      leftAt: (data as any).left_at ?? null,
+      lastSeenAt: (data as any).last_seen_at ?? null,
+    },
+    PEER_TIMEOUT_MS,
+  );
+  return at.getTime() < now.getTime() ? at.toISOString() : null;
 }
 
 /**

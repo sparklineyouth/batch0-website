@@ -326,6 +326,15 @@ export function parseSegmentRun(
 }
 
 /**
+ * Spare slots left before a new recording run's block — room for the tail of
+ * the run before it, still filing when the new run's first segment lands (see
+ * recordingSegmentSlot). Segments are two minutes and nothing waits on their
+ * uploads, so a departing recorder can have its final segment and, on a slow
+ * uplink, the one or two before it still in flight at the handover.
+ */
+export const RECORDING_RUN_GAP = 4;
+
+/**
  * Which `sort_order` a newly uploaded recording segment should be registered
  * at, given the segments the event already has.
  *
@@ -342,9 +351,22 @@ export function parseSegmentRun(
  *     indexes mean nothing against the first run's. Filling the first run's
  *     gaps with them — which "a free index is taken as asked" used to do —
  *     played minutes 32-37 between minutes 5-10 and 15-20.
+ *   - That new block starts RECORDING_RUN_GAP slots past the last one, not
+ *     straight after it, because the run before it may not have finished
+ *     filing. A recorder who presses Leave is off air at once and its final
+ *     segment uploads behind the "You've left" screen, while the co-host who
+ *     takes over starts recording at once — so a short first segment from
+ *     the successor (they said thanks and pressed End twenty seconds later)
+ *     routinely registers BEFORE the departing recorder's last two minutes.
+ *     Placed straight after the last registered slot, the successor took the
+ *     departing run's next slot, that run's final segment found its slot held
+ *     and went after the last, and the replay played the closing twenty
+ *     seconds before the two minutes that led up to them. The spare slots are
+ *     where such a tail lands, at its own run's base plus its index; any left
+ *     empty are harmless gaps, like a failed upload's.
  *   - Should the computed slot be held by a different file anyway (only a
- *     tampered or pathological name can do it), the segment goes after the
- *     last one rather than over it.
+ *     tampered or pathological name, or a tail longer than the spare slots,
+ *     can do it), the segment goes after the last one rather than over it.
  *
  * Paths from before runs existed (no run in the name) keep the old rule: a
  * free index is taken as asked, a held one goes after the last. That is
@@ -376,7 +398,7 @@ export function recordingSegmentSlot(
       const offset = t.sortOrder - theirs.index;
       if (base === null || offset < base) base = offset;
     }
-    const slot = (base ?? last + 1) + mine.index;
+    const slot = (base ?? last + 1 + RECORDING_RUN_GAP) + mine.index;
     return { kind: "insert", sortOrder: held(slot) ? last + 1 : slot };
   }
 
@@ -524,6 +546,12 @@ export function recordingSegmentStart(
  * talk outright. A host genuinely recording ALONGSIDE the rival always sees
  * the rival register during its own segment, and is still refused.
  *
+ * `at` is when the row was filed, as `recordingFiledAt` dated it: its arrival,
+ * except for a segment filed after its uploader had left the room — A's final
+ * segment, still uploading when B took over — which is dated to A's last
+ * heartbeat. Dated by its arrival, that tail landed "during" B's first segment
+ * and refused B's flush the moment A rejoined.
+ *
  * The same user is never their own rival: a host who reloads starts a new run
  * that must carry straight on from the old one.
  */
@@ -551,6 +579,51 @@ export function recordingRival({
     if (electRecorder([r.userId, callerId]) === r.userId) return r.userId;
   }
   return null;
+}
+
+/**
+ * When a newly filed recording segment counts as registered — the `at` that
+ * `recordingRival` later reads back from `event_assets.created_at`.
+ *
+ * Normally now. But a segment filed after its uploader has LEFT the room is a
+ * departing recorder's tail. Leave takes a host off air at once and their
+ * final segment uploads behind the "You've left" screen, while the co-host
+ * who takes over starts recording straight away (the election counts a host
+ * who said goodbye as gone). Dated by its arrival, that tail looked like a
+ * registration made DURING the successor's first segment — so when the
+ * departing host came back (Rejoin waits for exactly this upload, then
+ * rejoins, and the successor stands down and flushes), the successor's flush
+ * was refused and deleted, and everything they had covered was lost.
+ *
+ * So a segment filed by someone attendance no longer has in the room is dated
+ * to their last heartbeat: the last moment the server saw them there, and so
+ * the latest the segment can have been recorded — before any successor can
+ * have started. "In the room" is the same rule `recordingRival`'s `present`
+ * is read with (no `left_at`, a heartbeat inside `presenceTimeoutMs`), and the
+ * departure is on record first: the room sends its leave the moment Leave is
+ * pressed, and the final segment is filed only once its upload has finished
+ * (a page's server actions run one at a time, in order). A present uploader —
+ * a recorder still on air, or one recording alongside the caller — is dated
+ * by arrival exactly as before, so the one-recorder backstop is not weakened.
+ *
+ * `uploader` is their attendance row; null when it can't be read (or there is
+ * none), which files the segment at `now`, as it always was.
+ */
+export function recordingFiledAt(
+  now: Date,
+  uploader: { leftAt: string | null; lastSeenAt: string | null } | null,
+  presenceTimeoutMs: number,
+): Date {
+  if (!uploader) return now;
+  const seen = uploader.lastSeenAt ? Date.parse(uploader.lastSeenAt) : NaN;
+  const present =
+    !uploader.leftAt &&
+    Number.isFinite(seen) &&
+    seen >= now.getTime() - presenceTimeoutMs;
+  if (present) return now;
+  if (Number.isFinite(seen)) return new Date(Math.min(now.getTime(), seen));
+  const left = uploader.leftAt ? Date.parse(uploader.leftAt) : NaN;
+  return Number.isFinite(left) ? new Date(Math.min(now.getTime(), left)) : now;
 }
 
 // ---------------------------------------------------------------------------

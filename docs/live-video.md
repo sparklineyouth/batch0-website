@@ -490,9 +490,12 @@ viewer without `student.dashboard`.
 
 Leaving or ending never waits for the recording's upload: the room captures
 the final segment (milliseconds), stops the devices and shows the left/ended
-screen, which says "keep this tab open" and arms the unload prompt until the
-last segment lands. Only Rejoin, and the trip back to the calls list after
-your own End call, wait for it (bounded at 90 seconds).
+screen, which says "keep this tab open" while the tab's unload prompt stays
+armed until the last segment lands. Only Rejoin, Back, and the trip back to
+the calls list after your own End call wait for it (bounded at 90 seconds).
+`endCall` revalidates nothing, so the room — and that screen — stays mounted
+through the upload instead of being re-rendered into the static "This call
+has ended" page.
 Playback is `/api/calls/<id>/recording/<n>`, which checks the viewer is on the
 call or an admin, then redirects to a ten-minute signed URL; an admin watching
 someone else's call is audited. Both people see a recording notice before they

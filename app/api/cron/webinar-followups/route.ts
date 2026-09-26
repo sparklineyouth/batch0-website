@@ -76,7 +76,11 @@ export const maxDuration = 300;
  *     17:10 and pressed End used to make an 18:00 webinar "due" the moment
  *     its start passed — the cohort was mailed "the recording and the slides
  *     are up" as the talk began, and the claim meant the real follow-up
- *     never went out.
+ *     never went out. The room no longer accepts an End before the start
+ *     (endLive refuses it; see webinarHasBegun in lib/live.ts), so this now
+ *     covers stamps written before that rule and a premiere handed over early
+ *     and ended before its scheduled start, which falls back to the schedule
+ *     below.
  *   - Nobody pressed End: SETTLE_MINUTES after the audience's window closed
  *     (scheduled end + JOIN_CLOSES_MINUTES_AFTER) — but not while a host is
  *     still in the room. An overrunning talk keeps its audience past end+30m

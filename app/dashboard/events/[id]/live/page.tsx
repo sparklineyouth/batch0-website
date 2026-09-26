@@ -13,6 +13,7 @@ import {
   JOIN_OPENS_MINUTES_BEFORE,
   normalizeDisplayViewers,
   roomWindow,
+  webinarHasBegun,
   type LiveRole,
 } from "@/lib/live";
 import {
@@ -80,7 +81,8 @@ export default async function EventLivePage(
   // with come from the same code.
   //
   //   staff (events.manage)  broadcasts, moderates, sees the audience by
-  //                          name, owns End / Reopen / recording. Admins are
+  //                          name, owns End / Reopen (recording is elected
+  //                          among every host, speakers too). Admins are
   //                          staff through `*`, and are NEVER downgraded to
   //                          viewer: an events.manage holder the RLS read
   //                          returns nothing for is re-read with the admin
@@ -317,10 +319,14 @@ export default async function EventLivePage(
         endsAt={ev.endsAt}
         role={role}
         isStaffHost={isStaffHost}
-        // Staff always; a guest speaker only while no staff host is present.
-        // The room-state read computes it with the server's presence data;
-        // without that read (0084 not applied) only staff can end.
-        canEnd={initialRoomState?.canEnd ?? isStaffHost}
+        // From the start only; then staff always, and a guest speaker only
+        // while no staff host is present. The room-state read computes it
+        // with the server's presence data; without that read (0084 not
+        // applied) only staff can end, and still not before the start.
+        canEnd={
+          initialRoomState?.canEnd ??
+          (isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt))
+        }
         backHref={backHref}
         audienceMode={audienceMode}
         displayViewerCount={displayViewerCount}

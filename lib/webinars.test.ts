@@ -20,11 +20,13 @@ import {
   electRecorder,
   parseSegmentRun,
   presentForRecording,
+  recordingFiledAt,
   recordingRival,
   recordingSegmentStart,
   webinarSegmentName,
   AUDIENCE_MODES,
   RECORDER_LEASE_MS,
+  RECORDING_RUN_GAP,
   RECORDER_RECONNECT_GRACE_MS,
   RECORDING_AUDIO_BITRATE,
   RECORDING_SEGMENT_SECONDS,
@@ -664,13 +666,59 @@ test("a slow segment from a run still files in order behind its successors", () 
 test("a new run whose first segment is not index 0 still leaves room for its earlier ones", () => {
   const taken = [{ sortOrder: 0, storagePath: runPath(1, 0) }];
   // Run 2's segments 0 and 1 are still uploading when segment 2 registers.
+  const base = 0 + 1 + RECORDING_RUN_GAP;
   const s2 = recordingSegmentSlot(2, runPath(2, 2), taken);
-  assert.deepEqual(s2, { kind: "insert", sortOrder: 3 });
-  taken.push({ sortOrder: 3, storagePath: runPath(2, 2) });
+  assert.deepEqual(s2, { kind: "insert", sortOrder: base + 2 });
+  taken.push({ sortOrder: base + 2, storagePath: runPath(2, 2) });
   assert.deepEqual(recordingSegmentSlot(0, runPath(2, 0), taken), {
     kind: "insert",
-    sortOrder: 1,
+    sortOrder: base,
   });
+});
+
+test("a departing recorder's last segment files before its successor's, whichever lands first", () => {
+  // Two-host webinar. A (the recorder) presses Leave after segment 2: off air
+  // at once, segment 3 still climbing A's uplink. B takes over, says thanks,
+  // and presses End twenty seconds later — B's short first segment lands
+  // first. The replay must still run A0-A3, then B0.
+  const A = 1000;
+  const B = 2000;
+  const taken = [0, 1, 2].map((i) => ({ sortOrder: i, storagePath: runPath(A, i) }));
+  const file = (run: number, index: number) => {
+    const slot = recordingSegmentSlot(index, runPath(run, index), taken);
+    assert.equal(slot.kind, "insert");
+    taken.push({ sortOrder: slot.sortOrder, storagePath: runPath(run, index) });
+    return slot.sortOrder;
+  };
+  file(B, 0);
+  const a3 = file(A, 3);
+  assert.equal(a3, 3, "A's tail lands at A's base plus its index, not after B");
+  const order = [...taken]
+    .sort((x, y) => x.sortOrder - y.sortOrder)
+    .map((t) => parseSegmentRun(t.storagePath));
+  assert.deepEqual(order, [
+    { run: A, index: 0 },
+    { run: A, index: 1 },
+    { run: A, index: 2 },
+    { run: A, index: 3 },
+    { run: B, index: 0 },
+  ]);
+});
+
+test("a tail of up to RECORDING_RUN_GAP segments still files in its own block", () => {
+  // A slow uplink: A's last RECORDING_RUN_GAP segments were all in flight when
+  // B's first registered.
+  const A = 1000;
+  const B = 2000;
+  const taken = [{ sortOrder: 0, storagePath: runPath(A, 0) }];
+  const b0 = recordingSegmentSlot(0, runPath(B, 0), taken);
+  taken.push({ sortOrder: b0.sortOrder, storagePath: runPath(B, 0) });
+  for (let i = 1; i <= RECORDING_RUN_GAP; i++) {
+    const slot = recordingSegmentSlot(i, runPath(A, i), taken);
+    assert.deepEqual(slot, { kind: "insert", sortOrder: i });
+    taken.push({ sortOrder: slot.sortOrder, storagePath: runPath(A, i) });
+  }
+  assert.ok(b0.sortOrder > RECORDING_RUN_GAP, "B's block is after A's whole tail");
 });
 
 test("a run's slot held by a different file goes after the last, never over it", () => {
@@ -819,6 +867,101 @@ test("a host recording alongside the recorder is still refused", () => {
     recordingRival({
       callerId: "b",
       recent,
+      present: new Set(["a", "b"]),
+      now: NOW,
+      segmentStartMs: recordingSegmentStart(NOW, 120),
+    }),
+    "a",
+  );
+});
+
+test("a segment is filed now while its uploader is in the room", () => {
+  const TIMEOUT = 40_000;
+  assert.equal(
+    recordingFiledAt(NOW, { leftAt: null, lastSeenAt: ago(10_000) }, TIMEOUT).getTime(),
+    NOW.getTime(),
+  );
+  // Attendance unreadable (or no row): filed now, as it always was.
+  assert.equal(recordingFiledAt(NOW, null, TIMEOUT).getTime(), NOW.getTime());
+});
+
+test("a segment filed after its uploader left is dated to their last heartbeat", () => {
+  const TIMEOUT = 40_000;
+  // Pressed Leave: `left_at` is set; the last heartbeat was 6s before it.
+  assert.equal(
+    recordingFiledAt(
+      NOW,
+      { leftAt: ago(50_000), lastSeenAt: ago(56_000) },
+      TIMEOUT,
+    ).toISOString(),
+    ago(56_000),
+  );
+  // Vanished without a Leave: the heartbeat went stale.
+  assert.equal(
+    recordingFiledAt(NOW, { leftAt: null, lastSeenAt: ago(90_000) }, TIMEOUT).toISOString(),
+    ago(90_000),
+  );
+  // Never dated into the future.
+  assert.equal(
+    recordingFiledAt(
+      NOW,
+      { leftAt: ago(1_000), lastSeenAt: new Date(NOW.getTime() + 5_000).toISOString() },
+      TIMEOUT,
+    ).getTime(),
+    NOW.getTime(),
+  );
+});
+
+test("a departing recorder's tail does not refuse the host who covered, when it comes back", () => {
+  // The two-host handover. A (lower id, the recorder) presses Leave at t0 —
+  // off air at once, last heartbeat 5s earlier — and its final segment takes
+  // 70s to upload. B is elected at t0+1s and starts recording. A presses
+  // Rejoin: the room waits for A's upload to be filed, then A is back, and B
+  // stands down and flushes the 100s it recorded. NOW is B's flush.
+  const t0 = NOW.getTime() - 100_000;
+  const aFiledAt = new Date(t0 + 70_000);
+  const aTail = recordingFiledAt(
+    aFiledAt,
+    { leftAt: new Date(t0 + 200).toISOString(), lastSeenAt: new Date(t0 - 5_000).toISOString() },
+    40_000,
+  );
+  const bStart = recordingSegmentStart(NOW, 99);
+  assert.equal(
+    recordingRival({
+      callerId: "b",
+      recent: [{ userId: "a", at: aTail.toISOString() }],
+      present: new Set(["a", "b"]),
+      now: NOW,
+      segmentStartMs: bStart,
+    }),
+    null,
+    "B's handover footage is kept",
+  );
+  // Dated by its arrival instead, the same tail refused B and lost the
+  // whole stretch B covered.
+  assert.equal(
+    recordingRival({
+      callerId: "b",
+      recent: [{ userId: "a", at: aFiledAt.toISOString() }],
+      present: new Set(["a", "b"]),
+      now: NOW,
+      segmentStartMs: bStart,
+    }),
+    "a",
+  );
+});
+
+test("a present recorder's segment is dated by arrival, so recording alongside it is still refused", () => {
+  // A never left: its segment, filed 40s into B's two minutes, is a live claim.
+  const filed = recordingFiledAt(
+    new Date(NOW.getTime() - 80_000),
+    { leftAt: null, lastSeenAt: new Date(NOW.getTime() - 90_000).toISOString() },
+    40_000,
+  );
+  assert.equal(
+    recordingRival({
+      callerId: "b",
+      recent: [{ userId: "a", at: filed.toISOString() }],
       present: new Set(["a", "b"]),
       now: NOW,
       segmentStartMs: recordingSegmentStart(NOW, 120),
