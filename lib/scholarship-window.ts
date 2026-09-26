@@ -118,6 +118,20 @@ function cohortOver(
   return null;
 }
 
+/**
+ * Whether a cohort is over (see cohortOver), as a yes/no. Used by the
+ * one-at-a-time rule, where an award from a cohort that is over stops
+ * blocking, and by the perk readers, which prefer an award whose cohort is
+ * not over.
+ *
+ * No cohort reads as NOT over. A legacy award with no cohort on file has no
+ * end, so its perks aren't dropped and it keeps blocking, the conservative
+ * reading in both places.
+ */
+export function cohortIsOver(cohort: ScholarshipCohort | null, now: Date): boolean {
+  return !!cohort && cohortOver(cohort, now) !== null;
+}
+
 function overSentence(
   kind: "ended" | "cancelled" | "not_running",
   name: string,

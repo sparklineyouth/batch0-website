@@ -24,6 +24,10 @@ import {
   hasAnyPerk,
   hasMoney,
   liveStatusesInCohort,
+  pickCallAward,
+  pickPerkAward,
+  HOLDS_AWARD_MESSAGE,
+  LIVE_SCHOLARSHIP_STATUSES,
   normalizeCents,
   normalizeMentorCalls,
   normalizePercent,
@@ -42,6 +46,7 @@ import {
   type ScholarshipOffer,
 } from "@/lib/scholarship-award";
 import {
+  cohortIsOver,
   resolveScholarshipCohort,
   scholarshipCallWindow,
   scholarshipWindow,
@@ -422,6 +427,64 @@ export async function loadWindowCohort(
 }
 
 /**
+ * Several cohorts by id, for windows, in one read. An id with no row (or a
+ * failed read, which is logged) is simply absent from the map.
+ */
+async function loadWindowCohorts(
+  client: SupabaseClient,
+  ids: readonly (string | null)[],
+): Promise<Map<string, ScholarshipCohort>> {
+  const out = new Map<string, ScholarshipCohort>();
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  if (unique.length === 0) return out;
+  const { data, error } = await client
+    .from("cohorts")
+    .select(WINDOW_COHORT_COLUMNS)
+    .in("id", unique);
+  if (error) {
+    console.error("[scholarships] cohorts read failed:", error.message);
+    return out;
+  }
+  for (const raw of data ?? []) {
+    const cohort = asWindowCohort(raw);
+    if (cohort) out.set(cohort.id, cohort);
+  }
+  return out;
+}
+
+/**
+ * The cohorts, among this student's live rows from cohorts OTHER than
+ * `cohortId`, that are over: the set countsAgainstCohort needs. Only those
+ * rows can stop counting, so only their cohorts are read, and nothing is read
+ * at all for the usual student whose rows are all in one cohort.
+ *
+ * A cohort that can't be read is left out, so its rows keep counting. Failing
+ * that way can only keep a student waiting; it can't hand out two awards at
+ * once.
+ */
+export async function endedCohortIdsAmong(
+  client: SupabaseClient,
+  rows: readonly { status: ScholarshipAppStatus; cohortId: string | null }[],
+  cohortId: string | null,
+  now: Date,
+): Promise<Set<string>> {
+  // With no cohort to compare against, every row counts whatever this says.
+  if (!cohortId) return new Set();
+  const ids = rows
+    .filter(
+      (r) =>
+        r.cohortId !== null &&
+        r.cohortId !== cohortId &&
+        LIVE_SCHOLARSHIP_STATUSES.includes(r.status),
+    )
+    .map((r) => r.cohortId);
+  const cohorts = await loadWindowCohorts(client, ids);
+  return new Set(
+    [...cohorts.values()].filter((c) => cohortIsOver(c, now)).map((c) => c.id),
+  );
+}
+
+/**
  * The cohorts a scholarship can currently be applied in — upcoming or
  * running, soonest first. The admin list shows each one's window.
  */
@@ -466,6 +529,10 @@ export async function listApplicationsForUser(
  * Used by checkout and the accepted page. Returns the AWARDED row only —
  * a pending application is worth nothing at the till, and treating it as a
  * discount would let anyone lower their own price by submitting a form.
+ *
+ * Pass `cohortId`. Without it this is just the newest award, and a student can
+ * hold one award per cohort, so the newest is not necessarily the one that
+ * matters. The perk readers choose from listAwardsForUser instead.
  */
 export async function getAwardForUser(
   client: SupabaseClient,
@@ -491,6 +558,53 @@ export async function getAwardForUser(
     app: mapScholarshipApplication(row),
     scholarship: mapScholarship(row.scholarship),
   };
+}
+
+/** One award a student holds, with the cohort it was made in. */
+export type HeldAward = {
+  app: ScholarshipApplication;
+  scholarship: Scholarship;
+  /** null for a legacy row with no cohort on file, or a cohort that couldn't be read. */
+  cohort: ScholarshipCohort | null;
+};
+
+/**
+ * Every award the student holds, newest decided first, each with its cohort.
+ *
+ * What the perk readers choose from (pickCallAward / pickPerkAward in
+ * lib/scholarship-award.ts). getAwardForUser's single newest row was not
+ * enough: a student can hold an award from an earlier cohort beside a later
+ * one, and the newer award must not hide the older one's perks while its
+ * cohort still runs. Fails closed to [] on a read error, which reads as "no
+ * award", the same as getAwardForUser.
+ */
+export async function listAwardsForUser(
+  client: SupabaseClient,
+  userId: string,
+): Promise<HeldAward[]> {
+  const { data, error } = await client
+    .from("scholarship_applications")
+    .select("*, scholarship:scholarships(*)")
+    .eq("user_id", userId)
+    .eq("status", "awarded")
+    .order("decided_at", { ascending: false });
+  if (error) {
+    console.error("[scholarships] awards read failed:", error.message);
+    return [];
+  }
+  const rows = ((data ?? []) as Array<Record<string, any>>).filter((r) => !!r.scholarship);
+  const cohorts = await loadWindowCohorts(
+    client,
+    rows.map((r) => (r.cohort_id as string | null) ?? null),
+  );
+  return rows.map((row) => {
+    const app = mapScholarshipApplication(row);
+    return {
+      app,
+      scholarship: mapScholarship(row.scholarship),
+      cohort: app.cohortId ? cohorts.get(app.cohortId) ?? null : null,
+    };
+  });
 }
 
 /**
@@ -574,6 +688,11 @@ export type ApplicantContext = ApplicantState & {
   cohortId: string | null;
   /** Every scholarship application of theirs, newest first. */
   rows: ScholarshipApplication[];
+  /**
+   * Cohorts of their live rows elsewhere that are over, so those rows no
+   * longer count against them (countsAgainstCohort).
+   */
+  endedCohortIds: ReadonlySet<string>;
 };
 
 /**
@@ -637,15 +756,17 @@ export async function loadApplicantState(
   }
   const resolved = resolveScholarshipCohort(candidates, now);
   const cohortId = resolved?.cohort.id ?? null;
+  const endedCohortIds = await endedCohortIdsAmong(client, rows, cohortId, now);
 
   return {
     applicationStatus: app?.status ?? null,
     enrolled: resolved?.stage === "enrolled",
-    liveStatuses: liveStatusesInCohort(rows, cohortId),
+    liveStatuses: liveStatusesInCohort(rows, cohortId, endedCohortIds),
     cohort: resolved?.cohort ?? null,
     applicationId: resolved?.applicationId ?? app?.id ?? null,
     cohortId,
     rows,
+    endedCohortIds,
   };
 }
 
@@ -703,7 +824,10 @@ export async function eligibilityForScholarship(
   const others = state.rows.filter((r) => r.scholarshipId !== scholarship.id);
   const eligibility = checkEligibility(
     offerOf(scholarship, awardedIn(counts, scholarship.id, state.cohortId)),
-    { ...state, liveStatuses: liveStatusesInCohort(others, state.cohortId) },
+    {
+      ...state,
+      liveStatuses: liveStatusesInCohort(others, state.cohortId, state.endedCohortIds),
+    },
     now,
     { alreadyAppliedHere: blocking },
   );
@@ -842,7 +966,7 @@ export async function saveScholarshipApplication(args: {
     if (/duplicate key|unique constraint/i.test(error.message)) {
       return {
         ok: false,
-        error: "You already hold a batch0 scholarship — only one per student in a cohort.",
+        error: HOLDS_AWARD_MESSAGE,
       };
     }
     console.error("[scholarships] save failed:", error.message);
@@ -1012,11 +1136,22 @@ export type DecisionResult =
 /**
  * How much this student actually paid toward tuition, and how much of it has
  * already come back. Bounds the refund — see awardRefundCents.
+ *
+ * Matched on the award's cohort OR its batch0 application. The application
+ * matters for a student an admin moved to another cohort (moveToCohort): their
+ * award is restamped with the new cohort, but the payment they made keeps the
+ * old one, and the application is the thread between the two. Matching on the
+ * cohort alone would read that student as unpaid, so a money award would
+ * become a checkout discount they can never use, and an award already marked
+ * refund_due could never be refunded. A returning student's payment for an
+ * EARLIER cohort doesn't match either way: it carries its own cohort and its
+ * own application.
  */
 async function tuitionPayment(
   admin: SupabaseClient,
   userId: string,
   cohortId: string | null,
+  applicationId: string | null,
 ): Promise<{
   paymentId: string;
   paymentIntentId: string | null;
@@ -1028,7 +1163,11 @@ async function tuitionPayment(
     .select("id, stripe_payment_intent_id, amount_cents, stripe_receipt_url, status")
     .eq("user_id", userId)
     .eq("status", "succeeded");
-  if (cohortId) query = query.eq("cohort_id", cohortId);
+  if (cohortId && applicationId) {
+    query = query.or(`cohort_id.eq.${cohortId},application_id.eq.${applicationId}`);
+  } else if (cohortId) {
+    query = query.eq("cohort_id", cohortId);
+  }
 
   const { data } = await query
     .order("created_at", { ascending: false })
@@ -1093,10 +1232,13 @@ export async function awardScholarship(args: {
           .maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
-  // One at a time is per cohort (see liveStatusesInCohort), and so are seats.
+  // One at a time until the other award's cohort is over (see
+  // countsAgainstCohort); seats are per cohort.
+  const otherRows = others.filter((o) => o.id !== app.id);
   const otherLive = liveStatusesInCohort(
-    others.filter((o) => o.id !== app.id),
+    otherRows,
     app.cohortId,
+    await endedCohortIdsAmong(admin, otherRows, app.cohortId, now),
   );
 
   const guard = canAward({
@@ -1107,7 +1249,7 @@ export async function awardScholarship(args: {
   });
   if (!guard.ok) return { ok: false, error: guard.error };
 
-  const payment = await tuitionPayment(admin, app.userId, app.cohortId);
+  const payment = await tuitionPayment(admin, app.userId, app.cohortId, app.applicationId);
   const hasPaid = !!payment && payment.amountCents > 0;
 
   // The cohort window, checked again at decision time — the same one the
@@ -1662,7 +1804,7 @@ export async function issueScholarshipRefund(args: {
     };
   }
 
-  const payment = await tuitionPayment(admin, app.userId, app.cohortId);
+  const payment = await tuitionPayment(admin, app.userId, app.cohortId, app.applicationId);
   if (!payment) {
     return {
       ok: false,
@@ -1893,6 +2035,10 @@ export async function inviteToScholarship(args: {
  * extra mentor time for that cohort, bookable up to the end of its last day
  * (scholarshipCallWindow). Read from the award row, not from wherever the
  * student is now — a Fall award is a Fall perk.
+ *
+ * Which award, when they hold more than one, is pickCallAward's call: the
+ * newest one that can book right now, not simply the newest. A newer award
+ * without calls must not hide a running one's calls.
  */
 export async function callCreditsForUser(
   client: SupabaseClient,
@@ -1906,18 +2052,17 @@ export async function callCreditsForUser(
   cohortId: string | null;
   window: CallWindow;
 } | null> {
-  const held = await getAwardForUser(client, userId);
-  if (!held) return null;
   // The snapshot decides, not the catalog: a scholarship edited to drop its
-  // calls after the award must not take back calls already granted.
-  if (held.app.credits.granted <= 0) return null;
-  const cohort = await loadWindowCohort(client, held.app.cohortId);
+  // calls after the award must not take back calls already granted, so the
+  // pick reads each award's own credits.
+  const held = pickCallAward(await listAwardsForUser(client, userId), now);
+  if (!held) return null;
   return {
     applicationId: held.app.id,
     scholarshipName: held.scholarship.name,
     credits: held.app.credits,
     cohortId: held.app.cohortId,
-    window: scholarshipCallWindow(cohort, now),
+    window: scholarshipCallWindow(held.cohort, now),
   };
 }
 
@@ -1941,14 +2086,19 @@ export type HeldPerks = {
  * catalog, for the reason callCreditsForUser gives. Fails closed to null on
  * any error: a perk that can't be read is a perk not granted, never one
  * granted by accident.
+ *
+ * Which award, when they hold more than one, is pickPerkAward's call: the
+ * newest one with perks whose cohort isn't over, so a newer perk-less award
+ * can't switch off a running one's perks.
  */
 export async function scholarshipPerksForUser(
   client: SupabaseClient,
   userId: string,
+  now: Date = new Date(),
 ): Promise<HeldPerks | null> {
   try {
-    const held = await getAwardForUser(client, userId);
-    if (!held || !hasAnyPerk(held.app.perks)) return null;
+    const held = pickPerkAward(await listAwardsForUser(client, userId), now);
+    if (!held) return null;
     return {
       applicationId: held.app.id,
       scholarshipName: held.scholarship.name,

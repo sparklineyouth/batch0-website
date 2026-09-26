@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   NO_COHORT_REASON,
   callTimeProblem,
+  cohortIsOver,
   describeCohortWindows,
   resolveScholarshipCohort,
   scholarshipCallWindow,
@@ -231,6 +232,22 @@ test("a legacy award with no cohort is left unbounded rather than locked out", (
   const w = scholarshipCallWindow(null, TODAY);
   assert.deepEqual(w, { open: true, until: null, cohortName: null });
   assert.equal(callTimeProblem(new Date("2030-01-01T00:00:00Z"), w), null);
+});
+
+// --- whether a cohort is over ------------------------------------------------
+
+test("cohortIsOver: running and upcoming aren't over; past the last Eastern day, completed and cancelled are", () => {
+  assert.equal(cohortIsOver(FALL, TODAY), false);
+  assert.equal(cohortIsOver(WINTER, TODAY), false);
+  // 11:30 PM Eastern on Nov 13 is still Fall's last day; the next morning isn't.
+  assert.equal(cohortIsOver(FALL, new Date("2026-11-14T04:30:00Z")), false);
+  assert.equal(cohortIsOver(FALL, new Date("2026-11-14T15:00:00Z")), true);
+  assert.equal(cohortIsOver({ ...FALL, status: "completed" }, TODAY), true);
+  assert.equal(cohortIsOver({ ...WINTER, status: "cancelled" }, TODAY), true);
+});
+
+test("cohortIsOver: no cohort on file reads as not over, so a legacy award keeps its perks and keeps blocking", () => {
+  assert.equal(cohortIsOver(null, TODAY), false);
 });
 
 // --- wording -----------------------------------------------------------------

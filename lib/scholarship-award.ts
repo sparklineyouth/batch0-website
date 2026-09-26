@@ -18,6 +18,8 @@
 // ---------------------------------------------------------------------------
 
 import {
+  cohortIsOver,
+  scholarshipCallWindow,
   scholarshipWindow,
   type OpenScholarshipWindow,
   type ScholarshipCohort,
@@ -558,22 +560,62 @@ export type ScholarshipOffer = {
 };
 
 /**
- * The live statuses that count against a student in `cohortId`.
+ * What a student holding an award is told when they try for another. Shared
+ * with the save action's unique-index fallback so the two can't word the
+ * rule differently.
+ */
+export const HOLDS_AWARD_MESSAGE =
+  "You already hold a batch0 scholarship. Students hold one at a time, and another opens up once the cohort yours is for has ended.";
+
+/**
+ * Whether one of a student's scholarship rows counts against them in
+ * `cohortId` for the one-at-a-time rule.
  *
- * One scholarship at a time is a per-COHORT rule — it is what 0071's unique
- * index enforces, so a returning student can hold one in a later cohort — and
- * the application-side checks have to match it, or an award from a finished
- * cohort blocks a student for good. A row with no cohort on file counts in
- * every cohort: the index can't see it (NULLs are distinct), so the check here
- * is the only thing standing in for it, and the conservative reading is the
- * one that can't hand out two.
+ * One scholarship at a time, EXCEPT that a row stops counting once its cohort
+ * is over. Two readings were wrong:
+ *
+ *   - Global (the rule before cohort windows): an award from a finished
+ *     cohort blocks a returning student for good.
+ *   - Strictly per cohort (what 0071's (user_id, cohort_id) index allows):
+ *     a Fall student accepted into Winter, or moved there, could win a Winter
+ *     award while the Fall one was still running. Every perk reader
+ *     (mentor calls, feedback credits, guest tickets, the AI boost) reads a
+ *     single award, and the newer one then hid the older one's perks
+ *     mid-cohort.
+ *
+ * So a row from ANOTHER cohort counts until that cohort has ended (or been
+ * cancelled). By then its calls window has closed, so a second award can't
+ * hide anything the student could still use. `endedCohortIds` holds the
+ * cohorts known to be over (cohortIsOver in ./scholarship-window.ts). A cohort
+ * missing from it, including one whose read failed, keeps counting, because
+ * that is the side that can't hand out two awards at once.
+ *
+ * A row with no cohort on file counts in every cohort: the index can't see it
+ * (NULLs are distinct), so this check is the only thing standing in for it.
+ * So does every row when the student has no cohort to compare against.
+ */
+export function countsAgainstCohort(
+  row: { cohortId: string | null },
+  cohortId: string | null,
+  endedCohortIds: ReadonlySet<string>,
+): boolean {
+  if (row.cohortId === null || cohortId === null || row.cohortId === cohortId) return true;
+  return !endedCohortIds.has(row.cohortId);
+}
+
+/**
+ * The live statuses that count against a student in `cohortId`: the
+ * statuses of the rows countsAgainstCohort keeps. Pending rows follow the
+ * same rule as awards. A pending application in a cohort that is still
+ * running blocks a second one, as it did before cohorts had windows.
  */
 export function liveStatusesInCohort(
   rows: readonly { status: ScholarshipAppStatus; cohortId: string | null }[],
   cohortId: string | null,
+  endedCohortIds: ReadonlySet<string>,
 ): ScholarshipAppStatus[] {
   return rows
-    .filter((r) => r.cohortId === null || cohortId === null || r.cohortId === cohortId)
+    .filter((r) => countsAgainstCohort(r, cohortId, endedCohortIds))
     .map((r) => r.status)
     .filter((s) => (LIVE_SCHOLARSHIP_STATUSES as readonly string[]).includes(s));
 }
@@ -643,7 +685,7 @@ export function checkEligibility(
     return {
       ok: false,
       reason: "holds_award",
-      message: "You already hold a batch0 scholarship — only one per student in a cohort.",
+      message: HOLDS_AWARD_MESSAGE,
     };
   }
 
@@ -697,7 +739,7 @@ export function canAward(args: {
     return {
       ok: false,
       error:
-        "This student already holds another scholarship. Revoke that one first — students hold one at a time.",
+        "This student already holds another scholarship, in this cohort or in one that hasn't ended yet. Revoke that one first — students hold one at a time until its cohort is over.",
     };
   }
   if (args.seats !== null && args.awardedCount >= args.seats) {
@@ -739,4 +781,65 @@ export function callCredits(
 /** Whether this award can still book a scholarship-funded mentor call. */
 export function canBookCall(credits: CallCredits): boolean {
   return credits.remaining > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Choosing among a student's awards
+// ---------------------------------------------------------------------------
+
+/**
+ * One award as the perk readers choose between them: its snapshot, plus the
+ * cohort it was made in. null is a legacy row with no cohort on file, or one
+ * whose cohort couldn't be read.
+ */
+export type HeldAwardChoice = {
+  app: { credits: CallCredits; perks: AwardPerks };
+  cohort: ScholarshipCohort | null;
+};
+
+/**
+ * The award whose mentor calls a student books against, from every award
+ * they hold, NEWEST DECIDED FIRST.
+ *
+ * Normally they hold one award (countsAgainstCohort). They can hold two when
+ * an earlier cohort's award sits beside a later one, or when rows predate the
+ * rule. Taking the newest award blindly was the bug: a Winter award with no
+ * calls hid a running Fall award's calls, so the calls card vanished and
+ * requestScholarshipCall said they held no calls. So the pick is the newest
+ * award that can book right now (calls granted, calls left, cohort still
+ * running). If none can, it falls back to the newest award that granted calls
+ * at all, so the card can still say why booking is closed ("all 3 used", "Fall
+ * 2026 has ended") instead of disappearing. null when no award granted calls.
+ */
+export function pickCallAward<T extends HeldAwardChoice>(
+  awards: readonly T[],
+  now: Date,
+): T | null {
+  const withCalls = awards.filter((a) => a.app.credits.granted > 0);
+  return (
+    withCalls.find(
+      (a) =>
+        canBookCall(a.app.credits) && scholarshipCallWindow(a.cohort, now).open,
+    ) ??
+    withCalls[0] ??
+    null
+  );
+}
+
+/**
+ * The award whose perks (feedback credits, guest tickets, the AI boost) a
+ * student is honoured for, from every award they hold, NEWEST DECIDED FIRST.
+ *
+ * The newest award carrying any perk whose cohort isn't over, so a newer
+ * perk-less award can't switch off a running one's perks. If none is running,
+ * the newest award carrying any perk: a perk doesn't lapse just because its
+ * cohort ended, and before a student could hold two awards this read never
+ * looked at the cohort at all. null when no award carries a perk.
+ */
+export function pickPerkAward<T extends HeldAwardChoice>(
+  awards: readonly T[],
+  now: Date,
+): T | null {
+  const withPerks = awards.filter((a) => hasAnyPerk(a.app.perks));
+  return withPerks.find((a) => !cohortIsOver(a.cohort, now)) ?? withPerks[0] ?? null;
 }

@@ -114,15 +114,49 @@ Enforced in three places, on purpose:
 3. `canAward()` — re-checked at decision time, because the student's situation
    can change between applying and being reviewed.
 
-It's per *cohort*, not per user, so a returning student isn't blocked forever by
-an award from a past cohort — the two application-side checks count only rows
-in the student's cohort (`liveStatusesInCohort`), plus any row with no cohort,
-which the index can't see. One gap remains: `unique (scholarship_id, user_id)`
-still allows one row per scholarship per student ever, so a returning student
-can apply to a *different* scholarship in a later cohort but not the same one
-again. Lifting that needs a migration. A pending application elsewhere also blocks — else
-someone could queue up five and take whichever landed first, and the seat counts
-would stop meaning anything.
+The rule is **one at a time until the award's cohort is over**, and that sits
+between two readings that were each wrong:
+
+- *Per user, forever* blocked a returning student for good with an award from
+  a past cohort.
+- *Strictly per cohort*, which is all the index enforces, let a Fall student
+  who'd been accepted into (or moved to) Winter win a Winter award while the
+  Fall one was still running. The perk readers then showed the newer award
+  and hid the Fall calls, feedback credit and tickets mid-cohort.
+
+So the two application-side checks count every live row in the student's
+cohort, every row with no cohort (the index can't see those), and every row
+from **another cohort that hasn't ended yet** (`countsAgainstCohort` /
+`liveStatusesInCohort`, with the ended set from `endedCohortIdsAmong`). A
+second award only becomes possible once the first award's cohort is over, and
+by then its calls window has closed too. A cohort whose read fails keeps
+counting, because that side can't hand out two awards at once.
+
+The perk readers don't rely on that alone. `callCreditsForUser` and
+`scholarshipPerksForUser` read every award (`listAwardsForUser`) and choose
+one (`pickCallAward` / `pickPerkAward`). For calls: the newest award that can
+book right now, falling back to the newest award with calls so the card can
+explain why booking is closed. For the other perks: the newest award with
+perks whose cohort isn't over, falling back to the newest award with perks.
+
+One gap remains: `unique (scholarship_id, user_id)` still allows one row per
+scholarship per student ever, so a returning student can apply to a
+*different* scholarship in a later cohort but not the same one again. Lifting
+that needs a migration. A pending application also blocks, on the same terms as
+an award. Otherwise someone could queue up five and take whichever landed
+first, and the seat counts would stop meaning anything.
+
+**Moving a student to another cohort** (`moveToCohort`, the admin student
+page) restamps their live scholarship rows (draft, submitted, under review,
+awarded) from the cohort they're leaving to the new one, before anything else
+moves. Everything above reads the cohort on the row: the call window, the
+one-at-a-time rule, seats, the checkout discount and the guest tickets' Demo
+Day. A deferred student's award therefore follows them. The move is refused,
+with nothing changed, when they already hold an award in the target cohort,
+because the index allows one per cohort. Revoke one first. Their payment keeps
+the old cohort, so `tuitionPayment` matches a payment by the award's cohort
+**or** its batch0 application, which is what still links a moved student's
+award to what they paid.
 
 ## Perks
 

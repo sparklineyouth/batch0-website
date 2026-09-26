@@ -8,6 +8,7 @@ import {
   canAward,
   canBookCall,
   checkEligibility,
+  countsAgainstCohort,
   describeAward,
   describeMoney,
   formatMoney,
@@ -21,8 +22,11 @@ import {
   normalizePerks,
   perkAiAllowanceMultiplier,
   perkSummaries,
+  pickCallAward,
+  pickPerkAward,
   stageOf,
   AI_BOOST_MULTIPLIER,
+  HOLDS_AWARD_MESSAGE,
   AWARD_PERK_DEFS,
   MAX_DEMO_DAY_TICKETS,
   MAX_FEEDBACK_CREDITS,
@@ -440,7 +444,8 @@ test("checkEligibility enforces one scholarship per student", () => {
   assert.equal(out.ok, false);
   if (!out.ok) {
     assert.equal(out.reason, "holds_award");
-    assert.match(out.message, /only one per student/);
+    assert.equal(out.message, HOLDS_AWARD_MESSAGE);
+    assert.match(out.message, /one at a time/);
   }
 });
 
@@ -471,22 +476,53 @@ test("checkEligibility reports a repeat application to the same scholarship", ()
   if (!out.ok) assert.equal(out.reason, "already_applied");
 });
 
-test("liveStatusesInCohort scopes one-at-a-time to the cohort, and counts cohortless rows everywhere", () => {
+test("liveStatusesInCohort: an award from a cohort that's over stops blocking", () => {
   const rows = [
     { status: "awarded" as const, cohortId: "summer" },
     { status: "submitted" as const, cohortId: "fall" },
     { status: "declined" as const, cohortId: "fall" },
     { status: "draft" as const, cohortId: "fall" },
   ];
-  // A Summer award doesn't block a Fall application…
-  assert.deepEqual(liveStatusesInCohort(rows, "fall"), ["submitted"]);
-  assert.deepEqual(liveStatusesInCohort(rows, "summer"), ["awarded"]);
-  // …but a row with no cohort can't be told apart, so it counts in all of them.
+  const summerOver = new Set(["summer"]);
+  // A returning student's award from a finished Summer doesn't block Fall…
+  assert.deepEqual(liveStatusesInCohort(rows, "fall", summerOver), ["submitted"]);
+  // …while inside Summer itself it still counts, over or not. Fall is still
+  // running, so its pending row counts against Summer too.
+  assert.deepEqual(liveStatusesInCohort(rows, "summer", summerOver), ["awarded", "submitted"]);
+  // A row with no cohort can't be told apart, so it counts in all of them.
   assert.deepEqual(
-    liveStatusesInCohort([{ status: "awarded", cohortId: null }], "fall"),
+    liveStatusesInCohort([{ status: "awarded", cohortId: null }], "fall", summerOver),
     ["awarded"],
   );
-  assert.deepEqual(liveStatusesInCohort(rows, null), ["awarded", "submitted"]);
+  // With no cohort of their own to compare against, everything counts.
+  assert.deepEqual(liveStatusesInCohort(rows, null, summerOver), ["awarded", "submitted"]);
+});
+
+test("liveStatusesInCohort: an award from a cohort that's still running keeps blocking — one at a time", () => {
+  // The Fall student accepted into Winter: their Fall Learner's award runs to
+  // Nov 13. Scoping strictly per cohort let them win a Winter award beside it,
+  // and the single-award perk readers then hid the Fall calls mid-cohort.
+  const rows = [{ status: "awarded" as const, cohortId: "fall" }];
+  assert.deepEqual(liveStatusesInCohort(rows, "winter", new Set()), ["awarded"]);
+  // A pending application in a running cohort blocks a second one the same way.
+  assert.deepEqual(
+    liveStatusesInCohort([{ status: "under_review", cohortId: "fall" }], "winter", new Set()),
+    ["under_review"],
+  );
+  // Once Fall is over, Winter is theirs to apply in.
+  assert.deepEqual(liveStatusesInCohort(rows, "winter", new Set(["fall"])), []);
+});
+
+test("countsAgainstCohort: same cohort always, no cohort always, another cohort until it's over", () => {
+  const none = new Set<string>();
+  const fallOver = new Set(["fall"]);
+  assert.equal(countsAgainstCohort({ cohortId: "winter" }, "winter", fallOver), true);
+  assert.equal(countsAgainstCohort({ cohortId: null }, "winter", fallOver), true);
+  assert.equal(countsAgainstCohort({ cohortId: "fall" }, null, fallOver), true);
+  assert.equal(countsAgainstCohort({ cohortId: "fall" }, "winter", none), true);
+  assert.equal(countsAgainstCohort({ cohortId: "fall" }, "winter", fallOver), false);
+  // Being over never excuses a row inside the cohort being applied in.
+  assert.equal(countsAgainstCohort({ cohortId: "fall" }, "fall", fallOver), true);
 });
 
 test("checkEligibility ignores a declined or withdrawn past attempt", () => {
@@ -554,4 +590,96 @@ test("canBookCall gates on the remaining balance", () => {
   assert.equal(canBookCall(callCredits(3, 2)), true);
   assert.equal(canBookCall(callCredits(3, 3)), false);
   assert.equal(canBookCall(callCredits(0, 0)), false);
+});
+
+// --- choosing among a student's awards ---------------------------------------
+
+const WINTER: ScholarshipCohort = {
+  id: "winter",
+  name: "Winter 2026",
+  status: "upcoming",
+  starts_on: "2026-12-14",
+  ends_on: "2027-02-12",
+  applications_close_at: "2026-12-12T23:59:00Z",
+  late_entry_until: null,
+  catch_up_plan: null,
+};
+
+/** An award as listAwardsForUser hands it over: the snapshot plus its cohort. */
+function held(
+  id: string,
+  cohort: ScholarshipCohort | null,
+  granted: AwardPerks,
+  callsUsed = 0,
+) {
+  return {
+    id,
+    app: { credits: callCredits(granted.mentorCalls, callsUsed), perks: granted },
+    cohort,
+  };
+}
+
+test("a newer Winter award without calls doesn't hide a running Fall award's calls or perks", () => {
+  // Sep 25: a Fall student is awarded the Learner's Scholarship (3 calls, 1
+  // used, a feedback credit). Oct 10: a Winter discount award is decided.
+  // Newest first, as listAwardsForUser returns them.
+  const awards = [
+    held("winter-discount", WINTER, perks()),
+    held("fall-learner", FALL, perks({ mentorCalls: 3, feedbackCredits: 1 }), 1),
+  ];
+  const oct10 = new Date("2026-10-10T16:00:00Z");
+  assert.equal(pickCallAward(awards, oct10)?.id, "fall-learner");
+  assert.equal(pickPerkAward(awards, oct10)?.id, "fall-learner");
+});
+
+test("pickCallAward prefers an award that can book now over a newer one that can't", () => {
+  const oct10 = new Date("2026-10-10T16:00:00Z");
+  // Winter's calls are all used; Fall's still have one left and Fall is running.
+  const awards = [
+    held("winter", WINTER, perks({ mentorCalls: 2 }), 2),
+    held("fall", FALL, perks({ mentorCalls: 3 }), 2),
+  ];
+  assert.equal(pickCallAward(awards, oct10)?.id, "fall");
+  // Once Fall has ended its calls can't be booked, so Winter speaks for them —
+  // and says "all used" rather than the card disappearing.
+  assert.equal(pickCallAward(awards, new Date("2026-11-20T16:00:00Z"))?.id, "winter");
+});
+
+test("pickCallAward falls back to the newest calls award so the card can say why booking is closed", () => {
+  const nov20 = new Date("2026-11-20T16:00:00Z");
+  // Fall is over and the newer award carries no calls: Fall's award still
+  // answers, and its window explains the closure.
+  const awards = [held("winter", WINTER, perks()), held("fall", FALL, perks({ mentorCalls: 3 }))];
+  assert.equal(pickCallAward(awards, nov20)?.id, "fall");
+  // No award granted calls at all: nothing to show.
+  assert.equal(pickCallAward([held("w", WINTER, perks({ aiBoost: true }))], nov20), null);
+  assert.equal(pickCallAward([], nov20), null);
+});
+
+test("pickCallAward treats a legacy award with no cohort as bookable", () => {
+  const awards = [held("legacy", null, perks({ mentorCalls: 2 }))];
+  assert.equal(pickCallAward(awards, NOW)?.id, "legacy");
+});
+
+test("pickPerkAward takes the newest award with perks whose cohort isn't over, else the newest with perks", () => {
+  const oct10 = new Date("2026-10-10T16:00:00Z");
+  const nov20 = new Date("2026-11-20T16:00:00Z");
+  const bothWithPerks = [
+    held("winter", WINTER, perks({ demoDayTickets: 2 })),
+    held("fall", FALL, perks({ aiBoost: true })),
+  ];
+  // Both running: the newer one.
+  assert.equal(pickPerkAward(bothWithPerks, oct10)?.id, "winter");
+  // An older award whose cohort is over loses to a running one, whatever the order.
+  const fallOverNewer = [
+    held("fall", FALL, perks({ aiBoost: true })),
+    held("winter", WINTER, perks({ demoDayTickets: 2 })),
+  ];
+  assert.equal(pickPerkAward(fallOverNewer, nov20)?.id, "winter");
+  // Nothing running carries perks: a perk doesn't lapse with its cohort.
+  const onlyFallHasPerks = [held("winter", WINTER, perks()), held("fall", FALL, perks({ aiBoost: true }))];
+  assert.equal(pickPerkAward(onlyFallHasPerks, nov20)?.id, "fall");
+  // A legacy award with no cohort isn't "over".
+  assert.equal(pickPerkAward([held("legacy", null, perks({ feedbackCredits: 1 }))], nov20)?.id, "legacy");
+  assert.equal(pickPerkAward([held("w", WINTER, perks())], oct10), null);
 });
