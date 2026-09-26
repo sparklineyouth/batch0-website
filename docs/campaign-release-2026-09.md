@@ -21,14 +21,14 @@ The Search destination is `/parents` with final URL suffix `utm_source=google&ut
 - Send an anonymous **GET** to each tagged sitelink destination. Each should set the `batch0_search_source` cookie with HttpOnly, Secure, SameSite=Lax, Path=/, and Max-Age=2592000. A HEAD request intentionally does not set it. Retrying an untagged page with the cookie must not replace or extend it.
 - Follow `/apply?cohort=e3db019a-e723-4614-a5a1-1c2868883f42` while signed out. Its signup/login redirect must retain the selected cohort in `next`.
 - `/admin/payments/acquisition` must redirect an anonymous visitor to authentication. An authorized payment-viewing staff member should see the real report or a truthful empty state, not a migration/database error.
-- Check the Winter welcome page with staff preview. It must show the December 14–February 12 program dates, the new Winter lesson link, and the explicit notice that live meeting times are pending. Do not create an application, payment, email, or event merely to perform this read-only production smoke.
+- Check the Winter welcome page with staff preview. It must show the December 14–February 12 program dates, the new Winter lesson link, the confirmed timetable below, and a link to the actual first event. Do not create an application, payment, email, or event merely to perform this read-only production smoke.
 
 The isolated database and checkout suites test paid-event/refund behavior. A real parent purchase is credited when the payment webhook writes its application-linked ledger entry; that observed production result must not be inferred from a successful build or a page view.
 
-## Winter welcome and remaining decision
+## Winter welcome and confirmed timetable
 
-Winter kickoff was published and read back on September 26, 2026 through the validated Batch0 content operation. It links the Winter welcome lesson `bcf89114-9539-5251-bb3c-0431e52f611e`, the course, pre-cohort resources, and the public Winter calendar. Its join URL opens `/dashboard/events`; the note explains that this is not a scheduled meeting invitation. This publication did not create events, video rooms, messages, or a holiday schedule.
+Winter kickoff was published and read back on September 26, 2026 through the validated Batch0 content operation. It links the Winter welcome lesson `bcf89114-9539-5251-bb3c-0431e52f611e`, the course, pre-cohort resources, and the public Winter calendar. After founder confirmation, the release owner published and verified 19 Winter events and updated the kickoff to link to the actual first event. All 15 existing Fall events were unchanged.
 
-**The live Winter session timetable, including December 24/31 arrangements, still needs the founders' decision.** The page says: “Live session times will be posted here before the cohort begins.” The nine weekly workbook windows are curriculum dates, not confirmed live appointments. Keep public calendar copy truthful until the actual events are published.
+The confirmed schedule is nine Monday workshops, 8–9 p.m. Eastern; nine office-hour sessions, ordinarily Thursday 8–8:30 p.m. Eastern; and Demo Day on February 12, 2027, 8–9 p.m. Eastern. Holiday office hours move from December 24 and 31 to Wednesday, December 23 and 30, at the same time. These are published live events, separate from the nine weekly workbook windows.
 
 For the first $120 campaign, judge continuation using settled tuition after refunds alongside actual ad spend. At the present $117 Fall promotional charge, one payment does not recover $120; two payments recover gross cash but still have fees and delivery costs. A single $150.99 Winter payment exceeds ad spend before those costs, but one sale alone is not evidence of a repeatable acquisition rate.
