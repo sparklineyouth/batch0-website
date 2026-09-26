@@ -196,9 +196,9 @@ export async function listAssets(
     .order("kind", { ascending: true })
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
-    // A recording is one row per five minutes, so an eight-hour cap's worth of
-    // segments is about a hundred. 500 is far above anything real and far below
-    // anything that would hurt.
+    // A recording is one row per two minutes, so an eight-hour cap's worth of
+    // segments is about two hundred and forty. 500 is above anything real and
+    // far below anything that would hurt.
     .limit(500);
   if (error) {
     if (!isMissingTable(error)) {

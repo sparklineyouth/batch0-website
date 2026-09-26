@@ -15,6 +15,7 @@ import {
   type Capabilities,
 } from "@/lib/permissions";
 import { isAppHost, isMarketingPath, MAIN_ORIGIN } from "@/lib/app-host";
+import { bouncesFromDashboard } from "@/lib/dashboard-gate";
 
 type CookiesToSet = {
   name: string;
@@ -529,16 +530,18 @@ export async function updateSession(request: NextRequest) {
       // through as an opt-in (the admin sidebar has a "Student view" link), but
       // their default home stays /admin. Billing + pay-fine are shared per-user
       // views every role can reach.
+      //
+      // One more exemption: the 1:1 room, /dashboard/calls/<id>/live, which is
+      // shared by BOTH people on a call — and its host is often a mentor or an
+      // investor. The page 404s anyone who is not one of the two. The whole
+      // rule, including never bouncing /dashboard at /dashboard, lives in
+      // lib/dashboard-gate.ts where it is tested.
       if (
-        path.startsWith("/dashboard") &&
-        !path.startsWith("/dashboard/pay-fine") &&
-        !path.startsWith("/dashboard/billing") &&
-        !can(caps, "student.dashboard") &&
-        // Never bounce /dashboard at /dashboard. A role with no permissions at
-        // all resolves its home to /dashboard, and redirecting there would spin
-        // forever; the dashboard layout renders bare chrome for these viewers
-        // instead, which is a dead end rather than a loop.
-        home !== "/dashboard"
+        bouncesFromDashboard({
+          path,
+          studentDashboard: can(caps, "student.dashboard"),
+          home,
+        })
       ) {
         return redirectTo(home);
       }

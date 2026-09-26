@@ -7,9 +7,10 @@ import {
   RECORDING_SEGMENT_SECONDS,
   RECORDING_VIDEO_BITRATE,
 } from "@/lib/webinars";
+import { callInsetBoxes, callTileBoxes } from "@/lib/call-recording";
 
 /**
- * Recording a webinar from inside the host's tab.
+ * Recording a webinar — or a 1:1 — from inside one host's tab.
  *
  * There is no server in the media path — batch0 Live is browser-to-browser
  * (see the topology note at the top of lib/live-signal.ts), so nothing but the
@@ -42,7 +43,7 @@ import {
  * flight, not the hour behind it. The talk is fully uploaded seconds after it
  * ends rather than ten minutes later.
  *
- * The cost is a seam — tens of milliseconds every five minutes — because a
+ * The cost is a seam — tens of milliseconds every two minutes — because a
  * `MediaRecorder` has to be stopped and restarted for each file to carry its
  * own header and be independently playable. A segment that is only playable
  * when concatenated with its neighbours is not a safeguard against losing one;
@@ -72,9 +73,40 @@ import {
  * It does not record the audience: there is no audience media to record. A
  * viewer is receive-only by construction, so the recording is the broadcast,
  * and a student cannot end up on tape by turning on a microphone they were
- * never given. It does not record remote broadcasters either — a co-host's
- * inbound video is not composed in, because that would put a second person's
- * camera into a file the first person believes is theirs.
+ * never given.
+ *
+ * ---------------------------------------------------------------------------
+ * Everyone on stage, not just this tab's host
+ * ---------------------------------------------------------------------------
+ *
+ * The recording is the room's record of what was SAID, and the people saying
+ * it are rarely all on one laptop: the other person in a 1:1 is half the
+ * conversation, and a webinar's guest speaker is usually the talk while the
+ * staff moderator who introduced them sits muted. Exactly one browser records
+ * (a 1:1's host; a webinar's elected recorder — see `electRecorder` in
+ * lib/webinars.ts), so a recorder that captured only its own camera and mic
+ * would leave whoever was not on that laptop out of the recording entirely.
+ *
+ * So a caller that passes `remotes` — every live broadcaster other than this
+ * tab's — gets the STAGE machine, fixed at `start()`:
+ *
+ *   - the picture is everyone side by side (or, while someone presents, their
+ *     screen with each face as an inset), each labelled with their name, drawn
+ *     from off-screen `<video>` elements fed the inbound streams;
+ *   - the sound is MIXED. A `MediaRecorder` records one audio track, and a
+ *     conversation is several microphones, so every one is routed through an
+ *     `AudioContext` into one `MediaStreamAudioDestinationNode` whose single
+ *     track is what gets recorded. That track outlives every change underneath
+ *     it — someone arriving, dropping, rejoining, a device switch — for the
+ *     same reason the canvas does: the recorder never sees a source track end.
+ *
+ * Both 1:1 and webinar pass an array, even an empty one, so the machine is
+ * the stage one from the first frame and a co-host arriving later is one more
+ * tile rather than a different recorder. Which browser records then decides
+ * only whose upstream carries the file, never who is in it. In a 1:1 both
+ * people are told, in the green room and in the room, before a frame is
+ * written (broadcast-room.tsx). A caller passing no `remotes` gets the SOLO
+ * machine — this tab's camera, screen and mic alone.
  *
  * It also never retries an upload. `onSegment` owns that decision, because it
  * is the side that knows whether the failure was a dead network or a rejected
@@ -139,6 +171,26 @@ const BACKDROP = "#0b0b0d";
 const CARD_FILL = "#17171a";
 const CARD_TEXT = "#f4f4f5";
 const INSET_BORDER = "#3f3f46";
+const TAG_FILL = "rgba(0, 0, 0, 0.6)";
+const FONT_STACK = "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif";
+
+/**
+ * A broadcaster other than the recording host, to be composed into the
+ * recording: the other person in a 1:1, or a co-host on a webinar's stage.
+ *
+ * Streams are present only while that slot is actually carrying media — the
+ * live-session engine drops a muted slot rather than handing over black frames
+ * — so a null camera is a camera that is off, not one still loading.
+ */
+export type RecorderRemote = {
+  id: string;
+  name: string;
+  camera: MediaStream | null;
+  screen: MediaStream | null;
+  audio: MediaStream | null;
+  /** False draws "Waiting for <name>" rather than "Camera off". */
+  connected: boolean;
+};
 
 export function useRecorder({
   eventId,
@@ -149,6 +201,9 @@ export function useRecorder({
   cameraOn,
   micOn,
   onSegment,
+  remotes,
+  localName,
+  subject = "webinar",
 }: {
   eventId: string;
   /** Gates the whole machine: host, joined, and recording turned on. */
@@ -164,6 +219,16 @@ export function useRecorder({
   cameraOn: boolean;
   micOn: boolean;
   onSegment: (blob: Blob, index: number, durationSeconds: number) => Promise<void>;
+  /**
+   * Every other broadcaster on stage, to composite in and mix with the local
+   * mic — see the header. An empty array still means the stage machine:
+   * nobody else has arrived yet. Undefined records this tab alone.
+   */
+  remotes?: RecorderRemote[];
+  /** The local person's name, for their tile in a stage recording. */
+  localName?: string;
+  /** What the host's error sentences call the thing that carries on regardless. */
+  subject?: "webinar" | "call";
 }): {
   state: RecorderState;
   /** Segments successfully handed to `onSegment`. */
@@ -212,14 +277,14 @@ export function useRecorder({
    * by design a new segment is begun BEFORE the previous one's upload is
    * awaited, so on a slow uplink two or three files are in flight at once.
    * `stop()` used to await `doneRef` alone, and the consequence was silent
-   * data loss: the host clicks End at 12:00 while segment 2 (minutes 5-10) is
-   * still climbing hotel wifi, `stop()` resolves on segment 3 only, the caller
+   * data loss: the host clicks End at 12:00 while segment 4 (minutes 8-10) is
+   * still climbing hotel wifi, `stop()` resolves on segment 5 only, the caller
    * tears the room down, the component unmounts, the page navigates, and
-   * segment 2's request dies in flight. The recording is missing five minutes
+   * segment 4's request dies in flight. The recording is missing a segment
    * of the talk and nothing — no error, no counter, no state — ever says so.
    * So every upload registers here for the length of its flight and `runStop`
    * waits for all of them. A Set rather than an array because entries are
-   * removed as they land; an hour-long webinar must not finish holding twelve
+   * removed as they land; an hour-long webinar must not finish holding thirty
    * settled promises it will never look at again.
    */
   const inFlightRef = useRef<Set<Promise<void>>>(new Set());
@@ -237,6 +302,31 @@ export function useRecorder({
 
   /** One in-flight stop, shared by every caller — see `stop`. */
   const stopPromiseRef = useRef<Promise<void> | null>(null);
+  /** True from the first line of `runStop` until its teardown has run. */
+  const stoppingRef = useRef(false);
+
+  /**
+   * "solo" records the local host alone; "stage" composites every broadcaster
+   * and mixes their audio. Fixed at `start()` from whether `remotes` was
+   * passed, so a run never changes shape halfway through a file.
+   */
+  const modeRef = useRef<"solo" | "stage">("solo");
+  const subjectRef = useRef(subject);
+  subjectRef.current = subject;
+  const remotesRef = useRef(remotes);
+  remotesRef.current = remotes;
+  const localNameRef = useRef(localName);
+  localNameRef.current = localName;
+  /** Off-screen elements for each remote's camera and screen, by participant id. */
+  const remoteElsRef = useRef(
+    new Map<string, { cam: HTMLVideoElement; screen: HTMLVideoElement }>(),
+  );
+  /** The stage-mode audio mix: one context, one destination, one source per voice. */
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const audioNodesRef = useRef(
+    new Map<string, { trackId: string; node: MediaStreamAudioSourceNode }>(),
+  );
 
   /**
    * `teardown`, reachable from `fail`.
@@ -309,6 +399,58 @@ export function useRecorder({
    * screen share that was picked a moment ago is attached before it has a
    * single frame to give, and drawing it then paints nothing over nothing.
    */
+  /**
+   * One frame of the stage: everyone broadcasting, labelled.
+   *
+   * Side by side in equal columns — everyone here is a speaker, nobody is the
+   * audience — unless someone is presenting, in which case the shared screen
+   * takes the frame (it is what everyone is looking at and talking about) and
+   * each face drops to an inset. The local person's camera is read through `cameraOn`
+   * for the same black-frames reason as the solo path below; a remote's is
+   * simply absent when off, because the engine only hands over live slots.
+   */
+  const composeStageFrame = useCallback((ctx: CanvasRenderingContext2D) => {
+    type Tile = {
+      name: string;
+      cam: HTMLVideoElement | null;
+      screen: HTMLVideoElement | null;
+      placeholder: string;
+    };
+    const tiles: Tile[] = [
+      {
+        name: localNameRef.current || "Host",
+        cam:
+          cameraOnRef.current && ready(camElRef.current) ? camElRef.current : null,
+        screen: ready(screenElRef.current) ? screenElRef.current : null,
+        placeholder: cardMessage(cameraOnRef.current, camElRef.current),
+      },
+    ];
+    for (const r of remotesRef.current ?? []) {
+      const els = remoteElsRef.current.get(r.id) ?? null;
+      tiles.push({
+        name: r.name,
+        cam: els && ready(els.cam) ? els.cam : null,
+        screen: els && ready(els.screen) ? els.screen : null,
+        placeholder: !r.connected
+          ? `Waiting for ${r.name}`
+          : r.camera
+            ? "Camera starting"
+            : "Camera off",
+      });
+    }
+
+    const full = { x: 0, y: 0, w: CANVAS_WIDTH, h: CANVAS_HEIGHT };
+    const presenter = tiles.find((t) => t.screen);
+    if (presenter?.screen) {
+      drawContain(ctx, presenter.screen, full);
+      const insets = callInsetBoxes(tiles.length, CANVAS_WIDTH, CANVAS_HEIGHT);
+      tiles.forEach((t, i) => drawPerson(ctx, t.cam, insets[i], t.name, t.placeholder, true));
+      return;
+    }
+    const boxes = callTileBoxes(tiles.length, CANVAS_WIDTH, CANVAS_HEIGHT);
+    tiles.forEach((t, i) => drawPerson(ctx, t.cam, boxes[i], t.name, t.placeholder, false));
+  }, []);
+
   const composeFrame = useCallback(() => {
     const ctx = ctxRef.current;
     if (!ctx) return;
@@ -316,6 +458,11 @@ export function useRecorder({
 
     ctx.fillStyle = BACKDROP;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    if (modeRef.current === "stage") {
+      composeStageFrame(ctx);
+      return;
+    }
 
     const screenEl = ready(screenElRef.current) ? screenElRef.current : null;
     // `cameraOn` is consulted, not `track.enabled`, and this is the whole
@@ -359,7 +506,7 @@ export function useRecorder({
       ctx.lineWidth = 2;
       ctx.strokeRect(inset.x + 1, inset.y + 1, inset.w - 2, inset.h - 2);
     }
-  }, []);
+  }, [composeStageFrame]);
 
   // --- the draw loop, and the reason it is not just rAF --------------------
 
@@ -459,7 +606,7 @@ export function useRecorder({
       // `isTypeSupported` said yes and the constructor said no, which happens
       // on builds where the container is supported but the bitrate options are
       // not. Nothing further to try that would not be a guess.
-      fail("This browser wouldn't start a recorder. The webinar is unaffected — it just won't be recorded.");
+      fail(`This browser wouldn't start a recorder. The ${subjectRef.current} is unaffected — it just won't be recorded.`);
       return;
     }
 
@@ -502,9 +649,9 @@ export function useRecorder({
 
       // Restart BEFORE the upload is awaited, not after. The seam between two
       // segments is meant to be the recorder's restart — tens of milliseconds
-      // — and awaiting a 45MB upload first would make it however long the
+      // — and awaiting a 19 MB upload first would make it however long the
       // host's upstream takes, which is to say the recording would skip a
-      // minute of the talk every time the network had a bad five minutes.
+      // minute of the talk every time the network had a bad few minutes.
       if (runningRef.current) beginSegmentRef.current();
 
       if (blob.size === 0) {
@@ -534,8 +681,8 @@ export function useRecorder({
           // A failed upload must never stop the recording. The segment is
           // gone — we do not hold it, because holding failures is how the
           // memory bound this whole design exists to keep gets lost — but the
-          // next one is already being written, and losing five minutes of an
-          // hour is a far better outcome than losing the other fifty-five.
+          // next one is already being written, and losing two minutes of an
+          // hour is a far better outcome than losing the other fifty-eight.
           failuresRef.current += 1;
           if (mountedRef.current) setError(uploadErrorText(err, failuresRef.current));
         } finally {
@@ -555,7 +702,7 @@ export function useRecorder({
     try {
       rec.start(CHUNK_MS);
     } catch {
-      fail("This browser wouldn't start a recorder. The webinar is unaffected — it just won't be recorded.");
+      fail(`This browser wouldn't start a recorder. The ${subjectRef.current} is unaffected — it just won't be recorded.`);
       settle();
       return;
     }
@@ -582,7 +729,85 @@ export function useRecorder({
   const syncSources = useCallback(() => {
     attach(camElRef.current, cameraStream);
     attach(screenElRef.current, screenStream);
-  }, [cameraStream, screenStream]);
+
+    // Everyone else on stage — only while a stage-mode run is live, so a
+    // room that is not recording (or not recording here) never creates a
+    // single element.
+    if (modeRef.current !== "stage" || !runningRef.current) return;
+    const els = remoteElsRef.current;
+    const present = new Set<string>();
+    for (const r of remotes ?? []) {
+      present.add(r.id);
+      let e = els.get(r.id);
+      if (!e) {
+        e = { cam: sourceVideo(), screen: sourceVideo() };
+        els.set(r.id, e);
+      }
+      attach(e.cam, r.camera);
+      attach(e.screen, r.screen);
+    }
+    for (const [id, e] of els) {
+      if (present.has(id)) continue;
+      attach(e.cam, null);
+      attach(e.screen, null);
+      els.delete(id);
+    }
+  }, [cameraStream, screenStream, remotes]);
+
+  /**
+   * Keep the stage-mode mix wired to exactly the voices in the room.
+   *
+   * One `MediaStreamAudioSourceNode` per voice, keyed by who it is and
+   * remembering which TRACK it was built on. A source node binds to the track
+   * a stream held when the node was made and never follows a replacement, and
+   * the engine reuses one stream object per slot across replacements — so a
+   * node whose track id no longer matches is rebuilt, and one for someone who
+   * went silent (muted, or gone) is disconnected. The destination, and
+   * therefore the recorded track, is never touched, so none of this costs a
+   * segment seam the way a solo-mode device change does.
+   *
+   * Remote audio is taken from the very stream the room's hidden `<audio>`
+   * element is playing (broadcast-room's AudioSink). That matters in Chrome,
+   * which does not pull remote WebRTC audio through Web Audio at all unless
+   * the stream is also attached to a media element — the recording would be
+   * one side of a silent conversation. (A co-host's tile in a webinar mounts
+   * the same sink, so the same holds there.)
+   */
+  const syncStageAudio = useCallback(() => {
+    const actx = audioCtxRef.current;
+    const dest = audioDestRef.current;
+    if (!actx || !dest || !runningRef.current) return;
+
+    const wanted = new Map<string, { stream: MediaStream; trackId: string }>();
+    const mic = micStream?.getAudioTracks()[0];
+    if (micStream && mic) wanted.set("local", { stream: micStream, trackId: mic.id });
+    for (const r of remotes ?? []) {
+      const t = r.audio?.getAudioTracks()[0];
+      if (r.audio && t) wanted.set(`remote:${r.id}`, { stream: r.audio, trackId: t.id });
+    }
+
+    const nodes = audioNodesRef.current;
+    for (const [key, entry] of nodes) {
+      if (wanted.get(key)?.trackId === entry.trackId) continue;
+      try {
+        entry.node.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+      nodes.delete(key);
+    }
+    for (const [key, want] of wanted) {
+      if (nodes.has(key)) continue;
+      try {
+        const node = actx.createMediaStreamSource(want.stream);
+        node.connect(dest);
+        nodes.set(key, { trackId: want.trackId, node });
+      } catch {
+        // The track ended between the read and here. Its replacement arrives
+        // with the next render, and this runs again.
+      }
+    }
+  }, [micStream, remotes]);
 
   /**
    * Keep the recorded audio track in step with the host's microphone.
@@ -601,6 +826,10 @@ export function useRecorder({
    * costs one seam and picks the new microphone up on the next file.
    */
   const syncAudio = useCallback(() => {
+    if (modeRef.current === "stage") {
+      syncStageAudio();
+      return;
+    }
     const mix = mixRef.current;
     if (!mix) return;
     const wanted = micStream?.getAudioTracks()[0] ?? null;
@@ -610,7 +839,7 @@ export function useRecorder({
     if (wanted) mix.addTrack(wanted);
     const rec = recorderRef.current;
     if (runningRef.current && rec && rec.state !== "inactive") rec.stop();
-  }, [micStream]);
+  }, [micStream, syncStageAudio]);
 
   useEffect(() => {
     syncSources();
@@ -661,6 +890,28 @@ export function useRecorder({
     screenElRef.current = null;
     canvasRef.current = null;
     ctxRef.current = null;
+
+    // Stage mode. The remote elements are ours; the remote STREAMS are the
+    // room's, still playing in its tiles, and are only detached, never stopped.
+    for (const e of remoteElsRef.current.values()) {
+      attach(e.cam, null);
+      attach(e.screen, null);
+    }
+    remoteElsRef.current.clear();
+    for (const { node } of audioNodesRef.current.values()) {
+      try {
+        node.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    audioNodesRef.current.clear();
+    audioDestRef.current = null;
+    // Closing is what releases the audio graph; left open, Chrome keeps the
+    // tab's "using your microphone" indicator lit after the call has ended.
+    const actx = audioCtxRef.current;
+    audioCtxRef.current = null;
+    if (actx) void actx.close().catch(() => {});
   }, [stopLoop]);
   teardownRef.current = teardown;
 
@@ -683,6 +934,9 @@ export function useRecorder({
    */
   const runEventIdRef = useRef<string | null>(null);
 
+  /** `start`, reachable from a deferred restart inside `start` itself. */
+  const startRef = useRef<() => void>(() => {});
+
   const start = useCallback(() => {
     // `fatalRef` is sticky on purpose. Everything that sets it is a statement
     // about the browser — no MediaRecorder, no codec, no canvas capture — and
@@ -692,11 +946,27 @@ export function useRecorder({
     if (!enabledRef.current) return;
     if (typeof window === "undefined") return;
 
+    // A stop still draining — the gate closed and reopened inside the ninety
+    // seconds `runStop` may spend waiting on uploads. Starting now would build
+    // a new canvas and mix that the pending teardown then rips out from under
+    // the new run, so wait for it and start behind it (if still wanted).
+    if (stoppingRef.current) {
+      void stopPromiseRef.current?.then(() => {
+        if (enabledRef.current) startRef.current();
+      });
+      return;
+    }
+
+    // Fixed for the whole run. See the header: `remotes` passed at all means
+    // the whole stage, composited and mixed; absent means this tab alone.
+    modeRef.current = remotesRef.current !== undefined ? "stage" : "solo";
+    const what = subjectRef.current;
+
     // Feature detection before anything is allocated, and never a throw: a
     // browser that cannot record is a browser where the webinar must still
     // run. The host is told, once, in a sentence that says so.
     if (typeof window.MediaRecorder === "undefined") {
-      fail("This browser can't record. Try Chrome or Edge — the webinar itself works either way.");
+      fail(`This browser can't record. Try Chrome or Edge — the ${what} itself works either way.`);
       return;
     }
     const mime = MIME_CANDIDATES.find((c) => {
@@ -707,7 +977,7 @@ export function useRecorder({
       }
     });
     if (!mime) {
-      fail("This browser can't record in any format we can store. The webinar itself is unaffected.");
+      fail(`This browser can't record in any format we can store. The ${what} itself is unaffected.`);
       return;
     }
 
@@ -719,7 +989,7 @@ export function useRecorder({
     // the DOM lib's optimism about what every browser ships.
     const capture = (canvas as { captureStream?: (fps?: number) => MediaStream }).captureStream;
     if (typeof capture !== "function") {
-      fail("This browser can't capture a canvas, so it can't record. The webinar itself is unaffected.");
+      fail(`This browser can't capture a canvas, so it can't record. The ${what} itself is unaffected.`);
       return;
     }
     const ctx = canvas.getContext("2d", { alpha: false });
@@ -732,7 +1002,7 @@ export function useRecorder({
     try {
       captured = capture.call(canvas, RECORDING_FPS);
     } catch {
-      fail("This browser can't capture a canvas, so it can't record. The webinar itself is unaffected.");
+      fail(`This browser can't capture a canvas, so it can't record. The ${what} itself is unaffected.`);
       return;
     }
 
@@ -749,6 +1019,32 @@ export function useRecorder({
     // extra CPU on a machine that is already encoding for the whole room.
     const mix = new MediaStream();
     captured.getVideoTracks().forEach((t) => mix.addTrack(t));
+
+    // The stage records a conversation, so its one audio track is a MIX: every
+    // voice goes into this destination (syncStageAudio) and the destination's
+    // track goes into the file. It exists from the first frame, carrying
+    // silence until someone speaks, so the recorder never has to be told that
+    // an audio track appeared — the thing solo mode rotates a segment for.
+    if (modeRef.current === "stage") {
+      const AC =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      try {
+        if (!AC) throw new Error("no AudioContext");
+        const actx = new AC();
+        const dest = actx.createMediaStreamDestination();
+        audioCtxRef.current = actx;
+        audioDestRef.current = dest;
+        dest.stream.getAudioTracks().forEach((t) => mix.addTrack(t));
+        // Created after the Join click, so autoplay policy lets it run; resume
+        // anyway, because a context that starts suspended records silence.
+        void actx.resume?.().catch(() => {});
+      } catch {
+        fail(`This browser can't mix the ${what}'s audio, so it can't record. The ${what} itself is unaffected.`);
+        return;
+      }
+    }
     mixRef.current = mix;
 
     runningRef.current = true;
@@ -791,8 +1087,10 @@ export function useRecorder({
     beginSegmentRef.current();
     syncState();
   }, [composeFrame, fail, startLoop, syncAudio, syncSources, syncState]);
+  startRef.current = start;
 
   const runStop = useCallback(async () => {
+    stoppingRef.current = true;
     // Ordered deliberately: `runningRef` goes false FIRST, so the `onstop`
     // handler below does not helpfully start a new segment behind us.
     runningRef.current = false;
@@ -822,38 +1120,51 @@ export function useRecorder({
         done = null;
       }
     }
+    // ONE deadline for the whole drain, started here and shared by both
+    // waits below. Its bound is the point: `stop()` is awaited by the host's
+    // End button (and a 1:1's Leave) before it stops the tracks and tells the
+    // server the call or webinar ended, so an unbounded wait here is a host
+    // trapped in a room they have already finished — on dead hotel wifi, a
+    // stalled PUT holds that button until the OS gives up on the socket,
+    // which can be many minutes, with nothing on screen but "Saving the
+    // recording…" and the other person's room still open.
+    //
+    // Ninety seconds is well past a healthy upload of the two or three files
+    // that can realistically be in flight, and short enough that a host who
+    // has genuinely lost the network gets out. Losing the tail of a recording
+    // is a bad outcome; being unable to end a call is a worse one, and the
+    // abandoned uploads may well still land on their own afterwards — the
+    // caller's next step is a client-side navigation, which does not cancel
+    // them.
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<void>((resolve) => {
+      deadlineTimer = setTimeout(resolve, UPLOAD_DRAIN_TIMEOUT_MS);
+    });
+
     // `done` resolves inside `onstop`, after the final `dataavailable` has been
     // collected AND after `onSegment` has settled. Awaiting the recorder's
-    // `onstop` alone would resolve while the last five minutes were still on
-    // the wire, and the caller would tear the tracks down under it.
-    await (done ?? Promise.resolve());
+    // `onstop` alone would resolve while the last segment was still on the
+    // wire, and the caller would tear the tracks down under it. Raced against
+    // the deadline like everything else: `onSegment` is a server action and a
+    // storage PUT, neither of which has a timeout of its own, and this await
+    // used to be the one wait in here with no bound at all.
+    await Promise.race([done ?? Promise.resolve(), deadline]);
     // And then everything queued BEHIND the final segment. By the time `done`
     // resolves the last file has landed, but earlier segments can still be
     // uploading — that is the whole point of starting the next segment before
     // awaiting the previous one's upload. Settled, not `all`: a segment that
     // failed to upload has already reported itself through `setError`, and
-    // rejecting here would turn one lost five-minute file into a `stop()` that
-    // throws into the End button and skips stamping the webinar as ended.
-    //
-    // BOUNDED, and the bound is the point. `stop()` is awaited by the host's
-    // End button before it stops the tracks and tells the server the webinar
-    // ended, so an unbounded wait here is a host trapped in a room they have
-    // already finished — on dead hotel wifi, two 45 MB segments could hold that
-    // button for minutes with nothing on screen but "Saving the recording…".
-    //
-    // Ninety seconds is well past a healthy upload of the two or three files
-    // that can realistically be in flight, and short enough that a host who has
-    // genuinely lost the network gets out. Losing the tail of a recording is a
-    // bad outcome; being unable to end a webinar is a worse one, and the
-    // abandoned uploads may well still land on their own afterwards.
+    // rejecting here would turn one lost file into a `stop()` that throws into
+    // the End button and skips stamping the webinar as ended. Snapshotted only
+    // now, not before `rec.stop()`: `onstop` fires asynchronously, and a
+    // snapshot taken up front would miss the final segment's own flight.
     const flights = Array.from(inFlightRef.current);
     if (flights.length > 0) {
-      await Promise.race([
-        Promise.allSettled(flights),
-        new Promise((resolve) => setTimeout(resolve, UPLOAD_DRAIN_TIMEOUT_MS)),
-      ]);
+      await Promise.race([Promise.allSettled(flights), deadline]);
     }
+    clearTimeout(deadlineTimer);
     teardown();
+    stoppingRef.current = false;
     syncState();
   }, [stopLoop, syncState, teardown]);
 
@@ -882,6 +1193,22 @@ export function useRecorder({
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [startRafLoop, startTimerLoop]);
+
+  // The gate OPENING is a start. This is the line that was missing: `start`
+  // was returned, and documented, and never called by anything — so auto-record
+  // was a checkbox that produced a "Recording" badge exactly never, and no
+  // webinar was ever recorded.
+  //
+  // Keyed on `enabled` alone, through a ref, deliberately. `start` changes
+  // identity whenever a source stream does, and an effect that listed it would
+  // re-run on every camera toggle — including the one in the End button's
+  // teardown, where it would start a brand-new recording on the way out of a
+  // room whose recording had just been flushed. One start per time the gate
+  // opens is the contract; `start` itself is idempotent on top of that.
+  useEffect(() => {
+    if (!enabled) return;
+    startRef.current();
+  }, [enabled]);
 
   // The gate closing is a stop, not a pause: the host left the room, or was
   // demoted, and whatever has been recorded so far should be uploaded rather
@@ -1008,10 +1335,78 @@ function drawCard(ctx: CanvasRenderingContext2D, text: string) {
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
   ctx.fillStyle = CARD_TEXT;
-  ctx.font = "34px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = `34px ${FONT_STACK}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+}
+
+/**
+ * One person in a stage recording: their camera (contain-fitted) or a card
+ * saying why there is no picture, with their name in the corner.
+ *
+ * Everything is clipped to the box. A long name, or a placeholder sentence in
+ * a small inset, must not paint over the person beside them — in a two-person
+ * recording that is half the picture.
+ */
+function drawPerson(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement | null,
+  box: Box,
+  name: string,
+  placeholder: string,
+  inset: boolean,
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(box.x, box.y, box.w, box.h);
+  ctx.clip();
+
+  if (inset) {
+    ctx.fillStyle = BACKDROP;
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+  }
+  if (video) {
+    drawContain(ctx, video, box);
+  } else {
+    const size = Math.max(12, Math.round(Math.min(34, box.w / 18, box.h / 8)));
+    ctx.font = `${size}px ${FONT_STACK}`;
+    const textW = ctx.measureText(placeholder).width;
+    const w = Math.min(box.w - 16, textW + size * 2);
+    const h = size * 2.6;
+    const x = box.x + (box.w - w) / 2;
+    const y = box.y + (box.h - h) / 2;
+    ctx.fillStyle = CARD_FILL;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = CARD_TEXT;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(placeholder, box.x + box.w / 2, box.y + box.h / 2);
+  }
+
+  // The name tag. A recording watched back weeks later has no roster beside
+  // it, so it is the only thing that says who each face was.
+  const tag = inset ? 13 : 20;
+  const pad = Math.round(tag * 0.5);
+  ctx.font = `${tag}px ${FONT_STACK}`;
+  const label = name || "Guest";
+  const tagW = Math.min(box.w - pad * 2, ctx.measureText(label).width + pad * 2);
+  const tagH = tag + pad * 2;
+  const tx = box.x + pad;
+  const ty = box.y + box.h - tagH - pad;
+  ctx.fillStyle = TAG_FILL;
+  ctx.fillRect(tx, ty, tagW, tagH);
+  ctx.fillStyle = CARD_TEXT;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, tx + pad, ty + tagH / 2, tagW - pad * 2);
+
+  if (inset) {
+    ctx.strokeStyle = INSET_BORDER;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);
+  }
+  ctx.restore();
 }
 
 /**

@@ -10,6 +10,12 @@ import type { CallInvite, CallInviteStatus } from "@/lib/live";
  * takes the viewer's id and filters on it. RLS is still the backstop on the
  * table; these filters are what make the backstop never the thing that saves
  * us.
+ *
+ * These return calls in storage order (newest start first) and no more. What
+ * a call IS right now — upcoming, live, over — depends on the clock as much as
+ * on `status`, and is decided by lib/call-lifecycle.ts at the point of display
+ * (`splitCalls` re-sorts Upcoming soonest-first). Filtering by time here would
+ * be a second copy of that rule, frozen at query time.
  */
 
 // Both foreign keys point at `profiles`, so PostgREST can't infer which one an
@@ -17,7 +23,7 @@ import type { CallInvite, CallInviteStatus } from "@/lib/live";
 // generated these names from the inline `references` in the migration.
 const SELECT = `
   id, host_id, invitee_id, starts_at, duration_minutes, topic, status,
-  daily_room_name, daily_room_url, recap, created_at,
+  daily_room_name, daily_room_url, recap, created_at, updated_at,
   host:profiles!call_invites_host_id_fkey(full_name, role),
   invitee:profiles!call_invites_invitee_id_fkey(full_name)
 `;
@@ -38,6 +44,7 @@ function toInvite(row: any): CallInvite {
     durationMinutes: row.duration_minutes,
     topic: row.topic,
     status: row.status as CallInviteStatus,
+    updatedAt: row.updated_at ?? undefined,
     roomName: row.daily_room_name,
     roomUrl: row.daily_room_url,
   };
@@ -134,4 +141,47 @@ export async function listInvitableStudents(): Promise<InviteeOption[]> {
     email: p.email ?? "",
     teamName: null,
   }));
+}
+
+/**
+ * Hand back the learner's-scholarship credit a call was booked with, if any.
+ *
+ * The credit is spent at SCHEDULE time (scheduleInterviewRequest), so a call
+ * that then never happens — cancelled by the host, declined by the student,
+ * or left unanswered until its time passed — would otherwise silently consume
+ * one of three without the student ever having spoken to anyone.
+ *
+ * Callers invoke this only after THEIR conditional status update actually
+ * changed a row. That is what makes it once-per-call: the update's status
+ * guard lets exactly one transition out of a live status win, so a
+ * double-clicked Cancel, a cancel racing a decline, or the call-lifecycle
+ * sweep withdrawing an invite the host is withdrawing by hand, refunds once
+ * rather than once per request.
+ *
+ * Here rather than in app/calls/actions.ts because the sweep needs it too, and
+ * a helper exported from a "use server" file would itself become a server
+ * action anyone could call with any invite id.
+ *
+ * Best-effort and tolerant: a database where 0071 hasn't run has no such
+ * requests, and a failure here must not undo a cancellation that has already
+ * happened.
+ */
+export async function refundScholarshipCreditFor(
+  admin: ReturnType<typeof createAdminClient>,
+  inviteId: string,
+): Promise<void> {
+  try {
+    const { data: linked } = await admin
+      .from("interview_requests")
+      .select("id, scholarship_application_id")
+      .eq("call_invite_id", inviteId)
+      .maybeSingle();
+    const scholarshipAppId = (linked as any)?.scholarship_application_id ?? null;
+    if (scholarshipAppId) {
+      const { refundCallCredit } = await import("@/lib/scholarships");
+      await refundCallCredit(admin, scholarshipAppId);
+    }
+  } catch (err) {
+    console.error("[calls] scholarship credit refund failed", err);
+  }
 }

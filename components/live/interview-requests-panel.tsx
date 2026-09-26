@@ -10,7 +10,8 @@ import {
   declineInterviewRequest,
 } from "@/app/calls/interview-actions";
 import type { InterviewRequest } from "@/lib/interview-requests";
-import { CalendarClock, Check } from "lucide-react";
+import { bookingPrefill, proposalsAllPast } from "@/lib/call-lifecycle";
+import { AlertTriangle, CalendarClock, Check } from "lucide-react";
 
 const DURATIONS = [15, 20, 30, 45, 60];
 
@@ -22,8 +23,14 @@ const DURATIONS = [15, 20, 30, 45, 60];
  */
 export function InterviewRequestsPanel({
   requests,
+  now,
+  scholarshipIds = [],
 }: {
   requests: InterviewRequest[];
+  /** The server's render time (ISO), so "have their times passed" is stable across hydration. */
+  now: string;
+  /** Requests that are learner's-scholarship calls rather than onboarding interviews. */
+  scholarshipIds?: string[];
 }) {
   if (requests.length === 0) {
     return (
@@ -36,22 +43,45 @@ export function InterviewRequestsPanel({
   return (
     <ul className="space-y-3">
       {requests.map((r) => (
-        <RequestRow key={r.id} request={r} />
+        <RequestRow
+          key={r.id}
+          request={r}
+          now={now}
+          scholarship={scholarshipIds.includes(r.id)}
+        />
       ))}
     </ul>
   );
 }
 
-function RequestRow({ request }: { request: InterviewRequest }) {
+function RequestRow({
+  request,
+  now,
+  scholarship,
+}: {
+  request: InterviewRequest;
+  now: string;
+  scholarship: boolean;
+}) {
   const router = useRouter();
   const [scheduling, setScheduling] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
 
-  // Prefill the confirm form with the student's first-choice time so the
-  // common case — "yes, that works" — is one click on the duration and Save.
-  const [startsLocal, setStartsLocal] = useState(() =>
-    toLocalInput(request.preferredAt) ?? defaultStart(),
+  // Every time the student offered has gone by. Booking at one of them is
+  // refused (it's in the past), so the row says so up front instead of
+  // letting "Book it" fail — it needs a new time, or a decline.
+  const stale = proposalsAllPast(request.preferredAt, request.altAt, new Date(now));
+
+  // Prefill the confirm form with the student's first choice that is still
+  // AHEAD, so the common case — "yes, that works" — is one click on the
+  // duration and Save. Never a time that has passed: the old prefill used
+  // `preferredAt` unconditionally, so on a stale request the form's most
+  // common click was a guaranteed "That time is in the past."
+  const [startsLocal, setStartsLocal] = useState(
+    () =>
+      toLocalInput(bookingPrefill(request.preferredAt, request.altAt, new Date(now))) ??
+      defaultStart(),
   );
   const [duration, setDuration] = useState(30);
 
@@ -87,7 +117,14 @@ function RequestRow({ request }: { request: InterviewRequest }) {
     <li className="rounded-lg border border-line bg-paper p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-ink">{request.studentName}</p>
+          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+            {request.studentName}
+            {scholarship && (
+              <span className="rounded-full bg-phosphor/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-phosphor-ink">
+                Scholarship call
+              </span>
+            )}
+          </p>
           <p className="truncate text-xs text-ink-faint">
             {request.studentEmail}
             {request.cohortName ? ` · ${request.cohortName}` : ""}
@@ -130,6 +167,14 @@ function RequestRow({ request }: { request: InterviewRequest }) {
           </div>
         )}
       </dl>
+
+      {stale && (
+        <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+          {request.altAt ? "Both times they offered have" : "The time they offered has"}{" "}
+          passed. Pick a new time, or decline so they can ask again.
+        </p>
+      )}
 
       {scheduling && (
         <div className="mt-4 space-y-3 border-t border-line pt-4">

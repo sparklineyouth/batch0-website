@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { requireUser, getProfile } from "@/lib/auth";
+import { requireUser, getViewer } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getInvite } from "@/lib/calls";
 import { createRoom, dailyConfigured, mintToken, roomIsLive } from "@/lib/daily";
 import { canJoin, joinState, inviteEndsAt } from "@/lib/live";
+import { callPhase, hostCallsHref } from "@/lib/call-lifecycle";
 import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
 import { BuiltinCallRoom } from "./builtin-room";
 import { env } from "@/lib/env";
@@ -25,8 +27,9 @@ export default async function CallLivePage(
 ) {
   const params = await props.params;
   await requireUser();
-  const profile = await getProfile();
-  if (!profile) notFound();
+  const viewer = await getViewer();
+  if (!viewer) notFound();
+  const profile = viewer.profile;
 
   const invite = await getInvite(params.id);
   if (!invite) notFound();
@@ -38,15 +41,37 @@ export default async function CallLivePage(
   const isInvitee = invite.inviteeId === profile.id;
   if (!isHost && !isInvitee) notFound();
 
-  if (invite.status !== "accepted") {
+  // "Back" is this person's own calls list. For the student that is
+  // /dashboard/calls; for a mentor it is /mentor/calls — sending a host to the
+  // student inbox showed them an empty page after every call.
+  const backHref = isHost
+    ? hostCallsHref({
+        superAdmin: viewer.caps.superAdmin,
+        mentorPanel: can(viewer.caps, "mentor.panel"),
+        investorPanel: can(viewer.caps, "investor.panel"),
+        canInvite: can(viewer.caps, "calls.invite"),
+      })
+    : "/dashboard/calls";
+
+  // Every reason the door is shut, from the one rule the lists use
+  // (lib/call-lifecycle.ts), so this page and the card that linked here can
+  // never disagree about whether the call is still on.
+  const phase = callPhase(invite);
+  if (invite.status !== "accepted" || phase === "ended") {
+    const why: Record<string, string> = {
+      needs_answer: "This call hasn't been accepted yet.",
+      expired: "This invite was never answered, and its time has passed.",
+      ended: "This call has ended.",
+      completed: "This call has ended.",
+      declined: "This call was declined.",
+      cancelled: "This call was cancelled.",
+    };
     return (
       <Shell title={invite.topic || "1:1 call"}>
         <p className="text-sm text-ink-soft">
-          {invite.status === "invited"
-            ? "This call hasn't been accepted yet."
-            : `This call was ${invite.status}.`}
+          {why[phase] ?? "This call isn't open."}
         </p>
-        <BackLink />
+        <BackLink href={backHref} />
       </Shell>
     );
   }
@@ -56,15 +81,11 @@ export default async function CallLivePage(
   if (!canJoin(state)) {
     return (
       <Shell title={invite.topic || "1:1 call"}>
-        {state === "early" ? (
-          <p className="text-sm text-ink-soft">
-            This opens 15 minutes before it starts —{" "}
-            <LocalTime value={invite.startsAt} />.
-          </p>
-        ) : (
-          <p className="text-sm text-ink-soft">This call has ended.</p>
-        )}
-        <BackLink />
+        <p className="text-sm text-ink-soft">
+          This opens 15 minutes before it starts —{" "}
+          <LocalTime value={invite.startsAt} />.
+        </p>
+        <BackLink href={backHref} />
       </Shell>
     );
   }
@@ -82,7 +103,19 @@ export default async function CallLivePage(
   // provider-side room. None of it has an equivalent here.
   if (env.liveProvider === "builtin") {
     return (
-      <BuiltinCallRoom inviteId={invite.id} title={callTitle} />
+      <BuiltinCallRoom
+        inviteId={invite.id}
+        startsAt={invite.startsAt}
+        title={callTitle}
+        isHost={isHost}
+        selfName={
+          (isHost ? invite.hostName : invite.inviteeName) ||
+          profile.full_name ||
+          "You"
+        }
+        otherName={isHost ? invite.inviteeName : invite.hostName}
+        backHref={backHref}
+      />
     );
   }
 
@@ -93,7 +126,7 @@ export default async function CallLivePage(
         <p className="text-sm text-ink-soft">
           Live video isn&rsquo;t configured on this environment.
         </p>
-        <BackLink />
+        <BackLink href={backHref} />
       </Shell>
     );
   }
@@ -168,7 +201,7 @@ export default async function CallLivePage(
       roomUrl={roomUrl}
       token={token}
       role="host"
-      backHref="/dashboard/calls"
+      backHref={backHref}
     />
   );
 }
@@ -190,10 +223,10 @@ function Shell({
   );
 }
 
-function BackLink() {
+function BackLink({ href }: { href: string }) {
   return (
     <Link
-      href="/dashboard/calls"
+      href={href}
       className="mt-4 inline-block text-sm text-phosphor-ink hover:underline"
     >
       ← All calls

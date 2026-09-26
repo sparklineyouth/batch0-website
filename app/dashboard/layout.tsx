@@ -33,9 +33,10 @@ export default async function DashboardLayout({
   // Theme driven site-wide by next-themes on <html> (see ThemeProvider).
 
   // Middleware gates /dashboard to roles carrying `student.dashboard` (plus
-  // admins, via the wildcard). Anyone else only lands here when middleware
-  // sent them to a shared subroute (pay-fine / billing); render those without
-  // the student sidebar so the chrome doesn't mislead.
+  // admins, via the wildcard). Anyone else only lands here on a shared
+  // subroute (pay-fine / billing, or the 1:1 room at /dashboard/calls/<id>/live
+  // that a mentor or investor hosts — see lib/dashboard-gate.ts); render those
+  // without the student sidebar so the chrome doesn't mislead.
   if (!can(caps, "student.dashboard")) {
     return (
       <div className="min-h-screen bg-paper text-ink">

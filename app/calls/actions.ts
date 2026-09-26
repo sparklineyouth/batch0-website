@@ -6,8 +6,16 @@ import { logAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
-import { env } from "@/lib/env";
+import { refundScholarshipCreditFor } from "@/lib/calls";
 import type { CallInviteStatus } from "@/lib/live";
+import {
+  callPhase,
+  canCancelCall,
+  canMarkCallCompleted,
+  canRespondToCall,
+  isPastPhase,
+  type CallTiming,
+} from "@/lib/call-lifecycle";
 
 /**
  * Server actions for staff-initiated 1:1 calls.
@@ -21,7 +29,12 @@ import type { CallInviteStatus } from "@/lib/live";
  * guess its id, so the page having rendered proves nothing about the caller.
  */
 
+// The interview card on /dashboard and /dashboard/enrolled reads the state of
+// the call it booked (lib/call-lifecycle.ts interviewStage), so a call that is
+// cancelled, declined or ended changes what those pages say too.
 const PATHS = [
+  "/dashboard",
+  "/dashboard/enrolled",
   "/dashboard/calls",
   "/mentor/calls",
   "/investor/calls",
@@ -30,6 +43,15 @@ const PATHS = [
 
 function revalidateAll() {
   for (const p of PATHS) revalidatePath(p);
+}
+
+/** A call_invites row, read as the three facts lib/call-lifecycle.ts needs. */
+function timingOf(row: any): CallTiming {
+  return {
+    status: row.status as CallInviteStatus,
+    startsAt: row.starts_at,
+    durationMinutes: row.duration_minutes,
+  };
 }
 
 export async function createInvite(input: {
@@ -154,9 +176,13 @@ export async function respondToInvite(
   const actor = await requireActor();
   const admin = createAdminClient();
 
+  if (response !== "accepted" && response !== "declined") {
+    throw new Error("That isn't an answer to an invite.");
+  }
+
   const { data: invite } = await admin
     .from("call_invites")
-    .select("id, invitee_id, host_id, status, topic, starts_at")
+    .select("id, invitee_id, host_id, status, topic, starts_at, duration_minutes")
     .eq("id", id)
     .maybeSingle();
   if (!invite) throw new Error("That invite no longer exists.");
@@ -166,15 +192,36 @@ export async function respondToInvite(
   if ((invite as any).status !== "invited") {
     throw new Error("That invite has already been answered.");
   }
+  // The time has to still be ahead (or running). Accepting an invite whose
+  // window has closed used to succeed, and left the student holding an
+  // "accepted" call that no join gate would ever open.
+  if (!canRespondToCall(timingOf(invite))) {
+    throw new Error(
+      "That call's time has passed, so it can't be answered now. Ask them for a new time.",
+    );
+  }
 
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from("call_invites")
     .update({ status: response })
     .eq("id", id)
     // Re-assert the invitee in the WHERE clause, so even a future refactor
     // that loses the check above can't update someone else's row.
-    .eq("invitee_id", actor.userId);
+    .eq("invitee_id", actor.userId)
+    // And the status: two tabs answering at once, or an answer racing the
+    // host's cancel, must not both win. The loser updates nothing.
+    .eq("status", "invited")
+    .select("id");
   if (error) throw new Error(error.message);
+  if (!updated || updated.length === 0) {
+    throw new Error("That invite has already been answered.");
+  }
+
+  // Declining a scholarship-funded call hands its credit back, exactly as the
+  // host cancelling it does — either way nobody spoke to anyone.
+  if (response === "declined") {
+    await refundScholarshipCreditFor(admin, id);
+  }
 
   await logAudit({
     action: `call_invite.${response}`,
@@ -202,14 +249,23 @@ export async function respondToInvite(
   revalidateAll();
 }
 
-/** Cancel. Host (or an admin) only. */
+/**
+ * Cancel. Host (or an admin) only.
+ *
+ * Also how an invite that EXPIRED unanswered is withdrawn (see canCancelCall):
+ * the same once-only transition and the same scholarship refund, but no
+ * "your call was cancelled" notification — the student never agreed to that
+ * call, and telling them it was called off would be news about nothing.
+ */
 export async function cancelInvite(id: string) {
   const actor = await requireActor();
   const admin = createAdminClient();
 
   const { data: invite } = await admin
     .from("call_invites")
-    .select("id, host_id, invitee_id, daily_room_name, topic")
+    .select(
+      "id, host_id, invitee_id, daily_room_name, topic, status, starts_at, duration_minutes",
+    )
     .eq("id", id)
     .maybeSingle();
   if (!invite) throw new Error("That invite no longer exists.");
@@ -217,11 +273,39 @@ export async function cancelInvite(id: string) {
   const isHost = (invite as any).host_id === actor.userId;
   if (!isHost && !actor.caps.superAdmin) throw new Error("Forbidden");
 
-  const { error } = await admin
+  // Two refusals the old action never made, each of which cost something.
+  //
+  // A call that is already cancelled, declined or completed: cancelling it
+  // again used to re-run the whole path — a second "your call was cancelled"
+  // notification, and a SECOND scholarship credit refund, once per click.
+  //
+  // An accepted call whose window has closed: it happened (or the student
+  // never came), and "cancelling" it afterwards told the student that a
+  // meeting they had already had was called off, and refunded the credit it
+  // had genuinely used. An unanswered invite past its time is different —
+  // canCancelCall lets that one be withdrawn.
+  const status = (invite as any).status as CallInviteStatus;
+  if (status !== "invited" && status !== "accepted") {
+    throw new Error(`That call was already ${status}.`);
+  }
+  const phase = callPhase(timingOf(invite));
+  if (!canCancelCall(timingOf(invite))) {
+    throw new Error("That call is already over, so there's nothing to cancel.");
+  }
+  const withdrawingExpired = phase === "expired";
+
+  const { data: updated, error } = await admin
     .from("call_invites")
     .update({ status: "cancelled" })
-    .eq("id", id);
+    .eq("id", id)
+    // Only out of a live status. Two cancels racing (or a cancel racing the
+    // student's decline) can't both win, so the refund below runs once.
+    .in("status", ["invited", "accepted"])
+    .select("id");
   if (error) throw new Error(error.message);
+  if (!updated || updated.length === 0) {
+    throw new Error("That call has already been answered or cancelled.");
+  }
 
   // Drop the room if one was ever created. Best-effort — rooms expire on
   // their own, so a failure here costs nothing.
@@ -236,45 +320,117 @@ export async function cancelInvite(id: string) {
   }
 
   // Hand a learner's-scholarship credit back when the call it paid for is
-  // cancelled. The credit was spent at SCHEDULE time (scheduleInterviewRequest),
-  // so a cancelled call would otherwise silently consume one of three without
-  // the student ever having spoken to anyone.
-  //
-  // Best-effort and tolerant: a database where 0071 hasn't run has no such
-  // requests, and a failure here must not block a cancellation that has already
-  // torn down the room.
-  try {
-    const { data: linked } = await admin
-      .from("interview_requests")
-      .select("id, scholarship_application_id")
-      .eq("call_invite_id", id)
-      .maybeSingle();
-    const scholarshipAppId = (linked as any)?.scholarship_application_id ?? null;
-    if (scholarshipAppId) {
-      const { refundCallCredit } = await import("@/lib/scholarships");
-      await refundCallCredit(admin, scholarshipAppId);
-    }
-  } catch (err) {
-    console.error("[calls] scholarship credit refund failed", err);
-  }
+  // cancelled — see refundScholarshipCreditFor for why, and why only here,
+  // after the conditional update above actually changed the row.
+  await refundScholarshipCreditFor(admin, id);
 
   await logAudit({
     action: "call_invite.cancelled",
     targetType: "call_invite",
     targetId: id,
+    payload: withdrawingExpired ? { expired_unanswered: true } : undefined,
   });
 
-  try {
-    await notify({
-      userId: (invite as any).invitee_id,
-      type: "call_cancelled",
-      title: "A 1:1 call was cancelled",
-      body: (invite as any).topic || null,
-      link: "/dashboard/calls",
-    });
-  } catch (err) {
-    console.error("[calls] cancel notify failed", err);
+  if (!withdrawingExpired) {
+    try {
+      await notify({
+        userId: (invite as any).invitee_id,
+        type: "call_cancelled",
+        title: "A 1:1 call was cancelled",
+        body: (invite as any).topic || null,
+        link: "/dashboard/calls",
+      });
+    } catch (err) {
+      console.error("[calls] cancel notify failed", err);
+    }
   }
 
   revalidateAll();
+}
+
+/**
+ * End a call, for both people. Either participant.
+ *
+ * The room's End call button lands here AFTER the host's recorder has flushed
+ * its last segment (see broadcast-room's `finishCall`). The order matters: a
+ * flush that ran after this would be racing the page navigating away. The
+ * OTHER person's recorder, if they are the host, flushes after the row is
+ * already completed, which the upload gate allows (canUploadCallRecording).
+ *
+ * Marks the call `completed` only once its scheduled start has come
+ * (canMarkCallCompleted): two people who joined early and left again have not
+ * had their call, and completing it would lock them out of the room at the
+ * proper time. Before the start this is a no-op that says so, and the button
+ * simply takes them back to their calls.
+ *
+ * Idempotent: ending a call that is already completed — the other person got
+ * there first — succeeds quietly.
+ */
+export async function endCall(id: string): Promise<{ completed: boolean }> {
+  const actor = await requireActor();
+  const admin = createAdminClient();
+
+  const { data: invite } = await admin
+    .from("call_invites")
+    .select("id, host_id, invitee_id, status, starts_at, duration_minutes")
+    .eq("id", id)
+    .maybeSingle();
+  if (!invite) throw new Error("That call no longer exists.");
+  const row = invite as any;
+  if (row.host_id !== actor.userId && row.invitee_id !== actor.userId) {
+    throw new Error("Forbidden");
+  }
+  if (row.status === "completed") return { completed: true };
+  if (!canMarkCallCompleted(timingOf(row))) return { completed: false };
+
+  const { data: updated, error } = await admin
+    .from("call_invites")
+    .update({ status: "completed" })
+    .eq("id", id)
+    .eq("status", "accepted")
+    .select("id");
+  if (error) throw new Error(error.message);
+  const completed = !!updated && updated.length > 0;
+
+  if (completed) {
+    await logAudit({
+      action: "call_invite.completed",
+      targetType: "call_invite",
+      targetId: id,
+      payload: { ended_by: actor.userId },
+    });
+    revalidateAll();
+  }
+  return { completed };
+}
+
+/**
+ * Is this call over? Polled by both people in the room.
+ *
+ * batch0 Live has no server in the media path, so when one person presses End
+ * call the other's browser sees only a peer that went away — which is also
+ * what a dropped connection looks like. This is how the room tells the two
+ * apart: the row says completed (or cancelled), or the window has closed, and
+ * the room closes itself — flushing the host's recording on the way out —
+ * instead of sitting on "reconnecting" for half an hour.
+ *
+ * Null for anyone who is not one of the two, the same non-answer the join
+ * gate gives, so it can't be used to learn which calls exist.
+ */
+export async function getCallRoomStatus(
+  id: string,
+): Promise<{ over: boolean } | null> {
+  const actor = await requireActor();
+  const admin = createAdminClient();
+  const { data: invite } = await admin
+    .from("call_invites")
+    .select("id, host_id, invitee_id, status, starts_at, duration_minutes")
+    .eq("id", id)
+    .maybeSingle();
+  const row = invite as any;
+  if (!row) return null;
+  if (row.host_id !== actor.userId && row.invitee_id !== actor.userId) {
+    return null;
+  }
+  return { over: isPastPhase(callPhase(timingOf(row))) };
 }

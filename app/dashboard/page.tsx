@@ -12,6 +12,7 @@ import { ChargePayButton } from "@/components/charge-pay-button";
 import { getStudentAccess, type StudentAccess } from "@/lib/access";
 import { getInterviewRequestForStudent } from "@/lib/interview-requests";
 import { InterviewRequestCard } from "@/components/interview-request-card";
+import { interviewCardState, interviewStage } from "@/lib/call-lifecycle";
 import { fmtDateOnly, PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
 import { ENROLLED_ONLY_HREFS } from "@/lib/nav-config";
 import type { Role } from "@/lib/types";
@@ -170,10 +171,19 @@ export default async function DashboardHome() {
   // cohort starts. Fetched only in that window — everyone else pays for no
   // extra query. The calls and enrolled pages keep showing a lingering request
   // past kickoff; the home page doesn't.
-  const showInterviewRequest = preCohort && access.enrolled;
-  const interviewRequest = showInterviewRequest
+  //
+  // Read through the call it booked: a finished interview is not news on the
+  // home page (hideDone), and one whose call was cancelled is a fresh ask, not
+  // "Interview booked".
+  const interviewEligible = preCohort && access.enrolled;
+  const interviewRequest = interviewEligible
     ? await getInterviewRequestForStudent(user.id)
     : null;
+  const interviewState = interviewEligible
+    ? interviewCardState(interviewStage(interviewRequest), true, {
+        hideDone: true,
+      })
+    : "hidden";
 
   // Status copy + primary action are derived together so the hero feels
   // intentional — no double-card with redundant labels.
@@ -421,9 +431,13 @@ export default async function DashboardHome() {
         </aside>
       </section>
 
-      {showInterviewRequest && (
+      {interviewState !== "hidden" && (
         <div className="mt-12">
-          <InterviewRequestCard request={interviewRequest} variant="compact" />
+          <InterviewRequestCard
+            request={interviewRequest}
+            state={interviewState}
+            variant="compact"
+          />
         </div>
       )}
 

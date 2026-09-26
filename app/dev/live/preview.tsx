@@ -4,7 +4,7 @@ import { PreJoin } from "@/components/live/pre-join";
 import { CallStage } from "@/components/live/call-stage";
 import { EventCard } from "@/components/live/event-card";
 import { InviteForm } from "@/components/live/invite-form";
-import { InviteList } from "@/components/live/invite-card";
+import { CallSections, InviteList } from "@/components/live/invite-card";
 import { WebinarsManager } from "@/app/admin/webinars/webinars-manager";
 import type { CallInvite, LiveEvent, LiveRole } from "@/lib/live";
 import { Button } from "@/components/ui/button";
@@ -177,9 +177,11 @@ export function LivePreview() {
                 <SectionLabel>
                   What a mentor or investor sees — invites they sent
                 </SectionLabel>
-                <InviteList
+                <CallSections
                   invites={mocks.invites}
                   perspective="host"
+                  now={mocks.now}
+                  recordings={mocks.recordings}
                   emptyMessage="You haven't invited anyone yet."
                   onCancel={(id) => alert(`Would cancel ${id}`)}
                 />
@@ -191,9 +193,22 @@ export function LivePreview() {
                 <InviteList
                   invites={mocks.invites}
                   perspective="invitee"
+                  recordings={mocks.recordings}
                   emptyMessage="No call invites right now."
                   onAccept={(id) => alert(`Would accept ${id}`)}
                   onDecline={(id) => alert(`Would decline ${id}`)}
+                />
+              </div>
+              <div>
+                <SectionLabel>
+                  What an admin sees — everyone else&rsquo;s calls, read-only
+                </SectionLabel>
+                <CallSections
+                  invites={mocks.invites}
+                  perspective="observer"
+                  now={mocks.now}
+                  recordings={mocks.recordings}
+                  emptyMessage="Nobody else has booked a 1:1 yet."
                 />
               </div>
             </div>
@@ -220,6 +235,9 @@ type Mocks = {
   events: LiveEvent[];
   pastEvent: LiveEvent;
   invites: CallInvite[];
+  /** Build time, standing in for the server's render time. */
+  now: string;
+  recordings: Record<string, number>;
   students: Parameters<typeof InviteForm>[0]["students"];
   webinarParticipants: Parameters<typeof CallStage>[0]["participants"];
 };
@@ -240,6 +258,10 @@ function buildMocks(): Mocks {
   };
 
   return {
+    now: new Date().toISOString(),
+    // Only past calls carry a recording — the dev room never uploads, so
+    // these links 404 here; they are for the layout.
+    recordings: { "i-ended": 3, "i-completed": 1 },
     events: [
       {
         ...baseEvent,
@@ -335,6 +357,45 @@ function buildMocks(): Mocks {
         durationMinutes: 20,
         topic: null,
         status: "accepted",
+        roomName: null,
+        roomUrl: null,
+      },
+      {
+        // Accepted, and its window closed an hour ago — the production case.
+        // Must read "ended" under Past, with no calendar link and no Cancel.
+        id: "i-ended",
+        hostName: "Priya Raman",
+        hostRole: "investor",
+        inviteeName: "Ana Duarte",
+        startsAt: at(-60 * 24 * 7),
+        durationMinutes: 30,
+        topic: "Getting to know you",
+        status: "accepted",
+        roomName: null,
+        roomUrl: null,
+      },
+      {
+        id: "i-completed",
+        hostName: "Shresht",
+        hostRole: "admin",
+        inviteeName: "Ben Okafor",
+        startsAt: at(-60 * 3),
+        durationMinutes: 30,
+        topic: "Scholarship mentor call",
+        status: "completed",
+        roomName: null,
+        roomUrl: null,
+      },
+      {
+        // Never answered, time passed: no Accept button, an "expired" badge.
+        id: "i-expired",
+        hostName: "Marcus Webb",
+        hostRole: "mentor",
+        inviteeName: "Ana Duarte",
+        startsAt: at(-60 * 26),
+        durationMinutes: 30,
+        topic: "Pitch feedback",
+        status: "invited",
         roomName: null,
         roomUrl: null,
       },
