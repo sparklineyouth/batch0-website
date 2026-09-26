@@ -7,7 +7,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { isoWeekStart, formatWeekRange } from "@/lib/week";
 import { cohortWeek } from "@/lib/cohort-week";
-import { getActiveChallenge, prizeHeadline } from "@/lib/challenges";
+import { getActiveChallenge, prizeHeadline, visibleSubmissionStatus } from "@/lib/challenges";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { InstallHint } from "@/components/app/install-hint";
 import {
@@ -310,7 +310,17 @@ export default async function StudentAppHome() {
                         challengeEntry
                           ? challengeEntry.status === "draft"
                             ? "Draft saved — finish & submit"
-                            : `Entered — ${challengeEntry.status === "funded" ? "winner" : challengeEntry.status}`
+                            : (() => {
+                                // Decisions stay private until winners are published.
+                                const shown = visibleSubmissionStatus(challengeEntry.status, challenge.winnersPublished);
+                                return shown === "funded"
+                                  ? "Entered — winner"
+                                  : shown === "rejected"
+                                    ? "Entered — results are out"
+                                    : shown === "shortlisted"
+                                      ? "Entered — shortlisted"
+                                      : "Entered";
+                              })()
                           : (prizeHeadline(challenge) || "Open for entries")
                       }
                       href={

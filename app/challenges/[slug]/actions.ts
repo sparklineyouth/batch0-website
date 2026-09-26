@@ -261,19 +261,26 @@ async function verifyNewUploads(
   questions: ChallengeQuestion[],
   answers: ChallengeAnswers,
   alreadySaved: Record<string, unknown> | null,
-): Promise<ChallengeAnswers> {
+): Promise<{ answers: ChallengeAnswers; unverified: boolean }> {
   const known = new Set(referencedPaths(alreadySaved ?? {}));
   const fresh = referencedPaths(answers).filter((p) => !known.has(p));
-  if (fresh.length === 0) return answers;
+  if (fresh.length === 0) return { answers, unverified: false };
 
   const bucket = ctx.admin.storage.from(CHALLENGE_UPLOAD_BUCKET);
   const meta = new Map<string, { size: number; mimetype: string } | null>();
+  let listFailed = false;
   await Promise.all(
     fresh.map(async (path) => {
       const slash = path.lastIndexOf("/");
       const dir = path.slice(0, slash);
       const name = path.slice(slash + 1);
-      const { data } = await bucket.list(dir, { search: name, limit: 5 });
+      const { data, error } = await bucket.list(dir, { search: name, limit: 5 });
+      // A storage hiccup is not "the file doesn't exist" — don't drop a
+      // legitimate upload over it; the caller retries instead.
+      if (error) {
+        listFailed = true;
+        return;
+      }
       const hit = (data ?? []).find((o: any) => o.name === name);
       meta.set(
         path,
@@ -286,6 +293,7 @@ async function verifyNewUploads(
       );
     }),
   );
+  if (listFailed) return { answers, unverified: true };
 
   const reject: string[] = [];
   const ok = (path: string, cap: number) => {
@@ -301,7 +309,8 @@ async function verifyNewUploads(
   const out: ChallengeAnswers = { ...answers };
   for (const q of questions) {
     const v = out[q.id];
-    if (q.type === "video" && isUploadAnswer(v)) {
+    // Any upload-string answer (video, or a pre-0087 link field that held one).
+    if (isUploadAnswer(v)) {
       if (!ok(uploadPathOf(v), MAX_VIDEO_BYTES)) out[q.id] = "";
     } else if (q.type === "file" && Array.isArray(v)) {
       out[q.id] = (v as UploadedFile[])
@@ -315,7 +324,7 @@ async function verifyNewUploads(
   if (reject.length) {
     await bucket.remove(reject).catch(() => null);
   }
-  return out;
+  return { answers: out, unverified: false };
 }
 
 export type DraftResult = {
@@ -323,12 +332,12 @@ export type DraftResult = {
   error?: string;
   signIn?: boolean;
   savedAt?: string;
-  /** The row's new updated_at — send it back with the next save. */
-  version?: string;
+  /** The row's new answers_version — send it back with the next save. */
+  version?: number;
   alreadySubmitted?: boolean;
   /** Someone saved newer answers from another tab/device. */
   conflict?: boolean;
-  latest?: { answers: ChallengeAnswers; version: string };
+  latest?: { answers: ChallengeAnswers; version: number };
   /** Worth retrying automatically (rate limit), vs a permanent refusal. */
   retryable?: boolean;
   closed?: boolean;
@@ -339,7 +348,7 @@ export type DraftResult = {
  * and registers them if they weren't. Only touches a DRAFT: once an entry is
  * submitted, changes go through submitChallengeEntry so they're re-validated.
  *
- * Optimistic concurrency: the client sends the updated_at it last saw. If the
+ * Optimistic concurrency: the client sends the answers_version it last saw. If the
  * row has moved on (another tab or device saved since), nothing is written and
  * the newer answers come back, so a stale tab can never silently replace work
  * done elsewhere. `force` overwrites anyway — the entrant chose "keep mine".
@@ -347,7 +356,7 @@ export type DraftResult = {
 export async function saveChallengeDraft(input: {
   slug: string;
   answers: Record<string, unknown>;
-  version?: string | null;
+  version?: number | null;
   force?: boolean;
   refCode?: string | null;
 }): Promise<DraftResult> {
@@ -367,7 +376,7 @@ export async function saveChallengeDraft(input: {
 
   const { data: existing } = await ctx.admin
     .from("challenge_submissions")
-    .select("id, status, updated_at, answers")
+    .select("id, status, answers_version, answers")
     .eq("challenge_id", ctx.challenge.id)
     .eq("user_id", ctx.userId)
     .maybeSingle();
@@ -379,12 +388,16 @@ export async function saveChallengeDraft(input: {
     mode: "draft",
     uploadPrefix: uploadPrefix(ctx),
   });
-  const answers = await verifyNewUploads(
+  const checked = await verifyNewUploads(
     ctx,
     ctx.challenge.questions,
     cleaned,
     (existing?.answers as Record<string, unknown>) ?? null,
   );
+  if (checked.unverified) {
+    return { ok: false, retryable: true, error: "Couldn't check your upload just now — retrying." };
+  }
+  const answers = checked.answers;
 
   try {
     await ensureRegistration(ctx, input.refCode);
@@ -397,26 +410,30 @@ export async function saveChallengeDraft(input: {
     // A tab that has never seen this row (it was created elsewhere after the
     // tab loaded) has no version to offer — that is a conflict too, not a
     // licence to overwrite.
-    if (!input.force && !input.version) {
+    if (!input.force && input.version == null) {
       return {
         ok: false,
         conflict: true,
-        latest: { answers: (existing.answers ?? {}) as ChallengeAnswers, version: existing.updated_at },
+        latest: { answers: (existing.answers ?? {}) as ChallengeAnswers, version: existing.answers_version },
       };
     }
-    let q = ctx.admin
+    // Write against the version we read: a force ("keep mine") still can't
+    // overwrite something newer than the conflict it was shown.
+    const base = input.force ? existing.answers_version : input.version!;
+    const { data: row, error } = await ctx.admin
       .from("challenge_submissions")
-      .update({ answers, questions_snapshot: ctx.challenge.questions })
+      .update({ answers, questions_snapshot: ctx.challenge.questions, answers_version: base + 1 })
       .eq("id", existing.id)
-      .eq("status", "draft");
-    if (!input.force) q = q.eq("updated_at", input.version!);
-    const { data: row, error } = await q.select("updated_at").maybeSingle();
+      .eq("status", "draft")
+      .eq("answers_version", base)
+      .select("answers_version")
+      .maybeSingle();
     if (error) return { ok: false, retryable: true, error: error.message };
     if (!row) {
       // Zero rows: either it was submitted meanwhile, or another tab saved.
       const { data: now2 } = await ctx.admin
         .from("challenge_submissions")
-        .select("status, updated_at, answers")
+        .select("status, answers_version, answers")
         .eq("id", existing.id)
         .maybeSingle();
       if (now2 && now2.status !== "draft") return { ok: false, alreadySubmitted: true };
@@ -424,11 +441,11 @@ export async function saveChallengeDraft(input: {
         ok: false,
         conflict: true,
         latest: now2
-          ? { answers: (now2.answers ?? {}) as ChallengeAnswers, version: now2.updated_at }
+          ? { answers: (now2.answers ?? {}) as ChallengeAnswers, version: now2.answers_version }
           : undefined,
       };
     }
-    return { ok: true, savedAt: now, version: row.updated_at };
+    return { ok: true, savedAt: now, version: row.answers_version };
   }
 
   const { data: created, error } = await ctx.admin
@@ -439,15 +456,16 @@ export async function saveChallengeDraft(input: {
       answers,
       questions_snapshot: ctx.challenge.questions,
       status: "draft",
+      answers_version: 1,
     })
-    .select("updated_at")
+    .select("answers_version")
     .single();
   if (error) {
     // Another tab created the row first — hand its answers back.
     if ((error as any).code === "23505") {
       const { data: row } = await ctx.admin
         .from("challenge_submissions")
-        .select("status, updated_at, answers")
+        .select("status, answers_version, answers")
         .eq("challenge_id", ctx.challenge.id)
         .eq("user_id", ctx.userId)
         .maybeSingle();
@@ -455,12 +473,12 @@ export async function saveChallengeDraft(input: {
       return {
         ok: false,
         conflict: true,
-        latest: row ? { answers: (row.answers ?? {}) as ChallengeAnswers, version: row.updated_at } : undefined,
+        latest: row ? { answers: (row.answers ?? {}) as ChallengeAnswers, version: row.answers_version } : undefined,
       };
     }
     return { ok: false, retryable: true, error: error.message };
   }
-  return { ok: true, savedAt: now, version: created!.updated_at };
+  return { ok: true, savedAt: now, version: created!.answers_version };
 }
 
 export type SubmitResult = {
@@ -470,9 +488,9 @@ export type SubmitResult = {
   fieldErrors?: Record<string, string>;
   referral?: ReferralProgress;
   edited?: boolean;
-  version?: string;
+  version?: number;
   conflict?: boolean;
-  latest?: { answers: ChallengeAnswers; version: string };
+  latest?: { answers: ChallengeAnswers; version: number };
 };
 
 /**
@@ -513,7 +531,7 @@ function carryOver(
 export async function submitChallengeEntry(input: {
   slug: string;
   answers: Record<string, unknown>;
-  version?: string | null;
+  version?: number | null;
   refCode?: string | null;
 }): Promise<SubmitResult> {
   const loaded = await loadContext(input.slug);
@@ -542,7 +560,7 @@ export async function submitChallengeEntry(input: {
 
   const { data: existing } = await ctx.admin
     .from("challenge_submissions")
-    .select("id, status, submitted_at, updated_at, answers, questions_snapshot")
+    .select("id, status, submitted_at, answers_version, answers, questions_snapshot")
     .eq("challenge_id", c.id)
     .eq("user_id", ctx.userId)
     .maybeSingle();
@@ -557,12 +575,12 @@ export async function submitChallengeEntry(input: {
   }
   // A stale tab must not replace newer answers saved elsewhere (and a tab
   // that never saw the row can't vouch for it either).
-  if (existing && existing.updated_at !== input.version) {
+  if (existing && existing.answers_version !== input.version) {
     return {
       ok: false,
       conflict: true,
       error: "Newer changes were saved from another tab or device.",
-      latest: { answers: (existing.answers ?? {}) as ChallengeAnswers, version: existing.updated_at },
+      latest: { answers: (existing.answers ?? {}) as ChallengeAnswers, version: existing.answers_version },
     };
   }
 
@@ -573,12 +591,16 @@ export async function submitChallengeEntry(input: {
   if (Object.keys(errors).length) {
     return { ok: false, error: "A few answers need another look.", fieldErrors: errors };
   }
-  const verified = await verifyNewUploads(
+  const checked = await verifyNewUploads(
     ctx,
     c.questions,
     cleaned,
     (existing?.answers as Record<string, unknown>) ?? null,
   );
+  if (checked.unverified) {
+    return { ok: false, error: "Couldn't check your uploads just now — try again in a moment." };
+  }
+  const verified = checked.answers;
   // An upload that failed verification may have emptied a required answer.
   const recheck = validateAnswers(c.questions, verified, { mode: "submit" });
   if (Object.keys(recheck.errors).length) {
@@ -625,33 +647,39 @@ export async function submitChallengeEntry(input: {
     : { answers: verified, snapshot: c.questions };
 
   let submissionId: string;
-  let version: string | undefined;
+  let version: number | undefined;
   let firstSubmit = false;
 
   if (existing && !alreadySubmitted) {
     const { data: row, error } = await ctx.admin
       .from("challenge_submissions")
-      .update({ answers, questions_snapshot: snapshot, status: "submitted", submitted_at: now })
+      .update({
+        answers,
+        questions_snapshot: snapshot,
+        status: "submitted",
+        submitted_at: now,
+        answers_version: existing.answers_version + 1,
+      })
       .eq("id", existing.id)
       .eq("status", "draft")
-      .eq("updated_at", existing.updated_at)
-      .select("id, updated_at")
+      .eq("answers_version", existing.answers_version)
+      .select("id, answers_version")
       .maybeSingle();
     if (error) return { ok: false, error: error.message };
     if (!row) {
       return { ok: false, error: "This entry changed in another tab or device just now — reload to see it." };
     }
     submissionId = row.id;
-    version = row.updated_at;
+    version = row.answers_version;
     firstSubmit = true;
   } else if (existing) {
     const { data: row, error } = await ctx.admin
       .from("challenge_submissions")
-      .update({ answers, questions_snapshot: snapshot })
+      .update({ answers, questions_snapshot: snapshot, answers_version: existing.answers_version + 1 })
       .eq("id", existing.id)
       .eq("status", "submitted")
-      .eq("updated_at", existing.updated_at)
-      .select("id, updated_at")
+      .eq("answers_version", existing.answers_version)
+      .select("id, answers_version")
       .maybeSingle();
     if (error) return { ok: false, error: error.message };
     if (!row) {
@@ -661,7 +689,7 @@ export async function submitChallengeEntry(input: {
       };
     }
     submissionId = row.id;
-    version = row.updated_at;
+    version = row.answers_version;
   } else {
     const referralCode = await attributableRef(ctx, input.refCode);
     const { data: created, error } = await ctx.admin
@@ -674,33 +702,35 @@ export async function submitChallengeEntry(input: {
         status: "submitted",
         submitted_at: now,
         referral_code: referralCode,
+        answers_version: 1,
       })
-      .select("id, updated_at")
+      .select("id, answers_version")
       .single();
     if (error) {
       if ((error as any).code === "23505") {
-        // Another tab created the row (usually a draft autosave) first. If
-        // it's still a draft, promote it with these answers.
+        // Another tab created the row first. Don't silently replace what it
+        // saved — hand it back so the entrant chooses, like any conflict.
         const { data: row } = await ctx.admin
           .from("challenge_submissions")
-          .update({ answers, questions_snapshot: snapshot, status: "submitted", submitted_at: now })
+          .select("status, answers_version, answers")
           .eq("challenge_id", c.id)
           .eq("user_id", ctx.userId)
-          .eq("status", "draft")
-          .select("id, updated_at")
           .maybeSingle();
-        if (!row) {
-          return { ok: false, error: "Looks like this was submitted from another tab — reload to see it." };
+        if (row && row.status === "draft") {
+          return {
+            ok: false,
+            conflict: true,
+            error: "This entry was just saved from another tab or device.",
+            latest: { answers: (row.answers ?? {}) as ChallengeAnswers, version: row.answers_version },
+          };
         }
-        submissionId = row.id;
-        version = row.updated_at;
-        firstSubmit = true;
+        return { ok: false, error: "Looks like this was submitted from another tab — reload to see it." };
       } else {
         return { ok: false, error: error.message };
       }
     } else {
       submissionId = created!.id;
-      version = created!.updated_at;
+      version = created!.answers_version;
       firstSubmit = true;
     }
   }

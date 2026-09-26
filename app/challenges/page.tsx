@@ -211,6 +211,11 @@ function Row({
 }) {
   const headline = prizeHeadline(c);
   const when = c.closesAt ?? c.opensAt;
+  const meta = [
+    headline,
+    c.registrationCount > 0 ? `${c.registrationCount} registered` : null,
+    c.winnersPublished ? "winners announced" : null,
+  ].filter(Boolean) as string[];
   return (
     <li>
       <Link
@@ -236,16 +241,10 @@ function Row({
               <span className="sm:hidden">
                 {c.closesAt ? "Due " : "Opens "}
                 <LocalTime value={when} mode="date" />
-                {(headline || c.registrationCount > 0) && " · "}
+                {meta.length > 0 && " · "}
               </span>
             )}
-            {[
-              headline,
-              c.registrationCount > 0 ? `${c.registrationCount} registered` : null,
-              c.winnersPublished ? "winners announced" : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+            {meta.join(" · ")}
           </p>
         </div>
         <ChallengeCover

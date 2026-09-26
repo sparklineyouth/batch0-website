@@ -153,9 +153,13 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
   function save(e?: React.FormEvent) {
     e?.preventDefault();
     setError(undefined);
+    // What was sent — to tell server-normalised lists apart from edits typed
+    // while the save was in flight (those must survive the response).
+    const sent = payload;
+    const sentSnapshot = snapshot;
     start(async () => {
       try {
-        const res = await saveChallenge(payload);
+        const res = await saveChallenge(sent);
         if (!res.ok) {
           setError(res.error);
           return;
@@ -165,16 +169,19 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
         // what's live — and none of it reads as an unsaved change.
         const d = res.data;
         if (d) {
-          setSlug(d.slug);
-          setSchedule(d.schedule);
-          setFaq(d.faq);
-          setResources(d.resources);
-          setPrizes(d.prizes);
-          setQuestions(d.questions);
+          const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+          setSlug((prev) => ((prev.trim() || undefined) === sent.slug ? d.slug : prev));
+          setSchedule((prev) => (same(prev, sent.schedule) ? d.schedule : prev));
+          setFaq((prev) => (same(prev, sent.faq) ? d.faq : prev));
+          setResources((prev) => (same(prev, sent.resources) ? d.resources : prev));
+          setPrizes((prev) => (same(prev, sent.prizes) ? d.prizes : prev));
+          setQuestions((prev) => (same(prev, sent.questions) ? d.questions : prev));
+          // The baseline is what the SERVER now holds, so anything typed
+          // during the save still reads as unsaved.
           setBaseline(
             JSON.stringify({
-              ...payload,
-              slug: d.slug || payload.slug,
+              ...sent,
+              slug: d.slug || sent.slug,
               prizes: d.prizes,
               schedule: d.schedule,
               faq: d.faq,
@@ -183,7 +190,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
             }),
           );
         } else {
-          setBaseline(snapshot);
+          setBaseline(sentSnapshot);
         }
         setSavedAt(Date.now());
         if (!initial?.id && d?.id) {

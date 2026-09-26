@@ -224,6 +224,8 @@ export type ChallengeSubmission = {
   questionsSnapshot: ChallengeQuestion[];
   status: SubmissionStatus;
   submittedAt: string | null;
+  /** Concurrency token for the entrant's answers (answers_version). */
+  answersVersion: number;
   payoutAmountCents: number | null;
   prizeId: string | null;
   awardLabel: string | null;
@@ -661,6 +663,7 @@ export function rowToSubmission(row: any): ChallengeSubmission {
     questionsSnapshot: sanitizeQuestions(row.questions_snapshot),
     status: row.status,
     submittedAt: row.submitted_at ?? null,
+    answersVersion: typeof row.answers_version === "number" ? row.answers_version : 0,
     payoutAmountCents:
       typeof row.payout_amount_cents === "number"
         ? row.payout_amount_cents

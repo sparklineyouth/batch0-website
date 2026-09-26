@@ -178,7 +178,12 @@ alter table public.challenge_submissions
   add column if not exists award_label text,
   -- When the "email results" action told this entrant how it went. Makes that
   -- action safe to press twice.
-  add column if not exists results_notified_at timestamptz;
+  add column if not exists results_notified_at timestamptz,
+  -- Optimistic-concurrency token for the entrant's own answers. Bumped only
+  -- by the entrant's saves — unlike updated_at, which an admin saving review
+  -- notes also moves, and which would tell an entrant mid-edit that "newer
+  -- answers" exist when nobody touched them.
+  add column if not exists answers_version integer not null default 0;
 
 update public.challenge_submissions
 set submitted_at = created_at

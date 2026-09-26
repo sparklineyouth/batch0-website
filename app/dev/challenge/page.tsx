@@ -185,7 +185,7 @@ export default async function ChallengePreviewPage(props: {
           initialAnswers={submission?.answers ?? {}}
           initialStatus={submission?.status ?? null}
           initialSubmittedAt={submission?.submittedAt ?? null}
-          initialVersion={submission?.updatedAt ?? null}
+          initialVersion={submission?.answersVersion ?? null}
           initialPreviews={{}}
           referral={
             gate > 0

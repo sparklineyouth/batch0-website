@@ -136,7 +136,7 @@ export default async function SubmitPage(props: {
           initialAnswers={sub?.answers ?? {}}
           initialStatus={sub?.status ?? null}
           initialSubmittedAt={sub?.submittedAt ?? null}
-          initialVersion={sub?.updatedAt ?? null}
+          initialVersion={sub?.answersVersion ?? null}
           initialPreviews={previews}
           referral={
             referral

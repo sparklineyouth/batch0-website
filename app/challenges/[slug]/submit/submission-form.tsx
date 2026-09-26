@@ -154,8 +154,8 @@ export function SubmissionForm({
   initialAnswers: Answers;
   initialStatus: SubmissionStatus | null;
   initialSubmittedAt: string | null;
-  /** The saved row's updated_at: the optimistic-concurrency token. */
-  initialVersion: string | null;
+  /** The saved row's answers_version: the optimistic-concurrency token. */
+  initialVersion: number | null;
   initialPreviews: Record<string, string>;
   referral: Referral | null;
   preview: boolean;
@@ -177,7 +177,7 @@ export function SubmissionForm({
   const [referral, setReferral] = useState<Referral | null>(initialReferral);
   const [previews, setPreviews] = useState<Record<string, string>>(initialPreviews);
   const [uploading, setUploading] = useState<Record<string, number>>({});
-  const [conflict, setConflict] = useState<null | { answers: Answers; version: string }>(null);
+  const [conflict, setConflict] = useState<null | { answers: Answers; version: number }>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [closedNow, setClosedNow] = useState(false);
 
@@ -212,19 +212,26 @@ export function SubmissionForm({
   // --- autosave --------------------------------------------------------------
   const answersRef = useRef(answers);
   answersRef.current = answers;
-  const versionRef = useRef<string | null>(initialVersion);
+  const versionRef = useRef<number | null>(initialVersion);
   const dirty = useRef(false);
   const inFlight = useRef<Promise<void> | null>(null);
   const again = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryDelay = useRef(4000);
   const mounted = useRef(true);
+  const submittingRef = useRef(false);
+  // Timers must call the CURRENT flush, not the one captured when they were
+  // scheduled: `autosave` flips (conflict resolved, signed back in) between
+  // scheduling and firing, and a stale closure would quietly do nothing.
+  const flushRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      // Don't leave a retry loop running for a form nobody is looking at.
       if (timer.current) clearTimeout(timer.current);
+      // Leaving the page (Back, swipe, a link) must not drop the last second
+      // of typing that was waiting on the debounce.
+      if (dirty.current) void flushRef.current();
     };
   }, []);
 
@@ -234,7 +241,7 @@ export function SubmissionForm({
   }, []);
 
   const flush = useCallback(async (): Promise<void> => {
-    if (!autosave) return;
+    if (!autosave || submittingRef.current) return;
     if (inFlight.current) {
       again.current = true;
       return inFlight.current;
@@ -286,7 +293,7 @@ export function SubmissionForm({
         setFormError(res.error ?? "Couldn't save — retrying.");
         const d = retryDelay.current;
         retryDelay.current = Math.min(d * 2, 60_000);
-        schedule(d, () => void flush());
+        schedule(d, () => void flushRef.current());
       } else {
         setSaveState("error");
         setFormError(res.error ?? "Couldn't save.");
@@ -300,21 +307,22 @@ export function SubmissionForm({
     }
     if (again.current) {
       again.current = false;
-      schedule(800, () => void flush());
+      schedule(800, () => void flushRef.current());
     }
   }, [autosave, challenge.allowEdits, challenge.slug, schedule]);
+  flushRef.current = flush;
 
   const markDirty = useCallback(() => {
     if (preview) return;
     dirty.current = true;
     setSaveState("dirty");
     if (!autosave) return;
-    schedule(1200, () => void flush());
-  }, [autosave, flush, preview, schedule]);
+    schedule(1200, () => void flushRef.current());
+  }, [autosave, preview, schedule]);
 
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") void flush();
+      if (document.visibilityState === "hidden") void flushRef.current();
       // Coming back from sharing the link: the count may have moved.
       else if (gateLocked) void refreshReferrals();
     };
@@ -337,7 +345,7 @@ export function SubmissionForm({
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        if (autosave) void flush();
+        if (autosave) void flushRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -374,7 +382,8 @@ export function SubmissionForm({
     setConflict(null);
     setFormError(null);
     dirty.current = true;
-    schedule(0, () => void flush());
+    // Runs after this re-render, when flushRef holds the autosave-on flush.
+    schedule(0, () => void flushRef.current());
   }
 
   // --- uploads ---------------------------------------------------------------
@@ -507,15 +516,20 @@ export function SubmissionForm({
       }
     }
     // Let an autosave that's already running land first, so the version we
-    // send is the one the server now holds.
+    // send is the one the server now holds — and keep any new one from
+    // starting (or re-arming) while the submit is out.
+    submittingRef.current = true;
     if (timer.current) clearTimeout(timer.current);
     if (inFlight.current) await inFlight.current.catch(() => null);
+    if (timer.current) clearTimeout(timer.current);
+    again.current = false;
     const res: any = await submitChallengeEntry({
       slug: challenge.slug,
       answers: answersRef.current,
       version: versionRef.current,
       refCode: readRef(challenge.slug),
     }).catch(() => ({ ok: false, error: "Network hiccup — try again." }));
+    submittingRef.current = false;
     setSubmitting(false);
     if (!res.ok) {
       if (res.signIn) setSignedOut(true);
@@ -531,7 +545,7 @@ export function SubmissionForm({
       }
       setFormError(res.error ?? "Couldn't submit.");
       // Whatever was typed in the last second still needs saving.
-      if (dirty.current && autosave) schedule(0, () => void flush());
+      if (dirty.current && autosave) schedule(0, () => void flushRef.current());
       return;
     }
     if (res.version) versionRef.current = res.version;
@@ -603,7 +617,7 @@ export function SubmissionForm({
               if (anyUploading && !window.confirm("An upload is still in progress. Leave anyway? It won't be attached.")) {
                 e.preventDefault();
               } else if (dirty.current && autosave) {
-                void flush();
+                void flushRef.current();
               }
             }}
             className="rounded-md p-1 text-ink-soft hover:bg-wash hover:text-ink"

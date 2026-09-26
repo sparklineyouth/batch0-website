@@ -664,11 +664,14 @@ export async function submitApplicationAction(
 async function challengeNeedsReferrals(): Promise<boolean> {
   try {
     const { createAdminClient } = await import("@/lib/supabase/admin");
+    // Only challenges still taking entries: an old one left "active" past its
+    // deadline mustn't keep attribution on after referrals are switched off.
     const { data } = await createAdminClient()
       .from("challenges")
       .select("id")
       .eq("status", "active")
       .gt("referrals_required", 0)
+      .or(`closes_at.is.null,closes_at.gt.${new Date().toISOString()}`)
       .limit(1);
     return (data ?? []).length > 0;
   } catch {

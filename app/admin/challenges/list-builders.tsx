@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import {
@@ -37,6 +38,29 @@ function AddButton({ onClick, children }: { onClick: () => void; children: React
   );
 }
 
+/**
+ * A datetime-local bound to an ISO string that tolerates half-typed input.
+ * While the admin retypes part of a date the browser reports "" (badInput);
+ * the field keeps showing what they typed (a local draft) and only commits a
+ * value once it's a real date, so neither the milestone's time is wiped nor
+ * does the field snap back mid-edit.
+ */
+function DateTimeField({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <Input
+      type="datetime-local"
+      aria-label="When"
+      value={draft ?? isoToLocalInput(value)}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        if (!e.target.validity.badInput) onChange(localInputToIso(e.target.value) ?? "");
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
+
 /** Extra timeline milestones: kickoff call, office hours, demo day. */
 export function ScheduleBuilder({
   value,
@@ -51,17 +75,7 @@ export function ScheduleBuilder({
     <div className="space-y-2">
       {value.map((s, i) => (
         <div key={s.id} className="grid gap-2 rounded-lg border border-line bg-paper p-3 sm:grid-cols-[13rem_minmax(0,1fr)_auto]">
-          <Input
-            type="datetime-local"
-            aria-label="When"
-            value={isoToLocalInput(s.at)}
-            onChange={(e) => {
-              // A half-typed date reads as "" — keep the last good value
-              // rather than wiping the milestone's time.
-              if (e.target.validity.badInput) return;
-              update(i, { at: localInputToIso(e.target.value) ?? "" });
-            }}
-          />
+          <DateTimeField value={s.at} onChange={(at) => update(i, { at })} />
           <div className="space-y-2">
             <Input aria-label="Milestone" value={s.label} onChange={(e) => update(i, { label: e.target.value })} placeholder="Kickoff call" />
             <Input aria-label="Details" value={s.detail} onChange={(e) => update(i, { detail: e.target.value })} placeholder="Details (optional)" />

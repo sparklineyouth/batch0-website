@@ -200,10 +200,20 @@ test("new challenges default to editable; the results stamp column exists", asyn
   await db.exec(`insert into public.challenges (slug, title) values ('fresh', 'Fresh')`);
   const { rows } = await db.query<any>(`select allow_edits from public.challenges where slug = 'fresh'`);
   assert.equal(rows[0].allow_edits, true);
-  const { rows: col } = await db.query<any>(
-    `select 1 from information_schema.columns where table_name = 'challenge_submissions' and column_name = 'results_notified_at'`,
+  for (const c of ["results_notified_at", "answers_version"]) {
+    const { rows: col } = await db.query<any>(
+      `select 1 from information_schema.columns where table_name = 'challenge_submissions' and column_name = $1`,
+      [c],
+    );
+    assert.equal(col.length, 1, c);
+  }
+  // The entrant's concurrency token starts at 0 and is NOT moved by an admin
+  // write (only the app's entrant saves bump it) — unlike updated_at.
+  const { rows: v } = await db.query<any>(
+    `update public.challenge_submissions set review_notes = 'looks good' where user_id = $1 returning answers_version`,
+    [ALICE],
   );
-  assert.equal(col.length, 1);
+  assert.equal(v[0].answers_version, 0);
 });
 
 test("re-running 0087 never re-adds a prize an admin removed", async () => {

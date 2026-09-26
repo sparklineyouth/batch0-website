@@ -556,7 +556,7 @@ export async function reviewChallengeSubmission(
     const { data: sub } = await admin
       .from("challenge_submissions")
       .select(
-        "id, challenge_id, status, prize_id, award_label, challenge:challenges(prizes, status, opens_at, closes_at, allow_edits)",
+        "id, challenge_id, status, prize_id, award_label, results_notified_at, challenge:challenges(prizes, status, opens_at, closes_at, allow_edits)",
       )
       .eq("id", input.submissionId)
       .maybeSingle();
@@ -609,6 +609,13 @@ export async function reviewChallengeSubmission(
         review_notes: (input.review_notes ?? "").trim() || null,
         reviewed_by: userId,
         reviewed_at: new Date().toISOString(),
+        // Their results email said something that's no longer true (a late
+        // winner, a changed prize) — put them back in the "Email results"
+        // queue so they hear the new outcome.
+        ...(sub.results_notified_at &&
+        ((sub.status === "funded") !== (input.status === "funded") || (sub.award_label ?? null) !== awardLabel)
+          ? { results_notified_at: null }
+          : {}),
         winner_public: winnerPublic,
         public_name: winnerPublic ? publicName : null,
         public_blurb: winnerPublic ? (input.public_blurb ?? "").trim() || null : null,
@@ -676,17 +683,18 @@ export async function emailChallengeResults(
       const res = p?.email
         ? await sendEmail({ to: p.email, subject: t.subject, html: t.html, text: t.text, templateKey: "challenge.result" }).catch(() => ({ ok: false }))
         : { ok: false };
-      await notify({
-        userId: s.user_id,
-        type: won ? "challenge_won" : "challenge_results",
-        title: won ? `You won ${c.title}!` : `Results are in for ${c.title}`,
-        body: won ? (s.award_label ?? "Congratulations.") : "See who won on the event page.",
-        link: `/challenges/${c.slug}`,
-        dedupeKey: `challenge-result:${s.id}`,
-      });
       if (res.ok) {
         sent++;
         await admin.from("challenge_submissions").update({ results_notified_at: new Date().toISOString() }).eq("id", s.id);
+        // In-app notice only alongside a sent email: the stamp above is what
+        // keeps a retry from notifying twice.
+        await notify({
+          userId: s.user_id,
+          type: won ? "challenge_won" : "challenge_results",
+          title: won ? `You won ${c.title}!` : `Results are in for ${c.title}`,
+          body: won ? (s.award_label ?? "Congratulations.") : "See who won on the event page.",
+          link: `/challenges/${c.slug}`,
+        });
       } else {
         failed++;
       }
