@@ -79,37 +79,29 @@ export function callEndsAt(startsAt: string | Date, durationMinutes: number): Da
  * is exactly the case where offering a button would be a guess.
  */
 export function callPhase(call: CallTiming, now: Date = new Date()): CallPhase {
-  switch (call.status) {
-    case "cancelled":
-      return "cancelled";
-    case "declined":
-      return "declined";
-    case "completed":
-      return "completed";
-    case "invited":
-    case "accepted":
-      break;
-    default:
-      return "cancelled";
+  // Deliberately an if-chain, not `switch (call.status) { … case "accepted":
+  // break; default: return … }`. That shape — a case group that falls out of
+  // the switch next to a returning `default` — is exactly what the production
+  // minifier mis-compiled: it folded `default` into "cancelled" and dropped
+  // every statement after the switch, so each invited/accepted call came out
+  // with phase `undefined` (never past, never joinable, never answerable) while
+  // the unminified tests passed. Found by probing the deployed preview bundle.
+  const status = call.status;
+  if (status === "cancelled" || status === "declined" || status === "completed") {
+    return status;
   }
+  if (status !== "invited" && status !== "accepted") return "cancelled";
+
   const state = joinState(
     call.startsAt,
     callEndsAt(call.startsAt, call.durationMinutes),
     now,
   );
-  if (call.status === "invited") {
-    return state === "ended" ? "expired" : "needs_answer";
-  }
-  switch (state) {
-    case "early":
-      return "upcoming";
-    case "open":
-      return "joinable";
-    case "live":
-      return "live";
-    case "ended":
-      return "ended";
-  }
+  if (status === "invited") return state === "ended" ? "expired" : "needs_answer";
+  if (state === "early") return "upcoming";
+  if (state === "open") return "joinable";
+  if (state === "live") return "live";
+  return "ended";
 }
 
 /** Belongs under "Past": nothing left to do but look at it. */
