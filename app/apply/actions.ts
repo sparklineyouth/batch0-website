@@ -16,11 +16,13 @@ import { canBypassClosedApplications, hasFounderPass } from "@/lib/founder-pass"
 import { autoAdmitOnSubmit } from "@/lib/admissions";
 import { planReapply, selectCohortId } from "@/lib/reapply";
 import { isValidPhone, PHONE_MAX_LENGTH } from "@/lib/phone";
-import { getVisibleCustomQuestions } from "@/lib/application-questions";
+import { getApplicationForm } from "@/lib/application-questions";
+import { buildQuestionMap, requiredBuiltinErrors } from "@/lib/apply-flow";
 import { getScholarshipInterestQuestions } from "@/lib/scholarships";
 import {
   checkAnswers,
   readAnswers,
+  visibleQuestions,
   CUSTOM_PREFIX,
   SCHOLARSHIP_PREFIX,
 } from "@/lib/question-schema";
@@ -46,8 +48,8 @@ const optionalUrl = z
 const optionalString = (max = 200) =>
   z.string().trim().max(max).optional().or(z.literal(""));
 
-// Submit-time schema — strict. Mirrors the client validation in
-// application-form.tsx so error messages match on both sides.
+// Submit-time schema — strict. Mirrors the client rules in lib/apply-flow.ts
+// (fieldError), which gate each question before the applicant can move on.
 const SubmitSchema = z
   .object({
     full_name: z.string().trim().min(1, "Required").max(120),
@@ -79,13 +81,11 @@ const SubmitSchema = z
       .max(2000),
     startup_idea: optionalString(2000),
     experience: optionalString(2000),
-    hours_per_week: z.coerce
-      .number()
-      .int()
-      .min(0)
-      .max(168)
-      .optional()
-      .or(z.literal("")),
+    // "" first: z.coerce.number() turns a blank into 0, so with the number
+    // branch first every blank "hours" answer was stored as 0 hours.
+    hours_per_week: z
+      .union([z.literal(""), z.coerce.number().int().min(0).max(168)])
+      .optional(),
     team_size: z.coerce
       .number()
       .int()
@@ -119,7 +119,9 @@ const SubmitSchema = z
 const DraftSchema = z.object({
   full_name: optionalString(120),
   age: z
-    .union([z.coerce.number().int().min(0).max(120), z.literal("")])
+    // "" first, for the reason on SubmitSchema.hours_per_week: a blank draft
+    // age was being saved as 0.
+    .union([z.literal(""), z.coerce.number().int().min(0).max(120)])
     .optional(),
   grade: optionalString(40),
   school: optionalString(160),
@@ -140,10 +142,10 @@ const DraftSchema = z.object({
   startup_idea: optionalString(2000),
   experience: optionalString(2000),
   hours_per_week: z
-    .union([z.coerce.number().int().min(0).max(168), z.literal("")])
+    .union([z.literal(""), z.coerce.number().int().min(0).max(168)])
     .optional(),
   team_size: z
-    .union([z.coerce.number().int().min(1).max(5), z.literal("")])
+    .union([z.literal(""), z.coerce.number().int().min(1).max(5)])
     .optional(),
   referral_source: optionalString(200),
   referral_code: optionalString(32),
@@ -152,6 +154,25 @@ const DraftSchema = z.object({
   portfolio_url: optionalUrl,
   cohort_id: optionalString(64),
 });
+
+/**
+ * checkAnswers for the admin-authored questions, with the same draft rule as
+ * the built-in fields above: on a draft save an invalid answer is dropped
+ * rather than failing the save of everything else. Submit is strict.
+ */
+function checkDraftable(
+  questions: Awaited<ReturnType<typeof getScholarshipInterestQuestions>>,
+  raw: Record<string, unknown>,
+  prefix: string,
+  submit: boolean,
+) {
+  const answers = readAnswers(questions, raw, prefix);
+  const check = checkAnswers(questions, answers, { partial: !submit });
+  if (check.ok || submit) return check;
+  const kept = { ...answers };
+  for (const id of Object.keys(check.errors)) delete kept[id];
+  return checkAnswers(questions, kept, { partial: true });
+}
 
 type ActionResult = {
   ok: boolean;
@@ -178,17 +199,6 @@ async function getPinnedCohortId(
     : null;
 }
 
-async function getActiveCohortId(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<string | null> {
-  const { data: open } = await supabase
-    .from("cohorts")
-    .select("id, name, starts_on, ends_on, status, applications_close_at, late_entry_until, catch_up_plan, capacity")
-    .in("status", ["upcoming", "active"])
-    .order("starts_on", { ascending: true });
-  return selectCohortId((open ?? []).filter((c) => cohortEligibility(c).eligible), [await getPinnedCohortId(supabase)]);
-}
-
 async function upsertApplication(
   formData: FormData,
   submit: boolean,
@@ -199,7 +209,18 @@ async function upsertApplication(
 
   const raw = Object.fromEntries(formData.entries());
   const schema = submit ? SubmitSchema : DraftSchema;
-  const parsed = schema.safeParse(raw);
+  let parsed = schema.safeParse(raw);
+  // A draft is saved field by field. One answer the applicant stepped back past
+  // before finishing it ("mom@gmail", 200 hours) used to fail the WHOLE save —
+  // every autosave after it, whatever screen they were on, silently dropped.
+  // Drop just the fields that don't parse (they save as empty, and the form
+  // still holds and flags them) and keep everything else. Submit stays strict.
+  if (!parsed.success && !submit) {
+    const bad = new Set(parsed.error.issues.map((i) => String(i.path[0] ?? "")));
+    parsed = schema.safeParse(
+      Object.fromEntries(Object.entries(raw).filter(([k]) => !bad.has(k))),
+    );
+  }
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
     for (const issue of parsed.error.issues) {
@@ -224,21 +245,34 @@ async function upsertApplication(
   // `partial` on the draft path for the same reason the zod DraftSchema is
   // loose: /apply autosaves every few seconds, and enforcing "required" on a
   // half-typed form would make autosave fail continuously.
-  const [customQuestions, scholarshipQuestions] = await Promise.all([
-    getVisibleCustomQuestions(),
+  const [applicationForm, scholarshipQuestions] = await Promise.all([
+    getApplicationForm(),
     getScholarshipInterestQuestions(),
   ]);
+  const customQuestions = visibleQuestions(applicationForm.custom);
 
-  const customCheck = checkAnswers(
-    customQuestions,
-    readAnswers(customQuestions, raw, CUSTOM_PREFIX),
-    { partial: !submit },
-  );
-  const scholarshipCheck = checkAnswers(
-    scholarshipQuestions,
-    readAnswers(scholarshipQuestions, raw, SCHOLARSHIP_PREFIX),
-    { partial: !submit },
-  );
+  // Built-in fields an admin marked required (Country, say). SubmitSchema only
+  // knows the five cores, so without this an admin's "required" was an asterisk
+  // and nothing else. The same rule the form gates Continue on — see
+  // requiredBuiltinErrors in lib/apply-flow.ts.
+  if (submit) {
+    // The raw posted strings, not parsed.data: SubmitSchema coerces a blank
+    // hours_per_week to 0, which would read as answered.
+    const missing = requiredBuiltinErrors(
+      buildQuestionMap(applicationForm.builtins),
+      raw,
+    );
+    if (Object.keys(missing).length > 0) {
+      return {
+        ok: false,
+        error: "Please fix the highlighted fields.",
+        fieldErrors: missing,
+      };
+    }
+  }
+
+  const customCheck = checkDraftable(customQuestions, raw, CUSTOM_PREFIX, submit);
+  const scholarshipCheck = checkDraftable(scholarshipQuestions, raw, SCHOLARSHIP_PREFIX, submit);
 
   if (!customCheck.ok || !scholarshipCheck.ok) {
     // Field errors are keyed by the POSTED name so the form can highlight the
@@ -673,11 +707,12 @@ export async function attachReferralCodeAction(code: string) {
   }
 
   // No application yet: create a fresh draft with just the code so we
-  // remember it. Cohort attachment happens on the next real save.
-  const cohortId = await getActiveCohortId(supabase);
+  // remember it. No cohort: this row is created on page load, before the
+  // applicant has chosen one, and /apply reads a draft's cohort back as their
+  // choice. It is attached on the first real save.
   const { error } = await supabase.from("applications").insert({
     user_id: user.id,
-    cohort_id: cohortId,
+    cohort_id: null,
     status: "draft",
     referral_code: trimmed,
   });

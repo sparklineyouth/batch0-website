@@ -115,14 +115,41 @@ export default async function ApplicationPage(
 
       <PaymentResult result={payment} />
 
-      {searchParams.submitted && (
-        <div className="mt-5 rounded-lg border border-phosphor/30 bg-phosphor/5 p-4 text-sm">
-          <TrackSubmitted />
-          <p className="font-medium text-phosphor-ink">Application submitted</p>
-          <p className="mt-1 text-ink-soft">
-            We'll review and get back to you by email. You can check status here anytime.
-          </p>
-        </div>
+      {searchParams.submitted && <TrackSubmitted />}
+      {searchParams.submitted && app.status === "submitted" && (
+        // The last screen of /apply. The flow ends with a server redirect, so
+        // this is where "you're done" has to be said — with what happens next,
+        // because "we'll be in touch" alone leaves a first-time applicant
+        // refreshing their inbox with no idea for how long.
+        <section className="mt-6 border-l-2 border-phosphor bg-wash p-5 sm:p-6">
+          <p className="font-mono text-xs uppercase tracking-[0.18em] text-phosphor-ink">Submitted</p>
+          <h2 className="mt-3 font-display text-[clamp(2rem,6vw,2.75rem)] leading-[1.05] text-ink">
+            You&apos;re in the queue{app.cohort?.name ? ` for ${app.cohort.name}` : ""}.
+          </h2>
+          <ol className="mt-5 space-y-3 text-sm leading-relaxed text-ink-soft">
+            <li className="flex gap-3">
+              <span className="font-mono text-phosphor-ink">01</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                <span className="text-ink">We read every application.</span> Review is rolling, so
+                earlier applications hear back sooner.
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-mono text-phosphor-ink">02</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                <span className="text-ink">You get a decision by email</span>
+                {user.email ? ` at ${user.email}` : ""}. It shows up here too.
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-mono text-phosphor-ink">03</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                <span className="text-ink">If you&apos;re accepted,</span> you&apos;ll see your
+                final tuition and can lock in your seat from this page.
+              </span>
+            </li>
+          </ol>
+        </section>
       )}
       {searchParams.canceled && (
         <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">
@@ -249,6 +276,7 @@ export default async function ApplicationPage(
           Your answers
         </h3>
         <div className="space-y-3 text-sm">
+          <Row label="Cohort" value={app.cohort?.name ?? null} />
           <Row label="Full name" value={app.full_name} />
           <Row label="Age" value={app.age?.toString()} />
           <Row label="Grade" value={app.grade} />

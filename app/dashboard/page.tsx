@@ -517,7 +517,7 @@ function appStatus(
       return {
         label: "Application · Draft",
         lede: () =>
-          "Pick up where you left off. Saves autosave as you type.",
+          "Pick up where you left off — every answer you've typed is saved.",
         cta: { href: "/apply", label: () => "Continue application" },
       };
     case "submitted":
