@@ -8,7 +8,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callCreditsForUser } from "@/lib/scholarships";
 import { windowUntilLabel } from "@/lib/scholarship-window";
 import type { ScholarshipCallState } from "@/components/scholarship-call-card";
-import { interviewCardState, interviewStage } from "@/lib/call-lifecycle";
+import {
+  canRequestTeamCall,
+  interviewCardState,
+  interviewStage,
+} from "@/lib/call-lifecycle";
 import { countCallRecordings, recordingCandidates } from "@/lib/call-recordings";
 
 export const metadata = { title: "1:1 calls · batch0" };
@@ -56,17 +60,18 @@ export default async function StudentCallsPage() {
   // the recording lookup all agree on what "now" is.
   const now = new Date();
 
-  // The getting-to-know-you request is a pre-kickoff onboarding step for
-  // enrolled students, so the form to ask only shows to an enrolled student
-  // before their cohort starts. A request that's already in flight (requested,
-  // booked, or done) keeps showing whatever the phase, so a student never loses
-  // track of one they filed. "In flight" is read through the call it booked
-  // (interviewStage): a request still marked scheduled whose call was
-  // cancelled is NOT booked, and past kickoff it is simply gone rather than a
-  // card announcing an interview that isn't happening.
+  // Any enrolled student can ask the team for a 1:1 whenever they want, and
+  // the team confirms a time. Before kickoff it is the getting-to-know-you
+  // interview, after it an ordinary call. A request already in flight keeps
+  // showing whatever the phase, read through the call it booked
+  // (interviewStage): one still marked scheduled whose call was cancelled is
+  // NOT booked, and one whose call already happened gives way to a fresh ask.
+  // Staff previewing the page can't file one (the action refuses them), so
+  // they don't get the form.
+  const interviewLastStage = interviewStage(interviewRequest, now);
   const interviewState = interviewCardState(
-    interviewStage(interviewRequest, now),
-    access.enrolled && access.preCohort,
+    interviewLastStage,
+    canRequestTeamCall(access),
   );
 
   const recordings = profile
@@ -85,6 +90,8 @@ export default async function StudentCallsPage() {
       recordings={recordings}
       interviewRequest={interviewRequest}
       interviewState={interviewState}
+      interviewKind={access.preCohort ? "interview" : "call"}
+      interviewLastStage={interviewLastStage}
       scholarshipCall={scholarshipCall}
     />
   );

@@ -419,6 +419,38 @@ is the one product decision worth making deliberately** — an unscoped picker
 means any investor can cold-invite any student, which is a safeguarding question
 as much as a technical one.
 
+#### Students asking the team for a 1:1
+
+Invites run staff→student. The other direction is `interview_requests`
+(migration 0061): **any enrolled student can ask the team for a 1:1 whenever
+they want**, and the team confirms a time. It began as a pre-kickoff
+"getting to know you" interview only, which left a student stuck in week 4
+with no way to ask for a call. The rule now lives in one tested place,
+`canRequestTeamCall` in `lib/call-lifecycle.ts`: enrolled and not staff, and
+the cohort phase deliberately doesn't matter.
+
+- **Asking.** The card (`components/interview-request-card.tsx`) is on
+  `/dashboard/calls`, the dashboard home, and `/dashboard/enrolled`. The
+  student offers a time, an optional second time, and a note. There's one open
+  request per student (`interview_requests_one_open_per_student`), so nobody
+  stacks asks on the team. After a call happens, the ask comes back ("Your last
+  call was…"); after one falls through, it says so.
+- **What kind.** `teamRequestKind` derives it from when the request was filed
+  against its cohort's start (New York dates). Before kickoff it's the
+  getting-to-know-you interview (topic "Getting to know you"); from kickoff day
+  on it's "1:1 with the batch0 team". Scholarship mentor calls ride the same
+  table and keep their own topic. No column stores the kind, so none of this
+  needed a migration.
+- **Confirming.** The queue on `/admin/calls` (admins are notified;
+  `calls.invite` authorizes). **Confirm** prefills the student's first
+  proposal that is still ahead. If the time is one they offered
+  (`confirmsProposal`, to the minute), the call is written as `accepted` and
+  they get `Templates.callConfirmed`, with nothing to answer. Any other time is
+  a normal invite (`invited` plus `Templates.callInvite`) for them to accept or
+  decline. The form says which before the click.
+- **Declining.** Tells the student and frees them to ask again with other
+  times.
+
 #### Lifecycle — what the clock does to a call
 
 `call_invites.status` records decisions; it does not record time passing.

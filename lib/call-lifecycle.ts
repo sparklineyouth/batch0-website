@@ -375,12 +375,100 @@ export function interviewStage(
 }
 
 /**
- * What the interview card should show on a given surface.
+ * What a student's request to the team is for.
  *
- * `canAsk` is whether this student may file a NEW request right now (enrolled
- * and before kickoff); a request already in flight shows regardless, so a
- * student never loses track of one they filed. `hideDone` is for the dashboard
- * home, where a finished interview is not news — the calls page still shows it.
+ * Any enrolled student can ask the team for a 1:1 whenever they want, and the
+ * team confirms a time. One asked for before the student's cohort starts is
+ * the getting-to-know-you interview. One asked for from kickoff on is an
+ * ordinary 1:1 with the team: stuck on something, want feedback, need to talk.
+ *
+ * Derived from when the request was filed against the start of the cohort it
+ * recorded, compared as New York calendar dates like every other cohort-date
+ * check, so it needs no column of its own. A request with no cohort on it is
+ * a plain call: nobody files a pre-kickoff interview for a cohort they have
+ * not got.
+ */
+export type TeamRequestKind = "interview" | "call";
+
+export function teamRequestKind(
+  createdAt: string,
+  cohortStartsOn: string | null,
+): TeamRequestKind {
+  if (!cohortStartsOn) return "call";
+  const filedOn = easternDate(createdAt);
+  if (!filedOn) return "call";
+  return filedOn < cohortStartsOn ? "interview" : "call";
+}
+
+/** The New York calendar date (YYYY-MM-DD) an instant falls on, or null. */
+function easternDate(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/**
+ * May this student ask the team for a 1:1 right now?
+ *
+ * Any enrolled student, whenever they want: before kickoff, during the
+ * cohort, after it. `preCohort` is taken and ignored on purpose. It used to
+ * be the gate (pre-kickoff interviews only), which left a student stuck in
+ * week 4 with no way to ask for a call; the test pins that it no longer
+ * matters. Staff previewing the dashboard read as enrolled but cannot file
+ * one. The one limit is the database's: one open request at a time.
+ */
+export function canRequestTeamCall(access: {
+  enrolled: boolean;
+  staff: boolean;
+  preCohort: boolean;
+}): boolean {
+  return access.enrolled && !access.staff;
+}
+
+/**
+ * Is the team confirming a time the student already offered?
+ *
+ * Then the call is booked as accepted, with no second "accept" step for the
+ * student. They proposed that exact time, so asking them to agree to it again
+ * is a hoop that only loses calls. A different time is a new proposal, and
+ * the student still gets to accept or decline it.
+ *
+ * Compared to the minute: both sides come from minute-precision
+ * `datetime-local` inputs, and the form round-trips the student's ISO time
+ * through the confirmer's own timezone, which cannot move the instant.
+ */
+export function confirmsProposal(
+  startsAt: string,
+  preferredAt: string | null,
+  altAt: string | null,
+): boolean {
+  const minute = (v: string | null) => {
+    if (!v) return null;
+    const ms = Date.parse(v);
+    return Number.isFinite(ms) ? Math.floor(ms / MINUTE) : null;
+  };
+  const chosen = minute(startsAt);
+  if (chosen === null) return false;
+  return chosen === minute(preferredAt) || chosen === minute(altAt);
+}
+
+/**
+ * What the request card should show on a given surface.
+ *
+ * `canAsk` is whether this student may file a NEW request right now: any
+ * enrolled student, at any point, one open request at a time. A request
+ * already in flight (waiting, or booked and still ahead) shows regardless, so
+ * a student never loses track of one they filed.
+ *
+ * Once the call has happened, a student who may ask gets the ask again rather
+ * than a "done" card: asking whenever they want means asking again too. The
+ * card says when their last call was. `hideDone` is for a surface where a
+ * finished call is not news to someone who cannot ask.
  */
 export type InterviewCardState =
   | "hidden"
@@ -400,6 +488,7 @@ export function interviewCardState(
     case "booked":
       return "booked";
     case "done":
+      if (canAsk) return "compose";
       return opts.hideDone ? "hidden" : "done";
     case "fell_through":
     case null:

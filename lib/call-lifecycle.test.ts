@@ -10,7 +10,9 @@ import {
   canMarkCallCompleted,
   canRespondToCall,
   canUploadCallRecording,
+  canRequestTeamCall,
   canViewCallRecording,
+  confirmsProposal,
   formatEasternDateTime,
   hostCallsHref,
   interviewCardState,
@@ -22,6 +24,7 @@ import {
   shouldAutoComplete,
   shouldAutoWithdraw,
   splitCalls,
+  teamRequestKind,
   type CallPhase,
   type CallTiming,
 } from "./call-lifecycle.ts";
@@ -356,12 +359,61 @@ test("interviewCardState: a request in flight always shows; asking needs eligibi
   assert.equal(interviewCardState("requested", false), "requested");
   assert.equal(interviewCardState("booked", false), "booked");
   assert.equal(interviewCardState("done", false), "done");
-  assert.equal(interviewCardState("done", true, { hideDone: true }), "hidden");
+  assert.equal(interviewCardState("done", false, { hideDone: true }), "hidden");
+  // A request in flight is never replaced by the ask, even for someone who may ask.
+  assert.equal(interviewCardState("requested", true), "requested");
+  assert.equal(interviewCardState("booked", true), "booked");
+  // Whenever they want means again, too: once the call has happened, a student
+  // who may ask gets the ask back rather than a dead-end "done" card.
+  assert.equal(interviewCardState("done", true), "compose");
+  assert.equal(interviewCardState("done", true, { hideDone: true }), "compose");
   // A call that fell through is not "booked" — it is a fresh ask, if allowed.
   assert.equal(interviewCardState("fell_through", true), "compose");
   assert.equal(interviewCardState("fell_through", false), "hidden");
   assert.equal(interviewCardState(null, true), "compose");
   assert.equal(interviewCardState(null, false), "hidden");
+});
+
+test("canRequestTeamCall: any enrolled student, whenever they want", () => {
+  // Before kickoff, during the cohort: the phase must not matter.
+  assert.equal(canRequestTeamCall({ enrolled: true, staff: false, preCohort: true }), true);
+  assert.equal(canRequestTeamCall({ enrolled: true, staff: false, preCohort: false }), true);
+  // Not enrolled (an accepted applicant, a payment still clearing): not yet.
+  assert.equal(canRequestTeamCall({ enrolled: false, staff: false, preCohort: true }), false);
+  assert.equal(canRequestTeamCall({ enrolled: false, staff: false, preCohort: false }), false);
+  // Staff previewing the dashboard read as enrolled, but can't file one.
+  assert.equal(canRequestTeamCall({ enrolled: true, staff: true, preCohort: false }), false);
+});
+
+test("teamRequestKind: before the cohort starts it's the interview, from kickoff day a call", () => {
+  // Fall starts Mon Sep 14. Compared as New York dates, not UTC ones.
+  const starts = "2026-09-14";
+  assert.equal(teamRequestKind("2026-09-01T15:00:00.000Z", starts), "interview");
+  // 10 p.m. Sunday in New York is already Monday in UTC: still before kickoff.
+  assert.equal(teamRequestKind("2026-09-14T02:00:00.000Z", starts), "interview");
+  // 12:30 a.m. Monday in New York: kickoff day, so an ordinary call.
+  assert.equal(teamRequestKind("2026-09-14T04:30:00.000Z", starts), "call");
+  assert.equal(teamRequestKind("2026-10-20T18:00:00.000Z", starts), "call");
+  // No cohort on the request, or a garbled timestamp: a plain call, never an
+  // interview for a cohort nobody can name.
+  assert.equal(teamRequestKind("2026-09-01T15:00:00.000Z", null), "call");
+  assert.equal(teamRequestKind("not a date", starts), "call");
+});
+
+test("confirmsProposal: only one of the student's own times books without an accept step", () => {
+  const preferred = "2026-10-05T22:00:00.000Z";
+  const alt = "2026-10-06T22:30:00.000Z";
+  assert.equal(confirmsProposal(preferred, preferred, alt), true);
+  assert.equal(confirmsProposal(alt, preferred, alt), true);
+  // Same minute, written differently (seconds, offset): the same instant to the minute.
+  assert.equal(confirmsProposal("2026-10-05T18:00:30-04:00", preferred, null), true);
+  // A minute off is a different time, which the student must accept.
+  assert.equal(confirmsProposal("2026-10-05T22:01:00.000Z", preferred, alt), false);
+  assert.equal(confirmsProposal("2026-10-05T21:59:00.000Z", preferred, alt), false);
+  // Nothing proposed, or nonsense in, never counts as confirmed.
+  assert.equal(confirmsProposal(preferred, null, null), false);
+  assert.equal(confirmsProposal("not a date", preferred, alt), false);
+  assert.equal(confirmsProposal(preferred, "not a date", null), false);
 });
 
 test("proposalsAllPast flags a request only when every proposed time has gone", () => {

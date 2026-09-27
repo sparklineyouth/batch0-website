@@ -9,6 +9,11 @@ import {
 } from "@/lib/interview-requests";
 import { logAudit } from "@/lib/audit";
 import {
+  canRequestTeamCall,
+  confirmsProposal,
+  type TeamRequestKind,
+} from "@/lib/call-lifecycle";
+import {
   spendCallCredit,
   scholarshipApplicationIdForRequest,
 } from "@/lib/scholarships";
@@ -17,8 +22,13 @@ import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 
 /**
- * Server actions for "getting to know you" interview requests (migration
- * 0061). The student-first counterpart to app/calls/actions.ts.
+ * Server actions for a student asking the team for a 1:1 (interview_requests,
+ * migration 0061). The student-first counterpart to app/calls/actions.ts.
+ *
+ * Any enrolled student can ask whenever they want, one open request at a
+ * time, and the team confirms a time. Before kickoff that is the
+ * getting-to-know-you interview; from kickoff on it is an ordinary 1:1 with
+ * the team (TeamRequestKind in lib/call-lifecycle.ts).
  *
  * Same discipline as its sibling: every mutation re-checks authorization
  * here, because a server action is its own entry point. The student side
@@ -27,6 +37,7 @@ import { Templates } from "@/lib/email/templates";
  */
 
 const INTERVIEW_TOPIC = "Getting to know you";
+const TEAM_CALL_TOPIC = "1:1 with the batch0 team";
 // A learner's-scholarship call rides the same request row and the same action
 // (migration 0071), but it is a mentor call during the cohort, not an
 // onboarding interview — and labelling it "Getting to know you" on both
@@ -47,7 +58,12 @@ function revalidateTeam() {
   for (const p of TEAM_PATHS) revalidatePath(p);
 }
 
-/** A student asks the team for an interview. */
+/** What a request is called, in the words the student and team both see. */
+function requestLabel(kind: TeamRequestKind): string {
+  return kind === "interview" ? "getting-to-know-you interview" : "1:1 call";
+}
+
+/** A student asks the team for a 1:1, whenever they want. */
 export async function requestInterview(input: {
   preferredAt: string;
   altAt?: string | null;
@@ -55,21 +71,21 @@ export async function requestInterview(input: {
 }) {
   const actor = await requireActor();
 
-  // The feature is a pre-kickoff onboarding step, so it's for students, and
-  // only while their cohort hasn't started. getStudentAccess resolves both
-  // the gate and the cohort id the row records — one request-cached read.
+  // For enrolled students, at any point: before kickoff, during the cohort,
+  // after it. It used to be pre-kickoff only, which left a student who was
+  // stuck in week 4 with no way to ask the team for a call. getStudentAccess
+  // resolves both the gate and the cohort id the row records, in one
+  // request-cached read. The one limit is the database's: one open request
+  // per student (interview_requests_one_open_per_student), so nobody stacks
+  // five asks on the team.
   const access = await getStudentAccess(actor.role);
   if (actor.role !== "student" || access.staff) {
-    throw new Error("Only students can request an interview.");
+    throw new Error("Only students can request a 1:1 call.");
   }
-  if (!access.enrolled) {
-    throw new Error("Interview requests open once you're enrolled.");
+  if (!canRequestTeamCall(access)) {
+    throw new Error("1:1 requests open once you're enrolled.");
   }
-  if (!access.preCohort) {
-    throw new Error(
-      "Interview requests are for before kickoff — your cohort is already underway.",
-    );
-  }
+  const kind: TeamRequestKind = access.preCohort ? "interview" : "call";
 
   const preferredAt = new Date(input.preferredAt);
   if (Number.isNaN(preferredAt.getTime())) {
@@ -106,7 +122,9 @@ export async function requestInterview(input: {
   if (error) {
     // The partial unique index (one open request per student) fires here.
     if (error.code === "23505") {
-      throw new Error("You've already got an open interview request.");
+      throw new Error(
+        "You've already asked for a call. The team will confirm it soon, or you can withdraw it and ask again.",
+      );
     }
     throw new Error(error.message);
   }
@@ -117,7 +135,7 @@ export async function requestInterview(input: {
     action: "interview_request.created",
     targetType: "interview_request",
     targetId: id,
-    payload: { preferred_at: preferredAt.toISOString() },
+    payload: { preferred_at: preferredAt.toISOString(), kind },
   });
 
   // Fan the ask out to the whole team, so it isn't waiting on whoever next
@@ -136,8 +154,8 @@ export async function requestInterview(input: {
         .map((uid) => ({
           userId: uid,
           type: "interview_requested",
-          title: `${name} requested a getting-to-know-you interview`,
-          body: input.note?.trim() || "Schedule it from 1:1 calls.",
+          title: `${name} requested a ${requestLabel(kind)}`,
+          body: input.note?.trim() || "Confirm a time from 1:1 calls.",
           link: "/admin/calls",
           // One notification per team member per request — a re-render or a
           // retry shouldn't stack duplicates in anyone's bell.
@@ -191,6 +209,10 @@ export async function cancelInterviewRequest(id: string) {
 /**
  * The team confirms a time. Writes a real call_invites row and links the two,
  * so the meeting itself runs on the existing 1:1 machinery.
+ *
+ * Confirming a time the student offered books the call as accepted: they
+ * already said that time works, so there is nothing left for them to answer.
+ * Any other time goes out as an invite for them to accept or decline.
  */
 export async function scheduleInterviewRequest(input: {
   id: string;
@@ -218,7 +240,16 @@ export async function scheduleInterviewRequest(input: {
   // lib/scholarships.ts): null on a database where 0071 hasn't run, which is
   // simply an ordinary interview.
   const scholarshipAppId = await scholarshipApplicationIdForRequest(admin, req.id);
-  const topic = scholarshipAppId ? SCHOLARSHIP_TOPIC : INTERVIEW_TOPIC;
+  const topic = scholarshipAppId
+    ? SCHOLARSHIP_TOPIC
+    : req.kind === "interview"
+      ? INTERVIEW_TOPIC
+      : TEAM_CALL_TOPIC;
+  const confirmed = confirmsProposal(
+    startsAt.toISOString(),
+    req.preferredAt,
+    req.altAt,
+  );
 
   const { data: invite, error: inviteErr } = await admin
     .from("call_invites")
@@ -228,7 +259,7 @@ export async function scheduleInterviewRequest(input: {
       starts_at: startsAt.toISOString(),
       duration_minutes: duration,
       topic,
-      status: "invited",
+      status: confirmed ? "accepted" : "invited",
     })
     .select("id")
     .single();
@@ -290,11 +321,13 @@ export async function scheduleInterviewRequest(input: {
       call_invite_id: inviteId,
       starts_at: startsAt.toISOString(),
       scholarship_application_id: scholarshipAppId,
+      confirmed_as_proposed: confirmed,
     },
   });
 
-  // Tell the student, both in-app and by email — same shape as a staff-sent
-  // invite, because to them it now is one.
+  // Tell the student, in-app and by email. A time they offered is booked, so
+  // they hear "confirmed" with nothing to do. A new time is an invite, the
+  // same shape as a staff-sent one, because to them it now is one.
   try {
     const { data: hostProfile } = await admin
       .from("profiles")
@@ -303,23 +336,31 @@ export async function scheduleInterviewRequest(input: {
       .maybeSingle();
     const hostName = (hostProfile as any)?.full_name || "The batch0 team";
 
+    const what = scholarshipAppId
+      ? "scholarship mentor call"
+      : requestLabel(req.kind);
     await notify({
       userId: req.studentId,
       type: "call_invited",
-      title: scholarshipAppId
-        ? "Your scholarship mentor call is booked"
-        : "Your getting-to-know-you interview is booked",
-      body: "Open your 1:1 calls to accept the time.",
+      title: confirmed
+        ? `Your ${what} is confirmed`
+        : `The team suggested a time for your ${what}`,
+      body: confirmed
+        ? "It's booked for the time you asked. Join from your 1:1 calls when it starts."
+        : "Open your 1:1 calls to accept the time.",
       link: "/dashboard/calls",
     });
 
     if (req.studentEmail) {
-      const t = Templates.callInvite({
+      const args = {
         hostName,
         startsAt: startsAt.toISOString(),
         durationMinutes: duration,
         topic,
-      });
+      };
+      const t = confirmed
+        ? Templates.callConfirmed(args)
+        : Templates.callInvite(args);
       await sendEmail({ to: req.studentEmail, subject: t.subject, html: t.html });
     }
   } catch (err) {
@@ -328,7 +369,7 @@ export async function scheduleInterviewRequest(input: {
 
   revalidateStudent();
   revalidateTeam();
-  return { callInviteId: inviteId };
+  return { callInviteId: inviteId, confirmed };
 }
 
 /** The team turns a request down. */
@@ -336,13 +377,9 @@ export async function declineInterviewRequest(id: string) {
   const actor = await assertPermission("calls.invite");
   const admin = createAdminClient();
 
-  const { data: req } = await admin
-    .from("interview_requests")
-    .select("id, student_id, status")
-    .eq("id", id)
-    .maybeSingle();
+  const req = await getInterviewRequest(id);
   if (!req) throw new Error("That request no longer exists.");
-  if ((req as any).status !== "requested") {
+  if (req.status !== "requested") {
     throw new Error("That request has already been handled.");
   }
 
@@ -361,10 +398,10 @@ export async function declineInterviewRequest(id: string) {
 
   try {
     await notify({
-      userId: (req as any).student_id,
+      userId: req.studentId,
       type: "interview_declined",
-      title: "About your interview request",
-      body: "We couldn't schedule your getting-to-know-you interview this time. You can ask again.",
+      title: `About your ${requestLabel(req.kind)} request`,
+      body: `We couldn't schedule your ${requestLabel(req.kind)} this time. Ask again with other times whenever suits you.`,
       link: "/dashboard/calls",
     });
   } catch (err) {

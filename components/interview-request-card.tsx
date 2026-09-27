@@ -11,11 +11,71 @@ import {
   cancelInterviewRequest,
 } from "@/app/calls/interview-actions";
 import type { InterviewRequest } from "@/lib/interview-requests";
-import type { InterviewCardState } from "@/lib/call-lifecycle";
-import { CalendarClock, CheckCircle, Clock, Sparkles, X } from "lucide-react";
+import type {
+  InterviewCardState,
+  InterviewStage,
+  TeamRequestKind,
+} from "@/lib/call-lifecycle";
+import {
+  CalendarClock,
+  CheckCircle,
+  Clock,
+  MessageCircle,
+  Sparkles,
+  X,
+} from "lucide-react";
+
+/** Every string that differs between the two kinds of request, in one place. */
+const COPY: Record<
+  TeamRequestKind,
+  {
+    eyebrow: string;
+    title: string;
+    blurb: string;
+    button: string;
+    placeholder: string;
+    requested: string;
+    booked: string;
+    bookedLead: string;
+    done: string;
+    doneBody: string;
+  }
+> = {
+  interview: {
+    eyebrow: "Before kickoff",
+    title: "Request a getting-to-know-you interview",
+    blurb:
+      "A short, no-pressure video call with the batch0 team before your cohort starts. Tell us when you’re free and we’ll confirm a time.",
+    button: "Request an interview",
+    placeholder: "What you're building, what you'd love to talk about…",
+    requested: "Interview requested",
+    booked: "Interview booked",
+    bookedLead: "Your getting-to-know-you interview is on the calendar",
+    done: "Interview done",
+    doneBody:
+      "Thanks for making time to meet the team. It’s under Past in your 1:1 calls, with the recording if there is one.",
+  },
+  call: {
+    eyebrow: "1:1 with the team",
+    title: "Request a 1:1 call",
+    blurb:
+      "Stuck, want feedback, or need to talk something through? Ask for a private video call with the batch0 team whenever you need one. Tell us when you’re free and we’ll confirm a time.",
+    button: "Request a call",
+    placeholder: "What you'd like to talk about, and anything we should look at first…",
+    requested: "Call requested",
+    booked: "Call booked",
+    bookedLead: "Your 1:1 with the batch0 team is on the calendar",
+    done: "Call done",
+    doneBody:
+      "It’s under Past in your 1:1 calls, with the recording if there is one.",
+  },
+};
 
 /**
- * The student's "getting to know you" interview request (migration 0061).
+ * A student's request for a 1:1 with the team (interview_requests, migration
+ * 0061). Any enrolled student can ask whenever they want and the team
+ * confirms a time: before kickoff it reads as the getting-to-know-you
+ * interview, from kickoff on as an ordinary 1:1 call (TeamRequestKind).
  *
  * One component, four states, so a student sees the same thing whether they
  * land on it from the calls page, the dashboard home, or the enrolled page:
@@ -39,6 +99,8 @@ export function InterviewRequestCard({
   request,
   state: stateProp,
   variant = "full",
+  composeKind = "call",
+  lastStage = null,
 }: {
   request: InterviewRequest | null;
   /**
@@ -48,6 +110,18 @@ export function InterviewRequestCard({
    */
   state?: InterviewCardState;
   variant?: "full" | "compact";
+  /**
+   * What a NEW request would be, decided by the page: an interview before the
+   * student's cohort starts, a call after. A request already filed carries
+   * its own kind.
+   */
+  composeKind?: TeamRequestKind;
+  /**
+   * Where the student's last request ended up (interviewStage), so the ask
+   * can say why it is showing again: their last call happened, or it did
+   * not go ahead.
+   */
+  lastStage?: InterviewStage | null;
 }) {
   const state: InterviewCardState =
     stateProp ??
@@ -56,6 +130,16 @@ export function InterviewRequestCard({
       : request?.status === "requested"
         ? "requested"
         : "compose");
+  // A request in flight speaks in its own kind. A fresh ask uses the page's,
+  // except after a call that already happened: a second "getting to know
+  // you" would be odd, so from then on it is simply a call.
+  const kind: TeamRequestKind =
+    state === "compose"
+      ? lastStage === "done"
+        ? "call"
+        : composeKind
+      : (request?.kind ?? composeKind);
+  const copy = COPY[kind];
   const router = useRouter();
   const [composing, setComposing] = useState(false);
   const [pending, start] = useTransition();
@@ -107,10 +191,9 @@ export function InterviewRequestCard({
   if (state === "done") {
     return (
       <div className={shell}>
-        <Eyebrow icon={CheckCircle}>Interview done</Eyebrow>
+        <Eyebrow icon={CheckCircle}>{copy.done}</Eyebrow>
         <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-          Thanks for making time to meet the team. It&rsquo;s under Past in your
-          1:1 calls, with the recording if there is one.
+          {copy.doneBody}
         </p>
       </div>
     );
@@ -121,9 +204,9 @@ export function InterviewRequestCard({
     const needsAnswer = request?.call?.status === "invited";
     return (
       <div className={shell}>
-        <Eyebrow icon={CheckCircle}>Interview booked</Eyebrow>
+        <Eyebrow icon={CheckCircle}>{copy.booked}</Eyebrow>
         <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-          Your getting-to-know-you interview is on the calendar
+          {copy.bookedLead}
           {request?.call && (
             <>
               {" "}for{" "}
@@ -151,10 +234,11 @@ export function InterviewRequestCard({
   if (state === "requested" && request) {
     return (
       <div className={shell}>
-        <Eyebrow icon={Clock}>Interview requested</Eyebrow>
+        <Eyebrow icon={Clock}>{copy.requested}</Eyebrow>
         <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-          The batch0 team has your request and will confirm a time soon. You
-          asked for{" "}
+          The batch0 team has your request and will confirm a time soon. If
+          they confirm one of yours, it&rsquo;s booked, with nothing more for
+          you to do. You asked for{" "}
           <span className="font-medium text-ink">
             <LocalTime value={request.preferredAt} mode="datetime-short" />
           </span>
@@ -188,31 +272,37 @@ export function InterviewRequestCard({
   // ---- No request: prompt + inline form ------------------------------------
   return (
     <div className={shell}>
-      <Eyebrow icon={Sparkles}>Before kickoff</Eyebrow>
+      <Eyebrow icon={kind === "interview" ? Sparkles : MessageCircle}>
+        {copy.eyebrow}
+      </Eyebrow>
       <p
         className={
           "mt-2 font-medium text-ink " +
           (variant === "compact" ? "text-[15px]" : "text-base")
         }
       >
-        Request a getting-to-know-you interview
+        {copy.title}
       </p>
-      <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-        A short, no-pressure video call with the batch0 team before your cohort
-        starts. Tell us when you&rsquo;re free and we&rsquo;ll confirm a time.
-      </p>
-      {/* A request is still "scheduled" when the call it booked falls
-          through; the page shows the ask again, and this says why. */}
-      {request?.status === "scheduled" && (
+      <p className="mt-1 text-sm leading-relaxed text-ink-soft">{copy.blurb}</p>
+      {/* The ask shows again after a request's call happened or fell
+          through; say which, so it doesn't look like the last one was lost. */}
+      {lastStage === "done" && request?.call && (
         <p className="mt-2 text-sm text-ink-faint">
-          Your last interview didn&rsquo;t go ahead — ask for a new time
-          whenever suits you.
+          Your last call was{" "}
+          <LocalTime value={request.call.startsAt} mode="datetime-short" />.
+          Ask for another whenever you need one.
+        </p>
+      )}
+      {lastStage === "fell_through" && (
+        <p className="mt-2 text-sm text-ink-faint">
+          Your last call didn&rsquo;t go ahead. Ask for a new time whenever
+          suits you.
         </p>
       )}
 
       {!composing ? (
         <Button className="mt-4" onClick={() => setComposing(true)}>
-          Request an interview
+          {copy.button}
         </Button>
       ) : (
         <div className="mt-4 space-y-4">
@@ -240,7 +330,7 @@ export function InterviewRequestCard({
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="What you're building, what you'd love to talk about…"
+              placeholder={copy.placeholder}
             />
           </div>
           {error && <FieldError>{error}</FieldError>}

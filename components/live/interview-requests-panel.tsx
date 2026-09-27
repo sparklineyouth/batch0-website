@@ -10,16 +10,24 @@ import {
   declineInterviewRequest,
 } from "@/app/calls/interview-actions";
 import type { InterviewRequest } from "@/lib/interview-requests";
-import { bookingPrefill, proposalsAllPast } from "@/lib/call-lifecycle";
-import { AlertTriangle, CalendarClock, Check } from "lucide-react";
+import {
+  bookingPrefill,
+  confirmsProposal,
+  proposalsAllPast,
+} from "@/lib/call-lifecycle";
+import { AlertTriangle, CalendarClock, Check, Info } from "lucide-react";
 
 const DURATIONS = [15, 20, 30, 45, 60];
 
 /**
- * The team's queue of "getting to know you" interview requests, on
- * /admin/calls. Each row can be scheduled — which confirms a time and writes a
- * real call_invites row (the student then accepts and joins like any 1:1) — or
- * declined.
+ * The team's queue of 1:1s students asked for, on /admin/calls: a
+ * getting-to-know-you interview before kickoff, an ordinary call after, or a
+ * scholarship mentor call. Each row is confirmed, which writes a real
+ * call_invites row, or declined.
+ *
+ * Confirming one of the student's own times books it outright, since they
+ * already said it works. Any other time goes to them as an invite to accept.
+ * The form says which, before the click.
  */
 export function InterviewRequestsPanel({
   requests,
@@ -35,8 +43,8 @@ export function InterviewRequestsPanel({
   if (requests.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-ink-faint">
-        No interview requests waiting. Students ask for one from their dashboard
-        before kickoff.
+        No call requests waiting. Enrolled students ask for a 1:1 from their
+        dashboard whenever they want one.
       </p>
     );
   }
@@ -84,6 +92,16 @@ function RequestRow({
       defaultStart(),
   );
   const [duration, setDuration] = useState(30);
+  // Does the time in the form match one the student offered? Then confirming
+  // books it outright; otherwise it goes to them to accept. Recomputed as the
+  // time is edited, so the button never promises the wrong thing.
+  const startsIso = (() => {
+    const d = new Date(startsLocal);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  })();
+  const asProposed =
+    !!startsIso &&
+    confirmsProposal(startsIso, request.preferredAt, request.altAt);
 
   function schedule() {
     setError(undefined);
@@ -119,11 +137,13 @@ function RequestRow({
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
             {request.studentName}
-            {scholarship && (
-              <span className="rounded-full bg-phosphor/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-phosphor-ink">
-                Scholarship call
-              </span>
-            )}
+            <span className="rounded-full bg-phosphor/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-phosphor-ink">
+              {scholarship
+                ? "Scholarship call"
+                : request.kind === "interview"
+                  ? "Intro interview"
+                  : "1:1 call"}
+            </span>
           </p>
           <p className="truncate text-xs text-ink-faint">
             {request.studentEmail}
@@ -133,7 +153,7 @@ function RequestRow({
         {!scheduling && (
           <div className="flex shrink-0 gap-2">
             <Button size="sm" onClick={() => setScheduling(true)}>
-              <CalendarClock className="h-4 w-4" /> Schedule
+              <CalendarClock className="h-4 w-4" /> Confirm
             </Button>
             <Button
               size="sm"
@@ -201,11 +221,17 @@ function RequestRow({
               </Select>
             </div>
           </div>
+          <p className="flex items-start gap-1.5 text-xs text-ink-faint">
+            <Info className="mt-px h-3.5 w-3.5 shrink-0" />
+            {asProposed
+              ? "One of the times they offered, so this books it straight away. They get a confirmation, with nothing to accept."
+              : "A different time from theirs, so they'll be asked to accept it."}
+          </p>
           {error && <FieldError>{error}</FieldError>}
           <div className="flex gap-2">
             <Button disabled={pending || !startsLocal} onClick={schedule}>
               <Check className="h-4 w-4" />
-              {pending ? "Booking…" : "Book it"}
+              {pending ? "Booking…" : asProposed ? "Confirm" : "Send this time"}
             </Button>
             <Button
               variant="ghost"

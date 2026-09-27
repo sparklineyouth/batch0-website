@@ -723,6 +723,36 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }),
 
   /**
+   * The team confirmed a 1:1 the student asked for, at a time the student
+   * offered. It is booked, not proposed: there is nothing to accept, so this
+   * is not `callInvite` with its "Accept or decline" button. When the team
+   * picks a different time, the student gets `callInvite` instead.
+   */
+  callConfirmed: (args: {
+    hostName: string;
+    startsAt: string;
+    durationMinutes: number;
+    topic: string | null;
+  }) => ({
+    subject: `Your 1:1 call is confirmed`,
+    html: layout({
+      preheader: args.topic
+        ? `${args.topic} · ${args.durationMinutes} minutes`
+        : `${args.durationMinutes} minutes`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">You're booked</h1>
+        <p><strong>${escape(args.hostName)}</strong> confirmed the time you asked for: ${args.durationMinutes} minutes with the batch0 team.</p>
+        ${args.topic ? `<p style="margin:12px 0">About: <strong>${escape(args.topic)}</strong></p>` : ""}
+        <p style="margin:12px 0">It's on <strong>${escape(
+          formatEasternDateTime(args.startsAt) ?? args.startsAt,
+        )}</strong>. Open your calls to see it in your own timezone.</p>
+        <p style="color:#8b949e;font-size:13px">Nothing to accept. Join from your 1:1 calls when it starts; the room opens a few minutes early. Can't make it anymore? Reply to this email and we'll find another time.</p>
+      `,
+      cta: { url: `${env.siteUrl}/dashboard/calls`, label: "Open your 1:1 calls" },
+    }),
+  }),
+
+  /**
    * The team answered a private question a student asked at
    * /dashboard/discussions. Sent only for admin-visibility threads — a reply
    * on a cohort discussion is an in-app notification, not an email, or every
