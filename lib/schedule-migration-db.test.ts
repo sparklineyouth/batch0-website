@@ -8,9 +8,15 @@ const fixture = JSON.parse(await readFile(new URL("./fixtures/fall-schedule-befo
 const migration = await readFile(new URL("../supabase/migrations/0083_restore_fall_schedule.sql", import.meta.url), "utf8");
 const fall = "6350c6ac-70f0-4f53-93d5-c99e397185a9";
 const intro = "a1ab2a89-6cde-504c-9b17-857a683549eb";
+// Demo Day is Fri Nov 13 at 8 p.m. Eastern, which is already Nov 14 in UTC, so
+// "after the cohort" is midnight Eastern, never a bare date the session zone reads.
+const afterCohort = "'2026-11-14 00:00 America/New_York'::timestamptz";
 
 async function setup() {
   const db = new PGlite();
+  // PGlite takes the machine's zone; Supabase runs in UTC. Pin it so the result
+  // doesn't depend on whose laptop runs the test.
+  await db.exec("set timezone = 'UTC'");
   await db.exec(`
     create table cohorts(id uuid primary key, starts_on date, ends_on date, applications_close_at timestamptz, late_entry_until timestamptz, catch_up_plan text);
     create table events(id uuid primary key, cohort_id uuid, type text, title text, starts_at timestamptz, ends_at timestamptz, daily_room_name text, description text, updated_at timestamptz);
@@ -53,7 +59,7 @@ test("approved Fall repair restores the entire nine-week schedule including DST 
     assert.match(cohort.catch_up_plan, /September 21, 1–2 p.m. Eastern/);
     // Re-running a narrowly scoped repair must not move the dates again.
     await db.exec(migration);
-    assert.equal((await db.query<any>("select count(*)::int n from events where starts_at > '2026-11-14'::timestamptz")).rows[0].n, 0);
+    assert.equal((await db.query<any>(`select count(*)::int n from events where starts_at > ${afterCohort}`)).rows[0].n, 0);
   } finally { await db.close(); }
 });
 
@@ -64,7 +70,7 @@ test("a changed offer fails without changing its dates or deadline", async () =>
     await assert.rejects(db.exec(migration), /dates differ/);
     await db.exec("rollback");
     assert.equal((await db.query<any>("select late_entry_until from cohorts")).rows[0].late_entry_until, null);
-    assert.equal((await db.query<any>("select count(*)::int n from events where starts_at > '2026-11-14'::timestamptz")).rows[0].n, 10);
+    assert.equal((await db.query<any>(`select count(*)::int n from events where starts_at > ${afterCohort}`)).rows[0].n, 10);
   } finally { await db.close(); }
 });
 
