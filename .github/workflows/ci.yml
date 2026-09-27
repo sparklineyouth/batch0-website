@@ -1,0 +1,45 @@
+# Typecheck and tests on every pull request and every push to main.
+#
+# Vercel already builds each branch, so this does not repeat the build: it runs
+# what Vercel never does. Without it the Fall schedule test sat red on every UTC
+# machine for a week, green only on laptops in U.S. time. The runner is UTC,
+# which is the point: it matches Supabase and Vercel, not a developer's laptop.
+#
+# Everything here is hermetic (PGlite in memory, no network, no secrets), so it
+# needs nothing from the repository settings.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test
+      - name: Database tests
+        run: |
+          npm run test:discord-db
+          npm run test:scholarships-db
+          npm run test:profile-privileges-db
+          npm run test-blast-addressing
+          node --test scripts/cohort-readiness-winter.test.mjs
