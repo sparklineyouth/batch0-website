@@ -296,13 +296,13 @@ export const RECORDING_AUDIO_BITRATE = 96_000;
 export const RECORDING_FPS = 24;
 
 /**
- * A recording segment's name, as the live room writes it: which page load
+ * A recording segment's name, as the live room writes it: which room mount
  * (`run`) recorded it, and its index within that run.
  *
  * `segment-<run>-<index>.webm` — the server then appends its own upload stamp,
  * so a stored path reads `<event>/recording/segment-<run>-<index>-<stamp>.webm`.
- * The run is the recording tab's mount time; see `recordingSegmentSlot` for
- * what it is for.
+ * The run is the recording room's mount time (a page load, or a Rejoin/Reopen,
+ * which remount the room); see `recordingSegmentSlot` for what it is for.
  */
 export function webinarSegmentName(run: number, index: number): string {
   return `segment-${Math.max(0, Math.floor(run))}-${String(
@@ -326,6 +326,15 @@ export function parseSegmentRun(
 }
 
 /**
+ * Spare slots left before a new recording run's block — room for the tail of
+ * the run before it, still filing when the new run's first segment lands (see
+ * recordingSegmentSlot). Segments are two minutes and nothing waits on their
+ * uploads, so a departing recorder can have its final segment and, on a slow
+ * uplink, the one or two before it still in flight at the handover.
+ */
+export const RECORDING_RUN_GAP = 4;
+
+/**
  * Which `sort_order` a newly uploaded recording segment should be registered
  * at, given the segments the event already has.
  *
@@ -337,14 +346,27 @@ export function parseSegmentRun(
  *     slow segment arriving after its successors still lands in order, and a
  *     segment whose upload failed leaves a harmless gap in its own block.
  *   - A segment from a NEW run starts a new block after everything already
- *     registered. `useRecorder` numbers from zero on every page load, so a host
+ *     registered. `useRecorder` numbers from zero on every mount, so a host
  *     who reloads (or a second host who takes over) begins a second run whose
  *     indexes mean nothing against the first run's. Filling the first run's
  *     gaps with them — which "a free index is taken as asked" used to do —
  *     played minutes 32-37 between minutes 5-10 and 15-20.
+ *   - That new block starts RECORDING_RUN_GAP slots past the last one, not
+ *     straight after it, because the run before it may not have finished
+ *     filing. A recorder who presses Leave is off air at once and its final
+ *     segment uploads behind the "You've left" screen, while the co-host who
+ *     takes over starts recording at once — so a short first segment from
+ *     the successor (they said thanks and pressed End twenty seconds later)
+ *     routinely registers BEFORE the departing recorder's last two minutes.
+ *     Placed straight after the last registered slot, the successor took the
+ *     departing run's next slot, that run's final segment found its slot held
+ *     and went after the last, and the replay played the closing twenty
+ *     seconds before the two minutes that led up to them. The spare slots are
+ *     where such a tail lands, at its own run's base plus its index; any left
+ *     empty are harmless gaps, like a failed upload's.
  *   - Should the computed slot be held by a different file anyway (only a
- *     tampered or pathological name can do it), the segment goes after the
- *     last one rather than over it.
+ *     tampered or pathological name, or a tail longer than the spare slots,
+ *     can do it), the segment goes after the last one rather than over it.
  *
  * Paths from before runs existed (no run in the name) keep the old rule: a
  * free index is taken as asked, a held one goes after the last. That is
@@ -376,7 +398,7 @@ export function recordingSegmentSlot(
       const offset = t.sortOrder - theirs.index;
       if (base === null || offset < base) base = offset;
     }
-    const slot = (base ?? last + 1) + mine.index;
+    const slot = (base ?? last + 1 + RECORDING_RUN_GAP) + mine.index;
     return { kind: "insert", sortOrder: held(slot) ? last + 1 : slot };
   }
 
@@ -524,6 +546,12 @@ export function recordingSegmentStart(
  * talk outright. A host genuinely recording ALONGSIDE the rival always sees
  * the rival register during its own segment, and is still refused.
  *
+ * `at` is when the row was filed, as `recordingFiledAt` dated it: its arrival,
+ * except for a segment filed after its uploader had left the room — A's final
+ * segment, still uploading when B took over — which is dated to A's last
+ * heartbeat. Dated by its arrival, that tail landed "during" B's first segment
+ * and refused B's flush the moment A rejoined.
+ *
  * The same user is never their own rival: a host who reloads starts a new run
  * that must carry straight on from the old one.
  */
@@ -553,6 +581,51 @@ export function recordingRival({
   return null;
 }
 
+/**
+ * When a newly filed recording segment counts as registered — the `at` that
+ * `recordingRival` later reads back from `event_assets.created_at`.
+ *
+ * Normally now. But a segment filed after its uploader has LEFT the room is a
+ * departing recorder's tail. Leave takes a host off air at once and their
+ * final segment uploads behind the "You've left" screen, while the co-host
+ * who takes over starts recording straight away (the election counts a host
+ * who said goodbye as gone). Dated by its arrival, that tail looked like a
+ * registration made DURING the successor's first segment — so when the
+ * departing host came back (Rejoin waits for exactly this upload, then
+ * rejoins, and the successor stands down and flushes), the successor's flush
+ * was refused and deleted, and everything they had covered was lost.
+ *
+ * So a segment filed by someone attendance no longer has in the room is dated
+ * to their last heartbeat: the last moment the server saw them there, and so
+ * the latest the segment can have been recorded — before any successor can
+ * have started. "In the room" is the same rule `recordingRival`'s `present`
+ * is read with (no `left_at`, a heartbeat inside `presenceTimeoutMs`), and the
+ * departure is on record first: the room sends its leave the moment Leave is
+ * pressed, and the final segment is filed only once its upload has finished
+ * (a page's server actions run one at a time, in order). A present uploader —
+ * a recorder still on air, or one recording alongside the caller — is dated
+ * by arrival exactly as before, so the one-recorder backstop is not weakened.
+ *
+ * `uploader` is their attendance row; null when it can't be read (or there is
+ * none), which files the segment at `now`, as it always was.
+ */
+export function recordingFiledAt(
+  now: Date,
+  uploader: { leftAt: string | null; lastSeenAt: string | null } | null,
+  presenceTimeoutMs: number,
+): Date {
+  if (!uploader) return now;
+  const seen = uploader.lastSeenAt ? Date.parse(uploader.lastSeenAt) : NaN;
+  const present =
+    !uploader.leftAt &&
+    Number.isFinite(seen) &&
+    seen >= now.getTime() - presenceTimeoutMs;
+  if (present) return now;
+  if (Number.isFinite(seen)) return new Date(Math.min(now.getTime(), seen));
+  const left = uploader.leftAt ? Date.parse(uploader.leftAt) : NaN;
+  return Number.isFinite(left) ? new Date(Math.min(now.getTime(), left)) : now;
+}
+
 // ---------------------------------------------------------------------------
 // Guest speakers
 // ---------------------------------------------------------------------------
@@ -575,10 +648,17 @@ export type EventSpeaker = {
 /**
  * May this person broadcast in this room?
  *
- * The rule the live role is derived from, in one place so the page, the join
- * action and the announce action cannot drift. `events.manage` is the staff
- * grant; a speaker row is the per-event grant that exists so a guest does not
- * have to be handed the admin panel for forty minutes of talking.
+ * The rule the live role is derived from. `events.manage` is the staff grant
+ * (admins hold it through the `*` wildcard, and so does any custom role an
+ * admin ticks it on); a CLAIMED speaker row is the per-event grant that exists
+ * so a guest does not have to be handed the admin panel for forty minutes of
+ * talking. An unclaimed row (`userId` null) grants nobody anything.
+ *
+ * It is called in exactly one place — `resolveEventAccess` in
+ * lib/live-access.ts — and every consumer (the page, joinRoom/announce/leave,
+ * the room gates, the upload gate, the Q&A actions) reads the answer from
+ * there. That single call site is what actually keeps them from drifting; this
+ * function is where the rule is written down and tested.
  *
  * Takes ids rather than objects so the server can call it with whatever it has
  * already fetched, and so it has nothing to import.
@@ -597,6 +677,36 @@ export function canBroadcast({
   return speakers.some((s) => s.userId === userId);
 }
 
+/**
+ * May this host end the webinar for EVERYONE?
+ *
+ * Staff always. A guest speaker only when no staff host is present in the room
+ * — which keeps a guest-only webinar closable (otherwise the last speaker to
+ * finish could only Leave, and the audience would sit on "the host stepped
+ * away" until the window ran out) without letting a guest end a room an admin
+ * is running. A founder who presses "End" thinking it ends their segment is
+ * exactly the case this refuses; their normal exit is Leave.
+ *
+ * `staffPresent` comes from the attendance table (fresh host rows whose own
+ * role holds `events.manage` — presentHostRoles in lib/live-access.ts). When
+ * that cannot be read the server passes `false`,
+ * i.e. the rule fails OPEN for speakers: ending is reversible by staff and is
+ * not a privacy risk, while failing closed would strand guest-only webinars.
+ */
+export function canEndForEveryone({
+  isStaff,
+  isSpeaker,
+  staffPresent,
+}: {
+  isStaff: boolean;
+  isSpeaker: boolean;
+  staffPresent: boolean;
+}): boolean {
+  if (isStaff) return true;
+  if (isSpeaker) return !staffPresent;
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Premieres
 // ---------------------------------------------------------------------------
@@ -611,8 +721,10 @@ export function canBroadcast({
  *            read as live rather than as a video that started when they
  *            pressed play.
  *   live     A host is genuinely on camera. Either the recording has finished
- *            and the Q&A has opened, or a host went live early.
- *   ended    The window has closed.
+ *            and the Q&A has opened, or a host went live early. Also the
+ *            answer for any event with nothing to play (a hosted webinar),
+ *            from before its start onwards.
+ *   ended    A host pressed End for everyone, or the window has closed.
  */
 export type PremierePhase = "waiting" | "playing" | "live" | "ended";
 
@@ -641,27 +753,50 @@ export type PremiereState = {
  * schedule must yield to it immediately — the alternative is an audience
  * watching a recording of a person who is, at that moment, live on the other
  * side of the same page. Everything else is arithmetic on `startsAt`.
+ *
+ * With one exception above even that: **`liveEndedAt` ends it.** A host who
+ * pressed End for everyone has ended the premiere too — a recording that kept
+ * playing to viewers under an "Ended" badge was the bug that added this.
+ *
+ * And one rule about what a premiere IS: with `premiereSeconds` null there is
+ * nothing to play, so there is nothing to wait for either. A hosted webinar
+ * (which is what passes null) is 'live' from before its start — reading it as
+ * a premiere in 'waiting' hid the host's camera controls and End button for
+ * the whole early set-up window and then switched the camera on by itself at
+ * the scheduled start.
  */
 export function premiereState({
   startsAt,
   premiereSeconds,
   qaOpensAt,
   liveStartedAt,
+  liveEndedAt,
   endsAt,
   now = new Date(),
 }: {
   startsAt: string | Date;
-  /** Length of the recording. Null means there is nothing to play. */
+  /**
+   * Length of the recording. Null means there is nothing to play — a hosted
+   * webinar, or a premiere whose file has not been uploaded — and the room is
+   * simply live.
+   */
   premiereSeconds: number | null;
   /** Explicit switch-over time, when a host wanted one. */
   qaOpensAt?: string | Date | null;
   /** Set once a host has actually gone live. */
   liveStartedAt?: string | Date | null;
+  /** Set once a host has pressed End for everyone. Beats everything. */
+  liveEndedAt?: string | Date | null;
   endsAt?: string | Date | null;
   now?: Date;
 }): PremiereState {
   const t = now.getTime();
   const start = new Date(startsAt).getTime();
+
+  // Ended for everyone. Terminal for the premiere as for the live room.
+  if (liveEndedAt) {
+    return { phase: "ended", offsetSeconds: 0, secondsUntilNext: null };
+  }
 
   // A host is on camera. Nothing about the schedule matters any more.
   if (liveStartedAt) {
@@ -671,7 +806,10 @@ export function premiereState({
     }
   }
 
-  if (t < start) {
+  // Only a premiere with something to play waits for its start. Everything
+  // else — and in particular every hosted webinar — is live the moment anyone
+  // is let in.
+  if (t < start && premiereSeconds) {
     return {
       phase: "waiting",
       offsetSeconds: 0,

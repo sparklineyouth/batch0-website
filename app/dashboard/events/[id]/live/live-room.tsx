@@ -100,6 +100,7 @@ export function LiveRoom({
   roomUrl,
   token,
   role,
+  kind = "event",
   backHref,
   displayViewerCount = null,
   qa,
@@ -108,6 +109,11 @@ export function LiveRoom({
   roomUrl: string;
   token: string;
   role: LiveRole;
+  /**
+   * A 1:1 has two "hosts" (both need camera and mic), which is a signalling
+   * fact, not something to tell a student invitee. Drives the copy only.
+   */
+  kind?: "event" | "call";
   backHref: string;
   /**
    * Admin-announced headcount shown to everyone in the header. Null = nothing
@@ -146,6 +152,23 @@ export function LiveRoom({
   }, []);
 
   useEffect(() => destroy, [destroy]);
+
+  /**
+   * Back to the green room, for real.
+   *
+   * `router.refresh()` alone re-fetches the server tree but keeps this
+   * component's state, so "Rejoin" and "Try again" used to leave the phase on
+   * "left" / "error" and the screen exactly where it was until a manual
+   * reload. The refresh still runs — it re-mints the token server-side — but
+   * the phase is reset here, and any half-built call is destroyed first so
+   * join() does not refuse on a stale `callRef`.
+   */
+  const backToGreenRoom = useCallback(() => {
+    destroy();
+    setError(null);
+    setPhase("prejoin");
+    router.refresh();
+  }, [destroy, router]);
 
   // Spend the green room usefully: pull the SDK down and open a connection to
   // the room's origin while the user is still checking their camera, so the
@@ -199,6 +222,10 @@ export function LiveRoom({
         call.on("error", (e: any) => {
           setError(joinErrorMessage(e, "The call ended unexpectedly."));
           setPhase("error");
+          // Release the camera and the iframe. Left alive, the device light
+          // stayed on under "Couldn't join", and the dead frame blocked the
+          // next join() through `callRef`.
+          destroy();
         });
 
         await call.join({
@@ -222,9 +249,9 @@ export function LiveRoom({
 
   if (phase === "left") {
     return (
-      <Centered title="You've left the call">
+      <Centered title={kind === "call" ? "You left the call" : "You've left"}>
         <div className="flex flex-wrap justify-center gap-2">
-          <Button onClick={() => router.refresh()}>Rejoin</Button>
+          <Button onClick={backToGreenRoom}>Rejoin</Button>
           <ButtonLink variant="secondary" href={backHref}>
             Back
           </ButtonLink>
@@ -241,7 +268,7 @@ export function LiveRoom({
           <p className="text-xs text-ink-soft">{error}</p>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
-          <Button onClick={() => router.refresh()}>Try again</Button>
+          <Button onClick={backToGreenRoom}>Try again</Button>
           <ButtonLink variant="secondary" href={backHref}>
             Back
           </ButtonLink>
@@ -277,7 +304,7 @@ export function LiveRoom({
                   : "border-line text-ink-faint"
               }`}
             >
-              {role === "host" ? "Hosting" : "Watching"}
+              {kind === "call" ? "In call" : role === "host" ? "Hosting" : "Watching"}
             </span>
           </div>
         </header>
@@ -325,7 +352,9 @@ export function LiveRoom({
         <PreJoin
           title={title}
           subtitle={
-            role === "host"
+            kind === "call"
+              ? "It's just the two of you — your camera and mic will be on."
+              : role === "host"
               ? "You're the host — your camera and mic will be live."
               : qa
                 ? // Not "use the chat": in a webinar, Daily's chat is off for
@@ -336,8 +365,12 @@ export function LiveRoom({
                 : "You'll be able to watch and listen."
           }
           role={role}
+          selfLabel={kind === "call" ? null : "host"}
           onJoin={join}
-          joinLabel={role === "host" ? "Start" : "Join"}
+          joinLabel={
+            kind === "call" ? "Join call" : role === "host" ? "Start" : "Join"
+          }
+          backHref={backHref}
         />
       )}
     </div>

@@ -15,6 +15,7 @@ import {
   fetchQuestions,
   setQuestionStatus,
 } from "@/app/dashboard/events/[id]/live/actions";
+import { getActionError } from "@/lib/action-error";
 import { Check, MessageCircleQuestion, X } from "lucide-react";
 
 /**
@@ -44,6 +45,7 @@ export function QAPanel({
   const [questions, setQuestions] = useState<WebinarQuestion[]>(
     initialQuestions,
   );
+  const [modError, setModError] = useState<string | null>(null);
 
   // Guards against pile-up: on a slow connection a 5s interval can fire again
   // before the previous request has answered, and each one is a server action
@@ -131,13 +133,31 @@ export function QAPanel({
       {isHost ? (
         <HostQueue
           questions={questions}
+          error={modError}
           onModerate={async (id, status) => {
-            // Optimistic: move it now, reconcile on the next poll.
+            // Optimistic: move it now, reconcile on the refresh below.
+            const before = questions.find((q) => q.id === id)?.status;
+            setModError(null);
             setQuestions((qs) =>
               qs.map((q) => (q.id === id ? { ...q, status } : q)),
             );
-            await setQuestionStatus(id, status);
-            refresh();
+            try {
+              // Event-scoped, and gated on the same staff-or-speaker rule as
+              // every other moderation action — a guest speaker used to get a
+              // host queue whose every button threw an unhandled Forbidden.
+              await setQuestionStatus(eventId, id, status);
+            } catch (err: any) {
+              // Put it back where it was, and say why, rather than leaving a
+              // question looking answered that the server never touched.
+              if (before) {
+                setQuestions((qs) =>
+                  qs.map((q) => (q.id === id ? { ...q, status: before } : q)),
+                );
+              }
+              setModError(getActionError(err, "Couldn't update that question."));
+            } finally {
+              void refresh();
+            }
           }}
         />
       ) : (
@@ -250,9 +270,11 @@ function ViewerColumn({
 
 function HostQueue({
   questions,
+  error,
   onModerate,
 }: {
   questions: WebinarQuestion[];
+  error: string | null;
   onModerate: (id: string, status: QuestionStatus) => void;
 }) {
   // Open questions first and oldest-first within that, so the host works a
@@ -266,6 +288,7 @@ function HostQueue({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
       {sorted.length === 0 ? (
         <p className="py-6 text-center text-xs text-ink-faint">
           No questions yet.

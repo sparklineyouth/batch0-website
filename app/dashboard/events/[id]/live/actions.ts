@@ -1,12 +1,8 @@
 "use server";
-import { requireActor } from "@/lib/server-guards";
-import { can } from "@/lib/permissions";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   normalizeQuestion,
-  joinState,
-  canJoin,
+  roomIsOpen,
   type QuestionStatus,
   type WebinarQuestion,
 } from "@/lib/live";
@@ -17,8 +13,9 @@ import {
 import {
   isHostedOnBatch0,
   messagesNeedApproval,
-  normalizeAudienceMode,
 } from "@/lib/webinars";
+import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
+import { setQuestionStatus as setQuestionStatusForEvent } from "./room-actions";
 
 /**
  * Server actions for webinar Q&A.
@@ -28,11 +25,15 @@ import {
  * re-checks what its own job needs, because a server action is its own entry
  * point and the page having rendered proves nothing about who is calling it:
  * `askQuestion` re-runs the full write gate (event visible + hosted webinar +
- * inside the join window + under the spam cap); `fetchQuestions` gates on
- * visibility and shapes its result by role; `setQuestionStatus` gates on the
- * `events.manage` permission. The join-window and spam-cap guards are ALSO in
- * the RLS insert policy (0060) — the anon-key browser client could otherwise
- * write straight to the table and skip this action.
+ * inside the caller's room window + not ended + under the spam cap);
+ * `fetchQuestions` gates on visibility and shapes its result by role.
+ *
+ * The role comes from `resolveEventAccess` (lib/live-access.ts) — the same
+ * resolution the page, joinRoom and the room actions use. These actions used
+ * to decide "host" with `events.manage` alone, which disagreed with every
+ * other check in the room: a guest speaker was shown the host panel, then
+ * given only their own questions by the poll (wiping the queue) and Forbidden
+ * on every Answered / Dismiss.
  *
  * The audience-privacy rule lives in the read path: `fetchQuestions` returns
  * every question to a host and only the caller's own to a viewer, so a viewer
@@ -43,48 +44,34 @@ import {
  *  spam ceiling, not a participation limit. */
 const MAX_QUESTIONS_PER_ASKER = 40;
 
-type EventGate = {
-  id: string;
-  starts_at: string;
-  ends_at: string | null;
-  live_mode: string;
-  audience_mode: string | null;
-};
-
-/**
- * Read the event through the caller's own RLS. A null result means "you can't
- * see this event" — the `events read` policy (0005) is the gate — and every
- * caller here treats that as a hard stop, so eligibility to ask or read
- * questions is exactly eligibility to see the event.
- */
-async function gateEvent(eventId: string): Promise<EventGate | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("events")
-    .select("id, starts_at, ends_at, live_mode, audience_mode")
-    .eq("id", eventId)
-    .maybeSingle();
-  return (data as EventGate | null) ?? null;
-}
-
 export async function askQuestion(
   eventId: string,
   raw: string,
 ): Promise<WebinarQuestion> {
-  const actor = await requireActor();
-
   const body = normalizeQuestion(raw);
   if (!body) throw new Error("Write a question first.");
 
-  const event = await gateEvent(eventId);
-  if (!event) throw new Error("You can't post to this event.");
+  const access = await resolveEventAccess(eventId);
+  if (!access.ok) {
+    throw new Error(
+      access.reason === "error"
+        ? "Couldn't reach the server — try again."
+        : "You can't post to this event.",
+    );
+  }
+  const event = access.event;
   // A premiere takes questions from its first minute — that is most of what
   // makes it feel live — so this accepts both batch0-hosted modes. The RLS
   // insert policy (0084) was widened in step with it; keep the two together.
-  if (!isHostedOnBatch0(event.live_mode)) {
+  if (!isHostedOnBatch0(event.liveMode)) {
     throw new Error("This event isn't a hosted webinar.");
   }
-  if (!canJoin(joinState(event.starts_at, event.ends_at))) {
+  // Once a host has pressed End, the room is closed to the audience — nobody
+  // is left to answer, and the queue would fill with questions no one reads.
+  if (event.liveEndedAt) {
+    throw new Error("This webinar has ended.");
+  }
+  if (!roomIsOpen(await roomAccessFor(access))) {
     throw new Error("Questions are open only while the webinar is live.");
   }
 
@@ -94,7 +81,7 @@ export async function askQuestion(
     .from("webinar_questions")
     .select("id", { count: "exact", head: true })
     .eq("event_id", eventId)
-    .eq("asker_id", actor.userId);
+    .eq("asker_id", access.userId);
   if ((count ?? 0) >= MAX_QUESTIONS_PER_ASKER) {
     throw new Error("You've asked plenty for now — give the host a chance.");
   }
@@ -113,14 +100,14 @@ export async function askQuestion(
   // host features — so without it the audience of an open webinar could see
   // their own questions and no one else's, which is exactly the private
   // behaviour the mode exists to turn off.
-  const mode = normalizeAudienceMode(event.audience_mode);
+  const mode = event.audienceMode;
   const approvedNow = mode === "open" && !messagesNeedApproval(mode);
 
   const { data, error } = await admin
     .from("webinar_questions")
     .insert({
       event_id: eventId,
-      asker_id: actor.userId,
+      asker_id: access.userId,
       body,
       approved_at: approvedNow ? new Date().toISOString() : null,
     })
@@ -142,52 +129,40 @@ export async function askQuestion(
 }
 
 /**
- * The live list, polled by the panel. Host-or-admin gets the whole room's
- * questions; everyone else gets only their own. The role is derived from the
- * same permission the webinar itself uses to decide who broadcasts — never
- * from anything the client sent.
+ * The live list, polled by the panel. A host — staff OR a guest speaker on
+ * this event — gets the whole room's questions; everyone else gets only their
+ * own. The role is `resolveEventAccess().isHost`, the same answer that decides
+ * who broadcasts — never anything the client sent.
  */
 export async function fetchQuestions(
   eventId: string,
 ): Promise<WebinarQuestion[]> {
-  const actor = await requireActor();
-
   // Even the host reads through this gate: no permission lets you read
-  // questions for an event you otherwise can't see.
-  const event = await gateEvent(eventId);
-  if (!event) return [];
+  // questions for an event you otherwise can't see (staff are the one
+  // exception resolveEventAccess makes, by design — see lib/live-access.ts).
+  const access = await resolveEventAccess(eventId);
+  if (!access.ok) return [];
 
-  const isHost = can(actor.caps, "events.manage");
-  return isHost
+  return access.isHost
     ? listQuestionsForEvent(eventId)
-    : listQuestionsForAsker(eventId, actor.userId);
+    : listQuestionsForAsker(eventId, access.userId);
 }
 
 /**
- * Move a question out of the queue. Host (or admin) only.
+ * Move a question out of the queue. Moderators (staff or guest speakers).
  *
- * Gated on the global `events.manage` permission alone — deliberately no
- * per-event visibility re-check like askQuestion/fetchQuestions do. Two reasons
- * it's sufficient: `events.manage` is a staff permission and the `events read`
- * policy (0005) lets staff see every event, so a visibility check would always
- * pass; and a question row can only exist for a hosted event in the first place
- * (the insert policy in 0060 forbids any other kind), so there is no
- * non-webinar row here to wrongly touch.
+ * A shim over the event-scoped `setQuestionStatus` in ./room-actions.ts, kept
+ * so the legacy Q&A panel can import from here. It used to take `(id, status)`
+ * and gate on `events.manage` alone, on the assumption that events.manage
+ * holders can see every event (they cannot — the `events read` policy's staff
+ * clause is mentor.panel) and that only staff moderate (guest speakers do).
+ * Both were wrong; the new signature carries the event so the gate and the
+ * update are scoped to it.
  */
 export async function setQuestionStatus(
-  id: string,
+  eventId: string,
+  questionId: string,
   status: QuestionStatus,
 ): Promise<void> {
-  const actor = await requireActor();
-  if (!can(actor.caps, "events.manage")) throw new Error("Forbidden");
-
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("webinar_questions")
-    .update({
-      status,
-      resolved_by: status === "open" ? null : actor.userId,
-    })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
+  await setQuestionStatusForEvent(eventId, questionId, status);
 }

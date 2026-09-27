@@ -4,23 +4,26 @@ import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { LiveDot } from "@/components/live/call-stage";
-import {
-  canJoin,
-  joinState,
-  relativeTime,
-  type LiveEvent,
-} from "@/lib/live";
+import { eventLiveStatus, relativeTime, type LiveEvent } from "@/lib/live";
+import { isHostedOnBatch0 } from "@/lib/webinars";
 import { CalendarDays, MapPin, Video, ExternalLink } from "lucide-react";
 
 /**
  * An event on the student events page.
  *
  * Replaces the inline card in app/dashboard/events/page.tsx. The difference
- * that matters is the join affordance: a `hosted` event links inward to
+ * that matters is the join affordance: an event batch0 hosts (`hosted` or
+ * `premiere` — isHostedOnBatch0, never a bare `=== "hosted"`, which used to
+ * leave premieres with no Join button at all) links inward to
  * /dashboard/events/<id>/live and shows a live state, while an `external` one
  * keeps the old behaviour of opening a pasted Zoom link in a new tab. Both
  * stay supported — switching every event to hosted at once isn't necessary and
  * wouldn't be reversible mid-cohort.
+ *
+ * Live state comes from `eventLiveStatus`, which reads `liveEndedAt` BEFORE the
+ * clock. A webinar the host ended at 7:40 is "Ended" from 7:40 — no live dot,
+ * no Join — rather than looking live until the join window runs out at
+ * ends_at + 30 minutes and walking students into a room that is over.
  */
 export function EventCard({
   event,
@@ -36,10 +39,20 @@ export function EventCard({
     return () => clearInterval(t);
   }, []);
 
-  const state = now ? joinState(event.startsAt, event.endsAt, now) : null;
-  const hosted = event.liveMode === "hosted";
-  const joinable = !!state && canJoin(state);
-  const live = state === "live";
+  // `ended` does not depend on the clock, so it is right on the server render
+  // and the first paint too; everything else waits for `now` (see LocalTime).
+  const ended = !!event.liveEndedAt;
+  const status = ended ? "ended" : now ? eventLiveStatus(event, now) : null;
+  const hosted = isHostedOnBatch0(event.liveMode);
+  const joinable = status === "open" || status === "live";
+  const live = status === "live";
+  // Only an external event has a link to leave for. Rows saved before
+  // app/admin/events/actions.ts started clearing zoom_url on hosted events can
+  // still carry one, and it must not turn a premiere into a Zoom button.
+  const externalUrl = event.liveMode === "external" ? event.externalUrl : null;
+  // An event that was ended before its start time is still filed under
+  // Upcoming by start; it is not something to add to a calendar.
+  const stillAhead = upcoming && !ended;
   const startsAt = new Date(event.startsAt);
 
   return (
@@ -75,6 +88,11 @@ export function EventCard({
               {event.type.replace("_", " ")}
             </span>
             {live && <LiveDot />}
+            {ended && (
+              <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                Ended
+              </span>
+            )}
           </div>
 
           {event.description && (
@@ -93,7 +111,7 @@ export function EventCard({
               </span>
             )}
             {event.hostName && <span>Hosted by {event.hostName}</span>}
-            {upcoming && (
+            {stillAhead && (
               <Link
                 href={`/api/events/${event.id}/ics`}
                 className="text-ink-faint underline underline-offset-2 hover:text-ink"
@@ -101,7 +119,7 @@ export function EventCard({
                 Add to calendar
               </Link>
             )}
-            {event.recordingUrl && !upcoming && (
+            {event.recordingUrl && (!upcoming || ended) && (
               <a
                 href={event.recordingUrl}
                 target="_blank"
@@ -122,8 +140,13 @@ export function EventCard({
             live, which is the one moment it matters. So it shows whenever the
             room is joinable, and additionally carries the pre-start countdown
             for events still in the Upcoming section.
+
+            An ended event gets neither: `joinable` is false once liveEndedAt is
+            set, and `stillAhead` keeps the countdown from reappearing for one
+            that was ended before it started. The badge and the recording link
+            above are what it shows instead.
           */}
-          {(joinable || upcoming) && (
+          {(joinable || stillAhead) && (
             <div className="mt-4">
               {hosted ? (
                 joinable ? (
@@ -140,9 +163,9 @@ export function EventCard({
                     {now && <> · {relativeTime(event.startsAt, now)}</>}
                   </p>
                 )
-              ) : event.externalUrl ? (
+              ) : externalUrl ? (
                 <a
-                  href={event.externalUrl}
+                  href={externalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-sm text-phosphor-ink hover:underline"

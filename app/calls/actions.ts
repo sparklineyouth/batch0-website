@@ -7,12 +7,15 @@ import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { refundScholarshipCreditFor } from "@/lib/calls";
+import { can } from "@/lib/permissions";
+import { capabilitiesForRole } from "@/lib/roles";
 import type { CallInviteStatus } from "@/lib/live";
 import {
   callPhase,
   canCancelCall,
   canMarkCallCompleted,
   canRespondToCall,
+  hostCallsHref,
   isPastPhase,
   type CallTiming,
 } from "@/lib/call-lifecycle";
@@ -230,17 +233,32 @@ export async function respondToInvite(
   });
 
   try {
-    const { data: me } = await admin
-      .from("profiles")
-      .select("full_name")
-      .eq("id", actor.userId)
-      .maybeSingle();
+    const [{ data: me }, { data: host }] = await Promise.all([
+      admin.from("profiles").select("full_name").eq("id", actor.userId).maybeSingle(),
+      admin
+        .from("profiles")
+        .select("role")
+        .eq("id", (invite as any).host_id)
+        .maybeSingle(),
+    ]);
+    // The HOST's calls page, not the student view — the same place the room's
+    // Back link sends them (hostCallsHref): a mentor sent to /dashboard/calls
+    // is bounced to /mentor, and an admin lands on a list of calls where they
+    // are the invitee — none — so the call seems to vanish.
+    const hostCaps = await capabilitiesForRole(
+      ((host as any)?.role as any) ?? "student",
+    );
     await notify({
       userId: (invite as any).host_id,
       type: "call_response",
       title: `${(me as any)?.full_name || "A student"} ${response} your 1:1`,
       body: (invite as any).topic || null,
-      link: "/dashboard/calls",
+      link: hostCallsHref({
+        superAdmin: hostCaps.superAdmin,
+        mentorPanel: can(hostCaps, "mentor.panel"),
+        investorPanel: can(hostCaps, "investor.panel"),
+        canInvite: can(hostCaps, "calls.invite"),
+      }),
     });
   } catch (err) {
     console.error("[calls] response notify failed", err);
@@ -349,13 +367,8 @@ export async function cancelInvite(id: string) {
 }
 
 /**
- * End a call, for both people. Either participant.
- *
- * The room's End call button lands here AFTER the host's recorder has flushed
- * its last segment (see broadcast-room's `finishCall`). The order matters: a
- * flush that ran after this would be racing the page navigating away. The
- * OTHER person's recorder, if they are the host, flushes after the row is
- * already completed, which the upload gate allows (canUploadCallRecording).
+ * End a call, for both people. Either participant — the live room's End call
+ * button (broadcast-room's `finishCall`).
  *
  * Marks the call `completed` only once its scheduled start has come
  * (canMarkCallCompleted): two people who joined early and left again have not
@@ -365,6 +378,26 @@ export async function cancelInvite(id: string) {
  *
  * Idempotent: ending a call that is already completed — the other person got
  * there first — succeeds quietly.
+ *
+ * Deliberately revalidates NOTHING, unlike every other action in this file.
+ * Next re-renders the CURRENT route whenever an action revalidates any path at
+ * all, and the current route here is the room itself — /dashboard/calls/<id>/
+ * live, which renders a static "This call has ended" for a completed call.
+ * The host's recorder has only CAPTURED its final segment when End call is
+ * pressed; the upload is still running. Revalidating swapped the room for that
+ * static page mid-upload: the room unmounted, taking with it the "keep this
+ * tab open" note, the unload prompt and the navigation back to the calls list,
+ * and a host who then closed the tab lost the end of the conversation without
+ * a word. (Registering a webinar segment stopped revalidating for the same
+ * reason — see registerWebinarAsset.)
+ *
+ * Nothing needs the revalidation. Every calls list (and the interview card)
+ * is a dynamic, per-user render and the client router cache is off for dynamic
+ * pages (staleTimes.dynamic = 0), so the room's push back to the list — and
+ * the other person's next visit — renders fresh anyway. The other person's
+ * room learns of the End from its status poll or heartbeat, not from a render.
+ * The OTHER person's recorder, if they are the host, flushes after the row is
+ * already completed, which the upload gate allows (canUploadCallRecording).
  */
 export async function endCall(id: string): Promise<{ completed: boolean }> {
   const actor = await requireActor();
@@ -399,7 +432,6 @@ export async function endCall(id: string): Promise<{ completed: boolean }> {
       targetId: id,
       payload: { ended_by: actor.userId },
     });
-    revalidateAll();
   }
   return { completed };
 }
