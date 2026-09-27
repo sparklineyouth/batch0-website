@@ -568,6 +568,7 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   // to hand out tuition or refund a card.
   ["/admin/scholarships", "scholarships.view"],
   ["/admin/moderation", "moderation.manage"],
+  ["/admin/messages", "moderation.manage"],
   ["/admin/discussions", "discussions.manage"],
   ["/admin/discord", "discord.manage"],
   ["/admin/audit", "audit.view"],

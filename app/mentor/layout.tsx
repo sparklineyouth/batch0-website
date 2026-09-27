@@ -1,6 +1,7 @@
 import { requireMentor, getCapabilities } from "@/lib/auth";
 import { MentorSidebar } from "@/components/mentor/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
+import { ChatDock } from "@/components/messages/chat-dock";
 
 export default async function MentorLayout({
   children,
@@ -28,6 +29,7 @@ export default async function MentorLayout({
           {children}
         </main>
       </div>
+      <ChatDock />
     </div>
   );
 }
