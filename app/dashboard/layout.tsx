@@ -6,6 +6,7 @@ import { isDiscordEnabled } from "@/lib/discord";
 import { StudentSidebar } from "@/components/dashboard/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
 import { getSiteConfig } from "@/lib/site-config";
+import { ChatDock } from "@/components/messages/chat-dock";
 
 export default async function DashboardLayout({
   children,
@@ -43,6 +44,7 @@ export default async function DashboardLayout({
     return (
       <div className="min-h-screen bg-paper text-ink">
         <main id="main-content" tabIndex={-1} className="px-5 py-6 md:px-10 md:py-10">{children}</main>
+        <ChatDock />
       </div>
     );
   }
@@ -88,6 +90,7 @@ export default async function DashboardLayout({
         />
         <main id="main-content" tabIndex={-1} className="flex-1 px-5 py-6 md:px-10 md:py-10">{children}</main>
       </div>
+      <ChatDock />
     </div>
   );
 }

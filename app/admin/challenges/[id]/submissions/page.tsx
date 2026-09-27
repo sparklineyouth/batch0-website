@@ -1,140 +1,159 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { Download } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { formatCents } from "@/lib/challenges";
+import { formatCents, sanitizeQuestions, type ChallengeQuestion } from "@/lib/challenges";
+import { EmailResultsButton } from "./email-results-button";
 
 export const metadata = { title: "Submissions · Admin" };
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const FILTERS = ["all", "submitted", "shortlisted", "funded", "rejected"];
+const FILTERS = [
+  ["all", "All submitted"],
+  ["submitted", "New"],
+  ["shortlisted", "Shortlisted"],
+  ["funded", "Winners"],
+  ["rejected", "Not selected"],
+  ["draft", "Drafts"],
+] as const;
 
-export default async function ChallengeSubmissionsPage(
-  props: {
-    params: Promise<{ id: string }>;
-    searchParams: Promise<{ status?: string }>;
+const STATUS_LABEL: Record<string, string> = {
+  funded: "winner",
+  rejected: "not selected",
+};
+
+/** The first short answer on the form — usually the project name. */
+function headlineAnswer(questions: ChallengeQuestion[], answers: Record<string, unknown>): string {
+  for (const q of questions) {
+    if (q.type !== "short_text") continue;
+    const v = answers?.[q.id];
+    if (typeof v === "string" && v.trim()) return v.trim();
   }
-) {
-  const searchParams = await props.searchParams;
-  const params = await props.params;
+  return "";
+}
+
+export default async function ChallengeSubmissionsPage(props: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const [{ id }, { status }] = await Promise.all([props.params, props.searchParams]);
   await requirePermission("challenges.manage");
   const admin = createAdminClient();
-  const status = searchParams.status;
-
-  const { data: challenge } = await admin
-    .from("challenges")
-    .select("id, title, slug")
-    .eq("id", params.id)
-    .maybeSingle();
-  if (!challenge) notFound();
+  const filter = status ?? "all";
 
   let q = admin
     .from("challenge_submissions")
     .select(
-      "id, status, created_at, payout_amount_cents, winner_public, applicant:profiles!challenge_submissions_user_id_fkey(full_name, email)",
+      "id, status, created_at, submitted_at, updated_at, payout_amount_cents, award_label, winner_public, answers, questions_snapshot, applicant:profiles!challenge_submissions_user_id_fkey(full_name, email)",
     )
-    .eq("challenge_id", params.id)
-    .order("created_at", { ascending: false });
-  if (status && status !== "all") q = q.eq("status", status);
-  const { data: subs } = await q;
+    .eq("challenge_id", id)
+    .order("submitted_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false });
+  if (filter === "all") q = q.neq("status", "draft");
+  else q = q.eq("status", filter);
+  const [{ data: subs }, { data: ch }, { count: unnotified }] = await Promise.all([
+    q,
+    admin.from("challenges").select("winners_published").eq("id", id).maybeSingle(),
+    admin
+      .from("challenge_submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("challenge_id", id)
+      .neq("status", "draft")
+      .is("results_notified_at", null),
+  ]);
 
-  const rows = (subs ?? []).map((s: any) => ({
-    id: s.id as string,
-    status: s.status as string,
-    createdAt: s.created_at as string,
-    payoutCents: s.payout_amount_cents as number | null,
-    winnerPublic: s.winner_public as boolean,
-    name: s.applicant?.full_name ?? s.applicant?.email ?? "Applicant",
-    email: s.applicant?.email ?? null,
-  }));
+  const rows = (subs ?? []).map((s: any) => {
+    const applicant = Array.isArray(s.applicant) ? s.applicant[0] : s.applicant;
+    return {
+      id: s.id as string,
+      status: s.status as string,
+      at: (s.submitted_at ?? s.updated_at ?? s.created_at) as string,
+      payoutCents: s.payout_amount_cents as number | null,
+      awardLabel: s.award_label as string | null,
+      winnerPublic: s.winner_public as boolean,
+      name: applicant?.full_name ?? applicant?.email ?? "Entrant",
+      email: applicant?.email ?? null,
+      project: headlineAnswer(sanitizeQuestions(s.questions_snapshot), s.answers ?? {}),
+    };
+  });
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <Link
-        href="/admin/challenges"
-        className="text-xs text-ink-faint hover:text-ink"
-      >
-        ← Challenges
-      </Link>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
-          {challenge.title}
-        </h1>
-        <Link
-          href={`/admin/challenges/${challenge.id}/edit`}
-          className="text-sm text-phosphor-ink hover:underline"
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {FILTERS.map(([f, label]) => {
+            const active = filter === f;
+            return (
+              <Link
+                key={f}
+                href={f === "all" ? `/admin/challenges/${id}/submissions` : `/admin/challenges/${id}/submissions?status=${f}`}
+                className={`rounded-full border px-3 py-1 text-xs ${
+                  active ? "border-phosphor/40 bg-phosphor/10 text-phosphor-ink" : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
+                }`}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+        <EmailResultsButton
+          challengeId={id}
+          pending={unnotified ?? 0}
+          winnersPublished={(ch as any)?.winners_published === true}
+        />
+        <a
+          href={`/api/admin/export/challenge-submissions?id=${id}`}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-soft hover:border-ink/30 hover:text-ink"
         >
-          Edit challenge →
-        </Link>
-      </div>
-      <p className="mt-1 text-sm text-ink-faint">
-        {rows.length} submission{rows.length === 1 ? "" : "s"}
-      </p>
-
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        {FILTERS.map((f) => {
-          const active = (status ?? "all") === f;
-          const href =
-            f === "all"
-              ? `/admin/challenges/${challenge.id}/submissions`
-              : `/admin/challenges/${challenge.id}/submissions?status=${f}`;
-          return (
-            <Link
-              key={f}
-              href={href}
-              className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wider transition ${
-                active
-                  ? "border-phosphor/30 bg-phosphor/10 text-phosphor-ink"
-                  : "border-line text-ink-soft hover:border-ink/30 hover:text-ink"
-              }`}
-            >
-              {f}
-            </Link>
-          );
-        })}
+          <Download className="h-3.5 w-3.5" /> Export CSV
+        </a>
+        </div>
       </div>
 
       {rows.length === 0 ? (
-        <Card className="mt-6">
-          <p className="text-sm text-ink-soft">No submissions yet.</p>
+        <Card className="mt-5">
+          <p className="text-sm text-ink-soft">
+            {filter === "draft" ? "No drafts in progress." : "Nothing here yet."}
+          </p>
         </Card>
       ) : (
-        <Card className="mt-6 !p-0 overflow-hidden">
+        <Card className="mt-5 !p-0 overflow-hidden">
           <ul className="divide-y divide-line">
             {rows.map((s) => (
               <li key={s.id}>
                 <Link
-                  href={`/admin/challenges/${challenge.id}/submissions/${s.id}`}
+                  href={`/admin/challenges/${id}/submissions/${s.id}`}
                   className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-4 hover:bg-wash"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-medium text-ink">
-                        {s.name}
-                      </span>
-                      <StatusBadge status={s.status} />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate font-medium text-ink">{s.project || s.name}</span>
+                      <StatusBadge status={STATUS_LABEL[s.status] ?? s.status} />
                       {s.winnerPublic && (
-                        <span className="rounded-full bg-phosphor/15 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-phosphor-ink">
+                        <span className="rounded-full bg-phosphor/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-phosphor-ink">
                           Public
                         </span>
                       )}
                     </div>
-                    {s.email && (
-                      <p className="mt-0.5 truncate text-xs text-ink-faint">
-                        {s.email}
-                      </p>
-                    )}
+                    <p className="mt-0.5 truncate text-xs text-ink-faint">
+                      {s.project ? `${s.name} · ` : ""}
+                      {s.email}
+                    </p>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-ink-faint">
-                    {s.payoutCents != null && (
-                      <span className="font-mono text-phosphor-ink">
-                        {formatCents(s.payoutCents)}
+                    {(s.awardLabel || s.payoutCents != null) && (
+                      <span className="max-w-[14rem] truncate font-mono text-phosphor-ink">
+                        {s.awardLabel ?? formatCents(s.payoutCents)}
                       </span>
                     )}
-                    <LocalTime value={s.createdAt} mode="datetime-short" />
+                    <span>
+                      {s.status === "draft" ? "edited " : ""}
+                      <LocalTime value={s.at} mode="datetime-short" />
+                    </span>
                   </div>
                 </Link>
               </li>

@@ -58,6 +58,12 @@ export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
   // before day one are when an enrolled student has the most questions for
   // the team and nowhere else on the site to ask them.
   "/dashboard/discussions",
+  // DMs, for the same reason as Discussions and Announcements — and this one
+  // isn't really a lockdown decision at all: /messages sits outside
+  // /dashboard, so the page and the chat dock are reachable pre-cohort
+  // regardless. Leaving it out of this set would only have hidden the sidebar
+  // link to a page the student can already open.
+  "/messages",
   "/dashboard/team",
   // 1:1 calls stay open before kickoff. An enrolled student is invited to a
   // getting-to-know-you interview in exactly this window — the request lives

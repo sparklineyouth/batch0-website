@@ -1,236 +1,108 @@
-import Link from "next/link";
-// Aliased because this module also exports the `dynamic` route-segment config.
-import nextDynamic from "next/dynamic";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getUser } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getUser, viewerCan } from "@/lib/auth";
+import { getPublicSiteConfig } from "@/lib/site-config";
+import { renderSafeMarkdown } from "@/lib/markdown-safe";
+import { env } from "@/lib/env";
 import {
   getChallengeBySlug,
-  challengeWindowState,
-  formatCents,
+  getEntrantState,
+  getPublicWinners,
+  getReferralProgress,
+  getRegistrationCount,
+  challengeReferralLink,
+  prizeHeadline,
+  KIND_LABELS,
 } from "@/lib/challenges";
-import { LocalTime } from "@/components/ui/local-time";
-
-// The entry form (and the supabase-js it pulls in for video uploads) only
-// renders for a signed-in visitor with no existing submission. next/dynamic
-// splits it into its own chunk, so the logged-out top-of-funnel majority —
-// who get SignInPanel instead — never downloads it.
-const ChallengeForm = nextDynamic(() =>
-  import("./challenge-form").then((m) => m.ChallengeForm),
-);
-
-export const metadata = {
-  title: "Weekly Challenge · batch0",
-  // Public to humans (top-of-funnel), but the marketing marquee and the
-  // /challenges index carry the SEO — keep individual entries unindexed.
-  robots: { index: false, follow: false },
-};
+import { EventView } from "./event-view";
 
 export const dynamic = "force-dynamic";
 
-export default async function ChallengePage(
-  props: {
-    params: Promise<{ slug: string }>;
-    searchParams: Promise<{ ref?: string }>;
-  }
-) {
-  const searchParams = await props.searchParams;
-  const params = await props.params;
-  // The challenge itself is public — this is a top-of-funnel page, so a
-  // logged-out visitor must be able to read the whole thing. Only the
-  // entry form needs an account; they get a sign-in CTA in its place.
-  // The two lookups are independent (session cookie vs. challenge row),
-  // so they run concurrently.
-  const [user, challenge] = await Promise.all([
+export async function generateMetadata(props: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await props.params;
+  const c = await getChallengeBySlug(slug);
+  if (!c || c.status === "draft") return { title: "Challenge · batch0" };
+  const description =
+    c.tagline || `${KIND_LABELS[c.kind]} for high schoolers. ${prizeHeadline(c)}`.trim();
+  return {
+    title: `${c.title} · batch0`,
+    description,
+    alternates: { canonical: `/challenges/${c.slug}` },
+    // Shareable (OG) but unindexed: the /challenges index carries the SEO and
+    // an ended challenge shouldn't linger in results.
+    robots: { index: false, follow: true },
+    openGraph: {
+      title: c.title,
+      description,
+      ...(c.coverImageUrl ? { images: [{ url: c.coverImageUrl }] } : {}),
+    },
+  };
+}
+
+export default async function ChallengePage(props: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ ref?: string; join?: string }>;
+}) {
+  const [{ slug }, searchParams] = await Promise.all([
+    props.params,
+    props.searchParams,
+  ]);
+  // The page itself is public — top of funnel. Only the register card varies
+  // by viewer. These lookups are independent, so they run together.
+  const [user, challenge, config] = await Promise.all([
     getUser(),
-    getChallengeBySlug(params.slug),
+    getChallengeBySlug(slug),
+    getPublicSiteConfig(),
   ]);
   if (!challenge) notFound();
+  const isStaff = user ? await viewerCan("challenges.manage") : false;
+  if (challenge.status === "draft" && !isStaff) notFound();
 
-  let existing: { id: string; status: string } | null = null;
-  if (user) {
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from("challenge_submissions")
-      .select("id, status")
-      .eq("challenge_id", challenge.id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    existing = (data as any) ?? null;
-  }
+  const [registrationCount, entrant, winners, description, rules] =
+    await Promise.all([
+      getRegistrationCount(challenge.id),
+      user ? getEntrantState(challenge.id, user.id) : Promise.resolve(null),
+      challenge.winnersPublished
+        ? getPublicWinners({ challengeSlug: challenge.slug, limit: 30 })
+        : Promise.resolve([]),
+      challenge.description.trim()
+        ? renderSafeMarkdown(challenge.description)
+        : Promise.resolve(""),
+      challenge.rules.trim() ? renderSafeMarkdown(challenge.rules) : Promise.resolve(""),
+    ]);
 
-  const windowState = challengeWindowState(challenge);
+  const referral =
+    user && entrant?.referralCode
+      ? {
+          link: challengeReferralLink(env.siteUrl, challenge.slug, entrant.referralCode),
+          count:
+            challenge.referralsRequired > 0
+              ? (
+                  await getReferralProgress(
+                    challenge,
+                    user.id,
+                    entrant.referralCode,
+                  )
+                ).count
+              : 0,
+        }
+      : null;
 
   return (
-    // Skip-link target for this route (no layout above it owns a <main>).
-    // Same element and classes as before, promoted from <div>; tabIndex={-1}
-    // makes it focusable so screen readers move the cursor here.
-    <main id="main-content" tabIndex={-1} className="min-h-screen bg-paper">
-      <div className="relative mx-auto max-w-3xl px-5 sm:px-6 py-10 sm:py-16">
-        <Link href="/challenges" className="text-sm text-ink-soft hover:text-ink">
-          ← All challenges
-        </Link>
-
-        <p className="mt-6 font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
-          Weekly Challenge
-        </p>
-        <h1 className="mt-3 font-display text-[30px] sm:text-4xl font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-          {challenge.title}
-        </h1>
-        {challenge.description && (
-          <p className="mt-4 max-w-2xl whitespace-pre-line text-[15px] sm:text-base leading-[1.6] text-ink-soft">
-            {challenge.description}
-          </p>
-        )}
-
-        {(challenge.prizeLabel ||
-          challenge.closesAt ||
-          (windowState === "upcoming" && challenge.opensAt)) && (
-          <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-line py-3 font-mono text-[13px]">
-            {challenge.prizeLabel && (
-              <span className="text-ink">
-                <span className="text-ink-faint">Prize · </span>
-                {challenge.prizeLabel}
-              </span>
-            )}
-            {/* Only while it's ahead — after it opens, the open date is noise. */}
-            {windowState === "upcoming" && challenge.opensAt && (
-              <span className="text-ink">
-                <span className="text-ink-faint">Opens · </span>
-                <LocalTime value={challenge.opensAt} mode="datetime-short" />
-              </span>
-            )}
-            {challenge.closesAt && (
-              <span className="text-ink">
-                <span className="text-ink-faint">Closes · </span>
-                <LocalTime value={challenge.closesAt} mode="datetime-short" />
-              </span>
-            )}
-          </div>
-        )}
-
-        <div className="mt-10">
-          {existing ? (
-            <AlreadyApplied />
-          ) : windowState === "upcoming" ? (
-            <UpcomingPanel opensAt={challenge.opensAt} />
-          ) : windowState === "closed" ? (
-            <ClosedPanel closesAt={challenge.closesAt} />
-          ) : !user ? (
-            <SignInPanel slug={params.slug} refCode={searchParams.ref ?? null} />
-          ) : (
-            <ChallengeForm
-              challenge={{
-                id: challenge.id,
-                slug: challenge.slug,
-                title: challenge.title,
-                questions: challenge.questions,
-              }}
-              refCode={searchParams.ref ?? null}
-            />
-          )}
-        </div>
-      </div>
-    </main>
-  );
-}
-
-function SignInPanel({
-  slug,
-  refCode,
-}: {
-  slug: string;
-  refCode: string | null;
-}) {
-  const next = `/challenges/${slug}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-  return (
-    <div className="rounded-2xl border border-phosphor/30 bg-phosphor/5 p-6">
-      <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
-        Ready to enter?
-      </h2>
-      <p className="mt-2 text-sm text-ink-soft">
-        Entering takes a free account so we can review your submission and
-        reach you if you win. Sign in or create one — you'll land right back
-        on this page.
-      </p>
-      <div className="mt-4">
-        <Link
-          href={`/login?next=${encodeURIComponent(next)}`}
-          className="press inline-flex items-center justify-center rounded-md bg-phosphor px-5 py-3 text-[15px] font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200"
-        >
-          Sign in to enter — it's free
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function AlreadyApplied() {
-  return (
-    <div className="rounded-2xl border border-phosphor/30 bg-phosphor/5 p-6">
-      <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
-        You&apos;ve already applied
-      </h2>
-      <p className="mt-2 text-sm text-ink-soft">
-        We&apos;ve got your entry for this challenge. We review funding weekly
-        and will email you.
-      </p>
-      <div className="mt-4">
-        <Link
-          href="/dashboard"
-          className="text-sm text-phosphor-ink hover:underline"
-        >
-          Go to dashboard →
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function UpcomingPanel({ opensAt }: { opensAt: string | null }) {
-  return (
-    <div className="rounded-2xl border border-phosphor/30 bg-phosphor/5 p-6">
-      <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
-        Entries open soon
-      </h2>
-      <p className="mt-2 text-sm text-ink-soft">
-        {opensAt ? (
-          <>
-            Entries for this one open{" "}
-            <LocalTime value={opensAt} mode="datetime-short" />.
-          </>
-        ) : (
-          "Entries for this one aren't open yet."
-        )}{" "}
-        Read the brief now, line up your build, and come back to enter —
-        entering is free and takes an account.
-      </p>
-      <div className="mt-4">
-        <Link href="/challenges" className="text-sm text-phosphor-ink hover:underline">
-          See other challenges →
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function ClosedPanel({ closesAt }: { closesAt: string | null }) {
-  return (
-    <div className="rounded-2xl border border-amber-400/40 bg-wash p-6">
-      <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink">
-        This challenge is closed
-      </h2>
-      <p className="mt-2 text-sm text-ink-soft">
-        {closesAt
-          ? "Applications for this one have wrapped up."
-          : "This challenge isn't open for applications right now."}{" "}
-        Keep an eye on the homepage — a new challenge drops most weeks.
-      </p>
-      <div className="mt-4">
-        <Link href="/challenges" className="text-sm text-phosphor-ink hover:underline">
-          See other challenges →
-        </Link>
-      </div>
-    </div>
+    <EventView
+      challenge={challenge}
+      config={config}
+      registrationCount={registrationCount}
+      entrant={entrant}
+      winners={winners}
+      descriptionHtml={description}
+      rulesHtml={rules}
+      referral={referral}
+      signedIn={!!user}
+      autoJoin={searchParams.join === "1"}
+      refCode={(searchParams.ref ?? "").slice(0, 32) || null}
+    />
   );
 }

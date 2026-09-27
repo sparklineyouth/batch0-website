@@ -4,6 +4,8 @@ import Link from "next/link";
 
 export type MarqueeChallenge = {
   slug: string;
+  /** "Hackathon", "Challenge", "Giveaway" — the ticker's label. */
+  kindLabel: string;
   title: string;
   marqueeText: string;
   prizeLabel: string;
@@ -34,7 +36,8 @@ export function ChallengeMarquee({ challenge }: { challenge: MarqueeChallenge })
     challenge.title.trim();
 
   const href = challenge.ctaHref || `/challenges/${challenge.slug}`;
-  const ctaLabel = challenge.ctaLabel || "Apply";
+  const ctaLabel = challenge.ctaLabel || "Register";
+  const label = `⚡ ${challenge.kindLabel || "Challenge"}`;
 
   // Each repeated ticker unit. Duplicated across two identical halves so the
   // -50% wrap is seamless. Marked decorative — the accessible copy is the
@@ -42,7 +45,7 @@ export function ChallengeMarquee({ challenge }: { challenge: MarqueeChallenge })
   const Unit = () => (
     <span className="mx-6 inline-flex items-center gap-3" aria-hidden>
       <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em]">
-        ⚡ Weekly Challenge
+        {label}
       </span>
       <span className="text-[13px]">{message}</span>
       <span className="text-on-phosphor/40">•</span>
@@ -52,18 +55,18 @@ export function ChallengeMarquee({ challenge }: { challenge: MarqueeChallenge })
 
   return (
     <section
-      aria-label="Weekly challenge"
+      aria-label={challenge.kindLabel || "Challenge"}
       className="bg-phosphor text-on-phosphor"
     >
       <div className="mx-auto flex max-w-[1100px] items-stretch">
         <div className="challenge-marquee-viewport min-w-0 flex-1 overflow-hidden">
           <span className="sr-only">
-            Weekly challenge: {message}.
+            {challenge.kindLabel || "Challenge"}: {message}.
           </span>
           {reduced ? (
             <p className="truncate px-5 py-2 text-[13px]">
               <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em]">
-                ⚡ Weekly Challenge{" "}
+                {label}{" "}
               </span>
               {message}
             </p>

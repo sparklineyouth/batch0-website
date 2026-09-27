@@ -13,8 +13,10 @@ import {
   CreditCard,
   CheckCircle,
   MessageCircleQuestion,
+  Flag,
 } from "lucide-react";
 import { countQuestionsNeedingReply } from "@/lib/discussions";
+import { countOpenReports } from "@/lib/dm";
 
 export const metadata = { title: "Admin · batch0" };
 
@@ -35,6 +37,7 @@ export default async function AdminOverview() {
   const seePeople = can(caps, "people.view");
   const seeRevenue = can(caps, "payments.view");
   const seeDiscussions = can(caps, "discussions.manage");
+  const seeReports = can(caps, "moderation.manage");
 
   const admin = createAdminClient();
 
@@ -48,6 +51,7 @@ export default async function AdminOverview() {
     { data: ticketData, error: ticketError },
     { data: recentApps },
     openQuestions,
+    openReports,
   ] = await Promise.all([
     seeApplications
       ? admin.from("applications").select("id", { count: "exact", head: true })
@@ -96,6 +100,7 @@ export default async function AdminOverview() {
           .limit(8)
       : { data: null, error: null },
     seeDiscussions ? countQuestionsNeedingReply() : Promise.resolve(0),
+    seeReports ? countOpenReports() : Promise.resolve(0),
   ]);
 
   if (paymentsError || chargesError || ticketError) throw new Error("Financial data unavailable. Check the revenue migration and database connection.");
@@ -135,6 +140,19 @@ export default async function AdminOverview() {
             count: openQuestions,
             href: "/admin/discussions",
             tone: openQuestions > 0 ? "phosphor" : "muted",
+          },
+        ]
+      : []),
+    // A reported DM is the one kind of message the team can read, and it got
+    // that way because somebody asked for help. It belongs in this row.
+    ...(seeReports
+      ? [
+          {
+            icon: Flag,
+            label: "Reported DMs",
+            count: openReports,
+            href: "/admin/messages",
+            tone: openReports > 0 ? "phosphor" : "muted",
           },
         ]
       : []),
