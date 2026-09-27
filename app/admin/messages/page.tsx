@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Flag, ShieldCheck } from "lucide-react";
 import { formatRelativeTime } from "@/lib/format-time";
 import { requireViewer } from "@/lib/auth";
-import { getConversationRow, getPeople, listReports } from "@/lib/dm";
+import { getConversationRows, getPeople, listReports } from "@/lib/dm";
 import type { ReportStatus } from "@/lib/dm-access";
 
 export const metadata = { title: "Reported DMs · Admin" };
@@ -41,12 +41,11 @@ export default async function AdminMessagesPage(props: {
 
   // Who the reported conversations are between — a queue that only showed
   // "a conversation" would make a moderator open every row to triage.
-  const convos = await Promise.all(
-    Array.from(new Set([...allReports, ...allOpen].map((r) => r.conversationId))).map(async (id) => ({
-      id,
-      row: await getConversationRow(id),
-    })),
-  );
+  const rowsById = await getConversationRows([...allReports, ...allOpen].map((r) => r.conversationId));
+  const convos = Array.from(new Set([...allReports, ...allOpen].map((r) => r.conversationId))).map((id) => ({
+    id,
+    row: rowsById.get(id) ?? null,
+  }));
   // Never a report about a conversation the viewer is in: a moderator who is
   // the person reported must not see who reported them, or why.
   const mine = new Set(

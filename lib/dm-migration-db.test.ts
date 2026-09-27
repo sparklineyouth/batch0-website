@@ -216,17 +216,18 @@ test("the read check only ever answers for the caller", async () => {
   const crafted = await as(
     db,
     EVE,
-    `select public.dm_can_read_conversation(row($1::uuid, $2::uuid, $3::uuid, 'epoch'::timestamptz, 'epoch'::timestamptz, null::timestamptz, null::text, null::uuid, 0, now(), now())::public.dm_conversations) as ok`,
+    `select public.dm_can_read_conversation(jsonb_populate_record(null::public.dm_conversations, jsonb_build_object('id', $1::uuid, 'user_a', $2::uuid, 'user_b', $3::uuid))) as ok`,
     [id, ALICE, BOB],
   );
   assert.equal(crafted.rows[0].ok, false);
 });
 
-test("a DM notification never stores the message text; other notifications keep theirs", async () => {
+test("DM and report notifications never store the text; other notifications keep theirs", async () => {
   const db = await setup();
   await db.query(
     `insert into public.notifications (user_id, type, title, body) values
        ($1, 'direct_message', 'Alice messaged you', 'my secret'),
+       ($1, 'dm_reported', 'Alice reported a conversation', 'he said the thing'),
        ($1, 'announcement', 'Kickoff', 'see you at 6')`,
     [BOB],
   );
@@ -234,6 +235,7 @@ test("a DM notification never stores the message text; other notifications keep 
   assert.deepEqual(rows, [
     { type: "announcement", body: "see you at 6" },
     { type: "direct_message", body: null },
+    { type: "dm_reported", body: null },
   ]);
   await db.query(`update public.notifications set body = 'sneaky' where type = 'direct_message'`);
   const { rows: after } = await db.query<any>(`select body from public.notifications where type = 'direct_message'`);
@@ -292,6 +294,48 @@ test("deleting one account keeps the other person's history and every report", a
   // Alice still reads her side.
   const mine = await as(db, ALICE, `select id from public.dm_messages where conversation_id = $1`, [id]);
   assert.equal(mine.rows.length, 2);
+});
+
+test("an unsent message disappears for both participants but stays for a moderator once reported", async () => {
+  const db = await setup();
+  const id = await seedConversation(db);
+  // Bob unsends "hey alice" (the server action sets unsent_at).
+  await db.query(`update public.dm_messages set unsent_at = now() where conversation_id = $1 and sender_id = $2`, [id, BOB]);
+
+  for (const uid of [ALICE, BOB]) {
+    const { rows } = await as(db, uid, `select body from public.dm_messages where conversation_id = $1`, [id]);
+    assert.deepEqual(rows.map((r: any) => r.body), ["hi bob"], `${uid} no longer sees the unsent message`);
+  }
+  // The summary forgets it: count and preview are back to Alice's message.
+  const { rows: c } = await db.query<any>(
+    `select message_count, last_message_preview, last_sender_id from public.dm_conversations where id = $1`,
+    [id],
+  );
+  assert.equal(c[0].message_count, 1);
+  assert.equal(c[0].last_message_preview, "hi bob");
+  assert.equal(c[0].last_sender_id, ALICE);
+
+  // Not reported: nobody else sees anything. Reported: the moderator sees it all.
+  assert.equal((await as(db, MOD, `select id from public.dm_messages where conversation_id = $1`, [id])).rows.length, 0);
+  await db.query(`insert into public.dm_reports (conversation_id, reporter_id, reason) values ($1, $2, 'harassment')`, [id, ALICE]);
+  const { rows: mod } = await as(db, MOD, `select body, unsent_at is not null as unsent from public.dm_messages where conversation_id = $1 order by created_at`, [id]);
+  assert.deepEqual(mod, [{ body: "hi bob", unsent: false }, { body: "hey alice", unsent: true }]);
+});
+
+test("a moderator never sees reports about a conversation they are in", async () => {
+  const db = await setup();
+  // MOD (an admin here) is in a conversation with Alice, and Alice reports it.
+  const [a, b] = [ALICE, MOD].sort();
+  const { rows } = await db.query<any>(`insert into public.dm_conversations (user_a, user_b) values ($1, $2) returning id`, [a, b]);
+  await db.query(`insert into public.dm_reports (conversation_id, reporter_id, reason) values ($1, $2, 'you know why')`, [rows[0].id, ALICE]);
+  // A report on someone else's conversation, for contrast.
+  const other = await seedConversation(db);
+  await db.query(`insert into public.dm_reports (conversation_id, reporter_id, reason) values ($1, $2, 'spam')`, [other, BOB]);
+
+  const seen = await as(db, MOD, `select reason from public.dm_reports order by reason`);
+  assert.deepEqual(seen.rows.map((r: any) => r.reason), ["spam"]);
+  const mine = await as(db, ALICE, `select reason from public.dm_reports`);
+  assert.deepEqual(mine.rows.map((r: any) => r.reason), ["you know why"], "a reporter still sees their own report");
 });
 
 test("a DM between two people is a singleton, stored as an ordered pair", async () => {

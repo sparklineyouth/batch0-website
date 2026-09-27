@@ -18,7 +18,10 @@
  *   - a block stops both sides sending, without telling the blocked person;
  *   - the outsider can neither open the conversation by id nor write to the
  *     DM tables directly through the API;
- *   - a report opens the conversation to the admin's moderation queue;
+ *   - minimizing and reopening the dock brings back the current thread;
+ *   - a report opens the conversation to the admin's moderation queue, and
+ *     the person reported sees nothing different — they can still unsend,
+ *     and what they unsend stays in the moderator's transcript, marked;
  *   - on a phone and on a desktop, neither /messages nor the open dock
  *     scrolls sideways, and the composer stays on screen.
  *
@@ -356,6 +359,18 @@ async function main() {
     const dupes = await student.page.getByText(first, { exact: true }).count();
     check(dupes === 1, "no message is duplicated on the sender's screen");
 
+    // Minimize and reopen: the dock must come back on the live thread, not a
+    // stale copy from before it was closed.
+    await mentor.page.getByRole("button", { name: "Minimize messages" }).first().click();
+    const whileClosed = `while the dock was shut ${stamp}`;
+    check(await send(student.page, whileClosed), "the student wrote while the mentor's dock was shut");
+    await until("the mentor's launcher", async () => (await launcher.count()) > 0 && launcher.first().isVisible());
+    await launcher.first().click();
+    check(
+      !!(await until("the message sent while shut", async () => visibleText(mentor.page, whileClosed), 20_000)),
+      "reopening the dock shows what arrived while it was shut",
+    );
+
     // --- unsend ----------------------------------------------------------------
     console.log("\nunsend");
     const bubble = student.page.getByText(second, { exact: true }).first();
@@ -444,10 +459,43 @@ async function main() {
       return rows.length > 0;
     }, 15_000);
     check(!!reported, "the student reported the conversation");
+
+    // The mentor — the person reported — is told nothing: Unsend is still
+    // there on their own message, and it still works.
+    await mentor.page.reload({ waitUntil: "domcontentloaded" });
+    await until("the mentor's page after reload", async () => (await launcher.count()) > 0 && launcher.first().isVisible());
+    if (!(await mentor.page.getByRole("dialog", { name: "Messages" }).isVisible().catch(() => false))) {
+      await until("the dock after reload", async () => {
+        if (await mentor.page.getByRole("dialog", { name: "Messages" }).isVisible().catch(() => false)) return true;
+        await launcher.first().click().catch(() => {});
+        await mentor.page.waitForTimeout(700);
+        return mentor.page.getByRole("dialog", { name: "Messages" }).isVisible().catch(() => false);
+      });
+    }
+    const dockAfter = mentor.page.getByRole("dialog", { name: "Messages" });
+    await dockAfter.getByRole("button", { name: new RegExp(NAME.student) }).first().click().catch(() => {});
+    await until("the reply in the reopened thread", async () => visibleText(mentor.page, reply));
+    const mentorUnsend = mentor.page
+      .locator("li", { has: mentor.page.getByText(reply, { exact: true }) })
+      .getByRole("button", { name: "Unsend message" });
+    check((await mentorUnsend.count()) > 0, "the reported person still sees Unsend (nothing tells them they were reported)");
+    if ((await mentorUnsend.count()) > 0) {
+      await mentorUnsend.first().click();
+      await mentor.page.getByRole("button", { name: /^Unsend$/ }).first().click();
+      check(
+        !!(await until("the mentor's unsend", async () => !(await visibleText(mentor.page, reply)), 10_000)),
+        "…and unsending works as it always did",
+      );
+      check((await mentor.page.getByText(/reported/i).count()) === 0, "…with no mention of a report anywhere");
+    }
     const admin = await openAs(browser, sessions.admin, `/admin/messages/${convoId}`, "admin");
     check(
       !!(await until("the transcript for the admin", async () => visibleText(admin.page, first), 20_000)),
       "the admin can read the reported conversation",
+    );
+    check(
+      (await visibleText(admin.page, reply)) && (await admin.page.getByText("unsent by sender").count()) > 0,
+      "the moderator still sees what was unsent after the report, marked as unsent",
     );
     await admin.page.goto(`${BASE}/admin/messages`, { waitUntil: "domcontentloaded" });
     check(
@@ -471,6 +519,14 @@ async function main() {
         await s.page.waitForTimeout(400);
         check(await s.page.evaluate(NO_SIDEWAYS), `${vp.name}: the conversation list does not scroll sideways`);
         await shot(s.page, `messages-list-${vp.name}`);
+        await s.page.getByRole("button", { name: /^New$/ }).first().click().catch(() => {});
+        const search = s.page.getByRole("textbox", { name: "Search people" });
+        const box = await until("the search pane", async () => {
+          const b = await search.first().boundingBox().catch(() => null);
+          return b && b.width > 100 ? b : null;
+        }, 10_000);
+        check(!!box, `${vp.name}: "New" opens a search pane you can actually use`);
+        await shot(s.page, `messages-search-${vp.name}`);
       }
       await s.ctx.close();
 

@@ -76,7 +76,7 @@ export default async function DashboardLayout({
         preCohort={preCohort}
         demoDayTicket={access.demoDayTicket}
       />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <MobileNav
           kind="student"
           role={profile.role}

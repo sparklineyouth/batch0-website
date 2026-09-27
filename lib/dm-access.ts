@@ -141,25 +141,34 @@ export function hasUnread(
 export const BELL_QUIET_MS = 2 * 60_000;
 
 /**
- * Should this message ring the recipient's bell? One bell per burst: only
- * when they had caught up (anything unread already has a bell pointing at
- * it) AND they are not in the conversation right now. Without the second
- * half, a live back-and-forth rang the bell on every single message, because
- * reading each message as it arrives puts the reader back to "caught up".
+ * Should this message ring the recipient's bell? One bell per burst:
+ *
+ *   - not while they already have an unread bell for this conversation —
+ *     that one still points at it (asked of the notifications themselves,
+ *     not inferred from read cursors, so a bell that was never sent can't
+ *     suppress every later one);
+ *   - not while they're in the conversation right now — they had it open
+ *     within BELL_QUIET_MS by the clock (`seenAt`, set on every read), and
+ *     the live thread shows the message. Without this a back-and-forth rang
+ *     the bell on every single message.
  */
 export function shouldBell(
-  c: ConversationScope & {
-    aLastReadAt: string;
-    bLastReadAt: string;
-    lastMessageAt: string | null;
-    lastSenderId: string | null;
-  },
-  recipientId: string,
+  input: { recipientSeenAt: string | null; hasUnreadBell: boolean },
   nowMs: number,
 ): boolean {
-  if (hasUnread(c, recipientId)) return false;
-  const readAt = Date.parse(cursorFor(c, recipientId));
-  return !(Number.isFinite(readAt) && nowMs - readAt < BELL_QUIET_MS);
+  if (input.hasUnreadBell) return false;
+  const seen = input.recipientSeenAt ? Date.parse(input.recipientSeenAt) : NaN;
+  return !(Number.isFinite(seen) && nowMs - seen < BELL_QUIET_MS);
+}
+
+/** Which presence column a mark-as-read writes to. */
+export function seenColumnFor(
+  c: ConversationScope,
+  userId: string,
+): "a_seen_at" | "b_seen_at" {
+  if (c.userA === userId) return "a_seen_at";
+  if (c.userB === userId) return "b_seen_at";
+  throw new Error("Not your conversation.");
 }
 
 /**

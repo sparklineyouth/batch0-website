@@ -17,7 +17,7 @@ export default async function MentorLayout({
       className="flex min-h-screen bg-paper text-ink md:flex-row flex-col"
     >
       <MentorSidebar role={profile.role} caps={caps} />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <MobileNav kind="mentor" role={profile.role} caps={caps} />
         {/* Skip-link target. tabIndex={-1} makes the non-focusable <main>
             focusable so screen readers actually move the cursor here. */}

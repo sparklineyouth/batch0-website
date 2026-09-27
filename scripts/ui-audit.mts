@@ -7,7 +7,9 @@
  *   ... --only=/admin/challenges,/messages     # a subset of routes
  *
  * For each page it records:
- *   sideways   the page scrolls horizontally, with the elements poking out
+ *   offscreen  an element pokes out past the left or right edge of the screen
+ *              with nothing clipping it (so it's cut off, or scrolls the page
+ *              sideways where the page allows that)
  *   covered    a link/button/field whose centre is under a fixed or sticky
  *              element (a launcher, a sticky bar, a header) — checked at the
  *              top, middle and bottom of the page, because that is where a
@@ -172,24 +174,29 @@ const DETECT = `((pos) => {
   };
   const all = Array.from(document.querySelectorAll("body *")).filter((el) => !ignorable(el));
 
-  // Sideways scroll, and what pokes out.
-  if (document.documentElement.scrollWidth > vw + 1) {
+  // Anything poking out past the screen's edges. Asked of the elements
+  // themselves rather than of documentElement.scrollWidth: with overflow-x
+  // clipped on html/body (as on this site) the page never scrolls sideways,
+  // so that check could never fire — the content is just cut off instead.
+  {
     const culprits = [];
     for (const el of all) {
+      if (!visible(el)) continue;
       const r = el.getBoundingClientRect();
-      if (!r.width || r.right <= vw + 1) continue;
+      if (r.right <= vw + 1 && r.left >= -1) continue;
       let p = el.parentElement, clipped = false;
-      while (p && p !== document.body) {
-        const s = getComputedStyle(p);
-        if (/hidden|auto|scroll|clip/.test(s.overflowX)) { clipped = true; break; }
+      while (p && p !== document.body && p !== document.documentElement) {
+        const st = getComputedStyle(p);
+        if (/hidden|auto|scroll|clip/.test(st.overflowX) || st.position === "fixed") { clipped = true; break; }
         p = p.parentElement;
       }
       if (clipped) continue;
-      // Report the outermost offender only.
       if (culprits.some((c) => c.el.contains(el))) continue;
-      culprits.push({ el, right: Math.round(r.right) });
+      culprits.push({ el, r });
     }
-    out.push({ kind: "sideways", detail: "scrollWidth " + document.documentElement.scrollWidth + " > " + vw + ": " + culprits.slice(0, 5).map((c) => describe(c.el) + " (right " + c.right + ")").join(" | ") });
+    for (const c of culprits.slice(0, 5)) {
+      out.push({ kind: "offscreen", detail: describe(c.el) + " (left " + Math.round(c.r.left) + ", right " + Math.round(c.r.right) + " of " + vw + ")" });
+    }
   }
 
   // Covered controls. What counts depends on where the pinned element sits:
@@ -266,6 +273,7 @@ const DETECT = `((pos) => {
 const VIEWPORTS = [
   { name: "phone", width: 375, height: 740 },
   { name: "tablet", width: 768, height: 1000 },
+  { name: "laptop", width: 1024, height: 768 },
   { name: "desktop", width: 1280, height: 800 },
 ];
 

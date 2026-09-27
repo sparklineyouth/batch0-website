@@ -44,7 +44,8 @@ export default async function AdminConversationPage(props: {
   }
 
   const [messages, reports, people] = await Promise.all([
-    listMessages(convo.id, 1000),
+    // Including what was unsent: that's often exactly what was reported.
+    listMessages(convo.id, 1000, { includeUnsent: true }),
     listReportsForConversation(convo.id),
     getPeople([convo.userA, convo.userB].filter((id): id is string => !!id)),
   ]);

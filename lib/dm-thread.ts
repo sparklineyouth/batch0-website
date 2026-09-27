@@ -6,7 +6,6 @@ import {
   getConversationForViewer,
   getPerson,
   isBlockedBetween,
-  isReported,
   listBlockedIds,
   listMessages,
   type DmMessage,
@@ -50,10 +49,12 @@ export type ThreadPayload = {
   /** A moderator reading a reported thread: read-only, and it says so. */
   moderatorView: boolean;
   /**
-   * Someone has reported this conversation. Nothing in it can be unsent from
-   * then on (unsendDm refuses), so the thread stops offering it.
+   * The other account has been deleted. The history stays, read-only, and
+   * there's nobody to block or write to. (Deliberately no "reported" flag:
+   * only a participant can report a DM, so telling the other participant a
+   * report exists would tell them who filed it.)
    */
-  reported: boolean;
+  otherDeleted: boolean;
 };
 
 const DELETED: Omit<DmPerson, "id"> = {
@@ -99,7 +100,7 @@ export async function buildThreadPayload(
     blockedByYou: blocked.includes(withUserId),
     frozen,
     moderatorView: false,
-    reported: false,
+    otherDeleted: false,
   };
 }
 
@@ -116,15 +117,14 @@ async function byConversation(
   // Null when the other account has been deleted.
   const otherId = participant ? otherParticipant(convo, viewer.userId) : (convo.userA ?? convo.userB);
   const bothPresent = !!convo.userA && !!convo.userB;
-  const [other, messages, frozen, blocked, reported] = await Promise.all([
+  const [other, messages, frozen, blocked] = await Promise.all([
     otherId ? getPerson(otherId) : Promise.resolve(null),
-    listMessages(convo.id),
+    // A moderator's view of a reported thread includes what was unsent.
+    listMessages(convo.id, 300, { includeUnsent: !participant }),
     participant && bothPresent
       ? isBlockedBetween(convo.userA!, convo.userB!)
       : Promise.resolve(false),
     participant ? listBlockedIds(viewer.userId) : Promise.resolve([] as string[]),
-    // A moderator only reaches a conversation that has been reported.
-    participant ? isReported(convo.id) : Promise.resolve(true),
   ]);
 
   return {
@@ -136,6 +136,6 @@ async function byConversation(
     blockedByYou: !!otherId && blocked.includes(otherId),
     frozen,
     moderatorView: !participant,
-    reported,
+    otherDeleted: participant && !bothPresent,
   };
 }

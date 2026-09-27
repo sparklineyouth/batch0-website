@@ -108,7 +108,9 @@ export function MessagesInbox({
       {/* Left: list. Hidden on a phone once a thread is open. */}
       <aside
         className={`flex w-full min-w-0 flex-col border-line md:flex md:w-80 md:shrink-0 md:border-r ${
-          thread ? "hidden md:flex" : "flex"
+          // On a phone one pane at a time: the list gives way to a thread OR
+          // to search (it used to stay, leaving search 0px wide).
+          thread || searching ? "hidden md:flex" : "flex"
         }`}
       >
         <div className="flex items-center justify-between border-b border-line px-4 py-3">

@@ -200,21 +200,28 @@ export function ChatWidget({ viewerId }: { viewerId: string }) {
     }
   }, [open, refresh, openConversation, openWithPerson]);
 
-  // Focus moves into the panel when it opens, and back to the launcher when
-  // it closes — otherwise a keyboard or screen-reader user is left behind on
-  // the launcher, or on nothing at all once the phone sheet covers it.
-  const wasOpen = useRef(false);
+  // Focus moves into the panel when someone opens it, and back to the
+  // launcher when they close it — otherwise a keyboard or screen-reader user
+  // is left behind on the launcher, or on nothing at all once the phone sheet
+  // covers it. Only for an open they asked for: a dock restored open on page
+  // load must not pull focus away from the page.
+  const userToggledRef = useRef(false);
+  const toggle = (next: boolean) => {
+    userToggledRef.current = true;
+    setOpen(next);
+  };
   useEffect(() => {
+    if (!userToggledRef.current) return;
+    userToggledRef.current = false;
     if (open) {
       requestAnimationFrame(() => {
         panelRef.current
           ?.querySelector<HTMLElement>("textarea, input, button:not([aria-hidden])")
           ?.focus();
       });
-    } else if (wasOpen.current) {
+    } else {
       launcherRef.current?.focus();
     }
-    wasOpen.current = open;
   }, [open]);
 
   useEffect(() => {
@@ -226,10 +233,13 @@ export function ChatWidget({ viewerId }: { viewerId: string }) {
       // report — or any other modal on the page), or focus somewhere else.
       if (e.isComposing || e.defaultPrevented) return;
       if (document.querySelector('[aria-modal="true"]')) return;
-      if (!panelRef.current?.contains(document.activeElement)) return;
+      // Focus on <body> counts as ours: switching views unmounts whatever
+      // had focus, and Escape must keep working after that.
+      const active = document.activeElement;
+      if (active && active !== document.body && !panelRef.current?.contains(active)) return;
       // Escape backs out one level rather than closing the whole dock from
       // inside a thread — losing your place is worse than one extra keypress.
-      if (viewRef.current.kind === "list") setOpen(false);
+      if (viewRef.current.kind === "list") toggle(false);
       else showList();
     }
     document.addEventListener("keydown", onKey);
@@ -238,14 +248,14 @@ export function ChatWidget({ viewerId }: { viewerId: string }) {
 
   if (hidden) return null;
 
-  const closeForNavigation = () => setOpen(false);
+  const closeForNavigation = () => toggle(false);
 
   return (
     <>
       <button
         ref={launcherRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => toggle(!open)}
         aria-label={unread > 0 ? `Messages (${unread} unread)` : "Messages"}
         aria-expanded={open}
         aria-controls="chat-dock-panel"
@@ -269,8 +279,11 @@ export function ChatWidget({ viewerId }: { viewerId: string }) {
           ref={panelRef}
           role="dialog"
           aria-label="Messages"
+          tabIndex={-1}
           style={sheetStyle}
-          className="fixed bottom-0 right-0 z-[45] flex h-[min(34rem,100dvh)] w-full flex-col overflow-hidden border border-line bg-paper pb-[var(--safe-bottom)] shadow-[0_30px_60px_-15px_rgba(20,20,20,0.35)] sm:bottom-20 sm:right-5 sm:h-[min(32rem,calc(100dvh-6rem))] sm:w-[22rem] sm:rounded-2xl sm:pb-0 sm:[body:has([data-bottom-bar])_&]:bottom-[8.25rem] sm:[body:has([data-bottom-bar])_&]:h-[min(32rem,calc(100dvh-10rem))]"
+          // Above the launcher with a 0.75rem gap, safe area included — and
+          // lifted with it over a page's bottom bar.
+          className="fixed bottom-0 right-0 z-[45] flex h-[min(34rem,100dvh)] w-full flex-col overflow-hidden border border-line bg-paper pb-[var(--safe-bottom)] shadow-[0_30px_60px_-15px_rgba(20,20,20,0.35)] outline-none sm:bottom-[calc(5rem+var(--safe-bottom))] sm:right-5 sm:h-[min(32rem,calc(100dvh-6rem-var(--safe-bottom)))] sm:w-[22rem] sm:rounded-2xl sm:pb-0 sm:[body:has([data-bottom-bar])_&]:bottom-[calc(9.25rem+var(--safe-bottom))] sm:[body:has([data-bottom-bar])_&]:h-[min(32rem,calc(100dvh-10.25rem-var(--safe-bottom)))]"
         >
           <div className="flex items-center justify-between border-b border-line bg-wash px-3 py-2">
             <div className="flex items-center gap-2">
@@ -299,7 +312,7 @@ export function ChatWidget({ viewerId }: { viewerId: string }) {
               )}
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => toggle(false)}
                 aria-label="Minimize messages"
                 className="press flex h-7 w-7 items-center justify-center rounded-md text-ink-soft hover:bg-paper hover:text-ink"
               >
@@ -318,6 +331,13 @@ export function ChatWidget({ viewerId }: { viewerId: string }) {
                 onChanged={refresh}
                 onBack={showList}
                 onNavigateAway={closeForNavigation}
+                // A conversation started here now exists: remember it, so
+                // reopening the dock refetches the real thread, not the draft.
+                onConversationCreated={(id) =>
+                  setView((v) =>
+                    v.kind === "thread" ? { ...v, thread: { ...v.thread, conversationId: id } } : v,
+                  )
+                }
               />
             ) : view.kind === "search" ? (
               <PeopleSearch compact onPick={openWithPerson} onCancel={showList} />

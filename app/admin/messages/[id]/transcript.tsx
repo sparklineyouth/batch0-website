@@ -65,7 +65,14 @@ export function Transcript({
           {messages.map((m) => (
             <li key={m.id} className="group px-4 py-3">
               <div className="flex items-baseline justify-between gap-3">
-                <p className="text-xs font-medium text-ink">{m.senderName}</p>
+                <p className="text-xs font-medium text-ink">
+                  {m.senderName}
+                  {m.unsentAt && (
+                    <span className="ml-2 rounded-full border border-line px-1.5 py-px font-mono text-[10px] font-normal text-ink-faint">
+                      unsent by sender
+                    </span>
+                  )}
+                </p>
                 <div className="flex shrink-0 items-center gap-2">
                   <p className="text-[10px] font-mono tabular-nums text-ink-faint">
                     <LocalTime value={m.createdAt} />

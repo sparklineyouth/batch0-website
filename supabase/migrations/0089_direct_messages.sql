@@ -68,6 +68,13 @@ create table if not exists public.dm_conversations (
   -- comparison is a plain `>` with no null handling to get wrong.
   a_last_read_at timestamptz not null default 'epoch',
   b_last_read_at timestamptz not null default 'epoch',
+  -- When each side last had the thread open, by the clock (set on every
+  -- mark-as-read). Distinct from the read cursor, which is a MESSAGE
+  -- timestamp: "is this person in the conversation right now" — the one
+  -- thing that decides whether a new message should ring their bell — has to
+  -- be asked of the clock, not of when the last message happened to be sent.
+  a_seen_at timestamptz,
+  b_seen_at timestamptz,
   -- Denormalised for the inbox list and the popup, maintained by the trigger
   -- below. Null on a conversation that exists but has no message yet.
   last_message_at timestamptz,
@@ -113,8 +120,18 @@ create table if not exists public.dm_messages (
   -- (and in a report's transcript), attributed to "Deleted account".
   sender_id uuid references public.profiles(id) on delete set null,
   body text not null check (char_length(body) between 1 and 4000),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Unsent by its sender. The row stays — hidden from both participants
+  -- (the read policy below and every app read), but still there for the
+  -- team if the conversation is ever reported. Unsend used to be a hard
+  -- delete, so a reported sender could quietly remove the evidence first;
+  -- refusing unsend after a report instead told them they'd been reported.
+  unsent_at timestamptz
 );
+
+alter table public.dm_conversations add column if not exists a_seen_at timestamptz;
+alter table public.dm_conversations add column if not exists b_seen_at timestamptz;
+alter table public.dm_messages add column if not exists unsent_at timestamptz;
 
 alter table public.dm_messages alter column sender_id drop not null;
 alter table public.dm_messages drop constraint if exists dm_messages_sender_id_fkey;
@@ -150,15 +167,17 @@ begin
   -- conflicts with that — two concurrent sends would deadlock.
   perform 1 from public.dm_conversations where id = cid for no key update;
 
+  -- Unsent messages don't count and never become the preview.
   select * into last_row
   from public.dm_messages m
-  where m.conversation_id = cid
+  where m.conversation_id = cid and m.unsent_at is null
   order by m.created_at desc, m.id desc
   limit 1;
 
   update public.dm_conversations c
   set message_count = (
-        select count(*) from public.dm_messages m where m.conversation_id = cid
+        select count(*) from public.dm_messages m
+        where m.conversation_id = cid and m.unsent_at is null
       ),
       last_message_at = last_row.created_at,
       last_message_preview = left(last_row.body, 140),
@@ -170,7 +189,7 @@ $$;
 
 drop trigger if exists dm_messages_touch_conversation on public.dm_messages;
 create trigger dm_messages_touch_conversation
-  after insert or delete on public.dm_messages
+  after insert or delete or update of unsent_at on public.dm_messages
   for each row execute procedure public.dm_messages_touch_conversation();
 
 -- ----------------------------------------------------------------------------
@@ -293,12 +312,19 @@ drop policy if exists "dm_conversations insert" on public.dm_conversations;
 drop policy if exists "dm_conversations update" on public.dm_conversations;
 
 drop policy if exists "dm_messages read" on public.dm_messages;
+-- An unsent message is readable only by a moderator of a reported
+-- conversation — never by either participant, so its words don't reach the
+-- other person's browser over PostgREST or Realtime once it's unsent.
 create policy "dm_messages read" on public.dm_messages
   for select using (
     exists (
       select 1 from public.dm_conversations c
       where c.id = dm_messages.conversation_id
         and public.dm_can_read_conversation(c)
+        and (
+          dm_messages.unsent_at is null
+          or (c.user_a is distinct from auth.uid() and c.user_b is distinct from auth.uid())
+        )
     )
   );
 drop policy if exists "dm_messages insert" on public.dm_messages;
@@ -314,11 +340,19 @@ drop policy if exists "dm_blocks insert" on public.dm_blocks;
 drop policy if exists "dm_blocks delete" on public.dm_blocks;
 
 drop policy if exists "dm_reports read" on public.dm_reports;
+-- A moderator never sees reports about a conversation they are in: who
+-- reported them, and why, is exactly what the person reported must not learn.
 create policy "dm_reports read" on public.dm_reports
   for select using (
     reporter_id = auth.uid()
-    or public.is_admin(auth.uid())
-    or public.has_permission(auth.uid(), 'moderation.manage')
+    or (
+      (public.is_admin(auth.uid()) or public.has_permission(auth.uid(), 'moderation.manage'))
+      and not exists (
+        select 1 from public.dm_conversations c
+        where c.id = dm_reports.conversation_id
+          and (c.user_a = auth.uid() or c.user_b = auth.uid())
+      )
+    )
   );
 drop policy if exists "dm_reports insert" on public.dm_reports;
 drop policy if exists "dm_reports update" on public.dm_reports;
@@ -348,7 +382,9 @@ returns trigger
 language plpgsql
 as $$
 begin
-  if new.type = 'direct_message' then
+  -- A report's bell carries no reason either: reasons quote the DM, and a
+  -- reported admin can read the other moderators' bells.
+  if new.type in ('direct_message', 'dm_reported') then
     new.body := null;
   end if;
   return new;

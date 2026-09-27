@@ -1,5 +1,4 @@
 import "server-only";
-import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAllRoles } from "@/lib/roles";
 import { ACCEPTED_STATUSES } from "@/lib/pre-cohort";
@@ -78,6 +77,8 @@ export type DmMessage = {
   senderName: string;
   body: string;
   createdAt: string;
+  /** Only ever set in a moderator's transcript: participants never get unsent rows. */
+  unsentAt?: string | null;
 };
 
 export type DmReport = {
@@ -96,6 +97,19 @@ const CONVO_COLS = `
   id, user_a, user_b, a_last_read_at, b_last_read_at, last_message_at,
   last_message_preview, last_sender_id, message_count, created_at
 `;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Is this a real id? Anything else — a "deleted:" placeholder, junk from a URL — is nobody. */
+export function isUuid(id: unknown): id is string {
+  return typeof id === "string" && UUID_RE.test(id);
+}
+
+/** Split into chunks short enough for a PostgREST `in` filter in a URL. */
+function chunks<T>(items: readonly T[], size = 150): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 /**
  * A failed read throws rather than returning nothing. Every caller here used
@@ -183,13 +197,17 @@ async function toPeople(rows: any[]): Promise<DmPerson[]> {
 }
 
 export async function getPeople(ids: readonly string[]): Promise<Map<string, DmPerson>> {
-  if (ids.length === 0) return new Map();
+  const real = Array.from(new Set(ids.filter(isUuid)));
+  if (real.length === 0) return new Map();
   const admin = createAdminClient();
-  const data = must(
-    await admin.from("profiles").select("id, full_name, role").in("id", ids as string[]),
-    "people",
-  );
-  const people = await toPeople(data ?? []);
+  const rows = (
+    await Promise.all(
+      chunks(real).map(async (part) =>
+        must(await admin.from("profiles").select("id, full_name, role").in("id", part), "people") ?? [],
+      ),
+    )
+  ).flat();
+  const people = await toPeople(rows);
   return new Map(people.map((p) => [p.id, p]));
 }
 
@@ -215,23 +233,6 @@ export async function getPerson(id: string): Promise<DmPerson | null> {
 // to can always reply.
 // ---------------------------------------------------------------------------
 
-/** Every student who has been let in: an enrollment, or an accepted application. */
-const vettedStudentIds = cache(async function vettedStudentIds(): Promise<Set<string>> {
-  const admin = createAdminClient();
-  const [enr, apps] = await Promise.all([
-    admin.from("enrollments").select("user_id").limit(10000),
-    admin
-      .from("applications")
-      .select("user_id")
-      .in("status", ACCEPTED_STATUSES as unknown as string[])
-      .limit(10000),
-  ]);
-  const ids = new Set<string>();
-  for (const r of (must(enr, "enrollments") ?? []) as any[]) if (r.user_id) ids.add(r.user_id);
-  for (const r of (must(apps, "applications") ?? []) as any[]) if (r.user_id) ids.add(r.user_id);
-  return ids;
-});
-
 /** Role slugs that count as the team. */
 async function staffRoleSlugs(): Promise<string[]> {
   const meta = await roleMeta();
@@ -240,19 +241,36 @@ async function staffRoleSlugs(): Promise<string[]> {
     .map(([slug]) => slug);
 }
 
-/** Of these people, who has been let in (see above). Staff included. */
+/**
+ * Of these people, who has been let in (see above). Staff included. Asked per
+ * person — never by loading every enrollment and application, which also ran
+ * into PostgREST's row cap and quietly left students unvetted past it.
+ */
 export async function vettedIds(ids: readonly string[]): Promise<Set<string>> {
-  const unique = Array.from(new Set(ids.filter(Boolean)));
+  const unique = Array.from(new Set(ids.filter(isUuid)));
   if (unique.length === 0) return new Set();
   const admin = createAdminClient();
-  const rows = (must(
-    await admin.from("profiles").select("id, role").in("id", unique),
-    "people",
-  ) ?? []) as { id: string; role: string | null }[];
-  const students = await vettedStudentIds();
   const out = new Set<string>();
-  for (const r of rows) {
-    if ((r.role && r.role !== "student") || students.has(r.id)) out.add(r.id);
+  const students: string[] = [];
+  for (const part of chunks(unique)) {
+    const rows = (must(await admin.from("profiles").select("id, role").in("id", part), "people") ??
+      []) as { id: string; role: string | null }[];
+    for (const r of rows) {
+      if (r.role && r.role !== "student") out.add(r.id);
+      else students.push(r.id);
+    }
+  }
+  for (const part of chunks(students)) {
+    const [enr, apps] = await Promise.all([
+      admin.from("enrollments").select("user_id").in("user_id", part),
+      admin
+        .from("applications")
+        .select("user_id")
+        .in("user_id", part)
+        .in("status", ACCEPTED_STATUSES as unknown as string[]),
+    ]);
+    for (const r of (must(enr, "enrollments") ?? []) as any[]) out.add(r.user_id);
+    for (const r of (must(apps, "applications") ?? []) as any[]) out.add(r.user_id);
   }
   return out;
 }
@@ -329,29 +347,31 @@ export async function searchDirectory(
           ) ?? []
         : [];
     } else {
-      // Let in: everyone else who has been let in. Non-student roles in one
-      // query; accepted and enrolled students by id, in chunks short enough
-      // for a URL.
+      // Let in: everyone else who has been let in — non-student roles, and
+      // students with an enrollment or an accepted application, found by
+      // joining from those tables so the name filter and the limit apply in
+      // the database.
       const nonStudents: any[] =
         must(
           await byName(base().neq("role", "student")).order("full_name", { ascending: true }).limit(pageSize),
           "people",
         ) ?? [];
-      const studentIds = Array.from(await vettedStudentIds());
-      const chunks: string[][] = [];
-      for (let i = 0; i < studentIds.length; i += 150) chunks.push(studentIds.slice(i, i + 150));
-      const students: any[] = (
-        await Promise.all<any[]>(
-          chunks.map(async (ids) =>
-            must(
-              await byName(base().in("id", ids).eq("role", "student"))
-                .order("full_name", { ascending: true })
-                .limit(pageSize),
-              "people",
-            ) ?? [],
-          ),
-        )
-      ).flat();
+      const joined = (table: "enrollments" | "applications") => {
+        let req: any = admin
+          .from(table)
+          .select(`profile:profiles!${table}_user_id_fkey!inner(id, full_name, role)`)
+          .eq("profile.role", "student");
+        if (table === "applications") req = req.in("status", ACCEPTED_STATUSES as unknown as string[]);
+        if (escaped) req = req.ilike("profile.full_name", `%${escaped}%`);
+        return req.limit(pageSize * 3);
+      };
+      const [enr, apps] = await Promise.all([joined("enrollments"), joined("applications")]);
+      const students = [
+        ...((must(enr, "people") ?? []) as any[]),
+        ...((must(apps, "people") ?? []) as any[]),
+      ]
+        .map((r) => (Array.isArray(r.profile) ? r.profile[0] : r.profile))
+        .filter(Boolean);
       rows = [...nonStudents, ...students].sort((a, b) =>
         String(a.full_name ?? "").localeCompare(String(b.full_name ?? "")),
       );
@@ -454,12 +474,41 @@ export async function listBlockedPeople(userId: string): Promise<DmPerson[]> {
 
 /** Raw conversation row, with no viewer check. Callers must do their own. */
 export async function getConversationRow(id: string): Promise<DmConversation | null> {
+  if (!isUuid(id)) return null;
   const admin = createAdminClient();
   const data = must(
     await admin.from("dm_conversations").select(CONVO_COLS).eq("id", id).maybeSingle(),
     "the conversation",
   );
   return data ? toConversation(data) : null;
+}
+
+/** Several conversation rows at once, keyed by id (the moderation queue). */
+export async function getConversationRows(ids: readonly string[]): Promise<Map<string, DmConversation>> {
+  const real = Array.from(new Set(ids.filter(isUuid)));
+  const admin = createAdminClient();
+  const rows = (
+    await Promise.all(
+      chunks(real).map(
+        async (part) => must(await admin.from("dm_conversations").select(CONVO_COLS).in("id", part), "conversations") ?? [],
+      ),
+    )
+  ).flat();
+  return new Map(rows.map((r: any) => [r.id as string, toConversation(r)]));
+}
+
+/** The ids of every conversation this person is in. */
+export async function listOwnConversationIds(userId: string): Promise<Set<string>> {
+  const admin = createAdminClient();
+  const data = must(
+    await admin
+      .from("dm_conversations")
+      .select("id")
+      .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+      .limit(5000),
+    "conversations",
+  );
+  return new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
 }
 
 /** The existing DM between two people, if there is one. */
@@ -555,7 +604,8 @@ export async function countUnreadConversations(userId: string): Promise<number> 
       .select("user_a, user_b, a_last_read_at, b_last_read_at, last_message_at, last_sender_id, id")
       .or(`user_a.eq.${userId},user_b.eq.${userId}`)
       .not("last_message_at", "is", null)
-      .neq("last_sender_id", userId)
+      // .neq alone drops a NULL sender (a deleted account's last message).
+      .or(`last_sender_id.is.null,last_sender_id.neq.${userId}`)
       .limit(500),
     "unread count",
   );
@@ -573,13 +623,18 @@ export async function countUnreadConversations(userId: string): Promise<number> 
 export async function listMessages(
   conversationId: string,
   limit = 300,
+  opts: { includeUnsent?: boolean } = {},
 ): Promise<DmMessage[]> {
   const admin = createAdminClient();
+  let req = admin
+    .from("dm_messages")
+    .select("id, conversation_id, sender_id, body, created_at, unsent_at")
+    .eq("conversation_id", conversationId);
+  // An unsent message is gone for both participants. Only a moderator's
+  // transcript of a reported conversation still shows it (marked).
+  if (!opts.includeUnsent) req = req.is("unsent_at", null);
   const data = must(
-    await admin
-      .from("dm_messages")
-      .select("id, conversation_id, sender_id, body, created_at")
-      .eq("conversation_id", conversationId)
+    await req
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(limit),
@@ -599,6 +654,7 @@ export async function listMessages(
     senderName: people.get(r.sender_id)?.name ?? "Deleted account",
     body: r.body,
     createdAt: r.created_at,
+    ...(opts.includeUnsent ? { unsentAt: r.unsent_at ?? null } : {}),
   }));
 }
 
@@ -668,22 +724,12 @@ export async function listReportsForConversation(
  */
 export async function countOpenReports(viewerId: string): Promise<number> {
   const admin = createAdminClient();
-  const rows = must(
-    await admin.from("dm_reports").select("conversation_id").eq("status", "open").limit(1000),
-    "reports",
-  ) as { conversation_id: string }[] | null;
-  if (!rows?.length) return 0;
-  const ids = Array.from(new Set(rows.map((r) => r.conversation_id)));
-  const mine = must(
-    await admin
-      .from("dm_conversations")
-      .select("id")
-      .in("id", ids)
-      .or(`user_a.eq.${viewerId},user_b.eq.${viewerId}`),
-    "conversations",
-  ) as { id: string }[] | null;
-  const exclude = new Set((mine ?? []).map((c) => c.id));
-  return rows.filter((r) => !exclude.has(r.conversation_id)).length;
+  const [rows, mine] = await Promise.all([
+    admin.from("dm_reports").select("conversation_id").eq("status", "open").limit(1000),
+    listOwnConversationIds(viewerId),
+  ]);
+  const open = (must(rows, "reports") ?? []) as { conversation_id: string }[];
+  return open.filter((r) => !mine.has(r.conversation_id)).length;
 }
 
 /** Everyone who should hear about a new report. Mirrors listDiscussionTeamIds(). */

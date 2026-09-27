@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -47,6 +47,13 @@ const RESYNC_MS = 20_000;
 
 /** Within this many pixels of the bottom counts as "reading the latest". */
 const NEAR_BOTTOM_PX = 120;
+
+/**
+ * An open, visible thread tells the server "still here" at least this often,
+ * even with nothing new to mark read — that presence is what keeps a
+ * conversation someone is sitting in from ringing their bell.
+ */
+const PRESENCE_MS = 60_000;
 
 export function MessageThread({
   viewerId,
@@ -102,6 +109,12 @@ export function MessageThread({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  // Scroll to the newest message once the rows for a (newly) loaded
+  // conversation have rendered.
+  const scrollPendingRef = useRef(true);
+  // Messages being unsent: kept out of any resync that could still carry
+  // them, so an unsent message can't flicker back.
+  const unsendingRef = useRef(new Map<string, number | null>());
 
   // Switching conversation reuses this component; reset everything that
   // belongs to the old one. Keyed on WHO the conversation is with, not on its
@@ -112,8 +125,23 @@ export function MessageThread({
     ? `mod:${initial.conversationId}`
     : `with:${initial.other.id}`;
   const loadedRef = useRef(identity);
+  const lastInitialRef = useRef(initial);
   useEffect(() => {
-    if (loadedRef.current === identity) return;
+    const previous = lastInitialRef.current;
+    lastInitialRef.current = initial;
+    if (loadedRef.current === identity) {
+      // Same conversation, fresh copy from the server — the dock refetches it
+      // on reopen. Adopt it, keeping the half-typed draft and anything still
+      // sending. (A parent that only adopts a new conversation id reuses the
+      // same messages array, and changes nothing here.)
+      if (initial !== previous && initial.messages !== previous.messages) {
+        setThread(initial);
+        setMessages((prev) => [...initial.messages, ...prev.filter((m) => m.pending)].sort(byTime));
+        cursorRef.current = initial.cursor;
+        scrollPendingRef.current = true;
+      }
+      return;
+    }
     loadedRef.current = identity;
     setThread(initial);
     setMessages(initial.messages);
@@ -123,9 +151,15 @@ export function MessageThread({
     setConfirm(null);
     setMenuOpen(false);
     cursorRef.current = initial.cursor;
+    unsendingRef.current.clear();
+    scrollPendingRef.current = true;
   }, [identity, initial]);
 
   const conversationId = thread.conversationId;
+  // For async work to check it's still looking at the conversation it
+  // started for: a late answer must not land in the next one.
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
 
   const isNearBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -139,10 +173,13 @@ export function MessageThread({
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   }, []);
 
-  // Open on the latest message — once the rows exist (they render after mount).
-  useEffect(() => {
-    if (mounted) scrollToEnd();
-  }, [identity, mounted, scrollToEnd]);
+  // Open on the latest message — once the rows for the loaded conversation
+  // exist (they render after mount, and after a switch's state reset).
+  useLayoutEffect(() => {
+    if (!mounted || !scrollPendingRef.current) return;
+    scrollPendingRef.current = false;
+    scrollToEnd();
+  }, [messages, mounted, scrollToEnd]);
 
   /** The newest confirmed message on screen: how far "read" may go. */
   const newestShown = useCallback((): string | undefined => {
@@ -156,13 +193,24 @@ export function MessageThread({
 
   // Mark read up to what the viewer can actually see — and only while they
   // can see it. A thread open in a background tab reads nothing; the tab
-  // coming back does.
+  // coming back does. Skipped when nothing new is on screen, except to
+  // refresh presence every PRESENCE_MS; the inbox refetches only when the
+  // server says something it shows actually changed.
+  const lastMarkRef = useRef<{ upTo: string | undefined; at: number }>({ upTo: undefined, at: 0 });
   const markSeen = useCallback(
     (upTo?: string) => {
-      if (!conversationId || thread.moderatorView) return;
+      const id = conversationId;
+      if (!id || thread.moderatorView) return;
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      markRead(conversationId, upTo ?? newestShown())
-        .then(() => onChanged?.())
+      const target = upTo ?? newestShown();
+      const last = lastMarkRef.current;
+      const newer = !!target && (!last.upTo || isAfter(target, last.upTo));
+      if (!newer && Date.now() - last.at < PRESENCE_MS) return;
+      lastMarkRef.current = { upTo: newer ? target : last.upTo, at: Date.now() };
+      markRead(id, target)
+        .then((res) => {
+          if (res.ok && res.data?.changed) onChanged?.();
+        })
         .catch(() => {
           /* best-effort: the badge self-corrects on the next poll */
         });
@@ -182,15 +230,25 @@ export function MessageThread({
    * anything still sending are kept.
    */
   const resync = useCallback(async () => {
-    if (!conversationId) return;
+    const id = conversationId;
+    if (!id) return;
+    const startedAt = Date.now();
     let server: DmMessage[];
     let asOf: string;
     let complete: boolean;
     try {
-      ({ messages: server, asOf, complete } = await fetchMessages(conversationId));
+      ({ messages: server, asOf, complete } = await fetchMessages(id));
     } catch {
       return;
     }
+    // Switched away while it was in flight: this answer is for another thread.
+    if (conversationIdRef.current !== id) return;
+    // An unsend this request may have raced: keep it out, and forget it once
+    // a request that began after the unsend succeeded has come back.
+    for (const [mid, doneAt] of unsendingRef.current) {
+      if (doneAt !== null && startedAt > doneAt) unsendingRef.current.delete(mid);
+    }
+    server = server.filter((m) => !unsendingRef.current.has(m.id));
     const wasNearBottom = isNearBottom();
     // Decided here, from what is on screen now — a state updater runs later,
     // so a flag set inside one would still be false on the next line.
@@ -219,24 +277,38 @@ export function MessageThread({
       return same ? prev : next;
     });
     if (arrived) {
-      markSeen();
+      // Read up to the newest thing now on screen — worked out from the
+      // server's rows, because messagesRef won't reflect this update yet.
+      const newestServer = server.reduce<string | undefined>(
+        (a, m) => (!a || isAfter(m.createdAt, a) ? m.createdAt : a),
+        undefined,
+      );
+      const current = newestShown();
+      markSeen(newestServer && (!current || isAfter(newestServer, current)) ? newestServer : current);
       if (wasNearBottom) requestAnimationFrame(() => scrollToEnd(true));
     }
-  }, [conversationId, viewerId, isNearBottom, markSeen, scrollToEnd]);
+  }, [conversationId, viewerId, isNearBottom, markSeen, newestShown, scrollToEnd]);
 
   // Resync when the tab comes back or the window regains focus, and on a
   // slow timer while the thread is visible.
   useEffect(() => {
     if (!conversationId) return;
+    // visibilitychange and focus usually fire together on a tab switch; one
+    // round trip covers both.
+    let lastVisible = 0;
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastVisible < 2_000) return;
+      lastVisible = Date.now();
       markSeen();
       void resync();
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     const t = setInterval(() => {
-      if (document.visibilityState === "visible") void resync();
+      if (document.visibilityState !== "visible") return;
+      void resync();
+      markSeen(); // presence refresh; a no-op until PRESENCE_MS has passed
     }, RESYNC_MS);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
@@ -249,6 +321,8 @@ export function MessageThread({
   const onLive = useCallback(
     (m: LiveMessage) => {
       if (!m?.id || !m.created_at) return;
+      if (m.conversation_id !== conversationIdRef.current) return;
+      if (unsendingRef.current.has(m.id)) return;
       const wasNearBottom = isNearBottom();
       setMessages((prev) => {
         if (prev.some((x) => x.id === m.id)) return prev;
@@ -387,17 +461,21 @@ export function MessageThread({
     const removed = messagesRef.current.find((m) => m.id === id);
     if (!removed) return;
     setBusy(true);
+    unsendingRef.current.set(id, null);
     setMessages((prev) => prev.filter((m) => m.id !== id));
     // Put back only this one message on failure — never a stale copy of the
     // whole list, which would erase anything that arrived meanwhile.
-    const putBack = () =>
+    const putBack = () => {
+      unsendingRef.current.delete(id);
       setMessages((prev) => (prev.some((m) => m.id === id) ? prev : [...prev, removed].sort(byTime)));
+    };
     try {
       const res = await unsendDm(id);
       if (!res.ok) {
         putBack();
         setError(res.error);
       } else {
+        unsendingRef.current.set(id, Date.now());
         onChanged?.();
       }
     } catch (err) {
@@ -458,7 +536,6 @@ export function MessageThread({
       setConfirm(null);
       setReason("");
       setError(null);
-      setThread((t) => ({ ...t, reported: true }));
       setNotice("Reported. The batch0 team will review this conversation.");
     } catch (err) {
       setReportError(getActionError(err));
@@ -532,7 +609,7 @@ export function MessageThread({
                   role="menu"
                   className="absolute right-0 top-8 z-20 w-52 overflow-hidden rounded-lg border border-line bg-paper py-1 shadow-lg"
                 >
-                  {thread.blockedByYou ? (
+                  {thread.otherDeleted ? null : thread.blockedByYou ? (
                     <MenuItem
                       onClick={() => {
                         setMenuOpen(false);
@@ -621,7 +698,6 @@ export function MessageThread({
                   onUnsend={
                     row.message.senderId === viewerId &&
                     !row.message.pending &&
-                    !thread.reported &&
                     !thread.moderatorView
                       ? () => setConfirm({ kind: "unsend", id: row.message.id })
                       : undefined
@@ -645,7 +721,11 @@ export function MessageThread({
             {notice}
           </p>
         )}
-        {thread.moderatorView ? null : thread.blockedByYou ? (
+        {thread.moderatorView ? null : thread.otherDeleted ? (
+          <p className="rounded-md bg-wash px-3 py-2 text-xs text-ink-soft">
+            This account was deleted. The conversation stays here, read-only.
+          </p>
+        ) : thread.blockedByYou ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-wash px-3 py-2">
             <p className="min-w-0 break-words text-xs text-ink-soft">
               You blocked {thread.other.name}. Neither of you can send.
@@ -826,13 +906,14 @@ function MessageBubble({
             mine
               ? `bg-phosphor text-on-phosphor ${showTail ? "rounded-br-md" : ""}`
               : `border border-line bg-wash text-ink ${showTail ? "rounded-bl-md" : ""}`
-          } ${message.pending ? "opacity-60" : ""}`}
+          } ${message.pending || message.unsentAt ? "opacity-60" : ""}`}
         >
           {message.body}
         </div>
-        {showTail && (
+        {(showTail || message.unsentAt) && (
           <span className="mt-0.5 px-1 text-[10px] font-mono tabular-nums text-ink-faint">
             {message.pending ? "Sending…" : timeOf(message.createdAt)}
+            {message.unsentAt ? " · unsent by sender" : ""}
           </span>
         )}
       </div>

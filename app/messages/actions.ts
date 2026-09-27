@@ -15,6 +15,7 @@ import {
   hasPendingFineFor,
   isBlockedBetween,
   isReported,
+  isUuid,
   listBlockedPeople,
   listInbox,
   listMessages,
@@ -32,6 +33,7 @@ import {
   orderPair,
   otherParticipant,
   REPORT_REASON_MAX,
+  seenColumnFor,
   shouldBell,
 } from "@/lib/dm-access";
 import { buildThreadPayload, type ThreadPayload } from "@/lib/dm-thread";
@@ -275,30 +277,31 @@ export async function sendDm(input: {
       existingConversationId ??
       (await ensureConversation(actor.userId, recipientId)).id;
 
-    // Read the conversation BEFORE inserting: whether the recipient is
-    // caught up, and whether they're in the thread right now, decide if this
-    // message earns a bell — and the insert's trigger is about to change the
-    // first answer.
-    const { data: before } = await admin
-      .from("dm_conversations")
-      .select("id, user_a, user_b, a_last_read_at, b_last_read_at, last_message_at, last_sender_id")
-      .eq("id", conversationId)
-      .maybeSingle();
-    const bell = before
-      ? shouldBell(
-          {
-            id: (before as any).id,
-            userA: (before as any).user_a,
-            userB: (before as any).user_b,
-            aLastReadAt: (before as any).a_last_read_at,
-            bLastReadAt: (before as any).b_last_read_at,
-            lastMessageAt: (before as any).last_message_at,
-            lastSenderId: (before as any).last_sender_id,
-          },
-          recipientId,
-          Date.now(),
-        )
-      : true;
+    // Does this message earn a bell? Only if the recipient has no unread
+    // bell for this conversation already and isn't in it right now (see
+    // shouldBell).
+    const link = `${BASE}?c=${conversationId}`;
+    const [{ data: before }, { count: pendingBells }] = await Promise.all([
+      admin
+        .from("dm_conversations")
+        .select("user_a, user_b, a_seen_at, b_seen_at")
+        .eq("id", conversationId)
+        .maybeSingle(),
+      admin
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", recipientId)
+        .eq("type", "direct_message")
+        .eq("link", link)
+        .is("read_at", null),
+    ]);
+    const recipientSeenAt = before
+      ? ((before as any).user_a === recipientId ? (before as any).a_seen_at : (before as any).b_seen_at)
+      : null;
+    const bell = shouldBell(
+      { recipientSeenAt: recipientSeenAt ?? null, hasUnreadBell: (pendingBells ?? 0) > 0 },
+      Date.now(),
+    );
 
     const { data: message, error } = await admin
       .from("dm_messages")
@@ -319,7 +322,7 @@ export async function sendDm(input: {
         userId: recipientId,
         type: "direct_message",
         title: `${name} messaged you`,
-        link: `${BASE}?c=${conversationId}`,
+        link,
       });
     }
 
@@ -346,9 +349,13 @@ export async function sendDm(input: {
  * else's conversation id can't clear their unread. Also clears the viewer's
  * bells for this conversation: they've read it.
  */
-export async function markRead(conversationId: string, upTo?: string): Promise<ActionResult> {
+export async function markRead(
+  conversationId: string,
+  upTo?: string,
+): Promise<ActionResult<{ changed: boolean }>> {
   return runAction({ name: "markRead" }, async () => {
     const actor = await requireActor();
+    if (!isUuid(conversationId)) throw new Error("That conversation isn't available.");
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("dm_conversations")
@@ -369,52 +376,57 @@ export async function markRead(conversationId: string, upTo?: string): Promise<A
     let target = upTo && Number.isFinite(Date.parse(upTo)) ? upTo : (last ?? current);
     if (last && laterTimestamp(target, last) !== last) target = last;
     const next = laterTimestamp(current, target);
-    if (next !== current) {
-      const { error: upErr } = await admin
-        .from("dm_conversations")
-        .update({ [column]: next })
-        .eq("id", conversationId);
-      if (upErr) throw new Error(upErr.message);
-    }
+    // Always record that they had it open just now — that, not the cursor,
+    // is what keeps a live conversation from ringing their bell.
+    const { error: upErr } = await admin
+      .from("dm_conversations")
+      .update({ [column]: next, [seenColumnFor(scope, actor.userId)]: new Date().toISOString() })
+      .eq("id", conversationId);
+    if (upErr) throw new Error(upErr.message);
     // Caught up: take down this conversation's bells, so the bell and the
     // badge agree.
+    let cleared = 0;
     if (!last || laterTimestamp(next, last) === next) {
-      await admin
+      const { data: bells } = await admin
         .from("notifications")
         .update({ read_at: new Date().toISOString() })
         .eq("user_id", actor.userId)
         .eq("type", "direct_message")
         .eq("link", `${BASE}?c=${conversationId}`)
-        .is("read_at", null);
+        .is("read_at", null)
+        .select("id");
+      cleared = bells?.length ?? 0;
     }
+    // Whether anything the inbox shows moved, so the client can skip
+    // refetching the list when it didn't.
+    return { changed: next !== current || cleared > 0 };
   });
 }
 
 /**
- * Unsend your own message. Nobody can delete someone else's words here — and
- * nobody can unsend anything once the conversation has been reported: the
- * report hands the thread to the team, and a reported sender quietly deleting
- * the evidence first would make the report worthless.
+ * Unsend your own message. Nobody can unsend someone else's words.
+ *
+ * It disappears for both people at once — every participant read, the
+ * Realtime read policy and the conversation's preview all skip unsent rows —
+ * but the row stays, readable only by the team if the conversation is ever
+ * reported. So a reported sender can't quietly delete the evidence first,
+ * and nobody is told anything by the unsend itself: it behaves the same
+ * whether or not a report exists.
  */
 export async function unsendDm(messageId: string): Promise<ActionResult> {
   return runAction({ name: "unsendDm" }, async () => {
     const actor = await requireActor();
+    if (!isUuid(messageId)) throw new Error("That message is already gone.");
     const admin = createAdminClient();
-    const { data, error: readErr } = await admin
+    const { data, error } = await admin
       .from("dm_messages")
-      .select("id, sender_id, conversation_id")
+      .update({ unsent_at: new Date().toISOString() })
       .eq("id", messageId)
-      .maybeSingle();
-    if (readErr) throw new Error(readErr.message);
-    if (!data) throw new Error("That message is already gone.");
-    if ((data as any).sender_id !== actor.userId) {
-      throw new Error("You can only unsend your own messages.");
-    }
-    if (await isReported((data as any).conversation_id)) {
-      throw new Error("This conversation has been reported, so its messages can't be unsent.");
-    }
-    const { error } = await admin.from("dm_messages").delete().eq("id", messageId);
+      .eq("sender_id", actor.userId)
+      .is("unsent_at", null)
+      .select("id");
     if (error) throw new Error(error.message);
+    if (!data?.length) throw new Error("That message is already gone.");
   });
 }
 
@@ -430,6 +442,7 @@ export async function unsendDm(messageId: string): Promise<ActionResult> {
 export async function blockPerson(userId: string): Promise<ActionResult> {
   return runAction({ name: "blockPerson" }, async () => {
     const actor = await requireActor();
+    if (!isUuid(userId)) throw new Error("That person isn't available.");
     if (userId === actor.userId) throw new Error("You can't block yourself.");
     const person = await getPerson(userId);
     if (!person) throw new Error("That person isn't available.");
@@ -447,6 +460,7 @@ export async function blockPerson(userId: string): Promise<ActionResult> {
 export async function unblockPerson(userId: string): Promise<ActionResult> {
   return runAction({ name: "unblockPerson" }, async () => {
     const actor = await requireActor();
+    if (!isUuid(userId)) throw new Error("That person isn't available.");
     const admin = createAdminClient();
     const { error } = await admin
       .from("dm_blocks")
@@ -506,19 +520,27 @@ export async function reportDm(input: {
     if (!rl.ok) throw new Error("You've filed several reports just now. Try again later.");
 
     const alreadyOpen = await isReported(input.conversationId);
-    const { error } = await admin.from("dm_reports").insert({
-      conversation_id: input.conversationId,
-      reporter_id: actor.userId,
-      reason,
-    });
+    const { data: created, error } = await admin
+      .from("dm_reports")
+      .insert({
+        conversation_id: input.conversationId,
+        reporter_id: actor.userId,
+        reason,
+      })
+      .select("id")
+      .single();
     if (error) throw new Error(error.message);
 
     const reporter = await actorName(actor.userId);
+    // Pointed at the report, not the conversation, and without the reason:
+    // /admin/audit is readable with audit.view, which doesn't imply
+    // moderation.manage — and a reported admin must not be able to find
+    // their own conversation, the reporter and the reason in it.
     await logAudit({
       action: "dm.report",
-      targetType: "dm_conversation",
-      targetId: input.conversationId,
-      payload: { reason: reason.slice(0, 200) },
+      targetType: "dm_report",
+      targetId: (created as any).id,
+      payload: { length: reason.length },
     });
     // Bell the moderators. Re-reporting an already-open conversation still
     // notifies: a second person speaking up is information. Never either
@@ -535,7 +557,8 @@ export async function reportDm(input: {
           title: alreadyOpen
             ? "Another report on a reported conversation"
             : `${reporter} reported a conversation`,
-          body: reason.slice(0, 200),
+          // No reason in the bell: reasons quote the DM, and admins can read
+          // one another's notifications. The queue has it.
           link: `/admin/messages/${input.conversationId}`,
         })),
       );
