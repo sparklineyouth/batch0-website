@@ -82,9 +82,19 @@ function useVisualViewportSheet(active: boolean): React.CSSProperties | undefine
   return style;
 }
 
+/**
+ * Decides whether the dock exists on this page at all. On a hidden route
+ * nothing below mounts — no inbox fetch, no unread poll, no Realtime
+ * subscription — rather than doing all of that for a launcher nobody sees
+ * (in a live room, alongside the room's own server actions and sockets).
+ */
 export function ChatWidget({ viewerId }: { viewerId: string }) {
   const pathname = usePathname();
-  const hidden = dockHiddenOn(pathname);
+  if (dockHiddenOn(pathname)) return null;
+  return <ChatDockPanel viewerId={viewerId} />;
+}
+
+function ChatDockPanel({ viewerId }: { viewerId: string }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>({ kind: "list" });
   const [rows, setRows] = useState<DmInboxRow[]>([]);
@@ -96,7 +106,7 @@ export function ChatWidget({ viewerId }: { viewerId: string }) {
   // Only the latest open request may change the view: a slow fetch must not
   // yank the viewer out of wherever they've moved to since.
   const requestRef = useRef(0);
-  const sheetStyle = useVisualViewportSheet(open && !hidden);
+  const sheetStyle = useVisualViewportSheet(open);
 
   // Restore the last open/closed state so moving between pages doesn't slam
   // the dock shut mid-conversation — on a wide screen, where it's a small
@@ -245,8 +255,6 @@ export function ChatWidget({ viewerId }: { viewerId: string }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, showList]);
-
-  if (hidden) return null;
 
   const closeForNavigation = () => toggle(false);
 
