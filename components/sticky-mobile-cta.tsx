@@ -24,8 +24,14 @@ export default function StickyMobileCta({ config }: { config: SiteConfig }) {
   useEffect(() => {
     if (isAuthed) return;
     if (!derived.applicationsAvailable) return;
-    // Appear once the hero is behind the reader.
-    const onScroll = () => setShow(window.scrollY > 480);
+    // Appear once the hero is behind the reader — and step aside again at the
+    // very end, where the footer has its own Apply link and the legal row the
+    // bar would otherwise sit on top of.
+    const onScroll = () => {
+      const fromEnd =
+        document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
+      setShow(window.scrollY > 480 && fromEnd > 160);
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);

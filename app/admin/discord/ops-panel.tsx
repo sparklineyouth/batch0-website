@@ -38,7 +38,7 @@ export function OpsPanel({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-3">
         <Button
           type="button"
           variant="secondary"
@@ -87,7 +87,7 @@ export function OpsPanel({
         dangle because the channel or role was deleted in Discord, and an
         interactions endpoint left pointing at an old domain.
       */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Button
           type="button"
           variant="secondary"

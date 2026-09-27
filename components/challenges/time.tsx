@@ -128,7 +128,7 @@ export function EventWhen({
   }, [opensAt, closesAt]);
   return (
     <div className="min-w-0" suppressHydrationWarning>
-      <p className="truncate text-[15px] font-medium text-ink">{text.top}</p>
+      <p className="text-[15px] font-medium text-ink">{text.top}</p>
       <p className="truncate text-[13px] text-ink-soft">{text.bottom}</p>
     </div>
   );

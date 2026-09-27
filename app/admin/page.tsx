@@ -32,7 +32,7 @@ export default async function AdminOverview() {
   // Every admin-area role lands here, so each block is gated by the same
   // permission as the page it summarises — an intern without `payments.view`
   // must not learn total revenue from the overview.
-  const { caps } = await requireAdminArea();
+  const { caps, profile } = await requireAdminArea();
   const seeApplications = can(caps, "applications.view");
   const seePeople = can(caps, "people.view");
   const seeRevenue = can(caps, "payments.view");
@@ -100,7 +100,7 @@ export default async function AdminOverview() {
           .limit(8)
       : { data: null, error: null },
     seeDiscussions ? countQuestionsNeedingReply() : Promise.resolve(0),
-    seeReports ? countOpenReports() : Promise.resolve(0),
+    seeReports ? countOpenReports(profile.id).catch(() => 0) : Promise.resolve(0),
   ]);
 
   if (paymentsError || chargesError || ticketError) throw new Error("Financial data unavailable. Check the revenue migration and database connection.");
@@ -246,7 +246,7 @@ export default async function AdminOverview() {
               ? "grid-cols-1"
               : metrics.length === 2
                 ? "grid-cols-2"
-                : "grid-cols-3"
+                : "grid-cols-2 lg:grid-cols-3"
           }`}
         >
           {metrics.map((m) => (
@@ -345,12 +345,12 @@ function Metric({
   hint?: string;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-[0.22em] text-ink-faint">
-        <Icon className="h-3.5 w-3.5" />
+        <Icon className="h-3.5 w-3.5 shrink-0" />
         {label}
       </div>
-      <div className="mt-2 text-3xl md:text-4xl font-semibold tracking-tight tabular-nums text-ink">
+      <div className="mt-2 text-3xl lg:text-4xl font-semibold tracking-tight tabular-nums text-ink">
         {value}
       </div>
       {hint && (

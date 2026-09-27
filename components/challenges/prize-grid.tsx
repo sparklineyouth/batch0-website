@@ -14,7 +14,8 @@ const KIND_ICON = { cash: Trophy, item: Gift, perk: Sparkles } as const;
 export function PrizeGrid({ prizes }: { prizes: ChallengePrize[] }) {
   if (prizes.length === 0) return null;
   return (
-    <ul className="grid gap-3 sm:grid-cols-2">
+    // One-up md→lg: on the event page that's the phone-width right column.
+    <ul className="grid gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
       {prizes.map((p) => {
         const Icon = KIND_ICON[p.kind];
         const title = prizeTitle(p);
@@ -50,7 +51,7 @@ export function PrizeGrid({ prizes }: { prizes: ChallengePrize[] }) {
                 </div>
               )}
             </div>
-            <div className="min-w-0 py-0.5">
+            <div className="min-w-0 break-words py-0.5">
               {p.place && (
                 <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-phosphor-ink">
                   {p.place}

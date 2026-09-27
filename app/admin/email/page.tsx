@@ -367,8 +367,15 @@ export default async function AdminEmailMetricsPage() {
               {/* Every third label only — thirty dates in this width is a grey
                   smear that reads as decoration. Unlabelled columns get a
                   non-breaking space so they keep the same height and the bars
-                  stay on one baseline. */}
-              <div className="text-center text-[9px] tabular-nums text-ink-faint">
+                  stay on one baseline. A column is narrower than its label
+                  (~7px on a phone), so the label box bleeds 12px either side
+                  to stay centred without spilling, and phones keep only
+                  every sixth day so neighbouring labels don't touch. */}
+              <div
+                className={`-mx-3 whitespace-nowrap text-center text-[9px] tabular-nums text-ink-faint ${
+                  Number(d.key.slice(8, 10)) % 6 === 0 ? "" : "max-sm:invisible"
+                }`}
+              >
                 {Number(d.key.slice(8, 10)) % 3 === 0 ? d.key.slice(5) : " "}
               </div>
             </div>
@@ -804,7 +811,7 @@ function WebhookSetupNotice() {
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-ink-soft">
         <li>
           In the Resend dashboard, add a webhook pointing at{" "}
-          <code className="font-mono text-phosphor-ink">
+          <code className="font-mono text-phosphor-ink [overflow-wrap:anywhere]">
             {env.siteUrl}/api/resend/webhook
           </code>
         </li>
