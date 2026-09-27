@@ -202,7 +202,10 @@ const DETECT = `((pos) => {
   const edge = (el) => {
     const r = el.getBoundingClientRect();
     if (r.top <= 1 && r.height < vh / 2) return "top";
-    if (r.bottom >= vh - 1 && r.height < vh / 2) return "bottom";
+    // Within a thumb's reach of the bottom edge counts as pinned there: a
+    // floating launcher sits 20px up, and mid-page it only passes over
+    // content the reader can scroll out from under it.
+    if (r.bottom >= vh - 48 && r.height < vh / 2) return "bottom";
     return "floating";
   };
   const controls = all.filter((el) => el.matches('a[href], button, input:not([type=hidden]), textarea, select, [role=button], summary') && visible(el));
@@ -294,7 +297,8 @@ async function auditPage(page: Page, role: Role, route: string, vp: (typeof VIEW
       const h = document.documentElement.scrollHeight - window.innerHeight;
       window.scrollTo(0, p === "top" ? 0 : p === "middle" ? Math.max(0, h / 2) : Math.max(0, h));
     }, pos);
-    await page.waitForTimeout(150);
+    // Long enough for a scroll-driven bar to finish its show/hide transition.
+    await page.waitForTimeout(450);
     const found = (await page.evaluate(`(${DETECT})(${JSON.stringify(pos)})`).catch(() => [])) as Issue[];
     for (const i of found) {
       const key = `${i.kind}|${i.detail}`;

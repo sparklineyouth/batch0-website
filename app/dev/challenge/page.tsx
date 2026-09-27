@@ -142,7 +142,7 @@ export default async function ChallengePreviewPage(props: {
   const link = "http://localhost:3000/challenges/build-with-ai-weekend?ref=demo1234";
 
   const nav = (
-    <div className="border-b border-dashed border-line bg-wash px-5 py-2 font-mono text-[11px] text-ink-soft">
+    <div className="overflow-x-auto whitespace-nowrap border-b border-dashed border-line bg-wash px-5 py-2 font-mono text-[11px] text-ink-soft">
       preview ·{" "}
       {["signedout", "signedin", "registered", "draft", "submitted", "winner", "closed"].map((s) => (
         <Link key={s} href={`?view=${view}&state=${s}&gate=${gate}&refs=${refs}`} className={`mr-2 underline ${s === state ? "font-bold text-ink" : ""}`}>
