@@ -7,8 +7,10 @@ import {
   cursorFor,
   hasUnread,
   isParticipant,
+  laterTimestamp,
   orderPair,
   otherParticipant,
+  shouldBell,
   unreadCount,
   type DmViewer,
 } from "./dm-access.ts";
@@ -128,3 +130,33 @@ test("hasUnread works off the denormalised columns alone", () => {
     false,
   );
 });
+
+test("a message rings the bell once per burst, and never while the recipient is in the thread", () => {
+  const now = Date.parse("2026-09-27T12:00:00Z");
+  const base = { id: "c", userA: "a", userB: "b", aLastReadAt: "epoch", bLastReadAt: "epoch" };
+  // Never read, nothing unread yet: a new conversation rings.
+  assert.equal(shouldBell({ ...base, aLastReadAt: "1970-01-01T00:00:00+00:00", lastMessageAt: null, lastSenderId: null }, "a", now), true);
+  // Something already unread for them: that bell is still pointing at it.
+  assert.equal(
+    shouldBell({ ...base, aLastReadAt: "2026-09-27T10:00:00+00:00", lastMessageAt: "2026-09-27T11:00:00+00:00", lastSenderId: "b" }, "a", now),
+    false,
+  );
+  // Caught up, but read 30s ago — they're in it; the live thread shows it.
+  assert.equal(
+    shouldBell({ ...base, aLastReadAt: "2026-09-27T11:59:30+00:00", lastMessageAt: "2026-09-27T11:59:20+00:00", lastSenderId: "b" }, "a", now),
+    false,
+  );
+  // Caught up and away for ten minutes: the next message rings.
+  assert.equal(
+    shouldBell({ ...base, aLastReadAt: "2026-09-27T11:50:00+00:00", lastMessageAt: "2026-09-27T11:49:00+00:00", lastSenderId: "b" }, "a", now),
+    true,
+  );
+});
+
+test("laterTimestamp compares instants, and microseconds when the milliseconds tie", () => {
+  assert.equal(laterTimestamp("2026-09-27T12:00:01+00:00", "2026-09-27T12:00:00.999+00:00"), "2026-09-27T12:00:01+00:00");
+  assert.equal(laterTimestamp("2026-09-27T12:00:00.123456+00:00", "2026-09-27T12:00:00.123+00:00"), "2026-09-27T12:00:00.123456+00:00");
+  assert.equal(laterTimestamp("1970-01-01T00:00:00+00:00", "2026-09-27T12:00:00Z"), "2026-09-27T12:00:00Z");
+  assert.equal(laterTimestamp("not a date", "2026-09-27T12:00:00Z"), "2026-09-27T12:00:00Z");
+});
+

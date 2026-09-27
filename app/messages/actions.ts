@@ -1,5 +1,4 @@
 "use server";
-import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActor } from "@/lib/server-guards";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -7,28 +6,33 @@ import { notify, notifyMany } from "@/lib/notifications";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { logAudit } from "@/lib/audit";
 import {
+  canStartConversation,
   countUnreadConversations,
   findConversation,
   getConversationForViewer,
   getDmViewer,
   getPerson,
+  hasPendingFineFor,
   isBlockedBetween,
   isReported,
   listBlockedPeople,
   listInbox,
+  listMessages,
   listModeratorIds,
   searchDirectory,
   type DmInboxRow,
+  type DmMessage,
   type DmPerson,
 } from "@/lib/dm";
 import {
   cursorColumnFor,
-  hasUnread,
   isParticipant,
+  laterTimestamp,
   MESSAGE_MAX,
   orderPair,
   otherParticipant,
   REPORT_REASON_MAX,
+  shouldBell,
 } from "@/lib/dm-access";
 import { buildThreadPayload, type ThreadPayload } from "@/lib/dm-thread";
 
@@ -40,9 +44,17 @@ import { buildThreadPayload, type ThreadPayload } from "@/lib/dm-thread";
  * route handler — no URL to guess, and the actor is re-derived here every
  * time. A page guard is not what protects any of this.
  *
- * Reads return plain data and throw only on "not signed in". Mutations return
- * an ActionResult, because every interesting failure in a chat UI is one the
+ * Reads return plain data and throw on failure. Mutations return an
+ * ActionResult, because every interesting failure in a chat UI is one the
  * user needs to read: blocked, frozen, too fast, too long.
+ *
+ * Nothing here calls revalidatePath. Next re-renders the CURRENT route after
+ * any action that revalidates any path at all — and the current route is
+ * wherever the dock is open: a mentor's home, a challenge's submission form,
+ * an admin page. Every send and every mark-as-read used to re-render that
+ * whole page, and because server actions run one at a time, each incoming
+ * message queued the next send behind a full page render. Nothing needs it:
+ * /messages is force-dynamic and the client owns both of its panes.
  */
 
 const BASE = "/messages";
@@ -106,6 +118,36 @@ export async function fetchThread(input: {
   return payload;
 }
 
+/**
+ * The newest messages in a conversation the viewer may read — the open
+ * thread's resync. Realtime delivers nothing sent while the channel was
+ * joining or disconnected, and nothing about an unsend at all (a filtered
+ * DELETE never arrives), so an open thread reconciles against this when it
+ * connects, when the tab comes back, and on a slow timer.
+ */
+export async function fetchMessages(conversationId: string): Promise<{
+  messages: DmMessage[];
+  /**
+   * Everything created before this instant that isn't in `messages` is gone
+   * (unsent or removed). Taken before the query, less a margin for clock skew
+   * between this server and the database, so a message landing mid-request is
+   * never mistaken for a deleted one.
+   */
+  asOf: string;
+  /** False when the list was cut at the limit: older messages exist. */
+  complete: boolean;
+}> {
+  const actor = await requireActor();
+  const viewer = await getDmViewer(actor.userId, actor.caps);
+  const convo = await getConversationForViewer(conversationId, viewer);
+  if (!convo) throw new Error("That conversation isn't available.");
+  const asOf = new Date(Date.now() - 3_000).toISOString();
+  const messages = await listMessages(convo.id, RESYNC_LIMIT);
+  return { messages, asOf, complete: messages.length < RESYNC_LIMIT };
+}
+
+const RESYNC_LIMIT = 300;
+
 // ---------------------------------------------------------------------------
 // Send
 // ---------------------------------------------------------------------------
@@ -157,19 +199,20 @@ export async function sendDm(input: {
     // person who blocked them, one per attempt.
     let existingConversationId: string | null = null;
     let recipientId: string;
+    const viewer = await getDmViewer(actor.userId, actor.caps);
 
     if (input.conversationId) {
-      const convo = await getConversationForViewer(
-        input.conversationId,
-        await getDmViewer(actor.userId, actor.caps),
-      );
+      const convo = await getConversationForViewer(input.conversationId, viewer);
       if (!convo || !isParticipant(convo, actor.userId)) {
         // A moderator reading a reported thread lands here too: readable,
         // never postable.
         throw new Error("That conversation isn't available.");
       }
       existingConversationId = convo.id;
-      recipientId = otherParticipant(convo, actor.userId);
+      const other = otherParticipant(convo, actor.userId);
+      // Their account has been deleted: the history stays, read-only.
+      if (!other) throw new Error("That person isn't on batch0 anymore.");
+      recipientId = other;
     } else {
       const to = input.toUserId;
       if (!to) throw new Error("Pick someone to message.");
@@ -178,6 +221,23 @@ export async function sendDm(input: {
       if (!person) throw new Error("That person isn't available.");
       recipientId = to;
       existingConversationId = (await findConversation(actor.userId, to))?.id ?? null;
+      // Who may cold-message whom (lib/dm.ts, "Who can reach whom"). Only for
+      // a NEW conversation: a reply is never cut off.
+      if (!existingConversationId) {
+        const allowed = await canStartConversation(viewer, person);
+        if (!allowed.ok) throw new Error(allowed.reason);
+      }
+    }
+
+    // A pending fine locks an account out of everything but paying it
+    // (middleware). Server actions from the dock post to whatever page it's
+    // on — including the fine page itself — so the lock is enforced here too,
+    // leaving one door open: the team, to ask about the fine.
+    if (!viewer.moderates && (await hasPendingFineFor(actor.userId))) {
+      const recipient = await getPerson(recipientId);
+      if (!recipient?.isStaff) {
+        throw new Error("Settle your pending fine first. You can still message the batch0 team about it.");
+      }
     }
 
     if (await isBlockedBetween(actor.userId, recipientId)) {
@@ -216,17 +276,16 @@ export async function sendDm(input: {
       (await ensureConversation(actor.userId, recipientId)).id;
 
     // Read the conversation BEFORE inserting: whether the recipient is
-    // currently caught up is what decides if this message earns a bell, and
-    // the insert's trigger is about to change the answer.
+    // caught up, and whether they're in the thread right now, decide if this
+    // message earns a bell — and the insert's trigger is about to change the
+    // first answer.
     const { data: before } = await admin
       .from("dm_conversations")
-      .select(
-        "id, user_a, user_b, a_last_read_at, b_last_read_at, last_message_at, last_sender_id, message_count, created_at, last_message_preview",
-      )
+      .select("id, user_a, user_b, a_last_read_at, b_last_read_at, last_message_at, last_sender_id")
       .eq("id", conversationId)
       .maybeSingle();
-    const recipientWasCaughtUp = before
-      ? !hasUnread(
+    const bell = before
+      ? shouldBell(
           {
             id: (before as any).id,
             userA: (before as any).user_a,
@@ -237,6 +296,7 @@ export async function sendDm(input: {
             lastSenderId: (before as any).last_sender_id,
           },
           recipientId,
+          Date.now(),
         )
       : true;
 
@@ -249,23 +309,20 @@ export async function sendDm(input: {
 
     // last_message_at / preview / count are the trigger's job (0089).
     //
-    // One bell per burst, not one per message: a conversation the recipient
-    // hasn't caught up on already has an unread bell pointing at it, and
-    // twenty more would be twenty ways to say the same thing. No email —
-    // a DM is a conversation, not an announcement, and mailing every line
-    // would make the feature unusable.
-    if (recipientWasCaughtUp) {
+    // One bell per burst, not one per message (see shouldBell). No email —
+    // a DM is a conversation, not an announcement. And no body: every admin
+    // can read every notification (0016's policy), so a preview here would be
+    // a staff read path into unreported DMs. 0089 strips it in SQL as well.
+    if (bell) {
       const name = await actorName(actor.userId);
       await notify({
         userId: recipientId,
         type: "direct_message",
         title: `${name} messaged you`,
-        body: body.slice(0, 200),
         link: `${BASE}?c=${conversationId}`,
       });
     }
 
-    revalidatePath(BASE);
     return {
       conversationId,
       messageId: (message as any).id as string,
@@ -279,54 +336,85 @@ export async function sendDm(input: {
 // ---------------------------------------------------------------------------
 
 /**
- * Move the viewer's own read cursor to now. Which column that is depends on
- * which side of the pair they're on — cursorColumnFor() throws rather than
- * guess, so a stranger passing someone else's conversation id can't clear
- * their unread.
+ * Move the viewer's read cursor up to `upTo` — the timestamp of the newest
+ * message their screen is actually showing. Not "now": a message that lands
+ * between the thread loading and this call was never on screen, and must stay
+ * unread. Never moves backwards, never past the conversation's last message.
+ *
+ * Which column that is depends on which side of the pair the viewer is on —
+ * cursorColumnFor() throws rather than guess, so a stranger passing someone
+ * else's conversation id can't clear their unread. Also clears the viewer's
+ * bells for this conversation: they've read it.
  */
-export async function markRead(conversationId: string): Promise<ActionResult> {
+export async function markRead(conversationId: string, upTo?: string): Promise<ActionResult> {
   return runAction({ name: "markRead" }, async () => {
     const actor = await requireActor();
     const admin = createAdminClient();
-    const { data } = await admin
+    const { data, error } = await admin
       .from("dm_conversations")
-      .select("id, user_a, user_b")
+      .select("id, user_a, user_b, a_last_read_at, b_last_read_at, last_message_at")
       .eq("id", conversationId)
       .maybeSingle();
+    if (error) throw new Error(error.message);
     if (!data) throw new Error("That conversation isn't available.");
-    const scope = {
-      id: (data as any).id,
-      userA: (data as any).user_a,
-      userB: (data as any).user_b,
-    };
+    const row = data as any;
+    const scope = { id: row.id, userA: row.user_a, userB: row.user_b };
     if (!isParticipant(scope, actor.userId)) {
       throw new Error("That conversation isn't available.");
     }
-    await admin
-      .from("dm_conversations")
-      .update({ [cursorColumnFor(scope, actor.userId)]: new Date().toISOString() })
-      .eq("id", conversationId);
-    revalidatePath(BASE);
+    const column = cursorColumnFor(scope, actor.userId);
+    const current: string = row[column];
+    const last: string | null = row.last_message_at;
+    // What the screen showed, capped at the newest message that exists.
+    let target = upTo && Number.isFinite(Date.parse(upTo)) ? upTo : (last ?? current);
+    if (last && laterTimestamp(target, last) !== last) target = last;
+    const next = laterTimestamp(current, target);
+    if (next !== current) {
+      const { error: upErr } = await admin
+        .from("dm_conversations")
+        .update({ [column]: next })
+        .eq("id", conversationId);
+      if (upErr) throw new Error(upErr.message);
+    }
+    // Caught up: take down this conversation's bells, so the bell and the
+    // badge agree.
+    if (!last || laterTimestamp(next, last) === next) {
+      await admin
+        .from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("user_id", actor.userId)
+        .eq("type", "direct_message")
+        .eq("link", `${BASE}?c=${conversationId}`)
+        .is("read_at", null);
+    }
   });
 }
 
-/** Unsend your own message. Nobody can delete someone else's words here. */
+/**
+ * Unsend your own message. Nobody can delete someone else's words here — and
+ * nobody can unsend anything once the conversation has been reported: the
+ * report hands the thread to the team, and a reported sender quietly deleting
+ * the evidence first would make the report worthless.
+ */
 export async function unsendDm(messageId: string): Promise<ActionResult> {
   return runAction({ name: "unsendDm" }, async () => {
     const actor = await requireActor();
     const admin = createAdminClient();
-    const { data } = await admin
+    const { data, error: readErr } = await admin
       .from("dm_messages")
       .select("id, sender_id, conversation_id")
       .eq("id", messageId)
       .maybeSingle();
+    if (readErr) throw new Error(readErr.message);
     if (!data) throw new Error("That message is already gone.");
     if ((data as any).sender_id !== actor.userId) {
       throw new Error("You can only unsend your own messages.");
     }
+    if (await isReported((data as any).conversation_id)) {
+      throw new Error("This conversation has been reported, so its messages can't be unsent.");
+    }
     const { error } = await admin.from("dm_messages").delete().eq("id", messageId);
     if (error) throw new Error(error.message);
-    revalidatePath(BASE);
   });
 }
 
@@ -353,7 +441,6 @@ export async function blockPerson(userId: string): Promise<ActionResult> {
         { onConflict: "blocker_id,blocked_id", ignoreDuplicates: true },
       );
     if (error) throw new Error(error.message);
-    revalidatePath(BASE);
   });
 }
 
@@ -367,7 +454,6 @@ export async function unblockPerson(userId: string): Promise<ActionResult> {
       .eq("blocker_id", actor.userId)
       .eq("blocked_id", userId);
     if (error) throw new Error(error.message);
-    revalidatePath(BASE);
   });
 }
 
@@ -435,8 +521,12 @@ export async function reportDm(input: {
       payload: { reason: reason.slice(0, 200) },
     });
     // Bell the moderators. Re-reporting an already-open conversation still
-    // notifies: a second person speaking up is information.
-    const moderators = (await listModeratorIds()).filter((id) => id !== actor.userId);
+    // notifies: a second person speaking up is information. Never either
+    // participant: a moderator who is the person being reported must not be
+    // the one told about it (and is refused the moderation actions on it).
+    const moderators = (await listModeratorIds()).filter(
+      (id) => id !== scope.userA && id !== scope.userB,
+    );
     if (moderators.length > 0) {
       await notifyMany(
         moderators.map((id) => ({

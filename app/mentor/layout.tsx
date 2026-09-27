@@ -24,7 +24,7 @@ export default async function MentorLayout({
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 px-5 py-6 md:px-10 md:py-10"
+          className="flex-1 px-5 pb-24 pt-6 md:px-10 md:pb-24 md:pt-10"
         >
           {children}
         </main>

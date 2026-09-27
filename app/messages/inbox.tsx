@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquarePlus, MessagesSquare } from "lucide-react";
 import type { DmInboxRow, DmPerson } from "@/lib/dm";
 import type { ThreadPayload } from "@/lib/dm-thread";
@@ -22,24 +22,41 @@ import { useInboxLive } from "@/components/messages/use-dm-live";
 export function MessagesInbox({
   viewerId,
   initialRows,
+  initialError = null,
   initialThread,
 }: {
   viewerId: string;
   initialRows: DmInboxRow[];
+  initialError?: string | null;
   initialThread: ThreadPayload | null;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [thread, setThread] = useState(initialThread);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(initialError);
 
   const refresh = useCallback(async () => {
     try {
       setRows(await fetchInbox());
+      setListError(null);
     } catch {
-      /* the list keeps what it has; the next tick retries */
+      // The list keeps what it has; the next tick retries.
+      setListError("Couldn't load your conversations.");
     }
   }, []);
+
+  // A draft's first message created the conversation: adopt its id, so the
+  // list row it now has is the SAME thread (clicking it doesn't reload and
+  // wipe a half-typed reply) and a reload lands back here.
+  const onConversationCreated = useCallback((conversationId: string) => {
+    setThread((t) => (t ? { ...t, conversationId } : t));
+    window.history.replaceState(null, "", `/messages?c=${conversationId}`);
+  }, []);
+
+  // Opening the row of the thread already on screen is a no-op.
+  const threadRef = useRef(thread);
+  threadRef.current = thread;
 
   useInboxLive(refresh);
 
@@ -52,6 +69,7 @@ export function MessagesInbox({
     async (conversationId: string) => {
       setSearching(false);
       setError(null);
+      if (threadRef.current?.conversationId === conversationId) return;
       try {
         setThread(await fetchThread({ conversationId }));
         // Keep the URL honest so a reload, a bookmark, or a back button lands
@@ -115,6 +133,8 @@ export function MessagesInbox({
             activeId={thread?.conversationId ?? null}
             onOpen={open}
             onNew={() => setSearching(true)}
+            error={listError}
+            onRetry={refresh}
           />
         </div>
         <BlockedList />
@@ -131,6 +151,7 @@ export function MessagesInbox({
             viewerId={viewerId}
             initial={thread}
             onChanged={onChanged}
+            onConversationCreated={onConversationCreated}
             // Phone-only: on desktop the list never went away.
             backMobileOnly
             onBack={() => {

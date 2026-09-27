@@ -15,6 +15,25 @@ import type { ReportStatus } from "@/lib/dm-access";
  * one, and can't un-report — the record of the report stays.
  */
 
+/**
+ * A moderator who is one of the two people in a conversation doesn't get to
+ * rule on it: dismissing a report about yourself, or removing the messages it
+ * is about, would make the report a formality. Another moderator handles it.
+ */
+async function assertNotParticipant(conversationId: string, userId: string) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("dm_conversations")
+    .select("user_a, user_b")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("That conversation is gone.");
+  if ((data as any).user_a === userId || (data as any).user_b === userId) {
+    throw new Error("You're part of this conversation, so another moderator has to handle it.");
+  }
+}
+
 function revalidateAll(conversationId?: string) {
   revalidatePath("/admin/messages");
   if (conversationId) revalidatePath(`/admin/messages/${conversationId}`);
@@ -31,6 +50,15 @@ export async function resolveReport(input: {
       throw new Error("Pick an outcome.");
     }
     const admin = createAdminClient();
+    const { data: report, error: readErr } = await admin
+      .from("dm_reports")
+      .select("conversation_id")
+      .eq("id", input.reportId)
+      .maybeSingle();
+    if (readErr) throw new Error(readErr.message);
+    if (!report) throw new Error("That report is gone.");
+    await assertNotParticipant((report as any).conversation_id, actor.userId);
+
     const { data, error } = await admin
       .from("dm_reports")
       .update({
@@ -66,7 +94,7 @@ export async function removeMessage(input: {
   conversationId: string;
 }): Promise<ActionResult> {
   return runAction({ name: "removeMessage" }, async () => {
-    await assertPermission("moderation.manage");
+    const actor = await assertPermission("moderation.manage");
     const admin = createAdminClient();
     const { data: message } = await admin
       .from("dm_messages")
@@ -82,6 +110,7 @@ export async function removeMessage(input: {
       .select("id", { count: "exact", head: true })
       .eq("conversation_id", (message as any).conversation_id);
     if ((count ?? 0) === 0) throw new Error("That conversation hasn't been reported.");
+    await assertNotParticipant((message as any).conversation_id, actor.userId);
 
     const { error } = await admin.from("dm_messages").delete().eq("id", input.messageId);
     if (error) throw new Error(error.message);
@@ -90,11 +119,13 @@ export async function removeMessage(input: {
       action: "dm.message.remove",
       targetType: "dm_message",
       targetId: input.messageId,
+      // Who and where, not what: the audit log is readable with audit.view,
+      // which does not include moderation.manage, so copying the body here
+      // would open the message to people the report never opened it to.
       payload: {
         conversationId: (message as any).conversation_id,
         senderId: (message as any).sender_id,
-        // Kept so the trail says what was removed after the row is gone.
-        body: String((message as any).body).slice(0, 500),
+        length: String((message as any).body).length,
       },
     });
     revalidateAll((message as any).conversation_id);

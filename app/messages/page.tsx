@@ -28,18 +28,26 @@ export default async function MessagesPage(props: {
   // who may open a reported conversation.
   const viewer = await getDmViewer(profile.id, caps);
 
+  // A failed read shows the page with an error rather than a crash; the
+  // client retries the list on its own.
   const [home, rows, selected] = await Promise.all([
     roleHome(profile.role),
-    listInbox(profile.id),
+    listInbox(profile.id).catch(() => null),
     buildThreadPayload(viewer, {
       conversationId: searchParams?.c,
       withUserId: searchParams?.to,
-    }),
+    }).catch(() => null),
   ]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-paper text-ink">
-      <div className="border-b border-line">
+    // A fixed, full-viewport surface: the list and the thread each scroll in
+    // their own pane, with the composer pinned to the bottom of the screen.
+    // In normal flow the page grew with the conversation instead — it opened
+    // on the oldest message with the composer a long scroll away — and a
+    // 100dvh box would still overflow by the height of the sale banner above
+    // it in the root layout.
+    <div className="fixed inset-0 z-10 flex flex-col bg-paper text-ink">
+      <div className="shrink-0 border-b border-line pt-[var(--safe-top)]">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 md:px-8">
           <Link
             href={home}
@@ -57,11 +65,12 @@ export default async function MessagesPage(props: {
       <main
         id="main-content"
         tabIndex={-1}
-        className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-0 md:px-8 md:py-8"
+        className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-0 pb-[var(--safe-bottom)] md:px-8 md:py-8"
       >
         <MessagesInbox
           viewerId={profile.id}
-          initialRows={rows}
+          initialRows={rows ?? []}
+          initialError={rows === null ? "Couldn't load your conversations." : null}
           initialThread={selected}
         />
       </main>

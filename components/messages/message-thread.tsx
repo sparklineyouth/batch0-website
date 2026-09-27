@@ -18,6 +18,7 @@ import { MESSAGE_MAX } from "@/lib/dm-access";
 import type { DmMessage } from "@/lib/dm";
 import {
   blockPerson,
+  fetchMessages,
   markRead,
   reportDm,
   sendDm,
@@ -37,6 +38,16 @@ import { useThreadLive, type LiveMessage } from "@/components/messages/use-dm-li
 
 type Pending = DmMessage & { pending?: true };
 
+/**
+ * How often an open, visible thread reconciles with the server. Realtime
+ * carries new messages the instant they land; this catches what it can't —
+ * anything sent while the socket was down, and every unsend.
+ */
+const RESYNC_MS = 20_000;
+
+/** Within this many pixels of the bottom counts as "reading the latest". */
+const NEAR_BOTTOM_PX = 120;
+
 export function MessageThread({
   viewerId,
   initial,
@@ -44,6 +55,8 @@ export function MessageThread({
   onChanged,
   onBack,
   backMobileOnly = false,
+  onConversationCreated,
+  onNavigateAway,
 }: {
   viewerId: string;
   initial: ThreadPayload;
@@ -57,28 +70,47 @@ export function MessageThread({
    * beside the thread there, so "back" would only blank the right pane.
    */
   backMobileOnly?: boolean;
+  /** A draft's first message created the conversation; here is its id. */
+  onConversationCreated?: (conversationId: string) => void;
+  /** A link out of the thread was followed (the dock closes itself). */
+  onNavigateAway?: () => void;
 }) {
   const [thread, setThread] = useState(initial);
   const [messages, setMessages] = useState<Pending[]>(initial.messages);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [confirm, setConfirm] = useState<"block" | "report" | null>(null);
+  const [confirm, setConfirm] = useState<
+    { kind: "block" } | { kind: "report" } | { kind: "unsend"; id: string } | null
+  >(null);
   const [reason, setReason] = useState("");
+  const [reportError, setReportError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Times and day dividers are in the viewer's own timezone, which the server
+  // render can't know — so they appear once the page is in the browser rather
+  // than hydrating a UTC guess into a mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // Where the viewer had read up to when this thread loaded. Frozen for the
   // life of the mount on purpose: marking read immediately would otherwise
   // erase the "new" divider before they've looked at it.
   const cursorRef = useRef(initial.cursor);
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
 
   // Switching conversation reuses this component; reset everything that
-  // belongs to the old one. Keyed on WHICH conversation, not on the identity
-  // of the prop object — a parent re-render that rebuilds the object literal
-  // must not wipe a half-typed message.
-  const identity = initial.conversationId ?? `draft:${initial.other.id}`;
+  // belongs to the old one. Keyed on WHO the conversation is with, not on its
+  // id: a draft's first send gives it an id, and the parent adopting that id
+  // must not wipe the thread it belongs to. (A moderator's view has no "other
+  // person" of their own, so it keys on the id.)
+  const identity = initial.moderatorView
+    ? `mod:${initial.conversationId}`
+    : `with:${initial.other.id}`;
   const loadedRef = useRef(identity);
   useEffect(() => {
     if (loadedRef.current === identity) return;
@@ -87,10 +119,19 @@ export function MessageThread({
     setMessages(initial.messages);
     setDraft("");
     setError(null);
+    setNotice(null);
+    setConfirm(null);
+    setMenuOpen(false);
     cursorRef.current = initial.cursor;
   }, [identity, initial]);
 
   const conversationId = thread.conversationId;
+
+  const isNearBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+  }, []);
 
   const scrollToEnd = useCallback((smooth = false) => {
     const el = scrollRef.current;
@@ -98,34 +139,117 @@ export function MessageThread({
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   }, []);
 
+  // Open on the latest message — once the rows exist (they render after mount).
   useEffect(() => {
-    scrollToEnd();
-  }, [conversationId, scrollToEnd]);
+    if (mounted) scrollToEnd();
+  }, [identity, mounted, scrollToEnd]);
 
-  // Clear the unread flag for this conversation. Called on open and whenever a
-  // message arrives while it's on screen — if you're looking at it, you've
-  // read it.
-  const clearUnread = useCallback(() => {
-    if (!conversationId || thread.moderatorView) return;
-    markRead(conversationId)
-      .then(() => onChanged?.())
-      .catch(() => {
-        /* best-effort: the badge self-corrects on the next poll */
-      });
-  }, [conversationId, thread.moderatorView, onChanged]);
+  /** The newest confirmed message on screen: how far "read" may go. */
+  const newestShown = useCallback((): string | undefined => {
+    let newest: string | undefined;
+    for (const m of messagesRef.current) {
+      if (m.pending) continue;
+      if (!newest || isAfter(m.createdAt, newest)) newest = m.createdAt;
+    }
+    return newest;
+  }, []);
+
+  // Mark read up to what the viewer can actually see — and only while they
+  // can see it. A thread open in a background tab reads nothing; the tab
+  // coming back does.
+  const markSeen = useCallback(
+    (upTo?: string) => {
+      if (!conversationId || thread.moderatorView) return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      markRead(conversationId, upTo ?? newestShown())
+        .then(() => onChanged?.())
+        .catch(() => {
+          /* best-effort: the badge self-corrects on the next poll */
+        });
+    },
+    [conversationId, thread.moderatorView, newestShown, onChanged],
+  );
 
   useEffect(() => {
-    clearUnread();
-  }, [clearUnread]);
+    markSeen();
+  }, [markSeen]);
 
-  // Live: a DELETE payload carries only the id (that's an unsend), an INSERT
-  // carries the row.
+  /**
+   * Reconcile with the server's newest messages. New ones are added, and
+   * messages that are gone from inside the window the server returned (an
+   * unsend, a moderator removal) are dropped. Anything newer than that window
+   * — a live message that landed while this request was in flight — and
+   * anything still sending are kept.
+   */
+  const resync = useCallback(async () => {
+    if (!conversationId) return;
+    let server: DmMessage[];
+    let asOf: string;
+    let complete: boolean;
+    try {
+      ({ messages: server, asOf, complete } = await fetchMessages(conversationId));
+    } catch {
+      return;
+    }
+    const wasNearBottom = isNearBottom();
+    // Decided here, from what is on screen now — a state updater runs later,
+    // so a flag set inside one would still be false on the next line.
+    const onScreen = new Set(messagesRef.current.map((m) => m.id));
+    const arrived = server.some((m) => !onScreen.has(m.id) && m.senderId !== viewerId);
+    setMessages((prev) => {
+      const ids = new Set(server.map((m) => m.id));
+      const known = new Set(prev.map((m) => m.id));
+      const oldest = server[0]?.createdAt ?? null;
+      // A confirmed message the server didn't return is kept only when the
+      // server couldn't have known about it: created after its snapshot (it
+      // arrived live mid-request), or older than a list that was cut at the
+      // limit. Everything else it didn't return is gone — unsent or removed.
+      const outside = prev.filter(
+        (m) =>
+          !m.pending &&
+          !ids.has(m.id) &&
+          (isAfter(m.createdAt, asOf) || (!complete && oldest !== null && isAfter(oldest, m.createdAt))),
+      );
+      const pending = prev.filter(
+        (m) => m.pending && !server.some((s) => s.senderId === viewerId && s.body === m.body && !known.has(s.id)),
+      );
+      const next: Pending[] = [...outside, ...server, ...pending].sort(byTime);
+      const same =
+        next.length === prev.length && next.every((m, i) => m.id === prev[i].id && !!m.pending === !!prev[i].pending);
+      return same ? prev : next;
+    });
+    if (arrived) {
+      markSeen();
+      if (wasNearBottom) requestAnimationFrame(() => scrollToEnd(true));
+    }
+  }, [conversationId, viewerId, isNearBottom, markSeen, scrollToEnd]);
+
+  // Resync when the tab comes back or the window regains focus, and on a
+  // slow timer while the thread is visible.
+  useEffect(() => {
+    if (!conversationId) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      markSeen();
+      void resync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") void resync();
+    }, RESYNC_MS);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      clearInterval(t);
+    };
+  }, [conversationId, markSeen, resync]);
+
+  // Live: an INSERT carries the row.
   const onLive = useCallback(
     (m: LiveMessage) => {
-      if (!m.created_at) {
-        setMessages((prev) => prev.filter((x) => x.id !== m.id));
-        return;
-      }
+      if (!m?.id || !m.created_at) return;
+      const wasNearBottom = isNearBottom();
       setMessages((prev) => {
         if (prev.some((x) => x.id === m.id)) return prev;
         const row: Pending = {
@@ -146,23 +270,42 @@ export function MessageThread({
           if (pendingIdx !== -1) {
             const next = [...prev];
             next[pendingIdx] = row;
-            return next;
+            return next.sort(byTime);
           }
         }
-        return [...prev, row].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        return [...prev, row].sort(byTime);
       });
-      if (m.sender_id !== viewerId) clearUnread();
-      requestAnimationFrame(() => scrollToEnd(true));
+      if (m.sender_id !== viewerId) markSeen(m.created_at);
+      // Follow the conversation only if the viewer was already at the bottom
+      // (or wrote it): someone scrolled up to reread something shouldn't be
+      // yanked away by every new line.
+      if (wasNearBottom || m.sender_id === viewerId) {
+        requestAnimationFrame(() => scrollToEnd(true));
+      }
     },
-    [viewerId, thread.other.name, clearUnread, scrollToEnd],
+    [viewerId, thread.other.name, markSeen, isNearBottom, scrollToEnd],
   );
 
-  useThreadLive(conversationId, onLive);
+  useThreadLive(conversationId, onLive, resync);
+
+  // Escape closes the options menu — and only the menu. Captured, and marked
+  // handled, so the dock's own Escape (back to the list) leaves it alone.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [menuOpen]);
 
   async function send() {
     const body = draft.trim();
     if (!body || sending) return;
     setError(null);
+    setNotice(null);
     setSending(true);
     // Optimistic: the message shows the instant you hit Enter, dimmed until
     // the server confirms. A chat that waits a round trip to echo your own
@@ -183,6 +326,10 @@ export function MessageThread({
     setDraft("");
     requestAnimationFrame(() => scrollToEnd(true));
 
+    // Hand the words back on failure — unless the person has already started
+    // typing something else, which must not be overwritten.
+    const restore = () => setDraft((current) => (current.trim() ? current : body));
+
     try {
       const res = await sendDm(
         conversationId
@@ -190,10 +337,10 @@ export function MessageThread({
           : { toUserId: thread.other.id, body },
       );
       if (!res.ok) {
-        // Drop the optimistic bubble and hand the words back, so a rate limit
-        // or a block never costs someone what they typed.
+        // Drop the optimistic bubble, so a rate limit or a block never costs
+        // someone what they typed.
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        setDraft(body);
+        restore();
         setError(res.error);
         return;
       }
@@ -205,27 +352,30 @@ export function MessageThread({
         if (prev.some((m) => m.id === data.messageId)) {
           return prev.filter((m) => m.id !== tempId);
         }
-        return prev.map((m) =>
-          m.id === tempId
-            ? {
-                ...m,
-                id: data.messageId,
-                createdAt: data.createdAt,
-                conversationId: data.conversationId,
-                pending: undefined,
-              }
-            : m,
-        );
+        return prev
+          .map((m) =>
+            m.id === tempId
+              ? {
+                  ...m,
+                  id: data.messageId,
+                  createdAt: data.createdAt,
+                  conversationId: data.conversationId,
+                  pending: undefined,
+                }
+              : m,
+          )
+          .sort(byTime);
       });
       // First message in a draft thread: the conversation now exists, so
-      // adopt its id and the live subscription starts.
+      // adopt its id (the live subscription starts) and tell the page.
       if (!conversationId) {
         setThread((t) => ({ ...t, conversationId: data.conversationId }));
+        onConversationCreated?.(data.conversationId);
       }
       onChanged?.();
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setDraft(body);
+      restore();
       setError(getActionError(err));
     } finally {
       setSending(false);
@@ -234,58 +384,96 @@ export function MessageThread({
   }
 
   async function doUnsend(id: string) {
-    const snapshot = messages;
+    const removed = messagesRef.current.find((m) => m.id === id);
+    if (!removed) return;
+    setBusy(true);
     setMessages((prev) => prev.filter((m) => m.id !== id));
-    const res = await unsendDm(id);
-    if (!res.ok) {
-      setMessages(snapshot);
-      setError(res.error);
-    } else {
-      onChanged?.();
+    // Put back only this one message on failure — never a stale copy of the
+    // whole list, which would erase anything that arrived meanwhile.
+    const putBack = () =>
+      setMessages((prev) => (prev.some((m) => m.id === id) ? prev : [...prev, removed].sort(byTime)));
+    try {
+      const res = await unsendDm(id);
+      if (!res.ok) {
+        putBack();
+        setError(res.error);
+      } else {
+        onChanged?.();
+      }
+    } catch (err) {
+      putBack();
+      setError(getActionError(err));
+    } finally {
+      setBusy(false);
+      setConfirm(null);
     }
   }
 
   async function doBlock() {
     setBusy(true);
-    const res = await blockPerson(thread.other.id);
-    setBusy(false);
-    setConfirm(null);
-    if (!res.ok) {
-      setError(res.error);
-      return;
+    try {
+      const res = await blockPerson(thread.other.id);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setThread((t) => ({ ...t, blockedByYou: true, frozen: true, canSend: false }));
+      onChanged?.();
+    } catch (err) {
+      setError(getActionError(err));
+    } finally {
+      setBusy(false);
+      setConfirm(null);
     }
-    setThread((t) => ({ ...t, blockedByYou: true, frozen: true, canSend: false }));
-    onChanged?.();
   }
 
   async function doUnblock() {
     setBusy(true);
-    const res = await unblockPerson(thread.other.id);
-    setBusy(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
+    try {
+      const res = await unblockPerson(thread.other.id);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setThread((t) => ({ ...t, blockedByYou: false, frozen: false, canSend: true }));
+      onChanged?.();
+    } catch (err) {
+      setError(getActionError(err));
+    } finally {
+      setBusy(false);
     }
-    setThread((t) => ({ ...t, blockedByYou: false, frozen: false, canSend: true }));
-    onChanged?.();
   }
 
   async function doReport() {
     if (!conversationId) return;
     setBusy(true);
-    const res = await reportDm({ conversationId, reason });
-    setBusy(false);
-    setConfirm(null);
-    setReason("");
-    if (!res.ok) {
-      setError(res.error);
-      return;
+    setReportError(null);
+    try {
+      const res = await reportDm({ conversationId, reason });
+      if (!res.ok) {
+        // Keep the dialog and what they wrote; say why it didn't go.
+        setReportError(res.error);
+        return;
+      }
+      setConfirm(null);
+      setReason("");
+      setError(null);
+      setThread((t) => ({ ...t, reported: true }));
+      setNotice("Reported. The batch0 team will review this conversation.");
+    } catch (err) {
+      setReportError(getActionError(err));
+    } finally {
+      setBusy(false);
     }
-    setError(null);
   }
 
-  const rows = useMemo(() => groupRows(messages, cursorRef.current, viewerId), [messages, viewerId]);
+  const rows = useMemo(
+    () => (mounted ? groupRows(messages, cursorRef.current, viewerId) : []),
+    [messages, viewerId, mounted],
+  );
   const nearLimit = draft.length > MESSAGE_MAX - 300;
+  const unsendTarget =
+    confirm?.kind === "unsend" ? messages.find((m) => m.id === confirm.id) ?? null : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -296,7 +484,7 @@ export function MessageThread({
             type="button"
             onClick={onBack}
             aria-label="Back to conversations"
-            className={`press -ml-1 h-7 w-7 items-center justify-center rounded-md text-ink-soft hover:bg-wash hover:text-ink ${
+            className={`press -ml-1 h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-soft hover:bg-wash hover:text-ink ${
               backMobileOnly ? "flex md:hidden" : "flex"
             }`}
           >
@@ -304,26 +492,28 @@ export function MessageThread({
           </button>
         )}
         <Avatar person={thread.other} size="sm" />
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1">
           <PersonLabel person={thread.other} className="text-sm" />
         </div>
         {compact && conversationId && (
           <Link
             href={`/messages?c=${conversationId}`}
             prefetch={false}
+            onClick={() => onNavigateAway?.()}
             aria-label="Open in full view"
-            className="press flex h-7 w-7 items-center justify-center rounded-md text-ink-soft hover:bg-wash hover:text-ink"
+            className="press flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-soft hover:bg-wash hover:text-ink"
           >
             <Maximize2 className="h-3.5 w-3.5" />
           </Link>
         )}
         {!thread.moderatorView && (
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
               aria-label="Conversation options"
               aria-expanded={menuOpen}
+              aria-haspopup="menu"
               className="press flex h-7 w-7 items-center justify-center rounded-md text-ink-soft hover:bg-wash hover:text-ink"
             >
               <MoreHorizontal className="h-4 w-4" />
@@ -338,7 +528,10 @@ export function MessageThread({
                   onClick={() => setMenuOpen(false)}
                   className="fixed inset-0 z-10 cursor-default"
                 />
-                <div className="absolute right-0 top-8 z-20 w-52 overflow-hidden rounded-lg border border-line bg-paper py-1 shadow-lg">
+                <div
+                  role="menu"
+                  className="absolute right-0 top-8 z-20 w-52 overflow-hidden rounded-lg border border-line bg-paper py-1 shadow-lg"
+                >
                   {thread.blockedByYou ? (
                     <MenuItem
                       onClick={() => {
@@ -346,18 +539,18 @@ export function MessageThread({
                         doUnblock();
                       }}
                     >
-                      <Ban className="h-3.5 w-3.5" />
-                      Unblock {firstName(thread.other.name)}
+                      <Ban className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">Unblock {firstName(thread.other.name)}</span>
                     </MenuItem>
                   ) : (
                     <MenuItem
                       onClick={() => {
                         setMenuOpen(false);
-                        setConfirm("block");
+                        setConfirm({ kind: "block" });
                       }}
                     >
-                      <Ban className="h-3.5 w-3.5" />
-                      Block {firstName(thread.other.name)}
+                      <Ban className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">Block {firstName(thread.other.name)}</span>
                     </MenuItem>
                   )}
                   {conversationId && (
@@ -365,10 +558,11 @@ export function MessageThread({
                       destructive
                       onClick={() => {
                         setMenuOpen(false);
-                        setConfirm("report");
+                        setReportError(null);
+                        setConfirm({ kind: "report" });
                       }}
                     >
-                      <Flag className="h-3.5 w-3.5" />
+                      <Flag className="h-3.5 w-3.5 shrink-0" />
                       Report conversation
                     </MenuItem>
                   )}
@@ -389,12 +583,12 @@ export function MessageThread({
       {/* Messages */}
       <div
         ref={scrollRef}
-        className={`min-h-0 flex-1 overflow-y-auto ${compact ? "px-3 py-3" : "px-4 py-5"}`}
+        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${compact ? "px-3 py-3" : "px-4 py-5"}`}
       >
-        {rows.length === 0 ? (
+        {!mounted ? null : rows.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center">
             <Avatar person={thread.other} size="lg" />
-            <p className="mt-3 text-sm font-medium text-ink">{thread.other.name}</p>
+            <p className="mt-3 max-w-full break-words text-sm font-medium text-ink">{thread.other.name}</p>
             <p className="mt-1 text-xs text-ink-faint">
               No messages yet. Say hello — they&apos;ll get a notification.
             </p>
@@ -425,8 +619,11 @@ export function MessageThread({
                   mine={row.message.senderId === viewerId}
                   showTail={row.showTail}
                   onUnsend={
-                    row.message.senderId === viewerId && !row.message.pending
-                      ? () => doUnsend(row.message.id)
+                    row.message.senderId === viewerId &&
+                    !row.message.pending &&
+                    !thread.reported &&
+                    !thread.moderatorView
+                      ? () => setConfirm({ kind: "unsend", id: row.message.id })
                       : undefined
                   }
                 />
@@ -443,9 +640,14 @@ export function MessageThread({
             {error}
           </p>
         )}
+        {notice && !error && (
+          <p role="status" className="mb-2 text-xs text-ink-soft">
+            {notice}
+          </p>
+        )}
         {thread.moderatorView ? null : thread.blockedByYou ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-wash px-3 py-2">
-            <p className="text-xs text-ink-soft">
+            <p className="min-w-0 break-words text-xs text-ink-soft">
               You blocked {thread.other.name}. Neither of you can send.
             </p>
             <Button size="sm" variant="secondary" onClick={doUnblock} disabled={busy}>
@@ -465,7 +667,15 @@ export function MessageThread({
               onChange={(e) => setDraft(e.target.value.slice(0, MESSAGE_MAX))}
               onKeyDown={(e) => {
                 // Enter sends, Shift+Enter is a newline — what every chat does.
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                // Never while an IME is composing: isComposing covers most
+                // browsers, and keyCode 229 covers Safari, which fires the
+                // committing Enter after compositionend.
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing &&
+                  e.keyCode !== 229
+                ) {
                   e.preventDefault();
                   send();
                 }
@@ -473,9 +683,9 @@ export function MessageThread({
               rows={1}
               placeholder={`Message ${firstName(thread.other.name)}…`}
               aria-label={`Message ${thread.other.name}`}
-              className="max-h-32 min-h-[2.5rem] flex-1 resize-none rounded-md border border-line bg-paper px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-2 focus:ring-phosphor/30 md:text-sm"
+              className="max-h-32 min-h-[2.5rem] min-w-0 flex-1 resize-none rounded-md border border-line bg-paper px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-2 focus:ring-phosphor/30 md:text-sm"
             />
-            <Button size="sm" onClick={send} disabled={sending || !draft.trim()} className="h-10">
+            <Button size="sm" onClick={send} disabled={sending || !draft.trim()} className="h-10 shrink-0">
               {sending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
@@ -493,7 +703,7 @@ export function MessageThread({
       </div>
 
       <ConfirmDialog
-        open={confirm === "block"}
+        open={confirm?.kind === "block"}
         title={`Block ${thread.other.name}?`}
         description="Neither of you will be able to send messages. Your conversation stays where it is, and they aren't told."
         confirmLabel="Block"
@@ -503,14 +713,35 @@ export function MessageThread({
         onCancel={() => setConfirm(null)}
       />
       <ConfirmDialog
-        open={confirm === "report"}
+        open={confirm?.kind === "unsend"}
+        title="Unsend this message?"
+        description={
+          <div className="space-y-2">
+            <p className="text-sm text-ink-soft">
+              It disappears for both of you. This can&apos;t be undone.
+            </p>
+            {unsendTarget && (
+              <p className="max-h-24 overflow-y-auto whitespace-pre-wrap rounded-md border border-line bg-wash px-3 py-2 text-xs text-ink-soft [overflow-wrap:anywhere]">
+                {unsendTarget.body}
+              </p>
+            )}
+          </div>
+        }
+        confirmLabel="Unsend"
+        destructive
+        pending={busy}
+        onConfirm={() => confirm?.kind === "unsend" && doUnsend(confirm.id)}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm?.kind === "report"}
         title="Report this conversation?"
         description={
           <div className="space-y-3">
             <p className="text-sm text-ink-soft">
               This is the only thing that lets the batch0 team read this
               conversation. Reporting it hands them the whole thread, including
-              your own messages.
+              your own messages, and nothing in it can be unsent afterwards.
             </p>
             <textarea
               value={reason}
@@ -520,6 +751,11 @@ export function MessageThread({
               aria-label="Why you're reporting this"
               className="w-full resize-none rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none focus:ring-2 focus:ring-phosphor/30"
             />
+            {reportError && (
+              <p role="alert" className="text-xs text-red-400">
+                {reportError}
+              </p>
+            )}
           </div>
         }
         confirmLabel="Report"
@@ -528,7 +764,7 @@ export function MessageThread({
         onConfirm={doReport}
         onCancel={() => {
           setConfirm(null);
-          setReason("");
+          setReportError(null);
         }}
       />
     </div>
@@ -547,6 +783,7 @@ function MenuItem({
   return (
     <button
       type="button"
+      role="menuitem"
       onClick={onClick}
       className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-wash ${
         destructive ? "text-red-400" : "text-ink-soft hover:text-ink"
@@ -576,15 +813,16 @@ function MessageBubble({
           type="button"
           onClick={onUnsend}
           aria-label="Unsend message"
-          // Hover-only on pointer devices; always reachable by keyboard.
-          className="press mb-1 flex h-6 w-6 items-center justify-center rounded-md text-ink-faint opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-400"
+          // Hover-only with a pointer; always reachable by keyboard, and
+          // always shown on touch screens, where there is no hover.
+          className="press mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-400 [@media(hover:none)]:opacity-60"
         >
           <Trash2 className="h-3 w-3" />
         </button>
       )}
-      <div className={`flex max-w-[78%] flex-col ${mine ? "items-end" : "items-start"}`}>
+      <div className={`flex min-w-0 max-w-[78%] flex-col ${mine ? "items-end" : "items-start"}`}>
         <div
-          className={`whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm leading-snug ${
+          className={`max-w-full whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm leading-snug [overflow-wrap:anywhere] ${
             mine
               ? `bg-phosphor text-on-phosphor ${showTail ? "rounded-br-md" : ""}`
               : `border border-line bg-wash text-ink ${showTail ? "rounded-bl-md" : ""}`
@@ -600,6 +838,31 @@ function MessageBubble({
       </div>
     </li>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Ordering
+// ---------------------------------------------------------------------------
+
+/**
+ * Is timestamp `a` later than `b`? As instants first; a millisecond tie falls
+ * back to the string, because Postgres keeps microseconds that Date drops.
+ */
+function isAfter(a: string, b: string): boolean {
+  const da = Date.parse(a);
+  const db = Date.parse(b);
+  if (Number.isFinite(da) && Number.isFinite(db) && da !== db) return da > db;
+  return a > b;
+}
+
+/**
+ * Posting order. By instant rather than by string: an optimistic bubble
+ * carries the browser's ISO time ("…Z") while confirmed rows carry Postgres's
+ * ("…+00:00"), and those don't sort against each other as text.
+ */
+function byTime(a: Pending, b: Pending): number {
+  if (a.createdAt === b.createdAt) return 0;
+  return isAfter(a.createdAt, b.createdAt) ? 1 : -1;
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +892,7 @@ function groupRows(messages: Pending[], cursor: string, viewerId: string): Row[]
     }
     // The first message from the other person that landed after the viewer
     // last looked. Their own messages never qualify — you've read what you sent.
-    if (!unreadMarked && m.senderId !== viewerId && m.createdAt > cursor) {
+    if (!unreadMarked && m.senderId !== viewerId && !m.pending && isAfter(m.createdAt, cursor)) {
       rows.push({ kind: "unread", key: `unread-${m.id}` });
       unreadMarked = true;
     }

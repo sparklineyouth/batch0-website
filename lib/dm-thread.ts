@@ -1,10 +1,13 @@
 import "server-only";
 import {
+  canStartConversation,
+  deletedPerson,
   findConversation,
   getConversationForViewer,
   getPerson,
   isBlockedBetween,
-  listBlockedPeople,
+  isReported,
+  listBlockedIds,
   listMessages,
   type DmMessage,
   type DmPerson,
@@ -46,6 +49,11 @@ export type ThreadPayload = {
   frozen: boolean;
   /** A moderator reading a reported thread: read-only, and it says so. */
   moderatorView: boolean;
+  /**
+   * Someone has reported this conversation. Nothing in it can be unsent from
+   * then on (unsendDm refuses), so the thread stops offering it.
+   */
+  reported: boolean;
 };
 
 const DELETED: Omit<DmPerson, "id"> = {
@@ -76,18 +84,22 @@ export async function buildThreadPayload(
   const [other, frozen, blocked] = await Promise.all([
     getPerson(withUserId),
     isBlockedBetween(viewer.userId, withUserId),
-    listBlockedPeople(viewer.userId),
+    listBlockedIds(viewer.userId),
   ]);
   if (!other) return null;
+  // Someone the viewer may not cold-message looks like nobody at all — the
+  // same answer as a person who doesn't exist.
+  if (!(await canStartConversation(viewer, other)).ok) return null;
   return {
     conversationId: null,
     other,
     messages: [],
     cursor: new Date(0).toISOString(),
     canSend: !frozen,
-    blockedByYou: blocked.some((p) => p.id === withUserId),
+    blockedByYou: blocked.includes(withUserId),
     frozen,
     moderatorView: false,
+    reported: false,
   };
 }
 
@@ -101,22 +113,29 @@ async function byConversation(
   // A moderator reading a reported thread is not a party to it: no cursor to
   // read, no block state that means anything, and no composer.
   const participant = isParticipant(convo, viewer.userId);
-  const otherId = participant ? otherParticipant(convo, viewer.userId) : convo.userA;
-  const [other, messages, frozen, blocked] = await Promise.all([
-    getPerson(otherId),
+  // Null when the other account has been deleted.
+  const otherId = participant ? otherParticipant(convo, viewer.userId) : (convo.userA ?? convo.userB);
+  const bothPresent = !!convo.userA && !!convo.userB;
+  const [other, messages, frozen, blocked, reported] = await Promise.all([
+    otherId ? getPerson(otherId) : Promise.resolve(null),
     listMessages(convo.id),
-    participant ? isBlockedBetween(convo.userA, convo.userB) : Promise.resolve(false),
-    participant ? listBlockedPeople(viewer.userId) : Promise.resolve([] as DmPerson[]),
+    participant && bothPresent
+      ? isBlockedBetween(convo.userA!, convo.userB!)
+      : Promise.resolve(false),
+    participant ? listBlockedIds(viewer.userId) : Promise.resolve([] as string[]),
+    // A moderator only reaches a conversation that has been reported.
+    participant ? isReported(convo.id) : Promise.resolve(true),
   ]);
 
   return {
     conversationId: convo.id,
-    other: other ?? { id: otherId, ...DELETED },
+    other: other ?? (otherId ? { id: otherId, ...DELETED } : deletedPerson(convo.id)),
     messages,
     cursor: participant ? cursorFor(convo, viewer.userId) : new Date().toISOString(),
     canSend: canSendToConversation(convo, viewer, frozen),
-    blockedByYou: blocked.some((p) => p.id === otherId),
+    blockedByYou: !!otherId && blocked.includes(otherId),
     frozen,
     moderatorView: !participant,
+    reported,
   };
 }

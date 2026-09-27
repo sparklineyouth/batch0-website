@@ -57,6 +57,14 @@ async function setup() {
       begin new.updated_at = now(); return new; end $$;
 
     create publication supabase_realtime;
+    create table public.notifications (
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid not null,
+      type text not null,
+      title text not null,
+      body text,
+      link text
+    );
 
     insert into public.profiles (id, full_name, role) values
       ('${ALICE}', 'Alice', 'student'),
@@ -187,6 +195,51 @@ test("nobody can ask whether they have been blocked", async () => {
   assert.equal(rows[0].b, true);
 });
 
+test("the read check only ever answers for the caller", async () => {
+  const db = await setup();
+  const id = await seedConversation(db);
+  await db.query(`insert into public.dm_reports (conversation_id, reporter_id, reason) values ($1, $2, 'spam')`, [id, ALICE]);
+  // No form of it takes a uid any more, so nobody can pass a moderator's id
+  // and learn whether a conversation was reported.
+  const { rows: fns } = await db.query<any>(
+    `select pg_get_function_identity_arguments(p.oid) as args from pg_proc p where p.proname = 'dm_can_read_conversation'`,
+  );
+  assert.deepEqual(fns.map((f) => f.args), ["c dm_conversations"]);
+  // Eve asking about a reported conversation she is not in gets "no".
+  const { rows } = await as(
+    db,
+    EVE,
+    `select public.dm_can_read_conversation(c) as ok from public.dm_conversations c where c.id = $1`,
+    [id],
+  );
+  assert.equal(rows.length, 0, "she cannot even select the row to ask about");
+  const crafted = await as(
+    db,
+    EVE,
+    `select public.dm_can_read_conversation(row($1::uuid, $2::uuid, $3::uuid, 'epoch'::timestamptz, 'epoch'::timestamptz, null::timestamptz, null::text, null::uuid, 0, now(), now())::public.dm_conversations) as ok`,
+    [id, ALICE, BOB],
+  );
+  assert.equal(crafted.rows[0].ok, false);
+});
+
+test("a DM notification never stores the message text; other notifications keep theirs", async () => {
+  const db = await setup();
+  await db.query(
+    `insert into public.notifications (user_id, type, title, body) values
+       ($1, 'direct_message', 'Alice messaged you', 'my secret'),
+       ($1, 'announcement', 'Kickoff', 'see you at 6')`,
+    [BOB],
+  );
+  const { rows } = await db.query<any>(`select type, body from public.notifications order by type`);
+  assert.deepEqual(rows, [
+    { type: "announcement", body: "see you at 6" },
+    { type: "direct_message", body: null },
+  ]);
+  await db.query(`update public.notifications set body = 'sneaky' where type = 'direct_message'`);
+  const { rows: after } = await db.query<any>(`select body from public.notifications where type = 'direct_message'`);
+  assert.equal(after[0].body, null);
+});
+
 test("the trigger keeps the conversation summary right through sends and unsends", async () => {
   const db = await setup();
   const id = await seedConversation(db);
@@ -220,6 +273,25 @@ test("the trigger keeps the conversation summary right through sends and unsends
   await db.query(`insert into public.dm_messages (conversation_id, sender_id, body) values ($1, $2, $3)`, [id, ALICE, "x".repeat(500)]);
   ({ rows } = await db.query<any>(`select length(last_message_preview) as n from public.dm_conversations where id = $1`, [id]));
   assert.equal(rows[0].n, 140);
+});
+
+test("deleting one account keeps the other person's history and every report", async () => {
+  const db = await setup();
+  const id = await seedConversation(db);
+  await db.query(`insert into public.dm_reports (conversation_id, reporter_id, reason) values ($1, $2, 'harassment')`, [id, ALICE]);
+  await db.query(`delete from public.profiles where id = $1`, [BOB]);
+
+  const { rows: c } = await db.query<any>(`select user_a, user_b, message_count from public.dm_conversations where id = $1`, [id]);
+  assert.equal(c.length, 1, "the conversation survives");
+  assert.deepEqual([c[0].user_a, c[0].user_b].sort(), [ALICE, null].sort());
+  assert.equal(c[0].message_count, 2);
+  const { rows: m } = await db.query<any>(`select sender_id from public.dm_messages where conversation_id = $1 order by created_at`, [id]);
+  assert.deepEqual(m.map((r) => r.sender_id), [ALICE, null], "Bob's words stay, unattributed");
+  const { rows: r } = await db.query<any>(`select count(*)::int as n from public.dm_reports where conversation_id = $1`, [id]);
+  assert.equal(r[0].n, 1, "the report survives");
+  // Alice still reads her side.
+  const mine = await as(db, ALICE, `select id from public.dm_messages where conversation_id = $1`, [id]);
+  assert.equal(mine.rows.length, 2);
 });
 
 test("a DM between two people is a singleton, stored as an ordered pair", async () => {

@@ -32,11 +32,20 @@ export function BlockedList() {
     if (open && people === null) load();
   }, [open, people, load]);
 
+  const [error, setError] = useState<string | null>(null);
+
   async function unblock(id: string) {
     setBusyId(id);
-    const res = await unblockPerson(id);
-    setBusyId(null);
-    if (res.ok) setPeople((prev) => (prev ?? []).filter((p) => p.id !== id));
+    setError(null);
+    try {
+      const res = await unblockPerson(id);
+      if (res.ok) setPeople((prev) => (prev ?? []).filter((p) => p.id !== id));
+      else setError(res.error);
+    } catch {
+      setError("Couldn't unblock them. Try again.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -60,6 +69,11 @@ export function BlockedList() {
       </button>
       {open && (
         <div className="pb-2">
+          {error && (
+            <p role="alert" className="px-4 py-1.5 text-xs text-red-400">
+              {error}
+            </p>
+          )}
           {people === null ? (
             <p className="px-4 py-2 text-xs text-ink-faint">Loading…</p>
           ) : people.length === 0 ? (

@@ -15,6 +15,8 @@ export function ConversationList({
   onNew,
   loading = false,
   compact = false,
+  error = null,
+  onRetry,
 }: {
   rows: DmInboxRow[];
   activeId?: string | null;
@@ -22,7 +24,27 @@ export function ConversationList({
   onNew?: () => void;
   loading?: boolean;
   compact?: boolean;
+  /** A failed load with nothing to show: say so, instead of "no conversations". */
+  error?: string | null;
+  onRetry?: () => void;
 }) {
+  if (error && rows.length === 0 && !loading) {
+    return (
+      <div role="alert" className="px-6 py-12 text-center">
+        <p className="text-sm text-ink-soft">{error}</p>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="press mt-3 text-xs font-medium text-phosphor-ink hover:opacity-80"
+          >
+            Try again
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (loading && rows.length === 0) {
     return (
       <div className="px-4 py-10 text-center text-sm text-ink-faint">Loading…</div>
@@ -90,7 +112,7 @@ export function ConversationList({
                   )}
                 </span>
                 <span
-                  className={`mt-0.5 line-clamp-1 block text-xs ${
+                  className={`mt-0.5 line-clamp-1 text-xs [overflow-wrap:anywhere] ${
                     row.unread ? "text-ink-soft" : "text-ink-faint"
                   }`}
                 >
