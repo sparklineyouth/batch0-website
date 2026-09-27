@@ -9,7 +9,11 @@ import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { getInterviewRequestForStudent } from "@/lib/interview-requests";
 import { InterviewRequestCard } from "@/components/interview-request-card";
-import { interviewCardState, interviewStage } from "@/lib/call-lifecycle";
+import {
+  canRequestTeamCall,
+  interviewCardState,
+  interviewStage,
+} from "@/lib/call-lifecycle";
 import {
   ArrowRight,
   CalendarDays,
@@ -72,14 +76,17 @@ export default async function EnrolledPage(
   const firstName = profile?.full_name?.split(" ")[0] ?? null;
   const started = !access.preCohort;
 
-  // A getting-to-know-you interview happens before kickoff, so it belongs on
-  // this page — the first thing a student sees after paying — but only while
-  // the cohort hasn't started. Any request already in flight keeps showing.
-  // "In flight" is read through the call it booked — see interviewStage.
+  // The first thing a student sees after paying, so it is where they first
+  // learn they can ask the team for a 1:1 whenever they want: before kickoff
+  // as a getting-to-know-you interview, after it as an ordinary call. The
+  // action needs an enrollment row, so a payment still clearing gets no form
+  // yet. A request already in flight keeps showing, read through the call it
+  // booked (interviewStage).
   const interviewRequest = await getInterviewRequestForStudent(user.id);
+  const interviewLastStage = interviewStage(interviewRequest);
   const interviewState = interviewCardState(
-    interviewStage(interviewRequest),
-    !started,
+    interviewLastStage,
+    canRequestTeamCall(access),
   );
 
   return (
@@ -163,6 +170,8 @@ export default async function EnrolledPage(
           <InterviewRequestCard
             request={interviewRequest}
             state={interviewState}
+            composeKind={started ? "call" : "interview"}
+            lastStage={interviewLastStage}
           />
         </section>
       )}

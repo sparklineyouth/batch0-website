@@ -72,12 +72,13 @@ export default async function AdminCallsPage() {
 
       <section className="mt-10">
         <h2 className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
-          Interview requests
+          Call requests
         </h2>
         <p className="mb-3 text-sm text-ink-faint">
-          Getting-to-know-you interviews students asked for before kickoff, and
-          scholarship mentor calls. Scheduling one books it as a 1:1 and emails
-          them the time.
+          1:1s students asked for: enrolled students can ask whenever they want
+          (a getting-to-know-you interview before kickoff, an ordinary call
+          after), plus scholarship mentor calls. Confirming one of their times
+          books it straight away; picking another sends it for them to accept.
         </p>
         <InterviewRequestsPanel
           requests={interviewRequests}
