@@ -2280,9 +2280,16 @@ function HostEnded({
   );
 }
 
-/** The ended screens' slow poll, and its pace after a null answer. */
-const ENDED_POLL_MS = 30_000;
-const ENDED_POLL_BACKOFF_MS = 60_000;
+/**
+ * The ended screens' poll, and its pace after a null answer. At 30s/60s a
+ * viewer waited up to a minute after a Reopen before being offered Rejoin —
+ * long enough to give up and close the tab. Each tick is one small read, and
+ * the ended screen is where people leave from, so the room can afford 15s.
+ */
+const ENDED_POLL_MS = 15_000;
+const ENDED_POLL_BACKOFF_MS = 30_000;
+/** Spread ticks so a room of ended screens doesn't poll in lockstep. */
+const ENDED_POLL_JITTER_MS = 3_000;
 
 /**
  * Watch an ended webinar for a Reopen. True once the server reports it open
@@ -2316,7 +2323,7 @@ function useReopenWatch(
       if (stopped) return;
       // Past the hard stop nothing can reopen it: the one reason to stop.
       if (hardCloseAt !== null && Date.now() > hardCloseAt) return;
-      timer = setTimeout(tick, ms);
+      timer = setTimeout(tick, ms + Math.floor(Math.random() * ENDED_POLL_JITTER_MS));
     };
     const tick = async () => {
       if (document.hidden) {

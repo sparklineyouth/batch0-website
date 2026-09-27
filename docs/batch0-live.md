@@ -290,7 +290,7 @@ start". A viewer who (re)joins during the gap has not seen the host this
 session, so past the scheduled start they get the neutral "The host isn't on
 air right now" instead — never "waiting for the host to start" mid-webinar.
 
-A viewer on the ended screen keeps polling (30s, 60s after an empty answer)
+A viewer on the ended screen keeps polling (15s, 30s after an empty answer)
 for a Reopen until the hard stop, so a reopen is noticed even when the first
 answers come back empty because no host is on air yet.
 
@@ -317,7 +317,7 @@ and poll writes, and stops touching attendance.
 **Reopen** is staff only: the ended screen's Reopen, or the admin pages. It
 clears the stamp and sends `room-changed`. Nobody is reconnected
 automatically. Nobody on an ended screen has a live session to hear the hint,
-so every ended screen polls slowly (30 s) for it: hosts on the ended screen —
+so every ended screen polls (every 15 s) for it: hosts on the ended screen —
 staff and guest speakers alike — and viewers are offered Rejoin, and a host
 in the ended green room gets the ordinary Start back. **Pressing Start never
 reopens** an ended webinar.
