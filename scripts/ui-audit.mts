@@ -165,7 +165,12 @@ const DETECT = `((pos) => {
     const text = (el.innerText || el.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 50);
     return el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (cls ? "." + cls : "") + (label ? " [" + label + "]" : text ? ' "' + text + '"' : "");
   };
-  const ignorable = (el) => !el || el.closest("nextjs-portal, [data-nextjs-toast], #__next-build-watcher, script, style, noscript, .sr-only");
+  // Also anything inside a closed <details> (other than its summary): it
+  // isn't rendered, even where the browser still reports a box for it.
+  const ignorable = (el) =>
+    !el ||
+    !!el.closest("nextjs-portal, [data-nextjs-toast], #__next-build-watcher, script, style, noscript, .sr-only") ||
+    (!!el.closest("details:not([open])") && !el.closest("summary"));
   const visible = (el) => {
     const s = getComputedStyle(el);
     if (s.display === "none" || s.visibility === "hidden" || Number(s.opacity) === 0) return false;

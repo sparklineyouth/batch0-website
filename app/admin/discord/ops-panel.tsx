@@ -38,7 +38,7 @@ export function OpsPanel({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 xl:grid-cols-3">
         <Button
           type="button"
           variant="secondary"

@@ -233,7 +233,7 @@ export function QuestionListEditor({
       {questions.map((q, i) => (
         <section key={i} className="rounded-xl border border-line bg-wash p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <code className="text-xs font-medium text-ink-soft">
+            <code className="min-w-0 text-xs font-medium text-ink-soft [overflow-wrap:anywhere]">
               {q.id || <span className="italic">id set from the label</span>}
             </code>
             <div className="flex items-center gap-1">

@@ -107,7 +107,7 @@ export default async function MentorMatchmakerPage(
             id="match-team"
             name="team_id"
             defaultValue={teamId}
-            className="h-10 flex-1 rounded-lg border border-line bg-paper px-3 text-sm text-ink"
+            className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-paper px-3 text-sm text-ink"
           >
             <option value="">— Pick team —</option>
             {(teams ?? []).map((t: any) => {
@@ -122,7 +122,7 @@ export default async function MentorMatchmakerPage(
           </select>
           <button
             type="submit"
-            className="rounded-lg bg-phosphor px-4 text-sm font-semibold text-on-phosphor shadow-cta transition hover:bg-phosphor-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="shrink-0 rounded-lg bg-phosphor px-4 text-sm font-semibold text-on-phosphor shadow-cta transition hover:bg-phosphor-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             Match
           </button>

@@ -46,7 +46,7 @@ export function SeedButton() {
       {message && (
         <p
           role="status"
-          className={`absolute right-0 top-11 whitespace-nowrap text-xs ${
+          className={`mt-2 text-xs sm:absolute sm:right-0 sm:top-11 sm:mt-0 sm:whitespace-nowrap ${
             failed ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"
           }`}
         >

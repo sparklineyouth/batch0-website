@@ -469,7 +469,7 @@ export default async function AdminEmailMetricsPage() {
 
       {/* ---------------------------------------------------------------- */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <div>
+        <div className="min-w-0">
           <SectionHeading
             title="Most clicked links"
             hint="Which link in the mail actually earned the click."
@@ -515,7 +515,7 @@ export default async function AdminEmailMetricsPage() {
           </Card>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <SectionHeading
             title="Opened with"
             hint="Mail client behind each open and click."

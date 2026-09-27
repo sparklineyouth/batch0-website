@@ -142,7 +142,7 @@ export default async function AdminPaymentsPage(
       </div>
 
       {/* Stat tiles */}
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat
           label="Tuition after refunds"
           value={fmtMoney(netCents)}
