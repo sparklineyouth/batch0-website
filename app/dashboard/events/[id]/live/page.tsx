@@ -1,8 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { requireUser, getProfile, getCapabilities } from "@/lib/auth";
-import { can } from "@/lib/permissions";
+import { requireUser, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createRoom,
@@ -11,10 +9,11 @@ import {
   roomIsLive,
 } from "@/lib/daily";
 import {
-  canJoin,
-  joinState,
+  HOST_JOIN_OPENS_MINUTES_BEFORE,
+  JOIN_OPENS_MINUTES_BEFORE,
   normalizeDisplayViewers,
-  DEFAULT_EVENT_MINUTES,
+  roomWindow,
+  webinarHasBegun,
   type LiveRole,
 } from "@/lib/live";
 import {
@@ -24,14 +23,16 @@ import {
 import {
   isHostedOnBatch0,
   isPremiere,
-  normalizeAudienceMode,
   premiereState,
+  type EventAsset,
 } from "@/lib/webinars";
 import {
   listAssets,
   listSpeakers,
+  signAssets,
   signedAssetUrl,
 } from "@/lib/webinar-data";
+import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
 import { claimSpeakerSlot } from "@/app/admin/events/webinar-actions";
 import { fetchRoomState } from "./room-actions";
 import { LiveRoom } from "./live-room";
@@ -59,34 +60,59 @@ export default async function EventLivePage(
   const [params, search] = await Promise.all([props.params, props.searchParams]);
   await requireUser();
 
-  // Who is asking and what they're asking for are independent questions, so
-  // ask them at once. This page is on the critical path of "the webinar has
-  // started and I am clicking Join", and it used to serialise four round trips
-  // — auth, profile, capabilities, event — before it could even begin minting
-  // a token. getProfile/getCapabilities are request-cached and share a single
-  // resolution, so the pair costs one trip, not two.
+  // A guest arriving on their invite link — claimed BEFORE anything reads the
+  // event.
   //
-  // The event is read through the RLS-scoped client, NOT the admin client. The
-  // `events read` policy (migration 0005) already encodes exactly who may see
-  // this event — public, staff, or enrolled in its cohort — so letting it
-  // answer means the join gate and the visibility gate cannot disagree. A
-  // viewer who isn't allowed gets no row, and therefore a 404 rather than a
-  // hint that the event exists.
-  const supabase = await createClient();
-  const [profile, caps, { data: event }] = await Promise.all([
-    getProfile(),
-    getCapabilities(),
-    supabase
-      .from("events")
-      .select(
-        "id, title, description, type, starts_at, ends_at, live_mode, daily_room_name, daily_room_url, display_viewer_count, audience_mode, auto_record, premiere_seconds, qa_opens_at, live_started_at, live_ended_at",
-      )
-      .eq("id", params.id)
-      .maybeSingle(),
-  ]);
+  // The claim writes the speaker row that decides everything below. Reading
+  // the event first (as this page used to) meant a guest outside the cohort
+  // got no row back from RLS for an `enrolled` webinar and a 404 before the
+  // claim ever ran, so the invited host could never become one. The claim is
+  // service-role, token-bound and scoped to this event id, so running it first
+  // reveals nothing: a bad or spent token (the COMMON case — it is cleared on
+  // claim, and the guest will reload that same URL) is a quiet no-op, and a
+  // stale link must not turn the webinar into an error page.
+  if (search?.speaker) {
+    await claimSpeakerSlot(params.id, search.speaker).catch(() => false);
+  }
 
-  if (!event) notFound();
-  const ev = event as any;
+  // Who is asking, what they may do, and the event — one resolution, shared
+  // with joinRoom, the room actions and the upload gate (lib/live-access.ts),
+  // so the role this page renders and the role the credentials are minted
+  // with come from the same code.
+  //
+  //   staff (events.manage)  broadcasts, moderates, sees the audience by
+  //                          name, owns End / Reopen (recording is elected
+  //                          among every host, speakers too). Admins are
+  //                          staff through `*`, and are NEVER downgraded to
+  //                          viewer: an events.manage holder the RLS read
+  //                          returns nothing for is re-read with the admin
+  //                          client (see live-access for why that is safe).
+  //   a speaker row          this event only. Broadcasts and moderates, and is
+  //                          NOT told who is watching — see `discloseNames`.
+  //   everyone else          a viewer, if the `events read` policy lets them
+  //                          see the event at all. A viewer who isn't allowed
+  //                          gets a 404 rather than a hint that it exists.
+  const [access, profile] = await Promise.all([
+    resolveEventAccess(params.id),
+    getProfile(),
+  ]);
+  if (!access.ok) {
+    if (access.reason === "no-access") notFound();
+    return (
+      <Shell title="Live">
+        <p className="text-sm text-ink-soft">
+          We couldn&rsquo;t load this room just now. Try again in a moment.
+        </p>
+        <BackLink href="/dashboard/events" />
+      </Shell>
+    );
+  }
+  const ev = access.event;
+  const role: LiveRole = access.role;
+  const isStaffHost = access.isStaff;
+  // Staff came from the admin list and go back there; guest speakers and
+  // students go back to the events they can see.
+  const backHref = isStaffHost ? "/admin/webinars" : "/dashboard/events";
 
   // An external event has no room to join; send them to the list, which shows
   // the Zoom link.
@@ -102,79 +128,98 @@ export default async function EventLivePage(
   // Sunday and left 17 of 18 pointing at a Daily room that expired before the
   // webinar started, which the join page then had to heal on the critical
   // path with an audience already waiting.
-  if (!isHostedOnBatch0(ev.live_mode)) {
+  if (!isHostedOnBatch0(ev.liveMode)) {
     return (
       <Shell title={ev.title}>
         <p className="text-sm text-ink-soft">
           This event isn&rsquo;t hosted on batch0.
         </p>
-        <BackLink />
+        <BackLink href={backHref} />
       </Shell>
     );
   }
 
-  // The same window the UI shows, re-checked here because this is the side
-  // that hands out credentials. Without it a student could open this page
-  // three weeks early and hold a valid token for a room nobody is watching.
-  const state = joinState(ev.starts_at, ev.ends_at);
-  if (!canJoin(state)) {
+  // The window, per role, re-checked here because this is the side that
+  // hands out credentials. Without it a student could open this page three
+  // weeks early and hold a valid token for a room nobody is watching.
+  //
+  //   hosts    from an hour before the start (to set up) until three hours
+  //            after the scheduled end — INCLUDING after End, so staff reach
+  //            the ended screen and can Reopen.
+  //   viewers  from 15 minutes before; refused once the webinar has been
+  //            ended; and past end+30m only while a host is still present.
+  const where = await roomAccessFor(access);
+  if (where === "ended") {
+    // Viewers only — a host's window ignores End. The ended shell, rather
+    // than a green room that would hand out a Join into a finished webinar.
+    const files = await sharedSessionFiles(ev.id);
     return (
       <Shell title={ev.title}>
-        {state === "early" ? (
+        <p className="text-sm text-ink-soft">
+          This webinar has ended
+          {ev.liveEndedAt ? (
+            <>
+              {" "}
+              — it finished at <LocalTime value={ev.liveEndedAt} mode="time" />
+            </>
+          ) : null}
+          . Thanks for watching.
+        </p>
+        {ev.recordingUrl && (
+          <a
+            href={ev.recordingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-block text-sm text-phosphor-ink hover:underline"
+          >
+            Watch the recording
+          </a>
+        )}
+        {files && <SessionFiles files={files} />}
+        <BackLink href={backHref} />
+      </Shell>
+    );
+  }
+  if (where === "early" || where === "closed") {
+    const opensMinutes =
+      role === "host" ? HOST_JOIN_OPENS_MINUTES_BEFORE : JOIN_OPENS_MINUTES_BEFORE;
+    const files = where === "closed" ? await sharedSessionFiles(ev.id) : null;
+    return (
+      <Shell title={ev.title}>
+        {where === "early" ? (
           <p className="text-sm text-ink-soft">
-            This opens 15 minutes before it starts —{" "}
-            <LocalTime value={ev.starts_at} />.
+            {role === "host"
+              ? `The room opens for hosts ${opensMinutes} minutes before it starts`
+              : `This opens ${opensMinutes} minutes before it starts`}{" "}
+            — <LocalTime value={ev.startsAt} />.
           </p>
         ) : (
-          <p className="text-sm text-ink-soft">This event has ended.</p>
+          <p className="text-sm text-ink-soft">This webinar is over.</p>
         )}
-        <BackLink />
+        {where === "closed" && ev.recordingUrl && (
+          <a
+            href={ev.recordingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-block text-sm text-phosphor-ink hover:underline"
+          >
+            Watch the recording
+          </a>
+        )}
+        {files && <SessionFiles files={files} />}
+        <BackLink href={backHref} />
       </Shell>
     );
   }
 
-  // A guest arriving on their invite link, before the role is worked out.
-  //
-  // Deliberately first: claiming writes the speaker row that the very next line
-  // reads, so doing it after would hand the guest a viewer's seat on the one
-  // page load that mattered and make them reload to get a camera. It is a
-  // no-op for everyone else, and it fails quietly rather than throwing — a
-  // spent token is the COMMON case (it is cleared on claim, and the guest will
-  // reload that same URL), and a stale link must not turn the webinar into an
-  // error page.
-  if (search?.speaker) {
-    await claimSpeakerSlot(ev.id, search.speaker).catch(() => false);
-  }
-
-  // The host/viewer split. Two grants, and the difference matters downstream:
-  //
-  //   events.manage   staff. Sees the audience by name, moderates, schedules.
-  //   a speaker row   this event only. Broadcasts and moderates, and is NOT
-  //                   told who is watching — see `discloseNames` in
-  //                   lib/live-rooms.ts. A guest founder needs a camera, not
-  //                   the attendance list of a room containing minors.
-  //
-  // Derived here and again in `resolveRoom`, because this decides what to
-  // render and that decides what credentials are minted. Neither reads
-  // anything the client sent.
-  const isStaffHost = can(caps, "events.manage");
   const speakers = await listSpeakers(ev.id);
-  const isSpeaker =
-    !isStaffHost &&
-    !!profile &&
-    speakers.some((sp) => sp.userId === profile.id);
-  const role: LiveRole = isStaffHost || isSpeaker ? "host" : "viewer";
 
   // The admin-announced headcount, if any — shown to everyone in the room in
   // place of the hidden roster. Sanitized here (not trusted from the row) since
   // the room renders it straight into the header.
-  const displayViewerCount = normalizeDisplayViewers(ev.display_viewer_count);
+  const displayViewerCount = normalizeDisplayViewers(ev.displayViewerCount);
 
-  const end = ev.ends_at
-    ? new Date(ev.ends_at)
-    : new Date(
-        new Date(ev.starts_at).getTime() + DEFAULT_EVENT_MINUTES * 60_000,
-      );
+  const end = new Date(roomWindow(ev.startsAt, ev.endsAt).end);
 
   // Seeding the Q&A panel is a query against our own database and needs
   // nothing from Daily, so it is kicked off first and awaited last: the room
@@ -188,9 +233,7 @@ export default async function EventLivePage(
   const questionsPromise =
     role === "host"
       ? listQuestionsForEvent(ev.id)
-      : profile
-        ? listQuestionsForAsker(ev.id, profile.id)
-        : Promise.resolve([]);
+      : listQuestionsForAsker(ev.id, access.userId);
   // It is awaited below, where a failure still fails the page. This just
   // keeps a rejection that lands while a provider round trip is in flight
   // from being "unhandled" in the meantime.
@@ -205,7 +248,7 @@ export default async function EventLivePage(
   // without two HTTP round trips to a third party that currently refuses
   // every media session.
   if (env.liveProvider === "builtin") {
-    const audienceMode = normalizeAudienceMode(ev.audience_mode);
+    const audienceMode = ev.audienceMode;
 
     // ---- Premiere -------------------------------------------------------
     //
@@ -215,13 +258,17 @@ export default async function EventLivePage(
     // visibly, in chat, reacting to something nobody else has seen yet — and
     // one whose clock is out by an hour would watch a black screen and
     // conclude the webinar never started.
-    const premiere = isPremiere(ev.live_mode)
+    //
+    // `liveEndedAt` goes in too: an ended premiere is ended, not still
+    // playing to the audience under an "Ended" badge.
+    const premiere = isPremiere(ev.liveMode)
       ? premiereState({
-          startsAt: ev.starts_at,
-          premiereSeconds: ev.premiere_seconds ?? null,
-          qaOpensAt: ev.qa_opens_at ?? null,
-          liveStartedAt: ev.live_started_at ?? null,
-          endsAt: ev.ends_at ?? null,
+          startsAt: ev.startsAt,
+          premiereSeconds: ev.premiereSeconds,
+          qaOpensAt: ev.qaOpensAt,
+          liveStartedAt: ev.liveStartedAt,
+          liveEndedAt: ev.liveEndedAt,
+          endsAt: ev.endsAt,
         })
       : null;
 
@@ -263,26 +310,37 @@ export default async function EventLivePage(
     return (
       <BuiltinEventRoom
         eventId={ev.id}
-        // requireUser() above guarantees a signed-in user; the empty string
-        // only satisfies the type, and a viewer never records either way.
-        selfUserId={profile?.id ?? ""}
+        // The id every other host's browser knows this one by (a peer's id
+        // is its user id) — what the recorder election compares.
+        selfUserId={access.userId}
         selfName={profile?.full_name || "Host"}
         title={ev.title}
+        startsAt={ev.startsAt}
+        endsAt={ev.endsAt}
         role={role}
         isStaffHost={isStaffHost}
+        // From the start only; then staff always, and a guest speaker only
+        // while no staff host is present. The room-state read computes it
+        // with the server's presence data; without that read (0084 not
+        // applied) only staff can end, and still not before the start.
+        canEnd={
+          initialRoomState?.canEnd ??
+          (isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt))
+        }
+        backHref={backHref}
         audienceMode={audienceMode}
         displayViewerCount={displayViewerCount}
-        autoRecord={!!ev.auto_record}
+        autoRecord={ev.autoRecord}
         premiere={
-          premiere && premiereUrl && ev.premiere_seconds
+          premiere && premiereUrl && ev.premiereSeconds
             ? {
                 ...premiere,
                 url: premiereUrl,
-                durationSeconds: ev.premiere_seconds,
+                durationSeconds: ev.premiereSeconds,
               }
             : null
         }
-        liveEndedAt={ev.live_ended_at ?? null}
+        liveEndedAt={ev.liveEndedAt}
         speakers={speakerCards}
         deck={deck.map((a) => ({
           id: a.id,
@@ -296,13 +354,16 @@ export default async function EventLivePage(
   }
 
   // ---- Daily (opt-in via LIVE_PROVIDER=daily) -----------------------------
-  if (!dailyConfigured() || !ev.daily_room_name) {
+  //
+  // Behind exactly the same gates as the built-in room above — access, role,
+  // window, End — because they all ran before this branch.
+  if (!dailyConfigured() || !ev.dailyRoomName) {
     return (
       <Shell title={ev.title}>
         <p className="text-sm text-ink-soft">
           Live video isn&rsquo;t configured on this environment.
         </p>
-        <BackLink />
+        <BackLink href={backHref} />
       </Shell>
     );
   }
@@ -316,8 +377,8 @@ export default async function EventLivePage(
   // same recovery the 1:1 call page uses: a name that no longer resolves is
   // replaced by a fresh room, claimed with a compare-and-set so two people
   // arriving at once converge on one room rather than two.
-  let roomName: string = ev.daily_room_name;
-  let roomUrl: string = ev.daily_room_url;
+  let roomName: string = ev.dailyRoomName;
+  let roomUrl: string = ev.dailyRoomUrl ?? "";
   if (!(await roomIsLive(roomName, end))) {
     const admin = createAdminClient();
     const fresh = await createRoom({
@@ -346,7 +407,7 @@ export default async function EventLivePage(
   const [token, initialQuestions] = await Promise.all([
     mintToken({
       roomName,
-      userId: profile?.id ?? "unknown",
+      userId: access.userId,
       userName: profile?.full_name || "Guest",
       role,
       // Slightly past the end so the call can overrun, but not open-ended.
@@ -361,10 +422,109 @@ export default async function EventLivePage(
       roomUrl={roomUrl}
       token={token}
       role={role}
-      backHref="/dashboard/events"
+      backHref={backHref}
       displayViewerCount={displayViewerCount}
       qa={{ eventId: ev.id, initialQuestions }}
     />
+  );
+}
+
+type SignedFile = EventAsset & { url: string | null };
+
+/**
+ * The recording and the slides, once the follow-up has gone out — or null.
+ *
+ * The follow-up email says "everything from the session is on the event
+ * page" and links here, and the ended screen used to show at most an
+ * admin-pasted `recording_url`: the segments the room itself recorded, and
+ * the deck, were on no page a student could reach. They are listed now, but
+ * only once `assets_shared_at` is set — the moment the email promising them
+ * went out. That is the auto-share decision, not an access decision (the
+ * reader already passed the room's gate): a webinar without auto-share, or
+ * one whose follow-up has not been sent, shows exactly what it showed before.
+ *
+ * Signed per render, for an hour, like the admin record page: short enough
+ * that a copied link goes stale, long enough to click through the parts.
+ */
+async function sharedSessionFiles(
+  eventId: string,
+): Promise<{ recordings: SignedFile[]; decks: SignedFile[] } | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("events")
+    .select("assets_shared_at")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (!(data as any)?.assets_shared_at) return null;
+  const assets = await listAssets(eventId, ["recording", "deck", "handout"]);
+  if (assets.length === 0) return null;
+  const [recordings, decks] = await Promise.all([
+    // Recordings open in the browser (no download filename), decks download.
+    Promise.all(
+      assets
+        .filter((a) => a.kind === "recording")
+        .map(async (a) => ({
+          ...a,
+          url: await signedAssetUrl(a.storagePath, 60 * 60),
+        })),
+    ),
+    signAssets(
+      assets.filter((a) => a.kind !== "recording"),
+      60 * 60,
+    ),
+  ]);
+  return { recordings, decks };
+}
+
+function SessionFiles({
+  files,
+}: {
+  files: { recordings: SignedFile[]; decks: SignedFile[] };
+}) {
+  const parts = files.recordings.length;
+  return (
+    <div className="mt-4 space-y-3 text-sm">
+      {parts > 0 && (
+        <div>
+          <p className="font-medium text-ink">The recording</p>
+          <ul className="mt-1 space-y-1">
+            {files.recordings.map((r, i) =>
+              r.url ? (
+                <li key={r.id}>
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-phosphor-ink hover:underline"
+                  >
+                    {parts === 1 ? "Watch" : `Part ${i + 1} of ${parts}`}
+                    {r.durationSeconds
+                      ? ` · ${Math.max(1, Math.round(r.durationSeconds / 60))} min`
+                      : ""}
+                  </a>
+                </li>
+              ) : null,
+            )}
+          </ul>
+        </div>
+      )}
+      {files.decks.length > 0 && (
+        <div>
+          <p className="font-medium text-ink">The slides</p>
+          <ul className="mt-1 space-y-1">
+            {files.decks.map((d) =>
+              d.url ? (
+                <li key={d.id}>
+                  <a href={d.url} className="text-phosphor-ink hover:underline">
+                    {d.filename}
+                  </a>
+                </li>
+              ) : null,
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -385,13 +545,13 @@ function Shell({
   );
 }
 
-function BackLink() {
+function BackLink({ href }: { href: string }) {
   return (
     <Link
-      href="/dashboard/events"
-      className="mt-4 inline-block text-sm text-phosphor-ink hover:underline"
+      href={href}
+      className="mt-4 block text-sm text-phosphor-ink hover:underline"
     >
-      ← All events
+      ← Back
     </Link>
   );
 }

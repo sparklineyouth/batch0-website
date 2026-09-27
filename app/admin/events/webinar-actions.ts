@@ -6,10 +6,14 @@ import { assertPermission, requireActor } from "@/lib/server-guards";
 import { can } from "@/lib/permissions";
 import { logAudit } from "@/lib/audit";
 import { env } from "@/lib/env";
+import { sendEmail } from "@/lib/email/send";
+import { Templates } from "@/lib/email/templates";
+import { resolveEventAccess } from "@/lib/live-access";
 import {
   isDeckFile,
   MAX_UPLOAD_BYTES,
   RECORDER_LEASE_MS,
+  recordingFiledAt,
   recordingRival,
   recordingSegmentSlot,
   recordingSegmentStart,
@@ -18,7 +22,7 @@ import {
   type EventSpeaker,
 } from "@/lib/webinars";
 import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
-import { listAssets, listSpeakers, speakerUserIds } from "@/lib/webinar-data";
+import { listAssets, listSpeakers } from "@/lib/webinar-data";
 
 /**
  * Server actions for a webinar's files and its guest speakers.
@@ -74,22 +78,32 @@ function safeSegment(s: string) {
  * Authorize a write against one webinar.
  *
  * `events.manage` is the staff grant. A speaker row is the per-event grant, and
- * it deliberately does NOT extend to every kind of write: a guest may attach
- * their own deck and upload a recording of the room they are in, and may not
- * edit the speaker list or delete somebody else's file. That split is the whole
- * point of having a per-event grant rather than handing a guest `events.manage`.
+ * it deliberately does NOT extend to every kind of write: a guest may upload a
+ * recording of the room they are in — any host's browser may be the one the
+ * room elects to record (see "One recorder per webinar" in lib/webinars.ts) —
+ * and may not edit the speaker list or delete somebody else's file. That split
+ * is the whole point of having a per-event grant rather than handing a guest
+ * `events.manage`.
+ *
+ * Both halves come from `resolveEventAccess` (lib/live-access.ts), the one
+ * place the host rule is computed, so "may upload a segment of this room" and
+ * "is a host in this room" are the same answer. It also means the event must
+ * exist and be visible to the caller (staff always see it), where this used to
+ * accept any event id at all from a staff caller.
  */
 async function gateWrite(
   eventId: string,
   need: "staff" | "moderator",
 ): Promise<{ userId: string; isStaff: boolean }> {
-  const actor = await requireActor();
-  const isStaff = can(actor.caps, "events.manage");
-  if (isStaff) return { userId: actor.userId, isStaff: true };
-  if (need === "staff") throw new Error("Forbidden");
-  const speakers = await speakerUserIds(eventId);
-  if (!speakers.includes(actor.userId)) throw new Error("Forbidden");
-  return { userId: actor.userId, isStaff: false };
+  const access = await resolveEventAccess(eventId);
+  if (!access.ok) {
+    throw new Error(
+      access.reason === "error" ? "Couldn't reach the server — try again." : "Forbidden",
+    );
+  }
+  if (access.isStaff) return { userId: access.userId, isStaff: true };
+  if (need === "staff" || !access.isSpeaker) throw new Error("Forbidden");
+  return { userId: access.userId, isStaff: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -453,6 +467,14 @@ const ASSET_COLUMNS =
  * otherwise register it at its slot. The one-recorder check and the insert
  * run back to back, so the window in which two hosts can both pass is the
  * length of one round trip rather than one segment.
+ *
+ * The row is dated by `recordingFiledAt`: now, unless the uploader has already
+ * left the room — a departing recorder's final segment, which uploads behind
+ * the "You've left" screen while a co-host has taken over — in which case it
+ * is dated to their last heartbeat, so it can never pass for a registration
+ * made during the successor's segment (and refuse that segment when they come
+ * back). `created_at` carries it because `recordingRivalFor` already reads
+ * it; nothing else orders recordings by it (sort_order is the order).
  */
 async function fileRecordingSegment(
   admin: ReturnType<typeof createAdminClient>,
@@ -464,9 +486,42 @@ async function fileRecordingSegment(
   if (await recordingRivalFor(admin, eventId, userId, segmentSeconds)) {
     return { ok: false };
   }
-  const { data, error } = await registerRecordingSegment(admin, row);
+  const filedAt = await departedFiledAt(admin, eventId, userId);
+  const { data, error } = await registerRecordingSegment(
+    admin,
+    filedAt ? { ...row, created_at: filedAt } : row,
+  );
   if (error) throw new Error(error.message);
   return { ok: true, data };
+}
+
+/**
+ * The date to file `userId`'s segment under when they are no longer in the
+ * room (see `recordingFiledAt`), or null to file it now — also the answer
+ * when attendance can't be read, which is how every segment was dated before.
+ */
+async function departedFiledAt(
+  admin: ReturnType<typeof createAdminClient>,
+  eventId: string,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("live_participants")
+    .select("left_at, last_seen_at")
+    .eq("event_id", eventId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const now = new Date();
+  const at = recordingFiledAt(
+    now,
+    {
+      leftAt: (data as any).left_at ?? null,
+      lastSeenAt: (data as any).last_seen_at ?? null,
+    },
+    PEER_TIMEOUT_MS,
+  );
+  return at.getTime() < now.getTime() ? at.toISOString() : null;
 }
 
 /**
@@ -724,8 +779,66 @@ export async function speakerInviteLink(
     .maybeSingle();
   const token = (data as any)?.claim_token;
   if (!token) throw new Error("That speaker has already claimed their slot.");
+  return inviteUrlFor(eventId, token);
+}
+function inviteUrlFor(eventId: string, token: string): string {
   return `${env.siteUrl}/dashboard/events/${eventId}/live?speaker=${token}`;
 }
+
+/**
+ * Email a guest their claim link. Staff only.
+ *
+ * The form has always said the speaker's email is "where the invite goes", and
+ * the template has always existed — but nothing sent it, so a guest could only
+ * ever get in if an admin copied the link out by hand (and there was no button
+ * for that either). Sent to the address on the speaker row, never to one the
+ * client supplies, and refused once the slot is claimed: a spent token cannot
+ * be re-sent, and a claimed guest needs no link.
+ */
+export async function sendSpeakerInvite(
+  eventId: string,
+  speakerId: string,
+): Promise<void> {
+  const { userId } = await gateWrite(eventId, "staff");
+  const admin = createAdminClient();
+  const [{ data: speaker }, { data: event }, { data: me }] = await Promise.all([
+    admin
+      .from("event_speakers")
+      .select("id, name, email, claim_token, user_id")
+      .eq("id", speakerId)
+      .eq("event_id", eventId)
+      .maybeSingle(),
+    admin
+      .from("events")
+      .select("title, starts_at")
+      .eq("id", eventId)
+      .maybeSingle(),
+    admin.from("profiles").select("full_name").eq("id", userId).maybeSingle(),
+  ]);
+  const sp = speaker as any;
+  if (!sp) throw new Error("That speaker isn't on this event.");
+  if (sp.user_id || !sp.claim_token) {
+    throw new Error("That speaker has already claimed their slot.");
+  }
+  if (!sp.email) throw new Error("Add an email for this speaker first.");
+  if (!event) throw new Error("That event no longer exists.");
+
+  const t = Templates.speakerInvite({
+    eventTitle: (event as any).title,
+    startsAt: (event as any).starts_at,
+    inviteUrl: inviteUrlFor(eventId, sp.claim_token),
+    hostName: (me as any)?.full_name || "The batch0 team",
+  });
+  await sendEmail({ to: sp.email, subject: t.subject, html: t.html });
+
+  await logAudit({
+    action: "event.speaker_invited",
+    targetType: "event",
+    targetId: eventId,
+    payload: { speakerId },
+  });
+}
+
 
 /**
  * Claim a speaker slot.
@@ -740,6 +853,15 @@ export async function speakerInviteLink(
  * into the live page for anyone arriving with a `?speaker=` parameter, and a
  * stale link — the common case, since the token is cleared on claim and the
  * guest will reload that URL — must not turn the webinar into an error page.
+ *
+ * Staff never claim. They host every webinar through `events.manage` and need
+ * no speaker row — and the obvious way to check a "Copy invite link" is to
+ * open it in your own signed-in browser. That used to bind the guest's slot
+ * to the admin and spend the token: the real guest's link was dead (and
+ * neither Copy nor Send will mint one for a claimed row), and the admin,
+ * now on the speaker list, was treated as a guest by everything that told
+ * staff from speakers that way. So a staff caller is a no-op here and the
+ * link survives for the guest it was made for.
  */
 export async function claimSpeakerSlot(
   eventId: string,
@@ -747,6 +869,7 @@ export async function claimSpeakerSlot(
 ): Promise<boolean> {
   const actor = await requireActor();
   if (!token || token.length < 16) return false;
+  if (can(actor.caps, "events.manage")) return false;
   const admin = createAdminClient();
 
   // Conditional on the token still being present, so two people racing the

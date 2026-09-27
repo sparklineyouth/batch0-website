@@ -114,6 +114,7 @@ export default async function CallLivePage(
           "You"
         }
         otherName={isHost ? invite.inviteeName : invite.hostName}
+        endsAt={endsAt}
         backHref={backHref}
       />
     );
@@ -201,6 +202,7 @@ export default async function CallLivePage(
       roomUrl={roomUrl}
       token={token}
       role="host"
+      kind="call"
       backHref={backHref}
     />
   );

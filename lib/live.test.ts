@@ -13,8 +13,16 @@ import {
   JOIN_OPENS_MINUTES_BEFORE,
   JOIN_CLOSES_MINUTES_AFTER,
   DEFAULT_EVENT_MINUTES,
+  HOST_JOIN_OPENS_MINUTES_BEFORE,
+  ROOM_HARD_CLOSE_MINUTES_AFTER,
+  roomAccess,
+  roomIsOpen,
+  roomWindow,
+  eventLiveStatus,
+  webinarHasBegun,
   type CallInvite,
   type LiveRole,
+  type RoomAccess,
 } from "./live.ts";
 
 // Run with `npm test`. No framework, no transpile step — Node strips the types
@@ -242,4 +250,149 @@ test("a backend with no client-side roster shows the announced figure or nothing
     announced: true,
   });
   assert.equal(headcountLabel({ role: "host", displayCount: null, realCount: null }), null);
+});
+
+
+// ---------------------------------------------------------------------------
+// Room access — the per-role gate every server path shares
+// ---------------------------------------------------------------------------
+//
+// START is 18:00, END 19:00. The viewer window is 17:45–19:30, extended while
+// a host is present up to the hard stop at 22:00. The host window is
+// 17:00–22:00 whatever End says.
+
+function viewer(
+  minutes: number,
+  opts: { liveEndedAt?: string | null; hostPresent?: boolean; endsAt?: Date | null } = {},
+): RoomAccess {
+  return roomAccess({
+    startsAt: START,
+    endsAt: opts.endsAt === undefined ? END : opts.endsAt,
+    liveEndedAt: opts.liveEndedAt ?? null,
+    isHost: false,
+    hostPresent: opts.hostPresent ?? false,
+    now: at(minutes),
+  });
+}
+
+function host(minutes: number, liveEndedAt: string | null = null): RoomAccess {
+  return roomAccess({
+    startsAt: START,
+    endsAt: END,
+    liveEndedAt,
+    isHost: true,
+    hostPresent: false,
+    now: at(minutes),
+  });
+}
+
+test("the host window is wider than the audience's, and the constants say so", () => {
+  assert.equal(HOST_JOIN_OPENS_MINUTES_BEFORE, 60);
+  assert.equal(ROOM_HARD_CLOSE_MINUTES_AFTER, 180);
+  const w = roomWindow(START, END);
+  assert.equal(w.hostOpensAt, at(-60).getTime());
+  assert.equal(w.viewerOpensAt, at(-15).getTime());
+  assert.equal(w.viewerClosesAt, at(90).getTime());
+  assert.equal(w.hardCloseAt, at(240).getTime());
+});
+
+test("a webinar has begun at its start, or earlier only when a host went live", () => {
+  // The host window opens an hour early for setup; a camera check at 17:10
+  // is not the webinar, and End for everyone must not exist there.
+  assert.equal(webinarHasBegun(START, null, at(-50).getTime()), false);
+  assert.equal(webinarHasBegun(START, null, at(-1).getTime()), false);
+  assert.equal(webinarHasBegun(START, null, at(0).getTime()), true);
+  assert.equal(webinarHasBegun(START, null, at(30).getTime()), true);
+  // A premiere handed over early ("Go live now") has begun, whatever the clock.
+  assert.equal(
+    webinarHasBegun(START, at(-10).toISOString(), at(-5).getTime()),
+    true,
+  );
+});
+
+test("a viewer: early before start-15m, open at start-15m, live after the start", () => {
+  assert.equal(viewer(-16), "early");
+  assert.equal(viewer(-JOIN_OPENS_MINUTES_BEFORE), "open");
+  assert.equal(viewer(-1), "open");
+  assert.equal(viewer(0), "live");
+  assert.equal(viewer(30), "live");
+});
+
+test("a viewer is refused ('ended') inside the window once a host pressed End", () => {
+  const ended = at(40).toISOString();
+  assert.equal(viewer(41, { liveEndedAt: ended }), "ended");
+  // Even with a host still present — End is terminal for the audience.
+  assert.equal(viewer(41, { liveEndedAt: ended, hostPresent: true }), "ended");
+});
+
+test("a viewer past end+30m: closed with no host, still live while a host is present", () => {
+  assert.equal(viewer(60 + JOIN_CLOSES_MINUTES_AFTER), "live", "the boundary itself is inside");
+  assert.equal(viewer(91), "closed");
+  assert.equal(viewer(105, { hostPresent: true }), "live");
+});
+
+test("the extension stops at the hard close, host or no host", () => {
+  assert.equal(viewer(240, { hostPresent: true }), "live");
+  assert.equal(viewer(241, { hostPresent: true }), "closed");
+});
+
+test("a room with no end time is assumed to run the default length", () => {
+  // No end: the viewer window closes at start + 60 + 30.
+  assert.equal(viewer(DEFAULT_EVENT_MINUTES + 30, { endsAt: null }), "live");
+  assert.equal(viewer(DEFAULT_EVENT_MINUTES + 31, { endsAt: null }), "closed");
+});
+
+test("a host may open the room an hour early — an admin setting up is not 'early'", () => {
+  assert.equal(host(-61), "early");
+  assert.equal(host(-60), "open");
+  assert.equal(host(-30), "open");
+  assert.equal(host(5), "live");
+});
+
+test("a host keeps the room after End, so staff can reach the ended screen and Reopen", () => {
+  const ended = at(40).toISOString();
+  assert.equal(host(41, ended), "live");
+  assert.equal(host(200, ended), "live");
+});
+
+test("a host's room closes at end+3h", () => {
+  assert.equal(host(240), "live");
+  assert.equal(host(241), "closed");
+});
+
+test("only open and live let anyone in", () => {
+  assert.equal(roomIsOpen("open"), true);
+  assert.equal(roomIsOpen("live"), true);
+  assert.equal(roomIsOpen("early"), false);
+  assert.equal(roomIsOpen("ended"), false);
+  assert.equal(roomIsOpen("closed"), false);
+});
+
+// ---------------------------------------------------------------------------
+// eventLiveStatus — what a list shows
+// ---------------------------------------------------------------------------
+
+function listed(minutes: number, liveEndedAt: string | null = null) {
+  return eventLiveStatus({ startsAt: START, endsAt: END, liveEndedAt }, at(minutes));
+}
+
+test("a list follows the audience window when nobody has ended it", () => {
+  assert.equal(listed(-16), "upcoming");
+  assert.equal(listed(-10), "open");
+  assert.equal(listed(10), "live");
+  assert.equal(listed(91), "past");
+});
+
+test("an ended webinar reads 'ended' inside the join window, not Live / Join", () => {
+  // The bug: ended at 18:40, still "Live now" until 19:30.
+  assert.equal(listed(45, at(40).toISOString()), "ended");
+  assert.equal(listed(120, at(40).toISOString()), "ended");
+});
+
+test("an event with no end time lists with the default length", () => {
+  const s = eventLiveStatus(
+    { startsAt: START, endsAt: null, liveEndedAt: null },
+    at(DEFAULT_EVENT_MINUTES + 31),
+  );
+  assert.equal(s, "past");
 });

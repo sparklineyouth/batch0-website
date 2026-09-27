@@ -181,8 +181,9 @@ export function canMarkCallCompleted(call: CallTiming, now: Date = new Date()): 
  * to the wire is finished at the moment the window shuts and uploaded just
  * after it. Without a grace, the gate that refuses uploads for a closed call
  * refused that segment: up to two minutes, and always the end of the
- * conversation. Ten minutes covers the recorder's ninety-second drain on a
- * slow uplink with room to spare, and is still a door that shuts.
+ * conversation. Ten minutes covers a two-minute segment's upload on a slow
+ * uplink (it finishes behind the room's ended screen) with room to spare, and
+ * is still a door that shuts.
  */
 export const RECORDING_UPLOAD_GRACE_MINUTES = 10;
 

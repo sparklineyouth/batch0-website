@@ -5,6 +5,7 @@ import { joinRoom, announcePresence, leaveRoom, listAudience } from "@/app/live/
 import { endCall, getCallRoomStatus } from "@/app/calls/actions";
 import { getCallRecordingUploadToken } from "@/app/calls/recording-actions";
 import { CALL_RECORDING_BUCKET } from "@/lib/call-recording";
+import type { SignalRole } from "@/lib/live-signal";
 
 /**
  * A 1:1 call on batch0 Live.
@@ -33,6 +34,7 @@ export function BuiltinCallRoom({
   isHost,
   selfName,
   otherName,
+  endsAt,
   backHref,
 }: {
   inviteId: string;
@@ -43,13 +45,16 @@ export function BuiltinCallRoom({
   isHost: boolean;
   selfName: string;
   otherName: string;
+  /** The scheduled end — the room says "they can rejoin until" from it. */
+  endsAt: string;
   /** Where this person's calls list lives — a host's panel, or /dashboard/calls. */
   backHref: string;
 }) {
   const actions = useMemo(
     () => ({
       join: () => joinRoom("call", inviteId),
-      announce: () => announcePresence("call", inviteId),
+      announce: (joinedAs?: SignalRole) =>
+        announcePresence("call", inviteId, joinedAs),
       leave: () => leaveRoom("call", inviteId),
       listPeers: () => listAudience("call", inviteId),
     }),
@@ -95,6 +100,7 @@ export function BuiltinCallRoom({
     () => ({
       inviteId,
       startsAt,
+      endsAt,
       isRecorder: isHost,
       selfName,
       otherName,
@@ -102,7 +108,17 @@ export function BuiltinCallRoom({
       onEndCall,
       fetchStatus,
     }),
-    [inviteId, startsAt, isHost, selfName, otherName, onSegment, onEndCall, fetchStatus],
+    [
+      inviteId,
+      startsAt,
+      endsAt,
+      isHost,
+      selfName,
+      otherName,
+      onSegment,
+      onEndCall,
+      fetchStatus,
+    ],
   );
 
   return (

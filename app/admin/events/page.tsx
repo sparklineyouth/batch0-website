@@ -4,7 +4,13 @@ import { EventsManager } from "./events-manager";
 
 export const metadata = { title: "Events · Admin" };
 
-export default async function AdminEventsPage() {
+export default async function AdminEventsPage(props: {
+  searchParams: Promise<{ edit?: string }>;
+}) {
+  // `?edit=<id>` opens that event's form directly. /admin/webinars links here
+  // with it (its pencil used to drop an admin on the bare list and leave them
+  // to find the row). An id that matches nothing just shows the list.
+  const { edit } = await props.searchParams;
   const admin = createAdminClient();
   const [{ data: events }, { data: cohorts }] = await Promise.all([
     admin.from("events").select("*").order("starts_at", { ascending: false }),
@@ -23,6 +29,7 @@ export default async function AdminEventsPage() {
         <EventsManager
           events={(events ?? []) as any}
           cohorts={(cohorts ?? []) as any}
+          initialEditId={typeof edit === "string" ? edit : null}
         />
       </Card>
     </div>
