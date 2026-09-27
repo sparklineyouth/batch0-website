@@ -47,6 +47,7 @@ export const PERMISSION_KEYS = [
   "resources.manage",
   "flows.manage",
   "announcements.manage",
+  "discussions.manage",
   // Finance
   "charges.manage",
   "payments.view",
@@ -65,7 +66,6 @@ export const PERMISSION_KEYS = [
   "scholarships.view",
   "scholarships.manage",
   "moderation.manage",
-  "discussions.manage",
   "discord.manage",
   "audit.view",
   "settings.manage",
@@ -211,6 +211,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         label: "Post announcements",
         description: "Publish announcements to students.",
       },
+      {
+        key: "discussions.manage",
+        label: "Answer student questions",
+        description:
+          "Read and reply to private questions students send the team, and moderate cohort discussions.",
+        sensitive: true,
+      },
     ],
   },
   {
@@ -313,13 +320,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: "moderation.manage",
         label: "Moderate",
         description: "Review reported content and act on it.",
-      },
-      {
-        key: "discussions.manage",
-        label: "Answer student questions",
-        description:
-          "Read and reply to private questions students send the team, and moderate cohort discussions.",
-        sensitive: true,
       },
       {
         key: "discord.manage",
