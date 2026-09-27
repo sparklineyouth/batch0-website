@@ -465,6 +465,18 @@ async function enterRoom(page: Page, label: string): Promise<boolean> {
     return false;
   }
   await button.first().click();
+  // The press must actually take: the green room goes away (or the button
+  // turns into "Connecting…"). A press that lands before hydration used to
+  // be swallowed silently and the whole room section timed out behind it.
+  const left = await until(
+    `${label} to leave the green room`,
+    async () => (await button.count()) === 0 || !(await button.first().isVisible()),
+    15_000,
+  );
+  if (!left) {
+    info(`[${label}] still in the green room after pressing join`);
+    return false;
+  }
   return true;
 }
 
