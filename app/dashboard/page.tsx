@@ -12,7 +12,11 @@ import { ChargePayButton } from "@/components/charge-pay-button";
 import { getStudentAccess, type StudentAccess } from "@/lib/access";
 import { getInterviewRequestForStudent } from "@/lib/interview-requests";
 import { InterviewRequestCard } from "@/components/interview-request-card";
-import { interviewCardState, interviewStage } from "@/lib/call-lifecycle";
+import {
+  canRequestTeamCall,
+  interviewCardState,
+  interviewStage,
+} from "@/lib/call-lifecycle";
 import { fmtDateOnly, PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
 import { ENROLLED_ONLY_HREFS } from "@/lib/nav-config";
 import type { Role } from "@/lib/types";
@@ -166,23 +170,20 @@ export default async function DashboardHome() {
 
   const greeting = profile?.full_name?.split(" ")[0] || "there";
 
-  // Getting-to-know-you interview: a pre-kickoff onboarding step for enrolled
-  // students, so it only surfaces here for an enrolled student before their
-  // cohort starts. Fetched only in that window — everyone else pays for no
-  // extra query. The calls and enrolled pages keep showing a lingering request
-  // past kickoff; the home page doesn't.
+  // A 1:1 with the team: any enrolled student can ask whenever they want and
+  // the team confirms a time. Before kickoff it is the getting-to-know-you
+  // interview, after it an ordinary call. Fetched only for enrolled students,
+  // so nobody else pays for the query; staff previewing can't file one.
   //
-  // Read through the call it booked: a finished interview is not news on the
-  // home page (hideDone), and one whose call was cancelled is a fresh ask, not
-  // "Interview booked".
-  const interviewEligible = preCohort && access.enrolled;
+  // Read through the call it booked: one whose call was cancelled, or has
+  // already happened, is a fresh ask rather than "Call booked".
+  const interviewEligible = canRequestTeamCall(access);
   const interviewRequest = interviewEligible
     ? await getInterviewRequestForStudent(user.id)
     : null;
+  const interviewLastStage = interviewStage(interviewRequest);
   const interviewState = interviewEligible
-    ? interviewCardState(interviewStage(interviewRequest), true, {
-        hideDone: true,
-      })
+    ? interviewCardState(interviewLastStage, true, { hideDone: true })
     : "hidden";
 
   // Status copy + primary action are derived together so the hero feels
@@ -437,6 +438,8 @@ export default async function DashboardHome() {
             request={interviewRequest}
             state={interviewState}
             variant="compact"
+            composeKind={preCohort ? "interview" : "call"}
+            lastStage={interviewLastStage}
           />
         </div>
       )}

@@ -1,19 +1,25 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAllRoles } from "@/lib/roles";
-import type { CallTiming } from "@/lib/call-lifecycle";
+import {
+  teamRequestKind,
+  type CallTiming,
+  type TeamRequestKind,
+} from "@/lib/call-lifecycle";
 import type { CallInviteStatus } from "@/lib/live";
 
 /**
- * Reads for student-initiated "getting to know you" interview requests
- * (`interview_requests`, migration 0061).
+ * Reads for student-initiated requests for a 1:1 with the team
+ * (`interview_requests`, migration 0061). Any enrolled student can ask
+ * whenever they want: before kickoff it is the getting-to-know-you interview
+ * the table was named for, from kickoff on an ordinary 1:1 (see `kind`).
  *
  * Service-role reads with explicit filters, the same shape as lib/calls.ts:
  * RLS is the backstop, but every function here filters on the id it was given
  * so the backstop is never what saves us.
  *
  * Not to be confused with lib intro/`intro_requests` (0011) — that's the
- * investor↔team intro feature. These are pre-cohort onboarding interviews.
+ * investor↔team intro feature.
  */
 
 export type InterviewRequestStatus =
@@ -32,6 +38,12 @@ export type InterviewRequest = {
   altAt: string | null;
   note: string | null;
   status: InterviewRequestStatus;
+  /**
+   * Getting-to-know-you interview (filed before the cohort started) or an
+   * ordinary 1:1 with the team (filed after). Derived, not stored: see
+   * teamRequestKind in lib/call-lifecycle.ts.
+   */
+  kind: TeamRequestKind;
   callInviteId: string | null;
   /**
    * The call this request booked, as lib/call-lifecycle.ts reads it — null
@@ -51,7 +63,7 @@ const SELECT = `
   id, student_id, cohort_id, preferred_at, alt_at, note, status,
   call_invite_id, created_at,
   student:profiles!interview_requests_student_id_fkey(full_name, email),
-  cohort:cohorts(name),
+  cohort:cohorts(name, starts_on),
   call:call_invites!interview_requests_call_invite_id_fkey(status, starts_at, duration_minutes)
 `;
 
@@ -73,6 +85,7 @@ function toRequest(row: any): InterviewRequest {
     altAt: row.alt_at,
     note: row.note,
     status: row.status as InterviewRequestStatus,
+    kind: teamRequestKind(row.created_at, cohort?.starts_on ?? null),
     callInviteId: row.call_invite_id,
     call: call
       ? {
@@ -141,10 +154,9 @@ export async function getInterviewRequest(
 }
 
 /**
- * User ids of the batch0 team who schedule interview requests, for the new-
- * request fan-out. That's the admins — a "getting to know you" interview is
- * onboarding with the core team, and /admin/calls (where the queue lives) is
- * an admin page. The scheduling action itself is authorized by `calls.invite`
+ * User ids of the batch0 team who confirm these requests, for the new-request
+ * fan-out. That's the admins: a student asking for a 1:1 is asking the core
+ * team, and /admin/calls (where the queue lives) is an admin page. The scheduling action itself is authorized by `calls.invite`
  * the broader permission, so a mentor or investor could still act on one; they
  * just aren't paged about it.
  *

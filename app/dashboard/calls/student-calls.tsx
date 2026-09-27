@@ -11,6 +11,8 @@ import {
   callPhase,
   splitCalls,
   type InterviewCardState,
+  type InterviewStage,
+  type TeamRequestKind,
 } from "@/lib/call-lifecycle";
 import {
   ScholarshipCallCard,
@@ -36,6 +38,8 @@ export function StudentCalls({
   recordings,
   interviewRequest = null,
   interviewState = "hidden",
+  interviewKind = "call",
+  interviewLastStage = null,
   scholarshipCall = null,
 }: {
   invites: CallInvite[];
@@ -46,6 +50,10 @@ export function StudentCalls({
   interviewRequest?: InterviewRequest | null;
   /** Decided on the server from the request AND its call — see the page. */
   interviewState?: InterviewCardState;
+  /** What a new request would be: an interview before kickoff, a call after. */
+  interviewKind?: TeamRequestKind;
+  /** Where the last request ended up, so a fresh ask can say why. */
+  interviewLastStage?: InterviewStage | null;
   /** Set only when the student holds a learner's scholarship. */
   scholarshipCall?: ScholarshipCallState | null;
 }) {
@@ -99,6 +107,8 @@ export function StudentCalls({
           <InterviewRequestCard
             request={interviewRequest}
             state={interviewState}
+            composeKind={interviewKind}
+            lastStage={interviewLastStage}
           />
         </div>
       )}
@@ -128,7 +138,11 @@ export function StudentCalls({
           invites={booked}
           perspective="invitee"
           now={clock}
-          emptyMessage="No calls booked. Mentors and investors can invite you here."
+          emptyMessage={
+            interviewState === "hidden"
+              ? "No calls booked. Mentors and investors can invite you here."
+              : "No calls booked yet. Ask the team for one above, or answer a mentor's or investor's invite here."
+          }
           pending={pending}
         />
       </section>
