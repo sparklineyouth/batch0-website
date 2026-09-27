@@ -1,0 +1,385 @@
+-- ============================================================================
+-- 0089 — Direct messages: one-to-one chat between any two accounts.
+--
+-- A DM is a `dm_conversations` row holding exactly two profile ids, plus
+-- `dm_messages` rows. Anyone with a profile may open a DM with anyone else
+-- with a profile — the directory is deliberately the whole site, not one
+-- cohort, because the point of the feature is reaching the person you need
+-- rather than the person you happen to be enrolled beside.
+--
+-- Three things keep that open graph safe, and all three live here rather
+-- than only in the UI:
+--
+--   dm_blocks    A block is symmetric in effect: once either side has
+--                blocked the other, neither can send. The existing thread
+--                stays readable to both (nobody loses their own history),
+--                it just goes read-only.
+--
+--   dm_reports   A DM is private by default: staff have NO read path into
+--                one. Reporting a conversation is what opens it — from then
+--                on holders of `moderation.manage` can read that one
+--                conversation, and only that one. See
+--                dm_can_read_conversation() below: the staff branch is
+--                gated on a report existing.
+--
+--   rate limits  Not expressible in SQL; enforced in the server actions
+--                (app/dashboard/messages/actions.ts) on both "start a new
+--                conversation" and "send a message".
+--
+-- The pair is stored ordered (user_a < user_b) with a unique index over the
+-- pair, so "find or create the DM with this person" is one upsert and two
+-- people can't race their way into two parallel conversations.
+--
+-- Read state is one timestamp per side on the conversation row rather than a
+-- participants table: a DM has exactly two sides forever, so a join to learn
+-- "have I read this" would buy nothing. Unread, everywhere, means
+-- `sender_id <> me and created_at > my cursor` — which is why a person's own
+-- message can never count as unread to them whatever their cursor says.
+--
+-- Run in Supabase SQL Editor. Idempotent / safe to re-run.
+-- Assumes 0001..0088 are applied.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- Conversations
+-- ----------------------------------------------------------------------------
+create table if not exists public.dm_conversations (
+  id uuid primary key default gen_random_uuid(),
+  -- Ordered pair. The check plus the unique index below is what makes a DM
+  -- between two people a singleton; lib/dm-access.ts orderPair() is the
+  -- client-side half of the same contract.
+  user_a uuid not null references public.profiles(id) on delete cascade,
+  user_b uuid not null references public.profiles(id) on delete cascade,
+  -- Read cursors, one per side. 'epoch' rather than null so every unread
+  -- comparison is a plain `>` with no null handling to get wrong.
+  a_last_read_at timestamptz not null default 'epoch',
+  b_last_read_at timestamptz not null default 'epoch',
+  -- Denormalised for the inbox list and the popup, maintained by the trigger
+  -- below. Null on a conversation that exists but has no message yet.
+  last_message_at timestamptz,
+  last_message_preview text,
+  last_sender_id uuid references public.profiles(id) on delete set null,
+  message_count int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint dm_conversations_ordered check (user_a < user_b)
+);
+
+create unique index if not exists dm_conversations_pair_idx
+  on public.dm_conversations (user_a, user_b);
+-- Each side's inbox, most recent first. Two indexes because the viewer can
+-- be on either side of the pair and there is no single "my column".
+create index if not exists dm_conversations_a_inbox_idx
+  on public.dm_conversations (user_a, last_message_at desc nulls last);
+create index if not exists dm_conversations_b_inbox_idx
+  on public.dm_conversations (user_b, last_message_at desc nulls last);
+
+drop trigger if exists touch_dm_conversations on public.dm_conversations;
+create trigger touch_dm_conversations before update on public.dm_conversations
+  for each row execute procedure public.touch_updated_at();
+
+-- ----------------------------------------------------------------------------
+-- Messages
+-- ----------------------------------------------------------------------------
+create table if not exists public.dm_messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.dm_conversations(id) on delete cascade,
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 4000),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists dm_messages_conversation_idx
+  on public.dm_messages (conversation_id, created_at);
+-- "How many unread in this conversation for this person" — the popup asks
+-- this for every row it shows.
+create index if not exists dm_messages_sender_idx
+  on public.dm_messages (conversation_id, sender_id, created_at);
+
+-- The conversation's summary columns are recomputed from the messages rather
+-- than incremented, exactly like discussion_replies_touch_thread() in 0067: a
+-- delete then needs no special case, and two messages landing at once can't
+-- lose a count to a read-then-write race.
+create or replace function public.dm_messages_touch_conversation()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  cid uuid := coalesce(new.conversation_id, old.conversation_id);
+  last_row public.dm_messages;
+begin
+  select * into last_row
+  from public.dm_messages m
+  where m.conversation_id = cid
+  order by m.created_at desc, m.id desc
+  limit 1;
+
+  update public.dm_conversations c
+  set message_count = (
+        select count(*) from public.dm_messages m where m.conversation_id = cid
+      ),
+      last_message_at = last_row.created_at,
+      last_message_preview = left(last_row.body, 140),
+      last_sender_id = last_row.sender_id
+  where c.id = cid;
+  return null;
+end;
+$$;
+
+drop trigger if exists dm_messages_touch_conversation on public.dm_messages;
+create trigger dm_messages_touch_conversation
+  after insert or delete on public.dm_messages
+  for each row execute procedure public.dm_messages_touch_conversation();
+
+-- ----------------------------------------------------------------------------
+-- Blocks
+-- ----------------------------------------------------------------------------
+create table if not exists public.dm_blocks (
+  blocker_id uuid not null references public.profiles(id) on delete cascade,
+  blocked_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  constraint dm_blocks_not_self check (blocker_id <> blocked_id)
+);
+
+-- Enforcement direction: "may X send to Y" asks whether Y blocked X, which
+-- reads the blocked_id side.
+create index if not exists dm_blocks_blocked_idx
+  on public.dm_blocks (blocked_id);
+
+-- ----------------------------------------------------------------------------
+-- Reports — the ONLY thing that opens a DM to staff.
+-- ----------------------------------------------------------------------------
+create table if not exists public.dm_reports (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.dm_conversations(id) on delete cascade,
+  -- Nullable + `set null`: a deleted account must not take the moderation
+  -- record with it.
+  reporter_id uuid references public.profiles(id) on delete set null,
+  reason text not null check (char_length(reason) between 1 and 2000),
+  status text not null default 'open' check (status in ('open', 'actioned', 'dismissed')),
+  reviewed_by uuid references public.profiles(id) on delete set null,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists dm_reports_queue_idx
+  on public.dm_reports (status, created_at desc);
+create index if not exists dm_reports_conversation_idx
+  on public.dm_reports (conversation_id);
+
+alter table public.dm_conversations enable row level security;
+alter table public.dm_messages enable row level security;
+alter table public.dm_blocks enable row level security;
+alter table public.dm_reports enable row level security;
+
+-- ----------------------------------------------------------------------------
+-- Predicates. One definition each, used by every policy below, so the rule
+-- for a message can never drift from the rule for its conversation.
+-- ----------------------------------------------------------------------------
+
+-- Symmetric: true if EITHER of the two has blocked the other. Sending is
+-- blocked in both directions, because a one-way block that still let the
+-- blocker keep talking would be a weapon rather than a shield.
+create or replace function public.dm_is_blocked(x uuid, y uuid)
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.dm_blocks b
+    where (b.blocker_id = x and b.blocked_id = y)
+       or (b.blocker_id = y and b.blocked_id = x)
+  );
+$$;
+
+-- Who may read a conversation: its two participants, always — plus
+-- moderators, but ONLY once it has been reported. With no report there is no
+-- staff read path at all, which is the promise the UI makes to users.
+create or replace function public.dm_can_read_conversation(c public.dm_conversations, uid uuid)
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select
+    c.user_a = uid
+    or c.user_b = uid
+    or (
+      (public.is_admin(uid) or public.has_permission(uid, 'moderation.manage'))
+      and exists (
+        select 1 from public.dm_reports r where r.conversation_id = c.id
+      )
+    );
+$$;
+
+-- Participation alone, without the moderator branch. Writing (sending,
+-- marking read, reporting) is for the two people in the conversation; a
+-- moderator reading a reported thread does not get to post in it.
+create or replace function public.dm_is_participant(c public.dm_conversations, uid uuid)
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select c.user_a = uid or c.user_b = uid;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- Conversation policies
+-- ----------------------------------------------------------------------------
+drop policy if exists "dm_conversations read" on public.dm_conversations;
+create policy "dm_conversations read" on public.dm_conversations
+  for select using (public.dm_can_read_conversation(dm_conversations, auth.uid()));
+
+-- You may open a conversation you are in, with someone who hasn't blocked
+-- you (and whom you haven't blocked). The ordered-pair check constraint
+-- means the caller has to sort the ids; lib/dm-access.ts does.
+drop policy if exists "dm_conversations insert" on public.dm_conversations;
+create policy "dm_conversations insert" on public.dm_conversations
+  for insert with check (
+    (user_a = auth.uid() or user_b = auth.uid())
+    and not public.dm_is_blocked(user_a, user_b)
+  );
+
+-- Participants update their own read cursor. Which of the two cursors they
+-- may touch is enforced in the server action — RLS can't express "only the
+-- column that belongs to your side".
+drop policy if exists "dm_conversations update" on public.dm_conversations;
+create policy "dm_conversations update" on public.dm_conversations
+  for update using (public.dm_is_participant(dm_conversations, auth.uid()))
+  with check (public.dm_is_participant(dm_conversations, auth.uid()));
+
+-- ----------------------------------------------------------------------------
+-- Message policies
+-- ----------------------------------------------------------------------------
+drop policy if exists "dm_messages read" on public.dm_messages;
+create policy "dm_messages read" on public.dm_messages
+  for select using (
+    exists (
+      select 1 from public.dm_conversations c
+      where c.id = dm_messages.conversation_id
+        and public.dm_can_read_conversation(c, auth.uid())
+    )
+  );
+
+-- Send as yourself, into a conversation you're in, while neither side has
+-- blocked the other.
+drop policy if exists "dm_messages insert" on public.dm_messages;
+create policy "dm_messages insert" on public.dm_messages
+  for insert with check (
+    sender_id = auth.uid()
+    and exists (
+      select 1 from public.dm_conversations c
+      where c.id = dm_messages.conversation_id
+        and public.dm_is_participant(c, auth.uid())
+        and not public.dm_is_blocked(c.user_a, c.user_b)
+    )
+  );
+
+-- Unsend your own message; a moderator can remove one from a conversation
+-- that was reported to them. Neither party can delete the other's words
+-- outside that.
+drop policy if exists "dm_messages delete" on public.dm_messages;
+create policy "dm_messages delete" on public.dm_messages
+  for delete using (
+    sender_id = auth.uid()
+    or exists (
+      select 1 from public.dm_conversations c
+      where c.id = dm_messages.conversation_id
+        and (public.is_admin(auth.uid()) or public.has_permission(auth.uid(), 'moderation.manage'))
+        and exists (select 1 from public.dm_reports r where r.conversation_id = c.id)
+    )
+  );
+
+-- ----------------------------------------------------------------------------
+-- Block policies — your block list is yours. Notably there is no policy
+-- letting anyone read blocks where they are the blocked party: being blocked
+-- is not something you get told, it just looks like silence.
+-- ----------------------------------------------------------------------------
+drop policy if exists "dm_blocks own" on public.dm_blocks;
+create policy "dm_blocks own" on public.dm_blocks
+  for select using (blocker_id = auth.uid());
+
+drop policy if exists "dm_blocks insert" on public.dm_blocks;
+create policy "dm_blocks insert" on public.dm_blocks
+  for insert with check (blocker_id = auth.uid());
+
+drop policy if exists "dm_blocks delete" on public.dm_blocks;
+create policy "dm_blocks delete" on public.dm_blocks
+  for delete using (blocker_id = auth.uid());
+
+-- ----------------------------------------------------------------------------
+-- Report policies
+-- ----------------------------------------------------------------------------
+drop policy if exists "dm_reports read" on public.dm_reports;
+create policy "dm_reports read" on public.dm_reports
+  for select using (
+    reporter_id = auth.uid()
+    or public.is_admin(auth.uid())
+    or public.has_permission(auth.uid(), 'moderation.manage')
+  );
+
+-- Only a participant can report the conversation they're in.
+drop policy if exists "dm_reports insert" on public.dm_reports;
+create policy "dm_reports insert" on public.dm_reports
+  for insert with check (
+    reporter_id = auth.uid()
+    and exists (
+      select 1 from public.dm_conversations c
+      where c.id = dm_reports.conversation_id
+        and public.dm_is_participant(c, auth.uid())
+    )
+  );
+
+drop policy if exists "dm_reports update" on public.dm_reports;
+create policy "dm_reports update" on public.dm_reports
+  for update using (
+    public.is_admin(auth.uid())
+    or public.has_permission(auth.uid(), 'moderation.manage')
+  ) with check (
+    public.is_admin(auth.uid())
+    or public.has_permission(auth.uid(), 'moderation.manage')
+  );
+
+-- ----------------------------------------------------------------------------
+-- Realtime.
+--
+-- Only dm_messages, and the client only ever subscribes to it WITH a
+-- `conversation_id=eq.<id>` filter, for the one thread it has open. That
+-- restraint is deliberate: an unfiltered postgres_changes subscription would
+-- be relying on Realtime to re-apply the read policy above to every row it
+-- fans out, and a DM body is the last payload in this codebase worth betting
+-- on that. Filtered to a conversation the viewer already had to be cleared
+-- for, the subscription can't carry anything they couldn't already read.
+--
+-- The global unread badge therefore does NOT ride on this table. It rides on
+-- `notifications`, which is already per-user (0016) — and the numbers line up
+-- exactly, because the count the badge shows is unread *conversations*, which
+-- can only rise at the moment a caught-up recipient is bell-ed
+-- (app/messages/actions.ts sends exactly one bell per burst, on that
+-- transition).
+-- ----------------------------------------------------------------------------
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public' and tablename = 'dm_messages'
+  ) then
+    alter publication supabase_realtime add table public.dm_messages;
+  end if;
+end$$;
+
+comment on table public.dm_conversations is
+  'One-to-one DM between two profiles, stored as an ordered pair (user_a < user_b) so the pair is unique. Read state is one cursor per side.';
+comment on table public.dm_messages is
+  'Messages in a DM. Readability is inherited from the conversation via dm_can_read_conversation().';
+comment on table public.dm_blocks is
+  'One-way rows, symmetric effect: if either side has blocked the other, neither can send. Existing history stays readable to both.';
+comment on table public.dm_reports is
+  'A reported DM. Creating one is the only thing that grants moderation.manage holders read access to that conversation.';
+
+notify pgrst, 'reload schema';

@@ -21,6 +21,7 @@ import {
   MessagesSquare,
   MessageSquareText,
   MessageCircleQuestion,
+  MessageCircle,
   Star,
   Megaphone,
   CheckCircle,
@@ -106,6 +107,9 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
         label: "Discussions",
         icon: MessageSquareText,
       },
+      // Lives at /messages, not /dashboard/messages: every account has DMs,
+      // so the page carries no role gate (see lib/supabase/middleware.ts).
+      { href: "/messages", label: "Messages", icon: MessageCircle },
       { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
       { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
       { href: "/dashboard/ai", label: "AI co-founder", icon: Sparkles },
@@ -467,6 +471,12 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         perm: "moderation.manage",
       },
       {
+        href: "/admin/messages",
+        label: "Reported DMs",
+        icon: MessageCircle,
+        perm: "moderation.manage",
+      },
+      {
         href: "/admin/discord",
         label: "Discord",
         icon: MessagesSquare,
@@ -519,6 +529,7 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/mentor", label: "Overview", icon: LayoutDashboard, exact: true },
+      { href: "/messages", label: "Messages", icon: MessageCircle },
     ],
   },
   {
@@ -560,6 +571,7 @@ export const INVESTOR_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/investor", label: "Overview", icon: LayoutDashboard, exact: true },
+      { href: "/messages", label: "Messages", icon: MessageCircle },
     ],
   },
   {
