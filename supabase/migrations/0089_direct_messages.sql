@@ -23,8 +23,16 @@
 --                gated on a report existing.
 --
 --   rate limits  Not expressible in SQL; enforced in the server actions
---                (app/dashboard/messages/actions.ts) on both "start a new
+--                (app/messages/actions.ts) on both "start a new
 --                conversation" and "send a message".
+--
+-- Every write goes through those server actions on the service role, after
+-- the block check, the rate limit and the notification logic. So signed-in
+-- users get READ policies only (the browser needs them for Realtime) and no
+-- insert/update/delete path at all: a write policy here would let anyone
+-- skip all three through PostgREST — and an update policy on a conversation
+-- would let a participant rewrite `user_b` and hand the other person's
+-- messages to a third account.
 --
 -- The pair is stored ordered (user_a < user_b) with a unique index over the
 -- pair, so "find or create the DM with this person" is one upsert and two
@@ -109,6 +117,15 @@ declare
   cid uuid := coalesce(new.conversation_id, old.conversation_id);
   last_row public.dm_messages;
 begin
+  -- Lock the conversation first. Under READ COMMITTED each statement below
+  -- then takes a fresh snapshot AFTER any concurrent send has committed, so
+  -- two messages landing at once can't both write a count that misses the
+  -- other (the UPDATE's subquery would otherwise use a snapshot from before
+  -- the lock wait). NO KEY UPDATE, not UPDATE: every message insert already
+  -- holds KEY SHARE on this row through its foreign key, and FOR UPDATE
+  -- conflicts with that — two concurrent sends would deadlock.
+  perform 1 from public.dm_conversations where id = cid for no key update;
+
   select * into last_row
   from public.dm_messages m
   where m.conversation_id = cid
@@ -215,9 +232,9 @@ as $$
     );
 $$;
 
--- Participation alone, without the moderator branch. Writing (sending,
--- marking read, reporting) is for the two people in the conversation; a
--- moderator reading a reported thread does not get to post in it.
+-- Participation alone, without the moderator branch: a moderator reading a
+-- reported thread does not get to post in it. Enforced for writes in the
+-- server actions (lib/dm-access.ts); kept here for server-side SQL.
 create or replace function public.dm_is_participant(c public.dm_conversations, uid uuid)
 returns boolean
 language sql
@@ -228,33 +245,23 @@ as $$
 $$;
 
 -- ----------------------------------------------------------------------------
--- Conversation policies
+-- Policies: READ ONLY for signed-in users.
+--
+-- The browser's only direct use of these tables is the Realtime subscription
+-- to dm_messages (filtered to the open conversation), and Realtime applies
+-- the SELECT policy to what it delivers. Everything else — creating a
+-- conversation, sending, marking read, unsending, blocking, reporting,
+-- moderating — is a server action on the service role, which bypasses RLS.
+--
+-- The write policies are dropped by name, not merely left out, so re-running
+-- this file over an earlier draft of it (which had them) removes them.
 -- ----------------------------------------------------------------------------
 drop policy if exists "dm_conversations read" on public.dm_conversations;
 create policy "dm_conversations read" on public.dm_conversations
   for select using (public.dm_can_read_conversation(dm_conversations, auth.uid()));
-
--- You may open a conversation you are in, with someone who hasn't blocked
--- you (and whom you haven't blocked). The ordered-pair check constraint
--- means the caller has to sort the ids; lib/dm-access.ts does.
 drop policy if exists "dm_conversations insert" on public.dm_conversations;
-create policy "dm_conversations insert" on public.dm_conversations
-  for insert with check (
-    (user_a = auth.uid() or user_b = auth.uid())
-    and not public.dm_is_blocked(user_a, user_b)
-  );
-
--- Participants update their own read cursor. Which of the two cursors they
--- may touch is enforced in the server action — RLS can't express "only the
--- column that belongs to your side".
 drop policy if exists "dm_conversations update" on public.dm_conversations;
-create policy "dm_conversations update" on public.dm_conversations
-  for update using (public.dm_is_participant(dm_conversations, auth.uid()))
-  with check (public.dm_is_participant(dm_conversations, auth.uid()));
 
--- ----------------------------------------------------------------------------
--- Message policies
--- ----------------------------------------------------------------------------
 drop policy if exists "dm_messages read" on public.dm_messages;
 create policy "dm_messages read" on public.dm_messages
   for select using (
@@ -264,56 +271,18 @@ create policy "dm_messages read" on public.dm_messages
         and public.dm_can_read_conversation(c, auth.uid())
     )
   );
-
--- Send as yourself, into a conversation you're in, while neither side has
--- blocked the other.
 drop policy if exists "dm_messages insert" on public.dm_messages;
-create policy "dm_messages insert" on public.dm_messages
-  for insert with check (
-    sender_id = auth.uid()
-    and exists (
-      select 1 from public.dm_conversations c
-      where c.id = dm_messages.conversation_id
-        and public.dm_is_participant(c, auth.uid())
-        and not public.dm_is_blocked(c.user_a, c.user_b)
-    )
-  );
-
--- Unsend your own message; a moderator can remove one from a conversation
--- that was reported to them. Neither party can delete the other's words
--- outside that.
 drop policy if exists "dm_messages delete" on public.dm_messages;
-create policy "dm_messages delete" on public.dm_messages
-  for delete using (
-    sender_id = auth.uid()
-    or exists (
-      select 1 from public.dm_conversations c
-      where c.id = dm_messages.conversation_id
-        and (public.is_admin(auth.uid()) or public.has_permission(auth.uid(), 'moderation.manage'))
-        and exists (select 1 from public.dm_reports r where r.conversation_id = c.id)
-    )
-  );
 
--- ----------------------------------------------------------------------------
--- Block policies — your block list is yours. Notably there is no policy
--- letting anyone read blocks where they are the blocked party: being blocked
--- is not something you get told, it just looks like silence.
--- ----------------------------------------------------------------------------
+-- Your block list is yours. There is no policy letting anyone read blocks
+-- where they are the blocked party: being blocked is not something you get
+-- told, it just looks like silence.
 drop policy if exists "dm_blocks own" on public.dm_blocks;
 create policy "dm_blocks own" on public.dm_blocks
   for select using (blocker_id = auth.uid());
-
 drop policy if exists "dm_blocks insert" on public.dm_blocks;
-create policy "dm_blocks insert" on public.dm_blocks
-  for insert with check (blocker_id = auth.uid());
-
 drop policy if exists "dm_blocks delete" on public.dm_blocks;
-create policy "dm_blocks delete" on public.dm_blocks
-  for delete using (blocker_id = auth.uid());
 
--- ----------------------------------------------------------------------------
--- Report policies
--- ----------------------------------------------------------------------------
 drop policy if exists "dm_reports read" on public.dm_reports;
 create policy "dm_reports read" on public.dm_reports
   for select using (
@@ -321,28 +290,16 @@ create policy "dm_reports read" on public.dm_reports
     or public.is_admin(auth.uid())
     or public.has_permission(auth.uid(), 'moderation.manage')
   );
-
--- Only a participant can report the conversation they're in.
 drop policy if exists "dm_reports insert" on public.dm_reports;
-create policy "dm_reports insert" on public.dm_reports
-  for insert with check (
-    reporter_id = auth.uid()
-    and exists (
-      select 1 from public.dm_conversations c
-      where c.id = dm_reports.conversation_id
-        and public.dm_is_participant(c, auth.uid())
-    )
-  );
-
 drop policy if exists "dm_reports update" on public.dm_reports;
-create policy "dm_reports update" on public.dm_reports
-  for update using (
-    public.is_admin(auth.uid())
-    or public.has_permission(auth.uid(), 'moderation.manage')
-  ) with check (
-    public.is_admin(auth.uid())
-    or public.has_permission(auth.uid(), 'moderation.manage')
-  );
+
+-- Functions in `public` are callable by anyone over PostgREST's /rpc. These
+-- two are server-side helpers and must not be: `dm_is_blocked(me, them)`
+-- would tell a user whether someone had blocked them, which the block
+-- design promises never to reveal. (dm_can_read_conversation stays callable
+-- — the read policies above run it as the signed-in user.)
+revoke execute on function public.dm_is_blocked(uuid, uuid) from public, anon, authenticated;
+revoke execute on function public.dm_is_participant(public.dm_conversations, uuid) from public, anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Realtime.
