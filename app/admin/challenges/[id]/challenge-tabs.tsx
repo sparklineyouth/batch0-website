@@ -17,7 +17,7 @@ export function ChallengeTabs({
     { href: `${base}/registrations`, label: "Registrations", count: counts.registrations },
   ];
   return (
-    <nav className="mt-5 flex gap-1 border-b border-line" aria-label="Challenge sections">
+    <nav className="scrollbar-thin mt-5 flex gap-1 overflow-x-auto shadow-[inset_0_-1px_0_rgb(var(--line))]" aria-label="Challenge sections">
       {tabs.map((t) => {
         const active = path.startsWith(t.href);
         return (
@@ -25,7 +25,7 @@ export function ChallengeTabs({
             key={t.href}
             href={t.href}
             aria-current={active ? "page" : undefined}
-            className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm ${
+            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm ${
               active ? "border-phosphor font-medium text-ink" : "border-transparent text-ink-soft hover:text-ink"
             }`}
           >
@@ -37,7 +37,7 @@ export function ChallengeTabs({
         );
       })}
       {counts.drafts > 0 && (
-        <span className="ml-auto self-center font-mono text-[11px] text-ink-faint">
+        <span className="ml-auto shrink-0 self-center whitespace-nowrap pl-2 font-mono text-[11px] text-ink-faint">
           {counts.drafts} draft{counts.drafts === 1 ? "" : "s"} in progress
         </span>
       )}

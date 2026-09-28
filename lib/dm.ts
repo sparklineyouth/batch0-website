@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAllRoles } from "@/lib/roles";
+import { ACCEPTED_STATUSES } from "@/lib/pre-cohort";
 import { can, type Capabilities } from "@/lib/permissions";
 import {
   canReadConversation,
@@ -45,8 +46,9 @@ export type DmPerson = {
 
 export type DmConversation = {
   id: string;
-  userA: string;
-  userB: string;
+  /** Null once that account has been deleted (0089: on delete set null). */
+  userA: string | null;
+  userB: string | null;
   aLastReadAt: string;
   bLastReadAt: string;
   lastMessageAt: string | null;
@@ -75,6 +77,8 @@ export type DmMessage = {
   senderName: string;
   body: string;
   createdAt: string;
+  /** Only ever set in a moderator's transcript: participants never get unsent rows. */
+  unsentAt?: string | null;
 };
 
 export type DmReport = {
@@ -94,6 +98,29 @@ const CONVO_COLS = `
   last_message_preview, last_sender_id, message_count, created_at
 `;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Is this a real id? Anything else — a "deleted:" placeholder, junk from a URL — is nobody. */
+export function isUuid(id: unknown): id is string {
+  return typeof id === "string" && UUID_RE.test(id);
+}
+
+/** Split into chunks short enough for a PostgREST `in` filter in a URL. */
+function chunks<T>(items: readonly T[], size = 150): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * A failed read throws rather than returning nothing. Every caller here used
+ * to read only `data`, so a dropped connection or a missing table rendered as
+ * an empty inbox, an empty thread, or — worst — "nobody has blocked anybody".
+ */
+function must<T>(res: { data: T | null; error: { message: string } | null }, what: string): T | null {
+  if (res.error) throw new Error(`Couldn't load ${what}: ${res.error.message}`);
+  return res.data;
+}
+
 function toConversation(row: any): DmConversation {
   return {
     id: row.id,
@@ -107,6 +134,15 @@ function toConversation(row: any): DmConversation {
     messageCount: row.message_count ?? 0,
     createdAt: row.created_at,
   };
+}
+
+/**
+ * The other side of a conversation whose account has been deleted. The id is
+ * a per-conversation placeholder, never a profile id, so nothing downstream
+ * can block, message or look up "them".
+ */
+export function deletedPerson(conversationId: string): DmPerson {
+  return { id: `deleted:${conversationId}`, name: "Deleted account", roleLabel: null, isStaff: false };
 }
 
 /** A name to show. Never the email — that's not ours to hand out. */
@@ -161,13 +197,17 @@ async function toPeople(rows: any[]): Promise<DmPerson[]> {
 }
 
 export async function getPeople(ids: readonly string[]): Promise<Map<string, DmPerson>> {
-  if (ids.length === 0) return new Map();
+  const real = Array.from(new Set(ids.filter(isUuid)));
+  if (real.length === 0) return new Map();
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("id, full_name, role")
-    .in("id", ids as string[]);
-  const people = await toPeople(data ?? []);
+  const rows = (
+    await Promise.all(
+      chunks(real).map(async (part) =>
+        must(await admin.from("profiles").select("id, full_name, role").in("id", part), "people") ?? [],
+      ),
+    )
+  ).flat();
+  const people = await toPeople(rows);
   return new Map(people.map((p) => [p.id, p]));
 }
 
@@ -175,11 +215,92 @@ export async function getPerson(id: string): Promise<DmPerson | null> {
   return (await getPeople([id])).get(id) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Who can reach whom
+//
+// Signing up is instant and unverified, and most accounts belong to high
+// schoolers. So the open graph is open to people who have been LET IN:
+//
+//   the team      (a '*' or moderation.manage role) reaches, and is reachable
+//                 by, everyone — an applicant can always ask admissions;
+//   vetted people (any other non-student role — mentors, investors, custom
+//                 team roles — and students who were accepted or enrolled)
+//                 reach each other;
+//   everyone else (a fresh signup) reaches the team only, and is not listed
+//                 in anyone else's directory.
+//
+// An existing conversation is never cut off by this: someone the team wrote
+// to can always reply.
+// ---------------------------------------------------------------------------
+
+/** Role slugs that count as the team. */
+async function staffRoleSlugs(): Promise<string[]> {
+  const meta = await roleMeta();
+  return Array.from(meta.entries())
+    .filter(([, m]) => m.isStaff)
+    .map(([slug]) => slug);
+}
+
 /**
- * The directory: anyone with an account, searchable by name.
- *
- * Deliberately site-wide rather than cohort-scoped — reaching the person you
- * need is the feature. Three exclusions, all of them about not leaking:
+ * Of these people, who has been let in (see above). Staff included. Asked per
+ * person — never by loading every enrollment and application, which also ran
+ * into PostgREST's row cap and quietly left students unvetted past it.
+ */
+export async function vettedIds(ids: readonly string[]): Promise<Set<string>> {
+  const unique = Array.from(new Set(ids.filter(isUuid)));
+  if (unique.length === 0) return new Set();
+  const admin = createAdminClient();
+  const out = new Set<string>();
+  const students: string[] = [];
+  for (const part of chunks(unique)) {
+    const rows = (must(await admin.from("profiles").select("id, role").in("id", part), "people") ??
+      []) as { id: string; role: string | null }[];
+    for (const r of rows) {
+      if (r.role && r.role !== "student") out.add(r.id);
+      else students.push(r.id);
+    }
+  }
+  for (const part of chunks(students)) {
+    const [enr, apps] = await Promise.all([
+      admin.from("enrollments").select("user_id").in("user_id", part),
+      admin
+        .from("applications")
+        .select("user_id")
+        .in("user_id", part)
+        .in("status", ACCEPTED_STATUSES as unknown as string[]),
+    ]);
+    for (const r of (must(enr, "enrollments") ?? []) as any[]) out.add(r.user_id);
+    for (const r of (must(apps, "applications") ?? []) as any[]) out.add(r.user_id);
+  }
+  return out;
+}
+
+/**
+ * May `actor` open a NEW conversation with `recipient`? The reason is for the
+ * actor: it never says anything about the recipient beyond "not available".
+ */
+export async function canStartConversation(
+  actor: DmViewer,
+  recipient: DmPerson,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (actor.moderates || recipient.isStaff) return { ok: true };
+  const vetted = await vettedIds([actor.userId, recipient.id]);
+  if (!vetted.has(actor.userId)) {
+    const me = await getPerson(actor.userId);
+    if (me?.isStaff) return { ok: true };
+    return {
+      ok: false,
+      reason:
+        "For now you can message the batch0 team. Messaging other people opens once you've been accepted.",
+    };
+  }
+  if (!vetted.has(recipient.id)) return { ok: false, reason: "That person isn't available." };
+  return { ok: true };
+}
+
+/**
+ * The directory: searchable by name, and scoped by who the viewer may reach
+ * (see "Who can reach whom"). Three exclusions on top, all about not leaking:
  *
  *   - the viewer themselves
  *   - anyone either side of a block, in both directions. Showing someone who
@@ -196,22 +317,92 @@ export async function searchDirectory(
   const q = query.trim();
   const admin = createAdminClient();
   const hidden = new Set<string>([viewer.userId, ...(await listBlockRelatedIds(viewer.userId))]);
+  const escaped = q.replace(/[%,()"\\]/g, " ").trim();
+  if (q && !escaped) return [];
 
-  let req = admin.from("profiles").select("id, full_name, role");
-  if (q) {
-    const escaped = q.replace(/[%,()]/g, " ").trim();
-    if (!escaped) return [];
-    req = viewer.moderates
+  const byName = (req: any) => {
+    if (!escaped) return req;
+    return viewer.moderates
       ? req.or(`full_name.ilike.%${escaped}%,email.ilike.%${escaped}%`)
       : req.ilike("full_name", `%${escaped}%`);
-  }
-  // Over-fetch so the block/self filtering below can't empty a full page.
-  const { data } = await req
-    .order("full_name", { ascending: true })
-    .limit(limit + hidden.size + 10);
+  };
+  const base = () => admin.from("profiles").select("id, full_name, role");
+  const pageSize = limit + hidden.size + 10;
 
-  const rows = (data ?? []).filter((r: any) => !hidden.has(r.id)).slice(0, limit);
-  return toPeople(rows);
+  let rows: any[] = [];
+  const me = viewer.moderates ? null : await getPerson(viewer.userId);
+  if (viewer.moderates || me?.isStaff) {
+    // The team sees everyone.
+    rows =
+      must(await byName(base()).order("full_name", { ascending: true }).limit(pageSize), "people") ?? [];
+  } else {
+    const staff = await staffRoleSlugs();
+    const vettedMe = (await vettedIds([viewer.userId])).has(viewer.userId);
+    if (!vettedMe) {
+      // Not let in yet: the team, and nobody else.
+      rows = staff.length
+        ? must(
+            await byName(base().in("role", staff)).order("full_name", { ascending: true }).limit(pageSize),
+            "people",
+          ) ?? []
+        : [];
+    } else {
+      // Let in: everyone else who has been let in — non-student roles, and
+      // students with an enrollment or an accepted application, found by
+      // joining from those tables so the name filter and the limit apply in
+      // the database.
+      const nonStudents: any[] =
+        must(
+          await byName(base().neq("role", "student")).order("full_name", { ascending: true }).limit(pageSize),
+          "people",
+        ) ?? [];
+      const joined = (table: "enrollments" | "applications") => {
+        let req: any = admin
+          .from(table)
+          .select(`profile:profiles!${table}_user_id_fkey!inner(id, full_name, role)`)
+          .eq("profile.role", "student");
+        if (table === "applications") req = req.in("status", ACCEPTED_STATUSES as unknown as string[]);
+        if (escaped) req = req.ilike("profile.full_name", `%${escaped}%`);
+        return req.limit(pageSize * 3);
+      };
+      const [enr, apps] = await Promise.all([joined("enrollments"), joined("applications")]);
+      const students = [
+        ...((must(enr, "people") ?? []) as any[]),
+        ...((must(apps, "people") ?? []) as any[]),
+      ]
+        .map((r) => (Array.isArray(r.profile) ? r.profile[0] : r.profile))
+        .filter(Boolean);
+      rows = [...nonStudents, ...students].sort((a, b) =>
+        String(a.full_name ?? "").localeCompare(String(b.full_name ?? "")),
+      );
+    }
+  }
+
+  const seen = new Set<string>();
+  const picked = rows
+    .filter((r: any) => {
+      if (hidden.has(r.id) || seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    })
+    .slice(0, limit);
+  return toPeople(picked);
+}
+
+/** Does this user owe a fine? A fined account is locked out of everything but paying it. */
+export async function hasPendingFineFor(userId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const data = must(
+    await admin
+      .from("user_charges")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("kind", "fine")
+      .eq("status", "pending")
+      .limit(1),
+    "charges",
+  );
+  return (data ?? []).length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,10 +412,10 @@ export async function searchDirectory(
 /** Ids this user has blocked. */
 export async function listBlockedIds(userId: string): Promise<string[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("dm_blocks")
-    .select("blocked_id")
-    .eq("blocker_id", userId);
+  const data = must(
+    await admin.from("dm_blocks").select("blocked_id").eq("blocker_id", userId),
+    "blocks",
+  );
   return (data ?? []).map((r: any) => r.blocked_id as string);
 }
 
@@ -235,10 +426,13 @@ export async function listBlockedIds(userId: string): Promise<string[]> {
  */
 export async function listBlockRelatedIds(userId: string): Promise<string[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("dm_blocks")
-    .select("blocker_id, blocked_id")
-    .or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`);
+  const data = must(
+    await admin
+      .from("dm_blocks")
+      .select("blocker_id, blocked_id")
+      .or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`),
+    "blocks",
+  );
   const ids = new Set<string>();
   for (const r of (data ?? []) as any[]) {
     ids.add(r.blocker_id === userId ? r.blocked_id : r.blocker_id);
@@ -246,16 +440,23 @@ export async function listBlockRelatedIds(userId: string): Promise<string[]> {
   return Array.from(ids);
 }
 
-/** Symmetric: is sending between these two frozen, whoever pressed block. */
+/**
+ * Symmetric: is sending between these two frozen, whoever pressed block.
+ * Fails closed — an error throws (and the send is refused) rather than
+ * reading as "not blocked".
+ */
 export async function isBlockedBetween(x: string, y: string): Promise<boolean> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("dm_blocks")
-    .select("blocker_id")
-    .or(
-      `and(blocker_id.eq.${x},blocked_id.eq.${y}),and(blocker_id.eq.${y},blocked_id.eq.${x})`,
-    )
-    .limit(1);
+  const data = must(
+    await admin
+      .from("dm_blocks")
+      .select("blocker_id")
+      .or(
+        `and(blocker_id.eq.${x},blocked_id.eq.${y}),and(blocker_id.eq.${y},blocked_id.eq.${x})`,
+      )
+      .limit(1),
+    "blocks",
+  );
   return (data ?? []).length > 0;
 }
 
@@ -273,9 +474,41 @@ export async function listBlockedPeople(userId: string): Promise<DmPerson[]> {
 
 /** Raw conversation row, with no viewer check. Callers must do their own. */
 export async function getConversationRow(id: string): Promise<DmConversation | null> {
+  if (!isUuid(id)) return null;
   const admin = createAdminClient();
-  const { data } = await admin.from("dm_conversations").select(CONVO_COLS).eq("id", id).maybeSingle();
+  const data = must(
+    await admin.from("dm_conversations").select(CONVO_COLS).eq("id", id).maybeSingle(),
+    "the conversation",
+  );
   return data ? toConversation(data) : null;
+}
+
+/** Several conversation rows at once, keyed by id (the moderation queue). */
+export async function getConversationRows(ids: readonly string[]): Promise<Map<string, DmConversation>> {
+  const real = Array.from(new Set(ids.filter(isUuid)));
+  const admin = createAdminClient();
+  const rows = (
+    await Promise.all(
+      chunks(real).map(
+        async (part) => must(await admin.from("dm_conversations").select(CONVO_COLS).in("id", part), "conversations") ?? [],
+      ),
+    )
+  ).flat();
+  return new Map(rows.map((r: any) => [r.id as string, toConversation(r)]));
+}
+
+/** The ids of every conversation this person is in. */
+export async function listOwnConversationIds(userId: string): Promise<Set<string>> {
+  const admin = createAdminClient();
+  const data = must(
+    await admin
+      .from("dm_conversations")
+      .select("id")
+      .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+      .limit(5000),
+    "conversations",
+  );
+  return new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
 }
 
 /** The existing DM between two people, if there is one. */
@@ -285,22 +518,26 @@ export async function findConversation(
 ): Promise<DmConversation | null> {
   const { userA, userB } = orderPair(x, y);
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("dm_conversations")
-    .select(CONVO_COLS)
-    .eq("user_a", userA)
-    .eq("user_b", userB)
-    .maybeSingle();
+  const data = must(
+    await admin
+      .from("dm_conversations")
+      .select(CONVO_COLS)
+      .eq("user_a", userA)
+      .eq("user_b", userB)
+      .maybeSingle(),
+    "the conversation",
+  );
   return data ? toConversation(data) : null;
 }
 
 /** Has anyone reported this conversation? The staff read gate. */
 export async function isReported(conversationId: string): Promise<boolean> {
   const admin = createAdminClient();
-  const { count } = await admin
+  const { count, error } = await admin
     .from("dm_reports")
     .select("id", { count: "exact", head: true })
     .eq("conversation_id", conversationId);
+  if (error) throw new Error(`Couldn't load reports: ${error.message}`);
   return (count ?? 0) > 0;
 }
 
@@ -323,16 +560,21 @@ export async function getConversationForViewer(
 /** The viewer's inbox, most recent first. One query plus one name lookup. */
 export async function listInbox(userId: string, limit = 50): Promise<DmInboxRow[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("dm_conversations")
-    .select(CONVO_COLS)
-    .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-    // A conversation opened but never used sorts last rather than vanishing.
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(limit);
+  const data = must(
+    await admin
+      .from("dm_conversations")
+      .select(CONVO_COLS)
+      .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+      // A conversation opened but never used sorts last rather than vanishing.
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(limit),
+    "your conversations",
+  );
 
   const convos = (data ?? []).map(toConversation);
-  const others = convos.map((c) => otherParticipant(c, userId));
+  const others = convos
+    .map((c) => otherParticipant(c, userId))
+    .filter((id): id is string => !!id);
   const people = await getPeople(others);
 
   return convos.map((c) => {
@@ -340,10 +582,10 @@ export async function listInbox(userId: string, limit = 50): Promise<DmInboxRow[
     return {
       id: c.id,
       other:
-        people.get(otherId) ??
-        // The other account was deleted mid-flight. Keep the row rather than
-        // drop the history it points at.
-        { id: otherId, name: "Deleted account", roleLabel: null, isStaff: false },
+        (otherId ? people.get(otherId) : null) ??
+        // The other account was deleted. Keep the row rather than drop the
+        // history it points at.
+        deletedPerson(c.id),
       lastMessageAt: c.lastMessageAt,
       lastMessagePreview: c.lastMessagePreview,
       lastFromSelf: c.lastSenderId === userId,
@@ -356,43 +598,63 @@ export async function listInbox(userId: string, limit = 50): Promise<DmInboxRow[
 /** How many conversations have something unread. The badge on the launcher. */
 export async function countUnreadConversations(userId: string): Promise<number> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("dm_conversations")
-    .select("user_a, user_b, a_last_read_at, b_last_read_at, last_message_at, last_sender_id, id")
-    .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-    .not("last_message_at", "is", null)
-    .neq("last_sender_id", userId)
-    .limit(500);
+  const data = must(
+    await admin
+      .from("dm_conversations")
+      .select("user_a, user_b, a_last_read_at, b_last_read_at, last_message_at, last_sender_id, id")
+      .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+      .not("last_message_at", "is", null)
+      // .neq alone drops a NULL sender (a deleted account's last message).
+      .or(`last_sender_id.is.null,last_sender_id.neq.${userId}`)
+      .limit(500),
+    "unread count",
+  );
   return (data ?? []).map(toConversation).filter((c) => hasUnread(c, userId)).length;
 }
 
 /**
- * Messages in posting order. Only call once the viewer has been cleared by
- * getConversationForViewer().
+ * The newest `limit` messages, in posting order. Only call once the viewer has
+ * been cleared by getConversationForViewer().
+ *
+ * Newest, not oldest: this used to take the FIRST `limit` rows, so a long
+ * conversation opened on its beginning with everything recent missing — and
+ * then marked the missing messages read.
  */
 export async function listMessages(
   conversationId: string,
   limit = 300,
+  opts: { includeUnsent?: boolean } = {},
 ): Promise<DmMessage[]> {
   const admin = createAdminClient();
-  const { data } = await admin
+  let req = admin
     .from("dm_messages")
-    .select("id, conversation_id, sender_id, body, created_at")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true })
-    .limit(limit);
+    .select("id, conversation_id, sender_id, body, created_at, unsent_at")
+    .eq("conversation_id", conversationId);
+  // An unsent message is gone for both participants. Only a moderator's
+  // transcript of a reported conversation still shows it (marked).
+  if (!opts.includeUnsent) req = req.is("unsent_at", null);
+  const data = must(
+    await req
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(limit),
+    "messages",
+  );
 
-  const rows = data ?? [];
+  const rows = (data ?? []).slice().reverse();
   const people = await getPeople(
-    Array.from(new Set(rows.map((r: any) => r.sender_id as string))),
+    Array.from(new Set(rows.map((r: any) => r.sender_id as string | null).filter((id): id is string => !!id))),
   );
   return rows.map((r: any) => ({
     id: r.id,
     conversationId: r.conversation_id,
-    senderId: r.sender_id,
+    // "" for a deleted sender: never equal to any viewer's id, so their
+    // words render as the other side's, attributed to "Deleted account".
+    senderId: r.sender_id ?? "",
     senderName: people.get(r.sender_id)?.name ?? "Deleted account",
     body: r.body,
     createdAt: r.created_at,
+    ...(opts.includeUnsent ? { unsentAt: r.unsent_at ?? null } : {}),
   }));
 }
 
@@ -414,9 +676,11 @@ export async function listReports(
     .from("dm_reports")
     .select("id, conversation_id, reporter_id, reason, status, reviewed_by, reviewed_at, created_at");
   if (status !== "all") req = req.eq("status", status);
-  const { data } = await req.order("created_at", { ascending: false }).limit(limit);
+  const data = must(await req.order("created_at", { ascending: false }).limit(limit), "reports");
+  return hydrateReports(data ?? []);
+}
 
-  const rows = data ?? [];
+async function hydrateReports(rows: any[]): Promise<DmReport[]> {
   const people = await getPeople(
     Array.from(
       new Set(rows.map((r: any) => r.reporter_id as string | null).filter(Boolean) as string[]),
@@ -437,22 +701,35 @@ export async function listReports(
   }));
 }
 
+/** Every report on one conversation — queried by it, not filtered from a site-wide page. */
 export async function listReportsForConversation(
   conversationId: string,
 ): Promise<DmReport[]> {
-  return (await listReports("all", 500)).filter(
-    (r) => r.conversationId === conversationId,
+  const admin = createAdminClient();
+  const data = must(
+    await admin
+      .from("dm_reports")
+      .select("id, conversation_id, reporter_id, reason, status, reviewed_by, reviewed_at, created_at")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false }),
+    "reports",
   );
+  return hydrateReports(data ?? []);
 }
 
-/** The admin overview tile. */
-export async function countOpenReports(): Promise<number> {
+/**
+ * The admin overview tile. Leaves out reports on the viewer's own
+ * conversations, like the queue does — a moderator who is the person reported
+ * must not learn that a report exists.
+ */
+export async function countOpenReports(viewerId: string): Promise<number> {
   const admin = createAdminClient();
-  const { count } = await admin
-    .from("dm_reports")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "open");
-  return count ?? 0;
+  const [rows, mine] = await Promise.all([
+    admin.from("dm_reports").select("conversation_id").eq("status", "open").limit(1000),
+    listOwnConversationIds(viewerId),
+  ]);
+  const open = (must(rows, "reports") ?? []) as { conversation_id: string }[];
+  return open.filter((r) => !mine.has(r.conversation_id)).length;
 }
 
 /** Everyone who should hear about a new report. Mirrors listDiscussionTeamIds(). */

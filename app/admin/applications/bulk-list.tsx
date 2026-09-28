@@ -76,9 +76,14 @@ type AppRow = {
  *  Widths are budgeted against the header LABELS, not just the cell contents —
  *  "Referred by" and "Referrals" are long words in tracked-out uppercase mono,
  *  and an under-budgeted column overflows into its neighbour (Referrals ran
- *  straight into Status at 0.6fr). */
+ *  straight into Status at 0.6fr).
+ *
+ *  And a floor under the whole row: below ~56rem of content (a tablet, a
+ *  phone, a narrow window beside the sidebar) nine columns can't share the
+ *  width — headers ran together and the status pill sat on top of the date —
+ *  so the list scrolls sideways inside its card instead. */
 const COLS =
-  "grid grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,0.35fr)_minmax(0,0.5fr)_minmax(0,1.15fr)_minmax(0,0.9fr)_minmax(0,0.75fr)_minmax(0,0.8fr)] items-center gap-3";
+  "grid min-w-[56rem] grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,0.35fr)_minmax(0,0.5fr)_minmax(0,1.15fr)_minmax(0,0.9fr)_minmax(0,0.75fr)_minmax(0,0.8fr)] items-center gap-3";
 
 export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
   const router = useRouter();
@@ -144,7 +149,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
   }
 
   return (
-    <div className="text-sm">
+    <div className="overflow-x-auto text-sm">
       <div className={`${COLS} border-b border-line bg-wash px-5 py-3 text-xs font-mono uppercase tracking-wider text-ink-faint`}>
         <button
           type="button"
@@ -322,7 +327,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
           rows are selected. Positioned outside the table grid so the
           column layout doesn't grow when it appears. */}
       {someSelected && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
+        <div data-bottom-bar className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-3">
             <div className="text-sm">
               <span className="font-semibold text-ink tabular-nums">{selected.size}</span>

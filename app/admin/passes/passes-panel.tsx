@@ -1022,7 +1022,7 @@ export function PassesPanel({
                   r.revoked ? "opacity-40" : ""
                 }`}
               >
-                <div className="flex min-w-0 items-center gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-mono text-sm tabular-nums text-ink">
                     #{String(r.serial).padStart(3, "0")}
                   </span>
@@ -1065,7 +1065,7 @@ export function PassesPanel({
                     </span>
                   )}
                   <span className="font-mono text-[11px] text-ink-faint">{r.batch}</span>
-                  <span className="truncate text-sm text-ink-soft">
+                  <span className="min-w-0 grow basis-32 truncate text-sm text-ink-soft">
                     {r.revoked
                       ? "Revoked"
                       : r.holder

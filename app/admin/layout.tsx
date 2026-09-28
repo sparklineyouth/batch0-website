@@ -28,7 +28,7 @@ export default async function AdminLayout({
       className="flex min-h-screen bg-black text-white md:flex-row flex-col"
     >
       <AdminSidebar caps={caps} />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <MobileNav kind="admin" role={profile.role} caps={caps} />
         {/* Target of the root layout's "Skip to content" link — it has to be
             the <main> that follows the sidebar, not anything wrapping it.
@@ -37,7 +37,7 @@ export default async function AdminLayout({
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 px-5 py-6 md:px-10 md:py-10"
+          className="flex-1 px-5 pb-24 pt-6 md:px-10 md:pb-24 md:pt-10"
         >
           {children}
         </main>

@@ -28,7 +28,7 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
   ];
   return (
     <footer className="border-t border-line bg-wash px-5 py-12 pb-safe sm:px-6">
-      <div className="mx-auto flex max-w-[1100px] flex-col gap-8 md:flex-row md:items-start md:justify-between">
+      <div className="mx-auto flex max-w-[1100px] flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-sm">
           <div className="flex items-center gap-2">
             <Wordmark className="h-[18px] text-ink" />
@@ -47,8 +47,8 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
               linked in NEEDED_FACTS.md; no placeholder links until then. */}
         </div>
 
-        <div className="flex flex-col gap-8 sm:flex-row sm:gap-12">
-          <nav aria-label="Footer" className="grid grid-cols-2 gap-x-12 gap-y-2.5">
+        <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
+          <nav aria-label="Footer" className="grid grid-cols-2 gap-x-8 gap-y-2.5 xl:gap-x-12">
             {links.map((l) => (
               <Link
                 key={l.href}
@@ -66,7 +66,7 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
               only short path from anywhere on the site down to all 135 guides.
               Most of the blog isn't in Google's index yet; this is the kind of
               link that fixes that. */}
-          <nav aria-label="Guides" className="grid grid-cols-2 gap-x-12 gap-y-2.5">
+          <nav aria-label="Guides" className="grid grid-cols-2 gap-x-8 gap-y-2.5 xl:gap-x-12">
             <p className="col-span-2 font-mono text-[12px] uppercase tracking-[0.08em] text-ink-faint">
               Guides
             </p>

@@ -23,6 +23,8 @@
     "test-blast-addressing": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-blast-addressing.mts",
     "daily-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/daily-doctor.mts",
     "webinar-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-e2e.mts",
+    "dm-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/dm-e2e.mts",
+    "ui-audit": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/ui-audit.mts",
     "webinar-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-doctor.mts"
   },
   "dependencies": {

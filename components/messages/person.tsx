@@ -59,7 +59,7 @@ export function PersonLabel({
   className?: string;
 }) {
   return (
-    <span className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
+    <span className={`inline-flex min-w-0 max-w-full items-center gap-1.5 ${className}`}>
       <span className="truncate font-medium text-ink">{person.name}</span>
       {person.isStaff ? (
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-phosphor/15 px-1.5 py-px text-[10px] font-medium text-phosphor-ink">

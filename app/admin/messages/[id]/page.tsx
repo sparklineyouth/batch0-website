@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Flag } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { LocalTime } from "@/components/ui/local-time";
@@ -35,14 +35,23 @@ export default async function AdminConversationPage(props: {
   const viewer = await getDmViewer(profile.id, caps);
   const convo = await getConversationForViewer(params.id, viewer);
   if (!convo) notFound();
+  // A moderator who is one of the two people in it reads it where anyone
+  // would, and never sees the reports against it — who filed them and why is
+  // exactly what the person reported must not learn. (The actions refuse
+  // them too: assertNotParticipant.)
+  if (profile.id === convo.userA || profile.id === convo.userB) {
+    redirect(`/messages?c=${convo.id}`);
+  }
 
   const [messages, reports, people] = await Promise.all([
-    listMessages(convo.id, 1000),
+    // Including what was unsent: that's often exactly what was reported.
+    listMessages(convo.id, 1000, { includeUnsent: true }),
     listReportsForConversation(convo.id),
-    getPeople([convo.userA, convo.userB]),
+    getPeople([convo.userA, convo.userB].filter((id): id is string => !!id)),
   ]);
-  const a = people.get(convo.userA);
-  const b = people.get(convo.userB);
+  const a = convo.userA ? people.get(convo.userA) : undefined;
+  const b = convo.userB ? people.get(convo.userB) : undefined;
+  const canModerate = true;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -87,15 +96,17 @@ export default async function AdminConversationPage(props: {
                     · <LocalTime value={r.createdAt} />
                   </span>
                 </p>
-                <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-ink-soft">
+                <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-ink-soft [overflow-wrap:anywhere]">
                   {r.reason}
                 </p>
               </div>
-              <ReportControls
-                reportId={r.id}
-                status={r.status}
-                reviewedAt={r.reviewedAt}
-              />
+              {canModerate && (
+                <ReportControls
+                  reportId={r.id}
+                  status={r.status}
+                  reviewedAt={r.reviewedAt}
+                />
+              )}
             </div>
           </div>
         ))}
@@ -106,7 +117,7 @@ export default async function AdminConversationPage(props: {
         <p className="border-b border-line bg-wash px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
           Transcript · {messages.length} message{messages.length === 1 ? "" : "s"}
         </p>
-        <Transcript conversationId={convo.id} messages={messages} />
+        <Transcript conversationId={convo.id} messages={messages} canModerate={canModerate} />
       </section>
 
       <p className="mt-4 text-xs text-ink-faint">

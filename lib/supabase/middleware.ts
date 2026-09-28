@@ -422,6 +422,7 @@ export async function updateSession(request: NextRequest) {
     // too, so an /app request now does zero database work in middleware.
     const finePath =
       (path.startsWith("/dashboard") ||
+        path.startsWith("/messages") ||
         path.startsWith("/apply") ||
         path.startsWith("/mentor") ||
         path.startsWith("/investor")) &&

@@ -261,11 +261,11 @@ export function ComposeForm({
         </Card>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_460px]">
-        <div className="space-y-5">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_460px]">
+        <div className="min-w-0 space-y-5">
           {/* ---- To ---- */}
           <Card className="space-y-4">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <ModeChoice
                 icon={AtSign}
                 label="Specific addresses"
@@ -585,7 +585,7 @@ export function ComposeForm({
         </div>
 
         {/* ---- Preview ---- */}
-        <div className="lg:sticky lg:top-6 lg:self-start">
+        <div className="min-w-0 xl:sticky xl:top-6 xl:self-start">
           <Card className="!p-0 overflow-hidden">
             <div className="border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-ink-faint">
               Preview

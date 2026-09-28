@@ -289,7 +289,7 @@ export function BlastForm({
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-2">
       {/* ---------------- recipients ---------------- */}
-      <Card className="lg:sticky lg:top-6 self-start">
+      <Card className="min-w-0 lg:sticky lg:top-6 self-start">
         <div className="flex items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink-soft">
             <Users className="h-4 w-4" /> Recipients
@@ -470,7 +470,7 @@ export function BlastForm({
       </Card>
 
       {/* ---------------- compose ---------------- */}
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6">
         <Card>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Compose
@@ -551,7 +551,7 @@ export function BlastForm({
             <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
               Preview
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {sendTo === "both" && (
                 <div className="flex rounded-md border border-line p-0.5">
                   {(["student", "parent"] as BlastVariant[]).map((v) => (
@@ -679,7 +679,7 @@ export function BlastForm({
               Send to {addressCount} address{addressCount === 1 ? "" : "es"}
             </Button>
           ) : (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button
                 type="button"
                 className="flex-1"

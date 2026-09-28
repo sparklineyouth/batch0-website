@@ -164,7 +164,7 @@ export function QuestionEditor({
             }`}
           >
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <code className="text-xs font-medium text-ink-soft">{field.key}</code>
+              <code className="min-w-0 text-xs font-medium text-ink-soft [overflow-wrap:anywhere]">{field.key}</code>
               <span className="text-[11px] uppercase tracking-wider text-ink-faint">
                 {field.type}
                 {core && " · can't be removed"}

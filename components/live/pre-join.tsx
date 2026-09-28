@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { VideoTile } from "@/components/live/video-tile";
@@ -70,6 +71,12 @@ export function PreJoin({
   const router = useRouter();
   const canBroadcast = role === "host";
   const media = useLocalMedia({ autoStart: autoStartMedia ?? canBroadcast });
+  // The page is server-rendered, so the join button is on screen — and looks
+  // pressable — before React has attached its click handler. A press in that
+  // window did nothing at all, and nothing said so; people (and the e2e) sat
+  // in the green room thinking they'd joined. Disabled until hydrated.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const goBack = () => {
     if (backHref) router.push(backHref);
     else history.back();
@@ -199,7 +206,7 @@ export function PreJoin({
               // Not while the permission prompt is still up: joining then
               // unmounts this screen with a getUserMedia in flight, which is
               // how a camera used to be left running with nobody to stop it.
-              disabled={busy || (canBroadcast && media.status === "requesting")}
+              disabled={!hydrated || busy || (canBroadcast && media.status === "requesting")}
               onClick={() =>
                 void onJoin({ cameraOn: media.cameraOn, micOn: media.micOn })
               }

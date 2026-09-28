@@ -131,7 +131,8 @@ export function PrizeBuilder({
                     <Label htmlFor={`${p.id}-qty`}>Winners</Label>
                     <Input id={`${p.id}-qty`} type="number" min={1} value={p.quantity} onChange={(e) => update(i, { quantity: Math.max(1, Number(e.target.value) || 1) })} />
                   </div>
-                  <div>
+                  {/* Own row until xl: beside the two fixed columns it gets ~20px on a tablet. */}
+                  <div className="sm:col-span-3 xl:col-span-1">
                     <Label htmlFor={`${p.id}-desc`}>Details (optional)</Label>
                     <Textarea id={`${p.id}-desc`} rows={1} className="!min-h-10" value={p.description} onChange={(e) => update(i, { description: e.target.value })} placeholder="Shipped to your door, US only" />
                   </div>

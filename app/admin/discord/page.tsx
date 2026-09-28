@@ -470,7 +470,7 @@ function CheckRow({ check }: { check: Check }) {
       <span
         className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${CHECK_DOT[check.status]}`}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
         <p className="font-medium text-ink">{check.label}</p>
         <p className="text-xs text-ink-faint">{check.detail}</p>
         {check.remedy && (
@@ -495,11 +495,11 @@ function Status({
   return (
     <li className="flex items-start gap-3">
       <span
-        className={`mt-1 inline-block h-2 w-2 rounded-full ${
+        className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${
           ok ? "bg-emerald-500" : "bg-amber-500"
         }`}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
         <p className="font-medium text-ink">{label}</p>
         <p className="text-xs text-ink-faint">{hint}</p>
       </div>

@@ -29,6 +29,7 @@ import {
   type EventSpeaker,
   type PremiereState,
 } from "@/lib/webinars";
+import { withUploadRetry } from "@/lib/upload-retry";
 
 /**
  * A hosted webinar on batch0 Live.
@@ -183,12 +184,15 @@ export function BuiltinEventRoom({
       // it's only needed here, at the moment an upload starts.
       const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
-      const up = await supabase.storage
-        .from("webinar-media")
-        .uploadToSignedUrl(minted.path, minted.token, blob, {
-          contentType: blob.type || "video/webm",
-        });
-      if (up.error) throw up.error;
+      // Through a network blip, not past a refusal (lib/upload-retry.ts).
+      await withUploadRetry(async () => {
+        const up = await supabase.storage
+          .from("webinar-media")
+          .uploadToSignedUrl(minted.path, minted.token, blob, {
+            contentType: blob.type || "video/webm",
+          });
+        if (up.error) throw up.error;
+      });
 
       const filed = await registerWebinarRecordingSegment(eventId, {
         storagePath: minted.path,

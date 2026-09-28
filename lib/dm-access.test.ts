@@ -7,8 +7,11 @@ import {
   cursorFor,
   hasUnread,
   isParticipant,
+  laterTimestamp,
   orderPair,
   otherParticipant,
+  seenColumnFor,
+  shouldBell,
   unreadCount,
   type DmViewer,
 } from "./dm-access.ts";
@@ -128,3 +131,31 @@ test("hasUnread works off the denormalised columns alone", () => {
     false,
   );
 });
+
+test("a message rings the bell once per burst, and never while the recipient is in the thread", () => {
+  const now = Date.parse("2026-09-27T12:00:00Z");
+  // Never opened it, no bell yet: ring.
+  assert.equal(shouldBell({ recipientSeenAt: null, hasUnreadBell: false }, now), true);
+  // An unread bell already points at this conversation: don't stack another.
+  assert.equal(shouldBell({ recipientSeenAt: null, hasUnreadBell: true }, now), false);
+  // Had it open 30s ago (by the clock): they're in it, the live thread shows it.
+  assert.equal(shouldBell({ recipientSeenAt: "2026-09-27T11:59:30Z", hasUnreadBell: false }, now), false);
+  // Away ten minutes and no bell pending: ring — even if the last message
+  // they read was sent moments ago, which a cursor-based check got wrong.
+  assert.equal(shouldBell({ recipientSeenAt: "2026-09-27T11:50:00Z", hasUnreadBell: false }, now), true);
+});
+
+test("laterTimestamp compares instants, and microseconds when the milliseconds tie", () => {
+  assert.equal(laterTimestamp("2026-09-27T12:00:01+00:00", "2026-09-27T12:00:00.999+00:00"), "2026-09-27T12:00:01+00:00");
+  assert.equal(laterTimestamp("2026-09-27T12:00:00.123456+00:00", "2026-09-27T12:00:00.123+00:00"), "2026-09-27T12:00:00.123456+00:00");
+  assert.equal(laterTimestamp("1970-01-01T00:00:00+00:00", "2026-09-27T12:00:00Z"), "2026-09-27T12:00:00Z");
+  assert.equal(laterTimestamp("not a date", "2026-09-27T12:00:00Z"), "2026-09-27T12:00:00Z");
+});
+
+test("the presence column is the viewer's own side", () => {
+  const c = { id: "c", userA: "a", userB: "b" };
+  assert.equal(seenColumnFor(c, "a"), "a_seen_at");
+  assert.equal(seenColumnFor(c, "b"), "b_seen_at");
+  assert.throws(() => seenColumnFor(c, "z"));
+});
+

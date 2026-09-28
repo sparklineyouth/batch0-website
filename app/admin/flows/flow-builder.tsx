@@ -265,8 +265,8 @@ export function FlowBuilder({
       </div>
 
       {/* ---- steps ---- */}
-      <div className="grid gap-5 md:grid-cols-12">
-        <div className="md:col-span-4">
+      <div className="grid gap-5 lg:grid-cols-12">
+        <div className="lg:col-span-4">
           <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
             Steps
           </p>
@@ -288,7 +288,7 @@ export function FlowBuilder({
                     <span className="block truncate text-sm font-medium text-ink">
                       {s.title || s.step_key}
                     </span>
-                    <span className="block text-[10px] font-mono uppercase tracking-wider text-ink-faint">
+                    <span className="block truncate text-[10px] font-mono uppercase tracking-wider text-ink-faint">
                       {s.kind} · {s.step_key}
                     </span>
                   </button>
@@ -344,7 +344,7 @@ export function FlowBuilder({
         </div>
 
         {/* ---- selected step editor ---- */}
-        <div className="md:col-span-8">
+        <div className="lg:col-span-8">
           {step && (
             <div className="rounded-xl border border-line bg-paper p-5">
               <div className="grid gap-4 sm:grid-cols-2">

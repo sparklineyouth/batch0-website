@@ -62,7 +62,7 @@ export default async function ChallengesIndexPage() {
             <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
               Hackathons &amp; challenges
             </p>
-            <h1 className="mt-3 max-w-3xl font-display text-[clamp(2.5rem,6vw,4rem)] leading-[1.02] text-ink">
+            <h1 className="mt-3 max-w-3xl font-display text-[clamp(2.25rem,6vw,4rem)] leading-[1.02] text-ink">
               Build something. <span className="hl">Win real prizes.</span>
             </h1>
             <p className="mt-4 max-w-2xl text-[1.0625rem] leading-[1.6] text-ink-soft">

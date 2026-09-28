@@ -43,7 +43,7 @@ export default async function DashboardLayout({
   if (!can(caps, "student.dashboard")) {
     return (
       <div className="min-h-screen bg-paper text-ink">
-        <main id="main-content" tabIndex={-1} className="px-5 py-6 md:px-10 md:py-10">{children}</main>
+        <main id="main-content" tabIndex={-1} className="px-5 pb-24 pt-6 md:px-10 md:pb-24 md:pt-10">{children}</main>
         <ChatDock />
       </div>
     );
@@ -76,7 +76,7 @@ export default async function DashboardLayout({
         preCohort={preCohort}
         demoDayTicket={access.demoDayTicket}
       />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <MobileNav
           kind="student"
           role={profile.role}
@@ -88,7 +88,7 @@ export default async function DashboardLayout({
           preCohort={preCohort}
           demoDayTicket={access.demoDayTicket}
         />
-        <main id="main-content" tabIndex={-1} className="flex-1 px-5 py-6 md:px-10 md:py-10">{children}</main>
+        <main id="main-content" tabIndex={-1} className="flex-1 px-5 pb-24 pt-6 md:px-10 md:pb-24 md:pt-10">{children}</main>
       </div>
       <ChatDock />
     </div>

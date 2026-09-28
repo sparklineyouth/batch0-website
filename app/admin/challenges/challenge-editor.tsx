@@ -465,7 +465,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
         </Section>
 
         {/* Sticky save bar */}
-        <div className="sticky bottom-0 z-30 -mx-2 rounded-t-xl border border-b-0 border-line bg-paper/95 px-2 backdrop-blur">
+        <div data-bottom-bar className="sticky bottom-0 z-30 -mx-2 rounded-t-xl border border-b-0 border-line bg-paper/95 px-2 backdrop-blur">
           <div className="flex flex-wrap items-center gap-3 px-3 py-3">
             <Button type="submit" disabled={pending || (!dirty && !!initial?.id)}>
               {pending ? "Saving…" : initial?.id ? (dirty ? "Save changes" : "Saved") : "Create draft"}

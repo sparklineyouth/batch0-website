@@ -4,6 +4,7 @@ import { BroadcastRoom, type CallRoom } from "@/components/live/broadcast-room";
 import { joinRoom, announcePresence, leaveRoom, listAudience } from "@/app/live/actions";
 import { endCall, getCallRoomStatus } from "@/app/calls/actions";
 import { getCallRecordingUploadToken } from "@/app/calls/recording-actions";
+import { withUploadRetry } from "@/lib/upload-retry";
 import { CALL_RECORDING_BUCKET } from "@/lib/call-recording";
 import type { SignalRole } from "@/lib/live-signal";
 
@@ -85,10 +86,15 @@ export function BuiltinCallRoom({
       // it's only needed at the moment an upload starts.
       const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
-      const up = await supabase.storage
-        .from(CALL_RECORDING_BUCKET)
-        .uploadToSignedUrl(path, token, blob, { contentType: mimeType });
-      if (up.error) throw up.error;
+      // Through a network blip, not past a refusal (lib/upload-retry.ts):
+      // the last segment goes up as someone presses End call, and one
+      // dropped request used to cost the end of the conversation.
+      await withUploadRetry(async () => {
+        const up = await supabase.storage
+          .from(CALL_RECORDING_BUCKET)
+          .uploadToSignedUrl(path, token, blob, { contentType: mimeType });
+        if (up.error) throw up.error;
+      });
     },
     [inviteId],
   );

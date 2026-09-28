@@ -120,7 +120,7 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
             onChange={(e) => set("slug", e.target.value)}
             placeholder="Left blank, we make one from the name"
           />
-          <p className="mt-1 text-xs text-ink-faint">
+          <p className="mt-1 text-xs text-ink-faint [overflow-wrap:anywhere]">
             /dashboard/scholarships/<strong>{v.slug || "…"}</strong>. Changing it
             breaks any link you've already sent out.
           </p>

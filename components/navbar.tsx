@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { track } from "@vercel/analytics";
@@ -8,11 +8,14 @@ import { AuthLabel, useIsAuthed } from "@/components/auth-label";
 
 // Use absolute hrefs (`/#anchor`) so hash links still resolve when the
 // navbar is rendered on subroutes.
+// `lgOnly` links drop out of the inline row between md and lg — at tablet
+// width all five plus the CTA don't fit on one line — and move into a small
+// "More" menu there. They're in the phone menu and the footer too.
 const LINKS = [
   { href: "/program", label: "Program" },
   { href: "/parents", label: "For parents" },
-  { href: "/blog", label: "Blog" },
-  { href: "/sponsors", label: "Sponsors" },
+  { href: "/blog", label: "Blog", lgOnly: true },
+  { href: "/sponsors", label: "Sponsors", lgOnly: true },
   { href: "/#faq", label: "FAQ" },
 ] as const;
 
@@ -43,6 +46,7 @@ export default function Navbar({
 }) {
   const [open, setOpen] = useState(false);
   const isAuthed = useIsAuthed();
+  const moreRef = useRef<HTMLDetailsElement>(null);
 
   // Close the mobile menu on escape; lock scroll while open.
   useEffect(() => {
@@ -75,11 +79,29 @@ export default function Navbar({
             <Link
               key={l.href}
               href={l.href}
-              className="text-sm text-ink-soft hover:text-ink"
+              className={`${"lgOnly" in l ? "hidden lg:inline " : ""}whitespace-nowrap text-sm text-ink-soft hover:text-ink`}
             >
               {l.label}
             </Link>
           ))}
+          {/* md→lg only: where the lgOnly links go when the row is full. */}
+          <details ref={moreRef} className="relative hidden md:block lg:hidden">
+            <summary className="cursor-pointer list-none whitespace-nowrap text-sm text-ink-soft hover:text-ink [&::-webkit-details-marker]:hidden">
+              More <span aria-hidden>▾</span>
+            </summary>
+            <div className="absolute right-0 top-full z-50 mt-2 w-40 rounded-md border border-line bg-paper py-1 shadow-lg">
+              {LINKS.filter((l) => "lgOnly" in l).map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  onClick={() => moreRef.current?.removeAttribute("open")}
+                  className="block px-3 py-2 text-sm text-ink-soft hover:bg-wash hover:text-ink"
+                >
+                  {l.label}
+                </Link>
+              ))}
+            </div>
+          </details>
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
@@ -92,7 +114,7 @@ export default function Navbar({
               behind where it used to be. See lib/auth-flag.ts. */}
           <Link
             href="/login"
-            className="when-anon text-sm text-ink-soft hover:text-ink"
+            className="when-anon whitespace-nowrap text-sm text-ink-soft hover:text-ink"
           >
             Log in
           </Link>
@@ -104,7 +126,7 @@ export default function Navbar({
             // immediately. Same reasoning as components/dashboard/sidebar.tsx.
             prefetch={false}
             onClick={() => !isAuthed && track("apply_click", { location: "navbar" })}
-            className={`${applyHref !== "/home" ? "when-authed " : ""}press rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper`}
+            className={`${applyHref !== "/home" ? "when-authed " : ""}press whitespace-nowrap rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper`}
           >
             <AuthLabel signedOut={applyLabel} />
           </Link>
@@ -112,7 +134,7 @@ export default function Navbar({
             href={applyHref}
             prefetch={false}
             onClick={() => track("apply_click", { location: "navbar" })}
-            className="when-anon press rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="when-anon press whitespace-nowrap rounded-md bg-phosphor px-4 py-2 text-sm font-semibold text-on-phosphor shadow-cta hover:bg-phosphor-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-phosphor focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >{applyLabel}</Link>}
         </div>
 

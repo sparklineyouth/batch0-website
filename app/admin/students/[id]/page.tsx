@@ -137,11 +137,11 @@ export default async function AdminStudentDetail(
       </Link>
 
       <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
+        <div className="min-w-0">
+          <h1 className="break-words font-display text-3xl font-bold tracking-[-0.02em] text-ink">
             {profile.full_name || "—"}
           </h1>
-          <p className="mt-1 text-sm text-ink-soft">
+          <p className="mt-1 text-sm text-ink-soft [overflow-wrap:anywhere]">
             {displayEmail(profile.email) ?? (
               <span className="text-ink-faint">No email on file</span>
             )}

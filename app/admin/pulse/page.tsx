@@ -286,7 +286,7 @@ export default async function PulsePage() {
       </div>
 
       {/* Week-over-week deltas */}
-      <section className="mt-6 grid gap-3 md:grid-cols-4">
+      <section className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <Delta
           icon={Inbox}
           label="Applications · 7d"
@@ -326,7 +326,7 @@ export default async function PulsePage() {
 
       {/* Inbox bar */}
       <section className="mt-6">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-3">
           <InboxRow
             label="Pending review"
             count={pendingApps ?? 0}
@@ -365,7 +365,7 @@ export default async function PulsePage() {
       {/* Trends. Two charts rather than one with two y-axes: applications and
           revenue have unrelated scales, and overlaying them on a shared plot
           would invent a correlation the data doesn't contain. */}
-      <section className="mt-8 grid gap-6 md:grid-cols-2">
+      <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <Card>
           <BarChart
             title="Applications · 8 weeks"
@@ -395,7 +395,7 @@ export default async function PulsePage() {
         </Card>
       </section>
 
-      <section className="mt-6 grid gap-6 md:grid-cols-2">
+      <section className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>
           <Funnel
             title="Application status snapshot · all time"
@@ -524,7 +524,7 @@ function Delta({
   const body = (
     <>
       <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
-        <Icon className="h-3.5 w-3.5" />
+        <Icon className="h-3.5 w-3.5 shrink-0" />
         {label}
       </div>
       <div className="mt-2 flex items-baseline gap-2">
@@ -543,7 +543,7 @@ function Delta({
   );
 
   const classes =
-    "block rounded-xl border border-line bg-wash px-4 py-4 hover:border-ink/30";
+    "block min-w-0 rounded-xl border border-line bg-wash px-4 py-4 hover:border-ink/30";
   return href ? (
     <Link href={href} className={classes}>
       {body}

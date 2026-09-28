@@ -16,9 +16,12 @@ import { removeMessage } from "../actions";
 export function Transcript({
   conversationId,
   messages,
+  canModerate = true,
 }: {
   conversationId: string;
   messages: DmMessage[];
+  /** False for a moderator who is one of the two people in it. */
+  canModerate?: boolean;
 }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -30,15 +33,20 @@ export function Transcript({
   async function remove() {
     if (!pendingId) return;
     setBusy(true);
-    const res = await removeMessage({ messageId: pendingId, conversationId });
-    setBusy(false);
-    setPendingId(null);
-    if (!res.ok) {
-      setError(res.error);
-      return;
+    try {
+      const res = await removeMessage({ messageId: pendingId, conversationId });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setError(null);
+      router.refresh();
+    } catch {
+      setError("Couldn't remove that message. Try again.");
+    } finally {
+      setBusy(false);
+      setPendingId(null);
     }
-    setError(null);
-    router.refresh();
   }
 
   return (
@@ -57,22 +65,33 @@ export function Transcript({
           {messages.map((m) => (
             <li key={m.id} className="group px-4 py-3">
               <div className="flex items-baseline justify-between gap-3">
-                <p className="text-xs font-medium text-ink">{m.senderName}</p>
+                <p className="text-xs font-medium text-ink">
+                  {m.senderName}
+                  {m.unsentAt && (
+                    <span className="ml-2 rounded-full border border-line px-1.5 py-px font-mono text-[10px] font-normal text-ink-faint">
+                      unsent by sender
+                    </span>
+                  )}
+                </p>
                 <div className="flex shrink-0 items-center gap-2">
                   <p className="text-[10px] font-mono tabular-nums text-ink-faint">
                     <LocalTime value={m.createdAt} />
                   </p>
+                  {canModerate && (
                   <button
                     type="button"
                     onClick={() => setPendingId(m.id)}
                     aria-label={`Remove message from ${m.senderName}`}
-                    className="press flex h-6 w-6 items-center justify-center rounded-md text-ink-faint opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-400"
+                    // Hover-only with a pointer; always shown on touch screens,
+                    // where there is no hover to reveal it.
+                    className="press flex h-6 w-6 items-center justify-center rounded-md text-ink-faint opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-400 [@media(hover:none)]:opacity-100"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>
+                  )}
                 </div>
               </div>
-              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-soft">
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-soft [overflow-wrap:anywhere]">
                 {m.body}
               </p>
             </li>

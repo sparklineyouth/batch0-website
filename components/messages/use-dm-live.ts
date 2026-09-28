@@ -83,13 +83,26 @@ export type LiveMessage = {
  * Subscribe to one conversation's new messages. `onMessage` is kept in a ref
  * so a re-render with a fresh closure doesn't tear the channel down and
  * rebuild it — only a change of conversation does that.
+ *
+ * `onConnected` fires every time the channel (re)joins. Realtime has no
+ * replay: anything sent while the channel was joining, or while the socket
+ * was down, is simply never delivered, so the thread resyncs from the server
+ * at exactly those moments.
+ *
+ * There is deliberately no DELETE listener. With RLS on, Realtime can't
+ * filter DELETE events (the old row carries only its key), so a
+ * `conversation_id=eq.` DELETE subscription receives nothing — an unsend
+ * reaches the other side through the resync instead.
  */
 export function useThreadLive(
   conversationId: string | null,
   onMessage: (m: LiveMessage) => void,
+  onConnected?: () => void,
 ) {
   const handler = useRef(onMessage);
   handler.current = onMessage;
+  const connected = useRef(onConnected);
+  connected.current = onConnected;
 
   useEffect(() => {
     if (!conversationId) return;
@@ -117,26 +130,9 @@ export function useThreadLive(
           },
           (payload: any) => handler.current(payload.new as LiveMessage),
         )
-        .on(
-          "postgres_changes" as any,
-          {
-            event: "DELETE",
-            schema: "public",
-            table: "dm_messages",
-            filter: `conversation_id=eq.${conversationId}`,
-          },
-          // A DELETE payload carries only the primary key (no replica
-          // identity full), which is all an unsend needs.
-          (payload: any) =>
-            handler.current({
-              id: (payload.old as any)?.id,
-              conversation_id: conversationId,
-              sender_id: "",
-              body: "",
-              created_at: "",
-            }),
-        )
-        .subscribe();
+        .subscribe((status: string) => {
+          if (status === "SUBSCRIBED" && !cancelled) connected.current?.();
+        });
       channel = ch;
       // Torn down while awaiting the client: cleanup already ran with
       // `channel` still null, so remove it here or leak a subscription.

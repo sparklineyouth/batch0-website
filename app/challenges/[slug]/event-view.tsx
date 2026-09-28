@@ -84,7 +84,7 @@ export function EventView({
             <ArrowLeft className="h-3.5 w-3.5" /> All challenges
           </Link>
 
-          <div className="mt-6 grid gap-8 md:grid-cols-[minmax(0,330px)_minmax(0,1fr)] md:gap-12">
+          <div className="mt-6 grid gap-8 md:grid-cols-[minmax(0,330px)_minmax(0,1fr)] lg:gap-12">
             {/* Left rail — cover + host. Sticky on desktop, like an event page. */}
             <aside className="md:sticky md:top-24 md:self-start">
               <ChallengeCover
@@ -313,7 +313,8 @@ export function EventView({
               )}
 
               <Section title="How to enter">
-                <ol className="grid gap-3 sm:grid-cols-2">
+                {/* One-up md→lg: the right column is phone-width there. */}
+                <ol className="grid gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
                   {howToSteps(challenge).map((s, i) => (
                     <li key={s.title} className="flex gap-3 rounded-xl border border-line p-3.5">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-phosphor font-mono text-[12px] font-semibold text-on-phosphor">
