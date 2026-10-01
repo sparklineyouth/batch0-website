@@ -14,7 +14,7 @@ export default function RefundPolicyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Refund Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: September 15, 2026
+        Last updated: September 30, 2026
       </p>
 
       <p>
@@ -38,42 +38,55 @@ export default function RefundPolicyPage() {
       <h2>The 48-hour window</h2>
       <p>
         You may request a full refund of tuition within 48 hours of payment,
-        for any reason. To be valid, your request must meet all of the
-        following:
+        for any reason. There are two ways to ask, and they count equally:
       </p>
       <ul>
         <li>
-          It's emailed to{" "}
-          <a href="mailto:hello@batch0.org">hello@batch0.org</a> from the
-          email address on your batch0 account.
+          <strong>The refund request form</strong> at{" "}
+          <a href="/support?topic=refund">batch0.org/support</a>. Choose
+          &ldquo;Refund request&rdquo;. You&rsquo;ll get a reference number
+          and a timestamped confirmation email immediately. The moment the
+          form records your request on our server is the time that counts —
+          not when we read it, and not when we reply.
         </li>
         <li>
-          The subject line is &ldquo;Refund request&rdquo; and the body
-          includes your Stripe or PayPal receipt or transaction ID.
-        </li>
-        <li>
-          It reaches our inbox within 48 hours of the payment timestamp on
-          your Stripe or PayPal receipt.
+          <strong>Email</strong> to{" "}
+          <a href="mailto:hello@batch0.org">hello@batch0.org</a>, from the
+          email address on your batch0 account, with &ldquo;Refund
+          request&rdquo; in the subject line. The time your email arrives on
+          our server is the time that counts. Use this route if you don&rsquo;t
+          have a batch0 account — a parent or guardian who paid, for
+          instance — since the form asks you to sign in.
         </li>
       </ul>
+      <p>
+        Either way, include your Stripe or PayPal receipt or transaction ID if
+        you have it. It isn&rsquo;t a condition of a valid request — we can
+        find your payment without it — but it makes the refund faster.
+      </p>
       <p>
         The 48 hours are 48 consecutive clock hours, not business days, and
         they run from the moment the processor confirms the charge — not
         from when you got access, first logged in, or opened the receipt.
         Pay at 3:00 PM on a Tuesday and the window closes at 3:00 PM on
-        Thursday. The time your email arrives on our server is the time
-        that counts.
+        Thursday.
       </p>
       <p>
         Requests sent any other way — a Discord message, a social DM, a
         text to a team member, a reply in an unrelated thread, a PayPal
         dispute, or a card chargeback — are not refund requests under this
-        policy and do not stop the clock.
+        policy and do not stop the clock. The two routes above are the only
+        two, and both give you a record of when you asked.
       </p>
       <p>
         We don't extend the window and we don't ask why you're leaving. A
         valid request inside 48 hours is refunded in full. A request that
         arrives at 48 hours and one minute is not.
+      </p>
+      <p>
+        If the form is down when you need it, email us — a request we can show
+        was sent inside the window is a valid request, and an outage on our
+        side is never your problem.
       </p>
 
       <h2>After 48 hours: all sales are final</h2>
@@ -154,8 +167,9 @@ export default function RefundPolicyPage() {
       </ul>
       <p>
         If you think a charge is actually wrong — a duplicate, or an amount
-        that doesn't match your receipt — email us first. Billing errors on
-        our end are corrected promptly and never need a dispute.
+        that doesn't match your receipt — tell us first, either through the{" "}
+        <a href="/support?topic=billing">support form</a> or by email. Billing
+        errors on our end are corrected promptly and never need a dispute.
       </p>
 
       <h2>How refunds are paid</h2>
@@ -202,7 +216,8 @@ export default function RefundPolicyPage() {
         right. It doesn't change this policy, doesn't extend to anyone
         else, and doesn't obligate us to do it again — for you or for
         anyone. Nobody on the batch0 team can promise a refund in a call,
-        a chat, or a DM; only a written confirmation from{" "}
+        a chat, or a DM; only a written confirmation on your support request
+        thread or from{" "}
         <a href="mailto:hello@batch0.org">hello@batch0.org</a> counts.
       </p>
 
@@ -221,9 +236,28 @@ export default function RefundPolicyPage() {
         further.
       </p>
 
+      <h2>Asking for a refund</h2>
+      {/* The action this whole page describes, at the end of it, where
+          someone who has just read the rules is standing. A plain <a>, not a
+          component — /refund-policy is in MUST_BE_STATIC (scripts/verify-
+          static.mjs) and anything that reads per-request state here silently
+          downgrades the route to per-request rendering. */}
+      <div className="mt-8 rounded-xl border border-line bg-wash p-5 text-ink">
+        <strong>To request a refund:</strong> open a request at{" "}
+        <a href="/support?topic=refund">batch0.org/support</a> and choose
+        &ldquo;Refund request&rdquo;. You get a reference number and a
+        timestamped confirmation straight away, and that timestamp is what
+        stops the 48-hour clock. If you don&rsquo;t have a batch0 account —
+        parents who paid usually don&rsquo;t — email{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a> instead. Both
+        count.
+      </div>
+
       <h2>Questions</h2>
       <p>
-        <a href="mailto:hello@batch0.org">hello@batch0.org</a>
+        Anything else about a payment goes to{" "}
+        <a href="/support?topic=billing">batch0.org/support</a>, or{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a>.
       </p>
 
       <JsonLd
@@ -231,7 +265,7 @@ export default function RefundPolicyPage() {
           path: "/refund-policy",
           name: "Refund Policy",
           description,
-          dateModified: "2026-09-15",
+          dateModified: "2026-09-30",
         })}
       />
       <JsonLd

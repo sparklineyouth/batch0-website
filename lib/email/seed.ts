@@ -600,6 +600,160 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     body_html: "<p>Hi {{first_name}},</p><p></p>",
     variables: COMMON,
   },
+
+  // Support tickets (migration 0090). Note what is NOT marked `required` here:
+  // on the direct sendTemplated() path a missing required variable silently
+  // falls back to the compiled template, and on the queued path it marks the
+  // row failed and sends nothing. Only the variables every caller provably
+  // has — the reference, the link — carry the flag.
+  {
+    key: "support.ticket_received",
+    name: "Support request received",
+    description:
+      "The acknowledgement for a new support request. For a refund request this email is the requester's receipt that the 48-hour window was stopped, so keep {{reference}} and {{received_at}} in the copy — the refund policy points at them.",
+    category: "transactional",
+    subject: "We got your request — {{reference}}",
+    preheader: "Reference {{reference}}. Recorded {{received_at}}.",
+    // {{refund_note}} carries the "the clock stopped when we recorded this"
+    // paragraph, and it is the reason this template can be edited at all
+    // without legal consequence. The compiled fallback in
+    // lib/email/templates.ts renders that paragraph conditionally for the
+    // refund category; the database copy has no conditionals, so the sender
+    // passes the sentence itself (empty for every other category) and this row
+    // just places it. Without the variable, restoring built-in templates would
+    // silently drop a refund requester's only written record that their
+    // 48-hour window was stopped — the one thing app/(legal)/refund-policy
+    // now points at this email for.
+    body_html:
+      "<h1>Request received</h1><p>Thanks {{first_name|there}} — this is confirmation that we have your request. A human reads every one of these.</p><p><strong>Reference:</strong> {{reference}}<br><strong>Recorded:</strong> {{received_at}}<br><strong>About:</strong> {{category_label}}</p><p>You wrote: <strong>{{subject_line}}</strong></p><p>{{request_body}}</p><p>{{refund_note}}</p><p>Replies go on the thread, not to this address — open it with the button below. That link is private to you.</p>",
+    cta_label: "Open your request",
+    cta_url: "{{ticket_url}}",
+    variables: [
+      ...COMMON,
+      {
+        key: "reference",
+        label: "Ticket reference",
+        example: "B0-4F2A-9C7K",
+        required: true,
+      },
+      {
+        key: "request_body",
+        label: "What they wrote",
+        example: "I paid tuition yesterday and would like a refund.",
+      },
+      {
+        key: "refund_note",
+        label: "Refund-window note (refunds only, else blank)",
+        example:
+          "Because this is a refund request, the time above is the one that counts — our refund policy gives you 48 hours from payment to ask, and the clock stopped when this request was recorded. Keep this email.",
+      },
+      {
+        key: "ticket_url",
+        label: "Private thread link",
+        example: "https://batch0.org/support/t/abc123",
+        required: true,
+      },
+      {
+        key: "received_at",
+        label: "When we recorded it",
+        example: "September 30, 2026 at 3:04 PM ET",
+      },
+      {
+        key: "category_label",
+        label: "What it's about",
+        example: "Refund request",
+      },
+      {
+        key: "subject_line",
+        label: "Their subject",
+        example: "Refund for tuition paid yesterday",
+      },
+    ],
+  },
+  {
+    key: "support.ticket_replied",
+    name: "Support request — team replied",
+    description:
+      "Sent when the team answers a request. {{reply_body}} is the reply verbatim; leave it in or the recipient has to open the site to read anything.",
+    category: "transactional",
+    subject: "Re: {{subject_line}} ({{reference}})",
+    preheader: "Someone at batch0 wrote back.",
+    body_html:
+      "<h1>{{replier_name|The batch0 team}} replied to your request</h1><p>Hi {{first_name|there}},</p><p>On <strong>{{subject_line}}</strong> · {{reference}}</p><p>{{reply_body}}</p><p>If that didn't sort it, say so on the thread — it reopens automatically and comes straight back to us.</p>",
+    cta_label: "Reply on the thread",
+    cta_url: "{{ticket_url}}",
+    variables: [
+      ...COMMON,
+      { key: "reference", label: "Ticket reference", example: "B0-4F2A-9C7K", required: true },
+      {
+        key: "ticket_url",
+        label: "Private thread link",
+        example: "https://batch0.org/support/t/abc123",
+        required: true,
+      },
+      { key: "subject_line", label: "Their subject", example: "Refund for tuition" },
+      { key: "replier_name", label: "Who replied", example: "Rishabh" },
+      {
+        key: "reply_body",
+        label: "The reply",
+        example: "Refunded in full — it should land in 5–10 business days.",
+      },
+    ],
+  },
+  {
+    key: "support.ticket_resolved",
+    name: "Support request resolved",
+    description:
+      "Sent when a request is marked resolved. The reopen instruction is the point of the email — keep it.",
+    category: "transactional",
+    subject: "Closed out: {{subject_line}} ({{reference}})",
+    preheader: "Marked resolved. Reopen it any time if we got it wrong.",
+    body_html:
+      "<h1>We've marked this resolved</h1><p>Hi {{first_name|there}} — your request <strong>{{subject_line}}</strong> ({{reference}}) is closed out on our side.</p><p><strong>If we got it wrong, reply on the thread.</strong> Posting on a resolved request reopens it and puts it back in our queue — you don't need to start a new one, and you won't lose the history.</p>",
+    cta_label: "View the thread",
+    cta_url: "{{ticket_url}}",
+    variables: [
+      ...COMMON,
+      { key: "reference", label: "Ticket reference", example: "B0-4F2A-9C7K", required: true },
+      {
+        key: "ticket_url",
+        label: "Private thread link",
+        example: "https://batch0.org/support/t/abc123",
+        required: true,
+      },
+      { key: "subject_line", label: "Their subject", example: "Refund for tuition" },
+    ],
+  },
+  {
+    key: "support.ticket_received_internal",
+    name: "Support request — team alert",
+    description:
+      "Lands in the team inbox when a request arrives. Deliberately omits the request body: this goes to a shared mailbox and the body can carry someone's billing situation. Its job is 'go look'.",
+    category: "internal",
+    subject: "[support] {{category_label}}: {{subject_line}} ({{reference}})",
+    preheader: "{{category_label}} from {{requester_label}}",
+    body_html:
+      "<h1>New support request</h1><p><strong>Reference:</strong> {{reference}}<br><strong>Category:</strong> {{category_label}}<br><strong>From:</strong> {{requester_label}}<br><strong>Subject:</strong> {{subject_line}}</p>",
+    cta_label: "Open in admin",
+    cta_url: "{{admin_url}}",
+    variables: [
+      ...COMMON,
+      { key: "reference", label: "Ticket reference", example: "B0-4F2A-9C7K", required: true },
+      {
+        key: "admin_url",
+        label: "Admin link",
+        example: "https://batch0.org/admin/support/1234",
+        required: true,
+      },
+      { key: "category_label", label: "What it's about", example: "Refund request" },
+      { key: "subject_line", label: "Their subject", example: "Refund for tuition" },
+      {
+        key: "requester_label",
+        label: "Who filed it",
+        example: "Alex Rivera <alex@example.com>",
+      },
+    ],
+  },
 ];
 
 export type SeedReport = {

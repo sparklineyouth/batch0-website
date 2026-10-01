@@ -84,6 +84,12 @@ const LINKS: LinkDef[] = [
     external: true,
   },
   {
+    href: "/dashboard/support",
+    label: "Support",
+    hint: "Refunds, billing, account problems",
+    external: true,
+  },
+  {
     href: "/dashboard/settings",
     label: "Settings",
     hint: "Profile, theme, account",

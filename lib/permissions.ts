@@ -65,6 +65,8 @@ export const PERMISSION_KEYS = [
   "passes.manage",
   "scholarships.view",
   "scholarships.manage",
+  "support.view",
+  "support.manage",
   "moderation.manage",
   "discord.manage",
   "audit.view",
@@ -317,6 +319,20 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         description: "Mint passes and work the pass-request queue.",
       },
       {
+        key: "support.view",
+        label: "View support requests",
+        description:
+          "Read the support queue and any request in full, including the requester's email address and what they say about their payments.",
+        sensitive: true,
+      },
+      {
+        key: "support.manage",
+        label: "Answer support requests",
+        description:
+          "Reply to support requests, leave internal notes, assign them, and resolve or close them. A reply emails the requester.",
+        sensitive: true,
+      },
+      {
         key: "moderation.manage",
         label: "Moderate",
         description: "Review reported content and act on it.",
@@ -567,6 +583,12 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   // possible — someone who reads the queue and discusses it without being able
   // to hand out tuition or refund a card.
   ["/admin/scholarships", "scholarships.view"],
+  // Read-gated like the scholarship area above, for the same reason: the queue
+  // opens on `support.view` and every mutation inside it re-asserts
+  // `support.manage`, which is what makes a read-only role possible — someone
+  // who can see what people are asking for without being able to answer in
+  // batch0's name or resolve a refund request.
+  ["/admin/support", "support.view"],
   ["/admin/moderation", "moderation.manage"],
   ["/admin/messages", "moderation.manage"],
   ["/admin/discussions", "discussions.manage"],

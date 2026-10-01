@@ -24,6 +24,7 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
     { href: "/sponsors", label: "Sponsors" },
     { href: "/#faq", label: "FAQ" },
     { href: applyHref, label: "Apply" },
+    { href: "/support", label: "Support" },
     { href: "/login", label: "Log in" },
   ];
   return (
@@ -96,6 +97,16 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
           </Link>
           <Link href="/refund-policy" className="hover:text-ink">
             Refund policy
+          </Link>
+          {/*
+            In the legal row rather than only in the nav column above: every
+            policy on this site now names /support as a way to exercise
+            something the policy grants — a refund inside 48 hours, a copy of
+            your data — so the route belongs next to the documents that
+            promise it.
+          */}
+          <Link href="/support" className="hover:text-ink">
+            Support
           </Link>
         </div>
       </div>

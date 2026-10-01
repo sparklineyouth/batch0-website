@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: September 26, 2026
+        Last updated: September 30, 2026
       </p>
 
       <p>
@@ -97,13 +97,21 @@ export default function PrivacyPage() {
       <h2>Your rights</h2>
       <p>
         You can update your profile or delete your account from{" "}
-        <a href="/dashboard/settings">settings</a>. You can email us to
-        request a copy of your data or full deletion at{" "}
-        <a href="mailto:hello@batch0.org">
-          hello@batch0.org
-        </a>
-        .
+        <a href="/dashboard/settings">settings</a>. To request a copy of your
+        data, or full deletion, open a request at{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a> and choose
+        &ldquo;Privacy or my data&rdquo; — you&rsquo;ll get a reference number
+        and a dated record of when you asked, which matters for a request with
+        a legal clock on it. Emailing{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a> works too.
       </p>
+      <div className="mt-8 rounded-xl border border-line bg-wash p-5 text-ink">
+        <strong>To exercise a data right:</strong>{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a>. Deleting your
+        account from settings is instant and needs no request; a copy of your
+        data, or deletion of records we keep after an account closes, goes
+        through a request so both sides have a dated record of it.
+      </div>
 
       <h2>Minors</h2>
       <p>
@@ -124,10 +132,9 @@ export default function PrivacyPage() {
 
       <h2>Contact</h2>
       <p>
-        Questions:{" "}
-        <a href="mailto:hello@batch0.org">
-          hello@batch0.org
-        </a>
+        Questions about this policy, or about data we hold on you:{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a>, or{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a>.
       </p>
 
       <JsonLd
@@ -136,7 +143,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-09-26",
+          dateModified: "2026-09-30",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />

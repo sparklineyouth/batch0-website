@@ -1538,4 +1538,191 @@ ${args.editableUntil ? `You can edit it until ${etTime(args.editableUntil)}: ${a
       ? `You won ${args.title}${args.awardLabel ? ` (${args.awardLabel})` : ""}! We'll be in touch about your prize. ${args.pageUrl}`
       : `Winners are in for ${args.title}. You weren't picked this time — thanks for entering. ${args.pageUrl}`,
   }),
+
+  // -------------------------------------------------------------------------
+  // Support tickets (migration 0090)
+  //
+  // All four ship a `text` part, which most templates in this file don't. The
+  // reason is specific: a refund acknowledgement is the receipt for a formal
+  // request under app/(legal)/refund-policy, and the reference and timestamp
+  // in it are what someone would quote back at us — or at their bank. That has
+  // to survive a mail client that refuses HTML.
+  // -------------------------------------------------------------------------
+
+  /**
+   * "We have it, here's your reference." Sent the moment a ticket is filed.
+   *
+   * The timestamp is in the body on purpose and is not decoration. The refund
+   * policy binds the 48-hour window to the time the request is recorded on our
+   * server, so this email is the requester's copy of that fact — which means
+   * it must state it plainly rather than making them infer it from a mail
+   * header. `receivedAt` is pre-formatted by the caller (server-side, in a
+   * fixed zone) rather than formatted here, so the string in the email and the
+   * string on the thread page can't disagree.
+   */
+  supportTicketReceived: (args: {
+    name?: string | null;
+    reference: string;
+    categoryLabel: string;
+    subject: string;
+    body: string;
+    receivedAt: string;
+    threadUrl: string;
+    /** True for the refund category — adds the deadline paragraph. */
+    isRefund: boolean;
+  }) => ({
+    subject: `We got your request — ${args.reference}`,
+    html: layout({
+      preheader: `Reference ${args.reference}. Recorded ${args.receivedAt}.`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">Request received</h1>
+        <p>Thanks${args.name ? `, ${escape(args.name)}` : ""} — this is confirmation that we have your request. A human reads every one of these.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;width:100%;border-collapse:collapse">
+          <tr>
+            <td style="padding:6px 0;color:#8b949e;font-size:13px;width:110px">Reference</td>
+            <td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(args.reference)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#8b949e;font-size:13px">Recorded</td>
+            <td style="padding:6px 0;color:#e7e7e7;font-size:14px">${escape(args.receivedAt)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#8b949e;font-size:13px">About</td>
+            <td style="padding:6px 0;color:#e7e7e7;font-size:14px">${escape(args.categoryLabel)}</td>
+          </tr>
+        </table>
+        <p style="margin:12px 0;color:#8b949e;font-size:13px">You wrote: <strong style="color:#e7e7e7">${escape(args.subject)}</strong></p>
+        <div style="margin:16px 0;padding:14px 16px;border-left:3px solid #ffbb00;background:rgba(255,255,255,0.04);white-space:pre-wrap">${escape(args.body)}</div>
+        ${
+          args.isRefund
+            ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd">Because this is a refund request, the time above is the one that counts. Our refund policy gives you 48 hours from payment to ask, and the clock stopped when this request was recorded — not when we get round to answering it. Keep this email.</p>`
+            : ""
+        }
+        <p style="color:#8b949e;font-size:13px">Replies go on the thread, not to this address. Open it any time with the button below — the link is private to you.</p>
+      `,
+      cta: { url: args.threadUrl, label: "Open your request" },
+    }),
+    text: `Request received - ${args.reference}
+
+Reference: ${args.reference}
+Recorded: ${args.receivedAt}
+About: ${args.categoryLabel}
+
+You wrote: ${args.subject}
+
+${args.body}
+${
+  args.isRefund
+    ? `\nBecause this is a refund request, the time above is the one that counts. Our refund policy gives you 48 hours from payment to ask, and the clock stopped when this request was recorded. Keep this email.\n`
+    : ""
+}
+Open your request: ${args.threadUrl}`,
+  }),
+
+  /**
+   * The team answered. Mirrors Templates.discussionReply in shape, because to
+   * the person reading it these are the same event — someone at batch0 wrote
+   * back — and two different-looking emails for one experience is noise.
+   */
+  supportTicketReplied: (args: {
+    name?: string | null;
+    reference: string;
+    subject: string;
+    replierName: string;
+    reply: string;
+    threadUrl: string;
+  }) => ({
+    subject: `Re: ${args.subject} (${args.reference})`,
+    html: layout({
+      preheader: args.reply.slice(0, 120),
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.replierName)} replied to your request</h1>
+        ${args.name ? `<p>Hi ${escape(args.name)},</p>` : ""}
+        <p style="margin:12px 0;color:#8b949e;font-size:13px">On <strong style="color:#e7e7e7">${escape(args.subject)}</strong> &middot; <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(args.reference)}</span></p>
+        <div style="margin:16px 0;padding:14px 16px;border-left:3px solid #ffbb00;background:rgba(255,255,255,0.04);white-space:pre-wrap">${escape(args.reply)}</div>
+        <p style="color:#8b949e;font-size:13px">If that didn't sort it, say so on the thread — it reopens automatically and comes straight back to us.</p>
+      `,
+      cta: { url: args.threadUrl, label: "Reply on the thread" },
+    }),
+    text: `${args.replierName} replied to your request (${args.reference})
+
+On: ${args.subject}
+
+${args.reply}
+
+If that didn't sort it, say so on the thread - it reopens automatically.
+
+${args.threadUrl}`,
+  }),
+
+  /**
+   * Marked resolved. Sent even when the answer was "no", because a request
+   * that quietly stops being worked on is the worst outcome a support queue
+   * has — and because the reopen instruction below is the safety valve that
+   * makes resolving a ticket a low-stakes act for the team.
+   */
+  supportTicketResolved: (args: {
+    name?: string | null;
+    reference: string;
+    subject: string;
+    threadUrl: string;
+  }) => ({
+    subject: `Closed out: ${args.subject} (${args.reference})`,
+    html: layout({
+      preheader: "Marked resolved. Reopen it any time if we got it wrong.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">We've marked this resolved</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — your request <strong>${escape(args.subject)}</strong> (<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(args.reference)}</span>) is closed out on our side.</p>
+        <p><strong>If we got it wrong, reply on the thread.</strong> Posting on a resolved request reopens it and puts it back in our queue — you don't need to start a new one, and you won't lose the history.</p>
+      `,
+      cta: { url: args.threadUrl, label: "View the thread" },
+    }),
+    text: `We've marked this resolved: ${args.subject} (${args.reference})
+
+If we got it wrong, reply on the thread - posting on a resolved request reopens it and puts it back in our queue.
+
+${args.threadUrl}`,
+  }),
+
+  /**
+   * To the team, on arrival. Deliberately terse and deliberately does NOT
+   * include the request body: this lands in a shared inbox, the body can be
+   * long and can contain someone's billing situation, and the point of the
+   * email is "go look", not "read it here".
+   */
+  supportTicketInternal: (args: {
+    reference: string;
+    categoryLabel: string;
+    subject: string;
+    requesterLabel: string;
+    adminUrl: string;
+    isRefund: boolean;
+  }) => ({
+    subject: `[support] ${args.categoryLabel}: ${args.subject} (${args.reference})`,
+    html: layout({
+      preheader: `${args.categoryLabel} from ${args.requesterLabel}`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">New support request</h1>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:14px 0;width:100%;border-collapse:collapse">
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px;width:110px">Reference</td><td style="padding:5px 0;color:#fff;font-size:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(args.reference)}</td></tr>
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px">Category</td><td style="padding:5px 0;color:#e7e7e7;font-size:14px">${escape(args.categoryLabel)}</td></tr>
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px">From</td><td style="padding:5px 0;color:#e7e7e7;font-size:14px">${escape(args.requesterLabel)}</td></tr>
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px">Subject</td><td style="padding:5px 0;color:#e7e7e7;font-size:14px">${escape(args.subject)}</td></tr>
+        </table>
+        ${
+          args.isRefund
+            ? `<p style="margin-top:12px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd"><strong>Refund request — this one has a clock on it.</strong> The 48-hour window in the refund policy is measured from payment, and the request is already recorded. Check it against the payment timestamp before replying.</p>`
+            : ""
+        }
+      `,
+      cta: { url: args.adminUrl, label: "Open in admin" },
+    }),
+    text: `New support request - ${args.reference}
+
+Category: ${args.categoryLabel}
+From: ${args.requesterLabel}
+Subject: ${args.subject}
+${args.isRefund ? `\nRefund request - the 48-hour window is measured from payment and the request is already recorded.\n` : ""}
+${args.adminUrl}`,
+  }),
 };

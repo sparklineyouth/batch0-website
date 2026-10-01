@@ -79,6 +79,12 @@ export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
   // awarded one needs to see their mentor-call credits.
   "/dashboard/scholarships",
   "/dashboard/referrals",
+  // Support is open in every state, and the pre-cohort window is the one it
+  // matters most in: the 48-hour refund window in the refund policy falls
+  // entirely before day one, and a student who has just paid and changed
+  // their mind must not meet a locked page. Locking this would be locking the
+  // exit.
+  "/dashboard/support",
   "/dashboard/settings",
 ]);
 
@@ -103,6 +109,7 @@ const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/billing",
   "/dashboard/scholarships",
   "/dashboard/referrals",
+  "/dashboard/support",
   "/dashboard/settings",
   "/dashboard/pay-fine",
 ];
