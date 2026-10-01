@@ -11,7 +11,7 @@ export default function TermsPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Terms of Service</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: September 30, 2026
+        Last updated: October 1, 2026
       </p>
 
       <p>
@@ -45,8 +45,10 @@ export default function TermsPage() {
         processed by Stripe or PayPal. Prices are listed in USD. Except as
         stated in our <a href="/refund-policy">refund policy</a>, all
         payments are final; by paying, you agree to that policy. Refund
-        requests and billing problems go to{" "}
-        <a href="/support?topic=refund">batch0.org/support</a>.
+        requests and billing problems go through a support request at{" "}
+        <a href="/support?topic=refund">batch0.org/support</a> or an email
+        to <a href="mailto:hello@batch0.org">hello@batch0.org</a>; both
+        count, as the refund policy explains.
       </p>
 
       <h2>Acceptable use</h2>
@@ -88,9 +90,10 @@ export default function TermsPage() {
 
       <h2>Termination</h2>
       <p>
-        You can delete your account at any time from your settings page.
-        batch0 may suspend or terminate accounts that violate these
-        terms.
+        You can ask us to delete your account at any time — open a request
+        at <a href="/support?topic=privacy">batch0.org/support</a> or email{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a>. batch0 may
+        suspend or terminate accounts that violate these terms.
       </p>
 
       <h2>Disclaimer</h2>
@@ -116,7 +119,7 @@ export default function TermsPage() {
           name: "Terms of Service",
           description:
             "The terms that govern batch0, the live online startup accelerator for high schoolers.",
-          dateModified: "2026-09-30",
+          dateModified: "2026-10-01",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Terms", path: "/terms" }])} />

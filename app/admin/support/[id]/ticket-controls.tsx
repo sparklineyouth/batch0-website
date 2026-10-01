@@ -4,19 +4,31 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
+import type { ActionResult } from "@/lib/action-result";
 import {
   changeTicketStatus,
   setTicketAssignee,
+  setTicketCategory,
   setTicketPayment,
+  setTicketPriority,
+  setTicketSensitive,
 } from "@/app/admin/support/actions";
 import {
+  CATEGORY_GROUPS,
+  CATEGORY_LABELS,
+  PRIORITY_LABELS,
   STAFF_STATUS_LABELS,
+  TICKET_PRIORITIES,
   TICKET_STATUSES,
+  isSensitiveCategory,
+  type TicketCategory,
+  type TicketPriority,
   type TicketStatus,
 } from "@/lib/support-access";
 
 /**
- * Status, assignee, and charge-linking for one ticket.
+ * Status, assignee, priority, category, confidentiality and charge-linking for
+ * one ticket.
  *
  * Errors land inline on the control that failed — there is no toast primitive
  * in this project, and the optimistic-lock message ("someone else changed
@@ -25,23 +37,32 @@ import {
  *
  * Every control is hidden unless the viewer holds support.manage; the actions
  * re-assert it regardless, because a server action is its own entry point.
+ * The confidential toggle additionally needs support.sensitive.
  */
 export function TicketControls({
   ticketId,
   status,
   assignedTo,
+  priority,
+  category,
+  sensitive,
   staff,
   payments,
   linkedPaymentId,
   canManage,
+  canSeeSensitive,
 }: {
   ticketId: string;
   status: TicketStatus;
   assignedTo: string | null;
+  priority: TicketPriority;
+  category: TicketCategory;
+  sensitive: boolean;
   staff: { id: string; name: string }[];
   payments: { id: string; label: string }[];
   linkedPaymentId: string | null;
   canManage: boolean;
+  canSeeSensitive: boolean;
 }) {
   const router = useRouter();
   const [err, setErr] = useState<string | undefined>();
@@ -49,17 +70,52 @@ export function TicketControls({
 
   if (!canManage) return null;
 
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
+  function run<T>(fn: () => Promise<ActionResult<T>>, onDone?: (data: T | undefined) => void) {
     setErr(undefined);
     start(async () => {
       try {
         const res = await fn();
         if (!res.ok) setErr(res.error);
+        else if (onDone) onDone(res.data);
         else router.refresh();
       } catch (e) {
         setErr(getActionError(e));
       }
     });
+  }
+
+  function changeCategory(next: string) {
+    // Moving a request into "Report a concern" makes it confidential, and
+    // without support.sensitive that means it disappears from this person's
+    // queue — say so before it happens, not after.
+    if (
+      !canSeeSensitive &&
+      isSensitiveCategory(next as TicketCategory) &&
+      !window.confirm(
+        "This makes the request confidential. Only staff who can see confidential concerns will be able to open it — including you. Continue?",
+      )
+    ) {
+      return;
+    }
+    run(
+      () => setTicketCategory({ ticketId, category: next }),
+      (data) => {
+        if (data?.hidden) router.push("/admin/support");
+        else router.refresh();
+      },
+    );
+  }
+
+  function changeSensitive(next: boolean) {
+    if (
+      !next &&
+      !window.confirm(
+        "Everyone with access to the support queue will be able to read this request, and its bells and emails will carry its content. Continue?",
+      )
+    ) {
+      return;
+    }
+    run(() => setTicketSensitive({ ticketId, sensitive: next }));
   }
 
   return (
@@ -157,7 +213,64 @@ export function TicketControls({
             ))}
           </Select>
         </label>
+
+        <label className="block">
+          <span className="mb-1.5 block font-mono text-xs font-medium uppercase tracking-wider text-ink-soft">
+            Priority
+          </span>
+          <Select
+            value={priority}
+            disabled={pending}
+            onChange={(e) =>
+              run(() => setTicketPriority({ ticketId, priority: e.target.value }))
+            }
+          >
+            {TICKET_PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_LABELS[p]}
+              </option>
+            ))}
+          </Select>
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block font-mono text-xs font-medium uppercase tracking-wider text-ink-soft">
+            Category
+          </span>
+          <Select
+            value={category}
+            disabled={pending}
+            onChange={(e) => changeCategory(e.target.value)}
+          >
+            {CATEGORY_GROUPS.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.categories.map((c) => (
+                  <option key={c} value={c}>
+                    {CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
+        </label>
       </div>
+
+      {canSeeSensitive && (
+        <label className="mt-3 flex cursor-pointer select-none items-start gap-2 text-xs text-ink-soft">
+          <input
+            type="checkbox"
+            checked={sensitive}
+            disabled={pending}
+            onChange={(e) => changeSensitive(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-phosphor"
+          />
+          <span>
+            <span className="font-medium text-ink">Confidential</span> — only
+            staff who can see confidential concerns can open it, and its bells
+            and team emails carry no content.
+          </span>
+        </label>
+      )}
 
       {payments.length > 0 && (
         <label className="mt-3 block">
@@ -184,7 +297,8 @@ export function TicketControls({
             ))}
           </Select>
           <span className="mt-1.5 block text-xs text-ink-faint">
-            Only this account&rsquo;s payments are listed.
+            Only this account&rsquo;s payments are listed. &ldquo;Not
+            linked&rdquo; unlinks it.
           </span>
         </label>
       )}

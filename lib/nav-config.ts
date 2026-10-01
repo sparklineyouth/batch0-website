@@ -136,7 +136,7 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
       // enrolment: the requests people file here are about billing, account
       // access, and data rights, which are exactly the things someone needs
       // when the rest of the dashboard is NOT working for them.
-      { href: "/dashboard/support", label: "Support", icon: LifeBuoy },
+      { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
       { href: "/dashboard/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -545,6 +545,9 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/mentor", label: "Overview", icon: LayoutDashboard, exact: true },
       { href: "/messages", label: "Messages", icon: MessageCircle },
+      // Under /dashboard but open to every role (lib/dashboard-gate.ts): a
+      // mentor's own requests to the team, not the student view.
+      { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
     ],
   },
   {
@@ -587,6 +590,8 @@ export const INVESTOR_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/investor", label: "Overview", icon: LayoutDashboard, exact: true },
       { href: "/messages", label: "Messages", icon: MessageCircle },
+      // Same exemption as the mentor's — see MENTOR_NAV_GROUPS.
+      { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
     ],
   },
   {

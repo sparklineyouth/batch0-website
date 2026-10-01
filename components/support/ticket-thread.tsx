@@ -17,8 +17,9 @@ import {
 /**
  * A support ticket thread, rendered the same way for both audiences.
  *
- * The requester's page at /support/t/[token] and the admin page at
- * /admin/support/[id] both mount this. They differ in three things and nothing
+ * The requester's pages — /support/t/[token] from the email and
+ * /dashboard/support/[reference] signed in — and the admin page at
+ * /admin/support/[id] all mount this. They differ in three things and nothing
  * else: the header strip above it (the admin one names the requester), the
  * `controls` slot, and whether internal notes are in `replies` at all.
  *
@@ -29,10 +30,10 @@ import {
  * scrubbed shape and renders the sensitive fields itself, in its own strip,
  * where the permission that authorized them is obvious.
  *
- * `onReply` is injected rather than imported, because the two surfaces post
- * through different credentials — a token for the requester, a support.manage
- * assertion for the team — and the component must not be the thing that
- * decides which. It just calls what it was handed.
+ * `onReply` is injected rather than imported, because the surfaces post
+ * through different credentials — a token or the owner's session for the
+ * requester, a support.manage assertion for the team — and the component must
+ * not be the thing that decides which. It just calls what it was handed.
  */
 
 export type TicketThreadTicket = {
@@ -64,6 +65,7 @@ export function TicketThread({
   canReply,
   staffView = false,
   controls,
+  startNewHref,
   onReply,
 }: {
   ticket: TicketThreadTicket;
@@ -73,6 +75,8 @@ export function TicketThread({
   /** True on the admin surface: enables the internal-note toggle. */
   staffView?: boolean;
   controls?: React.ReactNode;
+  /** Requester surfaces: where "start a new one" goes once a request is closed. */
+  startNewHref?: string;
   onReply: (args: { body: string; internal: boolean }) => Promise<void>;
 }) {
   const isRefund = ticket.category === "refund";
@@ -172,10 +176,25 @@ export function TicketThread({
           resolved={ticket.status === "resolved"}
         />
       ) : ticket.status === "closed" ? (
-        <p className="mt-6 flex items-center gap-2 text-sm text-ink-faint">
-          <Lock className="h-3.5 w-3.5" />
-          This request is closed and isn&rsquo;t accepting replies. Open a new
-          one if you still need help.
+        <p className="mt-6 flex items-start gap-2 text-sm text-ink-faint">
+          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {startNewHref ? (
+            // A plain anchor: this also renders on the emailed-link page,
+            // whose URL is a secret, and a full load leaves no client-side
+            // history behind it.
+            <span>
+              This request is closed &mdash;{" "}
+              <a href={startNewHref} className="link-ink">
+                start a new one
+              </a>{" "}
+              if you still need help.
+            </span>
+          ) : (
+            <span>
+              This request is closed and isn&rsquo;t accepting replies. Open a
+              new one if you still need help.
+            </span>
+          )}
         </p>
       ) : (
         // Keyed on the status, not just on canReply. The other way a composer

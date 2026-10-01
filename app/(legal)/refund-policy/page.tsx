@@ -14,16 +14,16 @@ export default function RefundPolicyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Refund Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: September 30, 2026
+        Last updated: October 1, 2026
       </p>
 
       <p>
         <strong>The short version:</strong> you have 48 hours from the
         moment you pay tuition to change your mind and get every cent back.
         After that, all sales are final. Demo Day tickets are final sale
-        from the start. There are no partial refunds, no prorating, no
-        credits, and no exceptions for anything on your side of the table.
-        By paying, you agree to this policy.
+        from the start, unless we cancel Demo Day. There are no partial
+        refunds, no prorating, no credits, and no exceptions for anything
+        on your side of the table. By paying, you agree to this policy.
       </p>
 
       <h2>What this covers</h2>
@@ -42,21 +42,22 @@ export default function RefundPolicyPage() {
       </p>
       <ul>
         <li>
-          <strong>The refund request form</strong> at{" "}
-          <a href="/support?topic=refund">batch0.org/support</a>. Choose
-          &ldquo;Refund request&rdquo;. You&rsquo;ll get a reference number
-          and a timestamped confirmation email immediately. The moment the
-          form records your request on our server is the time that counts —
-          not when we read it, and not when we reply.
+          <strong>A support request</strong> at{" "}
+          <a href="/support?topic=refund">batch0.org/support</a> — sign in
+          to your batch0 account and choose &ldquo;Refund request&rdquo;.
+          You get a reference number straight away. The time we record your
+          request is the time that counts — not when we read it, and not
+          when we reply.
         </li>
         <li>
           <strong>Email</strong> to{" "}
-          <a href="mailto:hello@batch0.org">hello@batch0.org</a>, from the
-          email address on your batch0 account, with &ldquo;Refund
-          request&rdquo; in the subject line. The time your email arrives on
-          our server is the time that counts. Use this route if you don&rsquo;t
-          have a batch0 account — a parent or guardian who paid, for
-          instance — since the form asks you to sign in.
+          <a href="mailto:hello@batch0.org">hello@batch0.org</a> with
+          &ldquo;Refund request&rdquo; in the subject line, from the email
+          address on your batch0 account. A parent or guardian without an
+          account can send it from the address they paid with (the one the
+          Stripe or PayPal receipt went to) or from the address on the
+          student&rsquo;s batch0 account. The time your email arrives on our
+          server is the time that counts.
         </li>
       </ul>
       <p>
@@ -72,11 +73,13 @@ export default function RefundPolicyPage() {
         Thursday.
       </p>
       <p>
-        Requests sent any other way — a Discord message, a social DM, a
-        text to a team member, a reply in an unrelated thread, a PayPal
-        dispute, or a card chargeback — are not refund requests under this
-        policy and do not stop the clock. The two routes above are the only
-        two, and both give you a record of when you asked.
+        Requests sent any other way — a direct message in batch0, a Discord
+        message, a chat message, a social DM, a text to a team member, a
+        reply in an unrelated thread, a PayPal dispute, or a card
+        chargeback — are not refund requests under this policy and do not
+        stop the clock. Use a support request or email instead: the two
+        routes above are the only two, and both give you a record of when
+        you asked.
       </p>
       <p>
         We don't extend the window and we don't ask why you're leaving. A
@@ -84,9 +87,9 @@ export default function RefundPolicyPage() {
         arrives at 48 hours and one minute is not.
       </p>
       <p>
-        If the form is down when you need it, email us — a request we can show
-        was sent inside the window is a valid request, and an outage on our
-        side is never your problem.
+        If the support form is down when you need it, email us — a request
+        we can show was sent inside the window is a valid request, and an
+        outage on our side is never your problem.
       </p>
 
       <h2>After 48 hours: all sales are final</h2>
@@ -130,9 +133,10 @@ export default function RefundPolicyPage() {
 
       <h2>Demo Day tickets</h2>
       <p>
-        Demo Day tickets are final sale from the moment of purchase. They
-        can't be refunded, exchanged for another date, or transferred to
-        another person. Not attending doesn't entitle you to a refund.
+        Demo Day tickets are final sale from the moment of purchase, unless
+        we cancel Demo Day (the one exception below). Otherwise they can't
+        be refunded, exchanged for another date, or transferred to another
+        person. Not attending doesn't entitle you to a refund.
       </p>
 
       <h2>The one exception we make</h2>
@@ -245,12 +249,14 @@ export default function RefundPolicyPage() {
       <div className="mt-8 rounded-xl border border-line bg-wash p-5 text-ink">
         <strong>To request a refund:</strong> open a request at{" "}
         <a href="/support?topic=refund">batch0.org/support</a> and choose
-        &ldquo;Refund request&rdquo;. You get a reference number and a
-        timestamped confirmation straight away, and that timestamp is what
-        stops the 48-hour clock. If you don&rsquo;t have a batch0 account —
-        parents who paid usually don&rsquo;t — email{" "}
-        <a href="mailto:hello@batch0.org">hello@batch0.org</a> instead. Both
-        count.
+        &ldquo;Refund request&rdquo;. You get a reference number straight
+        away, and the time we record the request is what stops the 48-hour
+        clock. Or email{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a> with
+        &ldquo;Refund request&rdquo; in the subject line — a parent or
+        guardian without an account can send it from the address they paid
+        with or from the address on the student&rsquo;s batch0 account. Both
+        count the same.
       </div>
 
       <h2>Questions</h2>
@@ -265,7 +271,7 @@ export default function RefundPolicyPage() {
           path: "/refund-policy",
           name: "Refund Policy",
           description,
-          dateModified: "2026-09-30",
+          dateModified: "2026-10-01",
         })}
       />
       <JsonLd

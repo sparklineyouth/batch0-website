@@ -8,8 +8,8 @@ import {
   CATEGORY_LABELS,
   STAFF_STATUS_LABELS,
   TICKET_CATEGORIES,
+  parseCategory,
   supportScopeFor,
-  toCategory,
   type TicketCategory,
   type TicketStatus,
 } from "@/lib/support-access";
@@ -47,14 +47,17 @@ export default async function AdminSupportPage(props: {
 
   const view: View =
     (VIEWS.find((v) => v === searchParams.view) as View) ?? "queue";
-  const category = searchParams.category
-    ? toCategory(searchParams.category)
-    : null;
+  // A category we don't know is no filter at all, not "Something else".
+  const category = parseCategory(searchParams.category);
 
   // "queue" is the default and is not a status — it is "anything still waiting
   // on us", across open and reopened tickets alike, which is exactly the open
   // tickets (the data layer's "needs_reply" view). Every other view is a
-  // straight status filter. The scope carries the confidentiality rule.
+  // straight status filter. The scope carries the confidentiality rule into
+  // the rows AND the counts: a confidential concern is simply absent for
+  // anyone without support.sensitive, so no number on this page can give one
+  // away. The counts take the same category filter, so a view's number
+  // matches the list under it.
   const scope = supportScopeFor(viewer.profile.id, viewer.caps);
   const [{ tickets, error }, counts] = await Promise.all([
     listTicketsForStaff(
@@ -65,13 +68,13 @@ export default async function AdminSupportPage(props: {
       },
       scope,
     ),
-    countTicketsForStaff(scope),
+    countTicketsForStaff(scope, { category }),
   ]);
 
   if (error && isMissingTable(error)) {
     return (
       <div className="mx-auto max-w-3xl">
-        <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
+        <h1 className="font-display text-3xl text-ink">
           Support
         </h1>
         <Card className="mt-6">
@@ -98,6 +101,8 @@ export default async function AdminSupportPage(props: {
     // support.view is marked sensitive for.
     requesterLabel:
       t.requesterName?.trim() || t.accountName?.trim() || t.requesterEmail,
+    priority: t.priority,
+    sensitive: t.sensitive,
     assignedName: t.assignedName,
     replyCount: t.replyCount,
     needsReply: t.needsReply,
@@ -116,7 +121,7 @@ export default async function AdminSupportPage(props: {
     <div className="mx-auto max-w-6xl pb-16">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
+          <h1 className="font-display text-3xl text-ink">
             Support
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">

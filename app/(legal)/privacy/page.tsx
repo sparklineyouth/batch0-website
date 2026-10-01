@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: September 30, 2026
+        Last updated: October 1, 2026
       </p>
 
       <p>
@@ -45,6 +45,16 @@ export default function PrivacyPage() {
         <li>
           <strong>Program usage:</strong> lesson progress, weekly check-ins,
           team threads, comments, and files you upload to your drive.
+        </li>
+        <li>
+          <strong>Support requests:</strong> the messages and files you send
+          us when you ask for help, plus technical details recorded with a
+          request — your browser, and the page you were on when you reported
+          a problem. Within batch0, only staff with support access can read
+          them, and reports of a confidential concern are restricted to a
+          small number of senior staff. We keep them for as long as we need
+          to resolve them, and keep refund and privacy requests as a record
+          of what was asked and when.
         </li>
         <li>
           <strong>Operational logs:</strong> standard server logs (IP, user
@@ -96,21 +106,23 @@ export default function PrivacyPage() {
 
       <h2>Your rights</h2>
       <p>
-        You can update your profile or delete your account from{" "}
-        <a href="/dashboard/settings">settings</a>. To request a copy of your
-        data, or full deletion, open a request at{" "}
+        You can update your profile in{" "}
+        <a href="/dashboard/settings">settings</a>. You can&rsquo;t delete
+        your account there: account deletion, a copy of your data, or a
+        correction to something we hold goes through a request, and our team
+        does it for you. Open one at{" "}
         <a href="/support?topic=privacy">batch0.org/support</a> and choose
-        &ldquo;Privacy or my data&rdquo; — you&rsquo;ll get a reference number
-        and a dated record of when you asked, which matters for a request with
-        a legal clock on it. Emailing{" "}
+        &ldquo;Privacy &amp; my data&rdquo; — you&rsquo;ll get a reference
+        number and a dated record of when you asked, which matters for a
+        request with a legal clock on it. Emailing{" "}
         <a href="mailto:hello@batch0.org">hello@batch0.org</a> works too.
       </p>
       <div className="mt-8 rounded-xl border border-line bg-wash p-5 text-ink">
-        <strong>To exercise a data right:</strong>{" "}
-        <a href="/support?topic=privacy">batch0.org/support</a>. Deleting your
-        account from settings is instant and needs no request; a copy of your
-        data, or deletion of records we keep after an account closes, goes
-        through a request so both sides have a dated record of it.
+        <strong>To exercise a data right:</strong> open a request at{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a> or email{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a> — for a copy
+        of your data, a correction, or account deletion. Either way, both
+        sides have a dated record of when you asked.
       </div>
 
       <h2>Minors</h2>
@@ -143,7 +155,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-09-30",
+          dateModified: "2026-10-01",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />

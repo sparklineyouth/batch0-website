@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bouncesFromDashboard, isLiveRoomPath } from "./dashboard-gate.ts";
+import { bouncesFromDashboard, isLiveRoomPath, isSupportPath } from "./dashboard-gate.ts";
 
 // Run with `npm test`. The rule the middleware applies to /dashboard for a
 // viewer without `student.dashboard` — a mentor or an investor.
@@ -45,6 +45,31 @@ test("billing and pay-fine stay shared, and a student is never bounced", () => {
     bouncesFromDashboard({ path: "/dashboard/course", studentDashboard: true, home: "/dashboard" }),
     false,
   );
+});
+
+test("every role can reach Help & support: the list, the form and a thread", () => {
+  // A custom staff role with no student view, e.g. an intern whose home is /admin.
+  const customStaff = { studentDashboard: false, home: "/admin" };
+  for (const viewer of [mentor, investor, customStaff]) {
+    for (const path of [
+      "/dashboard/support",
+      "/dashboard/support/",
+      "/dashboard/support/new",
+      "/dashboard/support/B0-4F2A-9C7K",
+    ]) {
+      assert.equal(bouncesFromDashboard({ path, ...viewer }), false, `${viewer.home} ${path}`);
+    }
+  }
+});
+
+test("only the support segment is exempt, not look-alikes", () => {
+  assert.equal(isSupportPath("/dashboard/support"), true);
+  assert.equal(isSupportPath("/dashboard/support/new"), true);
+  assert.equal(isSupportPath("/dashboard/supporters"), false);
+  assert.equal(isSupportPath("/dashboard/supportx/new"), false);
+  assert.equal(isSupportPath("/support"), false);
+  assert.equal(isSupportPath("/admin/support"), false);
+  assert.equal(bouncesFromDashboard({ path: "/dashboard/supporters", ...mentor }), true);
 });
 
 test("a role whose home IS /dashboard is never bounced at itself", () => {

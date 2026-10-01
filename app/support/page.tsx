@@ -1,12 +1,14 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { getProfile } from "@/lib/auth";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { JsonLd, breadcrumbJsonLd, webPageJsonLd } from "@/lib/schema";
-import { NewTicketForm } from "@/components/support/new-ticket-form";
-import { toCategory } from "@/lib/support-access";
+import {
+  NewRequest,
+  prefillQuery,
+  type SupportPrefillParams,
+} from "@/components/support/new-request";
 
 const description =
   "Open a support request with batch0 — refunds, billing, account access, privacy requests, and anything else. Every request gets a reference and a reply from a person.";
@@ -38,7 +40,7 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function SupportPage(props: {
-  searchParams: Promise<{ topic?: string }>;
+  searchParams: Promise<SupportPrefillParams>;
 }) {
   const [searchParams, profile, config] = await Promise.all([
     props.searchParams,
@@ -46,12 +48,6 @@ export default async function SupportPage(props: {
     getPublicSiteConfig(),
   ]);
   const contactEmail = config.settings.contactEmail;
-  const topic = toCategory(searchParams.topic);
-
-  // A signed-in account with no email can't be replied to, and the form's
-  // action refuses it. Send them to fix it rather than letting them type a
-  // request into a dead end.
-  if (profile && !profile.email) redirect("/dashboard/settings");
 
   return (
     <div className="min-h-screen bg-paper">
@@ -70,7 +66,11 @@ export default async function SupportPage(props: {
 
         {profile ? (
           <div className="mt-8">
-            <NewTicketForm initial={topic} accountEmail={profile.email} />
+            <NewRequest
+              email={profile.email ?? ""}
+              params={searchParams}
+              contactEmail={contactEmail}
+            />
           </div>
         ) : (
           <div className="mt-8 rounded-xl border border-line bg-wash p-6">
@@ -84,8 +84,10 @@ export default async function SupportPage(props: {
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <Link
+                // Carries the topic and the page they came from through the
+                // sign-in, so the form they land on is the one they asked for.
                 href={`/login?next=${encodeURIComponent(
-                  `/support?topic=${topic}`,
+                  `/support${prefillQuery(searchParams)}`,
                 )}`}
                 prefetch={false}
                 className="inline-flex h-10 select-none items-center justify-center gap-2 whitespace-nowrap rounded-md bg-phosphor px-4 text-sm font-semibold leading-none text-on-phosphor shadow-cta hover:bg-phosphor-200 active:scale-[0.98]"
@@ -131,6 +133,13 @@ export default async function SupportPage(props: {
               </Link>{" "}
               — there&rsquo;s a 48-hour window on tuition, and a request filed
               here stops the clock the moment we record it.
+            </li>
+            <li>
+              <strong className="text-ink">Safety</strong> — if anyone is in
+              immediate danger, call 911. If you or someone you know is
+              struggling, call or text 988. To report a concern to us, choose
+              &ldquo;Report a concern&rdquo;: only a small number of senior
+              staff can read those.
             </li>
             <li>
               <strong className="text-ink">Your data</strong> — what we hold and

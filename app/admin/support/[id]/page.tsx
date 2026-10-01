@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
-import { requireViewer } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
@@ -13,7 +13,14 @@ import {
   listTicketReplies,
   resolveTicketPayments,
 } from "@/lib/support";
-import { CATEGORY_LABELS, supportScopeFor } from "@/lib/support-access";
+import {
+  CATEGORY_LABELS,
+  CHANNEL_LABELS,
+  canStaffManageTicket,
+  canStaffSeeTicket,
+  supportScopeFor,
+} from "@/lib/support-access";
+import { ConfidentialBadge, PriorityBadge } from "../badges";
 import { StaffThread } from "./staff-thread";
 import { TicketControls } from "./ticket-controls";
 
@@ -30,10 +37,12 @@ function money(cents: number, currency: string): string {
 /**
  * One support request, for the team.
  *
- * The layout has already required support.view for this path; the viewer is
- * resolved again here to decide whether to draw the write affordances, and to
- * feed the same read the requester's page uses — so there is exactly one code
- * path that decides what a ticket is.
+ * The layout has already required support.view for this path, and this page
+ * requires it again rather than trusting the route map — a page that reads
+ * someone's request must say what it needs where it reads it. The viewer's
+ * support scope then decides everything else: a confidential concern is the
+ * same 404 as a missing ticket for anyone without support.sensitive (nothing
+ * here may confirm one exists), and the write affordances need support.manage.
  *
  * Note what this page does NOT have: a refund button. Issuing a refund forks
  * hard on full-versus-partial — a full refund tears down the enrolment and
@@ -45,12 +54,18 @@ function money(cents: number, currency: string): string {
 export default async function AdminSupportTicketPage(props: {
   params: Promise<{ id: string }>;
 }) {
-  const params = await props.params;
-  const { profile, caps } = await requireViewer();
-  const ticket = await getTicketForStaff(params.id, supportScopeFor(profile.id, caps));
-  if (!ticket) notFound();
+  const [params, { profile, caps }] = await Promise.all([
+    props.params,
+    requirePermission("support.view"),
+  ]);
+  const scope = supportScopeFor(profile.id, caps);
+  const ticket = await getTicketForStaff(params.id, scope);
+  // getTicketForStaff already answers null for a confidential ticket this
+  // scope can't see; checking the rule again costs nothing and keeps it true
+  // even if that read changes.
+  if (!ticket || !canStaffSeeTicket(scope, ticket)) notFound();
 
-  const canManage = can(caps, "support.manage");
+  const canManage = canStaffManageTicket(scope, ticket);
 
   const [replies, staff, payments] = await Promise.all([
     // The one call site that passes true. Internal notes are staff-only and
@@ -62,6 +77,15 @@ export default async function AdminSupportTicketPage(props: {
 
   const scrubbed = forRequester(ticket);
   const linked = payments.matched;
+  // What the charge picker offers: the account's recent payments, plus the
+  // linked one if it's older than those — so it can always be changed or
+  // unlinked, never shown as a value the list doesn't contain.
+  const payable =
+    linked && ticket.paymentId === linked.id && !payments.candidates.some((p) => p.id === linked.id)
+      ? [linked, ...payments.candidates]
+      : payments.candidates;
+  const requesterName =
+    ticket.requesterName?.trim() || ticket.accountName?.trim() || ticket.requesterEmail;
 
   return (
     <div className="mx-auto max-w-3xl pb-16">
@@ -74,33 +98,42 @@ export default async function AdminSupportTicketPage(props: {
         Support queue
       </Link>
 
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <PriorityBadge priority={ticket.priority} />
+        {ticket.sensitive && <ConfidentialBadge />}
+        <span className="text-[11px] text-ink-faint">
+          via {CHANNEL_LABELS[ticket.channel]}
+          {ticket.createdByName && ` · logged by ${ticket.createdByName}`}
+        </span>
+      </div>
+
       {/* The admin-only identity strip. Everything the requester-facing
           component is typed not to receive is rendered here instead, on the
           page whose permission gate authorized reading it. */}
-      <Card className="mt-4">
+      <Card className="mt-3">
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">
               From
             </dt>
             <dd className="mt-0.5 text-ink">
-              {ticket.userId ? (
+              {/* "Open person" only for people.view — the profile page is
+                  gated on it, and a dead link is worse than plain text. */}
+              {ticket.userId && can(caps, "people.view") ? (
                 <Link
                   href={`/admin/students/${ticket.userId}`}
                   prefetch={false}
                   className="hover:underline"
                 >
-                  {ticket.requesterName?.trim() ||
-                    ticket.accountName?.trim() ||
-                    ticket.requesterEmail}
+                  {requesterName}
                 </Link>
               ) : (
-                <>
-                  {ticket.requesterName?.trim() || ticket.requesterEmail}
-                  <span className="ml-1.5 text-xs text-ink-faint">
-                    (account deleted)
-                  </span>
-                </>
+                requesterName
+              )}
+              {!ticket.userId && (
+                <span className="ml-1.5 text-xs text-ink-faint">
+                  {ticket.createdBy ? "(no account)" : "(account deleted)"}
+                </span>
               )}
               <span className="mt-0.5 block break-all text-xs text-ink-soft">
                 <a href={`mailto:${ticket.requesterEmail}`} className="hover:underline">
@@ -195,7 +228,9 @@ export default async function AdminSupportTicketPage(props: {
               </li>
             ))}
           </ul>
-          {canManage && (
+          {/* The links that act on money follow the money permission, not the
+              support one: /admin/payments is gated on it. */}
+          {can(caps, "payments.manage") && (
             <Link
               href="/admin/payments"
               prefetch={false}
@@ -205,7 +240,7 @@ export default async function AdminSupportTicketPage(props: {
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           )}
-          {canManage && (
+          {can(caps, "payments.manage") && (
             <p className="mt-1.5 text-xs text-ink-faint">
               Refunds live there, not here: a full refund also tears down the
               enrolment and rolls the application back, and that belongs on the
@@ -250,10 +285,14 @@ export default async function AdminSupportTicketPage(props: {
               ticketId={ticket.id}
               status={ticket.status}
               assignedTo={ticket.assignedTo}
+              priority={ticket.priority}
+              category={ticket.category}
+              sensitive={ticket.sensitive}
               staff={staff}
               canManage={canManage}
+              canSeeSensitive={scope.canSeeSensitive}
               linkedPaymentId={ticket.paymentId}
-              payments={payments.candidates.map((p) => ({
+              payments={payable.map((p) => ({
                 id: p.id,
                 label: `${money(p.amountCents, p.currency)} · ${p.status} · ${
                   (p.paidAt ?? p.createdAt).slice(0, 10)

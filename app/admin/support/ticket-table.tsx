@@ -2,7 +2,13 @@
 import Link from "next/link";
 import { LocalTime } from "@/components/ui/local-time";
 import { TableShell } from "@/app/admin/email/metric-ui";
-import { CATEGORY_LABELS, type TicketCategory, type TicketStatus } from "@/lib/support-access";
+import {
+  CATEGORY_LABELS,
+  type TicketCategory,
+  type TicketPriority,
+  type TicketStatus,
+} from "@/lib/support-access";
+import { ConfidentialBadge, PriorityBadge, isLoudPriority } from "./badges";
 
 /**
  * The queue table.
@@ -21,6 +27,9 @@ export type SupportTicketRow = {
   category: TicketCategory;
   status: TicketStatus;
   requesterLabel: string;
+  priority: TicketPriority;
+  /** A confidential concern — only ever in the rows of someone allowed to see it. */
+  sensitive: boolean;
   assignedName: string | null;
   replyCount: number;
   needsReply: boolean;
@@ -71,7 +80,9 @@ export function SupportTicketTable({ rows }: { rows: SupportTicketRow[] }) {
                 {r.subject}
               </span>
             </Link>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-ink-faint">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-faint">
+              {isLoudPriority(r.priority) && <PriorityBadge priority={r.priority} />}
+              {r.sensitive && <ConfidentialBadge />}
               <span className="font-mono uppercase tracking-wider">
                 {r.reference}
               </span>
