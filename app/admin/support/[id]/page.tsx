@@ -13,7 +13,7 @@ import {
   listTicketReplies,
   resolveTicketPayments,
 } from "@/lib/support";
-import { CATEGORY_LABELS } from "@/lib/support-access";
+import { CATEGORY_LABELS, supportScopeFor } from "@/lib/support-access";
 import { StaffThread } from "./staff-thread";
 import { TicketControls } from "./ticket-controls";
 
@@ -47,7 +47,7 @@ export default async function AdminSupportTicketPage(props: {
 }) {
   const params = await props.params;
   const { profile, caps } = await requireViewer();
-  const ticket = await getTicketForStaff(params.id);
+  const ticket = await getTicketForStaff(params.id, supportScopeFor(profile.id, caps));
   if (!ticket) notFound();
 
   const canManage = can(caps, "support.manage");
@@ -56,7 +56,7 @@ export default async function AdminSupportTicketPage(props: {
     // The one call site that passes true. Internal notes are staff-only and
     // lib/support.ts defaults this to false so forgetting is the safe answer.
     listTicketReplies(ticket.id, { includeInternal: true }),
-    canManage ? listAssignableStaff() : Promise.resolve([]),
+    canManage ? listAssignableStaff({ sensitive: ticket.sensitive }) : Promise.resolve([]),
     resolveTicketPayments(ticket),
   ]);
 
@@ -114,7 +114,7 @@ export default async function AdminSupportTicketPage(props: {
               Recorded
             </dt>
             <dd className="mt-0.5 text-ink">
-              {formatReceivedAt(ticket.createdAt)}
+              {formatReceivedAt(ticket.receivedAt)}
               {ticket.category === "refund" && (
                 <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-300">
                   The 48-hour refund window is measured from the payment, not
@@ -228,7 +228,7 @@ export default async function AdminSupportTicketPage(props: {
             category: scrubbed.category,
             status: scrubbed.status,
             createdAt: scrubbed.createdAt,
-            receivedAtLabel: formatReceivedAt(scrubbed.createdAt),
+            receivedAtLabel: formatReceivedAt(scrubbed.receivedAt),
             requesterName: scrubbed.requesterName,
             accountName: scrubbed.accountName,
           }}
@@ -236,7 +236,9 @@ export default async function AdminSupportTicketPage(props: {
             const s = forRequester(r);
             return {
               id: s.id,
-              authorName: s.authorName,
+              authorName:
+                s.authorName ??
+                (ticket.requesterName?.trim() || ticket.accountName?.trim() || "Requester"),
               body: s.body,
               isStaff: s.isStaff,
               isInternal: s.isInternal,

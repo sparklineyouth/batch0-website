@@ -19,6 +19,7 @@ import {
   REPLY_BODY_MAX,
   TICKET_STATUSES,
   canStaffReply,
+  supportScopeFor,
   type TicketStatus,
 } from "@/lib/support-access";
 
@@ -58,21 +59,20 @@ export async function replyAsStaff(input: {
   internal?: boolean;
 }): Promise<ActionResult> {
   return runAction({ name: "replyAsStaff" }, async () => {
-    const { userId } = await assertPermission("support.manage");
+    const actor = await assertPermission("support.manage");
+    const scope = supportScopeFor(actor.userId, actor.caps);
     const body = cleanReply(input.body);
     const internal = input.internal === true;
 
-    const ticket = await getTicketForStaff(input.ticketId);
+    const ticket = await getTicketForStaff(input.ticketId, scope);
     if (!ticket) throw new Error("That request no longer exists.");
     if (!canStaffReply(ticket)) throw new Error("This request can't be replied to.");
 
-    const reply = await appendReply({
+    const { reply } = await appendReply({
       ticket,
       body,
       // Derived from the permission assertion above, never from the client.
-      isStaff: true,
-      isInternal: internal,
-      authorId: userId,
+      author: { kind: "staff", userId: actor.userId, internal },
     });
 
     // An internal note is not a message to the requester: no email, and the
@@ -105,7 +105,8 @@ export async function changeTicketStatus(input: {
   to: string;
 }): Promise<ActionResult> {
   return runAction({ name: "changeTicketStatus" }, async () => {
-    await assertPermission("support.manage");
+    const actor = await assertPermission("support.manage");
+    const scope = supportScopeFor(actor.userId, actor.caps);
 
     const from = input.from as TicketStatus;
     const to = input.to as TicketStatus;
@@ -114,13 +115,13 @@ export async function changeTicketStatus(input: {
     }
     if (from === to) return;
 
-    const ticket = await getTicketForStaff(input.ticketId);
+    const ticket = await getTicketForStaff(input.ticketId, scope);
     if (!ticket) throw new Error("That request no longer exists.");
 
     // The `from` comparison inside setTicketStatus is an optimistic lock, not
     // decoration: another admin may have resolved this between the page render
     // and the click, and silently overwriting them is worse than saying so.
-    const moved = await setTicketStatus({ ticketId: ticket.id, from, to });
+    const moved = await setTicketStatus({ ticketId: ticket.id, from, to, scope });
     if (!moved) {
       throw new Error(
         "Someone else changed this request just now — reload to see where it got to.",
@@ -131,7 +132,7 @@ export async function changeTicketStatus(input: {
     // parking a ticket as waiting-on-them are all either internal bookkeeping
     // or already carried by a reply — an email for each would train people to
     // ignore the one that matters.
-    if (to === "resolved") await announceResolved(ticket);
+    if (to === "resolved") await announceResolved(moved);
 
     await logAudit({
       action: `support_ticket.${to}`,
@@ -149,11 +150,12 @@ export async function setTicketAssignee(input: {
   assigneeId: string | null;
 }): Promise<ActionResult> {
   return runAction({ name: "setTicketAssignee" }, async () => {
-    await assertPermission("support.manage");
-    const ticket = await getTicketForStaff(input.ticketId);
+    const actor = await assertPermission("support.manage");
+    const scope = supportScopeFor(actor.userId, actor.caps);
+    const ticket = await getTicketForStaff(input.ticketId, scope);
     if (!ticket) throw new Error("That request no longer exists.");
 
-    await assignTicket(ticket.id, input.assigneeId || null);
+    await assignTicket({ ticketId: ticket.id, assigneeId: input.assigneeId || null, scope });
     await logAudit({
       action: input.assigneeId ? "support_ticket.assigned" : "support_ticket.unassigned",
       targetType: "support_ticket",
@@ -178,8 +180,9 @@ export async function setTicketPayment(input: {
   paymentId: string | null;
 }): Promise<ActionResult> {
   return runAction({ name: "setTicketPayment" }, async () => {
-    await assertPermission("support.manage");
-    const ticket = await getTicketForStaff(input.ticketId);
+    const actor = await assertPermission("support.manage");
+    const scope = supportScopeFor(actor.userId, actor.caps);
+    const ticket = await getTicketForStaff(input.ticketId, scope);
     if (!ticket) throw new Error("That request no longer exists.");
 
     if (input.paymentId) {
@@ -197,7 +200,7 @@ export async function setTicketPayment(input: {
       }
     }
 
-    await linkTicketPayment(ticket.id, input.paymentId || null);
+    await linkTicketPayment({ ticketId: ticket.id, paymentId: input.paymentId || null, scope });
     await logAudit({
       action: "support_ticket.payment_linked",
       targetType: "support_ticket",

@@ -3,17 +3,13 @@ import { LifeBuoy } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { isMissingTable } from "@/lib/email/store";
-import {
-  SUPPORT_PAGE_LIMIT,
-  countTicketsByStatus,
-  listTicketsForStaff,
-} from "@/lib/support";
+import { countTicketsForStaff, listTicketsForStaff } from "@/lib/support";
 import {
   CATEGORY_LABELS,
   STAFF_STATUS_LABELS,
   TICKET_CATEGORIES,
+  supportScopeFor,
   toCategory,
-  toStatus,
   type TicketCategory,
   type TicketStatus,
 } from "@/lib/support-access";
@@ -25,6 +21,9 @@ import {
 export const metadata = { title: "Support · Admin" };
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+/** One page of the queue; this page has no pagination controls yet. */
+const SUPPORT_PAGE_LIMIT = 100;
 
 /** The views, in the order someone working the queue wants them. */
 const VIEWS = ["queue", "open", "waiting_on_requester", "resolved", "closed", "all"] as const;
@@ -53,18 +52,20 @@ export default async function AdminSupportPage(props: {
     : null;
 
   // "queue" is the default and is not a status — it is "anything still waiting
-  // on us", across open and reopened tickets alike. Every other view is a
-  // straight status filter.
-  const statusFilter: TicketStatus | null =
-    view === "queue" || view === "all" ? null : toStatus(view);
-
+  // on us", across open and reopened tickets alike, which is exactly the open
+  // tickets (the data layer's "needs_reply" view). Every other view is a
+  // straight status filter. The scope carries the confidentiality rule.
+  const scope = supportScopeFor(viewer.profile.id, viewer.caps);
   const [{ tickets, error }, counts] = await Promise.all([
-    listTicketsForStaff({
-      status: statusFilter,
-      needsReply: view === "queue" ? true : undefined,
-      category,
-    }),
-    countTicketsByStatus().catch(() => null),
+    listTicketsForStaff(
+      {
+        view: view === "queue" || view === "open" ? "needs_reply" : view,
+        category,
+        pageSize: SUPPORT_PAGE_LIMIT,
+      },
+      scope,
+    ),
+    countTicketsForStaff(scope),
   ]);
 
   if (error && isMissingTable(error)) {
@@ -105,16 +106,11 @@ export default async function AdminSupportPage(props: {
   }));
 
   const chipCount = (v: View) =>
-    !counts
+    !counts.available
       ? null
-      : v === "queue"
+      : v === "queue" || v === "open"
         ? counts.needs_reply
-        : v === "all"
-          ? counts.open +
-            counts.waiting_on_requester +
-            counts.resolved +
-            counts.closed
-          : counts[v as TicketStatus];
+        : counts[v];
 
   return (
     <div className="mx-auto max-w-6xl pb-16">

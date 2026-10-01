@@ -14,7 +14,7 @@ import {
   announceRequesterReply,
   appendReply,
   createTicket,
-  getTicketByToken,
+  getSupportTicketByToken,
 } from "@/lib/support";
 import {
   RECEIPT_REF_MAX,
@@ -142,6 +142,7 @@ export async function submitSupportTicket(input: {
     }
 
     const ticket = await createTicket({
+      filedBy: "requester",
       userId,
       email: profile.email,
       name: profile.full_name,
@@ -149,6 +150,7 @@ export async function submitSupportTicket(input: {
       subject,
       body,
       receiptRef,
+      surface: "web",
     });
 
     // Awaited rather than fired-and-forgotten: a serverless invocation can be
@@ -209,7 +211,7 @@ export async function replyToSupportTicket(input: {
       throw new Error("Too many replies just now. Give it a minute.");
     }
 
-    const ticket = await getTicketByToken(input.token);
+    const ticket = await getSupportTicketByToken(input.token);
     // Same answer for "no such ticket" and "bad token" — there is no second
     // credential to be wrong about, and a distinct error would confirm to a
     // prober that a token was one character off.
@@ -220,13 +222,12 @@ export async function replyToSupportTicket(input: {
       );
     }
 
-    await appendReply({
+    const { reply } = await appendReply({
       ticket,
       body,
-      isStaff: false,
-      authorId: ticket.userId,
+      author: { kind: "requester", userId: ticket.userId, via: "token" },
     });
-    await announceRequesterReply(ticket, body);
+    await announceRequesterReply(ticket, { id: reply.id, body });
 
     revalidatePath(`/support/t/${ticket.token}`);
     revalidatePath(REQUESTER_LIST);

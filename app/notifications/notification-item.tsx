@@ -14,6 +14,9 @@ import {
   ShieldAlert,
   ChevronRight,
   Video,
+  LifeBuoy,
+  MessageSquareReply,
+  UserCheck,
 } from "lucide-react";
 import { markNotificationRead } from "./actions";
 import { formatRelativeTime } from "@/lib/format-time";
@@ -46,6 +49,13 @@ const ICON_BY_TYPE: Record<string, any> = {
   call_cancelled: Video,
   interview_requested: Video,
   interview_declined: Video,
+  // Support (lib/support.ts): the team's bells for a new request, a follow-up
+  // and an assignment; the requester's for a reply and a resolution.
+  support_ticket: LifeBuoy,
+  support_reply: MessageSquareReply,
+  support_assigned: UserCheck,
+  support_staff_reply: MessageSquareText,
+  support_resolved: CheckCircle,
 };
 
 function iconFor(type: string) {

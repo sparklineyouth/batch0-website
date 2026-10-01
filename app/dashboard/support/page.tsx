@@ -18,9 +18,9 @@ export const dynamic = "force-dynamic";
  * mind must not meet a LockedFeature here. Locking this page would be locking
  * the exit.
  *
- * Rows link to /support/t/<token> rather than a /dashboard route, so there is
- * exactly one thread page and one reply path in the product — the same URL
- * that arrives by email.
+ * Rows link to the owner's thread at /dashboard/support/<reference>, which the
+ * session authorizes — never to the emailed /support/t/<token> link, whose
+ * token must not reach a client-side navigation (and so analytics).
  */
 export default async function DashboardSupportPage() {
   const { profile } = await requireViewer();
@@ -66,7 +66,7 @@ export default async function DashboardSupportPage() {
           {tickets.map((t) => (
             <li key={t.id}>
               <Link
-                href={`/support/t/${t.token}`}
+                href={`/dashboard/support/${t.reference}`}
                 prefetch={false}
                 className="block rounded-xl border border-line bg-wash p-4 hover:border-ink/30"
               >

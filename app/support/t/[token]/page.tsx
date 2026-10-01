@@ -6,7 +6,7 @@ import { getPublicSiteConfig } from "@/lib/site-config";
 import {
   forRequester,
   formatReceivedAt,
-  getTicketByToken,
+  getSupportTicketByToken,
   listTicketReplies,
 } from "@/lib/support";
 import { canRequesterReply } from "@/lib/support-access";
@@ -40,7 +40,7 @@ export default async function SupportThreadPage(props: {
   params: Promise<{ token: string }>;
 }) {
   const params = await props.params;
-  const ticket = await getTicketByToken(params.token);
+  const ticket = await getSupportTicketByToken(params.token);
   if (!ticket) notFound();
 
   const [replies, config] = await Promise.all([
@@ -71,7 +71,7 @@ export default async function SupportThreadPage(props: {
             category: scrubbed.category,
             status: scrubbed.status,
             createdAt: scrubbed.createdAt,
-            receivedAtLabel: formatReceivedAt(scrubbed.createdAt),
+            receivedAtLabel: formatReceivedAt(scrubbed.receivedAt),
             requesterName: scrubbed.requesterName,
             accountName: scrubbed.accountName,
           }}
@@ -79,7 +79,7 @@ export default async function SupportThreadPage(props: {
             const s = forRequester(r);
             return {
               id: s.id,
-              authorName: s.authorName,
+              authorName: s.authorName ?? "You",
               body: s.body,
               isStaff: s.isStaff,
               isInternal: s.isInternal,

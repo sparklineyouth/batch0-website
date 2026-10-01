@@ -1,29 +1,73 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { isSecretUrlPath } from "./payment-privacy.ts";
 import {
+  AUTO_RESOLVE_AFTER_DAYS,
+  AUTO_RESOLVE_NOTE,
+  CATEGORY_DEFAULT_PRIORITY,
+  CATEGORY_GROUPS,
   CATEGORY_HINTS,
   CATEGORY_LABELS,
+  CHANNEL_LABELS,
+  OUTCOME_LABELS,
+  PRIORITY_LABELS,
+  PRIORITY_RANK,
   REPLY_BODY_MAX,
+  REPLY_VIAS,
+  SLA_TARGET_HOURS,
+  STAFF_LOG_CHANNELS,
   STATUS_LABELS,
   STAFF_STATUS_LABELS,
   TICKET_BODY_MAX,
   TICKET_BODY_MIN,
   TICKET_CATEGORIES,
+  TICKET_CHANNELS,
+  TICKET_OUTCOMES,
+  TICKET_PRIORITIES,
   TICKET_STATUSES,
   TICKET_SUBJECT_MAX,
+  canRequesterMarkSolved,
   canRequesterReply,
+  canStaffManageTicket,
   canStaffReply,
+  canStaffSeeTicket,
+  checkStaffReceivedAt,
+  codePointLength,
+  defaultPriorityFor,
+  deriveSubject,
+  easternLocalToIso,
+  escapeLikePattern,
+  formatElapsed,
   formatReceivedAt,
+  ilikeAnyFilter,
   isOpenStatus,
+  isSecretPath,
+  isSensitiveCategory,
   isTicketReference,
   isTicketToken,
-  needsReplyFor,
+  isUuid,
+  needsReplyForStatus,
   normalizeReference,
+  parseCategory,
+  readStoredContext,
+  refundWindow,
+  sanitizeContext,
+  sanitizeContextPage,
+  slaDueAt,
+  slaState,
   statusAfterRequesterReply,
   statusAfterStaffReply,
+  statusChangeFields,
+  supportScopeFor,
+  supportSearchPlan,
   toCategory,
+  toEasternLocalInput,
+  toOutcome,
+  toPriority,
+  toStaffLogChannel,
   toStatus,
+  toSurface,
   wantsReceiptRef,
   type TicketStatus,
 } from "./support-access.ts";
@@ -33,24 +77,38 @@ import {
 // Support tickets carry two promises that are stronger than the usual
 // "don't show the wrong row" — one legal, one about trust:
 //
-//   1. A refund request filed through the form is a formal instrument under
-//      app/(legal)/refund-policy. The policy now says the form is a valid
-//      channel and that the recorded timestamp stops the 48-hour clock, so a
-//      state machine that quietly drops a request, or refuses a follow-up on
-//      one, has legal consequences and not just UX ones.
-//   2. A resolved ticket must always be reopenable by the person who filed
-//      it. "That didn't actually fix it" is the single most important message
-//      a support system can accept.
+//   1. A refund request filed through the form (or logged by the team from an
+//      email) is a formal instrument under app/(legal)/refund-policy. The
+//      recorded arrival time stops the 48-hour clock, so a state machine that
+//      quietly drops a request, refuses a follow-up on one, or mis-measures
+//      the window has legal consequences and not just UX ones.
+//   2. A confidential concern is readable only by the few people trusted with
+//      it, and a resolved ticket is always reopenable by the person who filed
+//      it.
 //
 // These pin both in code. The RLS policies in migration 0090 make the
-// visibility half of the same promise at the row level, and the length caps
-// below are asserted against that migration's own CHECK constraints so the
-// three copies of the rule can't drift apart silently.
+// visibility half of the same promise at the row level (exercised in
+// lib/support-migration-db.test.ts), and the vocabularies and length caps
+// below are read back out of that migration so the copies can't drift.
 
 const open = { status: "open" as TicketStatus };
 const waiting = { status: "waiting_on_requester" as TicketStatus };
 const resolved = { status: "resolved" as TicketStatus };
 const closed = { status: "closed" as TicketStatus };
+
+const SQL = readFileSync(
+  new URL("../supabase/migrations/0090_support_tickets.sql", import.meta.url),
+  "utf8",
+);
+
+/** The quoted values of an `X in ('a', 'b')` list in the named constraint. */
+function sqlList(pattern: RegExp): string[] {
+  const m = pattern.exec(SQL);
+  assert.ok(m, `pattern ${pattern} not found in 0090`);
+  return [...m[1].matchAll(/'([^']*)'/g)].map((x) => x[1]).sort();
+}
+
+const sorted = (xs: readonly string[]) => [...xs].sort();
 
 // ---------------------------------------------------------------------------
 // Who may speak
@@ -67,6 +125,13 @@ test("a requester can always reply except on a closed ticket", () => {
   assert.equal(canRequesterReply(closed), false);
 });
 
+test("a requester can mark only a live ticket solved", () => {
+  assert.equal(canRequesterMarkSolved(open), true);
+  assert.equal(canRequesterMarkSolved(waiting), true);
+  assert.equal(canRequesterMarkSolved(resolved), false);
+  assert.equal(canRequesterMarkSolved(closed), false);
+});
+
 test("the team can always reply, including on a closed ticket", () => {
   for (const t of [open, waiting, resolved, closed]) {
     assert.equal(canStaffReply(t), true, t.status);
@@ -74,34 +139,46 @@ test("the team can always reply, including on a closed ticket", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The queue state machine
+// The status machine
 // ---------------------------------------------------------------------------
 
-test("a requester's follow-up reopens a resolved ticket", () => {
+test("a requester's follow-up reopens anything but a closed ticket", () => {
   assert.equal(statusAfterRequesterReply(resolved), "open");
   assert.equal(statusAfterRequesterReply(waiting), "open");
   assert.equal(statusAfterRequesterReply(open), "open");
-});
-
-test("a closed ticket stays closed whoever posts on it", () => {
   assert.equal(statusAfterRequesterReply(closed), "closed");
-  assert.equal(statusAfterStaffReply(closed), "closed");
 });
 
-test("the team answering parks the ticket on the requester", () => {
+test("the team answering parks the ticket on the requester by default", () => {
   assert.equal(statusAfterStaffReply(open), "waiting_on_requester");
   assert.equal(statusAfterStaffReply(waiting), "waiting_on_requester");
 });
 
 test("the team posting on a resolved ticket does not revive it", () => {
   // Adding "and here's the refund id" to a finished thread is the commonest
-  // reason to post on one; it must not mark our own closed work as pending.
+  // reason to post on one; it must not mark our own finished work as pending.
   assert.equal(statusAfterStaffReply(resolved), "resolved");
 });
 
-test("needs_reply tracks which side spoke last", () => {
-  assert.equal(needsReplyFor(true), false, "the team's reply clears the queue flag");
-  assert.equal(needsReplyFor(false), true, "a follow-up raises it again");
+test("send & resolve, and keep-open, are honoured — but never on a closed ticket", () => {
+  assert.equal(statusAfterStaffReply(open, "resolved"), "resolved");
+  assert.equal(statusAfterStaffReply(waiting, "resolved"), "resolved");
+  assert.equal(statusAfterStaffReply(open, "open"), "open", "we still owe something");
+  assert.equal(statusAfterStaffReply(resolved, "open"), "open");
+  assert.equal(statusAfterStaffReply(closed, "resolved"), "closed");
+  assert.equal(statusAfterStaffReply(closed, "open"), "closed", "reopening is the status control's job");
+  assert.equal(
+    statusAfterStaffReply(open, "closed"),
+    "waiting_on_requester",
+    "a reply is never the way a ticket gets closed",
+  );
+});
+
+test("needs_reply is exactly 'open'", () => {
+  assert.deepEqual(
+    TICKET_STATUSES.filter(needsReplyForStatus),
+    ["open"],
+  );
 });
 
 test("only open and waiting count as live", () => {
@@ -111,36 +188,99 @@ test("only open and waiting count as live", () => {
   assert.equal(isOpenStatus("closed"), false);
 });
 
+test("a status change writes its bookkeeping together", () => {
+  const now = "2026-10-01T12:00:00.000Z";
+  assert.deepEqual(statusChangeFields("open", "resolved", now, "answered"), {
+    status: "resolved",
+    needs_reply: false,
+    status_changed_at: now,
+    resolved_at: now,
+    outcome: "answered",
+  });
+  assert.deepEqual(
+    statusChangeFields("resolved", "open", now),
+    { status: "open", needs_reply: true, status_changed_at: now, resolved_at: null, outcome: null },
+    "reopening clears the resolution it is undoing",
+  );
+  assert.deepEqual(
+    statusChangeFields("resolved", "closed", now),
+    { status: "closed", needs_reply: false, status_changed_at: now },
+    "closing a resolved ticket keeps when it was resolved and how it ended",
+  );
+  assert.deepEqual(statusChangeFields("open", "waiting_on_requester", now), {
+    status: "waiting_on_requester",
+    needs_reply: false,
+    status_changed_at: now,
+    resolved_at: null,
+    outcome: null,
+  });
+  assert.equal(
+    statusChangeFields("open", "closed", now, "duplicate").outcome,
+    "duplicate",
+  );
+  for (const from of TICKET_STATUSES) {
+    for (const to of TICKET_STATUSES) {
+      if (from === to) continue;
+      assert.equal(
+        statusChangeFields(from, to, now).needs_reply,
+        to === "open",
+        `${from} → ${to} must keep needs_reply ⇔ open`,
+      );
+    }
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Untrusted input
 // ---------------------------------------------------------------------------
 
-test("an unrecognised category falls back to other rather than throwing", () => {
+test("an unrecognised topic falls back to other; a form post must say what it is", () => {
   // A mistyped ?topic= in a link we put in a legal page must still open a
-  // usable form, not an error page.
+  // usable form…
   assert.equal(toCategory("refund"), "refund");
   assert.equal(toCategory("REFUND"), "other", "matching is exact, not case-folded");
   assert.equal(toCategory("nonsense"), "other");
   assert.equal(toCategory(undefined), "other");
-  assert.equal(toCategory(null), "other");
   assert.equal(toCategory(42), "other");
+  // …but the submitted form must not silently file a refund as "Something else".
+  assert.equal(parseCategory("technical"), "technical");
+  assert.equal(parseCategory("nonsense"), null);
+  assert.equal(parseCategory(""), null);
+  assert.equal(parseCategory(undefined), null);
 });
 
-test("an unrecognised status filter is null, not a silent default", () => {
-  // Distinct from toCategory on purpose: a bad status must not quietly show a
-  // different slice of the queue than the admin asked for.
+test("unrecognised filters are null, not a silent default", () => {
   assert.equal(toStatus("resolved"), "resolved");
-  assert.equal(toStatus("queue"), null, "queue is a view, not a status");
-  assert.equal(toStatus("nonsense"), null);
+  assert.equal(toStatus("needs_reply"), null, "a view is not a status");
   assert.equal(toStatus(undefined), null);
+  assert.equal(toPriority("urgent"), "urgent");
+  assert.equal(toPriority("critical"), null);
+  assert.equal(toOutcome("partially_refunded"), "partially_refunded");
+  assert.equal(toOutcome("won"), null);
+  assert.equal(toStaffLogChannel("phone"), "phone");
+  assert.equal(toStaffLogChannel("web"), null, "staff log what arrived by email, phone or other");
+  assert.equal(toSurface("app"), "app");
+  assert.equal(toSurface("anything"), "web");
 });
 
 test("only the money categories ask for a receipt", () => {
-  assert.equal(wantsReceiptRef("refund"), true);
-  assert.equal(wantsReceiptRef("billing"), true);
-  assert.equal(wantsReceiptRef("account"), false);
-  assert.equal(wantsReceiptRef("privacy"), false);
-  assert.equal(wantsReceiptRef("other"), false);
+  assert.deepEqual(TICKET_CATEGORIES.filter(wantsReceiptRef), ["refund", "billing"]);
+});
+
+test("uuids are checked by shape", () => {
+  assert.equal(isUuid("11111111-1111-4111-8111-111111111111"), true);
+  assert.equal(isUuid("11111111-1111-4111-8111-11111111111"), false);
+  assert.equal(isUuid("'; drop table x; --"), false);
+  assert.equal(isUuid(null), false);
+});
+
+test("lengths are measured the way Postgres measures them", () => {
+  // Ten emoji are 20 UTF-16 units and 10 characters to char_length. A
+  // .length check would pass a body the database then refuses.
+  const tenEmoji = "😀".repeat(10);
+  assert.equal(tenEmoji.length, 20);
+  assert.equal(codePointLength(tenEmoji), 10);
+  assert.ok(codePointLength(tenEmoji) < TICKET_BODY_MIN);
 });
 
 // ---------------------------------------------------------------------------
@@ -157,8 +297,6 @@ test("a thread token is accepted only at exactly 43 base64url characters", () =>
   assert.equal(isTicketToken("a".repeat(42) + "-"), true, "- and _ are");
   assert.equal(isTicketToken(null), false);
   assert.equal(isTicketToken(undefined), false);
-  // Shape is checked before any database round trip, so a probe costs nothing
-  // and learns nothing.
   assert.equal(isTicketToken("' or 1=1 --"), false);
 });
 
@@ -181,10 +319,6 @@ test("a reference read off a receipt survives case and spacing", () => {
   assert.equal(normalizeReference("B04F2A9C7K"), want);
   assert.equal(normalizeReference(""), "", "nothing usable returns nothing");
   assert.equal(normalizeReference("B0-4F2A"), "", "a partial reference is not guessed at");
-  // Every excluded symbol, not just one: the negated character class in
-  // normalizeReference is a separate copy of the alphabet from the validator's
-  // positive one, and an L that survived the strip while failing the validator
-  // is exactly the bug this covers.
   for (const bad of ["B0-4F2I-9C7K", "B0-4F2L-9C7K", "B0-4F2O-9C7K", "B0-4F2U-9C7K"]) {
     assert.equal(
       normalizeReference(bad),
@@ -195,8 +329,6 @@ test("a reference read off a receipt survives case and spacing", () => {
 });
 
 test("normalizeReference only ever emits references the validator accepts", () => {
-  // The two functions hold independent copies of the alphabet. Anything the
-  // normaliser returns non-empty must be a reference we can actually look up.
   const inputs = [
     "b0-4f2a-9c7k",
     "4F2A9C7K",
@@ -222,8 +354,6 @@ test("normalizeReference only ever emits references the validator accepts", () =
 });
 
 test("every reference the generator can emit passes the validator", () => {
-  // The generator and the SQL CHECK constraint share this alphabet; a symbol
-  // in one but not the other is a row the database refuses to store.
   for (const c of "23456789ABCDEFGHJKMNPQRSTVWXYZ") {
     assert.equal(
       isTicketReference(`B0-${c}${c}${c}${c}-${c}${c}${c}${c}`),
@@ -239,14 +369,13 @@ test("every reference the generator can emit passes the validator", () => {
 // These exist because the first version of formatReceivedAt combined
 // dateStyle/timeStyle with timeZoneName, which Intl rejects outright with
 // `TypeError: Invalid option`. Nothing caught it: every Intl option is typed
-// optional so tsc was clean, and all three call sites are force-dynamic so
+// optional so tsc was clean, and every call site is force-dynamic so
 // `next build` never rendered them — the function threw on every call while
 // the suite stayed green. Only an executed assertion closes that gap.
 // ---------------------------------------------------------------------------
 
 test("formatReceivedAt returns a real timestamp instead of throwing", () => {
   const out = formatReceivedAt("2026-09-30T19:04:00.000Z");
-  assert.equal(typeof out, "string");
   assert.ok(out.length > 0, "must not be empty");
   // 19:04 UTC on Sep 30 is 3:04 PM in New York, during EDT.
   assert.match(out, /September 30, 2026/);
@@ -254,48 +383,405 @@ test("formatReceivedAt returns a real timestamp instead of throwing", () => {
 });
 
 test("formatReceivedAt names the zone, which is the whole reason it exists", () => {
-  // A timestamp that stops a legal clock cannot be printed without saying
-  // which clock it is. This is also the assertion that fails if someone
-  // "simplifies" the option bag back to dateStyle/timeStyle, because that
-  // combination cannot carry a zone abbreviation at all.
   assert.match(formatReceivedAt("2026-09-30T19:04:00.000Z"), /EDT/);
   assert.match(formatReceivedAt("2026-01-15T19:04:00.000Z"), /EST/);
 });
 
 test("formatReceivedAt pins the zone rather than following the machine", () => {
-  // Same instant, and the output must not depend on where the server is. A
-  // viewer-local rendering would be ambiguous in exactly the dispute this
-  // string exists to settle.
   const iso = "2026-07-04T02:30:00.000Z";
   assert.match(formatReceivedAt(iso), /July 3, 2026/);
   assert.match(formatReceivedAt(iso), /10:30 PM EDT/);
 });
 
 test("an unparseable timestamp yields an empty string, not an exception", () => {
-  // The call sites render a page whose job is to show someone their support
-  // request; a bad stored value must cost a line, not the page.
   for (const bad of ["", "not a date", "2026-13-45T99:99:99Z"]) {
     assert.equal(formatReceivedAt(bad), "", JSON.stringify(bad));
   }
+});
+
+test("a staff-entered arrival time is read as New York time, across DST", () => {
+  // EDT (UTC-4) in October, EST (UTC-5) in January.
+  assert.equal(easternLocalToIso("2026-10-01T09:30"), "2026-10-01T13:30:00.000Z");
+  assert.equal(easternLocalToIso("2026-01-15T09:30"), "2026-01-15T14:30:00.000Z");
+  // Either side of the November change, the wall time lands on its own offset.
+  assert.equal(easternLocalToIso("2026-11-01T00:30"), "2026-11-01T04:30:00.000Z");
+  assert.equal(easternLocalToIso("2026-11-01T03:00"), "2026-11-01T08:00:00.000Z");
+  // And it round-trips back into the form.
+  for (const local of ["2026-10-01T09:30", "2026-01-15T23:59", "2026-03-08T12:00"]) {
+    assert.equal(toEasternLocalInput(easternLocalToIso(local)!), local);
+  }
+  // Nonsense is refused rather than rolled over into another day.
+  for (const bad of ["", "2026-02-31T09:00", "2026-10-01 09:30x", "yesterday", "2026-10-01T25:00"]) {
+    assert.equal(easternLocalToIso(bad), null, bad);
+  }
+});
+
+test("a logged request can't be dated in the future or past the 90-day horizon", () => {
+  const now = Date.parse("2026-10-01T12:00:00Z");
+  assert.equal(checkStaffReceivedAt("2026-10-01T11:00:00Z", now), null);
+  assert.equal(checkStaffReceivedAt("2026-10-01T12:00:30Z", now), null, "a fast clock gets a minute");
+  assert.match(checkStaffReceivedAt("2026-10-01T13:00:00Z", now)!, /future/);
+  assert.equal(checkStaffReceivedAt("2026-07-04T12:00:00Z", now), null, "89 days");
+  assert.match(checkStaffReceivedAt("2026-06-01T12:00:00Z", now)!, /90 days/);
+  assert.match(checkStaffReceivedAt(null, now)!, /date and time/);
+});
+
+// ---------------------------------------------------------------------------
+// Staff scope — the TS half of the sensitive rule
+// ---------------------------------------------------------------------------
+
+test("the staff scope mirrors the policies: view or manage reads, sensitive is extra", () => {
+  const scope = (perms: string[], superAdmin = false) =>
+    supportScopeFor("u", { permissions: perms, superAdmin });
+  const normal = { sensitive: false };
+  const concern = { sensitive: true };
+
+  const viewer = scope(["support.view"]);
+  assert.deepEqual(
+    [canStaffSeeTicket(viewer, normal), canStaffSeeTicket(viewer, concern), viewer.canManage],
+    [true, false, false],
+  );
+  const manager = scope(["support.manage"]);
+  assert.equal(manager.canView, true, "manage implies reading what you answer");
+  assert.equal(canStaffManageTicket(manager, normal), true);
+  assert.equal(canStaffManageTicket(manager, concern), false);
+
+  const senior = scope(["support.view", "support.manage", "support.sensitive"]);
+  assert.equal(canStaffManageTicket(senior, concern), true);
+
+  const sensitiveAlone = scope(["support.sensitive"]);
+  assert.deepEqual(
+    sensitiveAlone,
+    { userId: "u", canView: false, canManage: false, canSeeSensitive: false },
+    "support.sensitive opens nothing on its own",
+  );
+  const star = scope([], true);
+  assert.equal(canStaffManageTicket(star, concern), true);
+  assert.deepEqual(supportScopeFor("u", null), {
+    userId: "u",
+    canView: false,
+    canManage: false,
+    canSeeSensitive: false,
+  });
+});
+
+test("only concerns are confidential by default, and they start urgent", () => {
+  assert.deepEqual(TICKET_CATEGORIES.filter(isSensitiveCategory), ["concern"]);
+  assert.equal(defaultPriorityFor("concern"), "urgent");
+  assert.equal(defaultPriorityFor("refund"), "high");
+  assert.equal(defaultPriorityFor("feedback"), "low");
+  for (const c of TICKET_CATEGORIES) {
+    if (!["concern", "refund", "feedback"].includes(c)) {
+      assert.equal(CATEGORY_DEFAULT_PRIORITY[c], "normal", c);
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Reply targets
+// ---------------------------------------------------------------------------
+
+test("reply targets run from the requester's last message, by priority", () => {
+  assert.deepEqual(SLA_TARGET_HOURS, { urgent: 4, high: 24, normal: 48, low: 72 });
+  const from = "2026-10-01T12:00:00.000Z";
+  const at = (hours: number) => Date.parse(from) + hours * 3_600_000;
+  const t = (priority: "urgent" | "high" | "normal" | "low", needsReply = true) => ({
+    priority,
+    needsReply,
+    requesterActivityAt: from,
+  });
+
+  assert.equal(slaDueAt(t("urgent")), "2026-10-01T16:00:00.000Z");
+  assert.equal(slaState(t("urgent"), at(1)), "ok");
+  assert.equal(slaState(t("urgent"), at(3)), "due_soon", "75% of the target gone");
+  assert.equal(slaState(t("urgent"), at(4)), "due_soon", "due now is not yet overdue");
+  assert.equal(slaState(t("urgent"), at(4) + 1), "overdue");
+  assert.equal(slaState(t("normal"), at(35)), "ok");
+  assert.equal(slaState(t("normal"), at(36)), "due_soon");
+  assert.equal(slaState(t("low"), at(73)), "overdue");
+  assert.equal(slaState(t("high"), new Date(at(25))), "overdue", "takes a Date too");
+
+  // Nobody owes a reply on a ticket that doesn't need one.
+  assert.equal(slaDueAt(t("urgent", false)), null);
+  assert.equal(slaState(t("urgent", false), at(1000)), "ok");
+});
+
+// ---------------------------------------------------------------------------
+// The refund window
+// ---------------------------------------------------------------------------
+
+test("the refund window is 48 consecutive hours, inclusive", () => {
+  const paid = "2026-09-29T15:00:00.000Z";
+  const after = (ms: number) => new Date(Date.parse(paid) + ms).toISOString();
+  const H = 3_600_000;
+
+  const exactly = refundWindow(after(48 * H), paid);
+  assert.equal(exactly.state, "inside", "exactly 48:00 is still inside");
+  assert.equal(exactly.elapsedMs, 48 * H);
+  assert.equal(exactly.label, "Received 48h 0m after payment — inside the 48-hour window.");
+
+  const oneMinuteLate = refundWindow(after(48 * H + 60_000), paid);
+  assert.equal(oneMinuteLate.state, "outside");
+  assert.equal(oneMinuteLate.label, "Received 48h 1m after payment — outside the 48-hour window.");
+
+  assert.equal(refundWindow(after(48 * H + 1), paid).state, "outside", "one millisecond over is over");
+  assert.equal(refundWindow(after(3 * H + 12 * 60_000), paid).label,
+    "Received 3h 12m after payment — inside the 48-hour window.");
+  assert.equal(refundWindow(after(0), paid).state, "inside", "at the moment of payment");
+  assert.match(refundWindow(after(5 * 24 * H), paid).label, /5d 0h after payment — outside/);
+});
+
+test("a refund window that can't be measured says so instead of guessing", () => {
+  const paid = "2026-09-29T15:00:00.000Z";
+  const before = refundWindow("2026-09-29T14:00:00.000Z", paid);
+  assert.equal(before.state, "before_payment");
+  assert.equal(before.label, "Received 1h 0m before this payment was made.");
+  assert.equal(refundWindow("2026-09-30T15:00:00.000Z", null).state, "unknown");
+  assert.equal(refundWindow("2026-09-30T15:00:00.000Z", "garbage").state, "unknown");
+  assert.equal(refundWindow(null, paid).state, "unknown");
+  assert.equal(refundWindow(null, paid).elapsedMs, null);
+});
+
+test("elapsed time is compact and readable", () => {
+  assert.equal(formatElapsed(45 * 60_000), "45m");
+  assert.equal(formatElapsed(71 * 3_600_000 + 59 * 60_000), "71h 59m");
+  assert.equal(formatElapsed(72 * 3_600_000), "3d 0h");
+  assert.equal(formatElapsed(-90 * 60_000), "1h 30m");
+});
+
+// ---------------------------------------------------------------------------
+// Filing context
+// ---------------------------------------------------------------------------
+
+test("the secret-URL rule is the same one analytics uses", () => {
+  // lib/payment-privacy.ts owns the rule; this file mirrors it because it must
+  // stay import-free. A secret path added there and not here fails this test.
+  const paths = [
+    "/support/t/abc",
+    "/support/t/",
+    "/support/thanks",
+    "/support",
+    "/demo-day/ticket/xyz",
+    "/demo-day/tickets",
+    "/demo-day",
+    "/pay",
+    "/dashboard/support/B0-AAAA-2222",
+    "/",
+    "",
+    null,
+  ];
+  for (const p of paths) {
+    assert.equal(isSecretPath(p), isSecretUrlPath(p), JSON.stringify(p));
+  }
+});
+
+test("a context page is a same-site pathname with no query, hash or secret", () => {
+  assert.equal(sanitizeContextPage("/dashboard/billing"), "/dashboard/billing");
+  assert.equal(
+    sanitizeContextPage("/dashboard/billing?session_id=cs_live_abc#top"),
+    "/dashboard/billing",
+    "query strings are where secrets travel",
+  );
+  assert.equal(sanitizeContextPage("  /dashboard  "), "/dashboard");
+  for (const bad of [
+    "https://evil.example/dashboard",
+    "//evil.example/dashboard",
+    "/\\evil.example",
+    "/dash\\board",
+    "dashboard",
+    "/support/t/" + "a".repeat(43),
+    "/demo-day/ticket/abc",
+    "/has space",
+    "/" + "a".repeat(300),
+    "",
+    42,
+    null,
+  ]) {
+    assert.equal(sanitizeContextPage(bad), null, JSON.stringify(bad));
+  }
+  assert.equal(sanitizeContextPage("/" + "a".repeat(299))?.length, 300, "300 is allowed");
+});
+
+test("the context whitelist keeps only well-formed keys", () => {
+  const ctx = sanitizeContext({
+    page: "/dashboard/course/abc?x=1",
+    source: "Error_Screen",
+    digest: "1234567890",
+    userAgent: "Mozilla/5.0\n(Macintosh)\t Safari",
+    surface: "app",
+    // Not on the whitelist, and not settable from a form even though they
+    // are stored keys: ownership is verified server-side first.
+    chargeId: "11111111-1111-4111-8111-111111111111",
+    token: "secret",
+  } as any);
+  assert.deepEqual(ctx, {
+    page: "/dashboard/course/abc",
+    source: "error_screen",
+    digest: "1234567890",
+    userAgent: "Mozilla/5.0 (Macintosh) Safari",
+    surface: "app",
+  });
+  assert.deepEqual(
+    sanitizeContext({
+      page: "/support/t/" + "a".repeat(43),
+      source: "has spaces",
+      digest: "<script>",
+      userAgent: "",
+      surface: "desktop",
+    }),
+    {},
+  );
+  assert.equal(
+    sanitizeContext({ source: "a".repeat(41) }).source,
+    undefined,
+    "source is at most 40 characters",
+  );
+  assert.equal(sanitizeContext({ digest: "a".repeat(65) }).digest, undefined);
+  assert.equal(
+    sanitizeContext({ userAgent: "x".repeat(500) }).userAgent?.length,
+    300,
+    "a long user agent is trimmed, not refused",
+  );
+  // Worst case still fits the 4 KB CHECK with room to spare.
+  const worst = sanitizeContext({
+    page: "/" + "a".repeat(299),
+    source: "a".repeat(40),
+    digest: "a".repeat(64),
+    userAgent: "😀".repeat(400),
+    surface: "app",
+  });
+  assert.ok(Buffer.byteLength(JSON.stringify(worst)) < 2048);
+});
+
+test("a stored context is re-checked on the way out", () => {
+  assert.deepEqual(readStoredContext(null), {});
+  assert.deepEqual(readStoredContext([1, 2]), {});
+  assert.deepEqual(
+    readStoredContext({
+      page: "/dashboard",
+      chargeId: "11111111-1111-4111-8111-111111111111",
+      demoDayTicketId: "not-a-uuid",
+      extra: "dropped",
+    }),
+    { page: "/dashboard", chargeId: "11111111-1111-4111-8111-111111111111" },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Subject
+// ---------------------------------------------------------------------------
+
+test("a typed subject wins, collapsed and held to the column's cap", () => {
+  assert.equal(
+    deriveSubject({ subject: "  Refund   for\ntuition ", body: "x".repeat(30), category: "refund" }),
+    "Refund for tuition",
+  );
+  const long = deriveSubject({ subject: "word ".repeat(60), body: "", category: "other" });
+  assert.ok(codePointLength(long) <= TICKET_SUBJECT_MAX);
+  assert.ok(long.endsWith("…"));
+});
+
+test("a blank subject comes from the first line of the body, then the category", () => {
+  assert.equal(
+    deriveSubject({ subject: "", body: "\n\n  The video in week 2 won't play  \nIt spins.", category: "technical" }),
+    "The video in week 2 won't play",
+  );
+  const derived = deriveSubject({
+    subject: null,
+    body: "I was charged twice for tuition on September 29 and I would like the duplicate charge refunded to my card please",
+    category: "billing",
+  });
+  assert.ok(codePointLength(derived) <= 80, derived);
+  assert.ok(derived.endsWith("…"));
+  assert.ok(!derived.includes("  "));
+  assert.equal(
+    derived,
+    "I was charged twice for tuition on September 29 and I would like the duplicate…",
+    "cut at a word boundary, never mid-word",
+  );
+  assert.equal(deriveSubject({ subject: "   ", body: "   \n  ", category: "concern" }), "Report a concern");
+  // A first line with no spaces is cut, not lost.
+  const noSpaces = deriveSubject({ subject: "", body: "x".repeat(200), category: "other" });
+  assert.equal(codePointLength(noSpaces), 80);
+  // Emoji are counted the way Postgres counts them, and never split in half.
+  const emoji = deriveSubject({ subject: "", body: "😀".repeat(100), category: "other" });
+  assert.equal(codePointLength(emoji), 80);
+  assert.ok(!emoji.includes("�"));
+});
+
+// ---------------------------------------------------------------------------
+// Staff search
+// ---------------------------------------------------------------------------
+
+test("a reference-shaped search is an exact lookup; anything else is a contains", () => {
+  assert.deepEqual(supportSearchPlan("b0-4f2a-9c7k"), { kind: "reference", reference: "B0-4F2A-9C7K" });
+  assert.deepEqual(supportSearchPlan(" B0 4F2A 9C7K "), { kind: "reference", reference: "B0-4F2A-9C7K" });
+  assert.deepEqual(supportSearchPlan("4f2a-9c7k"), { kind: "reference", reference: "B0-4F2A-9C7K" });
+  // An eight-letter name is a name.
+  assert.deepEqual(supportSearchPlan("Marthajs"), { kind: "text", pattern: "%Marthajs%" });
+  assert.deepEqual(supportSearchPlan("alex@example.com"), { kind: "text", pattern: "%alex@example.com%" });
+  // LIKE metacharacters match literally.
+  assert.deepEqual(supportSearchPlan("100%_off"), { kind: "text", pattern: "%100\\%\\_off%" });
+  assert.deepEqual(supportSearchPlan("a*b"), { kind: "text", pattern: "%a b%" });
+  assert.equal(supportSearchPlan("   "), null);
+  assert.equal(supportSearchPlan(undefined), null);
+  assert.equal(
+    (supportSearchPlan("x".repeat(500)) as { pattern: string }).pattern.length,
+    102,
+    "capped at 100 characters plus the two wildcards",
+  );
+});
+
+test("the search filter quotes what PostgREST reserves", () => {
+  assert.equal(escapeLikePattern("a\\b%c_d"), "a\\\\b\\%c\\_d");
+  assert.equal(
+    ilikeAnyFilter(["requester_email", "subject"], "%alex@example.com%"),
+    'requester_email.ilike."%alex@example.com%",subject.ilike."%alex@example.com%"',
+  );
+  assert.equal(
+    ilikeAnyFilter(["subject"], '%say "hi", (please)\\_x%'),
+    'subject.ilike."%say \\"hi\\", (please)\\\\_x%"',
+  );
 });
 
 // ---------------------------------------------------------------------------
 // The vocabulary is complete
 // ---------------------------------------------------------------------------
 
-test("every category and status has copy for every surface", () => {
-  // A missing label renders as `undefined` in a <Select> or an email subject,
-  // which is the kind of bug that ships because nobody picked that option.
+test("every category, status, priority, channel and outcome has copy", () => {
   for (const c of TICKET_CATEGORIES) {
-    assert.equal(typeof CATEGORY_LABELS[c], "string", `${c} needs a label`);
-    assert.ok(CATEGORY_LABELS[c].length > 0, `${c} label is empty`);
-    assert.equal(typeof CATEGORY_HINTS[c], "string", `${c} needs a hint`);
-    assert.ok(CATEGORY_HINTS[c].length > 0, `${c} hint is empty`);
+    assert.ok(CATEGORY_LABELS[c]?.length > 0, `${c} needs a label`);
+    assert.ok(CATEGORY_HINTS[c]?.length > 0, `${c} needs a hint`);
   }
   for (const s of TICKET_STATUSES) {
     assert.ok(STATUS_LABELS[s]?.length > 0, `${s} needs a requester label`);
     assert.ok(STAFF_STATUS_LABELS[s]?.length > 0, `${s} needs a staff label`);
   }
+  for (const p of TICKET_PRIORITIES) {
+    assert.ok(PRIORITY_LABELS[p]?.length > 0, p);
+    assert.equal(typeof PRIORITY_RANK[p], "number", p);
+  }
+  for (const ch of TICKET_CHANNELS) assert.ok(CHANNEL_LABELS[ch]?.length > 0, ch);
+  for (const o of TICKET_OUTCOMES) assert.ok(OUTCOME_LABELS[o]?.length > 0, o);
+  assert.ok(STAFF_LOG_CHANNELS.every((c) => (TICKET_CHANNELS as readonly string[]).includes(c)));
+});
+
+test("the picker's groups hold every category exactly once, in display order", () => {
+  const flat = CATEGORY_GROUPS.flatMap((g) => g.categories);
+  assert.deepEqual(flat, [...TICKET_CATEGORIES]);
+});
+
+test("priorities rank urgent over high over normal over low", () => {
+  const byRank = [...TICKET_PRIORITIES].sort((a, b) => PRIORITY_RANK[b] - PRIORITY_RANK[a]);
+  assert.deepEqual(byRank, ["urgent", "high", "normal", "low"]);
+});
+
+test("the refund hint doesn't promise what the refund policy refuses", () => {
+  // Demo Day tickets are final sale unless batch0 cancels Demo Day.
+  assert.match(CATEGORY_HINTS.refund, /final sale/);
+  assert.match(CATEGORY_HINTS.refund, /48 hours/);
+  // There is no self-serve deletion; the hint must not imply one.
+  assert.match(CATEGORY_HINTS.privacy, /no self-serve deletion/);
 });
 
 test("the requester's status wording is second-person where it differs", () => {
@@ -303,60 +789,64 @@ test("the requester's status wording is second-person where it differs", () => {
   assert.equal(STAFF_STATUS_LABELS.waiting_on_requester, "Waiting on requester");
 });
 
+test("the auto-resolve note states the same number of days as the cron", () => {
+  assert.match(AUTO_RESOLVE_NOTE, new RegExp(`after ${AUTO_RESOLVE_AFTER_DAYS} days`));
+});
+
 // ---------------------------------------------------------------------------
-// The caps match the database
+// The TypeScript vocabularies match the database's CHECKs
 // ---------------------------------------------------------------------------
 
-test("the length caps are the ones migration 0090 enforces", () => {
-  // The form uses these as maxLength and the action uses them as validation.
-  // If they exceed the CHECK constraint, a user types a valid-looking message
-  // and the insert fails with a Postgres error instead of a form message.
-  const sql = readFileSync(
-    new URL("../supabase/migrations/0090_support_tickets.sql", import.meta.url),
-    "utf8",
+test("each vocabulary is exactly the list its CHECK in 0090 allows", () => {
+  // A value the TS accepts and the database refuses is an insert that fails at
+  // runtime only for the option nobody tested; a value the database allows and
+  // the TS doesn't know is a row the UI can't render. Set equality, both ways.
+  assert.deepEqual(
+    sqlList(/add constraint support_tickets_category_check\s+check \(category in \(([^)]*)\)\)/),
+    sorted(TICKET_CATEGORIES),
   );
+  assert.deepEqual(
+    sqlList(/add constraint support_tickets_priority_check\s+check \(priority in \(([^)]*)\)\)/),
+    sorted(TICKET_PRIORITIES),
+  );
+  assert.deepEqual(
+    sqlList(/add constraint support_tickets_channel_check\s+check \(channel in \(([^)]*)\)\)/),
+    sorted(TICKET_CHANNELS),
+  );
+  assert.deepEqual(
+    sqlList(/add constraint support_tickets_outcome_check\s+check \(outcome is null or outcome in \(([^)]*)\)\)/),
+    sorted(TICKET_OUTCOMES),
+  );
+  assert.deepEqual(
+    sqlList(/status text not null default 'open'\s+check \(status in \(([^)]*)\)\)/),
+    sorted(TICKET_STATUSES),
+  );
+  assert.deepEqual(
+    sqlList(/add constraint support_ticket_replies_via_check\s+check \(via in \(([^)]*)\)\)/),
+    sorted(REPLY_VIAS),
+  );
+});
+
+test("the length caps are the ones migration 0090 enforces", () => {
   assert.match(
-    sql,
+    SQL,
     new RegExp(`subject text not null check \\(char_length\\(subject\\) between 1 and ${TICKET_SUBJECT_MAX}\\)`),
   );
   assert.match(
-    sql,
+    SQL,
     new RegExp(`body text not null check \\(char_length\\(body\\) between ${TICKET_BODY_MIN} and ${TICKET_BODY_MAX}\\)`),
   );
   assert.match(
-    sql,
+    SQL,
     new RegExp(`body text not null check \\(char_length\\(body\\) between 1 and ${REPLY_BODY_MAX}\\)`),
     "the reply cap is the one on support_ticket_replies, which has no minimum",
   );
-  assert.ok(
-    TICKET_BODY_MIN < TICKET_BODY_MAX,
-    "the minimum has to be reachable",
-  );
+  assert.ok(TICKET_BODY_MIN < TICKET_BODY_MAX, "the minimum has to be reachable");
 });
 
 test("migration 0090 enforces the token and reference shapes too", () => {
-  const sql = readFileSync(
-    new URL("../supabase/migrations/0090_support_tickets.sql", import.meta.url),
-    "utf8",
-  );
-  assert.match(sql, /token text not null unique check \(token ~ '\^\[A-Za-z0-9_-\]\{43\}\$'\)/);
-  assert.match(sql, /reference \~ '\^B0-\[2-9A-HJKMNP-TV-Z\]\{4\}-\[2-9A-HJKMNP-TV-Z\]\{4\}\$'/);
-});
-
-test("every category and status in the code is allowed by the migration", () => {
-  // The CHECK constraints are the other half of these unions. A value the TS
-  // accepts and the database refuses is an insert that fails at runtime only
-  // for the option nobody tested.
-  const sql = readFileSync(
-    new URL("../supabase/migrations/0090_support_tickets.sql", import.meta.url),
-    "utf8",
-  );
-  for (const c of TICKET_CATEGORIES) {
-    assert.ok(sql.includes(`'${c}'`), `category ${c} is missing from the SQL check`);
-  }
-  for (const s of TICKET_STATUSES) {
-    assert.ok(sql.includes(`'${s}'`), `status ${s} is missing from the SQL check`);
-  }
+  assert.match(SQL, /token text not null unique check \(token ~ '\^\[A-Za-z0-9_-\]\{43\}\$'\)/);
+  assert.match(SQL, /reference \~ '\^B0-\[2-9A-HJKMNP-TV-Z\]\{4\}-\[2-9A-HJKMNP-TV-Z\]\{4\}\$'/);
 });
 
 // ---------------------------------------------------------------------------
@@ -364,45 +854,36 @@ test("every category and status in the code is allowed by the migration", () => 
 // ---------------------------------------------------------------------------
 
 test("migration 0090 revokes the default grants and adds no requester write policy", () => {
-  const sql = readFileSync(
-    new URL("../supabase/migrations/0090_support_tickets.sql", import.meta.url),
-    "utf8",
-  );
-  // Supabase grants anon/authenticated `all` on tables a later migration
-  // creates, via ALTER DEFAULT PRIVILEGES. Without these revokes the tables
-  // are a landmine for whoever adds a permissive policy next.
-  assert.match(sql, /revoke all on public\.support_tickets from anon, authenticated;/);
-  assert.match(
-    sql,
-    /revoke all on public\.support_ticket_replies from anon, authenticated;/,
-  );
-  assert.match(sql, /alter table public\.support_tickets enable row level security;/);
-  assert.match(
-    sql,
-    /alter table public\.support_ticket_replies enable row level security;/,
-  );
-  // Writes are server-only so the server owns requester_email, is_staff,
-  // is_internal, token and reference. An insert policy would let the browser
-  // choose them.
-  assert.ok(
-    !/for insert/i.test(sql),
-    "there must be no INSERT policy — every write goes through the service role",
-  );
-  // Without this the tables are invisible to PostgREST and a correct deploy
-  // presents as PGRST205.
-  assert.match(sql, /notify pgrst, 'reload schema';/);
+  for (const table of ["support_tickets", "support_ticket_replies", "support_ticket_attachments"]) {
+    assert.match(SQL, new RegExp(`revoke all on public\\.${table} from anon, authenticated;`));
+    assert.match(SQL, new RegExp(`alter table public\\.${table} enable row level security;`));
+  }
+  // Writes are server-only so the server owns requester_email, is_staff, via,
+  // is_internal, token and reference. A per-command policy would be a
+  // requester write path; the only write policies are the staff `for all`.
+  const policies = SQL.match(/create policy[^;]*;/gi) ?? [];
+  assert.equal(policies.length, 6, "a read and a staff write policy per table");
+  for (const policy of policies) {
+    assert.match(policy, /\bfor (select|all)\b/i, policy.split("\n")[0]);
+  }
+  assert.match(SQL, /notify pgrst, 'reload schema';/);
 });
 
-test("internal notes are hidden from a requester at the row level too", () => {
-  const sql = readFileSync(
-    new URL("../supabase/migrations/0090_support_tickets.sql", import.meta.url),
-    "utf8",
-  );
-  // lib/support.ts defaults includeInternal to false, but the reply-read
-  // policy has to carry the same rule: a requester who can see the ticket
-  // still must not see the team's notes about them.
-  const policy = /create policy "support_ticket_replies read"[\s\S]*?\);/.exec(sql);
-  assert.ok(policy, "the reply read policy must exist");
-  assert.match(policy[0], /not is_internal/);
-  assert.match(policy[0], /has_permission\(auth\.uid\(\), 'support\.view'\)/);
+test("internal notes and confidential concerns are hidden at the row level too", () => {
+  // lib/support.ts defaults includeInternal to false and filters sensitive
+  // tickets out of every staff read; the policies carry the same rules.
+  const replyPolicy = /create policy "support_ticket_replies read"[\s\S]*?\);/.exec(SQL);
+  assert.ok(replyPolicy, "the reply read policy must exist");
+  assert.match(replyPolicy[0], /not support_ticket_replies\.is_internal/);
+  assert.match(replyPolicy[0], /has_permission\(auth\.uid\(\), 'support\.view'\)/);
+  assert.match(replyPolicy[0], /not t\.sensitive or public\.has_permission\(auth\.uid\(\), 'support\.sensitive'\)/);
+
+  const ticketPolicy = /create policy "support_tickets read"[\s\S]*?\);/.exec(SQL);
+  assert.ok(ticketPolicy);
+  assert.match(ticketPolicy[0], /not sensitive or public\.has_permission\(auth\.uid\(\), 'support\.sensitive'\)/);
+});
+
+test("the rate limiter is locked to the service role, never forced", () => {
+  assert.match(SQL, /revoke execute on function public\.rate_limit_check\(text, integer\) from public, anon, authenticated/);
+  assert.ok(!/force row level security/i.test(SQL.replace(/^\s*--.*$/gm, "")));
 });
