@@ -3,6 +3,12 @@ import { fmtDateOnly } from "@/lib/pre-cohort";
 import { emailLayout as layout, escapeEmail as escape } from "@/lib/email/layout";
 import { formatTicketAmount as fmtTicketMoney } from "@/lib/demo-day-ticket-input";
 import { formatEasternDateTime } from "@/lib/call-lifecycle";
+import {
+  AUTO_RESOLVE_NOTE,
+  REFUND_WINDOW_HOURS,
+  type TicketCategory,
+  type TicketChannel,
+} from "@/lib/support-access";
 
 /**
  * An event start for an email: Eastern, with the zone named. Falls back to
@@ -1538,4 +1544,476 @@ ${args.editableUntil ? `You can edit it until ${etTime(args.editableUntil)}: ${a
       ? `You won ${args.title}${args.awardLabel ? ` (${args.awardLabel})` : ""}! We'll be in touch about your prize. ${args.pageUrl}`
       : `Winners are in for ${args.title}. You weren't picked this time — thanks for entering. ${args.pageUrl}`,
   }),
+
+  // -------------------------------------------------------------------------
+  // Support tickets (migration 0090)
+  //
+  // Every requester-facing one ships a `text` part, which most templates in
+  // this file don't. The reason is specific: a refund acknowledgement is the
+  // receipt for a formal request under app/(legal)/refund-policy, and the
+  // reference and timestamp in it are what someone would quote back at us — or
+  // at their bank. That has to survive a mail client that refuses HTML.
+  //
+  // Each takes the same input as its `support*Vars()` builder below, and both
+  // get their sentences from the same helpers — the database copy of these
+  // emails (lib/email/seed.ts) has no conditionals, so the sender passes the
+  // conditional sentences in as variables, and the compiled copy prints the
+  // very same strings. lib/support-email-seeds.test.ts renders both for every
+  // category.
+  // -------------------------------------------------------------------------
+
+  /**
+   * "We have it, here's your reference." Sent the moment a ticket is filed —
+   * or, for one the team logged from an email or a call, when they log it (if
+   * they ask for it to go).
+   *
+   * The received time is in the body on purpose and is not decoration. The
+   * refund policy binds the 48-hour window to when the request reached us, so
+   * this email is the requester's copy of that fact — which means it must
+   * state it plainly rather than making them infer it from a mail header.
+   * `receivedAt` is pre-formatted by the caller (formatReceivedAt, one fixed
+   * zone) so the email and the thread page can't disagree.
+   */
+  supportTicketReceived: (e: SupportReceivedEmail) => {
+    const callout = e.category === "refund" || e.category === "concern";
+    return {
+      subject: `We got your request — ${e.reference}`,
+      html: layout({
+        preheader: `Reference ${e.reference}. Received ${e.receivedAt}.`,
+        body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">Request received</h1>
+        ${e.name ? `<p>Hi ${escape(e.name)},</p>` : ""}
+        <p>${escape(supportConfirmationLine(e))} A person on the team reads every request.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;width:100%;border-collapse:collapse">
+          <tr>
+            <td style="padding:6px 0;color:#8b949e;font-size:13px;width:110px">Reference</td>
+            <td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(e.reference)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#8b949e;font-size:13px">Received</td>
+            <td style="padding:6px 0;color:#e7e7e7;font-size:14px">${escape(e.receivedAt)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#8b949e;font-size:13px">About</td>
+            <td style="padding:6px 0;color:#e7e7e7;font-size:14px">${escape(e.categoryLabel)}</td>
+          </tr>
+        </table>
+        <p style="margin:12px 0;color:#8b949e;font-size:13px">You wrote: <strong style="color:#e7e7e7">${escape(e.subject)}</strong></p>
+        <div style="margin:16px 0;padding:14px 16px;border-left:3px solid #ffbb00;background:rgba(255,255,255,0.04);white-space:pre-wrap">${escape(e.body)}</div>
+        <p style="${callout ? "margin-top:16px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd" : "color:#e7e7e7"}">${escape(supportNextSteps(e.category))}</p>
+        <p style="color:#8b949e;font-size:13px">Replies go on the thread, not to this address. Open it any time with the button below. The link is private to you — anyone who has it can read and reply, so don't forward it.</p>
+      `,
+        cta: { url: e.threadUrl, label: "Open your request" },
+      }),
+      text: `Request received - ${e.reference}
+
+${supportConfirmationLine(e)}
+
+Reference: ${e.reference}
+Received: ${e.receivedAt}
+About: ${e.categoryLabel}
+
+You wrote: ${e.subject}
+
+${e.body}
+
+${supportNextSteps(e.category)}
+
+Open your request: ${e.threadUrl}
+The link is private to you - anyone who has it can read and reply, so don't forward it.`,
+    };
+  },
+
+  /**
+   * The team answered. Mirrors Templates.discussionReply in shape, because to
+   * the person reading it these are the same event — someone at batch0 wrote
+   * back — and two different-looking emails for one experience is noise. A
+   * "Send & resolve" says so here rather than in a second email a minute
+   * later.
+   */
+  supportTicketReplied: (e: SupportRepliedEmail) => ({
+    subject: `Re: ${e.subject} (${e.reference})`,
+    html: layout({
+      preheader: e.reply.slice(0, 120),
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(e.replierName)} replied to your request</h1>
+        ${e.name ? `<p>Hi ${escape(e.name)},</p>` : ""}
+        <p style="margin:12px 0;color:#8b949e;font-size:13px">On <strong style="color:#e7e7e7">${escape(e.subject)}</strong> &middot; <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(e.reference)}</span></p>
+        <div style="margin:16px 0;padding:14px 16px;border-left:3px solid #ffbb00;background:rgba(255,255,255,0.04);white-space:pre-wrap">${escape(e.reply)}</div>
+        <p style="color:#8b949e;font-size:13px">${escape(supportStatusNote(e.resolved))}</p>
+      `,
+      cta: { url: e.threadUrl, label: "Reply on the thread" },
+    }),
+    text: `${e.replierName} replied to your request (${e.reference})
+
+On: ${e.subject}
+
+${e.reply}
+
+${supportStatusNote(e.resolved)}
+
+${e.threadUrl}`,
+  }),
+
+  /**
+   * Marked resolved — by the team, or by the housekeeping cron after a week
+   * without a reply. Sent even when the answer was "no", because a request
+   * that quietly stops being worked on is the worst outcome a support queue
+   * has — and because the reopen instruction is the safety valve that makes
+   * resolving a ticket a low-stakes act for the team.
+   */
+  supportTicketResolved: (e: SupportResolvedEmail) => ({
+    subject: `Resolved: ${e.subject} (${e.reference})`,
+    html: layout({
+      preheader: "Marked resolved. Reply on the thread any time to reopen it.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">We've marked this resolved</h1>
+        <p>Hi${e.name ? ` ${escape(e.name)}` : ""} — your request <strong>${escape(e.subject)}</strong> (<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(e.reference)}</span>) is resolved on our side.</p>
+        <p style="white-space:pre-wrap">${escape(supportResolutionNote(e))}</p>
+        <p><strong>If we got it wrong, reply on the thread.</strong> That reopens the request and puts it back in our queue — no need to start a new one, and you keep the history.</p>
+      `,
+      cta: { url: e.threadUrl, label: "View the thread" },
+    }),
+    text: `We've marked this resolved: ${e.subject} (${e.reference})
+
+${supportResolutionNote(e)}
+
+If we got it wrong, reply on the thread - that reopens the request and puts it back in our queue.
+
+${e.threadUrl}`,
+  }),
+
+  /**
+   * To the team inbox, on arrival. Deliberately terse and deliberately does
+   * NOT include the request body: this lands in a shared mailbox, the body can
+   * be long and can carry someone's billing situation, and the point of the
+   * email is "go look", not "read it here". No reply-to the requester either —
+   * answering from the inbox would take the conversation off the thread, and
+   * the thread is the record.
+   *
+   * Never used for a confidential concern; that is supportConcernInternal.
+   */
+  supportTicketInternal: (e: SupportInternalEmail) => ({
+    subject: `[support] ${e.categoryLabel} · ${e.priorityLabel}: ${e.subject} (${e.reference})`,
+    html: layout({
+      preheader: `${e.categoryLabel} from ${e.requesterLabel}`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">New support request</h1>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:14px 0;width:100%;border-collapse:collapse">
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px;width:110px">Reference</td><td style="padding:5px 0;color:#fff;font-size:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(e.reference)}</td></tr>
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px">Category</td><td style="padding:5px 0;color:#e7e7e7;font-size:14px">${escape(e.categoryLabel)}</td></tr>
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px">Priority</td><td style="padding:5px 0;color:#e7e7e7;font-size:14px">${escape(e.priorityLabel)}</td></tr>
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px">From</td><td style="padding:5px 0;color:#e7e7e7;font-size:14px">${escape(e.requesterLabel)}</td></tr>
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px">Received</td><td style="padding:5px 0;color:#e7e7e7;font-size:14px">${escape(e.receivedAt)}</td></tr>
+          <tr><td style="padding:5px 0;color:#8b949e;font-size:13px">Subject</td><td style="padding:5px 0;color:#e7e7e7;font-size:14px">${escape(e.subject)}</td></tr>
+        </table>
+        <p style="${e.category === "refund" ? "margin-top:12px;padding:12px;border-left:3px solid rgba(255,187,0,0.5);color:#ddd" : "color:#bbb"}">${escape(supportTeamNote(e))}</p>
+      `,
+      cta: { url: e.adminUrl, label: "Open in admin" },
+    }),
+    text: `New support request - ${e.reference}
+
+Category: ${e.categoryLabel}
+Priority: ${e.priorityLabel}
+From: ${e.requesterLabel}
+Received: ${e.receivedAt}
+Subject: ${e.subject}
+
+${supportTeamNote(e)}
+
+${e.adminUrl}`,
+  }),
+
+  /**
+   * The team alert for a confidential concern. Says that one arrived and where
+   * to open it, and nothing else — no subject, no name, no category beyond the
+   * fact of it: the shared inbox is read by people who must not be able to
+   * read the concern itself, and an email can't be un-sent once it names
+   * someone.
+   */
+  supportConcernInternal: (e: { reference: string; adminUrl: string }) => ({
+    subject: `[support] Confidential concern (${e.reference})`,
+    html: layout({
+      preheader: "Open it in the admin.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">A confidential concern was filed</h1>
+        <p>A confidential concern was filed (<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(e.reference)}</span>). Open it in the admin.</p>
+      `,
+      cta: { url: e.adminUrl, label: "Open in admin" },
+    }),
+    text: `A confidential concern was filed (${e.reference}). Open it in the admin.
+
+${e.adminUrl}`,
+  }),
+
+  /**
+   * The daily digest of requests past their reply target, to the team inbox.
+   * A confidential concern appears as its reference and how long it has
+   * waited, never its subject — the same rule as its arrival alert.
+   */
+  supportOverdueDigest: (e: SupportDigestEmail) => ({
+    subject: `[support] ${supportDigestCount(e.items.length)} past their reply target`,
+    html: layout({
+      preheader: "Longest overdue first.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">Past their reply target</h1>
+        <p>${escape(supportDigestIntro(e))}</p>
+        <ul style="padding-left:18px;margin:18px 0 0 0">${e.items
+          .map(
+            (i) => `
+          <li style="margin:0 0 10px 0">
+            <a href="${i.adminUrl}" style="color:#ffbb00;text-decoration:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(i.reference)}</a>
+            <span style="color:#bbb"> · ${escape(supportDigestDetail(i))}</span>
+          </li>`,
+          )
+          .join("")}</ul>
+      `,
+      cta: { url: e.queueUrl, label: "Open the queue" },
+    }),
+    text: `${supportDigestIntro(e)}
+
+${supportDigestList(e.items)}
+
+${e.queueUrl}`,
+  }),
 };
+
+// ---------------------------------------------------------------------------
+// Support email copy and variables
+//
+// The sentences that depend on the ticket — which category, whether the team
+// logged it, whether a reply also resolved it — are decided here once. The
+// compiled templates above print them, and the `support*Vars()` builders pass
+// the same strings into the admin-editable database copy (lib/email/seed.ts),
+// whose `{{tags}}` must each have a value: the interpolator leaves an
+// unresolved tag in the email verbatim, so every variable below is always a
+// non-empty string. lib/support.ts calls only the builders and the templates.
+// ---------------------------------------------------------------------------
+
+/** The requester's receipt, from either a self-filed or a staff-logged ticket. */
+export type SupportReceivedEmail = {
+  /** First name, or null — the greeting is dropped rather than left empty. */
+  name: string | null;
+  reference: string;
+  category: TicketCategory;
+  categoryLabel: string;
+  channel: TicketChannel;
+  /** True when the team logged it on the requester's behalf. */
+  staffLogged: boolean;
+  subject: string;
+  body: string;
+  /** formatReceivedAt(received_at). */
+  receivedAt: string;
+  /** The private thread link — the token URL. Requester email only. */
+  threadUrl: string;
+};
+
+export type SupportRepliedEmail = {
+  name: string | null;
+  reference: string;
+  subject: string;
+  replierName: string;
+  reply: string;
+  threadUrl: string;
+  /** The reply was a "Send & resolve". */
+  resolved: boolean;
+};
+
+export type SupportResolvedEmail = {
+  name: string | null;
+  reference: string;
+  subject: string;
+  threadUrl: string;
+  /** An optional note from whoever resolved it. */
+  note: string | null;
+  /** Resolved by the housekeeping cron after a week without a reply. */
+  auto: boolean;
+};
+
+/** The team alert for a NON-confidential ticket. */
+export type SupportInternalEmail = {
+  reference: string;
+  category: TicketCategory;
+  categoryLabel: string;
+  priorityLabel: string;
+  subject: string;
+  /** "Name <email>" — never a placeholder address. */
+  requesterLabel: string;
+  receivedAt: string;
+  adminUrl: string;
+  channel: TicketChannel;
+  staffLogged: boolean;
+  /** Who logged it, for a staff-logged ticket. */
+  loggedBy: string | null;
+};
+
+export type SupportDigestItem = {
+  reference: string;
+  /** A confidential concern shows its reference and wait only. */
+  sensitive: boolean;
+  priorityLabel: string;
+  categoryLabel: string;
+  subject: string;
+  /** "6h 12m" — how long the requester has waited. */
+  waitingFor: string;
+  /** "2h 12m" — how far past the target. */
+  overdueBy: string;
+  adminUrl: string;
+};
+
+export type SupportDigestEmail = {
+  items: SupportDigestItem[];
+  /** formatReceivedAt(now) — the moment the list was taken. */
+  asOf: string;
+  queueUrl: string;
+};
+
+function supportConfirmationLine(
+  e: Pick<SupportReceivedEmail, "staffLogged" | "channel" | "receivedAt">,
+): string {
+  if (!e.staffLogged) return "This is confirmation that we have your request.";
+  const by = e.channel === "email" ? " by email" : e.channel === "phone" ? " by phone" : "";
+  return `We've logged the request you sent us${by} on ${e.receivedAt}.`;
+}
+
+/**
+ * What happens next, by category. The refund paragraph is the one that
+ * carries legal weight: it is the requester's written record that the 48-hour
+ * clock stopped when the request reached us. A concern gets the emergency
+ * numbers first, because a support thread is not where someone in danger
+ * should be waiting.
+ */
+function supportNextSteps(category: TicketCategory): string {
+  if (category === "refund") {
+    return `Because this is a refund request, the received time above is the one that counts. Our refund policy gives you ${REFUND_WINDOW_HOURS} hours from payment to ask, and the clock stopped when your request reached us — not when we get round to answering it. Keep this email.`;
+  }
+  if (category === "concern") {
+    return "If anyone is in danger right now, call 911. If you or someone you know is struggling, call or text 988 — any time, day or night. Only a small number of senior staff can read this request, and they'll reply on the thread.";
+  }
+  return "A person on the team will reply on the thread, and we'll email you when they do.";
+}
+
+function supportStatusNote(resolved: boolean): string {
+  return resolved
+    ? "We've marked this request resolved. If that didn't sort it, reply on the thread — it reopens and comes straight back to us."
+    : "If that didn't sort it, say so on the thread — it comes straight back to us.";
+}
+
+function supportResolutionNote(e: Pick<SupportResolvedEmail, "note" | "auto">): string {
+  if (e.auto) return AUTO_RESOLVE_NOTE;
+  const note = e.note?.trim();
+  return note || "There's nothing more you need to do.";
+}
+
+function supportTeamNote(e: SupportInternalEmail): string {
+  const parts: string[] = [];
+  if (e.staffLogged) {
+    const by = e.channel === "email" ? " by email" : e.channel === "phone" ? " by phone" : "";
+    parts.push(
+      `Logged by ${e.loggedBy?.trim() || "the team"} from a request that arrived${by} on ${e.receivedAt}.`,
+    );
+  }
+  if (e.category === "refund") {
+    parts.push(
+      `Refund request — this one has a clock on it. The ${REFUND_WINDOW_HOURS}-hour window runs from payment to the received time above; check it against the payment before replying.`,
+    );
+  }
+  if (parts.length === 0) {
+    parts.push("Reply from the admin — the requester gets your reply by email and on their thread.");
+  }
+  return parts.join(" ");
+}
+
+function supportDigestCount(n: number): string {
+  return `${n} ${n === 1 ? "request" : "requests"}`;
+}
+
+function supportDigestIntro(e: SupportDigestEmail): string {
+  return `${supportDigestCount(e.items.length)} past ${e.items.length === 1 ? "its" : "their"} reply target as of ${e.asOf}, longest overdue first.`;
+}
+
+function supportDigestDetail(i: SupportDigestItem): string {
+  const wait = `waiting ${i.waitingFor}, ${i.overdueBy} past target`;
+  return i.sensitive
+    ? `Confidential concern · ${wait}`
+    : `${i.priorityLabel} · ${i.categoryLabel} · “${i.subject}” · ${wait}`;
+}
+
+/** Plain text, one block per ticket — safe in a pre-wrap paragraph, escaped by the interpolator. */
+function supportDigestList(items: SupportDigestItem[]): string {
+  return items
+    .map((i) =>
+      i.sensitive
+        ? `Confidential concern ${i.reference} · waiting ${i.waitingFor}, ${i.overdueBy} past target\n${i.adminUrl}`
+        : `${i.reference} · ${supportDigestDetail(i)}\n${i.adminUrl}`,
+    )
+    .join("\n\n");
+}
+
+/** Variables for `support.ticket_received`. */
+export function supportReceivedVars(e: SupportReceivedEmail): Record<string, string> {
+  return {
+    reference: e.reference,
+    ticket_url: e.threadUrl,
+    received_at: e.receivedAt,
+    category_label: e.categoryLabel,
+    subject_line: e.subject,
+    request_body: e.body,
+    confirmation_line: supportConfirmationLine(e),
+    next_steps: supportNextSteps(e.category),
+  };
+}
+
+/** Variables for `support.ticket_replied`. */
+export function supportRepliedVars(e: SupportRepliedEmail): Record<string, string> {
+  return {
+    reference: e.reference,
+    ticket_url: e.threadUrl,
+    subject_line: e.subject,
+    replier_name: e.replierName,
+    reply_body: e.reply,
+    status_note: supportStatusNote(e.resolved),
+  };
+}
+
+/** Variables for `support.ticket_resolved`. */
+export function supportResolvedVars(e: SupportResolvedEmail): Record<string, string> {
+  return {
+    reference: e.reference,
+    ticket_url: e.threadUrl,
+    subject_line: e.subject,
+    resolution_note: supportResolutionNote(e),
+  };
+}
+
+/** Variables for `support.ticket_received_internal` (never a confidential concern). */
+export function supportInternalVars(e: SupportInternalEmail): Record<string, string> {
+  return {
+    reference: e.reference,
+    admin_url: e.adminUrl,
+    category_label: e.categoryLabel,
+    priority_label: e.priorityLabel,
+    subject_line: e.subject,
+    requester_label: e.requesterLabel,
+    received_at: e.receivedAt,
+    team_note: supportTeamNote(e),
+  };
+}
+
+/** Variables for `support.concern_received_internal` — the reference and the link, nothing else. */
+export function supportConcernInternalVars(e: {
+  reference: string;
+  adminUrl: string;
+}): Record<string, string> {
+  return { reference: e.reference, admin_url: e.adminUrl };
+}
+
+/** Variables for `support.overdue_digest`. */
+export function supportDigestVars(e: SupportDigestEmail): Record<string, string> {
+  return {
+    overdue_count: supportDigestCount(e.items.length),
+    digest_intro: supportDigestIntro(e),
+    ticket_list: supportDigestList(e.items),
+    queue_url: e.queueUrl,
+  };
+}

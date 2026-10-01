@@ -15,7 +15,7 @@ import {
   type Capabilities,
 } from "@/lib/permissions";
 import { isAppHost, isMarketingPath, MAIN_ORIGIN } from "@/lib/app-host";
-import { bouncesFromDashboard } from "@/lib/dashboard-gate";
+import { bouncesFromDashboard, isSupportPath } from "@/lib/dashboard-gate";
 
 type CookiesToSet = {
   name: string;
@@ -404,7 +404,9 @@ export async function updateSession(request: NextRequest) {
       path.startsWith("/investor");
     // Paths covered by the pending-fine hard-block below. Billing, pay-fine
     // and /auth stay exempt so a fined user can still reach the pay screen
-    // and sign out.
+    // and sign out — and so does /dashboard/support (isSupportPath), because
+    // disputing the fine is a support request: a fined student has to be able
+    // to file one and read the team's answer.
     // NOTE: /app is deliberately NOT here, and that is not a hole — the gate
     // moved rather than disappeared. app/app/(student)/layout.tsx runs the same
     // pending-fine check and sends a fined student to /dashboard/pay-fine.
@@ -428,6 +430,7 @@ export async function updateSession(request: NextRequest) {
         path.startsWith("/investor")) &&
       !path.startsWith("/dashboard/billing") &&
       !path.startsWith("/dashboard/pay-fine") &&
+      !isSupportPath(path) &&
       !path.startsWith("/auth");
     // Capabilities ride along for fine-only paths (i.e. /apply) too: the
     // fine block consults caps.superAdmin, and a speculative parallel read

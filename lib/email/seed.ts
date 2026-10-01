@@ -600,6 +600,276 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     body_html: "<p>Hi {{first_name}},</p><p></p>",
     variables: COMMON,
   },
+
+  // -------------------------------------------------------------------------
+  // Support tickets (migration 0090).
+  //
+  // These have no conditionals — the database copy can't — so every sentence
+  // that depends on the ticket arrives as a variable: {{confirmation_line}}
+  // (filed through the form, or logged by the team from an email), {{next_steps}}
+  // (the refund-clock paragraph, the emergency numbers for a concern, or the
+  // plain "we'll reply"), {{status_note}}, {{resolution_note}}, {{team_note}}.
+  // The support*Vars() builders in lib/email/templates.ts produce every one of
+  // them, never empty, for every send — the same strings the compiled
+  // fallbacks print. An empty value would NOT render as nothing: the
+  // interpolator leaves an unresolved tag in the email verbatim, which is how
+  // an earlier draft of these rows mailed a literal "{{refund_note}}" to every
+  // non-refund requester.
+  //
+  // So every support variable is marked `required`: if an edited copy ever
+  // uses one a caller didn't pass, the send falls back to the compiled
+  // template instead of shipping braces. They are only ever sent directly
+  // through sendTemplated(), never queued by an automation, so the flag can't
+  // strand a queued row. Bodies and replies sit in `white-space:pre-wrap`
+  // paragraphs so a person's line breaks survive.
+  //
+  // lib/support-email-seeds.test.ts renders every row here through the real
+  // renderer for every category and fails on a single surviving "{{".
+  // -------------------------------------------------------------------------
+  {
+    key: "support.ticket_received",
+    name: "Support request received",
+    description:
+      "The acknowledgement for a new support request, or one the team logged on someone's behalf. For a refund request this email is the requester's written record that the 48-hour window stopped, so keep {{reference}}, {{received_at}} and {{next_steps}} in the copy — the refund policy points at them.",
+    category: "transactional",
+    subject: "We got your request — {{reference}}",
+    preheader: "Reference {{reference}}. Received {{received_at}}.",
+    body_html:
+      "<h1>Request received</h1>" +
+      "<p>Hi {{first_name|there}},</p>" +
+      "<p>{{confirmation_line}} A person on the team reads every request.</p>" +
+      "<p><strong>Reference:</strong> {{reference}}<br><strong>Received:</strong> {{received_at}}<br><strong>About:</strong> {{category_label}}</p>" +
+      "<p>You wrote: <strong>{{subject_line}}</strong></p>" +
+      '<p style="white-space:pre-wrap">{{request_body}}</p>' +
+      "<p>{{next_steps}}</p>" +
+      "<p>Replies go on the thread, not to this address — open it with the button below. The link is private to you: anyone who has it can read and reply, so don't forward it.</p>",
+    cta_label: "Open your request",
+    cta_url: "{{ticket_url}}",
+    variables: [
+      ...COMMON,
+      { key: "reference", label: "Request reference", example: "B0-4F2A-9C7K", required: true },
+      {
+        key: "ticket_url",
+        label: "Private thread link",
+        example: "https://batch0.org/support/t/abc123",
+        required: true,
+      },
+      {
+        key: "received_at",
+        label: "When it reached us",
+        example: "October 1, 2026 at 9:30 AM EDT",
+        required: true,
+      },
+      { key: "category_label", label: "What it's about", example: "Refund request", required: true },
+      {
+        key: "subject_line",
+        label: "Their subject",
+        example: "Refund for tuition paid yesterday",
+        required: true,
+      },
+      {
+        key: "request_body",
+        label: "What they wrote",
+        example: "I paid tuition yesterday and would like a refund.",
+        required: true,
+      },
+      {
+        key: "confirmation_line",
+        label: "Confirmation sentence",
+        example: "This is confirmation that we have your request.",
+        required: true,
+      },
+      {
+        key: "next_steps",
+        label: "What happens next (refund clock / emergency numbers / reply)",
+        example:
+          "Because this is a refund request, the received time above is the one that counts. Our refund policy gives you 48 hours from payment to ask, and the clock stopped when your request reached us — not when we get round to answering it. Keep this email.",
+        required: true,
+      },
+    ],
+  },
+  {
+    key: "support.ticket_replied",
+    name: "Support request — team replied",
+    description:
+      "Sent when the team answers a request. {{reply_body}} is the reply verbatim; leave it in or the recipient has to open the site to read anything.",
+    category: "transactional",
+    subject: "Re: {{subject_line}} ({{reference}})",
+    preheader: "Someone at batch0 wrote back.",
+    body_html:
+      "<h1>{{replier_name|The batch0 team}} replied to your request</h1>" +
+      "<p>Hi {{first_name|there}},</p>" +
+      "<p>On <strong>{{subject_line}}</strong> · {{reference}}</p>" +
+      '<p style="white-space:pre-wrap">{{reply_body}}</p>' +
+      "<p>{{status_note}}</p>",
+    cta_label: "Reply on the thread",
+    cta_url: "{{ticket_url}}",
+    variables: [
+      ...COMMON,
+      { key: "reference", label: "Request reference", example: "B0-4F2A-9C7K", required: true },
+      {
+        key: "ticket_url",
+        label: "Private thread link",
+        example: "https://batch0.org/support/t/abc123",
+        required: true,
+      },
+      { key: "subject_line", label: "Their subject", example: "Refund for tuition", required: true },
+      { key: "replier_name", label: "Who replied", example: "Rishabh", required: true },
+      {
+        key: "reply_body",
+        label: "The reply",
+        example: "Refunded in full — it should land in 5–10 business days.",
+        required: true,
+      },
+      {
+        key: "status_note",
+        label: "Closing line (says so when the reply also resolved it)",
+        example: "If that didn't sort it, say so on the thread — it comes straight back to us.",
+        required: true,
+      },
+    ],
+  },
+  {
+    key: "support.ticket_resolved",
+    name: "Support request resolved",
+    description:
+      "Sent when a request is marked resolved — by the team, or automatically after a week without a reply. The reopen instruction is the point of the email — keep it.",
+    category: "transactional",
+    subject: "Resolved: {{subject_line}} ({{reference}})",
+    preheader: "Marked resolved. Reply on the thread any time to reopen it.",
+    body_html:
+      "<h1>We've marked this resolved</h1>" +
+      "<p>Hi {{first_name|there}} — your request <strong>{{subject_line}}</strong> ({{reference}}) is resolved on our side.</p>" +
+      '<p style="white-space:pre-wrap">{{resolution_note}}</p>' +
+      "<p><strong>If we got it wrong, reply on the thread.</strong> That reopens the request and puts it back in our queue — no need to start a new one, and you keep the history.</p>",
+    cta_label: "View the thread",
+    cta_url: "{{ticket_url}}",
+    variables: [
+      ...COMMON,
+      { key: "reference", label: "Request reference", example: "B0-4F2A-9C7K", required: true },
+      {
+        key: "ticket_url",
+        label: "Private thread link",
+        example: "https://batch0.org/support/t/abc123",
+        required: true,
+      },
+      { key: "subject_line", label: "Their subject", example: "Refund for tuition", required: true },
+      {
+        key: "resolution_note",
+        label: "Resolution note (the team's, or the automatic one)",
+        example: "There's nothing more you need to do.",
+        required: true,
+      },
+    ],
+  },
+  {
+    key: "support.ticket_received_internal",
+    name: "Support request — team alert",
+    description:
+      "Lands in the team inbox (the contact address in site settings) when a request arrives. Deliberately omits the request body: this goes to a shared mailbox and the body can carry someone's billing situation. Its job is 'go look'. Never sent for a confidential concern — that has its own alert, which says nothing about it.",
+    category: "internal",
+    subject: "[support] {{category_label}} · {{priority_label}}: {{subject_line}} ({{reference}})",
+    preheader: "{{category_label}} from {{requester_label}}",
+    body_html:
+      "<h1>New support request</h1>" +
+      "<p><strong>Reference:</strong> {{reference}}<br><strong>Category:</strong> {{category_label}}<br><strong>Priority:</strong> {{priority_label}}<br><strong>From:</strong> {{requester_label}}<br><strong>Received:</strong> {{received_at}}<br><strong>Subject:</strong> {{subject_line}}</p>" +
+      "<p>{{team_note}}</p>",
+    cta_label: "Open in admin",
+    cta_url: "{{admin_url}}",
+    variables: [
+      ...COMMON,
+      { key: "reference", label: "Request reference", example: "B0-4F2A-9C7K", required: true },
+      {
+        key: "admin_url",
+        label: "Admin link",
+        example: "https://batch0.org/admin/support/1234",
+        required: true,
+      },
+      { key: "category_label", label: "What it's about", example: "Refund request", required: true },
+      { key: "priority_label", label: "Priority", example: "High", required: true },
+      { key: "subject_line", label: "Their subject", example: "Refund for tuition", required: true },
+      {
+        key: "requester_label",
+        label: "Who filed it",
+        example: "Alex Rivera <alex@example.com>",
+        required: true,
+      },
+      {
+        key: "received_at",
+        label: "When it reached us",
+        example: "October 1, 2026 at 9:30 AM EDT",
+        required: true,
+      },
+      {
+        key: "team_note",
+        label: "Note for the team (refund clock, who logged it)",
+        example:
+          "Refund request — this one has a clock on it. The 48-hour window runs from payment to the received time above; check it against the payment before replying.",
+        required: true,
+      },
+    ],
+  },
+  {
+    key: "support.concern_received_internal",
+    name: "Support request — confidential concern alert",
+    description:
+      "Lands in the team inbox when a confidential concern is filed. It carries only the reference and the admin link, on purpose: the shared inbox is read by people who must not be able to read the concern. No other variables are passed, so none can be added.",
+    category: "internal",
+    subject: "[support] Confidential concern ({{reference}})",
+    preheader: "Open it in the admin.",
+    body_html:
+      "<h1>A confidential concern was filed</h1>" +
+      "<p>A confidential concern was filed ({{reference}}). Open it in the admin.</p>",
+    cta_label: "Open in admin",
+    cta_url: "{{admin_url}}",
+    variables: [
+      { key: "reference", label: "Request reference", example: "B0-4F2A-9C7K", required: true },
+      {
+        key: "admin_url",
+        label: "Admin link",
+        example: "https://batch0.org/admin/support/1234",
+        required: true,
+      },
+    ],
+  },
+  {
+    key: "support.overdue_digest",
+    name: "Support — overdue digest",
+    description:
+      "The daily email to the team inbox listing open requests past their reply target, longest overdue first. Only sent when the list isn't empty. Confidential concerns appear as their reference only.",
+    category: "internal",
+    subject: "[support] {{overdue_count}} past their reply target",
+    preheader: "Longest overdue first.",
+    body_html:
+      "<h1>Past their reply target</h1>" +
+      "<p>{{digest_intro}}</p>" +
+      '<p style="white-space:pre-wrap">{{ticket_list}}</p>',
+    cta_label: "Open the queue",
+    cta_url: "{{queue_url}}",
+    variables: [
+      { key: "overdue_count", label: "How many", example: "3 requests", required: true },
+      {
+        key: "digest_intro",
+        label: "Opening line",
+        example:
+          "3 requests past their reply target as of October 1, 2026 at 9:00 AM EDT, longest overdue first.",
+        required: true,
+      },
+      {
+        key: "ticket_list",
+        label: "The list (one request per block)",
+        example:
+          "B0-4F2A-9C7K · Urgent · Tech help · “Live room won't load” · waiting 6h 0m, 2h 0m past target\nhttps://batch0.org/admin/support/1234",
+        required: true,
+      },
+      {
+        key: "queue_url",
+        label: "Queue link",
+        example: "https://batch0.org/admin/support",
+        required: true,
+      },
+    ],
+  },
 ];
 
 export type SeedReport = {

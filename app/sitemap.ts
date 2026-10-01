@@ -33,6 +33,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE}/terms`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     { url: `${BASE}/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     { url: `${BASE}/refund-policy`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    // The support form. Listed because every policy above now points at it as
+    // the way to exercise something the policy grants, so a crawler that has
+    // the policy should be able to reach the remedy. The tokenized threads at
+    // /support/t/* are deliberately absent and are disallowed in app/robots.ts.
+    { url: `${BASE}/support`, lastModified: now, changeFrequency: "yearly", priority: 0.4 },
   ];
 
   const blogPosts: MetadataRoute.Sitemap = posts.map((p) => ({

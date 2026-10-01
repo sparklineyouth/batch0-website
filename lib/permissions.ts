@@ -65,6 +65,9 @@ export const PERMISSION_KEYS = [
   "passes.manage",
   "scholarships.view",
   "scholarships.manage",
+  "support.view",
+  "support.manage",
+  "support.sensitive",
   "moderation.manage",
   "discord.manage",
   "audit.view",
@@ -317,6 +320,27 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         description: "Mint passes and work the pass-request queue.",
       },
       {
+        key: "support.view",
+        label: "View support requests",
+        description:
+          "Read the support queue and any request in full, including the requester's email address and what they say about their payments. Confidential concerns also need “See confidential concerns”.",
+        sensitive: true,
+      },
+      {
+        key: "support.manage",
+        label: "Answer support requests",
+        description:
+          "Reply to support requests, leave internal notes, assign, reprioritise and recategorise them, link payments, resolve or close them, and log a request someone sent by email or phone. A reply emails the requester.",
+        sensitive: true,
+      },
+      {
+        key: "support.sensitive",
+        label: "See confidential concerns",
+        description:
+          "See and handle confidential concerns — safety, harassment and wellbeing reports, which nobody else on the team can open. Only works alongside View or Answer support requests. Keep it to a small number of senior staff.",
+        sensitive: true,
+      },
+      {
         key: "moderation.manage",
         label: "Moderate",
         description: "Review reported content and act on it.",
@@ -567,6 +591,17 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   // possible — someone who reads the queue and discusses it without being able
   // to hand out tuition or refund a card.
   ["/admin/scholarships", "scholarships.view"],
+  // Read-gated like the scholarship area above, for the same reason: the queue
+  // opens on `support.view` and every mutation inside it re-asserts
+  // `support.manage`, which is what makes a read-only role possible — someone
+  // who can see what people are asking for without being able to answer in
+  // batch0's name or resolve a refund request.
+  //
+  // More specific than /admin/support, so it wins the longest-prefix match
+  // wherever it sits in this list: logging a request on someone's behalf is a
+  // write, and it needs the write key.
+  ["/admin/support/new", "support.manage"],
+  ["/admin/support", "support.view"],
   ["/admin/moderation", "moderation.manage"],
   ["/admin/messages", "moderation.manage"],
   ["/admin/discussions", "discussions.manage"],

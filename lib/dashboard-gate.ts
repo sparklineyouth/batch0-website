@@ -4,11 +4,17 @@
  * own home.
  *
  * /dashboard is the participant area, and a mentor or investor has no
- * business in the student view. Three kinds of page under it are not the
+ * business in the student view. Four kinds of page under it are not the
  * student view, though, and every role must be able to reach them:
  *
  *   - /dashboard/pay-fine and /dashboard/billing — per-user pages every role
  *     has (the fine block forces people to the first).
+ *   - /dashboard/support and everything under it — "Help & support", the
+ *     requests an account has sent the team. Every signed-in person may file
+ *     one, and the requester's own notifications and the success screen link
+ *     here, so a mentor who files at /support must not be bounced to /mentor
+ *     the moment they try to read the answer. The thread page authorizes
+ *     itself: it only ever shows the viewer their own requests.
  *   - /dashboard/calls/<id>/live — the 1:1 ROOM, which is shared by both
  *     people on the call. The host of a call is very often a mentor or an
  *     investor, whose calls list (/mentor/calls, /investor/calls) links here,
@@ -27,7 +33,7 @@
  *     whether they may see it at all, Manage events or a claimed speaker row
  *     decides whether they host, and anyone else gets a 404.
  *
- * In both cases the dashboard layout renders bare chrome (no student nav) for
+ * In every case the dashboard layout renders bare chrome (no student nav) for
  * a viewer without `student.dashboard`.
  *
  * Only the rooms — not /dashboard/calls or /dashboard/events, which are the
@@ -47,6 +53,16 @@
  */
 export function isLiveRoomPath(path: string): boolean {
   return /^\/dashboard\/(events|calls)\/[^/]+\/live\/?$/.test(path);
+}
+
+/**
+ * /dashboard/support or anything under it — exactly that segment, so a
+ * look-alike such as /dashboard/supporters is not swept in. Shared with the
+ * middleware's pending-fine block, which exempts the same pages: disputing a
+ * fine is one of the things people file a request about.
+ */
+export function isSupportPath(path: string): boolean {
+  return path === "/dashboard/support" || path.startsWith("/dashboard/support/");
 }
 
 /**
@@ -71,6 +87,7 @@ export function bouncesFromDashboard({
   if (home === "/dashboard") return false;
   if (path.startsWith("/dashboard/pay-fine")) return false;
   if (path.startsWith("/dashboard/billing")) return false;
+  if (isSupportPath(path)) return false;
   if (isLiveRoomPath(path)) return false;
   return true;
 }

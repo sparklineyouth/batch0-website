@@ -32,6 +32,9 @@ export const metadata = {
   title: "Demo Day ticket · batch0",
   // A private link. Never indexed.
   robots: { index: false, follow: false },
+  // The token is in the path, so no link out of here may carry it in a
+  // Referer header — same as /pay.
+  referrer: "no-referrer",
 };
 
 // The token is a secret and the state is live money; nothing here caches.

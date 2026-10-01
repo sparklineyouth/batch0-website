@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: September 26, 2026
+        Last updated: October 1, 2026
       </p>
 
       <p>
@@ -45,6 +45,16 @@ export default function PrivacyPage() {
         <li>
           <strong>Program usage:</strong> lesson progress, weekly check-ins,
           team threads, comments, and files you upload to your drive.
+        </li>
+        <li>
+          <strong>Support requests:</strong> the messages and files you send
+          us when you ask for help, plus technical details recorded with a
+          request — your browser, and the page you were on when you reported
+          a problem. Within batch0, only staff with support access can read
+          them, and reports of a confidential concern are restricted to a
+          small number of senior staff. We keep them for as long as we need
+          to resolve them, and keep refund and privacy requests as a record
+          of what was asked and when.
         </li>
         <li>
           <strong>Operational logs:</strong> standard server logs (IP, user
@@ -96,14 +106,24 @@ export default function PrivacyPage() {
 
       <h2>Your rights</h2>
       <p>
-        You can update your profile or delete your account from{" "}
-        <a href="/dashboard/settings">settings</a>. You can email us to
-        request a copy of your data or full deletion at{" "}
-        <a href="mailto:hello@batch0.org">
-          hello@batch0.org
-        </a>
-        .
+        You can update your profile in{" "}
+        <a href="/dashboard/settings">settings</a>. You can&rsquo;t delete
+        your account there: account deletion, a copy of your data, or a
+        correction to something we hold goes through a request, and our team
+        does it for you. Open one at{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a> and choose
+        &ldquo;Privacy &amp; my data&rdquo; — you&rsquo;ll get a reference
+        number and a dated record of when you asked, which matters for a
+        request with a legal clock on it. Emailing{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a> works too.
       </p>
+      <div className="mt-8 rounded-xl border border-line bg-wash p-5 text-ink">
+        <strong>To exercise a data right:</strong> open a request at{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a> or email{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a> — for a copy
+        of your data, a correction, or account deletion. Either way, both
+        sides have a dated record of when you asked.
+      </div>
 
       <h2>Minors</h2>
       <p>
@@ -124,10 +144,9 @@ export default function PrivacyPage() {
 
       <h2>Contact</h2>
       <p>
-        Questions:{" "}
-        <a href="mailto:hello@batch0.org">
-          hello@batch0.org
-        </a>
+        Questions about this policy, or about data we hold on you:{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a>, or{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a>.
       </p>
 
       <JsonLd
@@ -136,7 +155,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-09-26",
+          dateModified: "2026-10-01",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { VT323, IBM_Plex_Mono } from "next/font/google";
 import { SiteAnalytics } from "@/components/site-analytics";
-import { PAYMENT_FRAGMENT_SCRIPT } from "@/lib/payment-privacy";
+import { PAYMENT_FRAGMENT_SCRIPT, SECRET_URL_ANALYTICS_SCRIPT } from "@/lib/payment-privacy";
 import { ThemeProvider } from "@/components/theme-provider";
 import {
   SITE,
@@ -253,12 +253,16 @@ export default function RootLayout({
       className={`${display.variable} ${mono.variable}`}
     >
       <body className="bg-paper font-sans text-ink antialiased">
+        {/* Turn GA off before any GA code runs wherever the URL carries a
+            credential: /pay, and the token pages under /support/t/ and
+            /demo-day/ticket/. See lib/payment-privacy.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: PAYMENT_FRAGMENT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: SECRET_URL_ANALYTICS_SCRIPT }} />
         {/* Stamps `data-authed` on <html> before anything paints, so the CTA
             in the navbar can say "Dashboard" — at the width of "Dashboard" —
             on the very first frame without the page reading cookies on the
             server and losing its prerender. Same shape as the next-themes
             script above it. See lib/auth-flag.ts. */}
-        <script dangerouslySetInnerHTML={{ __html: PAYMENT_FRAGMENT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: AUTH_FLAG_SCRIPT }} />
         <ThemeProvider>
           <a

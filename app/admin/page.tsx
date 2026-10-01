@@ -14,9 +14,11 @@ import {
   CheckCircle,
   MessageCircleQuestion,
   Flag,
+  LifeBuoy,
 } from "lucide-react";
 import { countQuestionsNeedingReply } from "@/lib/discussions";
 import { countOpenReports } from "@/lib/dm";
+import { countTicketsNeedingReply } from "@/lib/support";
 
 export const metadata = { title: "Admin · batch0" };
 
@@ -38,6 +40,7 @@ export default async function AdminOverview() {
   const seeRevenue = can(caps, "payments.view");
   const seeDiscussions = can(caps, "discussions.manage");
   const seeReports = can(caps, "moderation.manage");
+  const seeSupport = can(caps, "support.view");
 
   const admin = createAdminClient();
 
@@ -52,6 +55,7 @@ export default async function AdminOverview() {
     { data: recentApps },
     openQuestions,
     openReports,
+    openTickets,
   ] = await Promise.all([
     seeApplications
       ? admin.from("applications").select("id", { count: "exact", head: true })
@@ -101,6 +105,7 @@ export default async function AdminOverview() {
       : { data: null, error: null },
     seeDiscussions ? countQuestionsNeedingReply() : Promise.resolve(0),
     seeReports ? countOpenReports(profile.id).catch(() => 0) : Promise.resolve(0),
+    seeSupport ? countTicketsNeedingReply() : Promise.resolve(0),
   ]);
 
   if (paymentsError || chargesError || ticketError) throw new Error("Financial data unavailable. Check the revenue migration and database connection.");
@@ -140,6 +145,19 @@ export default async function AdminOverview() {
             count: openQuestions,
             href: "/admin/discussions",
             tone: openQuestions > 0 ? "phosphor" : "muted",
+          },
+        ]
+      : []),
+    // Same row, same reason: a support request waiting on us is someone
+    // blocked on us, and a refund request in there has a deadline attached.
+    ...(seeSupport
+      ? [
+          {
+            icon: LifeBuoy,
+            label: "Support requests awaiting reply",
+            count: openTickets,
+            href: "/admin/support",
+            tone: openTickets > 0 ? "phosphor" : "muted",
           },
         ]
       : []),

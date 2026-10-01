@@ -39,6 +39,12 @@ export default function robots(): MetadataRoute.Robots {
     "/home",
     "/auth",
     "/api",
+    // Tokenized support threads. The token in the path IS the authorization,
+    // so one of these URLs in an index is a disclosure of somebody's refund
+    // request. Note this does NOT cover /support itself — robots.txt matching
+    // is a plain prefix, and "/support" doesn't start with "/support/t" — so
+    // the public form stays crawlable and stays in the sitemap.
+    "/support/t",
   ];
 
   // Every agent gets the same policy: crawl the public site, skip the gated

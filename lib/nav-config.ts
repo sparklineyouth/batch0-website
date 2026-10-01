@@ -41,6 +41,7 @@ import {
   Workflow,
   LineChart,
   GraduationCap,
+  LifeBuoy,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
@@ -131,6 +132,11 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
         icon: GraduationCap,
       },
       { href: "/dashboard/referrals", label: "Refer friends", icon: Star },
+      // In Account rather than Workspace, and deliberately not gated behind
+      // enrolment: the requests people file here are about billing, account
+      // access, and data rights, which are exactly the things someone needs
+      // when the rest of the dashboard is NOT working for them.
+      { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
       { href: "/dashboard/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -446,6 +452,15 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: Inbox,
         perm: "email.view",
       },
+      // One row, not two. The queue is the only page in the section anyone
+      // navigates to directly — a request's detail page is always reached by
+      // clicking the row, never by typing the URL.
+      {
+        href: "/admin/support",
+        label: "Support",
+        icon: LifeBuoy,
+        perm: "support.view",
+      },
       {
         href: "/admin/referrals",
         label: "Referrals",
@@ -530,6 +545,9 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/mentor", label: "Overview", icon: LayoutDashboard, exact: true },
       { href: "/messages", label: "Messages", icon: MessageCircle },
+      // Under /dashboard but open to every role (lib/dashboard-gate.ts): a
+      // mentor's own requests to the team, not the student view.
+      { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
     ],
   },
   {
@@ -572,6 +590,8 @@ export const INVESTOR_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/investor", label: "Overview", icon: LayoutDashboard, exact: true },
       { href: "/messages", label: "Messages", icon: MessageCircle },
+      // Same exemption as the mentor's — see MENTOR_NAV_GROUPS.
+      { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
     ],
   },
   {
