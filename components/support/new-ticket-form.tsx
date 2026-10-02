@@ -3,12 +3,13 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { Button, ButtonLink, buttonClasses } from "@/components/ui/button";
-import { FieldError, Input, Label, Textarea } from "@/components/ui/input";
+import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
 import {
   submitSupportRequest,
   type SubmitSupportRequestResult,
 } from "@/app/support/actions";
+import { AttachmentPicker } from "@/components/support/attachment-picker";
 import {
   CATEGORY_GROUPS,
   CATEGORY_HINTS,
@@ -41,12 +42,27 @@ import {
  * the requester's proof under app/(legal)/refund-policy, so the confirmation
  * has to read like a receipt, not a thank-you note — and it only says we
  * emailed a copy when the server says the email actually went.
+ *
+ * Files upload while the person writes (components/support/attachment-picker),
+ * into a staging folder of their own; Send waits for any still in flight. The
+ * request never fails over a file — the receipt says which ones didn't attach
+ * and why. No resetKey: the receipt replaces the form, and the picker with it.
  */
+/** One of the person's own charges, as the "which charge?" picker lists it. */
+export type PayableOption = {
+  id: string;
+  kind: "tuition" | "charge" | "demo_day";
+  /** "Tuition · $1,500.00 · paid Sep 29, 2026" — built on the server. */
+  label: string;
+};
+
 export function NewTicketForm({
   initial = null,
   accountEmail,
   context,
   surface = "web",
+  payables = [],
+  initialPaymentId = null,
 }: {
   /** A category the link already knows (?topic=), or null to make them choose. */
   initial?: TicketCategory | null;
@@ -55,8 +71,16 @@ export function NewTicketForm({
   /** Prefill context the page already sanitized (?from=, ?source=, ?digest=). */
   context?: { page?: string; source?: string; digest?: string };
   surface?: SupportSurface;
+  /** Their charges, for refund and billing requests. Empty: no picker. */
+  payables?: PayableOption[];
+  /** A charge the link already named (?payment=), checked to be theirs. */
+  initialPaymentId?: string | null;
 }) {
   const [category, setCategory] = useState<TicketCategory | null>(initial);
+  // Which charge it's about. The server checks it's theirs again
+  // (createTicket); picking one is what lets the team see the payment — and,
+  // for a refund, the 48-hour window — without asking.
+  const [paymentId, setPaymentId] = useState(initialPaymentId ?? "");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [receiptRef, setReceiptRef] = useState("");
@@ -65,6 +89,9 @@ export function NewTicketForm({
   const [done, setDone] = useState<Extract<SubmitSupportRequestResult, { ok: true }> | null>(
     null,
   );
+  // A file still uploading holds Send: a request sent mid-upload goes
+  // without the screenshot its author thinks is on it.
+  const [uploading, setUploading] = useState(false);
   const [pending, start] = useTransition();
   const doneRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +103,7 @@ export function NewTicketForm({
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (uploading) return;
     setErr(undefined);
     // The server checks all of this again; checking here just saves the
     // person a round trip to find out they skipped the first question.
@@ -111,6 +139,9 @@ export function NewTicketForm({
   }
 
   if (done) {
+    const attached = done.attachments?.recorded ?? 0;
+    const missed = done.attachments?.rejected ?? [];
+    const them = missed.length === 1 ? "it" : "them";
     return (
       <div
         ref={doneRef}
@@ -132,7 +163,33 @@ export function NewTicketForm({
             Recorded
           </dt>
           <dd className="text-ink">{formatReceivedAt(done.receivedAt)}</dd>
+          {attached > 0 && (
+            <>
+              <dt className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">
+                Files
+              </dt>
+              <dd className="text-ink">{attached} attached</dd>
+            </>
+          )}
         </dl>
+        {/* The request went through either way; a file that didn't is said
+            here, by name, with the reason — not left for them to notice. */}
+        {missed.length > 0 && (
+          <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+            <p className="font-medium">
+              {missed.length === 1 ? "One file" : `${missed.length} files`} didn&rsquo;t
+              attach, so your request went without {them}. You can add {them} on
+              its page.
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {missed.map((f, i) => (
+                <li key={i} className="break-words">
+                  <span className="font-medium">{f.name}</span> — {f.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <p className="mt-4 text-sm text-ink-soft">
           {done.emailed ? (
             <>
@@ -164,7 +221,11 @@ export function NewTicketForm({
           <a href={done.threadPath} className={buttonClasses("primary", "md")}>
             Open your request
           </a>
-          <ButtonLink href="/dashboard/support" prefetch={false} variant="secondary">
+          <ButtonLink
+            href={surface === "app" ? "/app/support" : "/dashboard/support"}
+            prefetch={false}
+            variant="secondary"
+          >
             All your requests
           </ButtonLink>
         </div>
@@ -173,6 +234,7 @@ export function NewTicketForm({
   }
 
   const needsReceipt = category !== null && wantsReceiptRef(category);
+  const picked = payables.find((p) => p.id === paymentId) ?? null;
 
   return (
     <form onSubmit={submit} noValidate className="space-y-6">
@@ -282,7 +344,35 @@ export function NewTicketForm({
         </p>
       </div>
 
-      {needsReceipt && (
+      {needsReceipt && payables.length > 0 && (
+        <div>
+          <Label htmlFor="support-payment">
+            Which charge is this about{" "}
+            <span className="normal-case tracking-normal text-ink-faint">(optional)</span>
+          </Label>
+          <Select
+            id="support-payment"
+            name="payment_id"
+            value={paymentId}
+            onChange={(e) => setPaymentId(e.target.value)}
+          >
+            <option value="">Not sure, or it isn&rsquo;t listed</option>
+            {payables.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </Select>
+          {category === "refund" && picked?.kind === "demo_day" && (
+            <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">
+              Demo Day tickets are final sale unless batch0 cancels Demo Day
+              — but if something went wrong with yours, tell us below.
+            </p>
+          )}
+        </div>
+      )}
+
+      {needsReceipt && !picked && (
         <div>
           <Label htmlFor="support-receipt">Receipt or transaction ID</Label>
           <Input
@@ -332,6 +422,14 @@ export function NewTicketForm({
         </p>
       </div>
 
+      <fieldset>
+        <legend className="mb-1.5 block text-xs font-mono font-medium uppercase tracking-wider text-ink-soft">
+          Attachments{" "}
+          <span className="normal-case tracking-normal text-ink-faint">(optional)</span>
+        </legend>
+        <AttachmentPicker scope={{ kind: "new" }} onBusyChange={setUploading} disabled={pending} />
+      </fieldset>
+
       <div className="rounded-lg border border-line bg-wash px-3 py-2.5 text-xs text-ink-soft">
         We&rsquo;ll reply to <strong className="text-ink">{accountEmail}</strong>
         , the address on your account.
@@ -349,10 +447,10 @@ export function NewTicketForm({
         type="submit"
         size="lg"
         className="w-full sm:w-auto"
-        disabled={pending}
+        disabled={pending || uploading}
         aria-busy={pending}
       >
-        {pending ? "Sending…" : "Send request"}
+        {pending ? "Sending…" : uploading ? "Waiting for files…" : "Send request"}
       </Button>
     </form>
   );

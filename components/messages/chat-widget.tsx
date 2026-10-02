@@ -14,6 +14,7 @@ import { ConversationList } from "@/components/messages/conversation-list";
 import { MessageThread } from "@/components/messages/message-thread";
 import { PeopleSearch } from "@/components/messages/people-search";
 import { useInboxLive } from "@/components/messages/use-dm-live";
+import { sanitizeContextPage } from "@/lib/support-access";
 
 /**
  * The chat dock: a launcher pinned bottom-right on every signed-in page, and a
@@ -45,6 +46,22 @@ const OPEN_KEY = "batch0:chat-dock-open";
 function dockHiddenOn(pathname: string | null): boolean {
   if (!pathname) return false;
   return pathname.startsWith("/messages") || /\/live(\/|$)/.test(pathname);
+}
+
+/**
+ * Where the list footer's "Open a support request" goes: the dashboard's
+ * request form, with no topic preset (nothing here says what it's about) and
+ * the page the dock was opened over as context. The pathname goes through
+ * sanitizeContextPage like every `from` — the dock only mounts in the authed
+ * shells, none of which sits on a secret URL today, but the rule is cheaper
+ * to keep than to re-prove for every new shell.
+ */
+function dockSupportHref(pathname: string | null): string {
+  const q = new URLSearchParams();
+  const from = sanitizeContextPage(pathname);
+  if (from) q.set("from", from);
+  q.set("source", "chat_dock");
+  return `/dashboard/support/new?${q.toString()}`;
 }
 
 /**
@@ -91,10 +108,10 @@ function useVisualViewportSheet(active: boolean): React.CSSProperties | undefine
 export function ChatWidget({ viewerId }: { viewerId: string }) {
   const pathname = usePathname();
   if (dockHiddenOn(pathname)) return null;
-  return <ChatDockPanel viewerId={viewerId} />;
+  return <ChatDockPanel viewerId={viewerId} supportHref={dockSupportHref(pathname)} />;
 }
 
-function ChatDockPanel({ viewerId }: { viewerId: string }) {
+function ChatDockPanel({ viewerId, supportHref }: { viewerId: string; supportHref: string }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>({ kind: "list" });
   const [rows, setRows] = useState<DmInboxRow[]>([]);
@@ -370,7 +387,7 @@ function ChatDockPanel({ viewerId }: { viewerId: string }) {
                     onNew={() => setView({ kind: "search" })}
                   />
                 </div>
-                <div className="border-t border-line bg-wash px-3 py-2">
+                <div className="space-y-1 border-t border-line bg-wash px-3 py-2">
                   <Link
                     href="/messages"
                     prefetch={false}
@@ -379,6 +396,29 @@ function ChatDockPanel({ viewerId }: { viewerId: string }) {
                   >
                     Open all messages →
                   </Link>
+                  {/* A DM to a team member is not how a request reaches the
+                      team, and for a refund it doesn't count at all: the
+                      refund policy says a direct message doesn't stop the
+                      48-hour clock. So the inbox says where the door is.
+
+                      Its own line rather than beside "Open all messages":
+                      the pair overflows the 22rem panel and fits on only
+                      some phones, and a footer that wraps on some screens
+                      and not others looks broken.
+                      closeForNavigation for the same reason as the link
+                      above — the panel stays open across pages on purpose,
+                      and must not sit over the form it just opened. */}
+                  <p className="text-xs text-ink-faint">
+                    Need the team?{" "}
+                    <Link
+                      href={supportHref}
+                      prefetch={false}
+                      onClick={closeForNavigation}
+                      className="font-medium text-ink-soft transition hover:text-ink"
+                    >
+                      Open a support request
+                    </Link>
+                  </p>
                 </div>
               </div>
             )}

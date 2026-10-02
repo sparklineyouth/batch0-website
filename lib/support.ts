@@ -473,6 +473,12 @@ function trimToCodePoints(value: string, max: number): string {
   return Array.from(value).slice(0, max).join("");
 }
 
+/** " (+2 files)" for a bell body, so a message that's mostly a screenshot still says so. */
+function filesSuffix(count: number | undefined): string {
+  const n = Math.max(0, Math.floor(count ?? 0));
+  return n === 0 ? "" : ` (+${n} ${n === 1 ? "file" : "files"})`;
+}
+
 function excerpt(body: string, max = 160): string {
   const flat = body.replace(/\s+/g, " ").trim();
   const chars = Array.from(flat);
@@ -2044,15 +2050,21 @@ export type AnnounceNewTicketResult = {
  * address. Bells go to support.manage holders (and '*') — for a confidential
  * concern, only those who also hold support.sensitive — and never to the
  * requester themselves or to the staff member who logged it.
+ *
+ * `files` are the attachments already recorded on the request (call this
+ * after recordAttachments): the receipt names them, the team email and the
+ * bell count them. A confidential concern's team alert says nothing about
+ * them, as it says nothing about anything else.
  */
 export async function announceNewTicket(
   ticket: SupportTicket,
-  opts: { notifyRequester?: boolean } = {},
+  opts: { notifyRequester?: boolean; files?: ReadonlyArray<{ fileName: string }> } = {},
 ): Promise<AnnounceNewTicketResult> {
   const result: AnnounceNewTicketResult = { requesterEmailed: false, teamEmailed: false };
   const categoryLabel = CATEGORY_LABELS[ticket.category];
   const receivedAt = formatReceivedAt(ticket.receivedAt);
   const staffLogged = !!ticket.createdBy;
+  const files = opts.files ?? [];
 
   // 1. The requester's receipt. The most important email in the feature.
   if (opts.notifyRequester !== false && isMailable(ticket.requesterEmail)) {
@@ -2069,6 +2081,7 @@ export async function announceNewTicket(
         body: ticket.body,
         receivedAt,
         threadUrl: ticketUrl(ticket.token),
+        attachmentNames: files.map((f) => f.fileName),
       };
       const sent = await sendTemplated(SUPPORT_RECEIVED_TEMPLATE, {
         to: ticket.requesterEmail,
@@ -2113,6 +2126,7 @@ export async function announceNewTicket(
           channel: ticket.channel,
           staffLogged,
           loggedBy: ticket.createdByName,
+          attachmentCount: files.length,
         };
         sent = await sendTemplated(SUPPORT_INTERNAL_TEMPLATE, {
           to: inbox,
@@ -2145,7 +2159,7 @@ export async function announceNewTicket(
         userId: uid,
         type: "support_ticket",
         title,
-        body: ticket.sensitive ? null : ticket.subject.slice(0, 200),
+        body: ticket.sensitive ? null : ticket.subject.slice(0, 200) + filesSuffix(files.length),
         link: adminTicketPath(ticket.id),
         dedupeKey: `support:new:${ticket.id}`,
       })),
@@ -2165,7 +2179,8 @@ export async function announceNewTicket(
  */
 export async function announceRequesterReply(
   ticket: Pick<SupportTicket, "id" | "reference" | "userId" | "assignedTo" | "sensitive">,
-  reply: { id: string; body: string },
+  /** `fileCount`: attachments recorded on the reply, for the bell. */
+  reply: { id: string; body: string; fileCount?: number },
 ): Promise<void> {
   try {
     const team = await listSupportTeamIds({ sensitive: ticket.sensitive });
@@ -2179,7 +2194,7 @@ export async function announceRequesterReply(
         title: ticket.sensitive
           ? `Follow-up on a confidential concern — ${ticket.reference}`
           : `Follow-up on ${ticket.reference}`,
-        body: ticket.sensitive ? null : excerpt(reply.body, 200),
+        body: ticket.sensitive ? null : excerpt(reply.body, 200) + filesSuffix(reply.fileCount),
         link: adminTicketPath(ticket.id),
         // Keyed on the reply: every follow-up is worth a bell, and a retried
         // action still produces exactly one per message.
@@ -2203,6 +2218,8 @@ export async function announceStaffReply(args: {
   body: string;
   replierName: string;
   resolved?: boolean;
+  /** Attachments recorded on the reply. They stay on the thread; the email says so. */
+  fileCount?: number;
 }): Promise<{ emailed: boolean }> {
   const t = args.ticket;
   let emailed = false;
@@ -2218,6 +2235,7 @@ export async function announceStaffReply(args: {
           reply: args.body,
           threadUrl: ticketUrl(t.token),
           resolved: !!args.resolved,
+          attachmentCount: args.fileCount ?? 0,
         };
         const sent = await sendTemplated(SUPPORT_REPLIED_TEMPLATE, {
           to: t.requesterEmail,
@@ -2247,7 +2265,9 @@ export async function announceStaffReply(args: {
           title: args.resolved
             ? `The batch0 team replied and resolved ${t.reference}`
             : `The batch0 team replied — ${t.reference}`,
-          body: t.sensitive ? "Open your request to read it." : excerpt(args.body),
+          body: t.sensitive
+            ? "Open your request to read it."
+            : excerpt(args.body) + filesSuffix(args.fileCount),
           link: requesterThreadPath(t.reference),
           dedupeKey: `support:staff_reply:${args.replyId}`,
         },

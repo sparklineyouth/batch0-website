@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { ArrowLeft, Download, FileText, Receipt } from "lucide-react";
+import { ChargeHelp, billingSupportHref, inRefundWindow } from "../charge-help";
 
 export const metadata = { title: "Receipts · batch0" };
 
@@ -19,6 +20,14 @@ function fmtMoney(cents: number, currency = "usd") {
 // just wants to see "what was charged, when, and how much" in one place.
 type Row = {
   id: string;
+  /**
+   * The row's own database id, for the support links. `id` above is the list
+   * key, prefixed with its table ("p:" / "c:"); the support form wants the
+   * bare id.
+   */
+  rowId: string;
+  /** A tuition payment still inside the 48-hour refund window (inRefundWindow). */
+  refundable: boolean;
   date: string;
   source: "payment" | "fee" | "fine";
   description: string;
@@ -44,7 +53,9 @@ export default async function ReceiptsPage(
     supabase
       .from("payments")
       .select(
-        "id, created_at, amount_cents, currency, status, stripe_receipt_url",
+        // paid_at and amount_refunded_cents only decide whether the row
+        // offers "Request a refund" (inRefundWindow).
+        "id, created_at, paid_at, amount_cents, amount_refunded_cents, currency, status, stripe_receipt_url",
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false }),
@@ -57,9 +68,12 @@ export default async function ReceiptsPage(
       .order("created_at", { ascending: false }),
   ]);
 
+  const nowMs = Date.now();
   const rows: Row[] = [
     ...(payments ?? []).map((p: any) => ({
       id: `p:${p.id}`,
+      rowId: p.id,
+      refundable: inRefundWindow(p, nowMs),
       date: p.created_at,
       source: "payment" as const,
       description: "Cohort enrollment",
@@ -71,6 +85,9 @@ export default async function ReceiptsPage(
     })),
     ...(charges ?? []).map((c: any) => ({
       id: `c:${c.id}`,
+      rowId: c.id,
+      // Fees and fines have no refund window (see inRefundWindow).
+      refundable: false,
       date: c.paid_at ?? c.refunded_at ?? c.created_at,
       source: (c.kind === "fine" ? "fine" : "fee") as "fee" | "fine",
       description: c.description ?? (c.kind === "fine" ? "Fine" : "Fee"),
@@ -206,6 +223,7 @@ export default async function ReceiptsPage(
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-faint">
                     <LocalTime value={r.date} />
                   </div>
+                  <ChargeHelp id={r.rowId} refund={r.refundable} className="mt-1" />
                 </div>
                 <div className="text-right">
                   <div
@@ -246,12 +264,23 @@ export default async function ReceiptsPage(
 
       <p className="mt-4 text-[11px] text-ink-faint">
         Receipts are hosted by Stripe. Older charges from before the receipt
-        archive was rolled out may not have a downloadable link — request one
-        from{" "}
+        archive was rolled out may not have a downloadable link — if you need
+        one for taxes,{" "}
+        {/* The form first: a request gets a reference and lands in the
+            team's queue with the account attached. The address stays for
+            anyone who'd rather email. */}
+        <Link
+          href={billingSupportHref("billing")}
+          prefetch={false}
+          className="text-phosphor-ink hover:underline"
+        >
+          send a billing request
+        </Link>{" "}
+        or email{" "}
         <a href="mailto:hello@batch0.org" className="text-phosphor-ink hover:underline">
           hello@batch0.org
-        </a>{" "}
-        if you need it for taxes.
+        </a>
+        .
       </p>
     </div>
   );

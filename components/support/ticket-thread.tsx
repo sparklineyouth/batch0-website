@@ -13,28 +13,71 @@ import {
   type TicketCategory,
   type TicketStatus,
 } from "@/lib/support-access";
+import type { RejectedAttachment, SupportAttachment } from "@/lib/support-attachment-rules";
 
 /**
- * A support ticket thread, rendered the same way for both audiences.
+ * A support ticket thread, as the requester sees it.
  *
- * The requester's pages — /support/t/[token] from the email and
- * /dashboard/support/[reference] signed in — and the admin page at
- * /admin/support/[id] all mount this. They differ in three things and nothing
- * else: the header strip above it (the admin one names the requester), the
- * `controls` slot, and whether internal notes are in `replies` at all.
+ * Both of the requester's pages mount this — /support/t/[token] from the
+ * email and /dashboard/support/[reference] signed in — through the wrappers
+ * that own their credentials (requester-thread.tsx, own-thread.tsx). The
+ * team's page renders its own thread (app/admin/support/[id]/staff-thread),
+ * because it carries what this one never will: internal notes and their
+ * files, and a composer that can resolve.
  *
  * Serialisable props only, and note what is NOT in these prop types: no
  * `token`, no `requesterEmail`, no `authorEmail`. lib/support.ts's
  * forRequester() returns exactly the shape below, so a page that forgets to
- * scrub gets a type error rather than a leak. The admin page passes the same
- * scrubbed shape and renders the sensitive fields itself, in its own strip,
- * where the permission that authorized them is obvious.
+ * scrub gets a type error rather than a leak.
  *
- * `onReply` is injected rather than imported, because the surfaces post
- * through different credentials — a token or the owner's session for the
- * requester, a support.manage assertion for the team — and the component must
- * not be the thing that decides which. It just calls what it was handed.
+ * `onReply` is injected rather than imported, because the two pages post
+ * through different credentials — a token, or the owner's session — and the
+ * component must not be the thing that decides which. It just calls what it
+ * was handed.
+ *
+ * Files follow the same rule. The thread decides where they go — under the
+ * original request, under each reply, and an attach control in the composer —
+ * but the wrapper renders them (`renderFiles`, `renderAttach`), because a file
+ * link and an upload are authorized exactly as a reply is, and on the emailed
+ * page that means by the token, which this component never holds.
  */
+
+/** The hidden input the attach control fills with the finished uploads (JSON). */
+const ATTACH_FIELD = "attachments";
+
+/**
+ * What the composer hands the wrapper's attach control (an AttachmentPicker
+ * takes these props as they are): hold Send while anything is uploading,
+ * clear the files once a message has gone, and stay still while one is sending.
+ */
+export type TicketAttachSlot = {
+  name: string;
+  onBusyChange: (busy: boolean) => void;
+  resetKey: number;
+  disabled: boolean;
+};
+
+/** A send that went through can still report files that didn't make it onto the message. */
+export type TicketReplyOutcome = { rejectedFiles?: RejectedAttachment[] };
+
+/**
+ * A thread's files split by message, as a wrapper takes them from its page:
+ * groupAttachmentsByReply's result (a plain record, so it crosses from the
+ * server page). Requester pages pass only files that aren't internal.
+ */
+export type TicketThreadFiles = {
+  request: SupportAttachment[];
+  byReply: Record<string, SupportAttachment[]>;
+};
+
+/** The files on one message — the original request (`null`) or a reply. */
+export function filesOn(
+  files: TicketThreadFiles | undefined,
+  replyId: string | null,
+): SupportAttachment[] {
+  if (!files) return [];
+  return (replyId === null ? files.request : files.byReply[replyId]) ?? [];
+}
 
 export type TicketThreadTicket = {
   id: string;
@@ -63,21 +106,28 @@ export function TicketThread({
   ticket,
   replies,
   canReply,
-  staffView = false,
   controls,
   startNewHref,
+  renderFiles,
+  renderAttach,
   onReply,
 }: {
   ticket: TicketThreadTicket;
   replies: TicketThreadReply[];
-  /** False on a closed ticket for the requester. */
+  /** False on a closed ticket. */
   canReply: boolean;
-  /** True on the admin surface: enables the internal-note toggle. */
-  staffView?: boolean;
   controls?: React.ReactNode;
   /** Requester surfaces: where "start a new one" goes once a request is closed. */
   startNewHref?: string;
-  onReply: (args: { body: string; internal: boolean }) => Promise<void>;
+  /** The files on the original request (`replyId` null) or on one reply. */
+  renderFiles?: (replyId: string | null) => React.ReactNode;
+  /** The composer's attach control. Without it, replies are text only. */
+  renderAttach?: (slot: TicketAttachSlot) => React.ReactNode;
+  onReply: (args: {
+    body: string;
+    /** The attach control's finished uploads as JSON, or "" without one. */
+    attachments: string;
+  }) => Promise<TicketReplyOutcome | void>;
 }) {
   const isRefund = ticket.category === "refund";
   const finished = ticket.status === "resolved" || ticket.status === "closed";
@@ -94,7 +144,7 @@ export function TicketThread({
           ) : (
             <Clock className="h-3 w-3" />
           )}
-          {staffView ? ticket.status.replace(/_/g, " ") : STATUS_LABELS[ticket.status]}
+          {STATUS_LABELS[ticket.status]}
         </Tag>
         <span className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">
           {ticket.reference}
@@ -132,6 +182,7 @@ export function TicketThread({
         <p className="mt-3 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink">
           {ticket.body}
         </p>
+        {renderFiles?.(null)}
       </article>
 
       <h2 className="mt-8 text-[11px] font-mono font-medium uppercase tracking-[0.2em] text-ink-faint">
@@ -142,9 +193,8 @@ export function TicketThread({
 
       {replies.length === 0 && !finished && (
         <p className="mt-3 text-sm text-ink-soft">
-          {staffView
-            ? "Nobody has answered this yet."
-            : "A human reads every request. You'll get an email the moment someone replies — you don't need to check back."}
+          A human reads every request. You&rsquo;ll get an email the moment
+          someone replies — you don&rsquo;t need to check back.
         </p>
       )}
 
@@ -164,6 +214,7 @@ export function TicketThread({
               <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">
                 {r.body}
               </p>
+              {renderFiles?.(r.id)}
             </li>
           ))}
         </ul>
@@ -172,8 +223,8 @@ export function TicketThread({
       {canReply ? (
         <ReplyComposer
           onReply={onReply}
-          staffView={staffView}
           resolved={ticket.status === "resolved"}
+          renderAttach={renderAttach}
         />
       ) : ticket.status === "closed" ? (
         <p className="mt-6 flex items-start gap-2 text-sm text-ink-faint">
@@ -196,20 +247,7 @@ export function TicketThread({
             </span>
           )}
         </p>
-      ) : (
-        // Keyed on the status, not just on canReply. The other way a composer
-        // is withheld is a read-only viewer — someone holding support.view
-        // without support.manage — and telling them an open ticket is "closed
-        // and isn't accepting replies" would be a false statement about the
-        // ticket rather than a true one about their permissions.
-        staffView && (
-          <p className="mt-6 flex items-center gap-2 text-sm text-ink-faint">
-            <Lock className="h-3.5 w-3.5" />
-            You have read access to this request. Answering it needs the
-            &ldquo;Answer support requests&rdquo; permission.
-          </p>
-        )
-      )}
+      ) : null}
     </div>
   );
 }
@@ -280,28 +318,43 @@ function Byline({
 
 function ReplyComposer({
   onReply,
-  staffView,
   resolved,
+  renderAttach,
 }: {
-  onReply: (args: { body: string; internal: boolean }) => Promise<void>;
-  staffView: boolean;
+  onReply: (args: { body: string; attachments: string }) => Promise<TicketReplyOutcome | void>;
   resolved: boolean;
+  renderAttach?: (slot: TicketAttachSlot) => React.ReactNode;
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
-  const [internal, setInternal] = useState(false);
   const [err, setErr] = useState<string | undefined>();
+  // A file still uploading holds Send: a message sent mid-upload goes without
+  // the file its author thinks is on it. Each send that goes through bumps
+  // `sent`, which clears the attach control for the next message.
+  const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState(0);
+  const [rejected, setRejected] = useState<RejectedAttachment[]>([]);
   const [pending, start] = useTransition();
 
-  function send() {
+  // A form rather than a click handler, so the attach control's hidden input
+  // travels with the message — and a screenshot pasted into the text box
+  // attaches (the picker listens for pastes on its surrounding form).
+  function send(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setErr(undefined);
     const text = body.trim();
-    if (!text) return;
+    if (!text || uploading) return;
+    setRejected([]);
+    const files = new FormData(e.currentTarget).get(ATTACH_FIELD);
     start(async () => {
       try {
-        await onReply({ body: text, internal });
+        const outcome = await onReply({
+          body: text,
+          attachments: typeof files === "string" ? files : "",
+        });
         setBody("");
-        setInternal(false);
+        setSent((n) => n + 1);
+        setRejected((outcome && outcome.rejectedFiles) || []);
         router.refresh();
       } catch (e) {
         setErr(getActionError(e));
@@ -310,7 +363,7 @@ function ReplyComposer({
   }
 
   return (
-    <div className="mt-6">
+    <form onSubmit={send} className="mt-6">
       <label htmlFor="ticket-reply" className="sr-only">
         Your reply
       </label>
@@ -318,52 +371,112 @@ function ReplyComposer({
         id="ticket-reply"
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        // ⌘/Ctrl+Enter sends, through the form, so it takes the same path —
+        // and the same "still uploading" hold — as the button.
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            e.currentTarget.form?.requestSubmit();
+          }
+        }}
         placeholder={
-          staffView
-            ? internal
-              ? "A note for the team. The requester never sees this."
-              : "Reply to the requester. This emails them."
-            : resolved
-              ? "Still not sorted? Reply here and it reopens."
-              : "Add anything else that would help…"
+          resolved
+            ? "Still not sorted? Reply here and it reopens."
+            : "Add anything else that would help…"
         }
         maxLength={REPLY_BODY_MAX}
         rows={4}
         error={err}
       />
+      {renderAttach && (
+        <div className="mt-3">
+          {renderAttach({
+            name: ATTACH_FIELD,
+            onBusyChange: setUploading,
+            resetKey: sent,
+            disabled: pending,
+          })}
+        </div>
+      )}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <FieldError id="ticket-reply-error">{err}</FieldError>
         <div className="ml-auto flex items-center gap-3">
-          {staffView && (
-            // A checkbox rather than a second button, because the distinction
-            // it draws — "does this email a real person" — should be visible
-            // while the message is being typed, not decided at the last click.
-            <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-ink-soft">
-              <input
-                type="checkbox"
-                checked={internal}
-                onChange={(e) => setInternal(e.target.checked)}
-                className="h-3.5 w-3.5 accent-amber-500"
-              />
-              Internal note
-            </label>
-          )}
-          <Button size="sm" onClick={send} disabled={pending || !body.trim()}>
-            {pending
-              ? "Sending…"
-              : staffView && internal
-                ? "Save note"
-                : staffView
-                  ? "Send reply"
-                  : "Send"}
+          <Button
+            type="submit"
+            size="sm"
+            disabled={pending || uploading || !body.trim()}
+          >
+            {pending ? "Sending…" : uploading ? "Waiting for files…" : "Send"}
           </Button>
         </div>
       </div>
-      {staffView && !internal && (
-        <p className="mt-2 text-xs text-ink-faint">
-          Sending emails the requester and moves this out of the queue.
-        </p>
+      {/* The message went; these files didn't. The picker has been cleared
+          for the next message, so say which ones to attach again. */}
+      {rejected.length > 0 && (
+        <div
+          role="alert"
+          className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300"
+        >
+          <p className="font-medium">
+            Sent, but {rejected.length === 1 ? "one file" : `${rejected.length} files`}{" "}
+            didn&rsquo;t attach:
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {rejected.map((f, i) => (
+              <li key={i} className="break-words">
+                <span className="font-medium">{f.name}</span> — {f.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-    </div>
+    </form>
+  );
+}
+
+/**
+ * "This is solved" — the requester's one status control on their own
+ * request, on either of their pages. `onSolve` is the wrapper's action, for
+ * the same reason `onReply` is: the two pages authorize it differently.
+ */
+export function MarkSolvedButton({
+  onSolve,
+}: {
+  onSolve: () => Promise<{ ok: true } | { ok: false; error: string }>;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | undefined>();
+
+  function solve() {
+    setErr(undefined);
+    start(async () => {
+      try {
+        const res = await onSolve();
+        if (res.ok) router.refresh();
+        else setErr(res.error);
+      } catch (e) {
+        setErr(getActionError(e));
+      }
+    });
+  }
+
+  return (
+    <span className="flex items-center gap-2">
+      {err && (
+        <span role="alert" className="text-xs text-red-700 dark:text-red-300">
+          {err}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={solve}
+        disabled={pending}
+        className="press inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-ink-soft hover:border-ink/30 hover:text-ink disabled:opacity-50"
+      >
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {pending ? "Saving…" : "This is solved"}
+      </button>
+    </span>
   );
 }

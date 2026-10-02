@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { isUuid } from "@/lib/support-access";
 import { RefundButton } from "./refund-button";
 import { SyncStripeButton } from "./sync-button";
 
@@ -39,7 +40,7 @@ function hrefFor(status: StatusFilter, cohort: string, page = 1) {
 
 export default async function AdminPaymentsPage(
   props: {
-    searchParams: Promise<{ status?: string; cohort?: string; page?: string }>;
+    searchParams: Promise<{ status?: string; cohort?: string; page?: string; payment?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -51,6 +52,10 @@ export default async function AdminPaymentsPage(
   const cohortFilter = searchParams.cohort ?? "all";
   const page = parsePage(searchParams.page);
   const offset = (page - 1) * PAGE_SIZE;
+  // One payment, by id — where a support request's "Issue a refund" lands,
+  // so the refund button is on the row the request is about rather than
+  // somewhere in a paginated ledger. Every other filter link drops it.
+  const paymentFilter = isUuid(searchParams.payment) ? searchParams.payment : null;
 
   // The transaction table is filtered and paginated in SQL; the stat tiles and
   // cohort breakdown come from a separate skinny scan (four columns) so they
@@ -69,6 +74,7 @@ export default async function AdminPaymentsPage(
   if (cohortFilter !== "all") {
     listQuery = listQuery.eq("cohort_id", cohortFilter);
   }
+  if (paymentFilter) listQuery = listQuery.eq("id", paymentFilter);
 
   const [{ data: pageRows, count, error: pageError }, { data: statRows, error: statsError }, { data: cohorts }] =
     await Promise.all([
@@ -232,6 +238,15 @@ export default async function AdminPaymentsPage(
           status={statusFilter}
         />
       </div>
+
+      {paymentFilter && (
+        <p className="mt-4 text-xs text-ink-soft">
+          Showing one payment, from a support request.{" "}
+          <Link href={hrefFor(statusFilter, cohortFilter)} className="text-phosphor-ink hover:underline">
+            Show all payments
+          </Link>
+        </p>
+      )}
 
       {/* Transactions table */}
       <Card className="mt-4 !p-0 overflow-hidden">

@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/call-lifecycle",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/support-housekeeping",
+      "schedule": "0 13 * * *"
     }
   ]
 }

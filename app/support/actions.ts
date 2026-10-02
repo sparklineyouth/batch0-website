@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { requireActor } from "@/lib/server-guards";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { logAudit } from "@/lib/audit";
+import { logAudit, logAuditMany } from "@/lib/audit";
 import { getProfile } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { isPlaceholderEmail } from "@/lib/placeholder-email";
@@ -21,6 +21,12 @@ import {
   markTicketSolvedByRequester,
   requesterThreadPath,
 } from "@/lib/support";
+import {
+  recordAttachments,
+  type AttachmentUploader,
+  type RejectedAttachment,
+  type SupportAttachment,
+} from "@/lib/support-attachments";
 import {
   REPLY_BODY_MAX,
   TICKET_BODY_MAX,
@@ -53,6 +59,12 @@ import {
  *
  * Every action takes (previous state, FormData) and returns the flat result
  * below, so a form can hold it in useActionState or call it directly.
+ *
+ * Files ride along as an `attachments` field — the hidden input
+ * components/support/attachment-picker.tsx renders, listing uploads that
+ * already sit in the private bucket. They're recorded onto the message only
+ * after it's saved, and never decide whether it is: a file that doesn't make
+ * it costs that file, and the result says which ones and why.
  */
 
 const REQUESTER_LIST = "/dashboard/support";
@@ -62,6 +74,14 @@ const CLOSED =
   "This request is closed and isn't accepting replies. Open a new one if you still need help.";
 
 type Refusal = { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+/** What became of the files posted with a message. */
+export type SupportAttachmentsOutcome = {
+  /** How many are now on the message. */
+  recorded: number;
+  /** The ones that aren't, each with a reason written to be shown as-is. */
+  rejected: RejectedAttachment[];
+};
 
 export type SubmitSupportRequestResult =
   | {
@@ -73,10 +93,15 @@ export type SubmitSupportRequestResult =
       threadPath: string;
       /** The receipt email actually went out. Say "we emailed you" only when true. */
       emailed: boolean;
+      /** Files posted with the request. Show `rejected` on the confirmation. */
+      attachments?: SupportAttachmentsOutcome;
     }
   | Refusal;
 
-export type SupportFollowUpResult = { ok: true } | Refusal;
+/** `attachments` is set by the two reply actions; "This is solved" carries none. */
+export type SupportFollowUpResult =
+  | { ok: true; attachments?: SupportAttachmentsOutcome }
+  | Refusal;
 
 /**
  * runAction's logging and redirect handling, with its result flattened into
@@ -150,8 +175,34 @@ function revalidateTicket(ticket: { id: string; reference: string }) {
 }
 
 /**
+ * Puts the files the picker staged onto a message that has just been saved —
+ * the request itself (`replyId` null) or one follow-up. `uploader` comes from
+ * the credential the action checked, never from the form; recordAttachments
+ * then trusts nothing the browser said about the files until it has looked at
+ * what actually landed in storage.
+ *
+ * Never throws: the message exists by now, so a failure here costs the file,
+ * not the message, and lands in `rejected` with a reason.
+ */
+async function attachStaged(
+  formData: FormData,
+  ticketId: string,
+  replyId: string | null,
+  uploader: AttachmentUploader,
+): Promise<{ files: SupportAttachment[]; outcome: SupportAttachmentsOutcome }> {
+  const { recorded, rejected } = await recordAttachments({
+    ticketId,
+    replyId,
+    uploader,
+    isInternal: false,
+    staged: formData.get("attachments"),
+  });
+  return { files: recorded, outcome: { recorded: recorded.length, rejected } };
+}
+
+/**
  * Files a request (fields: category, subject, body, receipt_ref, payment_id,
- * surface, and the prefill context page / source / digest).
+ * surface, attachments, and the prefill context page / source / digest).
  */
 export async function submitSupportRequest(
   _prev: unknown,
@@ -243,13 +294,25 @@ export async function submitSupportRequest(
       },
     });
 
+    // The files go on the request itself, and before anyone is told it
+    // exists: the bell and the team email can be opened within seconds, and
+    // the screenshot a tech-help request leans on should already be there.
+    // Staged under this person's own folder (u/<their id>/), which only their
+    // session may record from.
+    const { files, outcome } = await attachStaged(formData, ticket.id, null, {
+      kind: "requester",
+      userId,
+      via: "session",
+    });
+
     // Awaited rather than fired-and-forgotten: a serverless invocation can be
     // frozen the moment its response is returned, and a floating promise here
     // would silently drop the requester's receipt — which for a refund is the
     // one piece of evidence they have. announceNewTicket swallows its own
     // failures, so awaiting it can't fail the filing it reports on; it says
     // whether the receipt actually went, and the confirmation says only that.
-    const { requesterEmailed } = await announceNewTicket(ticket);
+    // The receipt lists the files that made it, so it records them too.
+    const { requesterEmailed } = await announceNewTicket(ticket, { files });
 
     // The reference, not the email address — the audit log is read by more
     // people than the ticket is, and the ticket id is enough to open it.
@@ -262,6 +325,7 @@ export async function submitSupportRequest(
         category,
         channel: ticket.channel,
         has_receipt_ref: !!ticket.receiptRef,
+        ...(files.length > 0 && { attachments: files.length }),
       },
     });
 
@@ -273,14 +337,16 @@ export async function submitSupportRequest(
       receivedAt: ticket.receivedAt,
       threadPath: requesterThreadPath(ticket.reference, surface),
       emailed: requesterEmailed,
+      attachments: outcome,
     };
   });
 }
 
 /**
- * A follow-up from the signed-in owner (fields: reference, body). The session
- * is the credential; the reference only names the request, and a reference
- * that isn't theirs is the same "not found" as one that doesn't exist.
+ * A follow-up from the signed-in owner (fields: reference, body,
+ * attachments). The session is the credential; the reference only names the
+ * request, and a reference that isn't theirs is the same "not found" as one
+ * that doesn't exist.
  */
 export async function replyToOwnTicket(
   _prev: unknown,
@@ -307,15 +373,15 @@ export async function replyToOwnTicket(
     // The author is derived from the session, never from anything the form
     // sent: the browser must not be able to choose which side of the
     // conversation a message came from.
-    const { reply } = await appendReply({
-      ticket,
-      body,
-      author: { kind: "requester", userId, via: "session" },
-    });
-    await announceRequesterReply(ticket, { id: reply.id, body });
+    const author = { kind: "requester", userId, via: "session" } as const;
+    const { reply } = await appendReply({ ticket, body, author });
+    // Onto this reply, before the team's bell goes: whoever opens it should
+    // find the files already there.
+    const { files, outcome } = await attachStaged(formData, ticket.id, reply.id, author);
+    await announceRequesterReply(ticket, { id: reply.id, body, fileCount: files.length });
 
     revalidateTicket(ticket);
-    return { ok: true };
+    return { ok: true, attachments: outcome };
   });
 }
 
@@ -353,8 +419,8 @@ export async function markOwnTicketSolved(
 }
 
 /**
- * A follow-up authorized by the ticket token alone (fields: token, body) — the
- * emailed link's thread.
+ * A follow-up authorized by the ticket token alone (fields: token, body,
+ * attachments) — the emailed link's thread.
  *
  * The author kind is hard-coded, not derived from anything the caller sent.
  * This is the entire reason the write goes through a server action on the
@@ -396,12 +462,71 @@ export async function replyToSupportTicket(
     if (!ticket) throw new Error("That request link isn't valid any more.");
     if (!canRequesterReply(ticket)) throw new Error(CLOSED);
 
-    const { reply } = await appendReply({
-      ticket,
-      body,
-      author: { kind: "requester", userId: ticket.userId, via: "token" },
-    });
-    await announceRequesterReply(ticket, { id: reply.id, body });
+    // The token speaks for the requester, so the reply and its files are
+    // credited to the ticket's own account (null for one the team logged for
+    // someone without one). It proves nothing about who is holding it,
+    // though, so recordAttachments takes files from this ticket's folder only
+    // — never from any account's staging folder.
+    const author = { kind: "requester", userId: ticket.userId, via: "token" } as const;
+    const { reply } = await appendReply({ ticket, body, author });
+    const { files, outcome } = await attachStaged(formData, ticket.id, reply.id, author);
+    await announceRequesterReply(ticket, { id: reply.id, body, fileCount: files.length });
+
+    revalidateTicket(ticket);
+    return { ok: true, attachments: outcome };
+  });
+}
+
+/**
+ * "This is solved" from the emailed link (fields: token) — the twin of
+ * markOwnTicketSolved for whoever holds the thread link, which for a request
+ * the team logged for someone without an account is the only page they have.
+ *
+ * The audit row has no actor: the token proves possession of the link, not
+ * who is holding it, so attributing it to whatever account happens to be
+ * signed in on this browser would put a name on it that the link never
+ * established. `via: "token"` says how it happened instead.
+ */
+export async function markTicketSolvedByToken(
+  _prev: unknown,
+  formData: FormData,
+): Promise<SupportFollowUpResult> {
+  return settle("markTicketSolvedByToken", async (): Promise<SupportFollowUpResult> => {
+    const token = field(formData, "token");
+    const [byToken, byIp] = await Promise.all([
+      checkRateLimit({
+        kind: "support-reply:token",
+        identifier: tokenRateKey(token),
+        limit: 20,
+        windowSeconds: 600,
+      }),
+      checkRateLimit({
+        kind: "support-reply:ip",
+        identifier: await clientIp(),
+        limit: 40,
+        windowSeconds: 600,
+      }),
+    ]);
+    if (!byToken.ok || !byIp.ok) throw new Error("Too many changes just now. Give it a minute.");
+
+    const ticket = await getSupportTicketByToken(token);
+    if (!ticket) throw new Error("That request link isn't valid any more.");
+    // Already resolved is what they asked for; a double click lands here.
+    if (ticket.status === "resolved") return { ok: true };
+    if (!canRequesterMarkSolved(ticket)) throw new Error(CLOSED);
+
+    const solved = await markTicketSolvedByRequester(ticket);
+    if (!solved) {
+      throw new Error("This request changed just now — reload to see where it got to.");
+    }
+    await logAuditMany(null, [
+      {
+        action: "support_ticket.resolved_by_requester",
+        targetType: "support_ticket",
+        targetId: ticket.id,
+        payload: { reference: ticket.reference, from: ticket.status, to: "resolved", via: "token" },
+      },
+    ]);
 
     revalidateTicket(ticket);
     return { ok: true };

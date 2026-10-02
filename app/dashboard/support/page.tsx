@@ -5,7 +5,7 @@ import { can } from "@/lib/permissions";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { listTicketsForUser } from "@/lib/support";
+import { listTicketsForUser, type RequesterTicketSummary } from "@/lib/support";
 import { CATEGORY_LABELS, STATUS_LABELS, isOpenStatus } from "@/lib/support-access";
 
 export const metadata = { title: "Help & support · batch0" };
@@ -24,7 +24,31 @@ export const dynamic = "force-dynamic";
  * Rows link to the owner's thread at /dashboard/support/<reference>, which the
  * session authorizes — never to the emailed /support/t/<token> link, whose
  * token must not reach a client-side navigation (and so analytics).
+ *
+ * Grouped by whose move it is, theirs first: a request waiting on them is the
+ * one thing on this page they can act on, and in a flat list sorted by
+ * activity it sits wherever the last reply put it.
  */
+
+const GROUPS: {
+  key: string;
+  title: string;
+  note?: string;
+  match: (t: RequesterTicketSummary) => boolean;
+}[] = [
+  {
+    key: "you",
+    title: "Waiting on you",
+    note: "The team replied and needs something from you — answer on the request to keep it moving.",
+    match: (t) => t.status === "waiting_on_requester",
+  },
+  { key: "team", title: "With the team", match: (t) => t.status === "open" },
+  {
+    key: "done",
+    title: "Resolved & closed",
+    match: (t) => t.status === "resolved" || t.status === "closed",
+  },
+];
 export default async function DashboardSupportPage() {
   const { profile, caps } = await requireViewer();
   // A mentor, investor or custom staff role gets the dashboard's bare chrome
@@ -77,48 +101,67 @@ export default async function DashboardSupportPage() {
           </div>
         </Card>
       ) : (
-        <ul className="mt-6 space-y-3">
-          {tickets.map((t) => (
-            <li key={t.id}>
-              <Link
-                href={`/dashboard/support/${t.reference}`}
-                prefetch={false}
-                className="press block rounded-xl border border-line bg-wash p-4 hover:border-ink/30"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">
-                    {t.reference}
-                  </span>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-mono font-medium uppercase tracking-wider ${
-                      isOpenStatus(t.status)
-                        ? "bg-phosphor/15 text-phosphor-ink"
-                        : "border border-line text-ink-faint"
-                    }`}
-                  >
-                    {STATUS_LABELS[t.status]}
-                  </span>
-                  <span className="text-[11px] text-ink-faint">
-                    {CATEGORY_LABELS[t.category]}
-                  </span>
-                </div>
-                <p className="mt-2 font-medium text-ink">{t.subject}</p>
-                <p className="mt-1 text-xs text-ink-faint">
-                  {/* The recorded arrival time — the one that counts for a
-                      refund — not when the row was written. */}
-                  Recorded <LocalTime value={t.receivedAt} mode="datetime-short" />
-                  {t.replyCount > 0 && (
-                    <>
-                      {" · "}
-                      {t.replyCount} {t.replyCount === 1 ? "reply" : "replies"}
-                    </>
-                  )}
-                </p>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        GROUPS.map((group) => {
+          const rows = tickets.filter(group.match);
+          if (rows.length === 0) return null;
+          return (
+            <section key={group.key} className="mt-8 first-of-type:mt-6">
+              <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.2em] text-ink-faint">
+                {group.title}
+                <span className="ml-2 tabular-nums">{rows.length}</span>
+              </h2>
+              {group.note && <p className="mt-1 text-xs text-ink-soft">{group.note}</p>}
+              <RequestList tickets={rows} />
+            </section>
+          );
+        })
       )}
     </div>
+  );
+}
+
+function RequestList({ tickets }: { tickets: RequesterTicketSummary[] }) {
+  return (
+    <ul className="mt-3 space-y-3">
+      {tickets.map((t) => (
+        <li key={t.id}>
+          <Link
+            href={`/dashboard/support/${t.reference}`}
+            prefetch={false}
+            className="press block rounded-xl border border-line bg-wash p-4 hover:border-ink/30"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">
+                {t.reference}
+              </span>
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-mono font-medium uppercase tracking-wider ${
+                  isOpenStatus(t.status)
+                    ? "bg-phosphor/15 text-phosphor-ink"
+                    : "border border-line text-ink-faint"
+                }`}
+              >
+                {STATUS_LABELS[t.status]}
+              </span>
+              <span className="text-[11px] text-ink-faint">
+                {CATEGORY_LABELS[t.category]}
+              </span>
+            </div>
+            <p className="mt-2 font-medium text-ink">{t.subject}</p>
+            <p className="mt-1 text-xs text-ink-faint">
+              {/* The recorded arrival time — the one that counts for a
+                  refund — not when the row was written. */}
+              Recorded <LocalTime value={t.receivedAt} mode="datetime-short" />
+              {t.replyCount > 0 && (
+                <>
+                  {" · "}
+                  {t.replyCount} {t.replyCount === 1 ? "reply" : "replies"}
+                </>
+              )}
+            </p>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

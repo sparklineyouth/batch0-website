@@ -13,6 +13,8 @@ import { displayEmail } from "@/lib/placeholder-email";
 import { getSiteConfig } from "@/lib/site-config";
 import { Meter } from "@/components/admin/charts";
 import { getStudentProgress } from "@/lib/progress";
+import { listTicketsForStaff } from "@/lib/support";
+import { STAFF_STATUS_LABELS, supportScopeFor } from "@/lib/support-access";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Manage user · Admin" };
@@ -67,6 +69,10 @@ export default async function AdminStudentDetail(
   // Assignable roles are capped by what the viewer holds, mirroring the
   // server action; a viewer without `people.roles` gets a read-only badge.
   const canChangeRoles = can(caps, "people.roles");
+  // Their support requests, for a viewer who may read the queue at all. The
+  // scope carries the confidentiality rule: a concern they filed is absent —
+  // not even counted — for someone without support.sensitive.
+  const supportScope = supportScopeFor(actor.id, caps);
 
   const [
     allRoles,
@@ -77,6 +83,7 @@ export default async function AdminStudentDetail(
     { data: payments },
     { data: cohorts },
     { data: charges },
+    supportRequests,
   ] = await Promise.all([
     getAllRoles(),
     getSiteConfig(),
@@ -106,6 +113,9 @@ export default async function AdminStudentDetail(
       .select("*")
       .eq("user_id", params.id)
       .order("created_at", { ascending: false }),
+    supportScope.canView
+      ? listTicketsForStaff({ view: "all", userId: params.id, pageSize: 10 }, supportScope)
+      : Promise.resolve(null),
   ]);
 
   const roleOptions = allRoles
@@ -468,6 +478,59 @@ export default async function AdminStudentDetail(
           </table>
         )}
       </Card>
+
+      {supportRequests && (
+        <Card className="mt-6 !p-0 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3">
+            <div className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
+              Support requests
+              {supportRequests.total > 0 && (
+                <span className="ml-2 tabular-nums">{supportRequests.total}</span>
+              )}
+            </div>
+            {can(caps, "support.manage") && (
+              // For the email or call that arrived outside the form — logged
+              // here, it lands on this account with its true arrival time.
+              <Link
+                href={`/admin/support/new?${new URLSearchParams({
+                  email: displayEmail(profile.email) ?? "",
+                  name: profile.full_name ?? "",
+                }).toString()}`}
+                prefetch={false}
+                className="text-xs text-phosphor-ink hover:underline"
+              >
+                Log a request for them →
+              </Link>
+            )}
+          </div>
+          {supportRequests.tickets.length === 0 ? (
+            <p className="px-5 pb-5 text-sm text-ink-soft">
+              {supportRequests.error ? "Support requests couldn't be read just now." : "No support requests."}
+            </p>
+          ) : (
+            <ul className="border-t border-line">
+              {supportRequests.tickets.map((t) => (
+                <li key={t.id} className="border-b border-line last:border-0 hover:bg-wash">
+                  <Link
+                    href={`/admin/support/${t.id}`}
+                    prefetch={false}
+                    className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 py-3 text-sm"
+                  >
+                    <span className="min-w-0 truncate text-ink">{t.subject}</span>
+                    <span className="shrink-0 text-xs text-ink-faint">
+                      <span className="font-mono uppercase tracking-wider">{t.reference}</span>
+                      {" · "}
+                      {STAFF_STATUS_LABELS[t.status].toLowerCase()}
+                      {" · "}
+                      <LocalTime value={t.receivedAt} mode="date" />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
