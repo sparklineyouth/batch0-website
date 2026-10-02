@@ -7,7 +7,8 @@ import { PortalButton } from "./portal-button";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
-import { Receipt } from "lucide-react";
+import { ChargeHelp, HELP_LINK, billingSupportHref, inRefundWindow } from "./charge-help";
+import { LifeBuoy, Receipt } from "lucide-react";
 
 export const metadata = { title: "Billing · batch0" };
 
@@ -68,6 +69,8 @@ export default async function BillingPage(
   const pending = (charges ?? []).filter((c: any) => c.status === "pending");
   const history = (charges ?? []).filter((c: any) => c.status !== "pending");
   const ticketHistory = (tickets ?? []) as any[];
+  // The clock the "Request a refund" links are decided on (inRefundWindow).
+  const nowMs = Date.now();
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -78,7 +81,17 @@ export default async function BillingPage(
             Your payment history and any fees or fines on your account.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* flex-wrap: with the help link this cluster can outgrow a 375px
+            screen, and the button should drop a line rather than overflow. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={billingSupportHref("billing")}
+            prefetch={false}
+            className="inline-flex items-center gap-1.5 px-1 text-xs text-ink-soft hover:text-ink"
+          >
+            <LifeBuoy className="h-3.5 w-3.5" />
+            Billing help
+          </Link>
           <Link
             href="/dashboard/billing/receipts"
             className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-1.5 text-xs font-medium text-ink hover:border-ink/30 hover:bg-wash"
@@ -127,6 +140,17 @@ export default async function BillingPage(
                   </div>
                   <p className="mt-0.5 text-xs text-ink-faint">
                     Issued <LocalTime value={c.created_at} />
+                    {" · "}
+                    {/* Offered on unpaid charges too: a fee or fine that's
+                        questioned before it's paid never has to become a
+                        refund. */}
+                    <Link
+                      href={billingSupportHref("billing", c.id)}
+                      prefetch={false}
+                      className={HELP_LINK}
+                    >
+                      Problem with this charge?
+                    </Link>
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -163,12 +187,19 @@ export default async function BillingPage(
               </tr>
             </thead>
             <tbody>
+              {/* Rows are align-top because each description carries a
+                  second line of help links (ChargeHelp); the date, amount and
+                  status belong level with its first line, not floating
+                  between the two. */}
               {(payments ?? []).map((p) => (
-                <tr key={p.id} className="border-b border-line">
+                <tr key={p.id} className="border-b border-line align-top">
                   <td className="py-3 text-ink-soft">
                     <LocalTime value={p.created_at} />
                   </td>
-                  <td className="py-3 text-ink-soft">Cohort enrollment</td>
+                  <td className="py-3 text-ink-soft">
+                    Cohort enrollment
+                    <ChargeHelp id={p.id} refund={inRefundWindow(p, nowMs)} className="mt-1" />
+                  </td>
                   <td className="py-3 text-ink-soft">
                     {fmtMoney(p.amount_cents, p.currency)}
                   </td>
@@ -178,12 +209,13 @@ export default async function BillingPage(
                 </tr>
               ))}
               {history.map((c: any) => (
-                <tr key={c.id} className="border-b border-line last:border-0">
+                <tr key={c.id} className="border-b border-line align-top last:border-0">
                   <td className="py-3 text-ink-soft">
                     <LocalTime value={c.created_at} />
                   </td>
                   <td className="py-3 text-ink-soft">
                     {c.kind === "fine" ? "Fine" : "Fee"}: {c.description}
+                    <ChargeHelp id={c.id} className="mt-1" />
                   </td>
                   <td className="py-3 text-ink-soft">
                     {fmtMoney(c.amount_cents)}
@@ -194,7 +226,7 @@ export default async function BillingPage(
                 </tr>
               ))}
               {ticketHistory.map((t: any) => (
-                <tr key={t.id} className="border-b border-line last:border-0">
+                <tr key={t.id} className="border-b border-line align-top last:border-0">
                   <td className="py-3 text-ink-soft">
                     <LocalTime value={t.paid_at ?? t.created_at} />
                   </td>
@@ -213,6 +245,7 @@ export default async function BillingPage(
                         </a>
                       </>
                     )}
+                    <ChargeHelp id={t.id} className="mt-1" />
                   </td>
                   <td className="py-3 text-ink-soft">
                     {fmtMoney(t.amount_cents)}

@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser, getProfile } from "@/lib/auth";
@@ -214,6 +215,7 @@ export default async function ApplicationPage(
             you that too. Nothing you need to do in the meantime.
           </p>
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
+          <AdmissionsHelp prompt="Questions about the waitlist or your application?" />
         </Card>
       )}
 
@@ -239,6 +241,7 @@ export default async function ApplicationPage(
             {holdsPass ? "Apply again" : "Apply to another cohort"}
           </ButtonLink>
           {holdsPass && <RebuildForm existing={rebuild} />}
+          <AdmissionsHelp prompt="Questions about reapplying, deadlines, or choosing a cohort?" />
         </Card>
       )}
 
@@ -363,6 +366,33 @@ function FeedbackPart({ label, text }: { label: string; text: string }) {
         {text}
       </p>
     </div>
+  );
+}
+
+/**
+ * The quiet way to a person, on the two outcomes that leave an applicant
+ * waiting or stopped — the ones where "what now?" has no button to press.
+ * Preset to the admissions topic so it lands with whoever handles
+ * applications rather than in "Something else". The prompts point at what the
+ * team can actually help with (the waitlist, reapplying, deadlines) rather
+ * than inviting a debate about the decision itself.
+ *
+ * prefetch={false}, as on every link to an authed page: with
+ * staleTimes.dynamic at 0 (next.config.js) the click renders the page again
+ * anyway, so a prefetch is a server render thrown away.
+ */
+function AdmissionsHelp({ prompt }: { prompt: string }) {
+  return (
+    <p className="mt-4 text-xs text-ink-faint">
+      {prompt}{" "}
+      <Link
+        href="/dashboard/support/new?topic=application&source=application"
+        prefetch={false}
+        className="text-ink-soft underline decoration-line underline-offset-2 hover:text-ink hover:decoration-phosphor"
+      >
+        Ask the team
+      </Link>
+    </p>
   );
 }
 

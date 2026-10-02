@@ -1,17 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { getProfile } from "@/lib/auth";
+import { getRole } from "@/lib/roles";
+import { isPlaceholderEmail } from "@/lib/placeholder-email";
 import {
   adminTicketPath,
   announceAssigned,
+  announceNewTicket,
   announceResolved,
   announceStaffReply,
   appendReply,
   assignTicket,
+  createTicket,
+  findAccountByEmail,
   getTicketForStaff,
   linkTicketPayment,
   requesterThreadPath,
@@ -20,16 +26,25 @@ import {
   setTicketSensitive as writeTicketSensitive,
   setTicketStatus,
 } from "@/lib/support";
+import { recordAttachments, type RejectedAttachment } from "@/lib/support-attachments";
 import {
   REPLY_BODY_MAX,
+  TICKET_BODY_MAX,
+  TICKET_BODY_MIN,
   canStaffManageTicket,
   canStaffReply,
   canStaffSeeTicket,
+  checkStaffReceivedAt,
   codePointLength,
+  easternLocalToIso,
+  isSensitiveCategory,
   parseCategory,
   supportScopeFor,
+  toOutcome,
   toPriority,
+  toStaffLogChannel,
   toStatus,
+  type TicketOutcome,
 } from "@/lib/support-access";
 
 /**
@@ -85,22 +100,84 @@ function cleanReply(raw: string): string {
   return t;
 }
 
+/**
+ * How a staff message goes out: a reply (the ticket then waits on the
+ * requester), a reply that also resolves it ("Send & resolve"), or an
+ * internal note that only the team sees.
+ */
+export type StaffReplyMode = "reply" | "reply_resolve" | "note";
+
+function toReplyMode(value: unknown): StaffReplyMode | null {
+  return value === "reply" || value === "reply_resolve" || value === "note" ? value : null;
+}
+
+/**
+ * Posts a message on a ticket as the team.
+ *
+ * `mode` arrived after `internal`, and both are accepted: an existing caller
+ * that only knows `internal` keeps working, and `internal: true` is mode
+ * "note". The two may not disagree — a caller that asked for privacy must
+ * never end up emailing the requester, so a contradiction is refused rather
+ * than settled in favour of sending.
+ *
+ * `attachments` is the AttachmentPicker's hidden-input value. The files are
+ * recorded after the message exists (they hang off it) and before anyone is
+ * told about it, so the emailed link opens onto a thread that already has
+ * them. A file that doesn't make it costs the file, never the message —
+ * `rejected` says which and why.
+ */
 export async function replyAsStaff(input: {
   ticketId: string;
   body: string;
   internal?: boolean;
-}): Promise<ActionResult> {
+  mode?: StaffReplyMode;
+  /** Recorded on the ticket when the reply resolves it. Optional. */
+  outcome?: string | null;
+  /** JSON of the staged uploads (StagedAttachment[]), as the picker posts it. */
+  attachments?: string | null;
+}): Promise<ActionResult<{ rejected: RejectedAttachment[] }>> {
   return runAction({ name: "replyAsStaff" }, async () => {
     const { actor, ticket } = await managedTicket(input.ticketId);
     const body = cleanReply(input.body);
-    const internal = input.internal === true;
+    const mode =
+      input.mode === undefined ? (input.internal === true ? "note" : "reply") : toReplyMode(input.mode);
+    if (!mode) throw new Error("That isn't a way to send a message.");
+    if (input.internal === true && mode !== "note") {
+      throw new Error("An internal note can't also go to the requester. Pick one.");
+    }
+    const internal = mode === "note";
+    let outcome: TicketOutcome | null = null;
+    if (mode === "reply_resolve" && input.outcome) {
+      outcome = toOutcome(input.outcome);
+      if (!outcome) throw new Error("That isn't an outcome.");
+    }
     if (!canStaffReply(ticket)) throw new Error("This request can't be replied to.");
 
     const res = await appendReply({
       ticket,
       body,
       // Derived from the permission assertion above, never from the client.
-      author: { kind: "staff", userId: actor.userId, internal },
+      // Send & resolve is the reply and the resolution in one write, so the
+      // status moves under the same optimistic lock as any other reply.
+      author: {
+        kind: "staff",
+        userId: actor.userId,
+        internal,
+        nextStatus: mode === "reply_resolve" ? "resolved" : null,
+        outcome,
+      },
+    });
+
+    // The uploader is the asserted actor, and a note's files are internal
+    // (recordAttachments also forces that from the reply itself). Files can
+    // only have been staged under t/<this ticket>/ through the mint, which
+    // applied the same support.manage + sensitive rule as managedTicket.
+    const { recorded, rejected } = await recordAttachments({
+      ticketId: ticket.id,
+      replyId: res.reply.id,
+      uploader: { kind: "staff", userId: actor.userId },
+      isInternal: internal,
+      staged: input.attachments,
     });
 
     // An internal note is not a message to the requester: no email, and the
@@ -116,6 +193,8 @@ export async function replyAsStaff(input: {
         // The one email says both things when a reply resolves the request,
         // so announceResolved is never called on top of it.
         resolved: res.changed && res.status === "resolved",
+        // Recorded above, so the email can say the files are on the thread.
+        fileCount: recorded.length,
       });
     }
 
@@ -123,10 +202,17 @@ export async function replyAsStaff(input: {
       action: internal ? "support_ticket.noted" : "support_ticket.replied",
       targetType: "support_ticket",
       targetId: ticket.id,
-      payload: { reference: ticket.reference, reply_id: res.reply.id, status: res.status },
+      payload: {
+        reference: ticket.reference,
+        reply_id: res.reply.id,
+        status: res.status,
+        ...(mode === "reply_resolve" && { resolve: true, outcome }),
+        ...(recorded.length > 0 && { attachments: recorded.length }),
+      },
     });
 
     revalidateTicket(ticket);
+    return { rejected };
   });
 }
 
@@ -295,4 +381,165 @@ export async function setTicketSensitive(input: {
     });
     revalidateTicket(ticket);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Logging a request on someone's behalf (/admin/support/new)
+// ---------------------------------------------------------------------------
+
+const CONFIDENTIAL_LOG_REFUSAL =
+  "Only staff who can see confidential concerns can log one. Hand it to someone who can — filed under another kind, the whole team could read it.";
+
+/** Who an email address belongs to, as the "log a request" form shows it. */
+export type RequesterLookup = {
+  account: { name: string | null; email: string; roleLabel: string } | null;
+};
+
+/**
+ * The person lookup behind /admin/support/new: does an account use this
+ * address? Only so the form can say who the request will land on —
+ * createTicket matches the address again when it files, so nothing here is
+ * trusted later. Same permission as filing, because it answers "is this
+ * person on batch0?" for any address typed into it.
+ */
+export async function lookUpRequester(input: {
+  email: string;
+}): Promise<ActionResult<RequesterLookup>> {
+  return runAction({ name: "lookUpRequester" }, async () => {
+    await assertPermission("support.manage");
+    const email = String(input.email ?? "").trim();
+    if (isPlaceholderEmail(email)) {
+      throw new Error("That's a placeholder address with no inbox behind it. Enter the one the request came from.");
+    }
+    const account = await findAccountByEmail(email);
+    if (!account) return { account: null };
+    const role = await getRole(account.role);
+    return {
+      account: {
+        name: account.fullName?.trim() || null,
+        email: account.email,
+        roleLabel: role?.label ?? account.role,
+      },
+    };
+  });
+}
+
+/** What became of the requester's confirmation, carried to the ticket page. */
+type LoggedConfirmation = "sent" | "unsent" | "off";
+
+/**
+ * Files a request that reached the team some other way — an email to the
+ * inbox, a phone call — so it is worked, and counted, like one filed on the
+ * site.
+ *
+ * `receivedAt` is the form's datetime-local value, read as New York wall
+ * time whatever zone the staff member's laptop is in, because it becomes the
+ * request's refund clock: the 48 hours stop when the email arrived, not when
+ * someone got round to logging it. Not in the future, not past 90 days
+ * (checkStaffReceivedAt); createTicket checks it again.
+ *
+ * A confidential concern can only be logged by someone who could open it
+ * afterwards. Without support.sensitive the new ticket would vanish from the
+ * person who just filed it — and the tempting workaround, filing it under
+ * another kind, is exactly what must not happen.
+ *
+ * On success this redirects to the new ticket, so the result type only ever
+ * carries a refusal back to the form.
+ */
+export async function logSupportRequest(input: {
+  email: string;
+  name?: string | null;
+  channel: string;
+  receivedAt: string;
+  category: string;
+  priority?: string | null;
+  subject?: string | null;
+  body: string;
+  /** "Send them a confirmation with their thread link". Defaults to on. */
+  sendConfirmation?: boolean;
+}): Promise<ActionResult> {
+  const res = await runAction({ name: "logSupportRequest" }, async () => {
+    const actor = await assertPermission("support.manage");
+    const scope = supportScopeFor(actor.userId, actor.caps);
+
+    const category = parseCategory(input.category);
+    if (!category) throw new Error("Choose what kind of request it is.");
+    if (isSensitiveCategory(category) && !scope.canSeeSensitive) {
+      throw new Error(CONFIDENTIAL_LOG_REFUSAL);
+    }
+    const channel = toStaffLogChannel(input.channel);
+    if (!channel) throw new Error("Choose how the request reached us.");
+    const receivedAt = easternLocalToIso(String(input.receivedAt ?? ""));
+    const timeProblem = checkStaffReceivedAt(receivedAt);
+    if (timeProblem || !receivedAt) {
+      throw new Error(timeProblem ?? "Enter the date and time the request arrived.");
+    }
+    const priority = input.priority ? toPriority(input.priority) : null;
+    if (input.priority && !priority) throw new Error("That isn't a priority.");
+    // createTicket enforces the same bounds, in the requester's words; these
+    // are the team's.
+    const body = String(input.body ?? "").trim();
+    if (codePointLength(body) < TICKET_BODY_MIN) {
+      throw new Error(`Paste the request itself — at least ${TICKET_BODY_MIN} characters.`);
+    }
+    if (codePointLength(body) > TICKET_BODY_MAX) {
+      throw new Error(`Keep it under ${TICKET_BODY_MAX} characters — paste the part that matters.`);
+    }
+
+    // Matched to an account by the address when one exists (the person then
+    // sees it on their dashboard and in the app); otherwise it lives on the
+    // address alone and they follow it through the emailed link.
+    const ticket = await createTicket({
+      filedBy: "staff",
+      staffId: actor.userId,
+      requesterEmail: String(input.email ?? ""),
+      requesterName: String(input.name ?? "").trim() || null,
+      channel,
+      receivedAt,
+      category,
+      priority,
+      subject: String(input.subject ?? "").trim() || null,
+      body,
+    });
+
+    // Awaited, like the self-filed path: a serverless invocation can freeze
+    // once it responds, and the receipt is the requester's record of when
+    // the clock stopped. announceNewTicket never throws, and it reports
+    // whether the receipt really went — the ticket page says only that.
+    const sendConfirmation = input.sendConfirmation !== false;
+    const { requesterEmailed } = await announceNewTicket(ticket, {
+      notifyRequester: sendConfirmation,
+    });
+    const confirmation: LoggedConfirmation = !sendConfirmation
+      ? "off"
+      : requesterEmailed
+        ? "sent"
+        : "unsent";
+
+    // The reference, not the address — the audit log is read by more people
+    // than the ticket is. received_at is the point of a logged request, so it
+    // goes in the trail exactly as stored.
+    await logAudit({
+      action: "support_ticket.logged",
+      targetType: "support_ticket",
+      targetId: ticket.id,
+      payload: {
+        reference: ticket.reference,
+        category,
+        priority: ticket.priority,
+        channel,
+        received_at: ticket.receivedAt,
+        on_account: !!ticket.userId,
+        confirmation,
+      },
+    });
+
+    revalidateTicket(ticket);
+    return { id: ticket.id, confirmation };
+  });
+  if (!res.ok) return res;
+  // The redirect is the success response, so it comes after the work rather
+  // than inside it (submitApplicationAction's shape). The flag only picks
+  // which sentence the ticket page shows about the confirmation email.
+  redirect(`${adminTicketPath(res.data!.id)}?logged=${res.data!.confirmation}`);
 }

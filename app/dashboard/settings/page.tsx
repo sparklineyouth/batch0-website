@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireUser, getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isDiscordEnabled } from "@/lib/discord";
@@ -136,6 +137,35 @@ export default async function SettingsPage(
           email={user.email ?? ""}
         />
       </Card>
+
+      {/* The things settings can't do, and who does them. There is no
+          self-serve email change, account merge or account deletion — the
+          team does each by hand — so someone who came here looking for one
+          should leave with a door rather than a dead end. Deletion is named
+          in the copy on purpose: it's what people scan a settings page for.
+          Small type: these are help, not settings. */}
+      <div className="mt-6 space-y-1.5 text-xs text-ink-faint">
+        <p>
+          Email on your account wrong, or two accounts to merge?{" "}
+          <Link
+            href="/dashboard/support/new?topic=account&source=settings"
+            prefetch={false}
+            className="text-ink-soft underline decoration-line underline-offset-2 hover:text-ink hover:decoration-phosphor"
+          >
+            Account or sign-in problem
+          </Link>
+        </p>
+        <p>
+          A copy of your data, a correction, or your account deleted?{" "}
+          <Link
+            href="/dashboard/support/new?topic=privacy&source=settings"
+            prefetch={false}
+            className="text-ink-soft underline decoration-line underline-offset-2 hover:text-ink hover:decoration-phosphor"
+          >
+            Data &amp; privacy request
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

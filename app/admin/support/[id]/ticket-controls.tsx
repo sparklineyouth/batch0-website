@@ -51,6 +51,7 @@ export function TicketControls({
   linkedPaymentId,
   canManage,
   canSeeSensitive,
+  viewerId,
 }: {
   ticketId: string;
   status: TicketStatus;
@@ -63,6 +64,8 @@ export function TicketControls({
   linkedPaymentId: string | null;
   canManage: boolean;
   canSeeSensitive: boolean;
+  /** The signed-in staff member, for "Take it". */
+  viewerId: string;
 }) {
   const router = useRouter();
   const [err, setErr] = useState<string | undefined>();
@@ -159,6 +162,19 @@ export function TicketControls({
             }
           >
             Close without reply
+          </Button>
+        )}
+        {/* The common assignment, in one click. Only offered when the viewer
+            is someone this ticket may be assigned to (the picker's own list,
+            which already applies the confidential-concern rule). */}
+        {assignedTo !== viewerId && staff.some((s) => s.id === viewerId) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => run(() => setTicketAssignee({ ticketId, assigneeId: viewerId }))}
+          >
+            Take it
           </Button>
         )}
       </div>

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldError } from "@/components/ui/input";
@@ -73,7 +74,18 @@ export function SettingsForm({
           <Label>Email</Label>
           <Input value={email} disabled />
           <p className="mt-1 text-xs text-ink-faint">
-            To change your email, contact us.
+            {/* An email change is done by hand by the team, so "contact
+                us" is the whole instruction — make it the door, preset to
+                the account topic, rather than leave them to find one. */}
+            To change your email,{" "}
+            <Link
+              href="/dashboard/support/new?topic=account&source=settings"
+              prefetch={false}
+              className="text-ink-soft underline decoration-line underline-offset-2 hover:text-ink hover:decoration-phosphor"
+            >
+              send us an account request
+            </Link>
+            .
           </p>
         </div>
         <div>

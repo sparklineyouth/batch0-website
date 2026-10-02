@@ -319,3 +319,71 @@ test("the overdue digest lists confidential concerns by reference only", () => {
   assert.ok(!compiled.html.includes("SECRET SUBJECT"));
   assert.ok(!compiled.text?.includes("SECRET SUBJECT"));
 });
+
+test("files: the receipt names them, the team alert and a reply count them", () => {
+  // The receipt is the requester's record of what they sent, so it names the
+  // files — escaped, since a file name is theirs to choose.
+  const one = { ...receivedInput("refund", ARRIVALS[0]), attachmentNames: ["receipt <1>.pdf"] };
+  const many = { ...receivedInput("technical", ARRIVALS[0]), attachmentNames: ["a.png", "b.mov"] };
+  for (const [label, input, expect] of [
+    ["one file", one, "the file you attached (receipt &lt;1&gt;.pdf)"],
+    ["two files", many, "the 2 files you attached (a.png, b.mov)"],
+  ] as const) {
+    const out = render(SUPPORT_EMAIL_KEYS.received, T.supportReceivedVars(input));
+    assert.deepEqual(out.missing, [], label);
+    assertComplete(label, out);
+    assert.ok(out.html.includes(expect), `${label}: ${out.html}`);
+    const compiled = T.Templates.supportTicketReceived(input);
+    assertComplete(`${label} (compiled)`, compiled);
+    assert.ok(compiled.html.includes(expect), `${label} (compiled)`);
+  }
+  // No files, and a staff-logged request, read exactly as before.
+  assert.ok(
+    T.supportReceivedVars({ ...receivedInput("billing", ARRIVALS[0]), attachmentNames: [] })
+      .confirmation_line === "This is confirmation that we have your request.",
+  );
+
+  const alert = {
+    reference: REFERENCE,
+    category: "refund" as const,
+    categoryLabel: CATEGORY_LABELS.refund,
+    priorityLabel: PRIORITY_LABELS.high,
+    subject: "Refund",
+    requesterLabel: "Alex Rivera <alex@example.com>",
+    receivedAt: RECEIVED,
+    adminUrl: "https://batch0.org/admin/support/1234",
+    channel: "web" as const,
+    staffLogged: false,
+    loggedBy: null,
+    attachmentCount: 3,
+  };
+  const team = render(SUPPORT_EMAIL_KEYS.internal, T.supportInternalVars(alert), null);
+  assertComplete("team alert with files", team);
+  assert.ok(team.html.includes("48-hour window"), "the refund clock stays");
+  assert.ok(team.html.includes("has 3 files attached"), team.html);
+
+  for (const [count, expect] of [
+    [0, null],
+    [1, "This reply has a file attached"],
+    [2, "This reply has 2 files attached"],
+  ] as const) {
+    const input = {
+      name: "Alex",
+      reference: REFERENCE,
+      subject: "Week 2 video",
+      replierName: "Sam",
+      reply: "Here's the fix.",
+      threadUrl: THREAD,
+      resolved: true,
+      attachmentCount: count,
+    };
+    const out = render(SUPPORT_EMAIL_KEYS.replied, T.supportRepliedVars(input));
+    assertComplete(`reply with ${count} files`, out);
+    assert.equal(out.html.includes("attached"), expect !== null, `reply with ${count} files`);
+    if (expect) assert.ok(out.html.includes(expect), out.html);
+    assert.ok(out.html.includes("marked this request resolved"), "the status note stays");
+    const compiled = T.Templates.supportTicketReplied(input);
+    assertComplete(`reply with ${count} files (compiled)`, compiled);
+    if (expect) assert.ok(compiled.html.includes(expect) && compiled.text.includes(expect));
+  }
+});

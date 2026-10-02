@@ -29,6 +29,18 @@ export default async function PayFinePage() {
     0,
   );
 
+  // "This is wrong" goes to the request form, which is the one other place a
+  // fined account can reach — lib/supabase/middleware.ts exempts
+  // /dashboard/support from the fine block precisely so a fine can be
+  // questioned and the answer read. With a single fine (the usual case) the
+  // form gets its id, so "which charge?" is already answered; with several
+  // the person picks. Not the word "dispute": under the refund policy a
+  // dispute is the card-issuer kind, and it's a breach of the terms.
+  const questionQuery = new URLSearchParams({ topic: "billing" });
+  if (fines.length === 1) questionQuery.set("payment", fines[0].id);
+  questionQuery.set("source", "pay_fine");
+  const questionHref = `/dashboard/support/new?${questionQuery.toString()}`;
+
   return (
     <div className="min-h-screen bg-paper">
       <div className="mx-auto max-w-2xl px-6 py-20">
@@ -43,14 +55,22 @@ export default async function PayFinePage() {
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
           Your access is paused until the {fines.length > 1 ? "fines below are" : "fine below is"} paid or waived by an admin.
-          Email{" "}
+          If you think this is wrong,{" "}
+          <Link
+            href={questionHref}
+            prefetch={false}
+            className="text-phosphor-ink hover:underline"
+          >
+            send us a billing request
+          </Link>{" "}
+          or email{" "}
           <a
             href="mailto:hello@batch0.org"
             className="text-phosphor-ink hover:underline"
           >
             hello@batch0.org
-          </a>{" "}
-          if you think this is wrong.
+          </a>
+          .
         </p>
 
         <div className="mt-8 space-y-3">

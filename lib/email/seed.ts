@@ -675,7 +675,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       },
       {
         key: "confirmation_line",
-        label: "Confirmation sentence",
+        label: "Confirmation sentence (names any files they attached)",
         example: "This is confirmation that we have your request.",
         required: true,
       },
@@ -723,7 +723,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       },
       {
         key: "status_note",
-        label: "Closing line (says so when the reply also resolved it)",
+        label: "Closing line (mentions files on the reply, and says so when it also resolved it)",
         example: "If that didn't sort it, say so on the thread — it comes straight back to us.",
         required: true,
       },
@@ -802,7 +802,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       },
       {
         key: "team_note",
-        label: "Note for the team (refund clock, who logged it)",
+        label: "Note for the team (refund clock, who logged it, attached files)",
         example:
           "Refund request — this one has a clock on it. The 48-hour window runs from payment to the received time above; check it against the payment before replying.",
         required: true,

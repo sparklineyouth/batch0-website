@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { getSiteConfig } from "@/lib/site-config";
+import { listOwnPayables } from "@/lib/support";
 import { NewRequest, type SupportPrefillParams } from "@/components/support/new-request";
 
 export const metadata = { title: "New request · batch0" };
@@ -23,6 +24,12 @@ export default async function NewSupportRequestPage(props: {
     requireViewer(),
     getSiteConfig(),
   ]);
+  // Their own charges, for the "which charge?" picker on a refund or billing
+  // request. A failed read costs the picker, never the form.
+  const payables = await listOwnPayables(profile.id, profile.email ?? null).catch((err) => {
+    console.error("[support] payables for the form", err);
+    return [];
+  });
 
   return (
     <div className="mx-auto max-w-2xl pb-16">
@@ -45,6 +52,7 @@ export default async function NewSupportRequestPage(props: {
           email={profile.email ?? ""}
           params={searchParams}
           contactEmail={config.settings.contactEmail}
+          payables={payables}
         />
       </div>
     </div>

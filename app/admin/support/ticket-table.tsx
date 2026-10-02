@@ -8,7 +8,13 @@ import {
   type TicketPriority,
   type TicketStatus,
 } from "@/lib/support-access";
-import { ConfidentialBadge, PriorityBadge, isLoudPriority } from "./badges";
+import {
+  ConfidentialBadge,
+  PriorityBadge,
+  SlaCueText,
+  isLoudPriority,
+  type SlaCue,
+} from "./badges";
 
 /**
  * The queue table.
@@ -30,11 +36,17 @@ export type SupportTicketRow = {
   priority: TicketPriority;
   /** A confidential concern — only ever in the rows of someone allowed to see it. */
   sensitive: boolean;
-  assignedName: string | null;
+  /** Who has it, or null when nobody does. `isViewer` reads as "You". */
+  owner: { name: string; isViewer: boolean } | null;
   replyCount: number;
-  needsReply: boolean;
+  /**
+   * Where a request waiting on the team stands against its reply target —
+   * worked out by the page at render time (slaCue in ./badges), never here,
+   * so the server's HTML and the first client render say the same thing.
+   * Null when nobody owes a reply.
+   */
+  sla: SlaCue | null;
   lastActivityAt: string;
-  createdAt: string;
 };
 
 const STATUS_PILL: Record<TicketStatus, string> = {
@@ -63,6 +75,7 @@ export function SupportTicketTable({ rows }: { rows: SupportTicketRow[] }) {
           <th className="px-5 py-3 font-medium">Request</th>
           <th className="px-5 py-3 font-medium">From</th>
           <th className="px-5 py-3 font-medium">Status</th>
+          <th className="px-5 py-3 font-medium">Owner</th>
           <th className="px-5 py-3 text-right font-medium">Replies</th>
           <th className="px-5 py-3 font-medium">Last activity</th>
         </>
@@ -101,11 +114,6 @@ export function SupportTicketTable({ rows }: { rows: SupportTicketRow[] }) {
             >
               {r.requesterLabel}
             </span>
-            {r.assignedName && (
-              <span className="text-[11px] text-ink-faint">
-                → {r.assignedName}
-              </span>
-            )}
           </td>
           <td className="px-5 py-3">
             <span
@@ -115,6 +123,28 @@ export function SupportTicketTable({ rows }: { rows: SupportTicketRow[] }) {
             >
               {STATUS_SHORT[r.status]}
             </span>
+            {/* Under the pill, because it's a fact about the status: "open,
+                and overdue by three hours". Only a request we owe a reply
+                on has one. */}
+            {r.sla && (
+              <span className="mt-1 block whitespace-nowrap">
+                <SlaCueText cue={r.sla} />
+              </span>
+            )}
+          </td>
+          <td className="px-5 py-3">
+            {r.owner ? (
+              <span
+                className={`block max-w-[160px] truncate ${
+                  r.owner.isViewer ? "font-medium text-ink" : "text-ink-soft"
+                }`}
+                title={r.owner.name}
+              >
+                {r.owner.isViewer ? "You" : r.owner.name}
+              </span>
+            ) : (
+              <span className="text-ink-faint">Unassigned</span>
+            )}
           </td>
           <td className="px-5 py-3 text-right tabular-nums text-ink-soft">
             {r.replyCount}

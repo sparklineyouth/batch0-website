@@ -1640,7 +1640,7 @@ The link is private to you - anyone who has it can read and reply, so don't forw
         ${e.name ? `<p>Hi ${escape(e.name)},</p>` : ""}
         <p style="margin:12px 0;color:#8b949e;font-size:13px">On <strong style="color:#e7e7e7">${escape(e.subject)}</strong> &middot; <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escape(e.reference)}</span></p>
         <div style="margin:16px 0;padding:14px 16px;border-left:3px solid #ffbb00;background:rgba(255,255,255,0.04);white-space:pre-wrap">${escape(e.reply)}</div>
-        <p style="color:#8b949e;font-size:13px">${escape(supportStatusNote(e.resolved))}</p>
+        <p style="color:#8b949e;font-size:13px">${escape(supportReplyNote(e))}</p>
       `,
       cta: { url: e.threadUrl, label: "Reply on the thread" },
     }),
@@ -1650,7 +1650,7 @@ On: ${e.subject}
 
 ${e.reply}
 
-${supportStatusNote(e.resolved)}
+${supportReplyNote(e)}
 
 ${e.threadUrl}`,
   }),
@@ -1806,6 +1806,11 @@ export type SupportReceivedEmail = {
   receivedAt: string;
   /** The private thread link — the token URL. Requester email only. */
   threadUrl: string;
+  /**
+   * The files that were recorded on the request, by name — so the receipt
+   * is also their record of what they sent. Omitted or empty: none.
+   */
+  attachmentNames?: string[];
 };
 
 export type SupportRepliedEmail = {
@@ -1817,6 +1822,8 @@ export type SupportRepliedEmail = {
   threadUrl: string;
   /** The reply was a "Send & resolve". */
   resolved: boolean;
+  /** Files the team put on this reply. They're only on the thread, so the email says to go there. */
+  attachmentCount?: number;
 };
 
 export type SupportResolvedEmail = {
@@ -1845,6 +1852,8 @@ export type SupportInternalEmail = {
   staffLogged: boolean;
   /** Who logged it, for a staff-logged ticket. */
   loggedBy: string | null;
+  /** Files recorded on the request. A count only: their names belong to the requester. */
+  attachmentCount?: number;
 };
 
 export type SupportDigestItem = {
@@ -1869,11 +1878,34 @@ export type SupportDigestEmail = {
 };
 
 function supportConfirmationLine(
-  e: Pick<SupportReceivedEmail, "staffLogged" | "channel" | "receivedAt">,
+  e: Pick<SupportReceivedEmail, "staffLogged" | "channel" | "receivedAt" | "attachmentNames">,
 ): string {
-  if (!e.staffLogged) return "This is confirmation that we have your request.";
+  if (!e.staffLogged) {
+    // The files are named, not just counted: a refund request's receipt is
+    // the requester's record of what they sent us, attachments included.
+    const names = (e.attachmentNames ?? []).filter((n) => n.trim());
+    if (names.length === 0) return "This is confirmation that we have your request.";
+    const files =
+      names.length === 1
+        ? `the file you attached (${names[0]})`
+        : `the ${names.length} files you attached (${names.join(", ")})`;
+    return `This is confirmation that we have your request and ${files}.`;
+  }
   const by = e.channel === "email" ? " by email" : e.channel === "phone" ? " by phone" : "";
   return `We've logged the request you sent us${by} on ${e.receivedAt}.`;
+}
+
+/**
+ * How many files a message carries, as a sentence pointing at the thread.
+ * The email never attaches them itself: the files sit in a private bucket
+ * and are only served, re-authorized, from the thread.
+ */
+function supportFilesNote(count: number | undefined, where: string): string | null {
+  const n = Math.max(0, Math.floor(count ?? 0));
+  if (n === 0) return null;
+  return n === 1
+    ? `${where} has a file attached — open the thread to see it.`
+    : `${where} has ${n} files attached — open the thread to see them.`;
 }
 
 /**
@@ -1899,6 +1931,13 @@ function supportStatusNote(resolved: boolean): string {
     : "If that didn't sort it, say so on the thread — it comes straight back to us.";
 }
 
+/** The closing line under a team reply: its files, if any, then where the request stands. */
+function supportReplyNote(e: Pick<SupportRepliedEmail, "resolved" | "attachmentCount">): string {
+  const files = supportFilesNote(e.attachmentCount, "This reply");
+  const status = supportStatusNote(e.resolved);
+  return files ? `${files} ${status}` : status;
+}
+
 function supportResolutionNote(e: Pick<SupportResolvedEmail, "note" | "auto">): string {
   if (e.auto) return AUTO_RESOLVE_NOTE;
   const note = e.note?.trim();
@@ -1921,6 +1960,8 @@ function supportTeamNote(e: SupportInternalEmail): string {
   if (parts.length === 0) {
     parts.push("Reply from the admin — the requester gets your reply by email and on their thread.");
   }
+  const files = supportFilesNote(e.attachmentCount, "The request");
+  if (files) parts.push(files);
   return parts.join(" ");
 }
 
@@ -1972,7 +2013,7 @@ export function supportRepliedVars(e: SupportRepliedEmail): Record<string, strin
     subject_line: e.subject,
     replier_name: e.replierName,
     reply_body: e.reply,
-    status_note: supportStatusNote(e.resolved),
+    status_note: supportReplyNote(e),
   };
 }
 

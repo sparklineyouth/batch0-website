@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { getUser } from "@/lib/auth";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { getPublicSiteConfig } from "@/lib/site-config";
@@ -8,8 +9,11 @@ import {
   formatReceivedAt,
   getSupportTicketByToken,
   listTicketReplies,
+  requesterThreadPath,
 } from "@/lib/support";
-import { canRequesterReply } from "@/lib/support-access";
+import { canRequesterMarkSolved, canRequesterReply } from "@/lib/support-access";
+import { listAttachments } from "@/lib/support-attachments";
+import { groupAttachmentsByReply } from "@/lib/support-attachment-rules";
 import { RequesterThread } from "@/components/support/requester-thread";
 
 /**
@@ -32,6 +36,9 @@ import { RequesterThread } from "@/components/support/requester-thread";
  *  - nothing in the app navigates here client-side, and the links out of it
  *    are plain anchors: a soft navigation is a history entry analytics can
  *    see, and on this route the path is the secret.
+ *  - the request's owner, signed in, is sent to their own thread instead
+ *    (/dashboard/support/<reference>): the same conversation, authorized by
+ *    the session, with the token out of the address bar.
  */
 
 export const dynamic = "force-dynamic";
@@ -46,14 +53,25 @@ export default async function SupportThreadPage(props: {
   params: Promise<{ token: string }>;
 }) {
   const params = await props.params;
-  const ticket = await getSupportTicketByToken(params.token);
+  const [ticket, user] = await Promise.all([
+    getSupportTicketByToken(params.token),
+    getUser(),
+  ]);
   if (!ticket) notFound();
+  // Only the owner: anyone else signed in (a parent on their own account, a
+  // teammate the link was forwarded to) keeps the token page — the dashboard
+  // thread would be a 404 for them.
+  if (user && ticket.userId && user.id === ticket.userId) {
+    redirect(requesterThreadPath(ticket.reference));
+  }
 
-  const [replies, config] = await Promise.all([
-    // Internal notes are staff-only. The default is already false; passing it
-    // explicitly because this is the one call site where getting it wrong
-    // would publish the team's private notes to the person they are about.
+  const [replies, attachments, config] = await Promise.all([
+    // Internal notes are staff-only, and so are files on them. The defaults
+    // are already false; passing them explicitly because this is the one call
+    // site where getting it wrong would publish the team's private notes to
+    // the person they are about.
     listTicketReplies(ticket.id, { includeInternal: false }),
+    listAttachments(ticket.id, { includeInternal: false }),
     getPublicSiteConfig(),
   ]);
 
@@ -96,7 +114,11 @@ export default async function SupportThreadPage(props: {
                 createdAt: s.createdAt,
               };
             })}
+          // Belt and braces again; AttachmentList also drops internal files
+          // whenever it is building token links.
+          files={groupAttachmentsByReply(attachments.filter((a) => !a.isInternal))}
           canReply={canRequesterReply(ticket)}
+          canMarkSolved={canRequesterMarkSolved(ticket)}
         />
 
         <p className="mt-10 border-t border-line pt-5 text-xs text-ink-faint">

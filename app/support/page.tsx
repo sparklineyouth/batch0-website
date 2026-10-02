@@ -3,6 +3,7 @@ import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { getProfile } from "@/lib/auth";
 import { getPublicSiteConfig } from "@/lib/site-config";
+import { listOwnPayables } from "@/lib/support";
 import { JsonLd, breadcrumbJsonLd, webPageJsonLd } from "@/lib/schema";
 import {
   NewRequest,
@@ -48,6 +49,14 @@ export default async function SupportPage(props: {
     getPublicSiteConfig(),
   ]);
   const contactEmail = config.settings.contactEmail;
+  // Signed in: their own charges, for the "which charge?" picker. A failed
+  // read costs the picker, never the form.
+  const payables = profile
+    ? await listOwnPayables(profile.id, profile.email ?? null).catch((err) => {
+        console.error("[support] payables for the form", err);
+        return [];
+      })
+    : [];
 
   return (
     <div className="min-h-screen bg-paper">
@@ -70,6 +79,7 @@ export default async function SupportPage(props: {
               email={profile.email ?? ""}
               params={searchParams}
               contactEmail={contactEmail}
+              payables={payables}
             />
           </div>
         ) : (

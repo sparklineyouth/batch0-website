@@ -9,6 +9,8 @@ import {
   listTicketReplies,
 } from "@/lib/support";
 import { canRequesterMarkSolved, canRequesterReply } from "@/lib/support-access";
+import { listAttachments } from "@/lib/support-attachments";
+import { groupAttachmentsByReply } from "@/lib/support-attachment-rules";
 import { OwnThread } from "@/components/support/own-thread";
 
 // Static title on purpose: a per-request title would have to read the ticket
@@ -35,10 +37,13 @@ export default async function OwnSupportRequestPage(props: {
   const ticket = await getTicketForOwner(profile.id, params.reference);
   if (!ticket) notFound();
 
-  // Internal notes are staff-only. The default is already false; passing it
-  // explicitly, and filtering again below, because this page is shown to the
-  // person the team's notes are about.
-  const replies = await listTicketReplies(ticket.id, { includeInternal: false });
+  // Internal notes are staff-only, and so are files on them. The defaults are
+  // already false; passing them explicitly, and filtering again below,
+  // because this page is shown to the person the team's notes are about.
+  const [replies, attachments] = await Promise.all([
+    listTicketReplies(ticket.id, { includeInternal: false }),
+    listAttachments(ticket.id, { includeInternal: false }),
+  ]);
   const t = forRequester(ticket);
 
   return (
@@ -79,6 +84,7 @@ export default async function OwnSupportRequestPage(props: {
                 createdAt: s.createdAt,
               };
             })}
+          files={groupAttachmentsByReply(attachments.filter((a) => !a.isInternal))}
           canReply={canRequesterReply(ticket)}
           canMarkSolved={canRequesterMarkSolved(ticket)}
         />
