@@ -11,13 +11,17 @@ const SILENT_WEEKS_THRESHOLD = 2;
 /**
  * Auto-create an office-hours nudge for any student who has missed
  * 2+ consecutive check-ins. Writes:
- *   - one notification per assigned mentor ("nudge this student"),
- *     deep-linked to the student's profile, carrying a dedupe key so the
- *     notifications table itself refuses a second copy
  *   - one row in at_risk_interventions keyed by (student_id, week_start)
  *     so the cron stays idempotent — a student already flagged this
  *     week is skipped on subsequent runs, whether we read the flag up
- *     front or learn it from the unique key mid-loop
+ *     front or learn it from the unique key mid-loop. Every flagged
+ *     student gets one, mentor or not; /admin/interventions is the queue
+ *     that reads them.
+ *   - one notification per ASSIGNED mentor ("nudge this student"),
+ *     deep-linked to the student's profile, carrying a dedupe key so the
+ *     notifications table itself refuses a second copy. Nothing is sent
+ *     when the student has no mentor — notifying every admin instead
+ *     made the admin inbox unusable, and the queue already covers it.
  *
  * Idempotency is the whole contract here, so the run ABORTS rather than
  * proceeds when it can't read this week's existing flags: a mentor nudged
@@ -149,10 +153,16 @@ export async function GET(req: Request) {
     // spending an insert to learn what we already know.
     alreadyFlagged.add(e.user_id);
 
-    // Notify the assigned mentor (in-app). Falls back to all cohort
-    // admins when the student has no mentor. Keyed like checkin-nudge so
+    // Notify the assigned mentor (in-app). Keyed like checkin-nudge so
     // notifications' partial unique index is the last line of defence if a
     // re-run ever gets this far.
+    //
+    // A student with no mentor gets no notification at all. This used to fan
+    // "<name> needs a mentor" out to every admin, which meant one unassigned
+    // student produced an unread notification per admin per week — and because
+    // the dedupe key is per (user, student, week), nothing collapsed them. The
+    // at_risk_interventions row written above is the durable signal, and
+    // /admin/interventions is the queue built to read it.
     if (mentorId) {
       await admin.from("notifications").insert({
         user_id: mentorId,
@@ -162,22 +172,6 @@ export async function GET(req: Request) {
         link: `/mentor/students/${e.user_id}`,
         dedupe_key: `intervention:${e.user_id}:${currentWeek}`,
       });
-    } else {
-      const { data: admins } = await admin
-        .from("profiles")
-        .select("id")
-        .eq("role", "admin")
-        .limit(20);
-      for (const a of (admins ?? []) as any[]) {
-        await admin.from("notifications").insert({
-          user_id: a.id,
-          type: "intervention",
-          title: `${profile?.full_name ?? "A student"} needs a mentor`,
-          body: "Unassigned student missed two check-ins. Assign a mentor and offer office hours.",
-          link: `/admin/students/${e.user_id}`,
-          dedupe_key: `intervention:${e.user_id}:${currentWeek}`,
-        });
-      }
     }
 
     created += 1;

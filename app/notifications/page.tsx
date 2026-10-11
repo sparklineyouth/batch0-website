@@ -1,19 +1,38 @@
 import Link from "next/link";
-import { ArrowLeft, Bell } from "lucide-react";
+import { ArrowLeft, Bell, SlidersHorizontal } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser, getProfile, roleHome } from "@/lib/auth";
+import {
+  isImportanceValue,
+  kindFor,
+  splitByImportance,
+  type ImportanceOverrides,
+} from "@/lib/notification-importance";
 import { MarkAllRead } from "./mark-all-read";
 import { NotificationItem } from "./notification-item";
+import { ImportanceSettings } from "./importance-settings";
 
 export const metadata = { title: "Notifications · batch0" };
 
-export default async function NotificationsPage() {
+type Tab = "important" | "other" | "settings";
+
+function tabFrom(raw: string | undefined): Tab {
+  if (raw === "other" || raw === "settings") return raw;
+  return "important";
+}
+
+export default async function NotificationsPage(props: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const searchParams = await props.searchParams;
+  const tab = tabFrom(searchParams.tab);
   const user = await requireUser();
   const supabase = await createClient();
 
   // The list needs only the user id, so it loads alongside the back-link's
-  // home resolution (profile → role home) instead of behind it.
-  const [home, { data: items }] = await Promise.all([
+  // home resolution (profile → role home) instead of behind it. The overrides
+  // are a third small read on the same trip.
+  const [home, { data: items }, { data: prefRows }] = await Promise.all([
     getProfile().then((p) => roleHome(p?.role ?? "student")),
     supabase
       .from("notifications")
@@ -21,11 +40,49 @@ export default async function NotificationsPage() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(200),
+    supabase
+      .from("notification_importance")
+      .select("type, importance")
+      .eq("user_id", user.id),
   ]);
 
+  // Only the types this person has reclassified; everything else falls through
+  // to the shipped default in lib/notification-importance.ts. A failed read
+  // (nothing selected, table absent) degrades to "everyone's defaults" rather
+  // than to an error page.
+  const overrides: ImportanceOverrides = {};
+  for (const r of (prefRows ?? []) as { type: string; importance: string }[]) {
+    if (isImportanceValue(r.importance)) overrides[r.type] = r.importance;
+  }
+
   const all = items ?? [];
-  const unread = all.filter((i) => !i.read_at);
-  const read = all.filter((i) => i.read_at);
+  const { important, other } = splitByImportance(all, overrides);
+  const shown = tab === "other" ? other : important;
+  const unread = shown.filter((i) => !i.read_at);
+  const read = shown.filter((i) => i.read_at);
+  // Scopes "Mark all read" to the tab you're looking at.
+  const shownTypes = Array.from(new Set(shown.map((i) => i.type)));
+
+  // Types this person has actually received that the catalog doesn't name — a
+  // feature newer than the list — so the settings tab can still offer to
+  // reclassify them instead of pretending they don't exist.
+  const extraTypes = Array.from(
+    new Set(all.map((i) => i.type).filter((t) => !kindFor(t))),
+  ).sort();
+
+  const TABS: { key: Tab; label: string; count?: number }[] = [
+    {
+      key: "important",
+      label: "Important",
+      count: important.filter((i) => !i.read_at).length,
+    },
+    {
+      key: "other",
+      label: "Everything else",
+      count: other.filter((i) => !i.read_at).length,
+    },
+    { key: "settings", label: "What counts as important" },
+  ];
 
   return (
     <div className="min-h-screen bg-paper text-ink">
@@ -38,7 +95,9 @@ export default async function NotificationsPage() {
             <ArrowLeft className="h-4 w-4" />
             Back
           </Link>
-          {unread.length > 0 && <MarkAllRead />}
+          {tab !== "settings" && unread.length > 0 && (
+            <MarkAllRead types={shownTypes} />
+          )}
         </div>
       </div>
 
@@ -52,22 +111,90 @@ export default async function NotificationsPage() {
               Notifications
             </h1>
           </div>
-          <p className="shrink-0 text-sm text-ink-soft">
-            {unread.length > 0
-              ? `${unread.length} unread`
-              : "All caught up"}
-          </p>
+          {tab !== "settings" && (
+            <p className="shrink-0 text-sm text-ink-soft">
+              {unread.length > 0 ? `${unread.length} unread` : "All caught up"}
+            </p>
+          )}
         </div>
 
-        {all.length === 0 ? (
+        <nav
+          aria-label="Notification views"
+          className="mt-8 flex flex-wrap gap-1 border-b border-line pb-px"
+        >
+          {TABS.map((t) => {
+            const active = t.key === tab;
+            return (
+              <Link
+                key={t.key}
+                href={
+                  t.key === "important"
+                    ? "/notifications"
+                    : `/notifications?tab=${t.key}`
+                }
+                aria-current={active ? "page" : undefined}
+                className={`-mb-px inline-flex items-center gap-2 rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition ${
+                  active
+                    ? "border-phosphor text-ink"
+                    : "border-transparent text-ink-soft hover:text-ink"
+                }`}
+              >
+                {t.key === "settings" && (
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                )}
+                {t.label}
+                {t.count ? (
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums ${
+                      active
+                        ? "bg-phosphor text-on-phosphor"
+                        : "bg-wash text-ink-soft"
+                    }`}
+                  >
+                    {t.count}
+                  </span>
+                ) : null}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {tab === "settings" ? (
+          <div className="mt-8">
+            <ImportanceSettings overrides={overrides} extraTypes={extraTypes} />
+          </div>
+        ) : shown.length === 0 ? (
           <div className="mt-12 rounded-2xl border border-line bg-wash px-6 py-14 text-center">
             <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-line">
               <Bell className="h-4 w-4 text-ink-faint" />
             </div>
-            <p className="mt-4 text-sm text-ink-soft">No notifications yet.</p>
+            <p className="mt-4 text-sm text-ink-soft">
+              {all.length === 0
+                ? "No notifications yet."
+                : tab === "other"
+                  ? "Nothing over here."
+                  : "Nothing important right now."}
+            </p>
             <p className="mt-1 text-xs text-ink-faint">
-              You&apos;ll see updates here when there&apos;s activity on your
-              account.
+              {all.length === 0 ? (
+                <>
+                  You&apos;ll see updates here when there&apos;s activity on
+                  your account.
+                </>
+              ) : tab === "other" ? (
+                <>Everything you&apos;ve received counts as important.</>
+              ) : (
+                <>
+                  The rest is waiting under{" "}
+                  <Link
+                    href="/notifications?tab=other"
+                    className="underline hover:text-ink-soft"
+                  >
+                    Everything else
+                  </Link>
+                  .
+                </>
+              )}
             </p>
           </div>
         ) : (

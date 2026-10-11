@@ -4,7 +4,12 @@ import { useRouter } from "next/navigation";
 import { CheckCheck } from "lucide-react";
 import { markAllNotificationsRead } from "./actions";
 
-export function MarkAllRead() {
+/**
+ * `types` scopes the sweep to the tab the button is sitting in — marking the
+ * Important tab read shouldn't quietly clear everything else too. Omit it to
+ * clear every unread notification.
+ */
+export function MarkAllRead({ types }: { types?: string[] } = {}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   return (
@@ -14,7 +19,7 @@ export function MarkAllRead() {
       onClick={() =>
         start(async () => {
           try {
-            await markAllNotificationsRead();
+            await markAllNotificationsRead(types);
           } catch {}
           router.refresh();
         })
