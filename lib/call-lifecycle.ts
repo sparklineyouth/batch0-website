@@ -27,6 +27,7 @@
  * with its extension, so `node --test` can run it with no transpile step.
  */
 import {
+  isOnCall,
   joinState,
   JOIN_OPENS_MINUTES_BEFORE,
   JOIN_CLOSES_MINUTES_AFTER,
@@ -126,7 +127,7 @@ export function canRespondToCall(call: CallTiming, now: Date = new Date()): bool
 }
 
 /**
- * The host (or an admin) may still cancel.
+ * The staff side (the host or a co-host), or an admin, may still cancel.
  *
  * Right up to the window closing, including while the call is live — a host
  * waiting on a student who never arrived is exactly who needs this, and it is
@@ -543,29 +544,39 @@ export function bookingPrefill(
 /**
  * May this person watch the call back?
  *
- * The two people who were on it, and admins — the same people the table's RLS
- * lets read the row, for the same safeguarding reason: in a programme of
- * minors someone accountable must be able to answer "what was said". Not
- * mentors or investors in general, even though they hold `calls.invite`; that
- * permission is for booking your OWN calls.
+ * The people who were on it — the student, the host and any co-hosts
+ * (migration 0092) — and admins: the same people the table's RLS lets read
+ * the row, for the same safeguarding reason: in a programme of minors someone
+ * accountable must be able to answer "what was said". Not mentors or
+ * investors in general, even though they hold `calls.invite`; that permission
+ * is for booking your OWN calls.
  */
 export function canViewCallRecording(args: {
   viewerId: string;
   hostId: string;
   inviteeId: string;
+  /** Co-hosts' ids. Omitted is a call with none. */
+  cohostIds?: readonly string[];
   superAdmin: boolean;
 }): boolean {
   return (
     args.superAdmin ||
-    args.viewerId === args.hostId ||
-    args.viewerId === args.inviteeId
+    isOnCall(
+      {
+        hostId: args.hostId,
+        inviteeId: args.inviteeId,
+        cohosts: (args.cohostIds ?? []).map((id) => ({ id })),
+      },
+      args.viewerId,
+    )
   );
 }
 
 /**
- * Where a HOST's calls list lives. The room is shared by both people
- * (/dashboard/calls/<id>/live), but "back" for a mentor is /mentor/calls —
- * /dashboard/calls is the student's inbox and would show them an empty page.
+ * Where a HOST's — or a co-host's — calls list lives. The room is shared by
+ * everyone on the call (/dashboard/calls/<id>/live), but "back" for a mentor
+ * is /mentor/calls — /dashboard/calls is the student's inbox and would show
+ * them an empty page.
  */
 export function hostCallsHref(caps: {
   superAdmin: boolean;

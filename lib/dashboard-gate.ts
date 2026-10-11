@@ -15,13 +15,13 @@
  *     here, so a mentor who files at /support must not be bounced to /mentor
  *     the moment they try to read the answer. The thread page authorizes
  *     itself: it only ever shows the viewer their own requests.
- *   - /dashboard/calls/<id>/live — the 1:1 ROOM, which is shared by both
- *     people on the call. The host of a call is very often a mentor or an
- *     investor, whose calls list (/mentor/calls, /investor/calls) links here,
- *     as does the invite's .ics. Bouncing them to /mentor meant a host could
- *     never enter their own call: the student sat alone in the room being told
- *     the call was recorded, and nothing was, because only the host's browser
- *     records. The page itself 404s anyone who is not one of the two people on
+ *   - /dashboard/calls/<id>/live — the 1:1 ROOM, which is shared by everyone
+ *     on the call. The host of a call, and any co-host, is very often a mentor
+ *     or an investor, whose calls list (/mentor/calls, /investor/calls) links
+ *     here, as does the invite's .ics. Bouncing them to /mentor meant a host
+ *     could never enter their own call: the student sat alone in the room
+ *     being told the call was recorded, and nothing was, because only the
+ *     staff side's browsers record. The page itself 404s anyone who is not on
  *     that call.
  *   - /dashboard/events/<id>/live — the WEBINAR room, for the same reason:
  *     the people who host a webinar are mostly not students. Interns and

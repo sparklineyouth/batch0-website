@@ -514,6 +514,23 @@ export function missingPermissions(
   return permissions.filter((p) => !caps.permissions.includes(p));
 }
 
+/**
+ * The slugs of every role that holds `permission` — the wildcard included.
+ *
+ * For the few places that pick PEOPLE by what their role may do rather than
+ * by its name: a custom role granted the permission from /admin/roles counts,
+ * and a system role it was taken from does not. Takes the stored rows
+ * (`getAllRoles`), so it stays as pure as the rest of this file.
+ */
+export function rolesHolding(
+  roles: readonly { slug: string; permissions: readonly string[] | null | undefined }[],
+  permission: Permission,
+): string[] {
+  return roles
+    .filter((r) => can(capabilitiesFrom(r.slug, r.permissions), permission))
+    .map((r) => r.slug);
+}
+
 /** True when the viewer holds everything in `permissions`. */
 export function covers(
   caps: Capabilities | null,

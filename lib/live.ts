@@ -16,7 +16,7 @@
  *
  * `host` gets camera, mic, and screen share. `viewer` watches and uses chat.
  * For a webinar that split is the whole feature (it maps to Daily's
- * `owner_only_broadcast`); for a 1:1 both people are hosts.
+ * `owner_only_broadcast`); for a 1:1 everyone on it is a host.
  */
 export type LiveRole = "host" | "viewer";
 
@@ -185,11 +185,21 @@ export type LiveEvent = {
   liveEndedAt: string | null;
 } & LiveRoom;
 
+/** Someone on a call's staff side who did not send the invite (migration 0092). */
+export type CallCohost = { id: string; name: string; role: string };
+
 export type CallInvite = {
   id: string;
   hostName: string;
   hostRole: string;
   inviteeName: string;
+  /**
+   * Everyone else on the staff side, in the order they were added. A "1:1" is
+   * one student and any number of admins, mentors and investors; the host is
+   * just the one who sent the invite. Empty on a database where 0092 hasn't
+   * run (lib/calls.ts falls back), which is exactly a call with no co-hosts.
+   */
+  cohosts: CallCohost[];
   startsAt: string;
   durationMinutes: number;
   topic: string | null;
@@ -320,6 +330,105 @@ export function inviteEndsAt(
   return new Date(
     new Date(invite.startsAt).getTime() + invite.durationMinutes * MINUTE,
   ).toISOString();
+}
+
+// ---------------------------------------------------------------------------
+// Who is on a call
+// ---------------------------------------------------------------------------
+//
+// Since migration 0092 a call is one student and a STAFF SIDE: the host (who
+// sent the invite) plus any co-hosts. Every gate that used to ask "host or
+// invitee?" — the join page, the room's credentials, End call, Cancel, the
+// recording, the calendar file — asks these instead, so a co-host can never be
+// let in by one surface and turned away by the next.
+
+/** The raw ids a gate decides on. `getInvite` and `resolveCallAccess` carry them. */
+export type CallParties = {
+  hostId: string;
+  inviteeId: string;
+  cohosts: readonly { id: string }[];
+};
+
+/** Host first, then co-hosts: everyone who may run the call. Never the student. */
+export function callStaffIds(call: CallParties): string[] {
+  return [call.hostId, ...call.cohosts.map((c) => c.id)];
+}
+
+/** Is this person on the staff side of the call — its host or a co-host? */
+export function isStaffOnCall(call: CallParties, userId: string): boolean {
+  return !!userId && callStaffIds(call).includes(userId);
+}
+
+/**
+ * Is this person on the call at all? The join, calendar and recording gate.
+ * An admin who is NOT on it gets no — the safeguarding list is read-only.
+ */
+export function isOnCall(call: CallParties, userId: string): boolean {
+  return !!userId && (call.inviteeId === userId || isStaffOnCall(call, userId));
+}
+
+/**
+ * Is `peerId` on the OTHER side of the call from `selfId` — the person whose
+ * presence means the conversation has actually happened?
+ *
+ * For anyone on the staff side that is the student, and only the student: a
+ * co-host being in the room with you is the team waiting, not the call
+ * taking place. For the student it is anyone on the staff side. Before
+ * co-hosts the only other person in a call room was always the other side, so
+ * "someone else is here" and "the other side is here" were the same question;
+ * End call's gate (broadcast-room) asks this one.
+ *
+ * `staffIds` is the call's staff side (callStaffIds).
+ */
+export function isCallCounterpart(
+  staffIds: readonly string[],
+  selfId: string,
+  peerId: string,
+): boolean {
+  if (!peerId || peerId === selfId) return false;
+  const selfIsStaff = staffIds.includes(selfId);
+  const peerIsStaff = staffIds.includes(peerId);
+  return selfIsStaff ? !peerIsStaff : peerIsStaff;
+}
+
+/**
+ * The most people a call's staff side may add besides its host. An abuse
+ * guard more than a product rule: a call is a peer-to-peer mesh — everyone's
+ * video goes to everyone — so it runs best well under this. The picker stops
+ * at it and resolveCohosts refuses past it.
+ */
+export const MAX_CALL_COHOSTS = 20;
+
+/**
+ * The co-host ids a host asked for, cleaned: deduplicated, and without the
+ * host or the student. Both of those are already on the call, so naming them
+ * is a noisy selection rather than an error — and a host listed as their own
+ * co-host would be dialled twice by the room.
+ */
+export function normalizeCohostIds(
+  ids: readonly unknown[] | null | undefined,
+  exclude: { hostId: string; inviteeId: string },
+): string[] {
+  const out: string[] = [];
+  for (const id of ids ?? []) {
+    if (typeof id !== "string" || !id) continue;
+    if (id === exclude.hostId || id === exclude.inviteeId) continue;
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** "Ana", "Ana and Ben", "Ana, Ben and Cy". */
+export function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** The staff side of a call by name: the host first, then co-hosts. */
+export function staffNames(
+  invite: Pick<CallInvite, "hostName" | "cohosts">,
+): string[] {
+  return [invite.hostName, ...invite.cohosts.map((c) => c.name)];
 }
 
 // ---------------------------------------------------------------------------

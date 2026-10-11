@@ -1,6 +1,16 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { CallInvite, CallInviteStatus } from "@/lib/live";
+import { can, rolesHolding } from "@/lib/permissions";
+import { capabilitiesForRole, getAllRoles } from "@/lib/roles";
+import { notifyMany } from "@/lib/notifications";
+import { hostCallsHref } from "@/lib/call-lifecycle";
+import {
+  MAX_CALL_COHOSTS,
+  normalizeCohostIds,
+  type CallCohost,
+  type CallInvite,
+  type CallInviteStatus,
+} from "@/lib/live";
 
 /**
  * Reads for staff-initiated 1:1 calls (`call_invites`, migration 0059).
@@ -16,20 +26,139 @@ import type { CallInvite, CallInviteStatus } from "@/lib/live";
  * on `status`, and is decided by lib/call-lifecycle.ts at the point of display
  * (`splitCalls` re-sorts Upcoming soonest-first). Filtering by time here would
  * be a second copy of that rule, frozen at query time.
+ *
+ * ---------------------------------------------------------------------------
+ * Co-hosts, and a database that is a deploy behind
+ * ---------------------------------------------------------------------------
+ *
+ * Since migration 0092 a call has a staff SIDE: the host plus any co-hosts
+ * (`call_invite_cohosts`). Every read here embeds them. But this code can
+ * reach production before anyone has pasted 0092 into the SQL editor, and
+ * PostgREST refuses a whole query that embeds a relationship it has never
+ * heard of (PGRST200) — which, unhandled, would empty every calls page and
+ * 404 every room. So each read tries the embed and, on exactly that error,
+ * re-runs without it: on such a database every call has no co-hosts, which is
+ * the truth.
  */
 
 // Both foreign keys point at `profiles`, so PostgREST can't infer which one an
 // embedded join means. Naming the constraints disambiguates them; Postgres
-// generated these names from the inline `references` in the migration.
-const SELECT = `
+// generated these names from the inline `references` in the migration. The
+// co-host embed is hinted the same way: 0092's join table makes call_invites
+// and profiles many-to-many as well, and an unhinted embed is a guess.
+const BASE_SELECT = `
   id, host_id, invitee_id, starts_at, duration_minutes, topic, status,
   daily_room_name, daily_room_url, recap, created_at, updated_at,
   host:profiles!call_invites_host_id_fkey(full_name, role),
   invitee:profiles!call_invites_invitee_id_fkey(full_name)
 `;
+export const COHOSTS_EMBED = `
+  cohosts:call_invite_cohosts!call_invite_cohosts_invite_id_fkey(
+    profile_id, created_at,
+    profile:profiles!call_invite_cohosts_profile_id_fkey(full_name, role)
+  )
+`;
+const SELECT = `${BASE_SELECT}, ${COHOSTS_EMBED}`;
+
+/**
+ * The roles whose members may sit on a call's staff side as co-hosts
+ * (migration 0092): every role holding `calls.invite`, the wildcard included.
+ *
+ * The capability, not a list of role names — the same rule createInvite
+ * applies to the host, for the same reason. A co-host's only way to the call
+ * is their calls list (/admin, /mentor or /investor /calls), and every one of
+ * those pages requires calls.invite. Picked by role name, an investor whose
+ * role had calls.invite taken away could be added to a call they then had no
+ * page to find it on, and the student waited for someone who never came.
+ */
+async function callStaffRoleSlugs(): Promise<string[]> {
+  return rolesHolding(await getAllRoles(), "calls.invite");
+}
+
+/**
+ * Is this "0092 hasn't been applied" rather than a real failure?
+ *
+ * The same idea as `isMissingTable` in lib/webinar-data.ts, with one more
+ * code: an embed of an unknown relationship is PGRST200 ("Could not find a
+ * relationship ... in the schema cache"), while a direct read of an unknown
+ * table is PGRST205 from PostgREST or 42P01 from Postgres. The message is
+ * checked too, because it is not a stable contract and the codes have moved
+ * between PostgREST releases — but only when it names the table, so an
+ * unrelated "does not exist" is never mistaken for this.
+ */
+export function isCohostSchemaMissing(
+  error: { code?: string; message?: string } | null | undefined,
+): boolean {
+  if (!error) return false;
+  if (["PGRST200", "PGRST205", "42P01"].includes(error.code ?? "")) return true;
+  const message = error.message ?? "";
+  return (
+    /call_invite_cohosts/.test(message) &&
+    /does not exist|schema cache|relationship/i.test(message)
+  );
+}
+
+type QueryResult = { data: any; error: { code?: string; message?: string } | null };
+
+let warnedMissing = false;
+/**
+ * Say so — once per server instance — when the co-host embed was refused.
+ * Falling back is right on a database without 0092, but the same PGRST200
+ * also means a mistyped embed hint, and that must not pass as "no co-hosts"
+ * in silence. (The PGlite test pins the constraint names the hints use.)
+ */
+export function noteCohostsUnavailable(error: { message?: string } | null): void {
+  if (warnedMissing) return;
+  warnedMissing = true;
+  console.warn(
+    "[calls] reading calls without co-hosts — has migration 0092 been applied?",
+    error?.message ?? "",
+  );
+}
+
+/**
+ * Run a call_invites read with the co-host embed, or — on a database where
+ * 0092 hasn't run — without it. `run` builds the query from a select list.
+ */
+async function withCohosts(
+  run: (select: string) => PromiseLike<QueryResult>,
+): Promise<QueryResult> {
+  const first = await run(SELECT);
+  if (!isCohostSchemaMissing(first.error)) return first;
+  noteCohostsUnavailable(first.error);
+  return run(BASE_SELECT);
+}
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+}
+
+/**
+ * The co-host embed (COHOSTS_EMBED) of a call_invites row as `CallCohost`s, in
+ * the order they were added — [] for a row read without it. Anyone who is
+ * also the host or the student is dropped: nothing writes such a row
+ * (normalizeCohostIds strips them), and if one ever existed, the room would
+ * dial that person twice and the card would name them twice. Shared with
+ * resolveCallAccess, so the lists and the room read a call's team alike.
+ */
+export function cohostsFromRow(row: any): CallCohost[] {
+  const rows = Array.isArray(row?.cohosts) ? (row.cohosts as any[]) : [];
+  return rows
+    .filter(
+      (c) =>
+        !!c?.profile_id &&
+        c.profile_id !== row.host_id &&
+        c.profile_id !== row.invitee_id,
+    )
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    .map((c) => {
+      const p = one<any>(c.profile);
+      return {
+        id: c.profile_id as string,
+        name: p?.full_name || "A member of the team",
+        role: p?.role || "mentor",
+      };
+    });
 }
 
 function toInvite(row: any): CallInvite {
@@ -40,6 +169,7 @@ function toInvite(row: any): CallInvite {
     hostName: host?.full_name || "A member of the team",
     hostRole: host?.role || "mentor",
     inviteeName: invitee?.full_name || "Student",
+    cohosts: cohostsFromRow(row),
     startsAt: row.starts_at,
     durationMinutes: row.duration_minutes,
     topic: row.topic,
@@ -50,17 +180,49 @@ function toInvite(row: any): CallInvite {
   };
 }
 
-/** Invites this person sent. */
+const byStartDesc = (a: CallInvite, b: CallInvite) =>
+  new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime();
+
+/**
+ * Invites this person is on the staff side of: ones they sent, and ones they
+ * were added to as a co-host.
+ *
+ * Two reads rather than one `or=(host_id.eq.…,id.in.(…))`: the co-hosted ids
+ * would have to travel in the URL, and an admin who has sat in on a few
+ * hundred calls would eventually outgrow it. The second read starts from the
+ * join table and embeds each call, so it costs one round trip however many
+ * there are. A database without 0092 has no co-hosted calls.
+ */
 export async function listInvitesForHost(
   hostId: string,
 ): Promise<CallInvite[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("call_invites")
-    .select(SELECT)
-    .eq("host_id", hostId)
-    .order("starts_at", { ascending: false });
-  return (data ?? []).map(toInvite);
+  const [hosted, cohosted] = await Promise.all([
+    withCohosts((select) =>
+      admin
+        .from("call_invites")
+        .select(select)
+        .eq("host_id", hostId)
+        .order("starts_at", { ascending: false }),
+    ),
+    admin
+      .from("call_invite_cohosts")
+      .select(`invite:call_invites!call_invite_cohosts_invite_id_fkey(${SELECT})`)
+      .eq("profile_id", hostId),
+  ]);
+  if (cohosted.error && !isCohostSchemaMissing(cohosted.error)) {
+    console.error("[calls] co-hosted read failed", cohosted.error.message);
+  }
+
+  const invites = ((hosted.data ?? []) as any[]).map(toInvite);
+  const seen = new Set(invites.map((i) => i.id));
+  for (const r of (cohosted.data ?? []) as any[]) {
+    const row = one<any>(r.invite);
+    if (!row || seen.has(row.id)) continue;
+    seen.add(row.id);
+    invites.push(toInvite(row));
+  }
+  return invites.sort(byStartDesc);
 }
 
 /** Invites this person received. */
@@ -68,26 +230,33 @@ export async function listInvitesForInvitee(
   inviteeId: string,
 ): Promise<CallInvite[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("call_invites")
-    .select(SELECT)
-    .eq("invitee_id", inviteeId)
-    .order("starts_at", { ascending: false });
-  return (data ?? []).map(toInvite);
+  const { data } = await withCohosts((select) =>
+    admin
+      .from("call_invites")
+      .select(select)
+      .eq("invitee_id", inviteeId)
+      .order("starts_at", { ascending: false }),
+  );
+  return ((data ?? []) as any[]).map(toInvite);
 }
 
 /** Every invite, for the admin view. */
 export async function listAllInvites(): Promise<CallInvite[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("call_invites")
-    .select(SELECT)
-    .order("starts_at", { ascending: false })
-    .limit(200);
-  return (data ?? []).map(toInvite);
+  const { data } = await withCohosts((select) =>
+    admin
+      .from("call_invites")
+      .select(select)
+      .order("starts_at", { ascending: false })
+      .limit(200),
+  );
+  return ((data ?? []) as any[]).map(toInvite);
 }
 
-/** One invite, plus the raw ids the join page needs to authorize against. */
+/**
+ * One invite, plus the raw ids the join page needs to authorize against —
+ * which, with `cohosts`, is everything `isOnCall` / `isStaffOnCall` read.
+ */
 export async function getInvite(id: string): Promise<
   | (CallInvite & {
       hostId: string;
@@ -96,17 +265,39 @@ export async function getInvite(id: string): Promise<
   | null
 > {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("call_invites")
-    .select(SELECT)
-    .eq("id", id)
-    .maybeSingle();
+  const { data } = await withCohosts((select) =>
+    admin.from("call_invites").select(select).eq("id", id).maybeSingle(),
+  );
   if (!data) return null;
   return {
     ...toInvite(data),
     hostId: (data as any).host_id,
     inviteeId: (data as any).invitee_id,
   };
+}
+
+/**
+ * The co-host ids of one call, for the server actions that read a bare
+ * call_invites row and must then decide who is on it.
+ *
+ * Throws on a real read failure rather than answering "nobody": an empty
+ * answer would quietly lock every co-host out of the call they are sitting
+ * in (End call refused, the status poll closing their room). A database
+ * without 0092 has no co-hosts, and says so.
+ */
+export async function readCohostIds(
+  admin: ReturnType<typeof createAdminClient>,
+  inviteId: string,
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from("call_invite_cohosts")
+    .select("profile_id")
+    .eq("invite_id", inviteId);
+  if (error) {
+    if (isCohostSchemaMissing(error)) return [];
+    throw new Error(error.message);
+  }
+  return ((data ?? []) as any[]).map((r) => r.profile_id as string);
 }
 
 export type InviteeOption = {
@@ -141,6 +332,169 @@ export async function listInvitableStudents(): Promise<InviteeOption[]> {
     email: p.email ?? "",
     teamName: null,
   }));
+}
+
+/**
+ * Who can be added to a call's staff side: everyone whose role may host calls
+ * (callStaffRoleSlugs) — admins, and mentors and investors while their roles
+ * hold calls.invite. The page drops the viewer (already the host), so one
+ * list serves every host. `teamName` carries the role, so the picker reads
+ * "mentor" where a student's team would be.
+ */
+export async function listInvitableStaff(): Promise<InviteeOption[]> {
+  const roles = await callStaffRoleSlugs();
+  if (roles.length === 0) return [];
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("id, full_name, email, role")
+    .in("role", roles)
+    .order("full_name", { ascending: true })
+    .limit(500);
+
+  return (data ?? []).map((p: any) => ({
+    id: p.id,
+    name: p.full_name || p.email || "Unnamed",
+    email: p.email ?? "",
+    teamName: p.role,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Writing co-hosts
+// ---------------------------------------------------------------------------
+//
+// Shared by createInvite (app/calls/actions.ts) and scheduleInterviewRequest
+// (app/calls/interview-actions.ts). Here rather than in either action file for
+// the reason refundScholarshipCreditFor below gives: a helper exported from a
+// "use server" file becomes a server action anyone can call with any ids.
+
+export type ResolvedCohost = { id: string; name: string; role: string };
+
+/**
+ * Check a host's co-host picks BEFORE the invite is written, and return them.
+ *
+ * Every id must be someone whose role may host calls (callStaffRoleSlugs) —
+ * the picker only offers those, but the picker is not the boundary, exactly
+ * as for the invitee. The host and the student are dropped rather than
+ * refused (normalizeCohostIds).
+ *
+ * Also where a database without 0092 is caught: asking for co-hosts there
+ * fails HERE, with a sentence a person can act on, before any invite exists —
+ * not after the student has been emailed about a call that is missing half
+ * its people. Asking for none never touches the table, so plain invites keep
+ * working on that database.
+ */
+export async function resolveCohosts(
+  admin: ReturnType<typeof createAdminClient>,
+  requested: readonly unknown[] | null | undefined,
+  parties: { hostId: string; inviteeId: string },
+): Promise<ResolvedCohost[]> {
+  const ids = normalizeCohostIds(requested, parties);
+  if (ids.length === 0) return [];
+  if (ids.length > MAX_CALL_COHOSTS) {
+    throw new Error(
+      `That's a lot of people for a 1:1. Add up to ${MAX_CALL_COHOSTS} from the team.`,
+    );
+  }
+
+  const probe = await admin
+    .from("call_invite_cohosts")
+    .select("invite_id")
+    .limit(1);
+  if (probe.error) {
+    if (isCohostSchemaMissing(probe.error)) {
+      throw new Error(
+        "Adding people from the team needs a database update (migration 0092) that hasn't been applied yet. Send the invite without them for now.",
+      );
+    }
+    throw new Error(probe.error.message);
+  }
+
+  const [{ data: rows, error }, staffRoles] = await Promise.all([
+    admin.from("profiles").select("id, role, full_name").in("id", ids),
+    callStaffRoleSlugs(),
+  ]);
+  if (error) throw new Error(error.message);
+  const byId = new Map(((rows ?? []) as any[]).map((r) => [r.id as string, r]));
+  const out: ResolvedCohost[] = [];
+  for (const id of ids) {
+    const r = byId.get(id);
+    if (!r || !staffRoles.includes(r.role)) {
+      throw new Error(
+        "Only people whose role can host 1:1 calls can join one as part of the team.",
+      );
+    }
+    out.push({ id, name: r.full_name || "A member of the team", role: r.role });
+  }
+  return out;
+}
+
+/**
+ * Put the resolved co-hosts on a call that has just been written. Throws on
+ * failure; the caller deletes the invite it wrote (the rows cascade), so a
+ * call is never left with half its people.
+ */
+export async function attachCohosts(
+  admin: ReturnType<typeof createAdminClient>,
+  inviteId: string,
+  cohosts: readonly ResolvedCohost[],
+): Promise<void> {
+  if (cohosts.length === 0) return;
+  const { error } = await admin
+    .from("call_invite_cohosts")
+    .insert(cohosts.map((c) => ({ invite_id: inviteId, profile_id: c.id })));
+  if (error) {
+    if (isCohostSchemaMissing(error)) {
+      throw new Error(
+        "Adding people from the team needs a database update (migration 0092) that hasn't been applied yet. Send the invite without them for now.",
+      );
+    }
+    throw new Error(error.message);
+  }
+}
+
+/**
+ * Where one staff member's own calls list lives, from their role — the page a
+ * notification about a call should open for them. The student's is
+ * /dashboard/calls; a mentor sent there is bounced to /mentor, and an admin
+ * lands on a list of calls where they are the invitee — none — so the call
+ * seems to vanish. (Same rule as the room's Back link: hostCallsHref.)
+ */
+export async function staffCallsHref(role: string | null | undefined): Promise<string> {
+  const caps = await capabilitiesForRole(role ?? "student");
+  return hostCallsHref({
+    superAdmin: caps.superAdmin,
+    mentorPanel: can(caps, "mentor.panel"),
+    investorPanel: can(caps, "investor.panel"),
+    canInvite: can(caps, "calls.invite"),
+  });
+}
+
+/**
+ * Tell co-hosts they are on a call. In-app only: the invite email is written
+ * to the student, and the call is on each co-host's own calls page from now
+ * on. Best-effort, like every notification in the calls actions.
+ */
+export async function notifyCohostsAdded(
+  cohosts: readonly ResolvedCohost[],
+  call: { hostName: string; studentName: string; topic: string | null },
+): Promise<void> {
+  if (cohosts.length === 0) return;
+  try {
+    const links = await Promise.all(cohosts.map((c) => staffCallsHref(c.role)));
+    await notifyMany(
+      cohosts.map((c, i) => ({
+        userId: c.id,
+        type: "call_invited",
+        title: `${call.hostName} added you to a 1:1 with ${call.studentName}`,
+        body: call.topic || null,
+        link: links[i],
+      })),
+    );
+  } catch (err) {
+    console.error("[calls] co-host notify failed", err);
+  }
 }
 
 /**

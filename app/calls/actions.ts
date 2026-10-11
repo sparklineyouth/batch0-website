@@ -3,19 +3,29 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission, requireActor } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
-import { notify } from "@/lib/notifications";
+import { runAction, type ActionResult } from "@/lib/action-result";
+import { notify, notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
-import { refundScholarshipCreditFor } from "@/lib/calls";
-import { can } from "@/lib/permissions";
-import { capabilitiesForRole } from "@/lib/roles";
-import type { CallInviteStatus } from "@/lib/live";
+import {
+  attachCohosts,
+  notifyCohostsAdded,
+  readCohostIds,
+  refundScholarshipCreditFor,
+  resolveCohosts,
+  staffCallsHref,
+} from "@/lib/calls";
+import {
+  callStaffIds,
+  isOnCall,
+  isStaffOnCall,
+  type CallInviteStatus,
+} from "@/lib/live";
 import {
   callPhase,
   canCancelCall,
   canMarkCallCompleted,
   canRespondToCall,
-  hostCallsHref,
   isPastPhase,
   type CallTiming,
 } from "@/lib/call-lifecycle";
@@ -57,12 +67,79 @@ function timingOf(row: any): CallTiming {
   };
 }
 
-export async function createInvite(input: {
+/**
+ * A call_invites row plus its co-hosts, as the parties `isOnCall` /
+ * `isStaffOnCall` decide on. Every action below that used to ask "host or
+ * invitee?" of the bare row asks of this instead (migration 0092).
+ */
+async function partiesOf(
+  admin: ReturnType<typeof createAdminClient>,
+  row: any,
+) {
+  const cohostIds = await readCohostIds(admin, row.id);
+  return {
+    hostId: row.host_id as string,
+    inviteeId: row.invitee_id as string,
+    cohosts: cohostIds.map((id) => ({ id })),
+  };
+}
+
+/**
+ * Is `userId` on this call? The host and the student are answered from the
+ * row itself, so the polls they run every few seconds never touch the co-host
+ * table; only someone who is neither costs the extra read.
+ */
+async function onCall(
+  admin: ReturnType<typeof createAdminClient>,
+  row: any,
+  userId: string,
+): Promise<boolean> {
+  if (row.host_id === userId || row.invitee_id === userId) return true;
+  return isOnCall(await partiesOf(admin, row), userId);
+}
+
+/** Each staff member's role, for linking them to their own calls page. */
+async function rolesOf(
+  admin: ReturnType<typeof createAdminClient>,
+  ids: readonly string[],
+): Promise<Map<string, string | null>> {
+  if (ids.length === 0) return new Map();
+  const { data } = await admin
+    .from("profiles")
+    .select("id, role")
+    .in("id", [...ids]);
+  return new Map(
+    ((data ?? []) as any[]).map((r) => [r.id as string, r.role ?? null]),
+  );
+}
+
+type InviteInput = {
   inviteeId: string;
   startsAt: string;
   durationMinutes: number;
   topic: string;
-}) {
+  /**
+   * Other staff on the call (migration 0092) — anyone whose role may host
+   * calls. A "1:1" is one student and any number of staff; the sender is the
+   * host.
+   */
+  cohostIds?: string[];
+};
+
+/**
+ * Send an invite. Answers with an ActionResult rather than throwing, because
+ * a production build strips a thrown action's message and the form would
+ * read "Something went wrong" for every refusal here — the past time, the
+ * duplicate, and the co-host ones that say what to change (too many people,
+ * someone who cannot host calls, a database still waiting on 0092).
+ */
+export async function createInvite(
+  input: InviteInput,
+): Promise<ActionResult<{ id: string }>> {
+  return runAction({ name: "createInvite" }, () => createInviteNow(input));
+}
+
+async function createInviteNow(input: InviteInput): Promise<{ id: string }> {
   // The capability, not the role. Migration 0059 grants calls.invite to the
   // mentor and investor roles, but an admin can hand it to any custom role
   // from /admin/roles — so checking role slugs here would quietly ignore that.
@@ -97,6 +174,14 @@ export async function createInvite(input: {
     throw new Error("You can't invite yourself.");
   }
 
+  // The same rule for co-hosts, checked before anything is written — and on
+  // a database without 0092, refused here with a sentence, not after the
+  // student has been emailed. See resolveCohosts.
+  const cohosts = await resolveCohosts(admin, input.cohostIds, {
+    hostId: actor.userId,
+    inviteeId: input.inviteeId,
+  });
+
   const { data: created, error } = await admin
     .from("call_invites")
     .insert({
@@ -121,11 +206,25 @@ export async function createInvite(input: {
 
   const id = created!.id;
 
+  try {
+    await attachCohosts(admin, id, cohosts);
+  } catch (err) {
+    // Don't leave behind a call that's missing half its people — the student
+    // would be invited to a meeting that isn't the one planned. Nothing has
+    // been sent or audited yet, so deleting the row undoes all of it.
+    await admin.from("call_invites").delete().eq("id", id);
+    throw err;
+  }
+
   await logAudit({
     action: "call_invite.created",
     targetType: "call_invite",
     targetId: id,
-    payload: { invitee_id: input.inviteeId, starts_at: startsAt.toISOString() },
+    payload: {
+      invitee_id: input.inviteeId,
+      starts_at: startsAt.toISOString(),
+      cohost_ids: cohosts.map((c) => c.id),
+    },
   });
 
   // Best-effort: an invite that saved but couldn't email is still an invite,
@@ -146,6 +245,12 @@ export async function createInvite(input: {
       link: "/dashboard/calls",
     });
 
+    await notifyCohostsAdded(cohosts, {
+      hostName,
+      studentName: (invitee as any).full_name || "a student",
+      topic: input.topic.trim() || null,
+    });
+
     const email = (invitee as any).email as string | null;
     if (email) {
       const t = Templates.callInvite({
@@ -153,6 +258,7 @@ export async function createInvite(input: {
         startsAt: startsAt.toISOString(),
         durationMinutes: duration,
         topic: input.topic.trim() || null,
+        alsoJoining: cohosts.map((c) => c.name),
       });
       await sendEmail({ to: email, subject: t.subject, html: t.html });
     }
@@ -165,12 +271,13 @@ export async function createInvite(input: {
 }
 
 /**
- * Accept or decline. Invitee only.
+ * Accept or decline. Invitee only — co-hosts are staff, and never answer for
+ * the student.
  *
- * Split from the host's cancel path on purpose. RLS lets either party update
- * the row — it can't express "this party may only touch this column" — so the
- * narrower rule lives here, and the two callers can't be confused for each
- * other.
+ * Split from the staff's cancel path on purpose. RLS lets everyone on the
+ * call update the row — it can't express "this party may only touch this
+ * column" — so the narrower rule lives here, and the two callers can't be
+ * confused for each other.
  */
 export async function respondToInvite(
   id: string,
@@ -233,33 +340,30 @@ export async function respondToInvite(
   });
 
   try {
-    const [{ data: me }, { data: host }] = await Promise.all([
+    // Everyone on the staff side hears the answer, not just whoever sent the
+    // invite: a co-host is planning around this call too.
+    const staffIds = [
+      (invite as any).host_id as string,
+      ...(await readCohostIds(admin, id)),
+    ];
+    const [{ data: me }, roles] = await Promise.all([
       admin.from("profiles").select("full_name").eq("id", actor.userId).maybeSingle(),
-      admin
-        .from("profiles")
-        .select("role")
-        .eq("id", (invite as any).host_id)
-        .maybeSingle(),
+      rolesOf(admin, staffIds),
     ]);
-    // The HOST's calls page, not the student view — the same place the room's
-    // Back link sends them (hostCallsHref): a mentor sent to /dashboard/calls
-    // is bounced to /mentor, and an admin lands on a list of calls where they
-    // are the invitee — none — so the call seems to vanish.
-    const hostCaps = await capabilitiesForRole(
-      ((host as any)?.role as any) ?? "student",
+    // Each one's OWN calls page, not the student view — the same place the
+    // room's Back link sends them (staffCallsHref / hostCallsHref).
+    const links = await Promise.all(
+      staffIds.map((userId) => staffCallsHref(roles.get(userId))),
     );
-    await notify({
-      userId: (invite as any).host_id,
-      type: "call_response",
-      title: `${(me as any)?.full_name || "A student"} ${response} your 1:1`,
-      body: (invite as any).topic || null,
-      link: hostCallsHref({
-        superAdmin: hostCaps.superAdmin,
-        mentorPanel: can(hostCaps, "mentor.panel"),
-        investorPanel: can(hostCaps, "investor.panel"),
-        canInvite: can(hostCaps, "calls.invite"),
-      }),
-    });
+    await notifyMany(
+      staffIds.map((userId, i) => ({
+        userId,
+        type: "call_response",
+        title: `${(me as any)?.full_name || "A student"} ${response} your 1:1`,
+        body: (invite as any).topic || null,
+        link: links[i],
+      })),
+    );
   } catch (err) {
     console.error("[calls] response notify failed", err);
   }
@@ -268,7 +372,8 @@ export async function respondToInvite(
 }
 
 /**
- * Cancel. Host (or an admin) only.
+ * Cancel. Anyone on the staff side — the host or a co-host (migration 0092) —
+ * or a superAdmin. Never the student: they decline instead.
  *
  * Also how an invite that EXPIRED unanswered is withdrawn (see canCancelCall):
  * the same once-only transition and the same scholarship refund, but no
@@ -288,8 +393,10 @@ export async function cancelInvite(id: string) {
     .maybeSingle();
   if (!invite) throw new Error("That invite no longer exists.");
 
-  const isHost = (invite as any).host_id === actor.userId;
-  if (!isHost && !actor.caps.superAdmin) throw new Error("Forbidden");
+  const parties = await partiesOf(admin, invite);
+  if (!isStaffOnCall(parties, actor.userId) && !actor.caps.superAdmin) {
+    throw new Error("Forbidden");
+  }
 
   // Two refusals the old action never made, each of which cost something.
   //
@@ -351,13 +458,51 @@ export async function cancelInvite(id: string) {
 
   if (!withdrawingExpired) {
     try {
-      await notify({
-        userId: (invite as any).invitee_id,
-        type: "call_cancelled",
-        title: "A 1:1 call was cancelled",
-        body: (invite as any).topic || null,
-        link: "/dashboard/calls",
-      });
+      // The student, and everyone else on the staff side who was planning to
+      // be there — each linked to their own calls list. Not whoever pressed
+      // Cancel; they know.
+      const staff = callStaffIds(parties).filter((userId) => userId !== actor.userId);
+      const [roles, { data: named }] = await Promise.all([
+        rolesOf(admin, staff),
+        admin
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", [actor.userId, parties.inviteeId]),
+      ]);
+      const links = await Promise.all(
+        staff.map((userId) => staffCallsHref(roles.get(userId))),
+      );
+      // The staff bell names the student and who cancelled, as every other
+      // staff-facing call bell names the student: someone with a dozen calls
+      // can't tell which one "A 1:1 call was cancelled" meant, and the topic
+      // that would have said so is optional. The student's own stays as it
+      // was — they have one call with this team, and know who it was with.
+      const nameOf = new Map(
+        ((named ?? []) as any[]).map((r) => [r.id as string, r.full_name as string | null]),
+      );
+      const staffTitle = `${nameOf.get(actor.userId) || "Someone on the team"} cancelled the 1:1 with ${
+        nameOf.get(parties.inviteeId) || "a student"
+      }`;
+      await notifyMany([
+        ...(parties.inviteeId !== actor.userId
+          ? [
+              {
+                userId: parties.inviteeId,
+                type: "call_cancelled",
+                title: "A 1:1 call was cancelled",
+                body: (invite as any).topic || null,
+                link: "/dashboard/calls",
+              },
+            ]
+          : []),
+        ...staff.map((userId, i) => ({
+          userId,
+          type: "call_cancelled",
+          title: staffTitle,
+          body: (invite as any).topic || null,
+          link: links[i],
+        })),
+      ]);
     } catch (err) {
       console.error("[calls] cancel notify failed", err);
     }
@@ -367,8 +512,9 @@ export async function cancelInvite(id: string) {
 }
 
 /**
- * End a call, for both people. Either participant — the live room's End call
- * button (broadcast-room's `finishCall`).
+ * End a call, for everyone on it. Anyone on the call — the student, the host
+ * or a co-host — through the live room's End call button (broadcast-room's
+ * `finishCall`).
  *
  * Marks the call `completed` only once its scheduled start has come
  * (canMarkCallCompleted): two people who joined early and left again have not
@@ -376,7 +522,7 @@ export async function cancelInvite(id: string) {
  * proper time. Before the start this is a no-op that says so, and the button
  * simply takes them back to their calls.
  *
- * Idempotent: ending a call that is already completed — the other person got
+ * Idempotent: ending a call that is already completed — someone else got
  * there first — succeeds quietly.
  *
  * Deliberately revalidates NOTHING, unlike every other action in this file.
@@ -396,7 +542,7 @@ export async function cancelInvite(id: string) {
  * pages (staleTimes.dynamic = 0), so the room's push back to the list — and
  * the other person's next visit — renders fresh anyway. The other person's
  * room learns of the End from its status poll or heartbeat, not from a render.
- * The OTHER person's recorder, if they are the host, flushes after the row is
+ * Whoever else is recording (one of the staff side) flushes after the row is
  * already completed, which the upload gate allows (canUploadCallRecording).
  */
 export async function endCall(id: string): Promise<{ completed: boolean }> {
@@ -410,9 +556,7 @@ export async function endCall(id: string): Promise<{ completed: boolean }> {
     .maybeSingle();
   if (!invite) throw new Error("That call no longer exists.");
   const row = invite as any;
-  if (row.host_id !== actor.userId && row.invitee_id !== actor.userId) {
-    throw new Error("Forbidden");
-  }
+  if (!(await onCall(admin, row, actor.userId))) throw new Error("Forbidden");
   if (row.status === "completed") return { completed: true };
   if (!canMarkCallCompleted(timingOf(row))) return { completed: false };
 
@@ -437,17 +581,20 @@ export async function endCall(id: string): Promise<{ completed: boolean }> {
 }
 
 /**
- * Is this call over? Polled by both people in the room.
+ * Is this call over? Polled by everyone in the room.
  *
  * batch0 Live has no server in the media path, so when one person presses End
- * call the other's browser sees only a peer that went away — which is also
- * what a dropped connection looks like. This is how the room tells the two
- * apart: the row says completed (or cancelled), or the window has closed, and
- * the room closes itself — flushing the host's recording on the way out —
+ * call everyone else's browser sees only a peer that went away — which is
+ * also what a dropped connection looks like. This is how the room tells the
+ * two apart: the row says completed (or cancelled), or the window has closed,
+ * and the room closes itself — flushing the recording on the way out —
  * instead of sitting on "reconnecting" for half an hour.
  *
- * Null for anyone who is not one of the two, the same non-answer the join
- * gate gives, so it can't be used to learn which calls exist.
+ * Null for anyone who is not on the call, the same non-answer the join gate
+ * gives, so it can't be used to learn which calls exist. A failed co-host read
+ * THROWS instead (readCohostIds), because the room reads null as "over" and
+ * would close a co-host's call on a database blip; the poll shrugs off a
+ * throw and asks again.
  */
 export async function getCallRoomStatus(
   id: string,
@@ -461,8 +608,6 @@ export async function getCallRoomStatus(
     .maybeSingle();
   const row = invite as any;
   if (!row) return null;
-  if (row.host_id !== actor.userId && row.invitee_id !== actor.userId) {
-    return null;
-  }
+  if (!(await onCall(admin, row, actor.userId))) return null;
   return { over: isPastPhase(callPhase(timingOf(row))) };
 }

@@ -3,6 +3,7 @@ import { requireUser, getViewer } from "@/lib/auth";
 import { getInvite } from "@/lib/calls";
 import { logAudit } from "@/lib/audit";
 import { canViewCallRecording } from "@/lib/call-lifecycle";
+import { isOnCall } from "@/lib/live";
 import { isUuid } from "@/lib/call-recording";
 import {
   listCallRecording,
@@ -23,11 +24,12 @@ export const dynamic = "force-dynamic";
  * hands out a dead link and a link copied out of the page is worthless on its
  * own.
  *
- * Who may: the two people on the call, and admins (canViewCallRecording). A
- * stranger gets the same 404 as a call that does not exist — the id of a
- * minor's private call is not something to confirm. An admin watching a call
- * they were not on is audited, because that is the safeguarding access this
- * rule exists to allow, and it should leave a trace.
+ * Who may: the people on the call — the student, the host and any co-hosts —
+ * and admins (canViewCallRecording). A stranger gets the same 404 as a call
+ * that does not exist — the id of a minor's private call is not something to
+ * confirm. An admin watching a call they were not on is audited, because that
+ * is the safeguarding access this rule exists to allow, and it should leave a
+ * trace.
  */
 export async function GET(
   _req: Request,
@@ -50,6 +52,7 @@ export async function GET(
       viewerId,
       hostId: invite.hostId,
       inviteeId: invite.inviteeId,
+      cohostIds: invite.cohosts.map((c) => c.id),
       superAdmin: viewer.caps.superAdmin,
     })
   ) {
@@ -67,7 +70,9 @@ export async function GET(
     });
   }
 
-  if (viewerId !== invite.hostId && viewerId !== invite.inviteeId) {
+  // Audited only when the viewer was NOT on the call: a co-host watching back
+  // a meeting they sat in is not the safeguarding access this trace is for.
+  if (!isOnCall(invite, viewerId)) {
     await logAudit({
       action: "call_recording.viewed",
       targetType: "call_invite",

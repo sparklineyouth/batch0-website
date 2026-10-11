@@ -1122,8 +1122,8 @@ async function main() {
       "BOTH sides send media (a 1:1 is two broadcasters, not a broadcast)",
     );
 
-    // The mentor's browser is the one recording (call_invites.host_id), and
-    // says so in the room.
+    // The mentor's browser is the one recording (the only staff on the call,
+    // so the one electCallRecorder picks), and says so in the room.
     const recording = await until("the mentor's Recording indicator", async () =>
       hasText(caller.page, /^\s*recording\s*$/i),
     );

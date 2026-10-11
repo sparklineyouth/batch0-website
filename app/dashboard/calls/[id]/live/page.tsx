@@ -5,7 +5,16 @@ import { can } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getInvite } from "@/lib/calls";
 import { createRoom, dailyConfigured, mintToken, roomIsLive } from "@/lib/daily";
-import { canJoin, joinState, inviteEndsAt } from "@/lib/live";
+import {
+  callStaffIds,
+  canJoin,
+  inviteEndsAt,
+  isOnCall,
+  isStaffOnCall,
+  joinNames,
+  joinState,
+  staffNames,
+} from "@/lib/live";
 import { callPhase, hostCallsHref } from "@/lib/call-lifecycle";
 import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
 import { BuiltinCallRoom } from "./builtin-room";
@@ -34,17 +43,17 @@ export default async function CallLivePage(
   const invite = await getInvite(params.id);
   if (!invite) notFound();
 
-  // A 1:1 is private to its two people. Not "can you see this page" but
-  // "are you one of the two" — an admin browsing the safeguarding list can
-  // read that a call happened without being able to walk into it.
-  const isHost = invite.hostId === profile.id;
-  const isInvitee = invite.inviteeId === profile.id;
-  if (!isHost && !isInvitee) notFound();
+  // A 1:1 is private to the people on it: the student, the host, and any
+  // co-hosts (migration 0092). Not "can you see this page" but "are you on
+  // the call" — an admin browsing the safeguarding list can read that a call
+  // happened without being able to walk into it.
+  if (!isOnCall(invite, profile.id)) notFound();
+  const isStaff = isStaffOnCall(invite, profile.id);
 
   // "Back" is this person's own calls list. For the student that is
-  // /dashboard/calls; for a mentor it is /mentor/calls — sending a host to the
-  // student inbox showed them an empty page after every call.
-  const backHref = isHost
+  // /dashboard/calls; for a mentor it is /mentor/calls — sending a host (or a
+  // co-host) to the student inbox showed them an empty page after every call.
+  const backHref = isStaff
     ? hostCallsHref({
         superAdmin: viewer.caps.superAdmin,
         mentorPanel: can(viewer.caps, "mentor.panel"),
@@ -90,30 +99,37 @@ export default async function CallLivePage(
     );
   }
 
+  // Staff are meeting the student; the student is meeting the team.
   const callTitle =
-    invite.topic || `1:1 with ${isHost ? invite.inviteeName : invite.hostName}`;
+    invite.topic ||
+    `1:1 with ${isStaff ? invite.inviteeName : joinNames(staffNames(invite))}`;
 
   // ---- batch0 Live (the default) ------------------------------------------
   //
-  // A 1:1 needs no room to exist in advance and none to be healed: both
-  // parties are known from the invite row, so each is handed the other's
+  // A 1:1 needs no room to exist in advance and none to be healed: everyone
+  // on it is known from the invite row, so each is handed everyone else's
   // inbox and they connect directly. The lazy room creation, the
   // compare-and-set race between two people clicking Join at once, and the
   // dead-room recovery below all exist only because Daily needed a
   // provider-side room. None of it has an equivalent here.
   if (env.liveProvider === "builtin") {
+    const everyone = [
+      { id: invite.inviteeId, name: invite.inviteeName },
+      { id: invite.hostId, name: invite.hostName },
+      ...invite.cohosts.map((c) => ({ id: c.id, name: c.name })),
+    ];
+    const self = everyone.find((p) => p.id === profile.id);
     return (
       <BuiltinCallRoom
         inviteId={invite.id}
         startsAt={invite.startsAt}
         title={callTitle}
-        isHost={isHost}
-        selfName={
-          (isHost ? invite.hostName : invite.inviteeName) ||
-          profile.full_name ||
-          "You"
-        }
-        otherName={isHost ? invite.inviteeName : invite.hostName}
+        selfUserId={profile.id}
+        recorderIds={callStaffIds(invite)}
+        selfName={self?.name || profile.full_name || "You"}
+        otherName={joinNames(
+          everyone.filter((p) => p.id !== profile.id).map((p) => p.name),
+        )}
         endsAt={endsAt}
         backHref={backHref}
       />
@@ -190,8 +206,8 @@ export default async function CallLivePage(
     roomName,
     userId: profile.id,
     userName: profile.full_name || "Guest",
-    // Both parties are hosts in a 1:1 — there is no audience to hide, and a
-    // viewer token would leave one of them unable to speak.
+    // Everyone is a host in a 1:1 — there is no audience to hide, and a
+    // viewer token would leave someone unable to speak.
     role: "host",
     expiresAt: new Date(new Date(endsAt).getTime() + 60 * 60 * 1000),
   });

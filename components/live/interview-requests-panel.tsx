@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select, FieldError } from "@/components/ui/input";
 import { LocalTime } from "@/components/ui/local-time";
 import { getActionError } from "@/lib/action-error";
+import { CohostPicker, type InviteeOption } from "@/components/live/invite-form";
 import {
   scheduleInterviewRequest,
   declineInterviewRequest,
@@ -27,14 +28,19 @@ const DURATIONS = [15, 20, 30, 45, 60];
  *
  * Confirming one of the student's own times books it outright, since they
  * already said it works. Any other time goes to them as an invite to accept.
- * The form says which, before the click.
+ * The form says which, before the click. Whoever confirms hosts the call, and
+ * can put others from the team on it — a scholarship mentor call is usually
+ * booked by an admin for the mentor who will take it.
  */
 export function InterviewRequestsPanel({
   requests,
+  staff = [],
   now,
   scholarshipIds = [],
 }: {
   requests: InterviewRequest[];
+  /** Who can be added as co-hosts — the team, without the viewer. */
+  staff?: InviteeOption[];
   /** The server's render time (ISO), so "have their times passed" is stable across hydration. */
   now: string;
   /** Requests that are learner's-scholarship calls rather than onboarding interviews. */
@@ -54,6 +60,7 @@ export function InterviewRequestsPanel({
         <RequestRow
           key={r.id}
           request={r}
+          staff={staff}
           now={now}
           scholarship={scholarshipIds.includes(r.id)}
         />
@@ -64,10 +71,12 @@ export function InterviewRequestsPanel({
 
 function RequestRow({
   request,
+  staff,
   now,
   scholarship,
 }: {
   request: InterviewRequest;
+  staff: InviteeOption[];
   now: string;
   scholarship: boolean;
 }) {
@@ -92,6 +101,7 @@ function RequestRow({
       defaultStart(),
   );
   const [duration, setDuration] = useState(30);
+  const [cohostIds, setCohostIds] = useState<string[]>([]);
   // Does the time in the form match one the student offered? Then confirming
   // books it outright; otherwise it goes to them to accept. Recomputed as the
   // time is edited, so the button never promises the wrong thing.
@@ -107,11 +117,16 @@ function RequestRow({
     setError(undefined);
     start(async () => {
       try {
-        await scheduleInterviewRequest({
+        const result = await scheduleInterviewRequest({
           id: request.id,
           startsAt: new Date(startsLocal).toISOString(),
           durationMinutes: duration,
+          cohostIds,
         });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         router.refresh();
       } catch (err: any) {
         setError(getActionError(err));
@@ -221,6 +236,7 @@ function RequestRow({
               </Select>
             </div>
           </div>
+          <CohostPicker staff={staff} value={cohostIds} onChange={setCohostIds} />
           <p className="flex items-start gap-1.5 text-xs text-ink-faint">
             <Info className="mt-px h-3.5 w-3.5 shrink-0" />
             {asProposed

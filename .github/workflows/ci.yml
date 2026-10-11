@@ -41,5 +41,6 @@ jobs:
           npm run test:discord-db
           npm run test:scholarships-db
           npm run test:profile-privileges-db
+          npm run test:call-cohosts-db
           npm run test-blast-addressing
           node --test scripts/cohort-readiness-winter.test.mjs

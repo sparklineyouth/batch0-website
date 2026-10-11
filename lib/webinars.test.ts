@@ -17,6 +17,8 @@ import {
   pollPercentages,
   premiereState,
   recordingSegmentSlot,
+  CALL_RECORDER_LISTEN_MS,
+  electCallRecorder,
   electRecorder,
   parseSegmentRun,
   presentForRecording,
@@ -28,6 +30,7 @@ import {
   RECORDER_LEASE_MS,
   RECORDING_RUN_GAP,
   RECORDER_RECONNECT_GRACE_MS,
+  RECORDER_SETTLE_MS,
   RECORDING_AUDIO_BITRATE,
   RECORDING_SEGMENT_SECONDS,
   RECORDING_VIDEO_BITRATE,
@@ -764,6 +767,91 @@ test("every browser in the room elects the same recorder", () => {
   const views = [room, [...room].reverse(), [room[1], room[0], room[2]]];
   const elected = views.map((v) => electRecorder(v));
   assert.deepEqual(elected, ["u1", "u1", "u1"]);
+});
+
+test("a 1:1 is recorded by its staff side only, lowest id present first", () => {
+  const recorderIds = ["host-b", "cohost-a"];
+  const peer = (peerId: string, state: string) => ({ peerId, state, downSince: null });
+  const base = { recorderIds, settling: false, now: 0 };
+
+  // The student never records, whoever else is here.
+  assert.equal(
+    electCallRecorder({ ...base, selfId: "student", peers: [peer("host-b", "live")] }),
+    null,
+  );
+  // Both staff here: every staff browser elects the same one.
+  const both = [peer("student", "live")];
+  assert.equal(
+    electCallRecorder({ ...base, selfId: "host-b", peers: [...both, peer("cohost-a", "live")] }),
+    "cohost-a",
+  );
+  assert.equal(
+    electCallRecorder({ ...base, selfId: "cohost-a", peers: [...both, peer("host-b", "live")] }),
+    "cohost-a",
+  );
+  // The co-host never came: the host records once settling is over.
+  assert.equal(
+    electCallRecorder({ ...base, selfId: "host-b", peers: [peer("cohost-a", "connecting")] }),
+    "host-b",
+  );
+  // The student having a lower id than anyone changes nothing.
+  assert.equal(
+    electCallRecorder({ ...base, selfId: "host-b", peers: [peer("a-student", "live")] }),
+    "host-b",
+  );
+});
+
+test("an inviter who never comes leaves the recording to the co-host who did", () => {
+  // The admin booked it for a mentor and never joined. The join payload still
+  // names them (everyone on the invite is dialled), so their link sits at
+  // "connecting" — but nothing has ever come back from them. The mentor's
+  // browser records at once, settling or not, and again after every rejoin
+  // or reload: the student was told the call is recorded, so it must be.
+  const args = {
+    selfId: "b-mentor",
+    recorderIds: ["a-admin", "b-mentor"],
+    peers: [
+      { peerId: "a-admin", state: "connecting", downSince: null, heard: false },
+      { peerId: "c-student", state: "live", downSince: null, heard: true },
+    ],
+    now: 0,
+  };
+  // A moment to hear from anyone already here — seconds, not the settling
+  // window's fifteen.
+  assert.equal(electCallRecorder({ ...args, settling: true, listening: true }), "a-admin");
+  assert.equal(electCallRecorder({ ...args, settling: true, listening: false }), "b-mentor");
+  assert.equal(electCallRecorder({ ...args, settling: false }), "b-mentor");
+  assert.ok(CALL_RECORDER_LISTEN_MS < RECORDER_SETTLE_MS);
+});
+
+test("a lower-id co-host really arriving holds the recording while their link comes up", () => {
+  // They answered (or offered): they are on the page, and the link is just
+  // not up yet. Counted during settling, exactly as a webinar co-host is, so
+  // the mentor does not record a few seconds the admin is about to record.
+  const args = {
+    selfId: "b-mentor",
+    recorderIds: ["a-admin", "b-mentor"],
+    peers: [{ peerId: "a-admin", state: "connecting", downSince: null, heard: true }],
+    now: 0,
+  };
+  assert.equal(electCallRecorder({ ...args, settling: true }), "a-admin");
+  // ...but not for ever: a link that never comes up stops counting.
+  assert.equal(electCallRecorder({ ...args, settling: false }), "b-mentor");
+});
+
+test("a plain 1:1 still records from its host, from the first moment", () => {
+  // No co-hosts: the host is the only one who may record, so no settling
+  // window and no peer state can stand them down.
+  assert.equal(
+    electCallRecorder({
+      selfId: "host",
+      recorderIds: ["host"],
+      peers: [{ peerId: "aaa-student", state: "connecting", downSince: null }],
+      settling: true,
+      now: 0,
+    }),
+    "host",
+  );
 });
 
 test("a co-host still connecting counts as present only while settling", () => {

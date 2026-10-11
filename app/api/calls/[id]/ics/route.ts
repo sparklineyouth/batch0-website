@@ -1,15 +1,21 @@
 import { requireUser, getProfile } from "@/lib/auth";
 import { getInvite } from "@/lib/calls";
-import { inviteEndsAt } from "@/lib/live";
+import {
+  inviteEndsAt,
+  isOnCall,
+  isStaffOnCall,
+  joinNames,
+  staffNames,
+} from "@/lib/live";
 import { env } from "@/lib/env";
 
 /**
  * Calendar export for a 1:1 call.
  *
  * Modelled on /api/events/[id]/ics, with one difference that matters: this one
- * authenticates. An event is shared with a cohort; a 1:1 is between two named
- * people, so the endpoint answers only to those two rather than to anyone
- * holding the id.
+ * authenticates. An event is shared with a cohort; a 1:1 is between named
+ * people — the student, the host and any co-hosts — so the endpoint answers
+ * only to the people on the call rather than to anyone holding the id.
  *
  * The URL in the invite points at batch0.org, never at the room. The room is
  * private and needs a minted token, so a calendar entry forwarded to a
@@ -49,16 +55,16 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
   if (!profile) return new Response("Not found", { status: 404 });
 
   const invite = await getInvite(params.id);
-  if (
-    !invite ||
-    (invite.hostId !== profile.id && invite.inviteeId !== profile.id)
-  ) {
+  if (!invite || !isOnCall(invite, profile.id)) {
     // 404 rather than 403 — a stranger should not learn that this id exists.
     return new Response("Not found", { status: 404 });
   }
 
-  const other =
-    invite.hostId === profile.id ? invite.inviteeName : invite.hostName;
+  // Staff see the student's name; the student sees the whole team, host
+  // first. A co-host's calendar entry names the student, like the host's.
+  const other = isStaffOnCall(invite, profile.id)
+    ? invite.inviteeName
+    : joinNames(staffNames(invite));
   const summary = invite.topic
     ? `${invite.topic} — 1:1 with ${other}`
     : `1:1 with ${other}`;

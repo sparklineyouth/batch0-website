@@ -143,8 +143,12 @@ export function LivePreview() {
               <SectionLabel>Invite a student to a 1:1</SectionLabel>
               <InviteForm
                 students={mocks.students}
+                staff={mocks.staff}
                 onSubmit={(d) =>
-                  alert(`Would invite ${d.inviteeId} for ${d.durationMinutes}m`)
+                  alert(
+                    `Would invite ${d.inviteeId} for ${d.durationMinutes}m` +
+                      (d.cohostIds.length ? ` with ${d.cohostIds.join(", ")}` : ""),
+                  )
                 }
               />
             </div>
@@ -239,6 +243,7 @@ type Mocks = {
   now: string;
   recordings: Record<string, number>;
   students: Parameters<typeof InviteForm>[0]["students"];
+  staff: Parameters<typeof InviteForm>[0]["students"];
   webinarParticipants: Parameters<typeof CallStage>[0]["participants"];
 };
 
@@ -332,6 +337,7 @@ function buildMocks(): Mocks {
         hostName: "Priya Raman",
         hostRole: "investor",
         inviteeName: "Ana Duarte",
+        cohosts: [],
         startsAt: at(-5),
         durationMinutes: 30,
         topic: "Seed round questions",
@@ -344,6 +350,7 @@ function buildMocks(): Mocks {
         hostName: "Marcus Webb",
         hostRole: "mentor",
         inviteeName: "Ana Duarte",
+        cohosts: [],
         startsAt: at(60 * 30),
         durationMinutes: 45,
         topic: "Portfolio review before Demo Day",
@@ -352,10 +359,15 @@ function buildMocks(): Mocks {
         roomUrl: null,
       },
       {
+        // Booked by an admin with two others from the team on it (0092).
         id: "i-accepted",
         hostName: "Shresht",
         hostRole: "admin",
         inviteeName: "Ana Duarte",
+        cohosts: [
+          { id: "m1", name: "Marcus Webb", role: "mentor" },
+          { id: "v1", name: "Priya Raman", role: "investor" },
+        ],
         startsAt: at(60 * 72),
         durationMinutes: 20,
         topic: null,
@@ -370,6 +382,7 @@ function buildMocks(): Mocks {
         hostName: "Priya Raman",
         hostRole: "investor",
         inviteeName: "Ana Duarte",
+        cohosts: [],
         startsAt: at(-60 * 24 * 7),
         durationMinutes: 30,
         topic: "Getting to know you",
@@ -382,6 +395,7 @@ function buildMocks(): Mocks {
         hostName: "Shresht",
         hostRole: "admin",
         inviteeName: "Ben Okafor",
+        cohosts: [],
         startsAt: at(-60 * 3),
         durationMinutes: 30,
         topic: "Scholarship mentor call",
@@ -395,6 +409,7 @@ function buildMocks(): Mocks {
         hostName: "Marcus Webb",
         hostRole: "mentor",
         inviteeName: "Ana Duarte",
+        cohosts: [],
         startsAt: at(-60 * 26),
         durationMinutes: 30,
         topic: "Pitch feedback",
@@ -407,6 +422,7 @@ function buildMocks(): Mocks {
         hostName: "Marcus Webb",
         hostRole: "mentor",
         inviteeName: "Ana Duarte",
+        cohosts: [],
         startsAt: at(-60 * 48),
         durationMinutes: 30,
         topic: "Intro chat",
@@ -446,6 +462,11 @@ function buildMocks(): Mocks {
         email: "eli@example.com",
         teamName: "Notebook",
       },
+    ],
+    staff: [
+      { id: "m1", name: "Marcus Webb", email: "marcus@example.com", teamName: "mentor" },
+      { id: "v1", name: "Priya Raman", email: "priya@example.com", teamName: "investor" },
+      { id: "a1", name: "Shresht", email: "shresht@example.com", teamName: "admin" },
     ],
     webinarParticipants: [
       { id: "h1", name: "Shresht", role: "host" },

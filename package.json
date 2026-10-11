@@ -14,6 +14,7 @@
     "test:discord-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-discord-auto-db.mts",
     "test:scholarships-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-scholarships-db.mts",
     "test:profile-privileges-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-profile-privileges-db.mts",
+    "test:call-cohosts-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-call-cohosts-db.mts",
     "seo-doctor": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seo-doctor.mts",
     "onshape-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/onshape-doctor.mts",
     "mint-cards": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/mint-cards.mts",

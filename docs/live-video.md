@@ -419,6 +419,47 @@ is the one product decision worth making deliberately** — an unscoped picker
 means any investor can cold-invite any student, which is a safeguarding question
 as much as a technical one.
 
+#### Co-hosts: one student, any number of staff
+
+A "1:1" is one student and a **staff side**: the host (`call_invites.host_id`,
+whoever sent the invite) plus up to 20 more staff (`MAX_CALL_COHOSTS`) as
+co-hosts — `call_invite_cohosts` (migration `0092_call_cohosts.sql`). The
+student side is always exactly one person.
+
+- **Adding people.** "Also joining (optional)" on the invite form, and on the
+  Confirm form in the call-request queue. `resolveCohosts` (lib/calls.ts)
+  checks every pick holds `calls.invite` — by the capability, as
+  `createInvite` checks the host, because a co-host's only way to the call is
+  their calls list and every calls list requires it — before anything is
+  written; the host and the student are dropped from the list, and a failed
+  co-host write deletes the invite it belonged to. Both booking actions answer
+  with an `ActionResult`, so these refusals reach the form as written in
+  production. Co-hosts get an in-app notification linking to their own calls
+  page; the student's email says who else is joining.
+- **What a co-host can do.** Everything the host can on that call: see it on
+  their `/mentor|investor|admin/calls` list, join and broadcast, End call for
+  everyone, Cancel, download the `.ics`, and watch the recording. Every gate
+  asks `isOnCall` / `isStaffOnCall` (lib/live.ts) instead of "host or
+  invitee". An admin who is not on a call still cannot walk into it.
+- **Ending it.** End call appears once the *other side* has been in the room
+  (`isCallCounterpart`): for staff that is the student, so a host and a
+  co-host waiting for a late student cannot complete a call that never
+  happened. With co-hosts it is a two-step "End for everyone", as a webinar's
+  is; a plain 1:1 keeps the one press.
+- **The room** is a small mesh: `joinRoom` hands each person everyone else on
+  the invite as known peers, and `shouldOffer`'s id comparison decides who
+  dials whom.
+- **RLS.** Co-hosts can read and update their `call_invites` rows; the join
+  table is readable by admins and anyone on the call, and has no write
+  policies (service-role server actions write it). Both policies go through
+  security-definer predicates (`is_call_cohost`, `is_call_participant`) so the
+  two tables never recurse into each other's policies;
+  `npm run test:call-cohosts-db` runs the real migrations in PGlite as each
+  kind of user.
+- **Before 0092 is applied** every read falls back to the pre-co-host query
+  (no co-hosts), so existing calls keep working, and an invite that names
+  co-hosts is refused with a sentence before anything is written.
+
 #### Students asking the team for a 1:1
 
 Invites run staff→student. The other direction is `interview_requests`
@@ -486,18 +527,32 @@ cancelled call is no longer "Interview booked".
 
 #### Recording
 
-Every 1:1 on batch0 Live is recorded, from the **host's** browser only (the
-invitee never records — two recorders would double the file and make the
-student's laptop do the work). `useRecorder` is given the other participant's
-streams (`remotes`): both people side by side with name tags (or the shared
-screen with both faces inset), and both voices mixed through an
-`AudioContext` into one track. A webinar's elected recorder is given every
+Every 1:1 on batch0 Live is recorded, from **one staff browser** (the
+student never records — two recorders would double the file and make the
+student's laptop do the work). With no co-hosts that is the host's. With
+co-hosts the room runs the webinar election over the staff side only
+(`electCallRecorder` in lib/webinars.ts: the lowest user id among the staff
+present), so a call whose inviter never shows is still recorded by the
+co-host who did, and the recording moves when the one ahead in line arrives
+or leaves. Past the first three seconds after a join
+(`CALL_RECORDER_LISTEN_MS`), settling counts only staff this session has heard
+from (`RemotePeer.heard`): everyone on the invite is dialled, so an absent
+co-host's link sits at "connecting" too, and must not hold the recording. Two staff whose
+link to each other never comes up both elect themselves; the server backstop
+in `getCallRecordingUploadToken` then refuses the lower-ranked browser's
+segment whenever a higher-ranked one registered a segment during it
+(`recordingRival`, fed from the segment names by `callRecordingRegistry`), so
+the call is kept once. `useRecorder` is given everyone else's streams (`remotes`): people
+side by side with name tags (or the shared screen with faces inset), and
+every voice mixed through an `AudioContext` into one track. A webinar's elected recorder is given every
 live co-host the same way, so the whole stage is recorded whichever host's
 browser does it (see docs/webinars.md).
 
 No schema: segments go to a dedicated private `call-recordings` bucket at
-`calls/<inviteId>/recording/segment-NNNN-<ts>.webm` (`lib/call-recording.ts`);
-the storage listing *is* the index. Not `webinar-media`: that bucket's
+`calls/<inviteId>/recording/segment-NNNN-<ts>-<uploader>[-last].webm`
+(`lib/call-recording.ts`); the storage listing *is* the index, and the
+uploader and `-last` (the segment captured as a recorder stopped) are what the
+backstop reads. Not `webinar-media`: that bucket's
 staff-direct storage policy (`events.manage`, which interns hold) would let
 roles the app never shows a 1:1 recording to download them straight from
 Storage — and these are calls with minors. `call-recordings` has no storage
@@ -507,18 +562,19 @@ policies; only the service role touches it. The app creates it on first use
 global upload limit and refused if larger (Supabase's default is 50 MB), and a
 MIME allow-list can refuse the recorder's `video/webm;codecs=…` types.
 Segments are two minutes (~19 MB) so they sit well inside that global limit.
-Upload URLs come from `getCallRecordingUploadToken` (host; accepted, completed
-or cancelled; window open plus a ten-minute grace for the final flush). The
+Upload URLs come from `getCallRecordingUploadToken` (host or co-host; accepted,
+completed or cancelled; window open plus a ten-minute grace for the final
+flush). The
 Past list looks for recordings on accepted/completed calls and on calls
 cancelled once their room could have opened (a host who cancels mid-room has
 segments).
 
-The room itself is `/dashboard/calls/<id>/live` for both people, including a
-mentor or investor host who otherwise never sees `/dashboard`: middleware lets
-the live rooms (this one and the webinar room) past the `student.dashboard`
-bounce (`isLiveRoomPath` in `lib/dashboard-gate.ts`), the page 404s anyone who
-is not one of the two, and the dashboard layout renders bare chrome for a
-viewer without `student.dashboard`.
+The room itself is `/dashboard/calls/<id>/live` for everyone on the call,
+including a mentor or investor host or co-host who otherwise never sees
+`/dashboard`: middleware lets the live rooms (this one and the webinar room)
+past the `student.dashboard` bounce (`isLiveRoomPath` in
+`lib/dashboard-gate.ts`), the page 404s anyone who is not on the call, and the
+dashboard layout renders bare chrome for a viewer without `student.dashboard`.
 
 Leaving or ending never waits for the recording's upload: the room captures
 the final segment (milliseconds), stops the devices and shows the left/ended
@@ -529,9 +585,9 @@ the calls list after your own End call wait for it (bounded at 90 seconds).
 through the upload instead of being re-rendered into the static "This call
 has ended" page.
 Playback is `/api/calls/<id>/recording/<n>`, which checks the viewer is on the
-call or an admin, then redirects to a ten-minute signed URL; an admin watching
-someone else's call is audited. Both people see a recording notice before they
-join and a Recording indicator in the room.
+call (student, host or co-host) or an admin, then redirects to a ten-minute
+signed URL; an admin watching someone else's call is audited. Everyone sees a
+recording notice before they join and a Recording indicator in the room.
 
 ---
 

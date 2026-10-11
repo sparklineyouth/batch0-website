@@ -275,7 +275,18 @@ export function useRecorder({
    */
   cameraOn: boolean;
   micOn: boolean;
-  onSegment: (blob: Blob, index: number, durationSeconds: number) => Promise<void>;
+  /**
+   * `last` is true for the segment captured as the recorder STOPPED (the gate
+   * closing: Leave, End, a handover) rather than at a rotation — the one a
+   * call's server backstop reads as "this recorder has stopped" (see
+   * callRecordingRegistry in lib/call-recording.ts).
+   */
+  onSegment: (
+    blob: Blob,
+    index: number,
+    durationSeconds: number,
+    last: boolean,
+  ) => Promise<void>;
   /**
    * Every other broadcaster on stage, to composite in and mix with the local
    * mic — see the header. An empty array still means the stage machine:
@@ -725,6 +736,8 @@ export function useRecorder({
       const blob = new Blob(chunks, { type: mime });
       chunks.length = 0;
       recorderRef.current = null;
+      // A rotation restarts below; a stop does not. Read before the restart.
+      const last = !runningRef.current;
 
       // Restart BEFORE the upload is awaited, not after. The seam between two
       // segments is meant to be the recorder's restart — tens of milliseconds
@@ -760,7 +773,7 @@ export function useRecorder({
       captured();
       void (async () => {
         try {
-          await onSegmentRef.current(blob, index, duration);
+          await onSegmentRef.current(blob, index, duration, last);
           if (mountedRef.current) setUploaded((n) => n + 1);
         } catch (err: any) {
           // A failed upload must never stop the recording. The segment is

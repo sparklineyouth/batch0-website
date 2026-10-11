@@ -8,6 +8,7 @@ import {
   canViewAdminPath,
   capabilitiesFrom,
   can,
+  rolesHolding,
 } from "./permissions.ts";
 
 // Run with `npm test`.
@@ -107,4 +108,19 @@ test("admin-area permissions are exactly the catalog minus the non-admin set", (
     (p) => !(NON_ADMIN as readonly string[]).includes(p),
   );
   assert.deepEqual([...ADMIN_AREA_PERMISSIONS], expected);
+});
+
+test("rolesHolding picks roles by what they may do, not by their name", () => {
+  const roles = [
+    { slug: "student", permissions: ["student.dashboard"] },
+    { slug: "admin", permissions: ["*"] },
+    // calls.invite taken off investors in /admin/roles...
+    { slug: "mentor", permissions: ["mentor.panel", "calls.invite"] },
+    { slug: "investor", permissions: ["investor.panel"] },
+    // ...and handed to a custom role.
+    { slug: "partner", permissions: ["calls.invite"] },
+    { slug: "broken", permissions: null },
+  ];
+  assert.deepEqual(rolesHolding(roles, "calls.invite"), ["admin", "mentor", "partner"]);
+  assert.deepEqual(rolesHolding([], "calls.invite"), []);
 });
