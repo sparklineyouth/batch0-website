@@ -834,14 +834,22 @@ export async function deleteTeamDriveFile(input: { fileId: string }) {
   revalidatePath("/dashboard/team");
 }
 
+/**
+ * Mint a short-lived signed URL for one drive file.
+ *
+ * `download: true` asks storage for a content-disposition attachment, so
+ * the browser saves the file instead of displaying it; the in-page preview
+ * pane uses the default (inline) form of the same URL.
+ */
 export async function getTeamDriveDownloadUrl(input: {
   fileId: string;
+  download?: boolean;
 }): Promise<string> {
   const { userId } = await assertSelf();
   const admin = createAdminClient();
   const { data: file } = await admin
     .from("team_drive_files")
-    .select("id, team_id, path")
+    .select("id, team_id, path, name")
     .eq("id", input.fileId)
     .single();
   if (!file) throw new Error("Not found.");
@@ -865,7 +873,11 @@ export async function getTeamDriveDownloadUrl(input: {
 
   const { data, error } = await admin.storage
     .from("team-drive")
-    .createSignedUrl(file.path, 60 * 60);
+    .createSignedUrl(
+      file.path,
+      60 * 60,
+      input.download ? { download: file.name } : undefined,
+    );
   if (error || !data?.signedUrl) {
     throw new Error(error?.message ?? "Could not generate URL");
   }

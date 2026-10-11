@@ -51,7 +51,9 @@ export default async function TeamPage() {
         .order("created_at", { ascending: false }),
       admin
         .from("team_drive_files")
-        .select("id, name, size_bytes, mime_type, created_at, uploader_id")
+        .select(
+          "id, name, size_bytes, mime_type, created_at, uploader_id, uploader:profiles(full_name, email)",
+        )
         .eq("team_id", team.id)
         .order("created_at", { ascending: false }),
       admin
