@@ -33,8 +33,10 @@ export default async function PhonePage() {
       </h1>
       <p className="mt-2 text-sm text-ink-soft">
         We collect a phone number for everyone in the program so we can reach
-        you about kickoff logistics and anything time-sensitive. It's only used
-        to run the program — never shared or sold. See our{" "}
+        you — by call or text — about kickoff logistics and anything
+        time-sensitive. Program messages only: we never send marketing texts,
+        and we never share or sell your number. Reply STOP to any text to opt
+        out; we'll email you instead. See our{" "}
         <Link href="/privacy" className="text-phosphor-ink underline">
           Privacy Policy
         </Link>

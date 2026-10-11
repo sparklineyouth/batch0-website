@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: October 1, 2026
+        Last updated: October 11, 2026
       </p>
 
       <p>
@@ -33,10 +33,11 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Contact info:</strong> a phone number, so we can reach you
-          about your application and time-sensitive program logistics (e.g.
-          kickoff). Accepted students who applied before we collected it are
-          asked for it separately. We use it only to run the program — we don't
-          use it for marketing, and we never sell it.
+          by call or text about your application and time-sensitive program
+          logistics (e.g. kickoff). Accepted students who applied before we
+          collected it are asked for it separately. We use it only to run the
+          program — we don&rsquo;t use it for marketing, and we never sell it.
+          See <a href="#sms">Text messages</a> below.
         </li>
         <li>
           <strong>Payment info:</strong> we don't store your card. Stripe
@@ -104,6 +105,46 @@ export default function PrivacyPage() {
         </li>
       </ul>
 
+      <h2 id="sms">Text messages (SMS)</h2>
+      <p>
+        We text you only about the program you applied to or are enrolled in:
+        application status, kickoff and session logistics, deadline reminders,
+        and anything else time-sensitive. These are the same things we would
+        email you about.
+      </p>
+      <p>
+        <strong>We do not send promotional or marketing texts.</strong> We
+        will not start sending them to a number already on file. If we ever
+        add them, they will require a separate opt-in that you actively
+        choose, and declining will have no effect on your application, your
+        place in the program, or anything you pay.
+      </p>
+      <p>
+        <strong>
+          We do not sell, rent, share, or transfer phone numbers, SMS opt-in
+          data, or SMS consent information to any third party — including
+          sponsors, partners, and affiliates — for marketing or any other
+          purpose.
+        </strong>{" "}
+        A number reaches a third party only when that provider is delivering
+        the message for us.
+      </p>
+      <p>
+        <strong>Stopping texts.</strong> Reply STOP to any message, or tell us
+        any other reasonable way — a reply to one of our emails, a request at{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a>, or{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a>. We act on it
+        within 10 business days and send at most one confirmation message.
+        Message frequency varies with the cohort calendar, and message and
+        data rates may apply. Stopping texts does not remove you from the
+        program — we reach you by email instead.
+      </p>
+      <p>
+        We keep a record of the number, when and how you gave it to us, and
+        any request to stop, for as long as you are in the program and
+        afterward as needed to show we honored what you asked for.
+      </p>
+
       <h2>Your rights</h2>
       <p>
         You can update your profile in{" "}
@@ -128,7 +169,16 @@ export default function PrivacyPage() {
       <h2>Minors</h2>
       <p>
         Many of our students are under 18. We rely on parental consent
-        captured during application.
+        captured during application, and every applicant under 18 gives us a
+        parent or guardian email.
+      </p>
+      <p>
+        A parent or guardian can see what we hold on their student, correct
+        it, ask us to delete it, or tell us to stop calling or texting the
+        student&rsquo;s number — at{" "}
+        <a href="/support?topic=privacy">batch0.org/support</a> or{" "}
+        <a href="mailto:hello@batch0.org">hello@batch0.org</a>. We treat a
+        request from a parent or guardian the same as one from the student.
       </p>
 
       <h2>Your ideas and IP</h2>
@@ -155,7 +205,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-10-01",
+          dateModified: "2026-10-11",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />
