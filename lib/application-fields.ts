@@ -134,7 +134,8 @@ export const QUESTION_FIELDS: readonly QuestionConfig[] = Object.freeze([
     key: "phone",
     type: "text",
     label: "Phone number",
-    help: "So we can reach you about your application and the program.",
+    help:
+      "So we can call or text you about your application and the program. Program messages only \u2014 never marketing. Reply STOP to any text to opt out.",
     placeholder: "+1 (555) 123-4567",
     required: true,
     hidden: false,
