@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
-import { TeamDriveTab } from "./team-drive-tab";
+import { TeamDrive } from "@/components/team/team-drive";
 import { TeamThreadTab } from "./team-thread-tab";
 import { TeamPitchTab } from "./team-pitch-tab";
 
@@ -168,7 +168,7 @@ export function TeamHome({
           />
         )}
         {tab === "drive" && (
-          <TeamDriveTab teamId={team.id} files={files} />
+          <TeamDrive teamId={team.id} files={files} canUpload />
         )}
         {tab === "pitch" && (
           <TeamPitchTab teamId={team.id} pitch={pitch} />

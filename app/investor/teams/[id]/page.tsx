@@ -7,6 +7,7 @@ import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { TeamThread } from "@/components/team-thread";
+import { TeamDrive } from "@/components/team/team-drive";
 import { ScoreCard } from "./score-card";
 import { RubricScoreCard } from "./rubric-score-card";
 import { IntroRequestButton } from "./intro-request-button";
@@ -33,6 +34,7 @@ export default async function InvestorTeamDetailPage(
     { data: members },
     { data: messages },
     { data: pitch },
+    { data: files },
     { data: myScore },
     { data: myIntro },
     { data: rubric },
@@ -64,6 +66,13 @@ export default async function InvestorTeamDetailPage(
       .select("*")
       .eq("team_id", params.id)
       .maybeSingle(),
+    admin
+      .from("team_drive_files")
+      .select(
+        "id, name, size_bytes, mime_type, created_at, uploader:profiles(full_name, email)",
+      )
+      .eq("team_id", params.id)
+      .order("created_at", { ascending: false }),
     admin
       .from("pitch_scores")
       .select("*")
@@ -219,7 +228,7 @@ export default async function InvestorTeamDetailPage(
             )}
             {(pitch as any).deck_path && (
               <span className="text-ink-soft">
-                Deck uploaded (open via team drive)
+                Deck uploaded — see the drive below
               </span>
             )}
             {(pitch as any).video_path && !(pitch as any).video_url && (
@@ -233,6 +242,14 @@ export default async function InvestorTeamDetailPage(
           )}
         </Card>
       )}
+
+      <TeamDrive
+        className="mt-6"
+        teamId={params.id}
+        files={(files ?? []) as any[]}
+        title={`Drive (${(files ?? []).length})`}
+        subtitle="Decks, demos, and anything else the team shared. Preview in place, or download."
+      />
 
       <Card className="mt-6">
         <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Audience reactions</h2>

@@ -6,6 +6,7 @@ import { requireMentor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { TeamThread } from "@/components/team-thread";
+import { TeamDrive } from "@/components/team/team-drive";
 import { FounderPassBadge } from "@/components/founder-pass-badge";
 import { ArrowLeft } from "lucide-react";
 
@@ -50,7 +51,9 @@ export default async function MentorTeamDetailPage(
       .limit(200),
     admin
       .from("team_drive_files")
-      .select("id, name, size_bytes, mime_type, created_at")
+      .select(
+        "id, name, size_bytes, mime_type, created_at, uploader:profiles(full_name, email)",
+      )
       .eq("team_id", params.id)
       .order("created_at", { ascending: false }),
     admin
@@ -139,24 +142,13 @@ export default async function MentorTeamDetailPage(
         </Card>
       )}
 
-      <Card className="mt-6">
-        <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">
-          Drive ({(files ?? []).length})
-        </h2>
-        <ul className="mt-3 divide-y divide-line">
-          {(files ?? []).map((f: any) => (
-            <li key={f.id} className="flex justify-between py-2 text-sm">
-              <span className="truncate text-ink">{f.name}</span>
-              <span className="text-xs text-ink-faint tabular-nums">
-                <LocalTime value={f.created_at} mode="date" />
-              </span>
-            </li>
-          ))}
-          {(files ?? []).length === 0 && (
-            <li className="py-3 text-sm text-ink-faint">Empty.</li>
-          )}
-        </ul>
-      </Card>
+      <TeamDrive
+        className="mt-6"
+        teamId={params.id}
+        files={(files ?? []) as any[]}
+        title={`Drive (${(files ?? []).length})`}
+        subtitle="Everything this team has shared. Preview in place, or download."
+      />
 
       <div className="mt-6">
         <TeamThread
