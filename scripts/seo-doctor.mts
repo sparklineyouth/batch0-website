@@ -33,6 +33,15 @@ import {
   formatDateSentence,
   pickRelated,
 } from "../lib/seo-meta.ts";
+import {
+  PROMO_ENDS_AT,
+  PROMO_PERCENT,
+  PROMO_SALE_PRICE_CENTS,
+  activePromo,
+  resolvePromoConfig,
+  isDefaultPromoConfig,
+  listPriceCents,
+} from "../lib/promo.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -174,8 +183,126 @@ async function checkFallbackDrift(fallback: FallbackFields) {
   }
 }
 
+
 // ---------------------------------------------------------------------------
-// 2 & 3. What the deployed site is actually telling search engines.
+// The promotion: is the sale the code believes in actually running?
+// ---------------------------------------------------------------------------
+//
+// This is the check the previous promo run did not have, and the one failure it
+// could not have caught. `lib/promo.ts` holds the SEED promo; `site_settings`
+// holds the admin override, and the override WINS. So the repo can ship with a
+// live 10%-off seed while the site still charges full price, because a
+// `promo_enabled: false` row left over from the last run silently beats it.
+// Nothing looks broken in that state — there is simply no sale, which from the
+// outside is indistinguishable from never having deployed.
+//
+// It also checks the thing that separates a real sale from a cosmetic one:
+// that every cohort being sold has a `price_cents` the discount can reach.
+async function checkPromo() {
+  section("2. The tuition promotion");
+
+  const seed = activePromo(new Date());
+  if (seed) {
+    pass(
+      `Seed promo in lib/promo.ts is live: ${PROMO_PERCENT}% off until ${seed.longDeadline} (${PROMO_ENDS_AT}).`,
+    );
+  } else {
+    warn(
+      `Seed promo in lib/promo.ts has EXPIRED (${PROMO_ENDS_AT}) — only an admin-set promo can be running.`,
+    );
+  }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key || url.includes("YOUR_PROJECT")) {
+    skip("No Supabase credentials in env — cannot read the admin-set promo.");
+    skip("Run with real .env.local to confirm the sale is actually live.");
+    return;
+  }
+
+  const { createClient } = await import("@supabase/supabase-js");
+  const db = createClient(url, key, { auth: { persistSession: false } });
+
+  const { data: rows, error } = await db
+    .from("site_settings")
+    .select("key, value")
+    .in("key", ["promo_enabled", "promo_percent", "promo_ends_at"]);
+  if (error) {
+    fail(`Could not read promo_* from site_settings: ${error.message}`);
+    return;
+  }
+
+  const raw: Record<string, unknown> = {};
+  for (const r of rows ?? []) raw[r.key] = r.value;
+  const config = resolvePromoConfig(raw);
+  const live = activePromo(new Date(), config);
+
+  if ((rows ?? []).length === 0) {
+    pass("No promo_* rows in site_settings — the site runs on the seed above.");
+  } else if (isDefaultPromoConfig(config)) {
+    pass("site_settings promo matches the seed exactly.");
+  } else {
+    const found = (rows ?? [])
+      .map((r) => `${r.key}=${JSON.stringify(r.value)}`)
+      .join(", ");
+    warn(`site_settings OVERRIDES the seed: ${found}`);
+  }
+
+  if (live) {
+    pass(
+      `Live promo: ${live.percent}% off${live.longDeadline ? ` until ${live.longDeadline}` : " (open-ended)"}.`,
+    );
+    if (config.endsAt) {
+      const hoursLeft =
+        (new Date(config.endsAt).getTime() - Date.now()) / 3_600_000;
+      if (hoursLeft < 48) {
+        warn(
+          `Only ${hoursLeft.toFixed(1)}h left on the promo — every surface stops advertising it at the deadline.`,
+        );
+      }
+    }
+  } else if (seed) {
+    // The exact silent failure this section exists for.
+    fail(
+      "NO PROMO IS RUNNING even though the seed says one should be. A row in " +
+        "site_settings is overriding it — turn it on at /admin/pricing " +
+        "(\"Promotion active\" + \"Discount %\"), or the sale stays invisible.",
+    );
+  } else {
+    pass("No promo running and the seed agrees — tuition shows list price.");
+  }
+
+  // A sale nobody can receive. `promoPriceCents` refuses to discount a base at
+  // or below PROMO_SALE_PRICE_CENTS (the $78 artifact), so a cohort priced at
+  // or under that floor quietly charges list while the site advertises a
+  // discount. Checked for EVERY cohort on sale, not just the active one: the
+  // promo is site-wide, and winter is sold alongside fall.
+  if (!live) return;
+  const { data: cohorts } = await db
+    .from("cohorts")
+    .select("name, status, price_cents")
+    .in("status", ["upcoming", "active"]);
+  for (const c of cohorts ?? []) {
+    const listCents = listPriceCents(c.price_cents);
+    if (listCents <= PROMO_SALE_PRICE_CENTS) {
+      fail(
+        `Cohort "${c.name}" holds ${c.price_cents} cents, at or below the ` +
+          `${PROMO_SALE_PRICE_CENTS}-cent double-discount floor — it will NOT receive the promo, ` +
+          `so the site advertises a discount this cohort never gets.`,
+      );
+    } else if (listCents !== c.price_cents) {
+      warn(
+        `Cohort "${c.name}" holds ${c.price_cents} cents, read as list price ${listCents} by ` +
+          `listPriceCents(). Set it to ${listCents} in /admin/cohorts to retire that repair.`,
+      );
+    } else {
+      pass(`Cohort "${c.name}" (${c.status}) at ${listCents} cents receives the promo.`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3 & 4. What the deployed site is actually telling search engines.
 // ---------------------------------------------------------------------------
 function extractMeta(html: string, name: string): string | null {
   const patterns = [
@@ -200,7 +327,7 @@ const decodeEntities = (s: string) =>
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)));
 
 async function checkLiveMeta(fallback: FallbackFields) {
-  section(`2. Live meta descriptions on ${SITE}`);
+  section(`3. Live meta descriptions on ${SITE}`);
 
   const expected = buildMetaDescription({
     cohortLabel: "Cohort 1",
@@ -299,7 +426,7 @@ async function checkLiveMeta(fallback: FallbackFields) {
 }
 
 async function checkCrawlerFiles() {
-  section("3. Crawler entry points");
+  section("4. Crawler entry points");
   for (const file of ["/robots.txt", "/sitemap.xml"]) {
     try {
       const res = await fetch(`${SITE}${file}`);
@@ -367,7 +494,7 @@ function parseFrontmatter(slug: string, raw: string): PostFrontmatter | null {
 }
 
 async function checkBlog() {
-  section("4. Blog catalogue");
+  section("5. Blog catalogue");
 
   let files: string[];
   try {
@@ -502,6 +629,7 @@ if (!fallback) {
 }
 
 await checkFallbackDrift(fallback);
+await checkPromo();
 await checkLiveMeta(fallback);
 await checkCrawlerFiles();
 await checkBlog();

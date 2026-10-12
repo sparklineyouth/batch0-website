@@ -10,7 +10,12 @@ import { ApplyCta } from "@/components/apply-cta";
 import { WEEKS } from "@/components/curriculum";
 import { getPublicSiteConfig, FALLBACK_COHORT } from "@/lib/site-config";
 import { RegionalPrice } from "@/components/regional-price";
-import { listPriceCents } from "@/lib/promo";
+import {
+  listPriceCents,
+  promoPriceCents,
+  activePromo,
+  saleOfferFields,
+} from "@/lib/promo";
 import {
   SITE,
   ORG_ID,
@@ -106,6 +111,11 @@ export default async function ProgramPage() {
   const sessions = await getPublicCohortSchedule(config.cohort);
   const cohortLabel = derived.cohortLabel || "the next cohort";
 
+  // The live promo, for the Offer node below. Resolved here rather than read
+  // off `derived` because the Offer needs the promo's own `validUntil` and
+  // percent, not just the formatted labels the page body uses.
+  const promo = activePromo(new Date(), config.settings.promo);
+
   // ---------- Course structured data ----------
   // The richest entity on the site, and the one Google can render as a
   // course result. Everything dynamic reads from the same cohort record the
@@ -165,8 +175,30 @@ export default async function ProgramPage() {
       // Base tuition, not the visitor's regional price: the markup is
       // cached and shared across regions, so it has to state the canonical
       // number. `derived.priceLabel` still drives what the page shows.
-      price: (listPriceCents(cohort.priceCents) / 100).toFixed(2),
-      priceCurrency: "USD",
+      //
+      // While a promo runs this states the SALE price plus a ListPrice
+      // specification and a `priceValidUntil`, via the shared helper that /
+      // uses too. Before, it stated $129.99 flat — so during a sale the markup
+      // contradicted the $117 printed on the same page, which is both a missed
+      // chance at a sale-price treatment in search results and the sort of
+      // price mismatch that gets rich results suppressed outright.
+      //
+      // Off-sale `saleOfferFields` is never called and this falls back to the
+      // plain list price, so expiry needs no cleanup here either.
+      ...(promo
+        ? saleOfferFields(
+            promo,
+            listPriceCents(cohort.priceCents),
+            promoPriceCents(
+              listPriceCents(cohort.priceCents),
+              new Date(),
+              config.settings.promo,
+            ),
+          )
+        : {
+            price: (listPriceCents(cohort.priceCents) / 100).toFixed(2),
+            priceCurrency: "USD",
+          }),
       category: "Tuition",
       url: `${SITE}/apply`,
       availability:

@@ -42,7 +42,15 @@ const db: any = {
         const link = state.payerLink;
         return { data: link && filters.every(([,key,value]) => link[key] === value) ? link : null, error: null };
       }
-      if (table === "site_settings") return { data: [], error: state.pricingError };
+      // An explicitly DISABLED promo, not `[]`. `[]` resolves to the SEED
+      // promo (lib/promo.ts), so every amount asserted below silently depended
+      // on whether the suite happened to run before or after PROMO_ENDS_AT —
+      // these tests passed only because that date had already gone by, and
+      // re-running the promo made them fail on correctly discounted prices.
+      // Nothing here is about promotions; the promo's own effect on a quote is
+      // covered in lib/tuition-quote.test.ts and lib/promo.test.ts.
+      if (table === "site_settings")
+        return { data: [{ key: "promo_enabled", value: false }], error: state.pricingError };
       if (table === "founder_passes") return { data: state.pass, error: null };
       if (table === "scholarship_applications") return { data: state.award, error: null };
       throw new Error(`Unexpected test table ${table}`);

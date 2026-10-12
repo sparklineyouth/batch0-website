@@ -2,9 +2,25 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { quoteTuition, TuitionUnavailable } from "./tuition-quote.ts";
 
+// `site_settings` defaults to an explicitly DISABLED promo, not to `[]`.
+//
+// `[]` meant "no promo rows", which `resolvePromoConfig` resolves to the SEED
+// promo — so whether these fixtures had a discount running depended entirely
+// on whether `args.now` happened to fall before or after `PROMO_ENDS_AT`. It
+// fell after, so the seed promo was dormant and the tests below read as if no
+// promo existed. Re-running the promo moved that deadline past the fixture
+// date and three tests that say nothing about promotions began failing on
+// prices that were, in fact, correctly discounted.
+//
+// A test that only means "no pass and no scholarship" should not also be
+// asserting the current calendar. Tests that actually exercise the promotion
+// pass their own `site_settings` rows and are unaffected; the seed-fallback
+// behaviour itself is covered in lib/promo.test.ts, which is where it belongs.
+const PROMO_OFF = { data: [{ key: "promo_enabled", value: false }], error: null };
+
 function pricingDb(results: Record<string, any>, calls: unknown[][] = []): any {
   return { from(table: string) {
-    const response = results[table] ?? { data: table === "site_settings" ? [] : null, error: null };
+    const response = results[table] ?? (table === "site_settings" ? PROMO_OFF : { data: null, error: null });
     const chain: any = { then(resolve: any, reject: any) { return Promise.resolve(response).then(resolve, reject); } };
     for (const method of ["select", "eq", "is", "in", "maybeSingle"]) chain[method] = (...args: unknown[]) => { calls.push([table,method,...args]); return chain; };
     return chain;

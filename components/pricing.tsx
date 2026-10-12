@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import type { SiteConfig } from "@/lib/site-config";
+import { PROMO_SCOPE } from "@/lib/promo";
 
 /**
  * Tuition, stated like a receipt. Absorbs the old "problem" and
@@ -31,8 +32,17 @@ export default function Pricing({ config }: { config: SiteConfig }) {
             {derived.priceLabel}, once
           </h2>
           {derived.isPromoPrice && (
+            // The badge now names what the discount covers. "10% off · ends
+            // October 21" tells a reader when it stops but never what it
+            // applies to, which is the question someone comparing two cohorts
+            // actually has. `promoDeadlineLabel` is "" for an open-ended
+            // admin-set promo, so the "ends" clause drops out rather than
+            // rendering a trailing "ends".
             <p className="mt-3 inline-flex items-center gap-2 bg-phosphor px-2.5 py-1 font-mono text-[12px] font-semibold uppercase tracking-[0.12em] text-on-phosphor">
-              {derived.promoPercentLabel}% off · ends {derived.promoDeadlineLabel}
+              {derived.promoPercentLabel}% off {PROMO_SCOPE}
+              {derived.promoDeadlineLabel
+                ? ` · ends ${derived.promoDeadlineLabel}`
+                : ""}
             </p>
           )}
           <p className="mt-4 max-w-[34rem] text-[15px] leading-[1.65] text-ink-soft">

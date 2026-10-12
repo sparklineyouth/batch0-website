@@ -6,7 +6,9 @@ import { usePathname } from "next/navigation";
 import {
   PROMO_ENDS_AT,
   PROMO_PERCENT,
+  PROMO_SCOPE,
   activePromo,
+  formatPromoDeadlines,
   DEFAULT_PROMO_CONFIG,
 } from "@/lib/promo";
 
@@ -53,8 +55,15 @@ export function SaleBanner() {
   // Seed with the build-time constants so the server render and first paint
   // match; the fetch below replaces them with the admin-set values.
   const [percent, setPercent] = React.useState<number>(PROMO_PERCENT);
+  // Derived from PROMO_ENDS_AT, never typed out. This was the literal string
+  // "September 9", which is a second copy of the deadline living in a file
+  // nobody would think to grep when moving the date — a banner reading "Ends
+  // September 9" above a countdown ticking toward October 21 is exactly the
+  // failure that produces. It now cannot disagree with the constant.
   const [deadlineLabel, setDeadlineLabel] = React.useState<string>(
-    DEFAULT_PROMO_CONFIG.enabled ? "September 9" : "",
+    DEFAULT_PROMO_CONFIG.enabled
+      ? formatPromoDeadlines(PROMO_ENDS_AT).long
+      : "",
   );
   const [endsAt, setEndsAt] = React.useState<string | null>(PROMO_ENDS_AT);
 
@@ -127,6 +136,16 @@ export function SaleBanner() {
     >
       <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2 text-center font-mono text-[12px] uppercase leading-tight tracking-[0.12em] sm:px-6">
         <span className="font-semibold">{percent}% off tuition</span>
+        {/* The scope, on the one surface that appears on every page. The bar
+            previously said only "10% off tuition", which leaves a reader
+            guessing whether it means one cohort, one region or a code they
+            don't have. It is a static string (not fetched), because the offer
+            has always covered whichever cohort is being sold — so it stays
+            true whatever percent or deadline an admin sets. */}
+        <span aria-hidden className="opacity-40">
+          ·
+        </span>
+        <span>{PROMO_SCOPE}</span>
         {deadlineLabel && (
           <>
             <span aria-hidden className="opacity-40">
