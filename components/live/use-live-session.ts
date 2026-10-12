@@ -143,6 +143,15 @@ export type RemotePeer = {
    */
   seenLive: boolean;
   /**
+   * Whether this run has had signalling from them — an offer, an answer or
+   * ICE candidates — and not a leaving `bye` since. Proof they are on the page even
+   * while the link is still "connecting". Matters in a 1:1, whose join
+   * payload names everyone on the invite whether they have come or not: an
+   * absent person's link sits at "connecting" too, and only this tells the
+   * two apart (see `electCallRecorder` in lib/webinars.ts).
+   */
+  heard: boolean;
+  /**
    * When this connection stopped being live (epoch ms) — or was created, if it
    * never has been. Null while live, and for a departed peer with no
    * connection left to measure. What lets the webinar room stop counting a
@@ -406,6 +415,8 @@ export function useLiveSession({
   const departed = useRef(new Map<string, LivePeer>());
   /** Peers this session has been connected to at least once. */
   const everLive = useRef(new Set<string>());
+  /** Peers this run has had signalling from (RemotePeer.heard). */
+  const heardFrom = useRef(new Set<string>());
   /**
    * Bumped whenever a run starts or is torn down. A negotiation that awaited
    * something (a channel subscribe, createOffer) compares it on the way back
@@ -449,6 +460,7 @@ export function useLiveSession({
           role: c.peer.role,
           state: gone ? ("left" as const) : c.state,
           seenLive: everLive.current.has(c.peer.peerId),
+          heard: !gone && heardFrom.current.has(c.peer.peerId),
           downSince: c.state === "live" ? null : c.downSince,
           streams: gone ? {} : streams,
         };
@@ -464,6 +476,7 @@ export function useLiveSession({
         role: peer.role,
         state: "left",
         seenLive: everLive.current.has(peerId),
+        heard: false,
         downSince: null,
         streams: {},
       });
@@ -927,6 +940,20 @@ export function useLiveSession({
       // on SignalMessage; a message with no `to` (an older tab) still counts.
       if (!isAddressedTo(msg, creds.peerId)) return;
 
+      // Negotiation from them is them, on the page, right now. Published at
+      // once: the link may take seconds more to come up, and the recorder
+      // election needs to know they are here before it does. Only a `leave`
+      // unsays it — a `rebuild` bye is the same person replacing a link.
+      if (msg.t === "bye") {
+        if (msg.reason === "leave") heardFrom.current.delete(msg.from);
+      } else if (
+        (msg.t === "offer" || msg.t === "answer" || msg.t === "ice") &&
+        !heardFrom.current.has(msg.from)
+      ) {
+        heardFrom.current.add(msg.from);
+        publish();
+      }
+
       if (msg.t === "bye") {
         // `leave` is a person going; anything else (`rebuild`, or an older
         // tab that does not say) is only this connection being replaced.
@@ -1122,6 +1149,7 @@ export function useLiveSession({
     // A fresh run starts from nothing, whatever the last one left behind.
     departed.current.clear();
     everLive.current.clear();
+    heardFrom.current.clear();
     setClosed(null);
     setJoinFailed(null);
     setServerRole(null);

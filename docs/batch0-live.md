@@ -230,14 +230,17 @@ caller's own RLS first, and a caller with `events.manage` who gets no row
 `lib/live-access.ts` and is only for `events.manage`; it must never be reused
 for a viewer.
 
-**1:1 calls.** Exactly two people, and both send media (signal role `host`).
-The inviter (`call_invites.host_id`) is the **owner**; the invitee — always a
-student — is the other participant. Since invitees are students, an admin in a
-call is always its owner. An admin who is *not* a party can never enter: the
-page 404s and `joinRoom` answers `no-access`, whoever is asking. That is the
-safeguarding rule, and the privacy between two people, and both are kept on
-purpose. Such an admin sees the call on `/admin/calls` in the read-only
-"booked by everyone else" list (both names, no Join, no Cancel).
+**1:1 calls.** One student and a staff side, and everyone sends media (signal
+role `host`). The inviter (`call_invites.host_id`) is the **owner**; any
+staff they added (anyone whose role holds `calls.invite`) are **co-hosts** (migration 0092,
+`call_invite_cohosts`), with the owner's powers on that call; the invitee is
+always one student. `joinRoom` hands each person everyone else on the invite,
+so a call with co-hosts is a small mesh (`shouldOffer` decides who dials). An
+admin who is *not* on the call can never enter: the page 404s and `joinRoom`
+answers `no-access`, whoever is asking. That is the safeguarding rule, and the
+privacy of the people on the call, and both are kept on purpose. Such an admin
+sees the call on `/admin/calls` in the read-only "booked by everyone else"
+list (every name, no Join, no Cancel).
 
 ## Who may be in the room, and when
 
@@ -344,14 +347,15 @@ before the last upload lands.
 
 ### 1:1 calls
 
-Either person can **Leave**; the other sees "<name> left the call — they can
-rejoin until <end>", and the leaver can Rejoin inside the window. **End call**
-is offered to either person once both have been in the room and the start has
-come: `endCall` (app/calls/actions.ts) sets the invite to `completed` (only
+Anyone can **Leave**; the others see "<name> left the call — they can rejoin
+until <end>", and the leaver can Rejoin inside the window. **End call** is
+offered to anyone on the call once the other side has been in the room (for
+staff, the student — a co-host does not count) and the start has come; with
+co-hosts it is a two-step "End for everyone": `endCall` (app/calls/actions.ts) sets the invite to `completed` (only
 from `accepted`, so it is idempotent) and audits it; the side that pressed it
-sees "This call has ended", and the other side's room closes to the same
-screen on its next status poll or heartbeat. The host's recording captures
-its final segment on the way out, and the upload finishes behind that screen;
+sees "This call has ended", and everyone else's room closes to the same
+screen on its next status poll or heartbeat. The recording (one staff
+browser's: `electCallRecorder`) captures its final segment on the way out, and the upload finishes behind that screen;
 the side that pressed End call is then taken back to their calls list (after
 the upload, bounded, and only if they are still on the room's page). `endCall`
 deliberately revalidates nothing: a revalidating action re-renders the current

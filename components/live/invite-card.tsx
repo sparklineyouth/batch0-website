@@ -5,7 +5,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { LiveDot } from "@/components/live/call-stage";
-import { relativeTime, type CallInvite } from "@/lib/live";
+import { joinNames, relativeTime, staffNames, type CallInvite } from "@/lib/live";
 import {
   callBadge,
   callPhase,
@@ -13,12 +13,20 @@ import {
   splitCalls,
   type CallPhase,
 } from "@/lib/call-lifecycle";
-import { CalendarPlus, ChevronRight, CircleDot, Clock, User } from "lucide-react";
+import {
+  CalendarPlus,
+  ChevronRight,
+  CircleDot,
+  Clock,
+  User,
+  Users,
+} from "lucide-react";
 
 /**
  * Who is looking at a card, which decides the verbs.
  *
- *   host      sent the invite — may cancel, and joins the call
+ *   host      on the staff side — sent the invite, or was added to it as a
+ *             co-host (migration 0092). May cancel, and joins the call
  *   invitee   received it — may accept or decline, and joins the call
  *   observer  an admin reading the safeguarding list of everyone else's calls.
  *             Reads only: the live page 404s for anyone not on the call, so a
@@ -117,9 +125,14 @@ export function InviteCard({
   const live = phase === "live";
   const participant = perspective !== "observer";
   const joinable = participant && (phase === "joinable" || phase === "live");
+  // The student meets the whole team, host first. The staff side meets the
+  // student — and, when there are co-hosts, is shown the team too, because a
+  // co-host reading their own list needs to see who sent it and who else is
+  // coming.
+  const team = staffNames(invite);
   const other =
     perspective === "invitee"
-      ? invite.hostName
+      ? joinNames(team)
       : perspective === "host"
         ? invite.inviteeName
         : null;
@@ -140,30 +153,55 @@ export function InviteCard({
           </div>
 
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-faint">
-            <span className="inline-flex items-center gap-1.5">
-              <User className="h-3.5 w-3.5" />
+            {/* Wraps between people on the observer card: one group per
+                staff member plus the student, in a monospace face, runs past
+                a phone's width at three staff — and without wrapping it ran
+                the student's name, the one this list exists to show, out of
+                view. Each person stays whole; the line breaks between them. */}
+            <span
+              className={`inline-flex min-w-0 items-center gap-x-1.5 ${
+                other ? "" : "flex-wrap gap-y-1"
+              }`}
+            >
+              <User className="h-3.5 w-3.5 shrink-0" />
               {other ? (
                 <>
                   {perspective === "host" ? "With" : "From"} {other}
-                  {perspective === "invitee" && (
+                  {perspective === "invitee" && invite.cohosts.length === 0 && (
                     <span className="font-mono uppercase tracking-wider text-ink-faint/80">
                       {invite.hostRole}
                     </span>
                   )}
                 </>
               ) : (
-                // The observer sees both names — whose call it is is the whole
-                // question the safeguarding list exists to answer.
+                // The observer sees every name and role — whose call it is is
+                // the whole question the safeguarding list exists to answer.
                 <>
-                  {invite.hostName}
-                  <span className="font-mono uppercase tracking-wider text-ink-faint/80">
-                    {invite.hostRole}
+                  {[
+                    { id: "host", name: invite.hostName, role: invite.hostRole },
+                    ...invite.cohosts,
+                  ].map((p, i) => (
+                    <span key={p.id} className="inline-flex items-center gap-1.5">
+                      {i > 0 && <span aria-hidden>+</span>}
+                      {p.name}
+                      <span className="font-mono uppercase tracking-wider text-ink-faint/80">
+                        {p.role}
+                      </span>
+                    </span>
+                  ))}
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden>→</span>
+                    {invite.inviteeName}
                   </span>
-                  <span aria-hidden>→</span>
-                  {invite.inviteeName}
                 </>
               )}
             </span>
+            {perspective === "host" && invite.cohosts.length > 0 && (
+              <span className="inline-flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5" />
+                {joinNames(team)}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5" />
               <LocalTime value={invite.startsAt} mode="datetime-short" />

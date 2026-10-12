@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   callInsetBoxes,
   callRecordingFolder,
+  callRecordingRegistry,
   callSegmentName,
   callTileBoxes,
   isUuid,
@@ -13,6 +14,11 @@ import {
   sortCallSegments,
   type Box,
 } from "./call-recording.ts";
+import {
+  RECORDER_LEASE_MS,
+  recordingRival,
+  recordingSegmentStart,
+} from "./webinars.ts";
 
 // Run with `npm test`.
 
@@ -32,10 +38,43 @@ test("segment names round-trip through the parser", () => {
     index: 3,
     stamp: 1_790_000_000_000,
     ext: "webm",
+    uploaderId: null,
+    last: false,
   });
   assert.deepEqual(
     parseCallSegmentName(callSegmentName(12, 1_790_000_000_001, "mp4")),
-    { index: 12, stamp: 1_790_000_000_001, ext: "mp4" },
+    { index: 12, stamp: 1_790_000_000_001, ext: "mp4", uploaderId: null, last: false },
+  );
+});
+
+const HOST = "11111111-1111-4111-8111-111111111111";
+const COHOST = "22222222-2222-4222-8222-222222222222";
+
+test("a segment's name carries who uploaded it, and whether it was their last", () => {
+  const name = callSegmentName(4, 1_790_000_000_000, "webm", { userId: HOST });
+  assert.equal(name, `segment-0004-1790000000000-${HOST}.webm`);
+  assert.deepEqual(parseCallSegmentName(name), {
+    index: 4,
+    stamp: 1_790_000_000_000,
+    ext: "webm",
+    uploaderId: HOST,
+    last: false,
+  });
+  const final = callSegmentName(5, 1_790_000_120_000, "mp4", { userId: HOST, last: true });
+  assert.equal(final, `segment-0005-1790000120000-${HOST}-last.mp4`);
+  assert.equal(parseCallSegmentName(final)?.last, true);
+  assert.equal(parseCallSegmentName(final)?.uploaderId, HOST);
+  // An id that is not a bare UUID never reaches a storage path.
+  assert.equal(
+    callSegmentName(1, 1_790_000_000_000, "webm", { userId: "../../x" }),
+    "segment-0001-1790000000000.webm",
+  );
+  // Named segments still sort by stamp alongside older unnamed ones.
+  assert.deepEqual(
+    sortCallSegments([{ name }, { name: callSegmentName(0, 1_789_999_999_000) }]).map(
+      (f) => f.name,
+    ),
+    [callSegmentName(0, 1_789_999_999_000), name],
   );
 });
 
@@ -49,6 +88,9 @@ test("the parser refuses anything that is not a segment", () => {
     "../segment-0003-1790000000000.webm",
     "segment-0003-1790000000000.webm/..",
     "SEGMENT-0003-1790000000000.webm",
+    "segment-0003-1790000000000-not-a-uuid.webm",
+    `segment-0003-1790000000000-${"A".repeat(8)}-1111-4111-8111-111111111111.webm`,
+    "segment-0003-1790000000000-last.webm",
   ]) {
     assert.equal(parseCallSegmentName(bad), null, bad);
   }
@@ -143,4 +185,86 @@ test("presenting insets stay in frame, 16:9, and never overlap each other", () =
       }
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// One recorder per call: the backstop's reading of the folder
+// ---------------------------------------------------------------------------
+
+const T0 = 1_790_000_000_000;
+const SEG = 120_000;
+
+/** What getCallRecordingUploadToken decides for `caller`'s segment. */
+function rivalFor(caller: string, names: string[], now: number, seconds = SEG / 1000) {
+  const { recent, stillRecording } = callRecordingRegistry(names);
+  const at = new Date(now);
+  return recordingRival({
+    callerId: caller,
+    recent,
+    present: stillRecording,
+    now: at,
+    segmentStartMs: recordingSegmentStart(at, seconds),
+  });
+}
+
+test("two staff who can't see each other: only the higher-ranked copy is kept", () => {
+  // HOST (lower id) and COHOST both elected themselves — their link never
+  // came up. HOST registers every two minutes; each of COHOST's segments
+  // overlaps one of those registrations and is refused.
+  const files = [
+    callSegmentName(0, T0 + SEG, "webm", { userId: HOST }),
+    callSegmentName(1, T0 + 2 * SEG, "webm", { userId: HOST }),
+  ];
+  assert.equal(rivalFor(COHOST, files, T0 + SEG + 30_000), HOST);
+  assert.equal(rivalFor(COHOST, files, T0 + 2 * SEG + 30_000), HOST);
+  // The ranking runs one way only: HOST is never refused for COHOST.
+  const theirs = [callSegmentName(0, T0 + SEG + 30_000, "webm", { userId: COHOST })];
+  assert.equal(rivalFor(HOST, theirs, T0 + 2 * SEG), null);
+});
+
+test("a recorder who left is no rival — their final flush does not refuse the successor", () => {
+  // HOST pressed Leave mid-segment; their final segment is signed just after
+  // COHOST (who saw them go) started recording. Dated by arrival it lands
+  // "during" COHOST's first segment, but it is marked last: HOST stopped.
+  const left = T0 + SEG + 40_000;
+  const files = [
+    callSegmentName(0, T0 + SEG, "webm", { userId: HOST }),
+    callSegmentName(1, left + 800, "webm", { userId: HOST, last: true }),
+  ];
+  assert.equal(rivalFor(COHOST, files, left + SEG), null);
+  // Even the segment COHOST was halfway through when HOST left — HOST's last
+  // rotation is inside it, but HOST has since stopped — is kept: a few
+  // seconds twice beats a minute lost.
+  assert.equal(rivalFor(COHOST, files, T0 + SEG + 60_000), null);
+});
+
+test("a recorder whose laptop died stops refusing once their registrations stop", () => {
+  // No goodbye, no final flush: HOST's last word is a rotation. COHOST's
+  // segment containing it is refused (HOST recorded that stretch); the next
+  // one is kept, so at most one segment is lost — not a whole lease.
+  const files = [callSegmentName(3, T0 + 4 * SEG, "webm", { userId: HOST })];
+  assert.equal(rivalFor(COHOST, files, T0 + 4 * SEG + 20_000), HOST);
+  assert.equal(rivalFor(COHOST, files, T0 + 5 * SEG + 20_000), null);
+  // And registrations older than the lease never count.
+  assert.ok(RECORDER_LEASE_MS < 10 * SEG);
+  assert.equal(rivalFor(COHOST, files, T0 + 14 * SEG, 1), null);
+});
+
+test("a recorder who stopped and came back counts again from their new run", () => {
+  const files = [
+    callSegmentName(0, T0 + SEG, "webm", { userId: HOST, last: true }),
+    callSegmentName(0, T0 + 3 * SEG, "webm", { userId: HOST }),
+  ];
+  const { stillRecording } = callRecordingRegistry(files);
+  assert.deepEqual([...stillRecording], [HOST]);
+  assert.equal(rivalFor(COHOST, files, T0 + 3 * SEG + 10_000), HOST);
+});
+
+test("older unnamed segments say nothing about anyone", () => {
+  const { recent, stillRecording } = callRecordingRegistry([
+    callSegmentName(0, T0),
+    ".emptyFolderPlaceholder",
+  ]);
+  assert.deepEqual(recent, []);
+  assert.equal(stillRecording.size, 0);
 });

@@ -452,6 +452,14 @@ test("a recording is for the two people on the call and admins, nobody else", ()
   assert.equal(canViewCallRecording({ ...ids, viewerId: "x", superAdmin: false }), false);
 });
 
+test("co-hosts were on the call, so they can watch it back too", () => {
+  const ids = { hostId: "h", inviteeId: "s", cohostIds: ["m", "v"] };
+  assert.equal(canViewCallRecording({ ...ids, viewerId: "m", superAdmin: false }), true);
+  assert.equal(canViewCallRecording({ ...ids, viewerId: "v", superAdmin: false }), true);
+  // Being a mentor somewhere else in the programme is not being on this call.
+  assert.equal(canViewCallRecording({ ...ids, viewerId: "other-mentor", superAdmin: false }), false);
+});
+
 test("hostCallsHref sends each kind of host back to their own panel", () => {
   const none = { superAdmin: false, mentorPanel: false, investorPanel: false, canInvite: false };
   assert.equal(hostCallsHref({ ...none, superAdmin: true, mentorPanel: true }), "/admin/calls");

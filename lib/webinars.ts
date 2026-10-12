@@ -459,6 +459,15 @@ export function electRecorder(userIds: readonly string[]): string | null {
 export const RECORDER_SETTLE_MS = 15_000;
 
 /**
+ * How long after joining a CALL a browser counts every staff peer still
+ * "connecting" as present, before it could have heard from any of them —
+ * long enough for a co-host already in the room to answer over Realtime,
+ * short enough that one who never came costs the recording seconds, not the
+ * whole settling window. See `electCallRecorder`.
+ */
+export const CALL_RECORDER_LISTEN_MS = 3_000;
+
+/**
  * How long a co-host whose connection DROPPED keeps counting as present: two
  * segments.
  *
@@ -489,6 +498,65 @@ export function presentForRecording(
   if (state === "live") return true;
   if (state === "reconnecting") return downForMs <= RECORDER_RECONNECT_GRACE_MS;
   return settling && state === "connecting";
+}
+
+/**
+ * Whose browser records a 1:1, as seen from this one. Null when it is not a
+ * browser that may record at all — the student's.
+ *
+ * A call used to be recorded by its host's browser, full stop. Co-hosts
+ * (migration 0092) broke that: an admin who books a call for a mentor and a
+ * student, and never comes, would leave the call unrecorded while the student
+ * was told it was being recorded. So a call runs the webinar election, over
+ * its STAFF SIDE only (`recorderIds`: the host and the co-hosts): the lowest
+ * user id among the staff present records, counting a peer exactly as
+ * `presentForRecording` does. Everyone in a call broadcasts, so the signal
+ * role cannot say who is staff; the invite can, and every browser on the call
+ * was handed the same list by its page.
+ *
+ * A call with no co-hosts elects its host the moment they are in the room,
+ * which is exactly the old rule.
+ *
+ * One difference from a webinar, in the settling window. RECORDER_SETTLE_MS
+ * assumes the join payload names only hosts already IN the room; a call's
+ * names everyone on the invite, here or not, and each starts "connecting".
+ * Counted as present while settling, an absent lower-id co-host held the
+ * recording for fifteen seconds after every join, rejoin and reload of the
+ * one actually here, while the room said "Recording". So during settling a
+ * "connecting" staff peer counts only once this session has HEARD from them
+ * (`heard`: an offer, an answer or candidates arrived — they are on the page,
+ * and the link is just coming up) — or, for the first CALL_RECORDER_LISTEN_MS
+ * (`listening`), before anybody could have been heard from: without that, a
+ * browser joining a call a lower-id co-host was already recording started
+ * its own recorder for the round trip it took to hear them, and left a
+ * fraction-of-a-second part in the recording every time.
+ */
+export function electCallRecorder(args: {
+  selfId: string;
+  recorderIds: readonly string[];
+  peers: readonly {
+    peerId: string;
+    state: string;
+    downSince: number | null;
+    /** This session has had signalling from them (RemotePeer.heard). */
+    heard?: boolean;
+  }[];
+  settling: boolean;
+  /** Inside CALL_RECORDER_LISTEN_MS of the join. */
+  listening?: boolean;
+  now: number;
+}): string | null {
+  const eligible = new Set(args.recorderIds);
+  if (!args.selfId || !eligible.has(args.selfId)) return null;
+  const present = [args.selfId];
+  for (const p of args.peers) {
+    if (!eligible.has(p.peerId)) continue;
+    const downFor = p.downSince === null ? 0 : args.now - p.downSince;
+    const settling =
+      args.settling && (p.heard === true || args.listening === true);
+    if (presentForRecording(p.state, settling, downFor)) present.push(p.peerId);
+  }
+  return electRecorder(present);
 }
 
 /**

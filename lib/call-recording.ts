@@ -32,6 +32,17 @@
  * which is also chronological, because a segment is uploaded the moment it
  * finishes.
  *
+ * Who uploaded it, and whether it was their LAST: since co-hosts (migration
+ * 0092) more than one browser on a call may record, and the room's election
+ * only works between browsers that can see each other. Two staff whose link
+ * to each other never came up both elect themselves, and both runs, sorted by
+ * stamp, interleave into a recording of the whole call twice over. A webinar
+ * stops that with a server backstop over its asset rows (`recordingRival` in
+ * lib/webinars.ts); a call has no rows, so the name carries what the backstop
+ * reads: the uploader's id, and `-last` on the segment a recorder captured as
+ * it STOPPED (Leave, End, or handing over). See `callRecordingRegistry`.
+ * Older names without either still parse, and still play.
+ *
  * Pure and import-free; tested by lib/call-recording.test.ts.
  */
 
@@ -62,27 +73,95 @@ export function segmentExtension(mimeType: string | null | undefined): SegmentEx
   return /^video\/mp4/i.test(mimeType ?? "") ? "mp4" : "webm";
 }
 
-/** `segment-0003-1790000000000.webm` */
+/**
+ * `segment-0003-1790000000000-<uploader>.webm`, and
+ * `segment-0003-1790000000000-<uploader>-last.webm` for a recorder's final
+ * segment. Without `by`, the pre-co-host `segment-0003-1790000000000.webm`.
+ */
 export function callSegmentName(
   index: number,
   stamp: number,
   ext: SegmentExtension = "webm",
+  by?: { userId: string; last?: boolean },
 ): string {
-  return `segment-${String(index).padStart(4, "0")}-${stamp}.${ext}`;
+  const who =
+    by && isUuid(by.userId)
+      ? `-${by.userId.toLowerCase()}${by.last ? "-last" : ""}`
+      : "";
+  return `segment-${String(index).padStart(4, "0")}-${stamp}${who}.${ext}`;
 }
 
-const SEGMENT_RE = /^segment-(\d{4,})-(\d{10,})\.(webm|mp4)$/;
+const SEGMENT_RE =
+  /^segment-(\d{4,})-(\d{10,})(?:-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(-last)?)?\.(webm|mp4)$/;
+
+export type ParsedCallSegment = {
+  index: number;
+  stamp: number;
+  ext: SegmentExtension;
+  /** Null for a segment named before uploaders were (migration 0092). */
+  uploaderId: string | null;
+  /** The segment its recorder captured as it stopped. */
+  last: boolean;
+};
 
 /** The parts of a segment's file name, or null for anything else in the folder. */
-export function parseCallSegmentName(
-  name: string,
-): { index: number; stamp: number; ext: SegmentExtension } | null {
+export function parseCallSegmentName(name: string): ParsedCallSegment | null {
   const m = SEGMENT_RE.exec(name);
   if (!m) return null;
   const index = Number(m[1]);
   const stamp = Number(m[2]);
   if (!Number.isSafeInteger(index) || !Number.isSafeInteger(stamp)) return null;
-  return { index, stamp, ext: m[3] as SegmentExtension };
+  return {
+    index,
+    stamp,
+    ext: m[5] as SegmentExtension,
+    uploaderId: m[3] ?? null,
+    last: !!m[4],
+  };
+}
+
+/**
+ * What a call's segment files say about who is recording it — the inputs
+ * `recordingRival` (lib/webinars.ts) takes for a webinar from its asset rows
+ * and its attendance table, read here from the names alone.
+ *
+ *   recent          every segment an uploader registered while still
+ *                   recording, dated by its stamp (when it was signed). A
+ *                   `-last` segment is left out: it proves its recorder
+ *                   STOPPED then, not that they are recording — and dated by
+ *                   arrival, a departing recorder's final flush landed
+ *                   "during" the successor's first segment and refused it.
+ *   stillRecording  uploaders whose most recent segment is not a `-last` one:
+ *                   as far as the files can tell, still recording. Stands in
+ *                   for attendance (a call has none), so someone who pressed
+ *                   Leave stops counting as a rival the moment their final
+ *                   segment is signed. Someone whose laptop died says nothing,
+ *                   and counts until their registrations age out of the lease.
+ *
+ * Unnamed (pre-0092) segments say nothing about anybody and are ignored.
+ */
+export function callRecordingRegistry(names: readonly string[]): {
+  recent: { userId: string; at: string }[];
+  stillRecording: Set<string>;
+} {
+  const latest = new Map<string, { stamp: number; last: boolean }>();
+  const recent: { userId: string; at: string }[] = [];
+  for (const name of names) {
+    const p = parseCallSegmentName(name);
+    if (!p || !p.uploaderId) continue;
+    const prev = latest.get(p.uploaderId);
+    // Two segments signed in the same millisecond: the stop wins, because a
+    // recorder's final flush is the last thing it ever signs.
+    if (!prev || p.stamp > prev.stamp || (p.stamp === prev.stamp && p.last)) {
+      latest.set(p.uploaderId, { stamp: p.stamp, last: p.last });
+    }
+    if (!p.last) {
+      recent.push({ userId: p.uploaderId, at: new Date(p.stamp).toISOString() });
+    }
+  }
+  const stillRecording = new Set<string>();
+  for (const [userId, l] of latest) if (!l.last) stillRecording.add(userId);
+  return { recent, stillRecording };
 }
 
 /** Segments in playback order: by run (stamp), then by index within it. */

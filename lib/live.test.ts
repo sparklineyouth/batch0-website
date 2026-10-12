@@ -20,6 +20,13 @@ import {
   roomWindow,
   eventLiveStatus,
   webinarHasBegun,
+  callStaffIds,
+  isCallCounterpart,
+  isOnCall,
+  isStaffOnCall,
+  joinNames,
+  normalizeCohostIds,
+  staffNames,
   type CallInvite,
   type LiveRole,
   type RoomAccess,
@@ -141,6 +148,7 @@ test("an invite ends its duration after it starts", () => {
     hostName: "Priya",
     hostRole: "investor",
     inviteeName: "Ana",
+    cohosts: [],
     startsAt: START.toISOString(),
     durationMinutes: 45,
     topic: null,
@@ -150,6 +158,89 @@ test("an invite ends its duration after it starts", () => {
   } satisfies CallInvite;
 
   assert.equal(inviteEndsAt(invite), at(45).toISOString());
+});
+
+// ---------------------------------------------------------------------------
+// Who is on a call (migration 0092: one student, any number of staff)
+// ---------------------------------------------------------------------------
+
+const PANEL = {
+  hostId: "host",
+  inviteeId: "student",
+  cohosts: [{ id: "mentor" }, { id: "investor" }],
+};
+
+test("everyone on the call is on it; nobody else is, admins included", () => {
+  for (const id of ["host", "student", "mentor", "investor"]) {
+    assert.equal(isOnCall(PANEL, id), true, id);
+  }
+  // An admin reading the safeguarding list is not on the call, and the join,
+  // calendar and recording gates all ask this — so they cannot walk in.
+  assert.equal(isOnCall(PANEL, "an-admin"), false);
+  assert.equal(isOnCall(PANEL, ""), false);
+});
+
+test("the staff side is the host and the co-hosts, never the student", () => {
+  assert.deepEqual(callStaffIds(PANEL), ["host", "mentor", "investor"]);
+  assert.equal(isStaffOnCall(PANEL, "host"), true);
+  assert.equal(isStaffOnCall(PANEL, "investor"), true);
+  // The student may join and End call, but never cancels, records or answers
+  // for the team.
+  assert.equal(isStaffOnCall(PANEL, "student"), false);
+  assert.equal(isStaffOnCall(PANEL, "stranger"), false);
+});
+
+test("a call with no co-hosts is the plain 1:1 it always was", () => {
+  const plain = { hostId: "host", inviteeId: "student", cohosts: [] };
+  assert.deepEqual(callStaffIds(plain), ["host"]);
+  assert.equal(isOnCall(plain, "host"), true);
+  assert.equal(isOnCall(plain, "student"), true);
+  assert.equal(isOnCall(plain, "mentor"), false);
+});
+
+test("co-host picks are deduplicated and never repeat the host or the student", () => {
+  const parties = { hostId: "host", inviteeId: "student" };
+  assert.deepEqual(
+    normalizeCohostIds(["m1", "host", "m1", "student", "v1", "", null, 7], parties),
+    ["m1", "v1"],
+  );
+  assert.deepEqual(normalizeCohostIds(undefined, parties), []);
+  assert.deepEqual(normalizeCohostIds([], parties), []);
+});
+
+test("End call's counterpart: the student for staff, any staff for the student", () => {
+  const staff = callStaffIds(PANEL); // host, mentor, investor
+  // A co-host in the room with the host is the team waiting for the
+  // student — not the call having happened. Only the student counts.
+  assert.equal(isCallCounterpart(staff, "host", "mentor"), false);
+  assert.equal(isCallCounterpart(staff, "mentor", "host"), false);
+  assert.equal(isCallCounterpart(staff, "investor", "mentor"), false);
+  assert.equal(isCallCounterpart(staff, "host", "student"), true);
+  assert.equal(isCallCounterpart(staff, "investor", "student"), true);
+  // The student has met the call once anyone from the team is there.
+  assert.equal(isCallCounterpart(staff, "student", "host"), true);
+  assert.equal(isCallCounterpart(staff, "student", "investor"), true);
+  // Never yourself, never nobody.
+  assert.equal(isCallCounterpart(staff, "host", "host"), false);
+  assert.equal(isCallCounterpart(staff, "student", ""), false);
+  // A plain 1:1 is unchanged: the other person is always the other side.
+  assert.equal(isCallCounterpart(["host"], "host", "student"), true);
+  assert.equal(isCallCounterpart(["host"], "student", "host"), true);
+});
+
+test("a call's team reads host first, then co-hosts in the order added", () => {
+  const invite = {
+    hostName: "Priya",
+    cohosts: [
+      { id: "m1", name: "Ben", role: "mentor" },
+      { id: "v1", name: "Cy", role: "investor" },
+    ],
+  };
+  assert.deepEqual(staffNames(invite), ["Priya", "Ben", "Cy"]);
+  assert.equal(joinNames(staffNames(invite)), "Priya, Ben and Cy");
+  assert.equal(joinNames(staffNames({ hostName: "Priya", cohosts: [] })), "Priya");
+  assert.equal(joinNames(["Priya", "Ben"]), "Priya and Ben");
+  assert.equal(joinNames([]), "");
 });
 
 // ---------------------------------------------------------------------------

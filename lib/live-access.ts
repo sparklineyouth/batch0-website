@@ -6,8 +6,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   inviteEndsAt,
+  isOnCall,
+  isStaffOnCall,
   roomAccess,
   roomWindow,
+  type CallCohost,
   type CallInviteStatus,
   type RoomAccess,
   type RoomStatus,
@@ -20,6 +23,12 @@ import {
 } from "@/lib/webinars";
 import { PEER_TIMEOUT_MS, type SignalRole } from "@/lib/live-signal";
 import { markLeft, notifyHosts, presentHosts } from "@/lib/live-rooms";
+import {
+  COHOSTS_EMBED,
+  cohostsFromRow,
+  isCohostSchemaMissing,
+  noteCohostsUnavailable,
+} from "@/lib/calls";
 
 /**
  * Who someone is in a live room — computed once, here, for every consumer.
@@ -315,14 +324,23 @@ export type CallAccess = {
   roomId: string;
   hostId: string;
   inviteeId: string;
+  /** Everyone else on the staff side (migration 0092), in the order added. */
+  cohosts: CallCohost[];
   /**
-   * The inviter — the call's owner/host, and the side that records. Invitees
-   * are always students, so an admin in a call is always its owner. (Either
-   * person may End call — see endCall in app/calls/actions.ts.)
+   * The inviter — the call's owner. Invitees are always students, so an
+   * admin who sent the invite is always its owner. (Anyone on the call may
+   * End call — see endCall in app/calls/actions.ts — and any of the staff
+   * side may record; the owner is no longer special to either.)
    */
   isOwner: boolean;
-  otherId: string;
-  otherName: string;
+  /** On the staff side: the owner or a co-host. Never the student. */
+  isStaff: boolean;
+  /**
+   * Everyone on the call but the caller — the student and the whole staff
+   * side. What joinRoom hands the engine as known peers, so a call with
+   * co-hosts is a small mesh that connects the moment people arrive.
+   */
+  others: { id: string; name: string }[];
   hostName: string;
   hostRole: string;
   inviteeName: string;
@@ -339,19 +357,30 @@ export type CallAccess = {
   phase: CallPhase;
 };
 
+const CALL_COLUMNS =
+  "id, host_id, invitee_id, starts_at, duration_minutes, topic, status, " +
+  "host:profiles!call_invites_host_id_fkey(full_name, role), " +
+  "invitee:profiles!call_invites_invitee_id_fkey(full_name)";
+
 /**
  * Resolve the caller's standing in one 1:1.
  *
- * "Are you one of the two?" and nothing else — the safeguarding rule. An admin
- * who is not a party gets `no-access` (the same answer as "no such call"), and
- * the read-only observer card on /admin/calls is the whole of their view: they
+ * "Are you on this call?" and nothing else — the safeguarding rule. On it
+ * means the student, the host, or a co-host (migration 0092). An admin who is
+ * not on it gets `no-access` (the same answer as "no such call"), and the
+ * read-only observer card on /admin/calls is the whole of their view: they
  * can see that a call happened, and a superAdmin can Cancel it, but nobody can
- * walk into two people's call.
+ * walk into a call they were not put on. Admins "always host" webinars; a
+ * private call is not a webinar.
  *
  * Returns the phase instead of refusing on it, because the answers after the
  * party check differ by caller: leaving needs only identity, and the join and
  * the heartbeat need `callRefusal(phase)` / `callRoomStatus(phase)`. Nothing
  * about a call's status is revealed to a non-party.
+ *
+ * Reads the co-hosts in the same query, falling back to a read without them
+ * on a database where 0092 hasn't run (see lib/calls.ts) — so a deploy that
+ * lands before the migration leaves every existing call joinable.
  */
 export async function resolveCallAccess(
   inviteId: string,
@@ -359,15 +388,13 @@ export async function resolveCallAccess(
 ): Promise<CallAccess | AccessDenied> {
   const actor = await requireActor();
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("call_invites")
-    .select(
-      "id, host_id, invitee_id, starts_at, duration_minutes, topic, status, " +
-        "host:profiles!call_invites_host_id_fkey(full_name, role), " +
-        "invitee:profiles!call_invites_invitee_id_fkey(full_name)",
-    )
-    .eq("id", inviteId)
-    .maybeSingle();
+  const read = (columns: string) =>
+    admin.from("call_invites").select(columns).eq("id", inviteId).maybeSingle();
+  let { data, error } = await read(`${CALL_COLUMNS}, ${COHOSTS_EMBED}`);
+  if (error && isCohostSchemaMissing(error)) {
+    noteCohostsUnavailable(error);
+    ({ data, error } = await read(CALL_COLUMNS));
+  }
   if (error && !isBadId(error)) {
     console.error("[live-access] invite read failed", error.message);
     return { ok: false, reason: "error" };
@@ -375,14 +402,21 @@ export async function resolveCallAccess(
   const row = data as any;
   if (!row) return { ok: false, reason: "no-access" };
 
-  const isOwner = row.host_id === actor.userId;
-  const isInvitee = row.invitee_id === actor.userId;
-  if (!isOwner && !isInvitee) return { ok: false, reason: "no-access" };
-
   const host = one<any>(row.host);
   const invitee = one<any>(row.invitee);
   const hostName = host?.full_name || "A member of the team";
   const inviteeName = invitee?.full_name || "Student";
+  // The same reading the calls lists give it (lib/calls.ts).
+  const cohosts = cohostsFromRow(row);
+
+  const parties = { hostId: row.host_id, inviteeId: row.invitee_id, cohosts };
+  if (!isOnCall(parties, actor.userId)) return { ok: false, reason: "no-access" };
+
+  const everyone = [
+    { id: row.invitee_id as string, name: inviteeName },
+    { id: row.host_id as string, name: hostName },
+    ...cohosts.map((c) => ({ id: c.id, name: c.name })),
+  ];
   const invite = {
     status: row.status as CallInviteStatus,
     startsAt: row.starts_at as string,
@@ -397,9 +431,10 @@ export async function resolveCallAccess(
     roomId: `call:${row.id}`,
     hostId: row.host_id,
     inviteeId: row.invitee_id,
-    isOwner,
-    otherId: isOwner ? row.invitee_id : row.host_id,
-    otherName: isOwner ? inviteeName : hostName,
+    cohosts,
+    isOwner: row.host_id === actor.userId,
+    isStaff: isStaffOnCall(parties, actor.userId),
+    others: everyone.filter((p) => p.id !== actor.userId),
     hostName,
     hostRole: host?.role || "mentor",
     inviteeName,
@@ -467,9 +502,9 @@ export function callRoomStatus(phase: CallPhase): RoomStatus {
  *          carries no name — nothing about the audience is disclosed.
  *   call   nothing server-side. A 1:1 keeps no presence record (there is no
  *          call attendance table; see P56 in the live design notes), and the
- *          departing party's `bye` is what tells the other side. The call is
- *          NOT completed by leaving — End call does that, or the lifecycle
- *          sweep once the window has closed (lib/call-lifecycle.ts).
+ *          departing person's `bye` is what tells everyone else on it. The
+ *          call is NOT completed by leaving — End call does that, or the
+ *          lifecycle sweep once the window has closed (lib/call-lifecycle.ts).
  */
 export async function leaveInternal(
   kind: LiveRoomKind,

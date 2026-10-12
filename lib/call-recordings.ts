@@ -18,8 +18,8 @@ import type { CallInvite } from "@/lib/live";
  * listing, and "play part 2" is a signed URL for the second file in order.
  *
  * Same contract as lib/webinar-data.ts: NOTHING HERE DECIDES WHO MAY CALL IT.
- * Every caller has already checked `canViewCallRecording` (the two people on
- * the call, and admins) against the invite row; these functions sign whatever
+ * Every caller has already checked `canViewCallRecording` (the people on the
+ * call, and admins) against the invite row; these functions sign whatever
  * they are handed.
  */
 

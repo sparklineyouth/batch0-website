@@ -3,6 +3,7 @@ import { fmtDateOnly } from "@/lib/pre-cohort";
 import { emailLayout as layout, escapeEmail as escape } from "@/lib/email/layout";
 import { formatTicketAmount as fmtTicketMoney } from "@/lib/demo-day-ticket-input";
 import { formatEasternDateTime } from "@/lib/call-lifecycle";
+import { joinNames } from "@/lib/live";
 import {
   AUTO_RESOLVE_NOTE,
   REFUND_WINDOW_HOURS,
@@ -179,6 +180,16 @@ function etTime(iso: string): string {
     minute: "2-digit",
     timeZone: "America/New_York",
   })} ET`;
+}
+
+/**
+ * "Also joining: Ben and Cy." — the rest of a call's staff side (migration
+ * 0092), so a student is never surprised by who is in the room. Empty for a
+ * call with nobody else on it, which is every call before co-hosts existed.
+ */
+function alsoJoiningLine(names: readonly string[] | undefined): string {
+  if (!names || names.length === 0) return "";
+  return `<p style="margin:12px 0">Also joining: <strong>${escape(joinNames(names))}</strong>.</p>`;
 }
 
 export const Templates = {
@@ -726,6 +737,8 @@ One account, one pass — the code stops working the moment it's claimed.`,
     startsAt: string;
     durationMinutes: number;
     topic: string | null;
+    /** Co-hosts (migration 0092): the rest of the team who will be there. */
+    alsoJoining?: readonly string[];
   }) => ({
     subject: `${args.hostName} invited you to a 1:1 call`,
     html: layout({
@@ -735,6 +748,7 @@ One account, one pass — the code stops working the moment it's claimed.`,
       body: `
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">A 1:1 call invite</h1>
         <p><strong>${escape(args.hostName)}</strong> would like ${args.durationMinutes} minutes with you.</p>
+        ${alsoJoiningLine(args.alsoJoining)}
         ${args.topic ? `<p style="margin:12px 0">About: <strong>${escape(args.topic)}</strong></p>` : ""}
         <p style="margin:12px 0">Proposed for <strong>${escape(
           // Eastern, with the zone named — not toUTCString(), which read as
@@ -759,6 +773,8 @@ One account, one pass — the code stops working the moment it's claimed.`,
     startsAt: string;
     durationMinutes: number;
     topic: string | null;
+    /** Co-hosts (migration 0092): the rest of the team who will be there. */
+    alsoJoining?: readonly string[];
   }) => ({
     subject: `Your 1:1 call is confirmed`,
     html: layout({
@@ -768,6 +784,7 @@ One account, one pass — the code stops working the moment it's claimed.`,
       body: `
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">You're booked</h1>
         <p><strong>${escape(args.hostName)}</strong> confirmed the time you asked for: ${args.durationMinutes} minutes with the batch0 team.</p>
+        ${alsoJoiningLine(args.alsoJoining)}
         ${args.topic ? `<p style="margin:12px 0">About: <strong>${escape(args.topic)}</strong></p>` : ""}
         <p style="margin:12px 0">It's on <strong>${escape(
           formatEasternDateTime(args.startsAt) ?? args.startsAt,

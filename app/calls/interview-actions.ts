@@ -8,6 +8,7 @@ import {
   listInterviewTeamIds,
 } from "@/lib/interview-requests";
 import { logAudit } from "@/lib/audit";
+import { runAction, type ActionResult } from "@/lib/action-result";
 import {
   canRequestTeamCall,
   confirmsProposal,
@@ -20,6 +21,7 @@ import {
 import { notify, notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { attachCohosts, notifyCohostsAdded, resolveCohosts } from "@/lib/calls";
 
 /**
  * Server actions for a student asking the team for a 1:1 (interview_requests,
@@ -213,12 +215,35 @@ export async function cancelInterviewRequest(id: string) {
  * Confirming a time the student offered books the call as accepted: they
  * already said that time works, so there is nothing left for them to answer.
  * Any other time goes out as an invite for them to accept or decline.
+ *
+ * Whoever confirms is the call's host, and may put other staff on it as
+ * co-hosts (migration 0092) — the usual case being an admin booking a
+ * scholarship mentor call with the mentor who will actually take it.
  */
-export async function scheduleInterviewRequest(input: {
+type ScheduleInput = {
   id: string;
   startsAt: string;
   durationMinutes: number;
-}) {
+  /** Other staff on the call. See createInvite. */
+  cohostIds?: string[];
+};
+
+/**
+ * An ActionResult rather than a throw, for the reason createInvite gives: in
+ * production a thrown message never reaches the queue, and "That time is in
+ * the past" or "Add up to 20 from the team" is what the person needs to read.
+ */
+export async function scheduleInterviewRequest(
+  input: ScheduleInput,
+): Promise<ActionResult<{ callInviteId: string; confirmed: boolean }>> {
+  return runAction({ name: "scheduleInterviewRequest" }, () =>
+    scheduleInterviewRequestNow(input),
+  );
+}
+
+async function scheduleInterviewRequestNow(
+  input: ScheduleInput,
+): Promise<{ callInviteId: string; confirmed: boolean }> {
   const actor = await assertPermission("calls.invite");
   const admin = createAdminClient();
 
@@ -251,6 +276,14 @@ export async function scheduleInterviewRequest(input: {
     req.altAt,
   );
 
+  // Checked before anything is written, exactly as createInvite does — and
+  // on a database without 0092, refused here rather than after the request
+  // has been claimed. See resolveCohosts.
+  const cohosts = await resolveCohosts(admin, input.cohostIds, {
+    hostId: actor.userId,
+    inviteeId: req.studentId,
+  });
+
   const { data: invite, error: inviteErr } = await admin
     .from("call_invites")
     .insert({
@@ -271,6 +304,16 @@ export async function scheduleInterviewRequest(input: {
   }
 
   const inviteId = invite!.id;
+
+  // Before the request is claimed, so undoing a failure is only deleting the
+  // call (any co-host rows cascade): the request is still open, nobody has
+  // been told anything, and someone can simply try again.
+  try {
+    await attachCohosts(admin, inviteId, cohosts);
+  } catch (err) {
+    await admin.from("call_invites").delete().eq("id", inviteId);
+    throw err;
+  }
 
   const { error: updErr } = await admin
     .from("interview_requests")
@@ -322,6 +365,7 @@ export async function scheduleInterviewRequest(input: {
       starts_at: startsAt.toISOString(),
       scholarship_application_id: scholarshipAppId,
       confirmed_as_proposed: confirmed,
+      cohost_ids: cohosts.map((c) => c.id),
     },
   });
 
@@ -351,12 +395,19 @@ export async function scheduleInterviewRequest(input: {
       link: "/dashboard/calls",
     });
 
+    await notifyCohostsAdded(cohosts, {
+      hostName,
+      studentName: req.studentName,
+      topic,
+    });
+
     if (req.studentEmail) {
       const args = {
         hostName,
         startsAt: startsAt.toISOString(),
         durationMinutes: duration,
         topic,
+        alsoJoining: cohosts.map((c) => c.name),
       };
       const t = confirmed
         ? Templates.callConfirmed(args)

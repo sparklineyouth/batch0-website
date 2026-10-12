@@ -3,14 +3,19 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getActionError } from "@/lib/action-error";
-import { InviteForm, type InviteeOption } from "@/components/live/invite-form";
+import {
+  InviteForm,
+  type InviteDraft,
+  type InviteeOption,
+} from "@/components/live/invite-form";
 import { CallSections } from "@/components/live/invite-card";
 import { createInvite, cancelInvite } from "@/app/calls/actions";
 import type { CallInvite } from "@/lib/live";
 import { Plus } from "lucide-react";
 
 /**
- * The host side of 1:1 calls, shared by /mentor/calls, /investor/calls and
+ * The staff side of 1:1 calls — calls this person sent, and calls they were
+ * added to as a co-host — shared by /mentor/calls, /investor/calls and
  * /admin/calls.
  *
  * One component rather than three near-copies: the three panels differ only
@@ -22,15 +27,18 @@ import { Plus } from "lucide-react";
 export function CallsPanel({
   invites,
   students,
+  staff = [],
   now,
   recordings,
   emptyMessage = "You haven't invited anyone yet.",
 }: {
   invites: CallInvite[];
   students: InviteeOption[];
+  /** Admins, mentors and investors who can be added as co-hosts (not the viewer). */
+  staff?: InviteeOption[];
   /** The server's render time (ISO) — the clock the Upcoming/Past split starts on. */
   now: string;
-  /** inviteId → recorded parts, for this host's own past calls. */
+  /** inviteId → recorded parts, for this person's own past calls. */
   recordings?: Record<string, number>;
   emptyMessage?: string;
 }) {
@@ -39,16 +47,17 @@ export function CallsPanel({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
 
-  function submit(draft: {
-    inviteeId: string;
-    startsAt: string;
-    durationMinutes: number;
-    topic: string;
-  }) {
+  function submit(draft: InviteDraft) {
     setError(undefined);
     start(async () => {
       try {
-        await createInvite(draft);
+        // Refusals come back as a result, with the sentence intact — see
+        // createInvite.
+        const result = await createInvite(draft);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         setComposing(false);
         router.refresh();
       } catch (err: any) {
@@ -77,6 +86,7 @@ export function CallsPanel({
         </h2>
         <InviteForm
           students={students}
+          staff={staff}
           onSubmit={submit}
           onCancel={() => setComposing(false)}
           pending={pending}

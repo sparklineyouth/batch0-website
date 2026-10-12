@@ -48,11 +48,11 @@ import {
  *           renders from, so the role on the screen and the role in the
  *           credentials cannot disagree.
  *
- *   call  — a 1:1. Not "can you see this page" but "are you one of the two":
- *           an admin reviewing the safeguarding list can read that a call
- *           happened without being able to walk into it. Both parties
- *           broadcast, because a 1:1 has no audience to hide; the inviter is
- *           the call's owner (and the side that records).
+ *   call  — a 1:1. Not "can you see this page" but "are you on the call" —
+ *           the student, the host, or a co-host (migration 0092): an admin
+ *           reviewing the safeguarding list can read that a call happened
+ *           without being able to walk into it. Everyone on it broadcasts,
+ *           because a 1:1 has no audience to hide; the staff side records.
  *
  * The role returned here is derived, never accepted. Nothing a client sends
  * influences whether it gets a broadcaster's credentials.
@@ -143,8 +143,8 @@ type ResolvedRoom = {
    * attendance list of a room containing minors should stay with the staff who
    * are accountable for it.
    *
-   * True for `events.manage` holders and for both parties to a 1:1. False for
-   * a guest speaker, which is the only case it exists for.
+   * True for `events.manage` holders and for everyone on a 1:1. False for a
+   * guest speaker, which is the only case it exists for.
    */
   discloseNames: boolean;
   /** Decides whether a VIEWER is handed the room channel. See credentialsFor. */
@@ -221,12 +221,12 @@ async function resolveRoom(kind: RoomKind, id: string): Promise<Resolution> {
     ok: true,
     room: {
       roomId: access.roomId,
-      // Both parties broadcast. A viewer role here would leave one of them
+      // Everyone on it broadcasts. A viewer role here would leave someone
       // unable to speak in their own meeting.
       role: "host",
-      // Two named people who accepted an invite to each other. There is no
-      // audience here to protect, and withholding the name would leave each of
-      // them looking at an unlabelled tile.
+      // Named people who are all on the invite. There is no audience here to
+      // protect, and withholding the names would leave each of them looking at
+      // unlabelled tiles.
       discloseNames: true,
       // A 1:1 has no audience channel at all; `private` is what stops
       // credentialsFor handing one out.
@@ -268,9 +268,12 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
   //   event viewer nothing. They learn about the host from the stage channel.
   //                This is the disclosure rule at its source: the audience is
   //                not filtered out of the response, it is never fetched.
-  //   call         the other person, from the invite row — so a 1:1 needs no
-  //                discovery at all and connects the moment both sides are on
-  //                the page.
+  //   call         everyone else on it, from the invite row — so a 1:1 needs
+  //                no discovery at all and connects the moment people are on
+  //                the page. With co-hosts (migration 0092) that is a small
+  //                mesh: every one of them is a broadcaster, and the engine's
+  //                shouldOffer compares ids so exactly one side of each pair
+  //                dials, with no glare to resolve.
   let knownPeers: LivePeer[] = [];
   if (room.event && room.role === "host") {
     knownPeers = (
@@ -282,14 +285,12 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
       )
     ).filter((p) => p.peerId !== actor.userId);
   } else if (room.call) {
-    knownPeers = [
-      {
-        peerId: room.call.otherId,
-        name: room.call.otherName,
-        role: "host",
-        inbox: inboxTopic(room.roomId, inboxKeyFor(room.roomId, room.call.otherId)),
-      },
-    ];
+    knownPeers = room.call.others.map((p) => ({
+      peerId: p.id,
+      name: p.name,
+      role: "host" as const,
+      inbox: inboxTopic(room.roomId, inboxKeyFor(room.roomId, p.id)),
+    }));
   }
 
   const name = await displayName(actor.userId);
@@ -352,9 +353,9 @@ export async function announcePresence(
     return { status: "revoked" };
   }
 
-  // A 1:1 has no lobby and no attendance record: both sides already know each
-  // other from the invite row, so there is nobody to announce to. The status
-  // is the whole answer.
+  // A 1:1 has no lobby and no attendance record: everyone on it already knows
+  // everyone else from the invite row, so there is nobody to announce to. The
+  // status is the whole answer.
   if (!room.event) return { status: "ok" };
 
   const name = await displayName(actor.userId);
