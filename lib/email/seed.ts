@@ -207,14 +207,19 @@ export const SYSTEM_TEMPLATES: Seed[] = [
   },
   {
     key: "broadcast.promo",
-    name: "10% off — enroll by September 9",
+    // Name and description are deliberately DATE-FREE. They used to read
+    // "enroll by September 9", which went stale the moment the promo was
+    // re-run for a different deadline — and unlike the body, a name is not
+    // variable-interpolated, so it just sits there being wrong in the
+    // composer's template list.
+    name: "Tuition sale — site-wide discount",
     description:
-      "The tuition-sale invite. Send it from the composer to a hand-picked segment before the September 9 deadline — the copy leans on the deadline, so retire it once the promo ends (see lib/promo.ts). Prices and the deadline are variables so they can't drift from what the site charges.",
+      "The tuition-sale invite. Send it from the composer to a hand-picked segment while a promo is running; retire it once the promo ends (see lib/promo.ts). The percent, both prices and the deadline are variables resolved from the live promo at send time, so the copy can never advertise a discount the site isn't charging — which also means this template does not need re-editing each time the sale is re-run.",
     category: "broadcast",
     subject: "{{first_name}}, batch0 tuition is {{promo_percent}}% off — through {{deadline}}",
     preheader: "Enroll before {{deadline}} and pay {{sale_price}}, not {{list_price}}.",
     body_html:
-      "<h1>{{promo_percent}}% off, but not for long.</h1><p>Hi {{first_name}},</p><p>For a few more days, a seat at batch0 is <strong>{{sale_price}}</strong> instead of <strong>{{list_price}}</strong> — {{promo_percent}}% off. It's the lowest tuition has ever been, and it ends <strong>{{deadline}}</strong>.</p><p>batch0 is a live, online startup accelerator built for high schoolers: you build a real company alongside a cohort, with mentors, weekly sessions, and a Demo Day at the end. Applying is free, and we never take equity — the tuition is the whole cost.</p><p>If you've been on the fence, this is the moment to jump. Lock in the {{promo_percent}}% before {{deadline}} and you're set.</p>",
+      "<h1>{{promo_percent}}% off, but not for long.</h1><p>Hi {{first_name}},</p><p>For a few more days, a seat at batch0 is <strong>{{sale_price}}</strong> instead of <strong>{{list_price}}</strong> — {{promo_percent}}% off, site-wide, for our fall and winter cohorts. It ends <strong>{{deadline}}</strong>.</p><p>batch0 is a live, online startup accelerator built for high schoolers: you build a real company alongside a cohort, with mentors, weekly sessions, and a Demo Day at the end. Applying is free, and we never take equity — the tuition is the whole cost.</p><p>If you've been on the fence, this is the moment to jump. Lock in the {{promo_percent}}% before {{deadline}} and you're set.</p>",
     cta_label: "Claim {{promo_percent}}% off",
     cta_url: "{{site_url}}/apply",
     // Percent, prices, and deadline are all resolved from the current promo at
@@ -225,7 +230,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       { key: "promo_percent", label: "Discount percent", example: "10" },
       { key: "sale_price", label: "Sale price", example: "$117" },
       { key: "list_price", label: "List price", example: "$130" },
-      { key: "deadline", label: "Offer deadline", example: "September 9" },
+      { key: "deadline", label: "Offer deadline", example: "October 21" },
     ],
   },
   {

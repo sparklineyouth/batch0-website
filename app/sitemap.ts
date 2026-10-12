@@ -2,8 +2,15 @@ import type { MetadataRoute } from "next";
 import { getAllPostsMeta } from "@/lib/blog";
 import { CATEGORIES, categoryPath } from "@/lib/blog-shared";
 
-// Canonical host is www — the apex 307s there, so the sitemap must not
-// hand crawlers redirecting URLs.
+// Canonical host is the APEX. Verified against production: www.batch0.org
+// 308s to batch0.org, and the apex serves 200 with
+// <link rel="canonical" href="https://batch0.org">.
+//
+// This comment used to say the reverse ("canonical host is www — the apex 307s
+// there"), which was wrong in the most dangerous available direction: anyone
+// trusting it would "fix" BASE to www and hand every crawler in the sitemap a
+// redirecting URL, which is exactly the thing the comment warns against.
+// The value was always right; only the note above it was wrong.
 const BASE = "https://batch0.org";
 
 // Static marketing routes. Auth/product routes (/dashboard, /apply, /admin,

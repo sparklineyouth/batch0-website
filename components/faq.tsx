@@ -1,5 +1,6 @@
 import React from "react";
 import type { SiteConfig } from "@/lib/site-config";
+import { activePromo, promoSentence } from "@/lib/promo";
 
 /**
  * Parent-facing FAQ. Direct answers: cost in the first sentence, real
@@ -13,12 +14,45 @@ export default function FAQ({ config }: { config: SiteConfig }) {
   const price = derived.priceLabel;
   const cohort = derived.cohortLabel || "the cohort";
   const dates = derived.dateRangeLabel.replace("→", "–");
+  // Resolved from the admin-set promo, so the entry appears and disappears
+  // with the sale itself. This component renders only on the homepage, which
+  // resolves admissions at request time (`await connection()` there, and
+  // scripts/verify-static asserts "/" is never prerendered) — so the Q&A, and
+  // the FAQPage JSON-LD built from it, stop claiming a discount the moment the
+  // deadline passes, with no deploy and no cache to wait out.
+  const promo = activePromo(new Date(), settings.promo);
 
   const faqs: { q: string; a: string }[] = [
     {
       q: "How much does it cost?",
-      a: `${price}, once, and only if you're accepted; applying is free. There are no hidden fees, no upsells, and no materials costs. Reduced regional pricing applies automatically in select countries, and refund terms are published on the refund policy page.`,
+      // During a sale this answer quoted the discounted price with no
+      // indication it WAS discounted — "$117, once" reads as list price, so a
+      // reader had no way to know the number moves when the promo ends. The
+      // clause below states both numbers in the first sentence.
+      a: `${price}, once, and only if you're accepted; applying is free.${
+        promo
+          ? ` That is ${promo.percent}% off the usual ${derived.listPriceLabel} — see the discount question below.`
+          : ""
+      } There are no hidden fees, no upsells, and no materials costs. Reduced regional pricing applies automatically in select countries, and refund terms are published on the refund policy page.`,
     },
+    // The discount, as a question someone actually types. Present only while a
+    // promo runs, and placed second so it sits right under the price it
+    // modifies.
+    //
+    // This entry is the single highest-leverage thing on the page for the two
+    // audiences that never see the page: it lands in the FAQPage JSON-LD
+    // alongside every other answer, and it is a self-contained sentence an
+    // assistant can quote verbatim when someone asks whether batch0 has a
+    // discount. A struck-through price in the pricing table says the same
+    // thing to a human and nothing at all to either of them.
+    ...(promo
+      ? [
+          {
+            q: "Is there a discount right now?",
+            a: `Yes. ${promoSentence(promo, price, derived.listPriceLabel)}`,
+          },
+        ]
+      : []),
     {
       q: "Who runs batch0?",
       a: `Rishabh Dagli and Shresht Chopra — two 17-year-old founders who build and ship their own projects, including batch0 itself. They personally review applications and run the live sessions. Fall 2026 is the founding cohort; we do not claim an alumni track record.`,

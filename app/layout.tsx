@@ -192,11 +192,28 @@ const orgJsonLd = {
     "Go-to-market strategy",
     "Pitch decks",
   ],
-  // TODO(RISH): `sameAs` — the official Instagram/Discord/X handles, once
-  // they exist (NEEDED_FACTS.md #11; the footer carries the same TODO).
-  // Left off deliberately rather than guessed: `sameAs` asserts that an
-  // account *is* this organization, so a wrong handle hands the brand
-  // entity to someone else's profile. Add to this one place when known.
+  // `sameAs` — the profiles that ARE this organization elsewhere.
+  //
+  // This exists now because of a measurable problem: searching the brand name
+  // "batch0" does not surface batch0.org at all. The result that ranks is
+  // linkedin.com/company/batch0 — which describes this exact program (ages
+  // 13-18, fully virtual, demo day, free to apply) and links back here, and is
+  // also badly out of date, still advertising "$97 if accepted", a 24-person
+  // cohort and "Summer 2026" under the old SparkLine name.
+  //
+  // `sameAs` is the one on-page lever against that. It tells Google the
+  // ranking LinkedIn profile and this site are one entity rather than two
+  // unrelated things that happen to share a word, which is what lets the
+  // site inherit that profile's brand-query standing instead of competing
+  // with it.
+  //
+  // Only LinkedIn is listed. The original note here was right that a wrong
+  // handle hands the brand entity to someone else's profile, so this stays
+  // limited to the one URL that has been seen to describe this program and
+  // point back at this domain. Instagram/Discord/X remain deliberately absent
+  // until someone confirms them (NEEDED_FACTS.md #11; the footer carries the
+  // same TODO).
+  sameAs: ["https://www.linkedin.com/company/batch0"],
 };
 
 // WebSite node — establishes the site itself as an entity and gives every

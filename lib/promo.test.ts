@@ -3,8 +3,13 @@ import assert from "node:assert/strict";
 import {
   PROMO_ENDS_AT,
   PROMO_PERCENT,
+  PROMO_SCOPE,
+  PROMO_VALID_UNTIL,
   PROMO_LIST_PRICE_CENTS,
   PROMO_SALE_PRICE_CENTS,
+  formatPromoDeadlines,
+  saleOfferFields,
+  promoSentence,
   listPriceCents,
   rowHoldsListPrice,
   activePromo,
@@ -23,20 +28,31 @@ import {
 // broken page. Nothing here touches a database or a network, because the
 // module deliberately doesn't.
 
-const DURING = new Date("2026-09-05T12:00:00-04:00");
-const LAST_MINUTE = new Date("2026-09-09T23:59:00-04:00");
-const AFTER = new Date("2026-09-10T00:00:30-04:00");
+// Pinned RELATIVE to the deadline, not written out as calendar dates.
+//
+// These were three hardcoded September dates, and re-running the promo in
+// October broke them in the worst available way: `AFTER` (Sept 10) became a
+// date on which the promo was still live, so the test asserting that the sale
+// ends silently started asserting nothing. A fixture that has to be
+// hand-edited alongside the constant it tests is a fixture that will one day
+// pass against the wrong thing. Deriving them means the suite re-aims itself
+// at whatever deadline the promo currently has.
+const ENDS_MS = new Date(PROMO_ENDS_AT).getTime();
+const MINUTE = 60_000;
+const DURING = new Date(ENDS_MS - 4 * 24 * 60 * MINUTE);
+const LAST_MINUTE = new Date(ENDS_MS - MINUTE);
+const AFTER = new Date(ENDS_MS + 30_000);
 
 // The two list prices the site actually charges (lib/pricing.ts).
 const US_LIST = 12999;
 const IN_LIST = 11500;
 
-test("the promo runs through the last minute of September 9, Eastern", () => {
+test("the promo runs through the last minute of its deadline, Eastern", () => {
   assert.ok(activePromo(DURING), "should be live mid-sale");
   assert.ok(
     activePromo(LAST_MINUTE),
-    "11:59 PM Eastern on the 9th is still the 9th — a UTC deadline would " +
-      "have cut this off at 8 PM and killed the last evening of the push",
+    "11:59 PM Eastern on the deadline is still the deadline — a UTC cutoff " +
+      "would end this at 8 PM and kill the last evening of the push",
   );
 });
 
@@ -120,6 +136,9 @@ test("the title fits inside what Google renders", () => {
 test("the meta description quotes two different prices", () => {
   const promo = activePromo(DURING)!;
   const desc = promoMetaDescription(promo, "$117", "$130");
+  // The scope of the discount is the one fact a searcher cannot infer from a
+  // price, so it has to survive inside the 160-character budget.
+  assert.match(desc, /fall and winter cohorts/);
   // Regression: this once rendered "tuition is $130, not $130" because the
   // sale price was read from a field holding the LIST price. Typechecking
   // cannot catch it — both arguments are strings.
@@ -310,4 +329,80 @@ test("the double-discount guard still applies under an admin config", () => {
   const cfg = resolvePromoConfig({ promo_percent: 40 });
   // A base at the fixed $78 bad-row value is passed through, not cut again.
   assert.equal(promoPriceCents(PROMO_SALE_PRICE_CENTS, DURING, cfg), PROMO_SALE_PRICE_CENTS);
+});
+
+
+// ---------------------------------------------------------------------------
+// Scope, sale markup, and the prose sentence — the surfaces aimed at search
+// results and AI answers rather than at the page.
+// ---------------------------------------------------------------------------
+
+test("the seed deadline labels are derived, so they cannot contradict the date", () => {
+  // The regression this prevents: "Sept 9"/"September 9"/"2026-09-09" used to
+  // be three hand-written strings beside PROMO_ENDS_AT. Moving the deadline
+  // and missing one would show a countdown to one date under a headline naming
+  // another. All three now come out of formatPromoDeadlines.
+  const promo = activePromo(DURING)!;
+  const expected = formatPromoDeadlines(PROMO_ENDS_AT);
+  assert.equal(promo.shortDeadline, expected.short);
+  assert.equal(promo.longDeadline, expected.long);
+  assert.equal(promo.validUntil, expected.validUntil);
+  assert.equal(PROMO_VALID_UNTIL, expected.validUntil);
+  // And the derived day must be the Eastern day the constant names, not the
+  // UTC day it rolls over into.
+  assert.equal(PROMO_VALID_UNTIL, PROMO_ENDS_AT.slice(0, 10));
+});
+
+test("the sale Offer states the sale price, the list price, and an end date", () => {
+  const promo = activePromo(DURING)!;
+  const fields = saleOfferFields(promo, US_LIST, promoPriceCents(US_LIST, DURING));
+  // `price` must be what the visitor pays NOW. A bare list price here under a
+  // $117 headline is the mismatch that gets rich results suppressed.
+  assert.equal(fields.price, "117.00");
+  assert.equal(fields.priceValidUntil, promo.validUntil);
+  const spec = fields.priceSpecification as Record<string, unknown>;
+  assert.equal(spec.priceType, "https://schema.org/ListPrice");
+  assert.equal(spec.price, "129.99");
+});
+
+test("an open-ended promo omits priceValidUntil rather than emitting an empty one", () => {
+  // An empty date string is a structured-data validation error; an absent key
+  // simply makes no claim about when the price stops being true.
+  const cfg = resolvePromoConfig({ promo_percent: 10, promo_ends_at: null });
+  const promo = activePromo(new Date("2030-01-01T00:00:00Z"), cfg)!;
+  const fields = saleOfferFields(promo, US_LIST, 11700);
+  assert.ok(!("priceValidUntil" in fields), "must be absent, not empty");
+});
+
+test("the prose sentence is a complete, quotable answer", () => {
+  // Written for the surface that cannot read a pricing table: an assistant
+  // asked "does batch0 have a discount?" answers out of sentences like this
+  // one, so it has to carry the percent, the scope, both prices and the word
+  // "site-wide" without needing any surrounding context.
+  const promo = activePromo(DURING)!;
+  const sentence = promoSentence(promo, "$117", "$130");
+  assert.match(sentence, /^There is a site-wide/, "a statement, not an answer");
+  assert.ok(!sentence.startsWith("Yes"), "callers supply their own affirmation");
+  assert.match(sentence, /10% discount/);
+  assert.match(sentence, /fall and winter cohorts/);
+  assert.match(sentence, /\$117 instead of \$130/);
+  assert.match(sentence, /no code to enter/);
+  // The deadline is named with its year, and the year comes from the promo
+  // rather than the seed constant.
+  assert.ok(sentence.includes(`${promo.longDeadline}, ${promo.validUntil.slice(0, 4)}`));
+});
+
+test("the prose sentence drops the deadline clause when the promo is open-ended", () => {
+  const cfg = resolvePromoConfig({ promo_percent: 10, promo_ends_at: null });
+  const promo = activePromo(new Date("2030-01-01T00:00:00Z"), cfg)!;
+  const sentence = promoSentence(promo, "$117", "$130");
+  assert.ok(!sentence.includes("runs through"), sentence);
+  assert.match(sentence, /site-wide 10% discount/);
+});
+
+test("PROMO_SCOPE names both cohorts, not whichever one is active", () => {
+  // The offer is site-wide; a label built from the single cohort row that
+  // getSiteConfig happens to pick would understate it.
+  assert.match(PROMO_SCOPE, /fall/);
+  assert.match(PROMO_SCOPE, /winter/);
 });

@@ -14,8 +14,21 @@ import StickyMobileCta from "@/components/sticky-mobile-cta";
 import { ChallengeMarquee } from "@/components/challenge-marquee";
 import { ChallengeWinners } from "@/components/challenge-winners";
 import { FeaturedGuides } from "@/components/featured-guides";
-import { getPublicSiteConfig, metaDescription } from "@/lib/site-config";
-import { activePromo, promoTitle, promoMetaDescription } from "@/lib/promo";
+import {
+  getPublicSiteConfig,
+  metaDescription,
+  FALLBACK_COHORT,
+} from "@/lib/site-config";
+import {
+  activePromo,
+  promoTitle,
+  promoMetaDescription,
+  listPriceCents,
+  promoPriceCents,
+  saleOfferFields,
+  PROMO_SCOPE,
+} from "@/lib/promo";
+import { SITE, ORG_ID, JsonLd } from "@/lib/schema";
 import { getFeaturedPosts, getAllPostsMeta } from "@/lib/blog";
 import {
   getActiveChallenge,
@@ -84,6 +97,55 @@ export default async function Home() {
       getFeaturedPosts(6),
       getAllPostsMeta(),
     ]);
+
+  // ---------- The sale, as structured data ----------
+  // The homepage had no Offer node at all: the only tuition Offer on this page
+  // came from the root layout's organization node, which is built at module
+  // scope in a statically generated layout and therefore has to state LIST
+  // price forever (see the comment there). So for the entire previous run of
+  // this promo, the one page that ranks for "batch0" told Google nothing about
+  // the discount in markup — only in the title and description, which are
+  // prose and carry no price semantics at all.
+  //
+  // This node is emitted per request behind the ISR window below, so it can
+  // state the sale safely: it appears when the promo is live and is simply
+  // absent when it is not, exactly like the title. It does not contradict the
+  // layout's list-price Offer — the ListPrice specification inside it asserts
+  // the same $129.99, which is what makes the pair coherent rather than two
+  // offers disagreeing about one product.
+  //
+  // Non-regional on purpose, for the same reason as `generateMetadata`:
+  // crawlers arrive from arbitrary IPs and this markup is cached and shared.
+  const promoForOffer = activePromo(new Date(), config.settings.promo);
+  const listCents = listPriceCents(
+    (config.cohort ?? FALLBACK_COHORT).priceCents,
+  );
+  const saleOfferJsonLd = promoForOffer
+    ? {
+        "@context": "https://schema.org",
+        "@type": "Offer",
+        "@id": `${SITE}/#tuition-sale`,
+        name: `${promoForOffer.percent}% off batch0 tuition — ${PROMO_SCOPE}`,
+        // Points at the Course node /program defines rather than redeclaring
+        // the course here, so there is one course entity on the site and this
+        // is unambiguously an offer ON it.
+        itemOffered: { "@id": `${SITE}/program#course` },
+        offeredBy: { "@id": ORG_ID },
+        category: "Tuition",
+        url: `${SITE}/apply`,
+        availability: "https://schema.org/LimitedAvailability",
+        ...saleOfferFields(
+          promoForOffer,
+          listCents,
+          promoPriceCents(listCents, new Date(), config.settings.promo),
+        ),
+        description:
+          `Site-wide ${promoForOffer.percent}% discount on batch0 tuition for the ` +
+          `${PROMO_SCOPE}. Applied automatically with no code; charged only if ` +
+          `accepted, and applying is free.`,
+      }
+    : null;
+
   return (
     // The outer element is a plain <div>, not <main>. A <main> that contains
     // the navbar and the footer swallows their `banner` and `contentinfo`
@@ -134,6 +196,7 @@ export default async function Home() {
         base={config.derived.priceLabel}
         regional={regionalConfig.derived.priceLabel}
       />
+      {saleOfferJsonLd && <JsonLd data={saleOfferJsonLd} />}
     </div>
   );
 }

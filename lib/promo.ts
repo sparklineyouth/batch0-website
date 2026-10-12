@@ -11,24 +11,57 @@
 // static generation, so it must not reach for a database or an environment.
 
 /**
- * End of the promotion — 11:59:59 PM Eastern on September 9, 2026.
+ * End of the promotion — 11:59:59 PM Eastern on October 21, 2026.
  *
- * Written with an explicit offset rather than a bare date: "until Sept 9" to a
- * U.S. audience means the end of that evening, and a plain `2026-09-10T00:00Z`
- * would have cut the offer off at 8 PM Eastern on the 9th, killing the last
- * night of a deadline-driven push.
+ * THE ONE DATE. Every deadline string, countdown, title tag, meta description
+ * and `priceValidUntil` on the site is now derived from this constant (see
+ * `PROMO` and `PROMO_VALID_UNTIL` below), so re-running or extending the promo
+ * is a one-line edit here and nothing can disagree with anything else. The
+ * previous run had the same date written out by hand in four places — this
+ * module, the sale banner's seed label, and two schema literals — which is how
+ * a site ends up advertising two different deadlines.
+ *
+ * Written with an explicit offset rather than a bare date: "until Oct 21" to a
+ * U.S. audience means the end of that evening, and a plain `2026-10-22T00:00Z`
+ * would have cut the offer off at 8 PM Eastern on the 21st, killing the last
+ * night of a deadline-driven push. -04:00 is correct for October 21 — U.S. DST
+ * does not end until November 1, 2026.
  */
-export const PROMO_ENDS_AT = "2026-09-09T23:59:59-04:00";
+export const PROMO_ENDS_AT = "2026-10-21T23:59:59-04:00";
 
 /** Percentage off the list price. Display only — see the note in `Promo`. */
 export const PROMO_PERCENT = 10;
 
 /**
+ * What the discount covers, in prose, for copy that has room to say it.
+ *
+ * The promo has always been site-wide — it discounts whatever cohort is
+ * currently being sold, because `promoPriceCents()` is applied to the active
+ * cohort's price whatever that row happens to be. But nothing on the site ever
+ * SAID so, and "10% off tuition" with no scope reads like it might be one
+ * cohort, one region, or a coupon someone else got. Naming the cohorts is what
+ * makes the offer legible to a reader — and to a search engine or an assistant
+ * summarising the page, which can only repeat a claim the page actually makes.
+ *
+ * Deliberately not built from cohort rows. The fall and winter cohorts are the
+ * two that exist (Fall 2026 and Winter 2026, Dec 14 → Feb 12), and a label
+ * assembled from whichever row `getSiteConfig` happens to pick would name just
+ * one of them — which would be narrower than the offer really is.
+ */
+export const PROMO_SCOPE = "fall and winter cohorts";
+
+/**
  * schema.org `priceValidUntil` for the Offer node. Exported separately from
  * `activePromo()` because the root layout builds its JSON-LD at module scope,
  * where there is no request and therefore no meaningful "now".
+ *
+ * DERIVED from `PROMO_ENDS_AT` rather than written out again: this value and
+ * the deadline shown to humans have to be the same day, and the previous
+ * hand-written pair is exactly the kind of thing that survives a date change
+ * by one line. `formatPromoDeadlines` is a hoisted function declaration, so
+ * calling it here at module scope is safe despite being defined below.
  */
-export const PROMO_VALID_UNTIL = "2026-09-09";
+export const PROMO_VALID_UNTIL = formatPromoDeadlines(PROMO_ENDS_AT).validUntil;
 
 /**
  * The list tuition this promotion was declared against, in cents — the value
@@ -108,11 +141,20 @@ export type Promo = {
   validUntil: string;
 };
 
+// Derived from the one date rather than transcribed from it. The previous
+// version hardcoded "Sept 9" / "September 9" / "2026-09-09" here, three
+// strings that had to be hand-updated in lockstep with PROMO_ENDS_AT; moving
+// the deadline and forgetting one of them would have shown a countdown to one
+// date under a headline naming another. `formatPromoDeadlines` already does
+// exactly this for admin-set promos, so the seed now goes through the same
+// code path and renders in the same timezone.
+const SEED_DEADLINES = formatPromoDeadlines(PROMO_ENDS_AT);
+
 const PROMO: Promo = {
   percent: PROMO_PERCENT,
-  shortDeadline: "Sept 9",
-  longDeadline: "September 9",
-  validUntil: "2026-09-09",
+  shortDeadline: SEED_DEADLINES.short,
+  longDeadline: SEED_DEADLINES.long,
+  validUntil: SEED_DEADLINES.validUntil,
 };
 
 /**
@@ -370,10 +412,92 @@ export function promoTitle(promo: Promo): string {
  * the offer is live.
  */
 export function promoMetaDescription(promo: Promo, salePrice: string, listPrice: string): string {
-  // "10% off until September 9:" when there's a deadline, "10% off:" for an
+  // "10% off until October 21:" when there's a deadline, "10% off:" for an
   // open-ended admin promo — the colon and prices stay put either way.
   const lead = promo.longDeadline
     ? `${promo.percent}% off until ${promo.longDeadline}`
     : `${promo.percent}% off`;
-  return `${lead}: tuition is ${salePrice}, not ${listPrice}. batch0 is a live, online startup accelerator for high schoolers. Free to apply, no equity taken.`;
+  // `PROMO_SCOPE` is spent here at the cost of "Free to apply, no equity
+  // taken", which the previous version carried. That is the right trade while
+  // a sale runs: both of those claims are on the page and in the Offer markup
+  // anyway, whereas the SCOPE of a discount is the one fact a searcher cannot
+  // infer and the one an assistant will not assert unless we state it. The
+  // budget is ~160 characters and this lands at ~149 with real prices.
+  return `${lead}: tuition is ${salePrice}, not ${listPrice}, for our ${PROMO_SCOPE}. batch0 is a live, online startup accelerator for high schoolers.`;
+}
+
+/**
+ * The schema.org `Offer` fields that express a SALE rather than a list price.
+ *
+ * Why this is a shared helper and not two literals: a sale is the one thing
+ * structured data can state that a crawler cannot work out from the page, and
+ * it is only legible if `price` (what you pay now), `priceValidUntil` (when
+ * that stops being true) and the ListPrice specification (what it was) agree
+ * with each other AND with the visible page. /program and / both emit an
+ * Offer; building the sale half of both from one function is what keeps the
+ * two pages from drifting into advertising different numbers.
+ *
+ * The `priceSpecification` + `priceType: ListPrice` pattern is the documented
+ * way to declare a strikethrough price — `price` alone cannot say "was $130",
+ * and a bare `price` of 129.99 during a sale actively contradicts the $117 on
+ * the page, which is the kind of mismatch that gets rich results suppressed.
+ *
+ * `priceValidUntil` is omitted rather than left empty for an open-ended
+ * admin-set promo: an empty date string is a validation error, while an absent
+ * one simply makes no claim.
+ */
+export function saleOfferFields(
+  promo: Promo,
+  listCents: number,
+  saleCents: number,
+): Record<string, unknown> {
+  const usd = (cents: number) => (cents / 100).toFixed(2);
+  return {
+    price: usd(saleCents),
+    priceCurrency: "USD",
+    ...(promo.validUntil ? { priceValidUntil: promo.validUntil } : {}),
+    priceSpecification: {
+      "@type": "UnitPriceSpecification",
+      priceType: "https://schema.org/ListPrice",
+      price: usd(listCents),
+      priceCurrency: "USD",
+    },
+  };
+}
+
+/**
+ * One sentence stating the live offer, for prose surfaces: the FAQ answer, the
+ * /llms.txt summary, anywhere a full sentence is better than a badge.
+ *
+ * Says "site-wide" explicitly. That word is doing real work for the audience
+ * this is aimed at — an assistant asked "does batch0 have a discount?" answers
+ * from sentences it can quote, and "applies site-wide to our fall and winter
+ * cohorts" is a complete, quotable answer in a way that a struck-through price
+ * in a pricing table is not.
+ *
+ * Phrased as a STATEMENT, not an answer. It opened with "Yes —", which reads
+ * correctly under the FAQ question and absurdly under the /llms.txt heading it
+ * also feeds, where there is no question for it to be answering. Callers that
+ * are answering a question prepend their own "Yes." — a separate sentence, so
+ * neither caller has to re-case the first letter of this one.
+ */
+export function promoSentence(
+  promo: Promo,
+  salePrice: string,
+  listPrice: string,
+): string {
+  // The year comes from `promo.validUntil` ("2026-10-21"), never from the seed
+  // constant: an admin can set a deadline in a different year at
+  // /admin/pricing, and reading PROMO_ENDS_AT here would have printed the
+  // seed's year beside their date.
+  const year = promo.validUntil.slice(0, 4);
+  const deadline = promo.longDeadline
+    ? ` The discount runs through ${promo.longDeadline}${year ? `, ${year}` : ""}.`
+    : "";
+  return (
+    `There is a site-wide ${promo.percent}% discount on tuition for our ` +
+    `${PROMO_SCOPE}, so tuition is ${salePrice} instead of ${listPrice}.` +
+    `${deadline} It applies automatically; there is no code to enter, and it ` +
+    `stacks with reduced regional pricing where that applies.`
+  );
 }
