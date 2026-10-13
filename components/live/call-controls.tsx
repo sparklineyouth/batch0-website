@@ -9,6 +9,7 @@ import {
   Users,
   MessageSquare,
   Circle,
+  Settings2,
 } from "lucide-react";
 
 /**
@@ -33,6 +34,8 @@ export function CallControls({
   /** Viewers in a webinar have no camera or mic to control. */
   canBroadcast = true,
   participantCount,
+  onToggleDevices,
+  devicesOpen = false,
 }: {
   micOn: boolean;
   cameraOn: boolean;
@@ -47,6 +50,9 @@ export function CallControls({
   recording?: boolean;
   canBroadcast?: boolean;
   participantCount?: number;
+  /** Opens the microphone / camera / speaker pickers (DeviceSettings). */
+  onToggleDevices?: () => void;
+  devicesOpen?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-line bg-wash px-3 py-2.5">
@@ -73,6 +79,16 @@ export function CallControls({
               <VideoOff className="h-4 w-4" />
             )}
           </ControlButton>
+
+          {onToggleDevices && (
+            <ControlButton
+              active={devicesOpen}
+              onClick={onToggleDevices}
+              label={devicesOpen ? "Hide device settings" : "Choose microphone, camera and speaker"}
+            >
+              <Settings2 className="h-4 w-4" />
+            </ControlButton>
+          )}
 
           {onToggleScreen && (
             <ControlButton
