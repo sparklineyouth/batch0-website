@@ -218,24 +218,42 @@ export function InviteForm({
 /**
  * "Also joining (optional)": search the team, add people as removable chips.
  *
- * Shared by the invite form and the team's call-request queue, so both ways
- * of booking a 1:1 put people on it the same way. Search-first rather than a
- * list, like the student picker, because the team is a directory. Renders
- * nothing when there is nobody to add. Stops at MAX_CALL_COHOSTS, the same
- * number the server refuses past, so the limit is met here rather than as
- * an error after Send.
+ * Shared by the invite form, the team's call-request queue and Add people on
+ * a call that is already booked (components/live/add-to-call.tsx), so every
+ * way of putting someone on a 1:1 puts them there the same way. Search-first
+ * rather than a list, like the student picker, because the team is a
+ * directory. Renders nothing when there is nobody to add. Stops at
+ * MAX_CALL_COHOSTS, the same number the server refuses past, so the limit is
+ * met here rather than as an error after Send — counting the co-hosts a
+ * booked call already has (`already`), because the server's limit is on the
+ * whole staff side, not on one batch of additions.
  */
 export function CohostPicker({
   staff,
   value,
   onChange,
+  label = "Also joining (optional)",
+  already = 0,
+  hint,
+  autoFocus = false,
 }: {
   staff: InviteeOption[];
   value: string[];
   onChange: (ids: string[]) => void;
+  /**
+   * The field's label. The booking forms' default says it is optional,
+   * which is true there and false on Add people, where it is the whole form.
+   */
+  label?: string;
+  /** Co-hosts the call already has. They count toward MAX_CALL_COHOSTS. */
+  already?: number;
+  /** Replaces the sentence under the field, for a form that needs to say more. */
+  hint?: React.ReactNode;
+  /** Focus the search box on mount — for a picker opened by a click. */
+  autoFocus?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const full = value.length >= MAX_CALL_COHOSTS;
+  const full = already + value.length >= MAX_CALL_COHOSTS;
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q || full) return [];
@@ -257,7 +275,7 @@ export function CohostPicker({
 
   return (
     <div>
-      <Label>Also joining (optional)</Label>
+      <Label>{label}</Label>
       {chosen.length > 0 && (
         <ul className="mb-2 flex flex-wrap gap-2">
           {chosen.map((c) => (
@@ -294,6 +312,7 @@ export function CohostPicker({
               : "Add people from the team"
           }
           disabled={full}
+          autoFocus={autoFocus}
           className="pl-9"
         />
       </div>
@@ -327,9 +346,13 @@ export function CohostPicker({
         </ul>
       )}
       <p className="mt-1.5 text-xs text-ink-faint">
-        Still one student. Add up to {MAX_CALL_COHOSTS} from the team — a
-        handful works best, because everyone&rsquo;s video goes to everyone.
-        They can join, end or cancel the call, and watch it back.
+        {hint ?? (
+          <>
+            Still one student. Add up to {MAX_CALL_COHOSTS} from the team — a
+            handful works best, because everyone&rsquo;s video goes to
+            everyone. They can join, end or cancel the call, and watch it back.
+          </>
+        )}
       </p>
     </div>
   );

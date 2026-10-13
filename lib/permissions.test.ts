@@ -4,6 +4,7 @@ import {
   ADMIN_AREA_PERMISSIONS,
   ALL_PERMISSIONS,
   PERMISSION_BY_KEY,
+  PERMISSION_GROUPS,
   canAccessAdmin,
   canViewAdminPath,
   capabilitiesFrom,
@@ -20,7 +21,13 @@ import {
 // the admin panel" — a footgun that is invisible at the call site and only
 // shows up as a mentor wandering into the payments page.
 
-const NON_ADMIN = ["mentor.panel", "investor.panel", "student.dashboard", "calls.invite"] as const;
+const NON_ADMIN = [
+  "mentor.panel",
+  "investor.panel",
+  "student.dashboard",
+  "calls.invite",
+  "calls.join_any",
+] as const;
 
 test("the non-admin capabilities do not grant admin-area access", () => {
   for (const perm of NON_ADMIN) {
@@ -43,6 +50,59 @@ test("calls.invite does not open the admin area", () => {
   assert.equal(canViewAdminPath(mentor, "/admin/calls"), false);
   // …but they DO hold the capability itself, which is what /mentor/calls checks.
   assert.equal(can(mentor, "calls.invite"), true);
+});
+
+test("calls.join_any is its own grant: admins hold it, booking calls does not imply it", () => {
+  // Joining someone else's 1:1 with a minor is the safeguarding power, not the
+  // booking one. Admins have it through the wildcard and nobody else does
+  // until it is ticked for them at /admin/roles: no migration grants it.
+  const admin = capabilitiesFrom("admin", ["*"]);
+  assert.equal(can(admin, "calls.join_any"), true);
+
+  const mentor = capabilitiesFrom("mentor", ["mentor.panel", "calls.invite"]);
+  assert.equal(can(mentor, "calls.join_any"), false);
+
+  // The seeded roles, as 0048 + 0059 leave them: only the wildcard holds it.
+  const seeded = [
+    { slug: "student", permissions: ["student.dashboard"] },
+    { slug: "admin", permissions: ["*"] },
+    { slug: "mentor", permissions: ["mentor.panel", "calls.invite"] },
+    { slug: "investor", permissions: ["investor.panel", "calls.invite"] },
+  ];
+  assert.deepEqual(rolesHolding(seeded, "calls.join_any"), ["admin"]);
+});
+
+test("calls.join_any never opens the admin area, even next to calls.invite", () => {
+  // Admin-area access is more than a sidebar — it makes /mentor/students
+  // program-wide. Granting "Join any 1:1 call" to mentors must not widen what
+  // they can read about students they don't mentor.
+  const lead = capabilitiesFrom("lead-mentor", [
+    "mentor.panel",
+    "calls.invite",
+    "calls.join_any",
+  ]);
+  assert.equal(canAccessAdmin(lead), false);
+  assert.equal(canViewAdminPath(lead, "/admin/calls"), false);
+  assert.equal(can(lead, "calls.join_any"), true);
+
+  // With admin-area access from elsewhere, it is usable where it lives.
+  const safeguarding = capabilitiesFrom("safeguarding", [
+    "people.view",
+    "calls.invite",
+    "calls.join_any",
+  ]);
+  assert.equal(canViewAdminPath(safeguarding, "/admin/calls"), true);
+});
+
+test("calls.join_any sits beside calls.invite at /admin/roles, flagged sensitive", () => {
+  const group = PERMISSION_GROUPS.find((g) =>
+    g.permissions.some((p) => p.key === "calls.invite"),
+  );
+  assert.ok(group, "calls.invite is in a group");
+  const def = group.permissions.find((p) => p.key === "calls.join_any");
+  assert.ok(def, "calls.join_any is in the same group as calls.invite");
+  assert.equal(def.sensitive, true);
+  assert.equal(def.label, "Join any 1:1 call");
 });
 
 test("an admin-area permission does open the admin area", () => {

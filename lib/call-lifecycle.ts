@@ -29,9 +29,12 @@
 import {
   isOnCall,
   joinState,
+  normalizeCohostIds,
   JOIN_OPENS_MINUTES_BEFORE,
   JOIN_CLOSES_MINUTES_AFTER,
+  MAX_CALL_COHOSTS,
   type CallInviteStatus,
+  type CallParties,
 } from "./live.ts";
 
 const MINUTE = 60_000;
@@ -151,6 +154,34 @@ export function canCancelCall(call: CallTiming, now: Date = new Date()): boolean
   return (
     phase === "needs_answer" ||
     phase === "expired" ||
+    phase === "upcoming" ||
+    phase === "joinable" ||
+    phase === "live"
+  );
+}
+
+/**
+ * May people still be added to this call's staff side (addCallCohosts)?
+ *
+ * Exactly while the call can still happen: an invite waiting on its answer,
+ * and an accepted call from booking until its window closes — upcoming,
+ * joinable and live, because pulling a colleague into a call that is already
+ * running is the case this exists for. Never once it is over (ended,
+ * completed), and never when it is not going to happen (cancelled, declined,
+ * or expired unanswered): adding someone then would tell them, and tell the
+ * student, that a person is joining a meeting nobody will ever hold.
+ *
+ * canCancelCall's phases minus `expired`, which that one keeps only so a dead
+ * invite's scholarship credit can be withdrawn — nobody can join it. In list
+ * terms: every card under Upcoming, and none under Past. Built from callPhase
+ * like everything else here, so the card that offers "Add people", the action
+ * that adds them and the badge beside them cannot disagree about where the
+ * call is.
+ */
+export function canAddCallCohosts(call: CallTiming, now: Date = new Date()): boolean {
+  const phase = callPhase(call, now);
+  return (
+    phase === "needs_answer" ||
     phase === "upcoming" ||
     phase === "joinable" ||
     phase === "live"
@@ -570,6 +601,40 @@ export function canViewCallRecording(args: {
       args.viewerId,
     )
   );
+}
+
+/**
+ * What a request to add people to a call that already exists would actually
+ * do (addCallCohosts): who in it is new to the call, and whether there is
+ * room for them.
+ *
+ * `ids` is the request cleaned exactly as the invite form's is
+ * (normalizeCohostIds: deduplicated, no host, no student), then without
+ * anyone who is already a co-host. Naming someone already on the call is a
+ * picker that stayed open while somebody else added them — not a mistake
+ * worth refusing — so they are skipped, and a request with nobody new in it
+ * adds nobody.
+ *
+ * `room` is how many more the staff side can take, counted against the
+ * call's TOTAL. MAX_CALL_COHOSTS is about how many video streams the mesh
+ * carries, and a cap checked per request would let anyone walk past it two
+ * people at a time. A stray co-host row naming the host or the student is
+ * not counted (cohostsFromRow ignores one too — it is not another person).
+ */
+export function cohostsToAdd(
+  requested: readonly unknown[] | null | undefined,
+  call: CallParties,
+): { ids: string[]; room: number; fits: boolean } {
+  const parties = { hostId: call.hostId, inviteeId: call.inviteeId };
+  const already = normalizeCohostIds(
+    call.cohosts.map((c) => c.id),
+    parties,
+  );
+  const ids = normalizeCohostIds(requested, parties).filter(
+    (id) => !already.includes(id),
+  );
+  const room = Math.max(0, MAX_CALL_COHOSTS - already.length);
+  return { ids, room, fits: ids.length <= room };
 }
 
 /**

@@ -7,7 +7,9 @@ import { runAction, type ActionResult } from "@/lib/action-result";
 import { notify, notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
+import { can } from "@/lib/permissions";
 import {
+  addCohostRows,
   attachCohosts,
   notifyCohostsAdded,
   readCohostIds,
@@ -19,14 +21,19 @@ import {
   callStaffIds,
   isOnCall,
   isStaffOnCall,
+  joinNames,
+  MAX_CALL_COHOSTS,
   type CallInviteStatus,
 } from "@/lib/live";
 import {
   callPhase,
+  canAddCallCohosts,
   canCancelCall,
   canMarkCallCompleted,
   canRespondToCall,
+  cohostsToAdd,
   isPastPhase,
+  type CallPhase,
   type CallTiming,
 } from "@/lib/call-lifecycle";
 
@@ -268,6 +275,198 @@ async function createInviteNow(input: InviteInput): Promise<{ id: string }> {
 
   revalidateAll();
   return { id };
+}
+
+/**
+ * Add people from the team to a call that already exists: the host bringing
+ * a colleague in, a co-host doing the same, or an admin stepping into someone
+ * else's call (usually by adding themselves — the observer card's Join call).
+ *
+ * Who may: anyone on the call's staff side, the same people who may cancel
+ * it; or anyone holding calls.join_any, the safeguarding power admins hold
+ * through the wildcard. Never the student, whatever their role says — they
+ * are the one side of a 1:1 that is not the team.
+ *
+ * Who may BE added is exactly who may be on a call when it is booked
+ * (resolveCohosts: a role holding calls.invite; the host and the student
+ * dropped), held to MAX_CALL_COHOSTS on the call's TOTAL (cohostsToAdd).
+ * Anyone already on the call is skipped, so a stale picker, or two people
+ * adding the same mentor at once, adds nobody twice and fails nobody. An
+ * empty `added` means everyone asked for was already there, which is not an
+ * error: Join call still goes straight to the room.
+ *
+ * Only while the call can still happen (canAddCallCohosts): before it,
+ * including an invite the student has yet to answer, and while it is live.
+ *
+ * And the student is always told who is coming, whoever added them — an admin
+ * adding themselves included. In a programme of minors the student must know
+ * who will be in the room before they find them there. The people added hear
+ * it too (all but whoever added them, who knows), and so does the rest of the
+ * staff side, which would otherwise meet a new face in the room.
+ *
+ * An ActionResult for the reason createInvite gives: every refusal here is a
+ * sentence the card shows.
+ */
+export async function addCallCohosts(
+  inviteId: string,
+  cohostIds: string[],
+): Promise<ActionResult<{ added: string[] }>> {
+  return runAction({ name: "addCallCohosts" }, () =>
+    addCallCohostsNow(inviteId, cohostIds),
+  );
+}
+
+async function addCallCohostsNow(
+  inviteId: string,
+  cohostIds: string[],
+): Promise<{ added: string[] }> {
+  const actor = await requireActor();
+  const admin = createAdminClient();
+
+  if (typeof inviteId !== "string" || !inviteId) {
+    throw new Error("That call no longer exists.");
+  }
+  const { data: invite, error: readError } = await admin
+    .from("call_invites")
+    .select("id, host_id, invitee_id, status, topic, starts_at, duration_minutes")
+    .eq("id", inviteId)
+    .maybeSingle();
+  // A malformed id (22P02) is "no such call", as it is to the room. Any other
+  // failure is not — telling someone a call is gone because of a database
+  // blip would send them off to look for it.
+  if (readError && readError.code !== "22P02") {
+    console.error("[calls] add-people read failed", readError.message);
+    throw new Error("Couldn't load that call. Try again in a moment.");
+  }
+  if (!invite) throw new Error("That call no longer exists.");
+  const row = invite as any;
+
+  // Throws on a failed co-host read rather than answering "nobody" — which
+  // would refuse a co-host here, and let the cap be counted from zero.
+  const parties = await partiesOf(admin, row);
+  const onStaff = isStaffOnCall(parties, actor.userId);
+  const joiningAny =
+    actor.userId !== parties.inviteeId && can(actor.caps, "calls.join_any");
+  if (!onStaff && !joiningAny) {
+    throw new Error("You're not on this call, so you can't add anyone to it.");
+  }
+
+  const timing = timingOf(row);
+  if (!canAddCallCohosts(timing)) {
+    throw new Error(whyNobodyCanBeAdded(callPhase(timing)));
+  }
+
+  const plan = cohostsToAdd(Array.isArray(cohostIds) ? cohostIds : [], parties);
+  if (plan.ids.length === 0) return { added: [] };
+  if (!plan.fits) {
+    throw new Error(
+      plan.room === 0
+        ? `That's a lot of people for a 1:1. This call already has ${MAX_CALL_COHOSTS} from the team besides its host, which is as many as one can take.`
+        : `That's a lot of people for a 1:1. This call has room for ${plan.room} more from the team.`,
+    );
+  }
+
+  // Role check (and, on a database without 0092, the sentence saying so)
+  // before anything is written — only for the people new to the call.
+  const cohosts = await resolveCohosts(admin, plan.ids, parties, "existing");
+  const added = await addCohostRows(admin, row.id, cohosts);
+  // Someone else added them in the moment between our read and our write.
+  if (added.length === 0) return { added: [] };
+
+  await logAudit({
+    action: "call_invite.cohosts_added",
+    targetType: "call_invite",
+    targetId: row.id,
+    payload: {
+      cohost_ids: added.map((c) => c.id),
+      // Someone who was not on the call put people on it. That is the
+      // override this permission exists for, and exactly what an audit of a
+      // programme of minors has to be able to find.
+      ...(onStaff ? {} : { via: "calls.join_any" }),
+    },
+  });
+
+  const joining = joinNames(added.map((c) => c.name));
+  const topic = (row.topic as string | null) || null;
+
+  // The student first, and on its own, needing nothing the staff bells below
+  // have to look up: of everything said here, this is the one that must
+  // arrive. (notify never throws.) "call_invited" because it is the same news
+  // as the invite — who this call is with — and classed important by default.
+  await notify({
+    userId: parties.inviteeId,
+    type: "call_invited",
+    title: `${joining} will also join your 1:1`,
+    body: topic || "Open your 1:1 calls to see everyone who'll be there.",
+    link: "/dashboard/calls",
+  });
+
+  // Best-effort, like every notification in this file: the people are on the
+  // call either way, and every calls page shows who.
+  try {
+    const staffBefore = callStaffIds(parties).filter((id) => id !== actor.userId);
+    const [{ data: named }, roles] = await Promise.all([
+      admin
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", [actor.userId, parties.hostId, parties.inviteeId]),
+      rolesOf(admin, staffBefore),
+    ]);
+    const nameOf = new Map(
+      ((named ?? []) as any[]).map((r) => [r.id as string, r.full_name as string | null]),
+    );
+    const hostName = nameOf.get(parties.hostId) || "A member of the team";
+    const studentName = nameOf.get(parties.inviteeId) || "a student";
+
+    // Everyone already on the staff side, each linked to their own calls
+    // page, as for every other staff bell.
+    const links = await Promise.all(
+      staffBefore.map((userId) => staffCallsHref(roles.get(userId))),
+    );
+    await notifyMany(
+      staffBefore.map((userId, i) => ({
+        userId,
+        type: "call_invited",
+        title: `${joining} will also join your 1:1 with ${studentName}`,
+        body: topic,
+        link: links[i],
+      })),
+    );
+
+    await notifyCohostsAdded(
+      added.filter((c) => c.id !== actor.userId),
+      {
+        hostName,
+        studentName,
+        topic,
+        // "Ana added you to Ben's 1:1 with Sam" when it wasn't the host.
+        addedByName:
+          actor.userId === parties.hostId
+            ? null
+            : nameOf.get(actor.userId) || "Someone on the team",
+      },
+    );
+  } catch (err) {
+    console.error("[calls] add-people notify failed", err);
+  }
+
+  revalidateAll();
+  return { added: added.map((c) => c.id) };
+}
+
+/** Why nobody can be added to a call in this phase, in the card's words. */
+function whyNobodyCanBeAdded(phase: CallPhase): string {
+  // An if-chain, not a switch — see callPhase for what the minifier did to one.
+  if (phase === "cancelled") {
+    return "That call was cancelled, so nobody can be added to it.";
+  }
+  if (phase === "declined") {
+    return "The student declined that call, so nobody can be added to it.";
+  }
+  if (phase === "expired") {
+    return "That invite's time passed without an answer, so nobody can be added to it.";
+  }
+  return "That call is already over, so nobody can be added to it.";
 }
 
 /**

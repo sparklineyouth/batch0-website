@@ -6,12 +6,14 @@ import {
   callBadge,
   callEndsAt,
   callPhase,
+  canAddCallCohosts,
   canCancelCall,
   canMarkCallCompleted,
   canRespondToCall,
   canUploadCallRecording,
   canRequestTeamCall,
   canViewCallRecording,
+  cohostsToAdd,
   confirmsProposal,
   formatEasternDateTime,
   hostCallsHref,
@@ -31,6 +33,7 @@ import {
 import {
   JOIN_CLOSES_MINUTES_AFTER,
   JOIN_OPENS_MINUTES_BEFORE,
+  MAX_CALL_COHOSTS,
   type CallInviteStatus,
 } from "./live.ts";
 
@@ -139,6 +142,69 @@ test("an invite that expired unanswered can still be withdrawn, so its credit co
 test("cancelled, declined and completed calls can't be cancelled again (no second refund)", () => {
   for (const s of ["cancelled", "declined", "completed"] as const) {
     assert.equal(canCancelCall(call(s), at(-600)), false, s);
+  }
+});
+
+test("people can be added to a call exactly while it can still happen, phase by phase", () => {
+  const cases: [CallTiming, Date, CallPhase, boolean][] = [
+    [call("invited"), at(-60 * 24), "needs_answer", true],
+    // Past the start with the student yet to answer: accepting is still
+    // possible (see callPhase), so the team may still change who is coming.
+    [call("invited"), at(LAST_OPEN), "needs_answer", true],
+    [call("invited"), at(FIRST_CLOSED), "expired", false],
+    [call("accepted"), at(-60 * 24), "upcoming", true],
+    [call("accepted"), at(-JOIN_OPENS_MINUTES_BEFORE - 1), "upcoming", true],
+    [call("accepted"), at(-JOIN_OPENS_MINUTES_BEFORE), "joinable", true],
+    [call("accepted"), at(-1), "joinable", true],
+    // Pulling a colleague into a call that is already running is the case
+    // this exists for — right up to the window's last minute.
+    [call("accepted"), at(0), "live", true],
+    [call("accepted"), at(LAST_OPEN), "live", true],
+    [call("accepted"), at(FIRST_CLOSED), "ended", false],
+    [call("completed"), at(10), "completed", false],
+    [call("declined"), at(-600), "declined", false],
+    [call("cancelled"), at(-600), "cancelled", false],
+  ];
+  for (const [c, now, phase, expected] of cases) {
+    assert.equal(callPhase(c, now), phase, `${c.status} at ${now.toISOString()}`);
+    assert.equal(canAddCallCohosts(c, now), expected, phase);
+  }
+  // Every phase there is, so a phase added later has to be decided here too.
+  assert.equal(new Set(cases.map(([, , phase]) => phase)).size, 9);
+});
+
+test("a cancelled, declined or completed call takes nobody new, whatever the clock", () => {
+  for (const s of ["cancelled", "declined", "completed"] as const) {
+    for (const now of [at(-60 * 24), at(-JOIN_OPENS_MINUTES_BEFORE), at(0), at(FIRST_CLOSED)]) {
+      assert.equal(canAddCallCohosts(call(s), now), false, `${s} at ${now.toISOString()}`);
+    }
+  }
+  // A status this build doesn't know is treated as cancelled (callPhase).
+  assert.equal(canAddCallCohosts(call("archived" as CallInviteStatus), at(0)), false);
+});
+
+test("Add people is on every Upcoming card and no Past one", () => {
+  // The two are separate rules on purpose (canCancelCall, for one, keeps an
+  // expired invite), so pin that THIS one matches the list it is shown in.
+  const statuses: CallInviteStatus[] = ["invited", "accepted", "declined", "cancelled", "completed"];
+  const offsets = [
+    -60 * 24 * 7,
+    -JOIN_OPENS_MINUTES_BEFORE - 1,
+    -JOIN_OPENS_MINUTES_BEFORE,
+    0,
+    LAST_OPEN,
+    FIRST_CLOSED,
+    60 * 24 * 7,
+  ];
+  for (const s of statuses) {
+    for (const m of offsets) {
+      const c = call(s);
+      assert.equal(
+        canAddCallCohosts(c, at(m)),
+        !isPastPhase(callPhase(c, at(m))),
+        `${s} at ${m} minutes`,
+      );
+    }
   }
 });
 
@@ -458,6 +524,56 @@ test("co-hosts were on the call, so they can watch it back too", () => {
   assert.equal(canViewCallRecording({ ...ids, viewerId: "v", superAdmin: false }), true);
   // Being a mentor somewhere else in the programme is not being on this call.
   assert.equal(canViewCallRecording({ ...ids, viewerId: "other-mentor", superAdmin: false }), false);
+});
+
+test("cohostsToAdd keeps only people who are new to the call", () => {
+  const onCall = { hostId: "h", inviteeId: "s", cohosts: [{ id: "m" }] };
+  // The host, the student, someone already a co-host, a repeat and junk are
+  // all dropped; nobody is refused for them.
+  assert.deepEqual(
+    cohostsToAdd(["a", "h", "s", "m", "a", "", null, 7, "b"], onCall).ids,
+    ["a", "b"],
+  );
+  // Asking for people who are all on it already adds nobody — not an error.
+  const none = cohostsToAdd(["m", "h"], onCall);
+  assert.deepEqual(none.ids, []);
+  assert.equal(none.fits, true);
+  assert.deepEqual(cohostsToAdd(null, onCall).ids, []);
+  assert.deepEqual(cohostsToAdd(undefined, onCall).ids, []);
+});
+
+test("cohostsToAdd counts the cap against the call's total, not the request", () => {
+  const staffed = (n: number) => ({
+    hostId: "h",
+    inviteeId: "s",
+    cohosts: Array.from({ length: n }, (_, i) => ({ id: `c${i}` })),
+  });
+
+  const nearlyFull = staffed(MAX_CALL_COHOSTS - 2);
+  assert.equal(cohostsToAdd([], nearlyFull).room, 2);
+  assert.equal(cohostsToAdd(["x", "y"], nearlyFull).fits, true);
+  // Two at a time must not walk past the cap: three new people don't fit,
+  // however small the request looks on its own.
+  assert.equal(cohostsToAdd(["x", "y", "z"], nearlyFull).fits, false);
+  // People already on the call take no new room.
+  const mixed = cohostsToAdd(["c0", "c1", "x", "y"], nearlyFull);
+  assert.deepEqual(mixed.ids, ["x", "y"]);
+  assert.equal(mixed.fits, true);
+
+  const full = staffed(MAX_CALL_COHOSTS);
+  assert.equal(cohostsToAdd(["x"], full).room, 0);
+  assert.equal(cohostsToAdd(["x"], full).fits, false);
+  // A full call can still be "asked" for someone already on it.
+  assert.equal(cohostsToAdd(["c3"], full).fits, true);
+
+  // A stray co-host row naming the host or the student is not another person,
+  // so it takes no room (cohostsFromRow ignores one the same way).
+  const stray = cohostsToAdd([], {
+    hostId: "h",
+    inviteeId: "s",
+    cohosts: [{ id: "h" }, { id: "s" }, { id: "m" }],
+  });
+  assert.equal(stray.room, MAX_CALL_COHOSTS - 1);
 });
 
 test("hostCallsHref sends each kind of host back to their own panel", () => {

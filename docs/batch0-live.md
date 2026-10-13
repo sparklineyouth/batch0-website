@@ -52,7 +52,8 @@ and ICE candidates that lets two browsers find each other — and that rides
 | File | Role |
 | --- | --- |
 | `lib/live.ts` | Pure rules: the audience window, `roomAccess` (who may be in a room now, by role), `eventLiveStatus` (what a list shows). Unit-tested. |
-| `lib/call-lifecycle.ts` | Pure rules for a 1:1: `callPhase` (where a call stands, from its status and the clock), who may cancel, answer or end it. Unit-tested; see docs/live-video.md. |
+| `lib/call-lifecycle.ts` | Pure rules for a 1:1: `callPhase` (where a call stands, from its status and the clock), who may cancel, answer, end it or add people to it. Unit-tested; see docs/live-video.md. |
+| `lib/call-roster.ts` | Pure rules for a 1:1's roster while it runs: folding the heartbeat's peers into the session (`mergeCallPeers`) and keeping the staff list the room elects its recorder from. Import-free, unit-tested. |
 | `lib/live-signal.ts` | Pure wire protocol: channel names, message shapes, media slots, and the client's reaction to a status answer (`nextStatusAction`). Import-free, unit-tested. |
 | `lib/live-access.ts` | Server-only. **Who someone is in a room**, computed once: `resolveEventAccess` / `resolveCallAccess`, and the identity-only `leaveInternal`. Every gate below calls it. |
 | `lib/live-rooms.ts` | Server-only. Derives channel keys, issues credentials, records attendance, publishes the server's hints. Holds the room secret. |
@@ -168,6 +169,21 @@ The ordering problem is that students arrive before the host does.
   `revoked` only on the second consecutive answer, so one read at a boundary
   ends nobody's session; `error` (a query failed) is never acted on, so a
   database blip cannot look like a revocation and empty a room.
+- In a 1:1 the heartbeat's answer also carries the call's roster
+  (`PresenceResult.call`: everyone on it but the caller, built by the same
+  helper as `joinRoom`'s peers, and the staff side), because people can be
+  added while it runs. Without it, a newcomer was never dialled by anyone in
+  the room with a smaller id, since only the smaller id of each pair offers
+  and they had never heard of the newcomer. The engine folds the roster in
+  on every answer (`mergeCallPeers` in `lib/call-roster.ts`), dials anyone
+  new at once, and publishes the staff side as `callStaffIds`, which changes
+  only when its membership does. The room elects its recorder, and decides
+  who counts as the other side for End call, from that list. It can make
+  other people staff but never the student's own browser, which records
+  nothing whatever an answer says (`selfIsCallStaff`).
+  Nothing extra is disclosed: it is the join's own peer list, sent only on an
+  `ok` to someone on the call, and it costs no query. A webinar's answer is
+  unchanged.
 - The server's own changes arrive as a hint. On a webinar's End and Reopen
   the server publishes a content-free `{ t: "room-changed" }` on the
   **stage** topic — the one channel every participant holds, including a viewer
@@ -235,12 +251,31 @@ role `host`). The inviter (`call_invites.host_id`) is the **owner**; any
 staff they added (anyone whose role holds `calls.invite`) are **co-hosts** (migration 0092,
 `call_invite_cohosts`), with the owner's powers on that call; the invitee is
 always one student. `joinRoom` hands each person everyone else on the invite,
-so a call with co-hosts is a small mesh (`shouldOffer` decides who dials). An
-admin who is *not* on the call can never enter: the page 404s and `joinRoom`
-answers `no-access`, whoever is asking. That is the safeguarding rule, and the
-privacy of the people on the call, and both are kept on purpose. Such an admin
-sees the call on `/admin/calls` in the read-only "booked by everyone else"
-list (every name, no Join, no Cancel).
+so a call with co-hosts is a small mesh (`shouldOffer` decides who dials).
+
+Nobody who is *not* on the call can enter: the page 404s and `joinRoom`
+answers `no-access`, whoever is asking, admins included. That is the
+safeguarding rule, and the privacy of the people on the call, and both are
+kept on purpose. What has changed is how people get *on* a call:
+
+- Anyone on the staff side can add more of the team after booking, right up
+  to and during the call (**Add people** on their calls list).
+- A holder of `calls.join_any` (admins, through `*`) can add *themselves* to
+  any call from the "Booked by everyone else" list on `/admin/calls`: **Join
+  call** once the room is open, **Add me** before that.
+
+Both are `addCallCohosts` (app/calls/actions.ts), so whoever is added is an
+ordinary co-host: named on every card and in the room, with the student told
+in-app who is now joining. There is no unseen way in. Without
+`calls.join_any`, that list stays read-only (every name, no Join, no Cancel).
+Someone added while the call is running reaches everyone's room through the
+heartbeat (see [Discovery](#discovery-and-how-it-heals-itself)).
+
+**Known limits.** Nobody can be taken off a call once they are on it; the only
+undo is cancelling the call, so both ways of adding say so before the click.
+Co-hosts, whenever they were added, hear about it in-app only, and so does the
+student about anyone added after booking. And a big call is a heavy one (see
+[Scale](#scale-and-its-honest-limit)).
 
 ## Who may be in the room, and when
 
@@ -386,6 +421,14 @@ host's upstream, not the code, is the limit, and the right fix is an SFU
 point `LIVE_PROVIDER` is the switch and `lib/live-signal.ts` is the seam.
 
 Viewers are unaffected by audience size: each receives exactly one stream.
+
+A 1:1 is the other shape: a **mesh**, where everyone sends to everyone, so
+*every* person's upstream grows with the call. Five people is four streams
+each (~2.4 Mbps up); ten is nine (~5.4 Mbps), more than a lot of home and
+school uplinks have to spare. `MAX_CALL_COHOSTS` (20 besides the host) is an
+abuse guard, not a size to aim for, and the picker says a handful works best.
+That matters more now that people can be added after booking: every admin who
+joins is another stream on the student's uplink.
 
 ---
 

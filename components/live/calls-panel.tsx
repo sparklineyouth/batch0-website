@@ -21,8 +21,8 @@ import { Plus } from "lucide-react";
  * One component rather than three near-copies: the three panels differ only
  * in their surrounding layout and in whose invites they list, both of which
  * are decided by the server page that renders this. Behaviour that must be
- * identical everywhere — what the form validates, what cancelling does — has
- * exactly one implementation.
+ * identical everywhere — what the form validates, what cancelling does, who
+ * can be added to a call already booked — has exactly one implementation.
  */
 export function CallsPanel({
   invites,
@@ -34,7 +34,11 @@ export function CallsPanel({
 }: {
   invites: CallInvite[];
   students: InviteeOption[];
-  /** Admins, mentors and investors who can be added as co-hosts (not the viewer). */
+  /**
+   * Admins, mentors and investors who can be added as co-hosts (not the
+   * viewer): on a new invite, and with Add people on any call listed here
+   * that can still happen. Each card leaves out whoever is already on it.
+   */
   staff?: InviteeOption[];
   /** The server's render time (ISO) — the clock the Upcoming/Past split starts on. */
   now: string;
@@ -104,6 +108,9 @@ export function CallsPanel({
         </Button>
       </div>
 
+      {/* Add people runs from the card itself (components/live/add-to-call.tsx),
+          with its own pending state and its error on that card: this panel's
+          one error line, below, could not say which call a refusal was for. */}
       <CallSections
         invites={invites}
         perspective="host"
@@ -112,6 +119,7 @@ export function CallsPanel({
         emptyMessage={emptyMessage}
         onCancel={cancel}
         pending={pending}
+        staff={staff}
       />
 
       {error && (

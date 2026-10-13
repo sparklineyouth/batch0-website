@@ -24,6 +24,11 @@ import {
   type StageMessage,
 } from "@/lib/live-signal";
 import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
+import {
+  mergeCallPeers,
+  normalizeStaffIds,
+  sameStaffList,
+} from "@/lib/call-roster";
 import type {
   JoinRefusal,
   JoinResult,
@@ -121,6 +126,32 @@ import type {
  * rather than as a camera-off tile, and (in a webinar) not re-dialled by the
  * heartbeat until they signal again. Nothing about a departure is ever
  * treated as a reason to reconnect automatically.
+ *
+ * ---------------------------------------------------------------------------
+ * A 1:1 that grows while it runs
+ * ---------------------------------------------------------------------------
+ *
+ * A call's join payload names everyone on the invite AT THE JOIN, and for a
+ * long time that was everyone the call would ever have. People can now be
+ * added to a call that is already running (addCallCohosts), and the mesh's
+ * one rule — the smaller id of each pair offers — then left the newcomer
+ * undialled by everyone in the room with a smaller id than theirs: those are
+ * exactly the people who had never heard of them.
+ *
+ * So a call's heartbeat answers with its roster as well as its status
+ * (PresenceResult.call), and every answer is folded in (`onRoster` below;
+ * the rules are mergeCallPeers in lib/call-roster.ts). Anyone new joins the
+ * held credentials' peers — so `knownPeer`, an incoming offer and the
+ * heartbeat's dial loop all know them exactly as they know someone named at
+ * join — and is dialled at once. `shouldOffer` still decides which side of
+ * each pair sends the offer, so glare stays impossible; the fold only makes
+ * sure both sides know the pair exists. A newcomer's arrival speeds it up for
+ * free: their `host-online` on the stage makes everyone re-announce, and the
+ * answer names them. The staff list the room elects its recorder from rides
+ * along as `callStaffIds`, and changes only when its membership does.
+ *
+ * Nothing about a webinar changes: its answers never carry a roster, and the
+ * fold is not even attempted for one.
  */
 
 /** A connection's state as the UI sees it — see PeerLinkState in lib/live-signal. */
@@ -218,6 +249,20 @@ export type LiveSession = {
   serverRole: SignalRole | null;
   /** Set once the server has ended this session. See CloseReason. */
   closed: { reason: CloseReason } | null;
+  /**
+   * A 1:1's staff side — the host, then co-hosts — as the server last read it
+   * on a heartbeat (PresenceResult.call). Null until this run's first answer,
+   * and always null in a webinar.
+   *
+   * The page renders the staff list once, and people can be added to a call
+   * while it runs, so the room reads this instead wherever it asks who is on
+   * the team — the recorder election, "the other side" for End call, End
+   * call's confirm, the count in its copy — and the rendered list only while
+   * this is null. A new array only when the membership changed
+   * (sameStaffList), so a heartbeat saying the same thing every twelve
+   * seconds re-renders nothing.
+   */
+  callStaffIds: string[] | null;
   /**
    * The join itself was refused or failed for a reason that is NOT terminal —
    * a transient error, or the window not open yet. The room offers Retry.
@@ -377,6 +422,7 @@ export function useLiveSession({
     moderationTopic: string | null;
   }>({ roomTopic: null, moderationTopic: null });
   const [serverRole, setServerRole] = useState<SignalRole | null>(null);
+  const [callStaffIds, setCallStaffIds] = useState<string[] | null>(null);
   const [closed, setClosed] = useState<{ reason: CloseReason } | null>(null);
   const [joinFailed, setJoinFailed] = useState<{ reason: JoinRefusal } | null>(
     null,
@@ -417,6 +463,13 @@ export function useLiveSession({
   const everLive = useRef(new Set<string>());
   /** Peers this run has had signalling from (RemotePeer.heard). */
   const heardFrom = useRef(new Set<string>());
+  /**
+   * The staff list last published as `callStaffIds`, which every heartbeat's
+   * is compared against. A ref beside the state because the comparison runs
+   * inside the run's closures, which would only ever see the state of the
+   * render that installed them.
+   */
+  const staffRef = useRef<string[] | null>(null);
   /**
    * Bumped whenever a run starts or is torn down. A negotiation that awaited
    * something (a channel subscribe, createOffer) compares it on the way back
@@ -1153,6 +1206,14 @@ export function useLiveSession({
     setClosed(null);
     setJoinFailed(null);
     setServerRole(null);
+    // Including a call's staff list, which is re-heard from this run's own
+    // first answer (the room uses the list it rendered with until then).
+    // Cleared only when there is something to clear, so a webinar's run
+    // starts exactly as it always did.
+    if (staffRef.current !== null) {
+      staffRef.current = null;
+      setCallStaffIds(null);
+    }
 
     /**
      * End this run: the one teardown, whoever calls it. Idempotent, because
@@ -1209,12 +1270,67 @@ export function useLiveSession({
       if (next.close && res) closeWith(res.status as CloseReason);
     };
 
+    /**
+     * Fold a 1:1's roster into this run — see "A 1:1 that grows while it
+     * runs" at the top of this file.
+     *
+     * Only while this run is still the live one. An answer that lands after a
+     * teardown — Leave, End, another answer that closed the session — or
+     * after a newer run replaced this one dials nobody: `cancelled` is this
+     * run's own, and teardown has already dropped the credentials. They are
+     * re-read here rather than taken from before the announce, because two
+     * announces can be in flight at once (the heartbeat and a stage-triggered
+     * re-check) and each must fold onto what the other added.
+     *
+     * Each new peer is dialled with the inbox the server derived for THEM.
+     * connectTo is idempotent per peer, so a newcomer who reached us first —
+     * one with a smaller id offers before our heartbeat has named them —
+     * keeps the connection their offer built.
+     */
+    const onRoster = (roster: NonNullable<PresenceResult["call"]>) => {
+      const held = credsRef.current;
+      if (cancelled || !held) return;
+      // Set in the same tick as the new tiles (connectTo publishes before
+      // its first await), so React draws them together. Ignored when unusable
+      // (normalizeStaffIds), and published only when the membership changed.
+      const staff = normalizeStaffIds(roster.staffIds);
+      if (staff && !sameStaffList(staffRef.current, staff)) {
+        staffRef.current = staff;
+        setCallStaffIds(staff);
+      }
+      const { peers, added } = mergeCallPeers(
+        held.peers,
+        roster.peers,
+        held.peerId,
+      );
+      if (added.length === 0) return;
+      // Replaced, not mutated: anything still holding the previous object
+      // holds a consistent one, and every reader of the peers — knownPeer,
+      // an incoming offer, the heartbeat's dial loop — reads credsRef.current.
+      credsRef.current = { ...held, peers };
+      for (const peer of added) void connectTo(peer);
+    };
+
     /** Announce and act on the answer. Never rejects. */
     const runAnnounce = async () => {
       const held = credsRef.current;
       if (cancelled || !held) return;
       const res = await announce(held.role).catch(() => null);
       onStatus(res);
+      // A call's answer carries its roster (a webinar's never does), and only
+      // on an 'ok'. The session may have been torn down while the announce
+      // was out; onRoster sees that through `cancelled`.
+      if (kind === "call" && res?.status === "ok" && res.call) {
+        try {
+          onRoster(res.call);
+        } catch {
+          // Pure folding over an answer it validates, so this should be
+          // unreachable. But this function never rejects, and the bootstrap
+          // awaits the first announce inside a catch that fails the JOIN: a
+          // roster that could not be folded must cost a newcomer's dial until
+          // the next heartbeat, never everyone's call.
+        }
+      }
     };
 
     /**
@@ -1419,7 +1535,8 @@ export function useLiveSession({
         // stalling the session forever with no retry installed.
         //
         // It is the retry path as well as the keepalive: every BROADCASTER the
-        // server told us about is re-attempted, and connectTo's wedged check
+        // server told us about — at the join, or for a 1:1 on any heartbeat
+        // since (onRoster) — is re-attempted, and connectTo's wedged check
         // makes that a no-op for healthy connections and a rebuild for stuck
         // ones. A 1:1 has no reconcile poll, so without this a single lost
         // offer would deadlock the call forever — and a 1:1 keeps dialling the
@@ -1496,6 +1613,9 @@ export function useLiveSession({
         await runAnnounce();
         if (cancelled) return;
 
+        // The join's peers. On a call, anyone that first answer named and the
+        // join did not — added in the moment between the two — has already
+        // been dialled by onRoster.
         for (const peer of creds.peers) void connectTo(peer);
         recomputeOverall();
         // After the loop, not before: connectTo publishes each peer
@@ -1567,6 +1687,7 @@ export function useLiveSession({
       roomTopic: topics.roomTopic,
       moderationTopic: topics.moderationTopic,
       serverRole,
+      callStaffIds,
       closed,
       joinFailed,
       recheck,
@@ -1580,6 +1701,7 @@ export function useLiveSession({
       refreshTracks,
       topics,
       serverRole,
+      callStaffIds,
       closed,
       joinFailed,
       recheck,

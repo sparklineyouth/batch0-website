@@ -5,10 +5,17 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { LiveDot } from "@/components/live/call-stage";
+import {
+  AddPeopleForm,
+  JoinCallConfirm,
+  addableStaff,
+} from "@/components/live/add-to-call";
+import type { InviteeOption } from "@/components/live/invite-form";
 import { joinNames, relativeTime, staffNames, type CallInvite } from "@/lib/live";
 import {
   callBadge,
   callPhase,
+  canAddCallCohosts,
   canCancelCall,
   splitCalls,
   type CallPhase,
@@ -19,6 +26,7 @@ import {
   CircleDot,
   Clock,
   User,
+  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -26,12 +34,17 @@ import {
  * Who is looking at a card, which decides the verbs.
  *
  *   host      on the staff side — sent the invite, or was added to it as a
- *             co-host (migration 0092). May cancel, and joins the call
+ *             co-host (migration 0092). May cancel, may add more of the team
+ *             while the call can still happen, and joins the call
  *   invitee   received it — may accept or decline, and joins the call
  *   observer  an admin reading the safeguarding list of everyone else's calls.
- *             Reads only: the live page 404s for anyone not on the call, so a
- *             Join button here was a door that did not open, and Cancel was a
- *             button wired to nothing.
+ *             Reads only, unless they hold calls.join_any, and then the one
+ *             verb is putting THEMSELVES on the call: Join call once the room
+ *             is open, Add me before that. The live page 404s anyone who is
+ *             not on the call, so a plain Join here used to be a door that did
+ *             not open. This one opens by adding you as a co-host, visibly:
+ *             the student is told, and everyone on the call sees you. Never
+ *             Cancel, which stays with the people on the call.
  */
 export type InvitePerspective = "host" | "invitee" | "observer";
 
@@ -99,6 +112,9 @@ export function InviteCard({
   onDecline,
   onCancel,
   pending = false,
+  staff,
+  viewerId,
+  canJoinAny = false,
 }: {
   invite: CallInvite;
   perspective: InvitePerspective;
@@ -114,17 +130,51 @@ export function InviteCard({
   onDecline?: (id: string) => void;
   onCancel?: (id: string) => void;
   pending?: boolean;
+  /**
+   * Host cards: the team, for Add people. The page has already left the
+   * viewer out; the card leaves out everyone else on this call (addableStaff).
+   * Omitted, the card offers no Add people.
+   */
+  staff?: InviteeOption[];
+  /** Observer cards: the viewer, whom Join call / Add me puts on the call. */
+  viewerId?: string;
+  /**
+   * Observer cards: the viewer holds calls.join_any. Without it an observer
+   * card stays exactly as read-only as it always was.
+   */
+  canJoinAny?: boolean;
 }) {
   // A card inside a list runs on the list's clock; only a card rendered on
   // its own ticks one of its own.
   const own = useOwnClock(nowProp === undefined);
   const now = nowProp !== undefined ? nowProp : own.now;
   const mounted = own.mounted;
+  // Add people, or an observer's Join call / Add me, is open below the card.
+  const [adding, setAdding] = useState(false);
 
   const phase: CallPhase | null = now ? callPhase(invite, now) : null;
   const live = phase === "live";
+  const roomOpen = phase === "joinable" || phase === "live";
   const participant = perspective !== "observer";
-  const joinable = participant && (phase === "joinable" || phase === "live");
+  const joinable = participant && roomOpen;
+  // Every participant's Join, and an observer's once they are on the call.
+  const roomHref = `/dashboard/calls/${invite.id}/live`;
+
+  // Putting more people on the call (components/live/add-to-call.tsx), only
+  // while it can still happen (canAddCallCohosts) and, like every verb here
+  // that depends on the time, never before there is a clock to say so. The
+  // staff side adds the team; an observer holding calls.join_any adds only
+  // themselves. The server decides both again; this decides what to offer.
+  const addable = !!now && canAddCallCohosts(invite, now);
+  const offer =
+    addable && perspective === "host" && staff ? addableStaff(invite, staff) : [];
+  const canAddPeople = offer.length > 0;
+  const canJoinCall =
+    addable && perspective === "observer" && canJoinAny && !!viewerId;
+  // `adding` only counts while its panel can show: a call whose time runs out
+  // with the panel open closes it, and gives the card its other verbs back.
+  const addingPeople = adding && canAddPeople;
+  const joiningCall = adding && canJoinCall;
   // The student meets the whole team, host first. The staff side meets the
   // student — and, when there are co-hosts, is shown the team too, because a
   // co-host reading their own list needs to see who sent it and who else is
@@ -250,7 +300,7 @@ export function InviteCard({
           )}
 
           {joinable && (
-            <ButtonLink size="sm" href={`/dashboard/calls/${invite.id}/live`}>
+            <ButtonLink size="sm" href={roomHref}>
               {live ? "Join now" : "Join"}
             </ButtonLink>
           )}
@@ -265,9 +315,36 @@ export function InviteCard({
             </Link>
           )}
 
+          {canAddPeople && !addingPeople && (
+            <Button size="sm" variant="ghost" onClick={() => setAdding(true)}>
+              <UserPlus className="h-4 w-4" />
+              Add people
+            </Button>
+          )}
+
+          {/* The observer's door: the same verb as the participants' Join
+              once the room is open, a quiet Add me before it. Either one
+              opens a confirm below rather than acting on the press. */}
+          {canJoinCall &&
+            !joiningCall &&
+            (roomOpen ? (
+              <Button size="sm" onClick={() => setAdding(true)}>
+                Join call
+              </Button>
+            ) : (
+              <Button size="sm" variant="ghost" onClick={() => setAdding(true)}>
+                <UserPlus className="h-4 w-4" />
+                Add me
+              </Button>
+            ))}
+
+          {/* Not while Add people is open: that form has its own Cancel, and
+              two Cancels on one card, one of which calls the call off on the
+              spot, is a trap. */}
           {perspective === "host" &&
             onCancel &&
             now &&
+            !addingPeople &&
             canCancelCall(invite, now) && (
               <Button
                 size="sm"
@@ -282,6 +359,26 @@ export function InviteCard({
             )}
         </div>
       </div>
+
+      {addingPeople && (
+        <AddPeopleForm
+          inviteId={invite.id}
+          studentName={invite.inviteeName}
+          offer={offer}
+          already={invite.cohosts.length}
+          onClose={() => setAdding(false)}
+        />
+      )}
+
+      {joiningCall && viewerId && (
+        <JoinCallConfirm
+          inviteId={invite.id}
+          viewerId={viewerId}
+          studentName={invite.inviteeName}
+          enterHref={roomOpen ? roomHref : null}
+          onClose={() => setAdding(false)}
+        />
+      )}
     </div>
   );
 }
@@ -332,6 +429,9 @@ export function InviteList({
   onDecline,
   onCancel,
   pending,
+  staff,
+  viewerId,
+  canJoinAny,
 }: {
   invites: CallInvite[];
   perspective: InvitePerspective;
@@ -343,6 +443,11 @@ export function InviteList({
   onDecline?: (id: string) => void;
   onCancel?: (id: string) => void;
   pending?: boolean;
+  /** Host lists: the team, for Add people. See InviteCard. */
+  staff?: InviteeOption[];
+  /** Observer lists: the viewer, and whether they hold calls.join_any. */
+  viewerId?: string;
+  canJoinAny?: boolean;
 }) {
   if (invites.length === 0) {
     if (!emptyMessage) return null;
@@ -365,6 +470,9 @@ export function InviteList({
           onDecline={onDecline}
           onCancel={onCancel}
           pending={pending}
+          staff={staff}
+          viewerId={viewerId}
+          canJoinAny={canJoinAny}
         />
       ))}
     </div>
@@ -416,6 +524,9 @@ export function CallSections({
   emptyMessage,
   onCancel,
   pending,
+  staff,
+  viewerId,
+  canJoinAny,
 }: {
   invites: CallInvite[];
   perspective: InvitePerspective;
@@ -425,6 +536,11 @@ export function CallSections({
   emptyMessage: string;
   onCancel?: (id: string) => void;
   pending?: boolean;
+  /** Host lists: the team, for Add people. See InviteCard. */
+  staff?: InviteeOption[];
+  /** Observer lists: the viewer, and whether they hold calls.join_any. */
+  viewerId?: string;
+  canJoinAny?: boolean;
 }) {
   const { now } = useNow(initialNow);
   const { upcoming, past } = splitCalls(invites, now ?? new Date(initialNow));
@@ -443,11 +559,16 @@ export function CallSections({
         }
         onCancel={onCancel}
         pending={pending}
+        staff={staff}
+        viewerId={viewerId}
+        canJoinAny={canJoinAny}
       />
       <PastCalls count={past.length} className="mt-8">
         {/* Cancel is wired here too, for the one past card that offers it:
             an invite that expired unanswered, which the host can withdraw
-            (canCancelCall decides; every other past card shows no button). */}
+            (canCancelCall decides; every other past card shows no button).
+            Adding people is not: no past phase is one canAddCallCohosts
+            allows, so a past card never offers it. */}
         <InviteList
           invites={past}
           perspective={perspective}
