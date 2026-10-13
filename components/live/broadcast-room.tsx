@@ -9,6 +9,8 @@ import { QAPanel } from "@/components/live/qa-panel";
 import { RoomPanel } from "@/components/live/room-panel";
 import { PremierePlayer } from "@/components/live/premiere-player";
 import { useLocalMedia } from "@/components/live/use-local-media";
+import { DeviceSettings } from "@/components/live/device-settings";
+import { applySpeaker, useSpeakerId } from "@/components/live/audio-output";
 import {
   useLiveSession,
   type CloseReason,
@@ -566,6 +568,8 @@ function BroadcastSession({
     autoStart: isHost && phase === "live" && !inPremiere && !endedAt,
   });
   const screen = useScreenShare();
+  // The microphone / camera / speaker pickers under the control bar.
+  const [devicesOpen, setDevicesOpen] = useState(false);
 
   // Honour the green room's toggles once, as soon as there is a stream to
   // apply them to. Joining with the camera off must not flash a face first.
@@ -1968,12 +1972,25 @@ function BroadcastSession({
         )}
       </div>
 
+      {devicesOpen && isHost && !inPremiere && media.status === "ready" && (
+        <DeviceSettings
+          media={media}
+          className="mx-auto mt-3 max-w-md rounded-xl border border-line bg-wash p-3"
+        />
+      )}
+
       <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
         <CallControls
           micOn={media.micOn}
           cameraOn={media.cameraOn}
           onToggleMic={media.toggleMic}
           onToggleCamera={media.toggleCamera}
+          onToggleDevices={
+            isHost && !inPremiere && media.status === "ready"
+              ? () => setDevicesOpen((open) => !open)
+              : undefined
+          }
+          devicesOpen={devicesOpen}
           onToggleScreen={isHost && !inPremiere ? screen.toggle : undefined}
           screenSharing={!!screen.stream}
           // Leave, for everyone. A host who may end ALSO gets End beside it —
@@ -2887,9 +2904,14 @@ function ReconnectingOverlay() {
   );
 }
 
-/** Remote audio, decoupled from whichever video tile is on screen. */
+/**
+ * Remote audio, decoupled from whichever video tile is on screen — and played
+ * through the speaker chosen in the device pickers (audio-output.ts), so a
+ * switch to headphones moves every voice in the room at once.
+ */
 function AudioSink({ stream }: { stream: MediaStream | null }) {
   const ref = useRef<HTMLAudioElement>(null);
+  const speakerId = useSpeakerId();
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -2898,6 +2920,10 @@ function AudioSink({ stream }: { stream: MediaStream | null }) {
     // do beyond not throwing. Joining is a click, so in practice it plays.
     if (stream) el.play?.().catch(() => {});
   }, [stream]);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) void applySpeaker(el, speakerId);
+  }, [speakerId]);
   return <audio ref={ref} autoPlay playsInline className="hidden" />;
 }
 

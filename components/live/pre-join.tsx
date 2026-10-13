@@ -5,6 +5,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { VideoTile } from "@/components/live/video-tile";
 import { CallControls, MicMeter } from "@/components/live/call-controls";
 import { useLocalMedia } from "@/components/live/use-local-media";
+import { DeviceSettings } from "@/components/live/device-settings";
 import type { LiveRole } from "@/lib/live";
 import { AlertTriangle, Radio, Loader2 } from "lucide-react";
 
@@ -126,6 +127,9 @@ export function PreJoin({
                   </span>
                 </div>
               )}
+              {/* Pick the right devices BEFORE joining — remembered, so the
+                  call opens on them. Also changeable in the call itself. */}
+              <DeviceSettings media={media} className="mt-4" />
             </>
           ) : (
             <div className="grid aspect-video place-items-center rounded-xl border border-line bg-wash">
