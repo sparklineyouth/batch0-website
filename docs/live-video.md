@@ -426,21 +426,52 @@ whoever sent the invite) plus up to 20 more staff (`MAX_CALL_COHOSTS`) as
 co-hosts — `call_invite_cohosts` (migration `0092_call_cohosts.sql`). The
 student side is always exactly one person.
 
-- **Adding people.** "Also joining (optional)" on the invite form, and on the
-  Confirm form in the call-request queue. `resolveCohosts` (lib/calls.ts)
-  checks every pick holds `calls.invite` — by the capability, as
-  `createInvite` checks the host, because a co-host's only way to the call is
-  their calls list and every calls list requires it — before anything is
+- **Adding people when booking.** "Also joining (optional)" on the invite
+  form, and on the Confirm form in the call-request queue. `resolveCohosts`
+  (lib/calls.ts) checks every pick holds `calls.invite` — by the capability,
+  as `createInvite` checks the host, because a co-host's only way to the call
+  is their calls list and every calls list requires it — before anything is
   written; the host and the student are dropped from the list, and a failed
   co-host write deletes the invite it belonged to. Both booking actions answer
   with an `ActionResult`, so these refusals reach the form as written in
   production. Co-hosts get an in-app notification linking to their own calls
   page; the student's email says who else is joining.
+- **Adding people after booking.** **Add people** on a card in the staff
+  side's own calls list, for as long as the call can still happen:
+  `canAddCallCohosts` (lib/call-lifecycle.ts) allows an invite still waiting
+  on its answer and an accepted call until its window closes, a live one
+  included, and never a call that is over, cancelled, declined or expired. It
+  opens the same `CohostPicker`, offering the team without anyone already on
+  the call (`addableStaff` in `components/live/add-to-call.tsx`), and calls
+  `addCallCohosts` (app/calls/actions.ts). Anyone on the staff side may add.
+  The action checks that again, along with the phase, the role rule
+  (`resolveCohosts`) and `MAX_CALL_COHOSTS` against the call's *total*
+  (`cohostsToAdd`). It skips anyone already on the call (the insert is
+  `on conflict do nothing`, so a double click, or two people adding the same
+  mentor, ends in one row and no error) and audits `call_invite.cohosts_added`.
+  The people added get the in-app notification, naming who added them when it
+  wasn't the host. The rest of the staff side is told who's joining, and so is
+  **the student**, in-app: they always know who will be in the room before
+  they find them there.
+- **Admins joining any call.** `calls.join_any` ("Join any 1:1 call") lets its
+  holder put *themselves* on any student's call, whoever booked it, from the
+  "Booked by everyone else" list on `/admin/calls`. **Join call** shows once
+  the room is open and adds you, then takes you straight into
+  `/dashboard/calls/<id>/live`. **Add me** shows before that, and the call
+  moves up into your own list. Each opens a short confirm saying what is
+  about to happen before anything is written. It's the same `addCallCohosts`,
+  so you join as an ordinary co-host: named on every card and in the room, the
+  student told, and the audit row marked `via: "calls.join_any"`. Admins hold
+  it through `*`; no migration grants it to any other role, and it sits
+  outside the admin area (`NON_ADMIN_PERMISSIONS`), so ticking it for a role
+  doesn't open `/admin` by itself. There is still no way into a call unseen.
+  The room 404s anyone who isn't on the call, admins included, and joining is
+  the only way on. Without `calls.join_any` the list stays read-only.
 - **What a co-host can do.** Everything the host can on that call: see it on
   their `/mentor|investor|admin/calls` list, join and broadcast, End call for
-  everyone, Cancel, download the `.ics`, and watch the recording. Every gate
-  asks `isOnCall` / `isStaffOnCall` (lib/live.ts) instead of "host or
-  invitee". An admin who is not on a call still cannot walk into it.
+  everyone, Cancel, add more people, download the `.ics`, and watch the
+  recording. Every gate asks `isOnCall` / `isStaffOnCall` (lib/live.ts)
+  instead of "host or invitee".
 - **Ending it.** End call appears once the *other side* has been in the room
   (`isCallCounterpart`): for staff that is the student, so a host and a
   co-host waiting for a late student cannot complete a call that never
@@ -448,7 +479,17 @@ student side is always exactly one person.
   is; a plain 1:1 keeps the one press.
 - **The room** is a small mesh: `joinRoom` hands each person everyone else on
   the invite as known peers, and `shouldOffer`'s id comparison decides who
-  dials whom.
+  dials whom. Someone added while the call is running is picked up within one
+  heartbeat (12 s), and usually at once, because their own `host-online` makes
+  everyone re-announce. A call's `announcePresence` answers with the roster as
+  well as the status (`PresenceResult.call`: everyone but the caller, built by
+  the same helper as the join's peers, and the staff side in `callStaffIds`
+  order). The engine dials anyone it hadn't heard of (`mergeCallPeers` in
+  lib/call-roster.ts), with `shouldOffer` still picking the side that offers,
+  so glare stays impossible. The room reads the staff side from the same
+  answer (`callStaffIds` on the session, falling back to the list the page
+  rendered), so a newcomer counts in the recorder election, as the student's
+  counterpart for End call, and in End call's confirm.
 - **RLS.** Co-hosts can read and update their `call_invites` rows; the join
   table is readable by admins and anyone on the call, and has no write
   policies (service-role server actions write it). Both policies go through
@@ -458,7 +499,21 @@ student side is always exactly one person.
   kind of user.
 - **Before 0092 is applied** every read falls back to the pre-co-host query
   (no co-hosts), so existing calls keep working, and an invite that names
-  co-hosts is refused with a sentence before anything is written.
+  co-hosts is refused with a sentence before anything is written. So are Add
+  people and an admin's Join call, with a sentence of their own: a call keeps
+  the people it was booked with until 0092 is in.
+- **Known limits.**
+  - **No removal.** Nobody can be taken off a call once they're on it: not by
+    the host, not by an admin, not by themselves. Cancelling the call is the
+    only undo, which is why both ways of adding say so before the click.
+  - **Co-hosts hear in-app only.** The one email is the student's, sent when
+    the call is booked. People added later, and the student's notice of who
+    is now joining, are in-app notifications only.
+  - **The limit counts the whole staff side.** `MAX_CALL_COHOSTS` (20) more
+    besides the host, however many batches they were added in. It's an abuse
+    guard, not a size to aim for: everyone's video goes to everyone, so each
+    person's upstream grows with every face (see "Scale" in
+    docs/batch0-live.md).
 
 #### Students asking the team for a 1:1
 
@@ -534,7 +589,12 @@ co-hosts the room runs the webinar election over the staff side only
 (`electCallRecorder` in lib/webinars.ts: the lowest user id among the staff
 present), so a call whose inviter never shows is still recorded by the
 co-host who did, and the recording moves when the one ahead in line arrives
-or leaves. Past the first three seconds after a join
+or leaves. The staff side it elects from is the server's latest (the
+heartbeat's `call.staffIds`; the page's list until the first answer), so a
+co-host added mid-call is in line from their first heartbeat. It can make
+other people staff, never this browser: the student's laptop records nothing,
+whatever an answer says (`selfIsCallStaff` in lib/call-roster.ts). Past the
+first three seconds after a join
 (`CALL_RECORDER_LISTEN_MS`), settling counts only staff this session has heard
 from (`RemotePeer.heard`): everyone on the invite is dialled, so an absent
 co-host's link sits at "connecting" too, and must not hold the recording. Two staff whose

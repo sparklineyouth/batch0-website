@@ -190,6 +190,19 @@ export type CallCohost = { id: string; name: string; role: string };
 
 export type CallInvite = {
   id: string;
+  /**
+   * The host's and the student's profile ids. Every invite lib/calls.ts reads
+   * carries both (toInvite); optional only so hand-built invites (the dev
+   * preview, tests) need not invent them.
+   *
+   * For the "Add people" picker on a call that already exists: it must leave
+   * out everyone on the call, and a co-host's id was always on the card while
+   * the host and the student were only names. The server drops all three
+   * anyway (normalizeCohostIds), but a picker offering the host to their own
+   * call is a button that silently does nothing.
+   */
+  hostId?: string;
+  inviteeId?: string;
   hostName: string;
   hostRole: string;
   inviteeName: string;

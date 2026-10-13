@@ -78,6 +78,7 @@ export const PERMISSION_KEYS = [
   "investor.panel",
   "student.dashboard",
   "calls.invite",
+  "calls.join_any",
 ] as const;
 
 export type Permission = (typeof PERMISSION_KEYS)[number];
@@ -397,6 +398,18 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           "Propose a private video call to any student, who can accept or decline. Held by mentors and investors.",
         sensitive: true,
       },
+      {
+        // The safeguarding counterpart to calls.invite: not "book your own
+        // calls" but "step into anyone's". Granted by no migration; admins
+        // hold it through the wildcard. Where it is used is the list of
+        // everyone's calls at /admin/calls (and addCallCohosts, which that
+        // list calls), so the description says what else it needs to work.
+        key: "calls.join_any",
+        label: "Join any 1:1 call",
+        description:
+          "Add yourself to any student's 1:1, whoever booked it, from the list of everyone's calls at /admin/calls, and bring others from the team in. You're shown to everyone on the call, the student included. Needs Invite students to 1:1 calls too, and doesn't open the admin area on its own.",
+        sensitive: true,
+      },
     ],
   },
 ];
@@ -442,6 +455,15 @@ const NON_ADMIN_PERMISSIONS = new Set<string>([
   // leaving it out would have handed both roles the entire admin panel as a
   // side effect of letting them book a call.
   "calls.invite",
+  // MUST stay here too, and for more than the panel. Admin-area access is not
+  // just a sidebar: canAccessAdmin is what makes /mentor/students program-wide
+  // instead of cohort-scoped, and what turns /dashboard into a staff preview.
+  // Ticking "Join any 1:1 call" for the mentor role must not also hand every
+  // mentor every student's check-ins and files. Its one surface, the list of
+  // everyone's calls at /admin/calls, is reached the way it always was —
+  // calls.invite plus a role that already opens the admin area — which is
+  // what the checkbox's description tells whoever grants it.
+  "calls.join_any",
 ]);
 
 /** Every permission that implies "this person belongs in /admin". */

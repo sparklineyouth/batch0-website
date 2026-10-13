@@ -32,6 +32,7 @@ import {
 } from "@/lib/live";
 import type { LivePeer } from "@/lib/live-rooms";
 import type { SignalRole } from "@/lib/live-signal";
+import { selfIsCallStaff } from "@/lib/call-roster";
 import {
   CALL_RECORDER_LISTEN_MS,
   electCallRecorder,
@@ -235,6 +236,13 @@ export type CallRoom = {
    * and so the only browsers that may record. Exactly one of them does at a
    * time, elected from those present (electCallRecorder): two recorders would
    * put the call on tape twice, and the student's laptop never does the work.
+   *
+   * As the PAGE rendered it. People can be added to a call while it runs, so
+   * once the session's first heartbeat answers, the room reads the server's
+   * list instead (`session.callStaffIds` — see `staffIds` in
+   * BroadcastSession); this one is the green room's, and the fallback until
+   * then. It still has a say in which side THIS person is on
+   * (selfIsCallStaff), which nothing changes mid-call.
    */
   recorderIds: string[];
   /** Names for the recording's tiles, and for the copy around the room. */
@@ -259,6 +267,13 @@ export type CallRoom = {
 
 /** How often a call room asks whether someone else ended it. */
 const CALL_STATUS_POLL_MS = 15_000;
+
+/**
+ * A webinar's "call staff": nobody. One shared array rather than a fresh `[]`
+ * per render, so nothing memoised on the staff list re-runs for a room that
+ * is not a call.
+ */
+const NO_STAFF: readonly string[] = [];
 
 type RoomProps = {
   kind: "event" | "call";
@@ -686,9 +701,29 @@ function BroadcastSession({
   // wake it then. Only future deadlines are scheduled: a peer already past
   // its grace has been counted out, and needs no further tick.
   const [graceClock, setGraceClock] = useState(0);
+  // The call's staff side as the server last read it. The page rendered
+  // `call.recorderIds` once; people can be added to a call while it runs
+  // (addCallCohosts), and every heartbeat answers with the list as it stands
+  // (session.callStaffIds — a new array only when its membership changes, so
+  // the memos below re-run on a real change and not every twelve seconds).
+  // Until the first answer, the rendered list. Everything here that asks
+  // "who is on the team" reads this one — the election, "the other side" for
+  // End call, End call's confirm and the copy that counts the people on the
+  // call — so a co-host added mid-call counts in all of them at once, and in
+  // the same render as their tile.
+  const staffIds = call ? (session.callStaffIds ?? call.recorderIds) : NO_STAFF;
   // A call's staff run the same election (electCallRecorder), so they need
-  // the same wake-up; the student never records and never needs it.
-  const isCallStaff = !!call && call.recorderIds.includes(call.selfUserId);
+  // the same wake-up; the student never records and never needs it. Asked
+  // of the rendered list as well as the live one (selfIsCallStaff): a
+  // heartbeat can add OTHER people to the team, but it can never make the
+  // student's laptop a recorder.
+  const isCallStaff =
+    !!call &&
+    selfIsCallStaff({
+      selfId: call.selfUserId,
+      rendered: call.recorderIds,
+      live: session.callStaffIds,
+    });
   const electing = (!!webinar && isHost) || isCallStaff;
   useEffect(() => {
     if (!electing) return;
@@ -786,11 +821,20 @@ function BroadcastSession({
   // segments while the other is still registering its own, so the call is
   // kept once. Only the overlap of a handover — a few seconds — can land
   // twice.
+  //
+  // Over `staffIds`, the server's list, so someone added while the call is
+  // running is in the line too. Added and not here yet, they change nothing
+  // (their link sits at "connecting", which counts only while settling — and
+  // this browser's settling ended long ago). Once their link is live and
+  // their id ranks ahead, this browser stands down exactly as it would for a
+  // co-host who was on the invite from the start: the gate closes, which is
+  // the flush, and their browser — which elected itself the moment it joined
+  // — carries on. The student is never in this list, and never runs it.
   const callRecorderId = useMemo(() => {
     if (!call || !isCallStaff || !session.joined) return null;
     return electCallRecorder({
       selfId: call.selfUserId,
-      recorderIds: call.recorderIds,
+      recorderIds: staffIds,
       peers: session.remotes,
       settling,
       listening,
@@ -799,7 +843,16 @@ function BroadcastSession({
     // `graceClock` is read by nothing here; it is what re-runs this when a
     // dropped co-host's grace runs out.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [call, isCallStaff, session.joined, session.remotes, settling, listening, graceClock]);
+  }, [
+    call,
+    isCallStaff,
+    staffIds,
+    session.joined,
+    session.remotes,
+    settling,
+    listening,
+    graceClock,
+  ]);
   const recordCall = !!call && callRecorderId === call.selfUserId;
   // Whether this browser has carried the call's recording at any point in
   // this session — the only one that may tell its person the recording is
@@ -1189,12 +1242,15 @@ function BroadcastSession({
   // conversation has still had it, and must still be able to end it. The
   // latch is held by BroadcastRoom, above the remount, so a Rejoin or a Retry
   // — each a fresh session — keeps it too.
+  //
+  // Who is staff comes from the live list (`staffIds`), so for the student a
+  // co-host added mid-call is the other side like anyone else on the team.
   const peerLive =
     !!call &&
     session.remotes.some(
       (p) =>
         p.state === "live" &&
-        isCallCounterpart(call.recorderIds, call.selfUserId, p.peerId),
+        isCallCounterpart(staffIds, call.selfUserId, p.peerId),
     );
   useEffect(() => {
     if (peerLive) onPeerSeen();
@@ -1594,7 +1650,15 @@ function BroadcastSession({
           otherName: call?.otherName ?? null,
           isWebinar: !!(webinar || qa),
         })}
-        notice={call ? <CallRecordingNotice call={call} /> : undefined}
+        notice={
+          call ? (
+            <CallRecordingNotice
+              call={call}
+              staffIds={staffIds}
+              onStaff={isCallStaff}
+            />
+          ) : undefined
+        }
         role={role}
         selfLabel={isCall ? null : "host"}
         onJoin={onJoin}
@@ -1761,7 +1825,7 @@ function BroadcastSession({
 
       {call && (
         <p className="mb-3 text-xs text-ink-faint">
-          This call is recorded. {whoCanWatch(call)}
+          This call is recorded. {whoCanWatch(call, staffIds)}
         </p>
       )}
 
@@ -1949,8 +2013,10 @@ function BroadcastSession({
             ending come to nearly the same thing. A call with co-hosts is a
             group, where one of the team dropping off is ordinary and the
             others carry on — so there it is the webinar's two-step "End for
-            everyone", which a mis-aimed click cannot fire. */}
-        {call && peerSeen && callStarted && call.recorderIds.length <= 1 && (
+            everyone", which a mis-aimed click cannot fire. Counted on the
+            live list, so a 1:1 that someone joins mid-call becomes a group
+            here too, the moment the server says so. */}
+        {call && peerSeen && callStarted && staffIds.length <= 1 && (
           <Button
             variant="danger"
             onClick={() => void finishCall("mine")}
@@ -1959,7 +2025,7 @@ function BroadcastSession({
             {ending ? "Ending…" : "End call"}
           </Button>
         )}
-        {call && peerSeen && callStarted && call.recorderIds.length > 1 && (
+        {call && peerSeen && callStarted && staffIds.length > 1 && (
           <ArmButton
             label="End for everyone"
             confirmLabel="Confirm end"
@@ -2521,10 +2587,14 @@ function ViewerEnded({
  * Who can watch a call back, in words. Named for a plain 1:1 ("Only you, Ana
  * and batch0 admins"); for a call with co-hosts a list of names would run
  * into the "and" it is followed by, so it says who they are instead.
+ *
+ * `staffIds` is the room's live staff list, not the rendered one: once
+ * someone joins a plain 1:1 mid-call, "Only you, Ana and batch0 admins" is no
+ * longer true, and `otherName` (rendered with the page) does not name them.
  */
-function whoCanWatch(call: CallRoom): string {
+function whoCanWatch(call: CallRoom, staffIds: readonly string[]): string {
   // The staff side plus the one student.
-  const people = call.recorderIds.length + 1;
+  const people = staffIds.length + 1;
   return people <= 2
     ? `Only you, ${call.otherName} and batch0 admins can watch it back.`
     : "Only the people on this call and batch0 admins can watch it back.";
@@ -2537,19 +2607,32 @@ function whoCanWatch(call: CallRoom): string {
  * a notice that appears once they are already on camera is a notice after the
  * fact. It says who can watch the recording, because "recorded" with no
  * audience named reads as "recorded for anyone".
+ *
+ * Shown before there is a session, so `staffIds` is in practice the list the
+ * page just rendered, and `onStaff` its answer for the reader; both are the
+ * room's own, so the green room and the room never read the team two ways.
  */
-function CallRecordingNotice({ call }: { call: CallRoom }) {
+function CallRecordingNotice({
+  call,
+  staffIds,
+  onStaff,
+}: {
+  call: CallRoom;
+  staffIds: readonly string[];
+  /** The reader is on the team's side (the room's `isCallStaff`). */
+  onStaff: boolean;
+}) {
   return (
     <div className="mt-4 flex gap-2.5 rounded-xl border border-red-500/30 bg-red-500/5 p-3">
       <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
       <div className="text-xs">
         <p className="font-medium text-ink">This call is recorded</p>
         <p className="mt-1 text-ink-soft">
-          {!call.recorderIds.includes(call.selfUserId)
-            ? `The whole call is recorded, ${call.recorderIds.length > 1 ? "everyone on it" : "both sides"}. ${whoCanWatch(call)}`
-            : call.recorderIds.length > 1
-              ? `Recording runs from the team's side, from whichever of you is in the room, and saves as it goes. ${whoCanWatch(call)}`
-              : `Recording starts when you join and saves as you go. ${whoCanWatch(call)}`}
+          {!onStaff
+            ? `The whole call is recorded, ${staffIds.length > 1 ? "everyone on it" : "both sides"}. ${whoCanWatch(call, staffIds)}`
+            : staffIds.length > 1
+              ? `Recording runs from the team's side, from whichever of you is in the room, and saves as it goes. ${whoCanWatch(call, staffIds)}`
+              : `Recording starts when you join and saves as you go. ${whoCanWatch(call, staffIds)}`}
         </p>
       </div>
     </div>

@@ -26,7 +26,9 @@ import type { SignalRole } from "@/lib/live-signal";
  *
  * `listPeers` is wired but inert for calls: the server returns an empty list
  * for `kind: "call"` because everyone on it is already known from the invite
- * row, so there is nothing to reconcile against.
+ * row, so there is nothing to reconcile against. That includes anyone added
+ * after this page rendered: `announce` answers a call with its roster on
+ * every heartbeat (PresenceResult.call), and the session dials them from it.
  */
 export function BuiltinCallRoom({
   inviteId,
@@ -47,7 +49,9 @@ export function BuiltinCallRoom({
   selfUserId: string;
   /**
    * The call's staff side (host first, then co-hosts) — the browsers that may
-   * record. The room elects one of those present; see CallRoom.
+   * record. The room elects one of those present; see CallRoom. As of this
+   * render: from its first heartbeat the room follows the server's list, so
+   * someone added while the call runs is in the election too.
    */
   recorderIds: string[];
   selfName: string;

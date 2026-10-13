@@ -1,7 +1,7 @@
 "use server";
 import { requireActor } from "@/lib/server-guards";
 import { createClient } from "@/lib/supabase/server";
-import { type RoomStatus } from "@/lib/live";
+import { callStaffIds, type RoomStatus } from "@/lib/live";
 import { isHostedOnBatch0, type AudienceMode } from "@/lib/webinars";
 import {
   inboxTopic,
@@ -53,6 +53,10 @@ import {
  *           reviewing the safeguarding list can read that a call happened
  *           without being able to walk into it. Everyone on it broadcasts,
  *           because a 1:1 has no audience to hide; the staff side records.
+ *           People can be added to a call while it runs (addCallCohosts), so
+ *           a call's heartbeat answers with the roster as well as the status
+ *           (PresenceResult.call) — the same people, built by the same
+ *           helper, that joinRoom hands out.
  *
  * The role returned here is derived, never accepted. Nothing a client sends
  * influences whether it gets a broadcaster's credentials.
@@ -121,6 +125,33 @@ export type JoinResult =
 export type PresenceResult = {
   /** See RoomStatus in lib/live.ts; act on it with nextStatusAction. */
   status: RoomStatus;
+  /**
+   * A 1:1's roster as of this heartbeat. Present only for a call, and only
+   * when `status` is 'ok' — never for a webinar, whose heartbeat answer is
+   * exactly what it always was.
+   *
+   * It exists because a call's roster is no longer fixed at join. Someone
+   * added while the call is running is known to nobody already in it: in the
+   * mesh only the smaller id of each pair dials, so everyone in the room with
+   * a smaller id than the newcomer's — who should be offering to them — has
+   * never heard of them, and the newcomer waits on a "waiting for…" tile for
+   * people who are sitting right there. And each staff browser elects the
+   * recorder from the staff list its page rendered, which does not have them
+   * on it. The engine folds this in on every answer (mergeCallPeers in
+   * lib/call-roster.ts): new people are dialled at once, and the room elects
+   * from `staffIds` from then on.
+   *
+   * Nothing here is new to the person receiving it: it is the join payload's
+   * peer list again, behind the same gate, and only to someone who is on the
+   * call. Costs no query — resolveRoom has already read the invite and its
+   * co-hosts to answer the status.
+   */
+  call?: {
+    /** Everyone on the call but the caller, exactly as joinRoom's known peers. */
+    peers: LivePeer[];
+    /** The staff side — the host, then co-hosts (callStaffIds in lib/live.ts). */
+    staffIds: string[];
+  };
 };
 
 /**
@@ -248,6 +279,31 @@ async function displayName(userId: string): Promise<string> {
 }
 
 /**
+ * Everyone on a 1:1 but the caller, as peers the engine can dial: the
+ * student and the whole staff side, every one a broadcaster, each with THEIR
+ * inbox topic — derived from the room and their id under a secret only the
+ * server holds (inboxKeyFor in lib/live-rooms.ts), so no browser can work it
+ * out for itself; it has to be told.
+ *
+ * One helper for both of the places a browser learns who is on its call:
+ * joinRoom's known peers, and every heartbeat's roster (PresenceResult.call).
+ * Two copies of this map could drift, and an inbox derived from the wrong
+ * string is a topic nobody listens on — which presents as an offer that never
+ * lands and a "waiting for…" tile that never clears, with nothing in any log.
+ *
+ * Not exported: this is a "use server" file, and an export would be a
+ * callable action.
+ */
+function callPeers(roomId: string, call: CallAccess): LivePeer[] {
+  return call.others.map((p) => ({
+    peerId: p.id,
+    name: p.name,
+    role: "host" as const,
+    inbox: inboxTopic(roomId, inboxKeyFor(roomId, p.id)),
+  }));
+}
+
+/**
  * Join a room: authorize, then mint this participant's channel keys.
  *
  * Refuses with a reason (see JoinRefusal) rather than a bare null, so the
@@ -273,7 +329,9 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
   //                the page. With co-hosts (migration 0092) that is a small
   //                mesh: every one of them is a broadcaster, and the engine's
   //                shouldOffer compares ids so exactly one side of each pair
-  //                dials, with no glare to resolve.
+  //                dials, with no glare to resolve. Anyone added after this
+  //                join reaches the engine on a heartbeat instead (see
+  //                PresenceResult.call), built by the same callPeers.
   let knownPeers: LivePeer[] = [];
   if (room.event && room.role === "host") {
     knownPeers = (
@@ -285,12 +343,7 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
       )
     ).filter((p) => p.peerId !== actor.userId);
   } else if (room.call) {
-    knownPeers = room.call.others.map((p) => ({
-      peerId: p.id,
-      name: p.name,
-      role: "host" as const,
-      inbox: inboxTopic(room.roomId, inboxKeyFor(room.roomId, p.id)),
-    }));
+    knownPeers = callPeers(room.roomId, room.call);
   }
 
   const name = await displayName(actor.userId);
@@ -332,7 +385,9 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
  * Re-gated in full every time — a heartbeat is not a lighter-weight call just
  * because it repeats. When the answer is anything but 'ok' nothing is
  * announced and no attendance is touched: an ended webinar stops accruing
- * minutes for tabs left open on it.
+ * minutes for tabs left open on it. And nothing is disclosed: a 1:1's roster
+ * rides only on an 'ok', so it reaches exactly the people the join gate would
+ * let in right now.
  *
  * `joinedAs` is the role the caller's credentials were minted with. A host
  * whose grant was removed mid-session (a speaker row deleted) gets 'revoked'
@@ -353,9 +408,22 @@ export async function announcePresence(
     return { status: "revoked" };
   }
 
-  // A 1:1 has no lobby and no attendance record: everyone on it already knows
-  // everyone else from the invite row, so there is nobody to announce to. The
-  // status is the whole answer.
+  // A 1:1 has no lobby and no attendance record: everyone on it knew everyone
+  // else from the invite row when they joined, so there is nobody to announce
+  // to. The answer is the status — and, because people can be added to a call
+  // while it runs, the roster as it stands now: everyone on the call but the
+  // caller (the join's own known peers, from the row resolveRoom just read)
+  // and its staff side. The engine dials anyone it has not heard of and
+  // elects the recorder from the list. See PresenceResult.call.
+  if (room.call) {
+    return {
+      status: "ok",
+      call: {
+        peers: callPeers(room.roomId, room.call),
+        staffIds: callStaffIds(room.call),
+      },
+    };
+  }
   if (!room.event) return { status: "ok" };
 
   const name = await displayName(actor.userId);

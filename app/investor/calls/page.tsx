@@ -18,7 +18,9 @@ export default async function InvestorCallsPage() {
     listInvitableStudents(),
     listInvitableStaff(),
   ]);
-  // Everyone on the team but the viewer, who is already the host.
+  // Everyone on the team but the viewer, who hosts whatever they book here and
+  // is already on every call listed. Each card's Add people leaves out the
+  // rest of that call's people itself.
   const staff = allStaff.filter((s) => s.id !== viewer.profile.id);
   // One clock for the render: the Upcoming/Past split, the recording lookup
   // and the cards' first paint all agree on what "now" is.

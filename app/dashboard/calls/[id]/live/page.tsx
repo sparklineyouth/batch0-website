@@ -112,6 +112,12 @@ export default async function CallLivePage(
   // compare-and-set race between two people clicking Join at once, and the
   // dead-room recovery below all exist only because Daily needed a
   // provider-side room. None of it has an equivalent here.
+  //
+  // What this render knows is the call as it stands NOW. Someone added while
+  // it runs (addCallCohosts) reaches the people already in the room through
+  // the heartbeat, which answers a call with its roster (announcePresence),
+  // and the room elects its recorder from the server's staff list from then
+  // on — `recorderIds` here is only where it starts.
   if (env.liveProvider === "builtin") {
     const everyone = [
       { id: invite.inviteeId, name: invite.inviteeName },

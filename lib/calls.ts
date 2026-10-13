@@ -166,6 +166,8 @@ function toInvite(row: any): CallInvite {
   const invitee = one<any>(row.invitee);
   return {
     id: row.id,
+    hostId: row.host_id,
+    inviteeId: row.invitee_id,
     hostName: host?.full_name || "A member of the team",
     hostRole: host?.role || "mentor",
     inviteeName: invitee?.full_name || "Student",
@@ -365,11 +367,28 @@ export async function listInvitableStaff(): Promise<InviteeOption[]> {
 // ---------------------------------------------------------------------------
 //
 // Shared by createInvite (app/calls/actions.ts) and scheduleInterviewRequest
-// (app/calls/interview-actions.ts). Here rather than in either action file for
-// the reason refundScholarshipCreditFor below gives: a helper exported from a
-// "use server" file becomes a server action anyone can call with any ids.
+// (app/calls/interview-actions.ts), which put people on a call as it is
+// booked, and addCallCohosts (app/calls/actions.ts), which adds them to one
+// that already exists. Here rather than in any action file for the reason
+// refundScholarshipCreditFor below gives: a helper exported from a "use
+// server" file becomes a server action anyone can call with any ids.
 
 export type ResolvedCohost = { id: string; name: string; role: string };
+
+/**
+ * Which kind of write a co-host list is for. Only what a database without
+ * 0092 is TOLD differs: an invite being booked can go ahead without the extra
+ * people, while adding people to a call that already exists cannot go ahead
+ * at all — and "send the invite without them" would be advice about an
+ * invite that was sent long ago.
+ */
+export type CohostWrite = "booking" | "existing";
+
+function cohostSchemaMissingMessage(write: CohostWrite): string {
+  return write === "booking"
+    ? "Adding people from the team needs a database update (migration 0092) that hasn't been applied yet. Send the invite without them for now."
+    : "Adding people to a call that's already booked needs a database update (migration 0092) that hasn't been applied yet. Until it is, a call has only the people it was booked with.";
+}
 
 /**
  * Check a host's co-host picks BEFORE the invite is written, and return them.
@@ -384,11 +403,16 @@ export type ResolvedCohost = { id: string; name: string; role: string };
  * not after the student has been emailed about a call that is missing half
  * its people. Asking for none never touches the table, so plain invites keep
  * working on that database.
+ *
+ * addCallCohosts passes "existing" as `write`, and only the people new to
+ * the call (cohostsToAdd, which has already held them to the cap on the
+ * call's total), so the same role rule covers everyone added later.
  */
 export async function resolveCohosts(
   admin: ReturnType<typeof createAdminClient>,
   requested: readonly unknown[] | null | undefined,
   parties: { hostId: string; inviteeId: string },
+  write: CohostWrite = "booking",
 ): Promise<ResolvedCohost[]> {
   const ids = normalizeCohostIds(requested, parties);
   if (ids.length === 0) return [];
@@ -404,9 +428,7 @@ export async function resolveCohosts(
     .limit(1);
   if (probe.error) {
     if (isCohostSchemaMissing(probe.error)) {
-      throw new Error(
-        "Adding people from the team needs a database update (migration 0092) that hasn't been applied yet. Send the invite without them for now.",
-      );
+      throw new Error(cohostSchemaMissingMessage(write));
     }
     throw new Error(probe.error.message);
   }
@@ -446,12 +468,58 @@ export async function attachCohosts(
     .insert(cohosts.map((c) => ({ invite_id: inviteId, profile_id: c.id })));
   if (error) {
     if (isCohostSchemaMissing(error)) {
+      throw new Error(cohostSchemaMissingMessage("booking"));
+    }
+    throw new Error(error.message);
+  }
+}
+
+/**
+ * Put resolved co-hosts on a call that ALREADY exists (addCallCohosts), and
+ * return the ones this request actually added.
+ *
+ * `on conflict do nothing` rather than attachCohosts' plain insert, because
+ * here the call already exists and anyone on it may be adding people too: two
+ * people adding the same mentor at once, or one double-click, must converge
+ * on the one row the primary key allows instead of failing whoever came
+ * second. The rows that come back are
+ * exactly the ones THIS statement inserted — a row that already existed is
+ * skipped, not returned — so the request that lost such a race neither
+ * notifies nor audits an add that someone else already made.
+ *
+ * Nothing to undo on failure: unlike a booking, the call was complete before
+ * this ran, and a failed statement adds nobody.
+ */
+export async function addCohostRows(
+  admin: ReturnType<typeof createAdminClient>,
+  inviteId: string,
+  cohosts: readonly ResolvedCohost[],
+): Promise<ResolvedCohost[]> {
+  if (cohosts.length === 0) return [];
+  const { data, error } = await admin
+    .from("call_invite_cohosts")
+    .upsert(
+      cohosts.map((c) => ({ invite_id: inviteId, profile_id: c.id })),
+      { onConflict: "invite_id,profile_id", ignoreDuplicates: true },
+    )
+    .select("profile_id");
+  if (error) {
+    if (isCohostSchemaMissing(error)) {
+      throw new Error(cohostSchemaMissingMessage("existing"));
+    }
+    // A foreign key: the call was deleted, or someone picked was, between
+    // the checks and this write.
+    if (error.code === "23503") {
       throw new Error(
-        "Adding people from the team needs a database update (migration 0092) that hasn't been applied yet. Send the invite without them for now.",
+        "That call, or someone you picked, no longer exists. Refresh the page and try again.",
       );
     }
     throw new Error(error.message);
   }
+  const inserted = new Set(
+    ((data ?? []) as any[]).map((r) => r.profile_id as string),
+  );
+  return cohosts.filter((c) => inserted.has(c.id));
 }
 
 /**
@@ -475,19 +543,33 @@ export async function staffCallsHref(role: string | null | undefined): Promise<s
  * Tell co-hosts they are on a call. In-app only: the invite email is written
  * to the student, and the call is on each co-host's own calls page from now
  * on. Best-effort, like every notification in the calls actions.
+ *
+ * `addedByName` is for people added to a call that already exists
+ * (addCallCohosts) by someone other than its host — another co-host, or an
+ * admin stepping in — so the bell names both: who added you, and whose call
+ * it is ("Ana added you to Ben's 1:1 with Sam"). Omitted, the host did it,
+ * which is always the case for people put on a call as it is booked.
  */
 export async function notifyCohostsAdded(
   cohosts: readonly ResolvedCohost[],
-  call: { hostName: string; studentName: string; topic: string | null },
+  call: {
+    hostName: string;
+    studentName: string;
+    topic: string | null;
+    addedByName?: string | null;
+  },
 ): Promise<void> {
   if (cohosts.length === 0) return;
+  const title = call.addedByName
+    ? `${call.addedByName} added you to ${call.hostName}'s 1:1 with ${call.studentName}`
+    : `${call.hostName} added you to a 1:1 with ${call.studentName}`;
   try {
     const links = await Promise.all(cohosts.map((c) => staffCallsHref(c.role)));
     await notifyMany(
       cohosts.map((c, i) => ({
         userId: c.id,
         type: "call_invited",
-        title: `${call.hostName} added you to a 1:1 with ${call.studentName}`,
+        title,
         body: call.topic || null,
         link: links[i],
       })),

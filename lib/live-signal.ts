@@ -398,6 +398,11 @@ export function slotIsActive({
  * without anyone clicking anything. Short enough that a stumble is over
  * before a student would think to refresh; long enough that twelve viewers
  * cost about one server action per second between them.
+ *
+ * In a 1:1 it is also the slowest a room learns that someone was added to
+ * the call while it runs: the answer carries the roster (PresenceResult.call
+ * in app/live/actions.ts). Usually it is much faster than that — the
+ * newcomer's own `host-online` on arrival makes everyone re-announce at once.
  */
 export const HEARTBEAT_MS = 12_000;
 
