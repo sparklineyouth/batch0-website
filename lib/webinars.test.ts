@@ -28,7 +28,6 @@ import {
   recordingRival,
   recordingSegmentStart,
   webinarSegmentName,
-  AUDIENCE_MODES,
   RECORDER_LEASE_MS,
   RECORDING_RUN_GAP,
   RECORDER_RECONNECT_GRACE_MS,
@@ -64,7 +63,12 @@ test("only moderated and open let the audience see itself", () => {
 test("no mode outside the declared list grants audience visibility", () => {
   // Exhaustive over the union, so adding a fourth mode without deciding what
   // it discloses fails here rather than in a room.
-  const visible = AUDIENCE_MODES.filter(audienceCanSeeEachOther);
+  // Record<AudienceMode, …> makes the typecheck fail on a mode missing here.
+  const every = { private: true, moderated: true, open: true } satisfies Record<
+    AudienceMode,
+    true
+  >;
+  const visible = (Object.keys(every) as AudienceMode[]).filter(audienceCanSeeEachOther);
   assert.deepEqual(
     visible,
     ["moderated", "open"],

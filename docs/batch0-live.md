@@ -308,9 +308,10 @@ student about anyone added after booking. And a big call is a heavy one (see
 
 A host in the room from start − 60 min on is the start: joining or
 heartbeating stamps `live_started_at` if it is unset (`shouldStampLiveStart`;
-never for a premiere), which lets the audience in and makes End for everyone
-available (`mayEndWebinar`: from the start or a go-live, staff always, a guest
-speaker only with no staff host present). Earlier than that a host is
+legacy premiere rows too, since they run as hosted rooms), which lets the
+audience in and makes End for everyone available (`mayEndWebinar`: from the
+start or a go-live, staff always, a guest speaker only with no staff host
+present). Earlier than that a host is
 rehearsing: nothing is stamped, students stay out, End is not offered (Leave
 is the way out), and a host still in the room when the hour opens goes live
 on their next heartbeat. Lists follow the room (`eventLiveStatus` reads

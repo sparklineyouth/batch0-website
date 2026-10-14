@@ -52,12 +52,6 @@
  */
 export type AudienceMode = "private" | "moderated" | "open";
 
-export const AUDIENCE_MODES: readonly AudienceMode[] = [
-  "private",
-  "moderated",
-  "open",
-] as const;
-
 /** What a new event starts with: chat on. */
 export const DEFAULT_AUDIENCE_MODE: AudienceMode = "open";
 

@@ -19,17 +19,13 @@ export type LiveRole = "host" | "viewer";
  *
  *   external  A pasted link to someone else's Zoom. The original behaviour.
  *   hosted    A batch0 Live room — a real camera, in real time.
- *   premiere  A recording played on the schedule, handing over to a genuinely
- *             live Q&A at the end (migration 0084). Everything around the video
- *             — chat, questions, polls, attendance — is live throughout, which
- *             is what a premiere is FOR: it is a talk that has been rehearsed
- *             instead of improvised, not an audience that has been faked.
+ *   premiere  Retired (it was a recording handing over to a live Q&A,
+ *             migration 0084). Existing rows run as ordinary hosted rooms, and
+ *             the admin form no longer offers it.
  *
- * `hosted` and `premiere` are both rooms batch0 owns, and almost every caller
- * that used to ask `=== "hosted"` means "is this ours". Use isHostedOnBatch0()
- * from lib/webinars.ts for that question — a bare `=== "hosted"` left over from
- * when there were two modes is a place a premiere silently behaves like an
- * external link.
+ * `hosted` and `premiere` are both rooms batch0 owns. Use isHostedOnBatch0()
+ * from lib/webinars.ts for "is this ours" — a bare `=== "hosted"` is a place a
+ * legacy premiere row silently behaves like an external link.
  */
 export type LiveMode = "external" | "hosted" | "premiere";
 
@@ -459,26 +455,24 @@ export function webinarHasBegun(
  *
  * Only inside the go-live window — from start − GO_LIVE_OPENS_MINUTES_BEFORE
  * to the hard stop — and only once: never over an existing stamp, never after
- * End, never for a premiere (whose stamp is the hand-over to the live Q&A,
- * pressed on purpose). A host who opened the room earlier is rehearsing, and
- * their first heartbeat inside the window is the start.
+ * End. A host who opened the room earlier is rehearsing, and their first
+ * heartbeat inside the window is the start. A legacy premiere row is no
+ * exception: premiere is retired and those rows run as hosted rooms.
  */
 export function shouldStampLiveStart({
   startsAt,
   endsAt,
   liveStartedAt,
   liveEndedAt,
-  liveMode,
   now = new Date(),
 }: {
   startsAt: string | Date;
   endsAt: string | Date | null | undefined;
   liveStartedAt: string | Date | null | undefined;
   liveEndedAt: string | Date | null | undefined;
-  liveMode: string;
   now?: Date;
 }): boolean {
-  if (liveStartedAt || liveEndedAt || liveMode === "premiere") return false;
+  if (liveStartedAt || liveEndedAt) return false;
   const w = roomWindow(startsAt, endsAt);
   const t = now.getTime();
   return t >= w.goLiveOpensAt && t <= w.hardCloseAt;

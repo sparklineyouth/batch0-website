@@ -350,8 +350,8 @@ export function withinHardClose(
  *     (shouldStampLiveStart: from start − 60 min) — a host in the room then IS
  *     the start, which lets the audience in early and makes End available.
  *     Earlier than that a host is rehearsing: nothing is stamped, and their
- *     first heartbeat inside the window stamps it. Never for a premiere, whose
- *     stamp hands the recording over to the live Q&A. Never after End.
+ *     first heartbeat inside the window stamps it. Never after End. A legacy
+ *     premiere row is stamped like any hosted room (premiere is retired).
  *   - the primary seat is claimed when nobody holds it or its holder is no
  *     longer present (shouldClaimPrimary). Presence here ignores `left_at` and
  *     reads only the heartbeat, so a primary who reloads keeps the seat
@@ -375,7 +375,6 @@ export async function claimStage(access: EventAccess): Promise<void> {
       endsAt: ev.endsAt,
       liveStartedAt: ev.liveStartedAt,
       liveEndedAt: ev.liveEndedAt,
-      liveMode: ev.liveMode,
     })
   ) {
     const now = new Date().toISOString();

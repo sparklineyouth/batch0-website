@@ -361,7 +361,6 @@ function stamp(
   opts: {
     liveStartedAt?: string | null;
     liveEndedAt?: string | null;
-    liveMode?: string;
   } = {},
 ): boolean {
   return shouldStampLiveStart({
@@ -369,7 +368,6 @@ function stamp(
     endsAt: END,
     liveStartedAt: opts.liveStartedAt ?? null,
     liveEndedAt: opts.liveEndedAt ?? null,
-    liveMode: opts.liveMode ?? "hosted",
     now: at(minutes),
   });
 }
@@ -384,10 +382,9 @@ test("a host in the room goes live only inside the go-live window", () => {
   assert.equal(stamp(241), false, "past the hard close");
 });
 
-test("going live stamps once: not over a stamp, not after End, never a premiere", () => {
+test("going live stamps once: not over a stamp, not after End", () => {
   assert.equal(stamp(-20, { liveStartedAt: at(-30).toISOString() }), false);
   assert.equal(stamp(30, { liveEndedAt: at(20).toISOString() }), false);
-  assert.equal(stamp(-20, { liveMode: "premiere" }), false);
 });
 
 test("a rehearsal neither lets viewers in nor offers End; the go-live window does", () => {

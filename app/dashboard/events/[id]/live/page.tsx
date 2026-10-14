@@ -95,9 +95,8 @@ export default async function EventLivePage(
   // An external event has no room to join; send them to the list, which shows
   // the Zoom link.
   //
-  // Both modes batch0 hosts pass here. A premiere is a room too — the
-  // recording plays in it and the live Q&A happens in it — so the older
-  // `!== "hosted"` test would have made every premiere unjoinable.
+  // Both modes batch0 hosts pass here: a legacy premiere row runs as an
+  // ordinary hosted room (premiere is retired).
   //
   // Note what is NOT required here any more: a `daily_room_name`. The
   // built-in provider has no provider-side room to create — the event id is

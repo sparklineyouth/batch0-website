@@ -492,10 +492,9 @@ function BroadcastSession({
         // that is working.
       }
     };
-    // Throttled: `stage-change` arrives on a channel any participant can
-    // publish on, and each one used to cost every client a server action.
-    // With a trailing call, so a real hint landing just after a forged one is
-    // still acted on within the throttle rather than at the next poll.
+    // Throttled, with a trailing call: several triggers (the start, Leave, a
+    // finished recording) can land together, and each one costs a server
+    // action.
     let lastPoll = 0;
     let trailing: ReturnType<typeof setTimeout> | null = null;
     pollNow.current = () => {

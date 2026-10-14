@@ -291,7 +291,7 @@ export type LiveSession = {
   /**
    * Ask the server for this room's status now (throttled). What the room
    * calls when it hears, from somewhere other than the stage, that the room
-   * may have changed — the panel's `stage-change` bump, for one.
+   * may have changed.
    */
   recheck: () => void;
   /**
