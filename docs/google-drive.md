@@ -26,8 +26,12 @@ Google links; batch0 stores ids, never files.
 The team's own Demo Day tab keeps deck/video previews behind a Preview toggle
 so the form stays short.
 
-Embeds only render what the viewer's Google account can open. Folders and
-files should be shared as "Anyone with the link" (the panel says so).
+Embeds only render what the viewer's Google account can open, and only where
+the browser lets Google's sign-in work inside a frame (Safari, Firefox and
+private windows block it by default). Share the folder with people's Google
+accounts, not "Anyone with the link": it holds students' working files. When
+the embed is blank, "Open in Drive" and each pin's "Open" still work, and the
+panel says so.
 
 ## How it works
 
@@ -52,7 +56,10 @@ files should be shared as "Anyone with the link" (the panel says so).
 ## Older uploads
 
 `student_files`, `team_drive_files` and the `student-files` / `team-drive`
-buckets are frozen by 0094 (no API writes; reads kept). The Drive tab shows an
+buckets are frozen by 0094: no inserts, updates or storage writes through the
+API, reads kept. An owner can still delete their own `student_files` row (it
+drops the entry from "Older uploads"; the stored file stays). `file_feedback`
+is unused, but its staff write policy was left in place. The Drive tab shows an
 "Older uploads" list only when a student or their team still has rows, with
 pitch decks/videos uploaded before links. Downloads go through
 `/dashboard/team/older-uploads/[source]/[id]`, which checks ownership or
@@ -81,4 +88,7 @@ everything else works.
 
 Optional Google Picker (`drive.file` scope) behind
 `NEXT_PUBLIC_GOOGLE_CLIENT_ID` + `NEXT_PUBLIC_GOOGLE_API_KEY`, writing the same
-rows. Not built: pasting a link needs no Google credentials.
+rows. With the viewer's own Google sign-in it could also list a privately
+shared folder through the Drive API instead of the embed, so the folder view
+would work in browsers that block the embed's sign-in. Not built: pasting a
+link needs no Google credentials.

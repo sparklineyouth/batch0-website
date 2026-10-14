@@ -37,7 +37,7 @@ The list below is the original audit's batch, kept as history.
 
 1. `0012_hardening.sql` — adds `notifications.dedupe_key` + partial unique index, splits Stripe webhook dedupe into claim/complete.
 2. `0013_drop_school_features.sql` — drops `assignments`, `assignment_submissions`, `quizzes`, `quiz_questions`, `quiz_attempts` and the `submissions` storage bucket (batch0 is an accelerator, not a school).
-3. `0014_file_feedback.sql` — adds `file_feedback` so mentors can leave threaded feedback on student or team file uploads. (Retired with in-app files by `0094_google_drive.sql`; the table is kept, read-only.)
+3. `0014_file_feedback.sql` — adds `file_feedback` so mentors can leave threaded feedback on student or team file uploads. (Retired with in-app files by `0094_google_drive.sql`; the table is kept and nothing in the app uses it. Its staff write policy was left in place.)
 4. `0015_ai_usage.sql` — adds `ai_usage` rollup table + `ai_messages` token columns + `ai_conversations.team_id` for per-team AI scoping.
 5. `0030_drop_mfa.sql` — drops `mfa_verifications` and its policies. Two-factor auth has been removed from the product.
 
@@ -276,8 +276,11 @@ Cut for focus: weekly check-ins (now assignments), in-app files and the team
 drive (now Google Drive links), discussions, DMs and the chat dock, the team
 thread, announcement reactions, lesson comments, office hours (now 1:1 calls),
 Pulse, at-risk and cohort health, email metrics, the pricing calculator, mentor
-matching, AI usage and the premiere webinar mode. Tables stay; client writes to
-the retired ones are closed by 0097 and 0099.
+matching, AI usage and the premiere webinar mode. Tables stay, and the app no
+longer writes to them. 0093, 0094, 0097 and 0099 drop the client write
+policies on most of them; three are left: staff write on `file_feedback`, an
+owner's delete on their own `student_files` row, and the self policy on
+`event_rsvps`.
 
 Added: the assignment tracker, team Google Drive links, a built-in room for
 webinars and 1:1 calls (screen share as the main stage, slide presenter, A/V
