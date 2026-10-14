@@ -60,9 +60,14 @@ export default async function AdminEventsPage(props: {
   // Legacy premiere rows run as hosted rooms.
   const hostedRow = (e: any) => e.live_mode === "hosted" || e.live_mode === "premiere";
 
-  // Who is on air in rooms that could be running: "Join" vs "Start".
+  // Who is on air in rooms that could be running (started, or starting
+  // within a day, and not over): "Join" vs "Start".
+  const soon = now.getTime() + 24 * 60 * 60_000;
   const candidates = rowsRaw.filter(
-    (e) => hostedRow(e) && adminGroup(timing(e), now, true) === "live",
+    (e) =>
+      hostedRow(e) &&
+      new Date(e.starts_at).getTime() <= soon &&
+      adminGroup(timing(e), now, true) === "live",
   );
   const presence = new Map<string, string[]>();
   await Promise.all(

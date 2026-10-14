@@ -80,16 +80,11 @@ export default async function StudentEventsPage() {
       nowDate,
     ),
   }));
-  const liveNow = withStatus.filter((x) => x.s === "live").map((x) => x.e);
-  const stillUpcoming = withStatus
-    .filter((x) => x.s === "upcoming" || x.s === "open")
-    .map((x) => x.e);
+  const liveNow = withStatus.filter((x) => x.s === "live");
+  const stillUpcoming = withStatus.filter((x) => x.s === "upcoming" || x.s === "open");
   const endedPast = [
-    ...withStatus
-      .filter((x) => x.s === "ended" || x.s === "past")
-      .map((x) => x.e)
-      .reverse(),
-    ...(older ?? []),
+    ...withStatus.filter((x) => x.s === "ended" || x.s === "past").reverse(),
+    ...(older ?? []).map((e: any) => ({ e, s: "past" as const })),
   ];
 
   return (
@@ -105,8 +100,8 @@ export default async function StudentEventsPage() {
             Live now
           </h2>
           <div className="space-y-3">
-            {liveNow.map((e: any) => (
-              <EventCard key={e.id} event={toLiveEvent(e)} upcoming={false} />
+            {liveNow.map(({ e, s }) => (
+              <EventCard key={e.id} event={toLiveEvent(e)} upcoming={false} initialStatus={s} />
             ))}
           </div>
         </section>
@@ -122,8 +117,8 @@ export default async function StudentEventsPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {stillUpcoming.map((e: any) => (
-              <EventCard key={e.id} event={toLiveEvent(e)} upcoming />
+            {stillUpcoming.map(({ e, s }) => (
+              <EventCard key={e.id} event={toLiveEvent(e)} upcoming initialStatus={s} />
             ))}
           </div>
         )}
@@ -135,8 +130,8 @@ export default async function StudentEventsPage() {
             Past
           </h2>
           <div className="space-y-3">
-            {endedPast.map((e: any) => (
-              <EventCard key={e.id} event={toLiveEvent(e)} upcoming={false} />
+            {endedPast.map(({ e, s }) => (
+              <EventCard key={e.id} event={toLiveEvent(e)} upcoming={false} initialStatus={s} />
             ))}
           </div>
         </section>

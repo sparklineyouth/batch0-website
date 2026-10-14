@@ -88,8 +88,7 @@ export function EventsAdmin({
           event={editing === "new" ? null : editing}
           cohorts={cohorts}
           defaultCohortId={defaultCohortId}
-          onClose={closeEditor}
-          onSaved={() => {
+          onDone={() => {
             closeEditor();
             router.refresh();
           }}
@@ -112,7 +111,7 @@ export function EventsAdmin({
     <div>
       <div className="flex flex-wrap gap-2">
         <StartNowButton cohorts={cohorts} defaultCohortId={defaultCohortId} />
-        <Button variant="secondary" onClick={() => setEditing("new")} disabled={!mounted}>
+        <Button variant="secondary" onClick={() => setEditing("new")}>
           <Plus className="h-4 w-4" /> New event
         </Button>
       </div>

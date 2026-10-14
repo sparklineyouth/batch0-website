@@ -18,9 +18,12 @@ import { CalendarDays, MapPin, Video, ExternalLink } from "lucide-react";
 export function EventCard({
   event,
   upcoming,
+  initialStatus,
 }: {
   event: LiveEvent & { liveStartedAt?: string | null };
   upcoming: boolean;
+  /** The server's answer, shown until the browser's clock takes over. */
+  initialStatus?: ReturnType<typeof studentEventStatus>;
 }) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
@@ -43,7 +46,7 @@ export function EventCard({
           },
           now,
         )
-      : null;
+      : (initialStatus ?? null);
   const hosted = isHostedOnBatch0(event.liveMode);
   const joinable = status === "open" || status === "live";
   const live = status === "live";

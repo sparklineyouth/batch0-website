@@ -55,14 +55,13 @@ export function EventForm({
   event,
   cohorts,
   defaultCohortId,
-  onClose,
-  onSaved,
+  onDone,
 }: {
   event: AdminEventRow | null;
   cohorts: CohortOption[];
   defaultCohortId: string | null;
-  onClose: () => void;
-  onSaved: () => void;
+  /** Saved, or cancelled — the list refreshes either way. */
+  onDone: () => void;
 }) {
   const isNew = !event;
   // Set once the event exists (an edit, or a new event after its first save
@@ -214,7 +213,7 @@ export function EventForm({
 
   function cancel() {
     if (stagedDeck) dropStagedDeck();
-    onClose();
+    onDone();
   }
 
   async function submit(e: React.FormEvent) {
@@ -290,7 +289,7 @@ export function EventForm({
         setWarning(problem);
         return;
       }
-      onSaved();
+      onDone();
     } catch (err) {
       setFormError(getActionError(err));
     } finally {
