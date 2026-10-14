@@ -22,6 +22,7 @@ import {
   toLocalInput,
   validateEventFields,
   whoFromRow,
+  cohortWho,
   whoValue,
 } from "./event-form.ts";
 import { roomAccess, roomIsOpen, shouldStampLiveStart } from "./live.ts";
@@ -114,6 +115,13 @@ test("parseWho / whoValue round-trip and reject junk", () => {
   assert.equal(parseWho("cohort:not-a-uuid"), null);
   assert.equal(parseWho("enrolled"), null);
   assert.equal(parseWho(undefined), null);
+});
+
+test("a cohort option's value is what the server action parses", () => {
+  // The forms build their cohort options with cohortWho; saveEvent and
+  // startWebinarNow read them back with parseWho.
+  assert.deepEqual(parseWho(cohortWho(COHORT)), { kind: "cohort", cohortId: COHORT });
+  assert.equal(cohortWho(COHORT), whoValue({ kind: "cohort", cohortId: COHORT }));
 });
 
 test("enrolled always carries a cohort", () => {

@@ -938,7 +938,10 @@ function RoomSession({
   const chatOn = panelInitial ? audienceCanSeeEachOther(panelInitial.audienceMode) : false;
   const tabs = useMemo(() => panelTabs(panelRole, chatOn), [panelRole, chatOn]);
   const eventId = webinar?.eventId ?? null;
-  const { roomTopic, moderationTopic, joined, audienceCount } = session;
+  const { roomTopic, moderationTopic, joined } = session;
+  // How many are watching is roster information: hosts only, never a viewer
+  // (the session already counts only for a broadcaster; this is the rule).
+  const audienceCount = canSeeRoster(role) ? session.audienceCount : null;
   const hasEnded = !!endedAt;
   const panel = useMemo<RoomPanelSlot | null>(
     () =>
@@ -1021,7 +1024,7 @@ function RoomSession({
       remotes={session.remotes}
       connection={connection}
       room={{ ...room, canEnd }}
-      audienceCount={canSeeRoster(role) ? audienceCount : null}
+      audienceCount={audienceCount}
       recording={recording}
       canRecord={canRecord}
       hosting={hosting}

@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: October 11, 2026
+        Last updated: October 14, 2026
       </p>
 
       <p>
@@ -45,7 +45,24 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Program usage:</strong> lesson progress, assignment submissions,
-          team threads, comments, and links to your team's Google Drive files.
+          links to your team's Google Drive files, and what you post in a
+          webinar's chat or Q&amp;A.
+        </li>
+        <li>
+          <strong>Retired features:</strong> we still hold what was posted or
+          uploaded in parts of batch0 we have since retired: the team thread,
+          lesson comments, discussions, direct messages, weekly check-ins,
+          office hours bookings and their recap notes, and files uploaded to
+          batch0 before files moved to Google Drive.
+        </li>
+        <li>
+          <strong>Call and webinar recordings:</strong> 1:1 calls and webinars
+          may be recorded, as video and audio of what is on screen and what is
+          said. The room shows when it is recording. A call&rsquo;s recording
+          can be watched by the people on that call and by batch0
+          administrators. A webinar&rsquo;s recording can be watched by the
+          staff who run events and, after the webinar, by the people it was
+          open to.
         </li>
         <li>
           <strong>Support requests:</strong> the messages and files you send
@@ -205,7 +222,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-10-11",
+          dateModified: "2026-10-14",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />

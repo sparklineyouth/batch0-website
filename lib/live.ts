@@ -45,8 +45,10 @@ export type CallInviteStatus =
  *
  * Hosts yes, viewers never. This is a product requirement, not a layout
  * preference: a student watching a webinar must not be able to tell whether
- * they are one of three people or one of thirty. The server enforces the same
- * rule at the source — a viewer is never sent the roster (lib/live-rooms.ts).
+ * they are one of three people or one of thirty. The room's "N watching"
+ * headcount asks this (components/live/room/controller.tsx); the server
+ * enforces the same rule at the source — a viewer is never sent the roster
+ * (lib/live-rooms.ts).
  */
 export function canSeeRoster(role: LiveRole): boolean {
   return role === "host";
@@ -183,47 +185,7 @@ export const JOIN_CLOSES_MINUTES_AFTER = 30;
 /** Assumed length of an event with no explicit end time. */
 export const DEFAULT_EVENT_MINUTES = 60;
 
-export type JoinState =
-  /** Too early — show a countdown, not a button. */
-  | "early"
-  /** Open, but not started yet. */
-  | "open"
-  /** Scheduled time has passed and it's still within the window. */
-  | "live"
-  /** Window has closed. */
-  | "ended";
-
 const MINUTE = 60_000;
-
-/**
- * Whether a session can be joined right now, and why not when it can't.
- *
- * The `now` parameter is injectable rather than read from the clock so this
- * stays a pure function — the tests pin it, and a server render can pass the
- * request time so every card on a page agrees with itself.
- *
- * This is the audience's window, and what the cards draw. The server's gate is
- * `roomAccess` below, which applies this same window to viewers and a wider
- * one to hosts. Doing it in both places is not duplication: this one decides
- * what the UI shows, that one decides what is actually allowed, and a token
- * minted for an event three weeks out is a live door standing open in the
- * meantime.
- */
-export function joinState(
-  startsAt: string | Date,
-  endsAt: string | Date | null,
-  now: Date = new Date(),
-): JoinState {
-  const start = new Date(startsAt).getTime();
-  const end = endsAt
-    ? new Date(endsAt).getTime()
-    : start + DEFAULT_EVENT_MINUTES * MINUTE;
-  const t = now.getTime();
-
-  if (t < start - JOIN_OPENS_MINUTES_BEFORE * MINUTE) return "early";
-  if (t > end + JOIN_CLOSES_MINUTES_AFTER * MINUTE) return "ended";
-  return t < start ? "open" : "live";
-}
 
 /** End time for an invite, derived from its duration. */
 export function inviteEndsAt(
@@ -337,9 +299,9 @@ export function staffNames(
 // Room access — who may be in a room right now, by role
 // ---------------------------------------------------------------------------
 //
-// `joinState` above is the AUDIENCE's window and what cards draw. `roomAccess`
-// (webinars) and `callRoomAccess` (1:1s) are the per-role answers every server
-// gate shares, so the page and the actions cannot disagree about who is in.
+// `roomAccess` (webinars) and `callRoomAccess` (1:1s) are the per-role answers
+// every server gate shares, so the page and the actions cannot disagree about
+// who is in. `eventLiveStatus` is what lists draw, from the same window.
 
 /**
  * The hard stop for any room, measured from the scheduled end. Past it the
@@ -401,8 +363,7 @@ export type RoomStatus =
 
 /**
  * The instants that bound one room, in epoch milliseconds. `ends_at` is
- * nullable and defaults to DEFAULT_EVENT_MINUTES past the start, the same rule
- * `joinState` applies.
+ * nullable and defaults to DEFAULT_EVENT_MINUTES past the start.
  */
 export function roomWindow(
   startsAt: string | Date,

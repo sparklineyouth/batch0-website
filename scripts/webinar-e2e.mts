@@ -214,11 +214,12 @@ async function sessionCookies(
 /**
  * A webinar that is live right now.
  *
- * Starts five minutes ago and runs an hour, so it sits squarely inside
- * joinState()'s window rather than on either boundary — a test that has to be
- * run before the top of the hour is a test nobody runs. It must have STARTED,
- * too: End for everyone, which the run walks below, does not exist before a
- * webinar's start (webinarHasBegun in lib/live.ts). `visibility: public` so
+ * Starts five minutes ago and runs an hour, so it sits squarely inside the
+ * audience's window (roomAccess in lib/live.ts) rather than on either
+ * boundary — a test that has to be run before the top of the hour is a test
+ * nobody runs. It must have STARTED, too: End for everyone, which the run
+ * walks below, does not exist before a webinar's start (webinarHasBegun in
+ * lib/live.ts). `visibility: public` so
  * the viewer needs no enrolment, which keeps this about the video path.
  */
 async function createLiveWebinar(): Promise<string> {

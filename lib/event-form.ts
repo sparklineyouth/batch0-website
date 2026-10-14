@@ -163,8 +163,14 @@ export function parseWho(value: string | null | undefined): Who | null {
   return null;
 }
 
+/** Who → the select's value; parseWho reads it back. */
 export function whoValue(who: Who): string {
   return who.kind === "cohort" ? `cohort:${who.cohortId}` : who.kind;
+}
+
+/** A cohort's option value in the Who select. */
+export function cohortWho(cohortId: string): string {
+  return whoValue({ kind: "cohort", cohortId });
 }
 
 /** A saved row → the select's value. A legacy cohort-less "enrolled" row
@@ -176,7 +182,7 @@ export function whoFromRow(
   if (row.visibility === "public") return "public";
   if (row.visibility === "staff") return "staff";
   const id = row.cohort_id ?? fallbackCohortId;
-  return id ? `cohort:${id}` : "public";
+  return id ? cohortWho(id) : "public";
 }
 
 /**

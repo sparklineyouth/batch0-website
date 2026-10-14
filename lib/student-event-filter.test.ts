@@ -1,17 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  STUDENT_EVENT_VISIBILITIES,
-  studentEventsOrFilter,
-} from "./student-event-filter.ts";
+import { studentEventsOrFilter } from "./student-event-filter.ts";
 
 const A = "6350c6ac-70f0-4f53-93d5-c99e397185a9";
 const B = "0f8e2c41-1b7a-4c35-9d2e-7a1f3b9c5d10";
 
 test("staff-only events are never student-visible", () => {
-  assert.deepEqual([...STUDENT_EVENT_VISIBILITIES], ["public", "enrolled"]);
-  assert.ok(!(STUDENT_EVENT_VISIBILITIES as readonly string[]).includes("staff"));
   for (const f of [studentEventsOrFilter([]), studentEventsOrFilter([A, B])]) {
+    // Every visibility clause the filter has is public or enrolled: never
+    // staff (rehearsals), and no operator but eq.
+    const clauses = [...f.matchAll(/visibility\.[^,)]*/g)].map((m) => m[0]);
+    assert.ok(clauses.length > 0);
+    for (const c of clauses) {
+      assert.ok(c === "visibility.eq.public" || c === "visibility.eq.enrolled", c);
+    }
     assert.ok(!f.includes("staff"));
     assert.ok(!f.includes("cohort_id.is.null"));
   }

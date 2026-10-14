@@ -10,8 +10,6 @@
  * Import-free so `node --test` runs it directly.
  */
 
-export const STUDENT_EVENT_VISIBILITIES = ["public", "enrolled"] as const;
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type CohortIds = readonly (string | null | undefined)[];

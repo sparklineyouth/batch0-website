@@ -155,7 +155,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: "cohorts.manage",
         label: "Manage cohorts",
         description:
-          "Create and edit cohorts, deadlines, landing pages, and certificates.",
+          "Create and edit cohorts, deadlines and landing pages.",
       },
       {
         key: "challenges.manage",

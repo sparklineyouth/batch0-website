@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   canSeeRoster,
-  joinState,
   inviteEndsAt,
   normalizeQuestion,
   MAX_QUESTION_LENGTH,
@@ -72,66 +71,6 @@ test("no role other than host is granted roster visibility", () => {
     granted,
     ["host"],
     "a new LiveRole must default to hidden — add it to this test deliberately",
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Join window
-// ---------------------------------------------------------------------------
-//
-// The server applies this same rule before minting a room token, so an
-// off-by-one here is a door left open, not a cosmetic glitch.
-
-test("too early to join", () => {
-  assert.equal(
-    joinState(START, END, at(-JOIN_OPENS_MINUTES_BEFORE - 1)),
-    "early",
-  );
-});
-
-test("the early window opens exactly on the boundary", () => {
-  assert.equal(joinState(START, END, at(-JOIN_OPENS_MINUTES_BEFORE)), "open");
-});
-
-test("open before the start, live after it", () => {
-  assert.equal(joinState(START, END, at(-1)), "open");
-  assert.equal(joinState(START, END, at(0)), "live");
-  assert.equal(joinState(START, END, at(30)), "live");
-});
-
-test("stays live through the grace window after the end", () => {
-  assert.equal(joinState(START, END, at(60)), "live");
-  assert.equal(joinState(START, END, at(60 + JOIN_CLOSES_MINUTES_AFTER)), "live");
-});
-
-test("closes once the grace window passes", () => {
-  assert.equal(
-    joinState(START, END, at(60 + JOIN_CLOSES_MINUTES_AFTER + 1)),
-    "ended",
-  );
-});
-
-test("an event with no end time is assumed to run the default length", () => {
-  // Still open at the assumed end plus grace…
-  assert.equal(
-    joinState(START, null, at(DEFAULT_EVENT_MINUTES + JOIN_CLOSES_MINUTES_AFTER)),
-    "live",
-  );
-  // …and closed one minute later.
-  assert.equal(
-    joinState(
-      START,
-      null,
-      at(DEFAULT_EVENT_MINUTES + JOIN_CLOSES_MINUTES_AFTER + 1),
-    ),
-    "ended",
-  );
-});
-
-test("joinState accepts ISO strings as well as Dates", () => {
-  assert.equal(
-    joinState(START.toISOString(), END.toISOString(), at(10)),
-    "live",
   );
 });
 
@@ -316,6 +255,8 @@ test("the window constants and instants", () => {
   assert.equal(w.viewerOpensAt, at(-15).getTime());
   assert.equal(w.viewerClosesAt, at(90).getTime());
   assert.equal(w.hardCloseAt, at(240).getTime());
+  // Rows carry ISO strings; the instants are the same.
+  assert.deepEqual(roomWindow(START.toISOString(), END.toISOString()), w);
 });
 
 test("a webinar has begun at its start, or earlier once a host went live", () => {
