@@ -10,7 +10,7 @@ import {
   defaultAudienceModeFor,
   formatBytes,
   isDeckFile,
-  MAX_UPLOAD_BYTES,
+  MAX_DECK_BYTES,
   type AudienceMode,
 } from "@/lib/webinars";
 import {
@@ -176,8 +176,8 @@ export function EventForm({
       setFormError("Slides have to be a PDF. Export them as PDF and try again.");
       return;
     }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setFormError(`That file is ${formatBytes(file.size)}. The limit is 2 GB.`);
+    if (file.size > MAX_DECK_BYTES) {
+      setFormError(`That file is ${formatBytes(file.size)}. The limit is ${MAX_DECK_BYTES / 1024 / 1024} MB.`);
       return;
     }
     setUploading(true);

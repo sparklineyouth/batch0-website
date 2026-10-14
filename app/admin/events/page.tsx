@@ -10,7 +10,7 @@ import {
   roomActionLabel,
 } from "@/lib/event-form";
 import { EventsAdmin } from "./events-admin";
-import { recordedEventIds } from "./recordings";
+import { recordedEventIds } from "@/lib/event-recordings";
 import type { AdminEventRow, CohortOption } from "./types";
 
 export const metadata = { title: "Events · Admin" };

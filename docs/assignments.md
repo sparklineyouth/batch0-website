@@ -28,7 +28,7 @@ Status is derived, not stored: Open, Due today, Late/Missing, Submitted (late), 
 ## Notifications
 
 Hourly cron `/api/cron/assignment-reminders` (Bearer `CRON_SECRET`):
-release bell when a scheduled assignment opens; bell + email (`assignment.due_soon`, editable at /admin/email/templates after "Seed system templates") 24h before the deadline to students who haven't handed in. Both deduped per student per assignment. Reviews notify the student; new submissions notify the student's directly assigned mentors.
+release bell when a scheduled assignment opens; bell + email (`assignment.due_soon`, editable at /admin/email/templates after "Add built-in templates") 24h before the deadline to students who haven't handed in. Both deduped per student per assignment. Reviews notify the student; new submissions notify the student's directly assigned mentors.
 
 ## Data
 

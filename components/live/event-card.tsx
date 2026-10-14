@@ -30,17 +30,22 @@ export type StudentEvent = Pick<
  * An event on the student events page. A batch0-hosted event links to its
  * room (/dashboard/events/<id>/live) while it is joinable — from 15 minutes
  * before, or as soon as a host goes live; an external one opens its link.
- * An ended event shows "Ended" and no Join, whatever the clock says.
+ * An ended event shows "Ended" and no Join, whatever the clock says, and its
+ * recording once there is one to watch: a pasted link, or the room page's
+ * player once the recording is shared (`recordingHref`).
  */
 export function EventCard({
   event,
   upcoming,
   initialStatus,
+  recordingHref = null,
 }: {
   event: StudentEvent;
   upcoming: boolean;
   /** The server's answer, shown until the browser's clock takes over. */
   initialStatus?: ReturnType<typeof studentEventStatus>;
+  /** A past hosted event's shared recording, on its room page. */
+  recordingHref?: string | null;
 }) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
@@ -129,7 +134,7 @@ export function EventCard({
                 Add to calendar
               </Link>
             )}
-            {event.recordingUrl && (!upcoming || ended) && (
+            {event.recordingUrl && (!upcoming || ended) ? (
               <a
                 href={event.recordingUrl}
                 target="_blank"
@@ -138,7 +143,11 @@ export function EventCard({
               >
                 Watch recording →
               </a>
-            )}
+            ) : recordingHref && (!upcoming || ended) ? (
+              <Link href={recordingHref} className="text-phosphor-ink hover:underline" data-testid="event-recording">
+                Watch recording →
+              </Link>
+            ) : null}
           </div>
 
           {(joinable || stillAhead) && (

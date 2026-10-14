@@ -16,7 +16,7 @@ import { computeStage, type StagePerson, type StageTile } from "./stage-model";
 import { ToastProvider, useToasts } from "./toasts";
 import type { LiveRoomProps, PanelTab, PanelUnread, RoomPeer } from "./types";
 import { useRoomShortcuts } from "./use-shortcuts";
-import { DESKTOP_QUERY, useMediaQuery } from "./use-size";
+import { DESKTOP_QUERY, PANEL_COLUMN_QUERY, useMediaQuery } from "./use-size";
 import { Spinner } from "./ui";
 
 /**
@@ -33,7 +33,7 @@ export function LiveRoom(props: LiveRoomProps) {
   }, [hasPanel]);
 
   const onPopoverOpen = useCallback(() => {
-    if (!window.matchMedia?.(DESKTOP_QUERY).matches) setPanelOpen(false);
+    if (!window.matchMedia?.(PANEL_COLUMN_QUERY).matches) setPanelOpen(false);
   }, []);
 
   return (
@@ -391,8 +391,8 @@ function RoomBody(
 
   // Phones with the chat sheet open: notices and toasts go in the sheet,
   // above the chat (the sheet covers all but a sliver of the stage).
-  const desktop = useMediaQuery(DESKTOP_QUERY);
-  const sheetOpen = !!panel && panelOpen && !desktop;
+  const column = useMediaQuery(PANEL_COLUMN_QUERY);
+  const sheetOpen = !!panel && panelOpen && !column;
 
   const reconnectingChip =
     connection.state === "reconnecting" && model.layout !== "empty" ? (

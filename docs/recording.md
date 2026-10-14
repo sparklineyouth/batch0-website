@@ -38,8 +38,9 @@ one seekable file.
   again when Join is pressed, viewers from one `GET /api/recordings/active` on
   entry).
 - **What is recorded** is the room's main stage
-  (`lib/recording-layout.ts`): a screen share or slide deck full-frame with
-  faces inset, else the primary camera with insets, else everyone side by side
+  (`lib/recording-layout.ts`): a screen share or slide deck with the faces in
+  a column beside it (never over it, like the room's filmstrip), else the
+  primary camera with faces inset, else everyone side by side
   — composited on a 1280×720 canvas, every voice mixed through an
   `AudioContext` (`components/live/use-recorder.ts`). One `MediaRecorder` runs
   for the whole take; device switches, people arriving, presenting and
@@ -94,8 +95,10 @@ revalidates the live route.
   URLs (`GET /download`) — straight to disk where the browser has a save
   dialog, else one Blob.
 - **Who may watch**: webinar — staff (`events.manage`), and anyone who can see
-  the event once the follow-up shared it (`assets_shared_at`); call — the
-  people on it and admins. **Delete** (audited): `events.manage` for a
+  the event once it is shared (`assets_shared_at`: the follow-up, or **Share
+  with students** on the admin event page, with the email off or ahead of the
+  follow-up; the students' events lists then link "Watch recording" to the
+  room page); call — the people on it and admins. **Delete** (audited): `events.manage` for a
   webinar's, admins for a call's.
 - UI: `components/live/recording-player.tsx` — `EventRecordings`,
   `CallRecordings` (fetch their own list), `RecordingPlayer`. Takes under

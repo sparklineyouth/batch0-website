@@ -50,8 +50,8 @@ import {
  *
  * A viewer is never handed another viewer's id, name, or inbox key. That is
  * the audience-privacy guarantee, and it lives here rather than in the UI:
- * `canSeeRoster()` in lib/live.ts decides what to draw, this decides what the
- * client is ever given to draw with. Hiding a list the browser already holds
+ * `canSeeRoster()` in lib/live.ts decides what the room draws (the headcount,
+ * for hosts), this decides what the client is ever given to draw with. Hiding a list the browser already holds
  * is a CSS-deep guarantee; not sending it is a real one.
  */
 

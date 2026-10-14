@@ -5,9 +5,9 @@ import { isMissingSchemaError } from "@/lib/schema-ready";
 type Admin = ReturnType<typeof createAdminClient>;
 
 /**
- * Which past events have a recording, for the events list's "Recording" link.
- * (Deleting an event removes its takes through deleteRoomRecordings in
- * lib/recording-sessions.ts.)
+ * Which past events have a recording, for the "Recording" links on the admin
+ * events list and the students' events lists. (Deleting an event removes its
+ * takes through deleteRoomRecordings in lib/recording-sessions.ts.)
  *
  * Two generations: legacy two-minute segments (event_assets kind='recording',
  * webinar-media bucket) and one-take recordings (recording_sessions, private

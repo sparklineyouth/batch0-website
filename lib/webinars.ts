@@ -200,6 +200,7 @@ export function chatMessageIsLive(
 // Files attached to an event
 // ---------------------------------------------------------------------------
 
+/** `premiere` is a retired pre-recorded video; old rows may still carry it. */
 export type AssetKind = "deck" | "handout" | "premiere" | "recording";
 
 export type EventAsset = {
@@ -225,10 +226,11 @@ export const DECK_MIME_TYPES = ["application/pdf"] as const;
 export const DECK_EXTENSIONS = [".pdf"] as const;
 
 /**
- * Largest file the `webinar-media` bucket accepts (its `file_size_limit` in
- * migration 0084). Checked before uploading so a too-big file fails at once.
+ * Biggest PDF deck, uploaded or opened from disk: the presenter's browser
+ * renders it with pdf.js. Checked before uploading so a too-big file fails at
+ * once (the `webinar-media` bucket's own limit is far higher).
  */
-export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+export const MAX_DECK_BYTES = 150 * 1024 * 1024;
 
 /**
  * Is this file a usable deck? The extension alone is enough (some browsers
@@ -342,6 +344,13 @@ export function canEndForEveryone({
  */
 export function isHostedOnBatch0(liveMode: string | null | undefined): boolean {
   return liveMode === "hosted" || liveMode === "premiere";
+}
+
+/** The follow-up's bell and preheader: what is up, and only that. */
+export function followUpLine(hasRecording: boolean, hasDeck: boolean): string {
+  if (hasRecording && hasDeck) return "The recording and the slides are up.";
+  if (hasRecording) return "The recording is up.";
+  return "The slides are up.";
 }
 
 // ---------------------------------------------------------------------------

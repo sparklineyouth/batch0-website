@@ -373,6 +373,51 @@ export function staleRunStamps(
 }
 
 /**
+ * "Go live now" (staff, from the room) before the go-live window: the run
+ * starts now, so the event moves to this minute and keeps its length. Its
+ * stamp then sits inside the run's own window, which End, the follow-up,
+ * the lists and a later edit (staleRunStamps) all assume, and the schedule
+ * says when it really happened. Null inside the window, where a host's
+ * arrival stamps the event as scheduled (shouldStampLiveStart).
+ */
+export function earlyStartSchedule(
+  startsAt: string,
+  endsAt: string | null,
+  now: Date,
+): { startsAt: string; endsAt: string } | null {
+  const w = roomWindow(startsAt, endsAt);
+  if (now.getTime() >= w.goLiveOpensAt) return null;
+  const start = floorToMinute(now).getTime();
+  return {
+    startsAt: new Date(start).toISOString(),
+    endsAt: new Date(start + (w.end - w.start)).toISOString(),
+  };
+}
+
+/**
+ * Who Go live now tells that the webinar is live, as the room's confirm says
+ * it before anyone is told. Mirrors announceLive's recipients
+ * (app/admin/events/notify.ts recipientsFor): the students of its cohort; for
+ * "everyone signed in" with no cohort, those of every upcoming and active
+ * cohort; nobody for a staff-only event or a (legacy) cohort-less enrolled one.
+ */
+export function goLiveNowAudience(ev: {
+  visibility: string;
+  cohortId: string | null;
+  cohortName?: string | null;
+}): string {
+  if (ev.visibility === "staff") return "It's staff-only, so nobody is notified.";
+  if (ev.cohortId) {
+    const name = ev.cohortName?.trim();
+    return `${name ? `Everyone in ${name}` : "Everyone in its cohort"} gets a notification and an email.`;
+  }
+  if (ev.visibility === "public") {
+    return "Students in every upcoming and active cohort get a notification and an email.";
+  }
+  return "Nobody is notified: it has no cohort.";
+}
+
+/**
  * A student's view of an event: the list status (lib/live.ts eventLiveStatus,
  * which opens early once a host has gone live and closes with the viewer
  * window, like roomAccess), shown as "live" while a host is on air early.

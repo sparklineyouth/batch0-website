@@ -3,7 +3,8 @@
  *
  *   npm run webinar-doctor
  *
- * Checks batch0 Live and the data every webinar depends on.
+ * Checks batch0 Live, the tables recording and the main stage need (0095,
+ * 0096), and the data every webinar depends on.
  *
  * WHAT THIS CANNOT DO, AND WHY IT SAYS SO
  * ---------------------------------------
@@ -16,6 +17,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { classifyProbe, MIGRATION_PROBES } from "../lib/pending-migrations.ts";
 
 function need(name: string): string {
   const v = process.env[name];
@@ -164,6 +166,60 @@ async function checkBuiltin() {
 }
 
 // ---------------------------------------------------------------------------
+// Recording and the main stage
+// ---------------------------------------------------------------------------
+
+const ROOM_MIGRATIONS: Record<string, { file: string; works: string; without: string }> = {
+  "0095": {
+    file: "0095_recordings.sql",
+    works: "webinars and 1:1 calls record",
+    without: "nothing is recorded, and the rooms say so to hosts",
+  },
+  "0096": {
+    file: "0096_live_stage.sql",
+    works: "the primary host and Pin for everyone work",
+    without: "the main stage can't be pinned for everyone",
+  },
+};
+
+/**
+ * The room's own migrations, probed exactly as the admin overview probes them
+ * (lib/pending-migrations.ts). Rooms still open without them, which is why
+ * they are failures here: nothing else says recording is off.
+ */
+async function checkRoom() {
+  console.log("\nrecording and the stage (migrations 0095, 0096)");
+  for (const p of MIGRATION_PROBES) {
+    const m = ROOM_MIGRATIONS[p.migration];
+    if (!m) continue;
+    const r = await rest(`${p.table}?select=${p.columns.replace(/\s+/g, "")}&limit=1`);
+    const outcome = r.ok
+      ? "ok"
+      : classifyProbe(await r.json().catch(() => ({ message: `HTTP ${r.status}` })));
+    const what = `${p.table} (${p.columns.replace(/\s+/g, "")})`;
+    if (outcome === "ok") {
+      pass(`${what} present — ${m.works}`);
+    } else {
+      check(false, `${what} ${outcome === "missing" ? "missing" : `unreadable (HTTP ${r.status})`} — ${m.without}`);
+      if (outcome === "missing") info(`Apply supabase/migrations/${m.file} in the Supabase SQL editor.`);
+    }
+  }
+
+  // Takes upload into their own private bucket, made by 0095.
+  const bucket = await fetch(`${SUPABASE_URL}/storage/v1/bucket/recordings`, {
+    headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
+  });
+  check(bucket.ok, "recordings bucket exists");
+  if (bucket.ok) {
+    const b = await bucket.json();
+    check(b.public === false, "recordings is private");
+    check(b.file_size_limit === 16 * 1024 * 1024, "recordings takes 16 MB parts");
+  } else {
+    info("Apply supabase/migrations/0095_recordings.sql in the Supabase SQL editor.");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Scheduled webinars
 // ---------------------------------------------------------------------------
 async function checkData() {
@@ -274,6 +330,7 @@ async function main() {
   console.log("\nwebinar-doctor");
 
   await checkBuiltin();
+  await checkRoom();
 
   await checkData();
   await checkWebinars();

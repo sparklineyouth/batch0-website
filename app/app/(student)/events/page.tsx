@@ -3,6 +3,8 @@ import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { AppLockedAlert } from "@/components/app/locked-alert";
 import { getCohortEvents } from "@/lib/app-cache";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { recordedEventIds } from "@/lib/event-recordings";
 import { LocalTime } from "@/components/ui/local-time";
 import { studentEventStatus } from "@/lib/event-form";
 import { isHostedOnBatch0 } from "@/lib/webinars";
@@ -29,7 +31,8 @@ const TYPE_LABEL: Record<string, string> = {
 /**
  * The calendar, upcoming-first, with a one-tap Join: the batch0 room for a
  * hosted event once it opens (15 minutes before, or when a host goes live),
- * the pasted link for an external one. Past events keep their recording link.
+ * the pasted link for an external one. Past events keep their recording: a
+ * pasted link, or a hosted webinar's own once it is shared (its room page).
  */
 export default async function StudentAppEvents() {
   const { profile } = await requireViewer();
@@ -87,6 +90,22 @@ export default async function StudentAppEvents() {
     .map((e) => ({ e, s: statusOf(e) }))
     .filter((x) => x.s === "live" || x.s === "open" || x.s === "upcoming")
     .sort((a, b) => Number(b.s === "live") - Number(a.s === "live"));
+
+  // A recording to watch: a pasted link, or a hosted webinar's own once it is
+  // shared (played on its room page).
+  const recorded = await recordedEventIds(
+    createAdminClient(),
+    (past ?? [])
+      .filter((e) => !e.recording_url && isHostedOnBatch0(e.live_mode) && e.assets_shared_at)
+      .map((e) => e.id),
+  );
+  const recordings = (past ?? []).flatMap((e) =>
+    e.recording_url
+      ? [{ e, href: e.recording_url, external: true }]
+      : recorded.has(e.id)
+        ? [{ e, href: `/dashboard/events/${encodeURIComponent(e.id)}/live`, external: false }]
+        : [],
+  );
 
   return (
     <>
@@ -147,23 +166,22 @@ export default async function StudentAppEvents() {
           )}
         </Section>
 
-        {(past ?? []).some((e) => e.recording_url) && (
+        {recordings.length > 0 && (
           <Section title="Recent recordings">
             <div className="rounded-2xl border border-line px-4 sm:px-5">
-              {(past ?? [])
-                .filter((e) => e.recording_url)
-                .map((e) => (
-                  <Row
-                    key={e.id as string}
-                    label={e.title as string}
-                    meta={<LocalTime value={e.starts_at as string} mode="date" />}
-                    href={e.recording_url as string}
-                    external
-                    right={
-                      <Video className="h-[18px] w-[18px] shrink-0 text-ink-faint" />
-                    }
-                  />
-                ))}
+              {recordings.map(({ e, href, external }) => (
+                <Row
+                  key={e.id as string}
+                  label={e.title as string}
+                  meta={<LocalTime value={e.starts_at as string} mode="date" />}
+                  href={href}
+                  external={external}
+                  prefetch={false}
+                  right={
+                    <Video className="h-[18px] w-[18px] shrink-0 text-ink-faint" />
+                  }
+                />
+              ))}
             </div>
           </Section>
         )}

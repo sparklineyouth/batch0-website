@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LocalTime } from "@/components/ui/local-time";
 import { useLocalMedia } from "@/components/live/use-local-media";
 import { useLiveSession, type CloseReason } from "@/components/live/use-live-session";
 import { useRoomRecording } from "@/components/live/use-room-recording";
@@ -9,6 +8,7 @@ import { getActionError } from "@/lib/action-error";
 import type { ActionResult } from "@/lib/action-result";
 import { selfIsCallStaff } from "@/lib/call-roster";
 import {
+  canSeeRoster,
   isCallCounterpart,
   ROOM_HARD_CLOSE_MINUTES_AFTER,
   roomWindow,
@@ -20,6 +20,7 @@ import { panelTabs, type WebinarPanelInitial } from "@/lib/webinar-panel";
 import { audienceCanSeeEachOther } from "@/lib/webinars";
 import type { JoinResult, PresenceResult } from "@/app/live/actions";
 import { LiveRoom } from "./live-room";
+import { RehearsalNotice } from "./rehearsal-notice";
 import { WebinarPanel } from "./panel/webinar-panel";
 import { ReactionsButton, ReactionsOverlay } from "./panel/reactions";
 import type {
@@ -92,6 +93,10 @@ export type WebinarBinding = {
   /** The event's PDF deck, signed for hours (hosts only). */
   deck: EventDeck | null;
   panel: WebinarPanelInitial;
+  /** Staff: start a rehearsal early (the stored live_started_at, or why not). */
+  goLiveNow?: () => Promise<ActionResult<string>>;
+  /** Who goLiveNow tells it's live, for its confirm (goLiveNowAudience). */
+  goLiveAudience?: string | null;
   /** End for everyone; resolves with the stored live_ended_at. */
   endLive: () => Promise<string>;
   reopenLive: () => Promise<void>;
@@ -759,12 +764,40 @@ function RoomSession({
       : "You're the only host on air. Viewers wait until a host is back."
     : null;
 
+  // Staff need not wait for the window: Go live now starts it here.
+  const goLiveNowAction = webinar?.isStaffHost ? webinar.goLiveNow : undefined;
+  const [goingLive, setGoingLive] = useState(false);
+  const goLive = useCallback(async () => {
+    if (!goLiveNowAction) return;
+    setActionError(null);
+    setGoingLive(true);
+    try {
+      const res = await goLiveNowAction();
+      if (res.ok) recheck();
+      else setActionError(res.error);
+    } catch (err) {
+      setActionError(getActionError(err, "Couldn't go live. Try again."));
+    } finally {
+      setGoingLive(false);
+    }
+  }, [goLiveNowAction, recheck]);
+
   const opensAt = webinar ? roomWindow(webinar.startsAt, webinar.endsAt).goLiveOpensAt : null;
   const notice: ReactNode =
     rehearsing && opensAt !== null ? (
-      <span>
-        Not live yet: students can join from <LocalTime value={new Date(opensAt)} mode="time" />
-      </span>
+      <RehearsalNotice
+        opensAt={new Date(opensAt).toISOString()}
+        goLive={
+          goLiveNowAction && webinar
+            ? {
+                startsAt: webinar.startsAt,
+                audience: webinar.goLiveAudience ?? "",
+                busy: goingLive,
+                onConfirm: () => void goLive(),
+              }
+            : null
+        }
+      />
     ) : null;
 
   // The green room before the go-live window says so (and "Enter room", not
@@ -797,11 +830,13 @@ function RoomSession({
     wasRehearsing.current = false;
     setFlash({
       id: "went-live",
-      message: autoRecord
-        ? "You're live. Students can join now. Recording starts automatically."
-        : "You're live. Students can join now.",
+      // Before migration 0095 nothing records, so nothing says it will.
+      message:
+        autoRecord && recordingReady
+          ? "You're live. Students can join now. Recording starts automatically."
+          : "You're live. Students can join now.",
     });
-  }, [rehearsing, phase, room.liveStartedAt, autoRecord]);
+  }, [rehearsing, phase, room.liveStartedAt, autoRecord, recordingReady]);
 
   // ── Pin for everyone (webinar staff) ──────────────────────────────────────
   // The outcome goes back to the room, which says it where the pin was made
@@ -986,7 +1021,7 @@ function RoomSession({
       remotes={session.remotes}
       connection={connection}
       room={{ ...room, canEnd }}
-      audienceCount={broadcaster ? audienceCount : null}
+      audienceCount={canSeeRoster(role) ? audienceCount : null}
       recording={recording}
       canRecord={canRecord}
       hosting={hosting}

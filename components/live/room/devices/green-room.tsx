@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, CircleDot, Headphones } from "lucide-react";
-import { LocalTime } from "@/components/ui/local-time";
+import { LocalWhen } from "../rehearsal-notice";
 import { greenRoomCta } from "../logic";
 import type { LocalMediaView, RoomKind } from "../types";
 import { RoomButton, Spinner } from "../ui";
@@ -70,7 +70,7 @@ export function GreenRoom({
       ) : null}
       {rehearsalUntil ? (
         <p className="text-center text-sm text-[#a1a1aa]" data-testid="green-room-rehearsal">
-          Not live yet: students can join from <LocalTime value={rehearsalUntil} mode="time" />.
+          Not live yet: students can join from <LocalWhen value={rehearsalUntil} />.
         </p>
       ) : null}
       {error ? (

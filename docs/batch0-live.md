@@ -29,9 +29,9 @@ exists. A **1:1 call** is a small mesh: everyone sends to everyone.
 | `lib/live-rooms.ts` | Server-only: channel keys, credentials, attendance, the server's hints (`notifyStage`, `notifyCallChanged`). |
 | `app/live/actions.ts` | `joinRoom`, `announcePresence`, `leaveRoom`, `listAudience`, `setPrimaryHost`, `getHostingStatus`. |
 | `app/api/live/leave/route.ts` | The same leave, as a `sendBeacon` target for a closing tab. |
-| `app/dashboard/events/[id]/live/room-actions.ts` | A webinar's `endLive` / `reopenLive` / `fetchLiveState`. A 1:1's End call is `endCall` (`app/calls/actions.ts`). |
+| `app/dashboard/events/[id]/live/room-actions.ts` | A webinar's `goLiveNow` / `endLive` / `reopenLive` / `fetchLiveState`. A 1:1's End call is `endCall` (`app/calls/actions.ts`). |
 | `components/live/use-live-session.ts` | The WebRTC engine (both shapes). Exposes `session.room`: primary, live stamps, `canEnd`, the running recording. |
-| `components/live/use-local-media.ts`, `use-mic-level.ts`, `audio-output.ts` | Camera/mic (per-device status), the level meter, the speaker choice. |
+| `components/live/use-local-media.ts`, `room/audio-levels.ts`, `audio-output.ts` | Camera/mic (per-device status), the level meters and speaking rings, the speaker choice. |
 | `components/live/room/controller.tsx` | **The room**: phase machine, devices, presentation, session, recording, every exit. Renders the kit. |
 | `components/live/room/**` | The room UI kit (`LiveRoom`: green room, stage, tiles, control bar, deck presenter, end screens). Presentational; `/dev/live` renders every state on fake data (localhost only). |
 | `components/live/room/panel/*` | The webinar side panel (Chat · Q&A · Polls · People) and reactions; reads/writes through `app/api/live/panel`. |
@@ -75,9 +75,17 @@ emails, ICS files and cards keep working).
   staff list). The end screens say "Recording saved." once this tab's upload
   is done, or what went wrong (a take that lost its lease while draining).
 - **Rehearsal**: a host in the room before the go-live window (start − 60 min)
-  sees "Not live yet: students can join from <time>"; nothing is stamped and
-  Leave is the only way out. The heartbeat that crosses into the window stamps
-  `live_started_at` and the host is told "You're live".
+  sees "Not live yet: students can join from <time>" (with the date when it
+  isn't today, `LocalWhen`); nothing is stamped and Leave is the only way out.
+  The heartbeat that crosses into the window stamps `live_started_at` and the
+  host is told "You're live". Staff needn't wait: **Go live now** in that
+  notice (`RehearsalNotice`, `goLiveNow`) moves the event to this minute,
+  keeping its length (`earlyStartSchedule`), stamps it live and tells everyone
+  it is for, as "Start a webinar now" does — one run, so End, the follow-up
+  and the lists agree; students waiting on "This opens…" are let in within
+  30 s. Neither the move nor the emails can be taken back, so like End it
+  asks first: "Start now instead of <scheduled start>?" and who is told
+  (`goLiveNowAudience`, announceLive's recipients).
 
 ## Leave, End, and the other ways out
 
@@ -211,7 +219,7 @@ does not).
 ## Checking it
 
 ```bash
-npm run webinar-doctor     # configuration, signalling, scheduled webinars
+npm run webinar-doctor     # configuration, signalling, 0095/0096, scheduled webinars
 npm run webinar-e2e        # real browsers, real accounts, decoded frames
 npm run call-mesh-e2e      # a 1:1 that gains a co-host mid-call
 npm run webinar-panel-e2e  # chat, Q&A, polls, reactions across three people
@@ -240,7 +248,7 @@ again means wiring it behind `lib/live-signal.ts` and proving it with
 `webinar-e2e`.
 
 **Deploy step:** delete `DAILY_API_KEY`, `NEXT_PUBLIC_DAILY_DOMAIN`,
-`DAILY_ENABLE_RECORDING` and `DAILY_LARGE_CALLS` from the Vercel environment
-(every environment), and revoke the API key in the Daily dashboard: it could
-create rooms and mint owner tokens for any room on the domain, and nothing
-uses it now.
+`DAILY_ENABLE_RECORDING`, `DAILY_LARGE_CALLS` and `LIVE_PROVIDER` from the
+Vercel environment (every environment), and revoke the API key in the Daily
+dashboard: it could create rooms and mint owner tokens for any room on the
+domain, and nothing uses it now.

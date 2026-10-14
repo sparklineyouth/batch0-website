@@ -256,9 +256,6 @@ export function looksLikePdf(head: Uint8Array): boolean {
   return false;
 }
 
-/** Biggest PDF the deck presenter opens from disk. */
-export const MAX_DECK_BYTES = 150 * 1024 * 1024;
-
 /**
  * A small LRU keyed by number with an eviction callback (closes ImageBitmaps).
  * Pure bookkeeping: what to keep is up to the caller.

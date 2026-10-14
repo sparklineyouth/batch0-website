@@ -111,6 +111,8 @@ export type AppEvent = {
   recording_url: string | null;
   live_started_at: string | null;
   live_ended_at: string | null;
+  /** When the follow-up (or an admin) shared the recording and slides. */
+  assets_shared_at?: string | null;
 };
 
 /**
@@ -136,7 +138,7 @@ export function getCohortEvents(
     async () => {
       const admin = createAdminClient();
       const cols =
-        "id, title, type, description, starts_at, ends_at, location, live_mode, zoom_url, recording_url, live_started_at, live_ended_at";
+        "id, title, type, description, starts_at, ends_at, location, live_mode, zoom_url, recording_url, live_started_at, live_ended_at, assets_shared_at";
       const base = () => {
         const q = admin.from("events").select(cols);
         return cohortId

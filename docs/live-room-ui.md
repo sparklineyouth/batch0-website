@@ -9,8 +9,9 @@ renders `<LiveRoom/>` with data + callbacks. Every prop is documented on
 - `fixed inset-0 z-[60]` dark surface over the dashboard chrome (URLs unchanged).
 - Top bar: title, LIVE, REC (everyone), elapsed, audience count (hosts).
 - Stage + filmstrip (right column when wide, row underneath when narrow).
-- Side panel (webinars): 360px column on desktop, bottom sheet on phones that
-  stops above the control bar.
+- Side panel (webinars): a column beside the stage on desktop (360px) and on a
+  landscape screen 640px+ wide (300px: a phone on its side), a bottom sheet on
+  portrait phones that stops above the control bar.
 - Control bar pinned at the bottom; menus are popovers anchored to their
   button (one open at a time); toasts sit above the bar, never on it.
 - Notices and toasts stack at the top of the stage. On touch screens a tile's
@@ -55,6 +56,7 @@ Shortcuts: Ctrl/Cmd+D mic, Ctrl/Cmd+E camera.
 ## Harness
 `/dev/live` (localhost only) renders every state on a fake session:
 `/dev/live?state=<state>&w=<variant>`; the index lists them. `npm run
-room-screens` screenshots all of them at 1440×900, 390×844 and 320×700 (the
-phones as touch screens) and checks the layout (bar on screen, nothing over
-it, notices off the main tile's buttons, presentations not cropped).
+room-screens` screenshots all of them at 1440×900, 390×844, 320×700 and
+844×390 (the phones as touch screens) and checks the layout (bar on screen,
+nothing over it, notices off the main tile's buttons, presentations not
+cropped, in landscape the side panel beside the stage).
