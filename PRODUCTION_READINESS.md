@@ -261,7 +261,7 @@ Beyond the usage billing in P1 #12:
 
 Full implementation. The current shape:
 - Student-facing `/dashboard/team` with tabs (Profile, Members, Drive, Demo Day). `?tab=drive` opens a tab directly.
-- Logo upload runs an Anthropic vision safety check + lands in admin moderation queue (`/admin/moderation`).
+- Logo upload runs an Anthropic vision safety check + lands in the logo review queue at the top of `/admin/teams`.
 - Drive is the team's Google Drive folder + pinned Google links (`team_drive_links`, `docs/google-drive.md`). Older uploads in `team-drive/` and `student-files/` are download-only.
 - Members invite teammates by name/email; invitees see a queued invite at `/dashboard/team`.
 - Mentor/investor team views at `/mentor/teams/[id]` + `/investor/teams/[id]`.

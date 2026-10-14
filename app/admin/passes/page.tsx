@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import { transportStatus } from "@/lib/email/send";
 import { passTier, normalizeDiscountCents } from "@/lib/founder-pass-tiers";
 import { PassesPanel, type PassRow, type BatchSummary } from "./passes-panel";
+import { PassRequests } from "./pass-requests";
 
 export const metadata = { title: "Founder passes · Admin" };
 export const dynamic = "force-dynamic";
@@ -153,6 +154,8 @@ export default async function AdminPassesPage() {
           One row per pass. Leaked codes? Revoke the batch.
         </p>
       </div>
+
+      <PassRequests admin={admin} />
 
       <PassesPanel
         rows={rows}

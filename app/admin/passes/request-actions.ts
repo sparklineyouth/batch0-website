@@ -90,5 +90,5 @@ export async function fulfillFeedbackRequest(input: {
     console.error("[pass-requests] notify failed", err);
   }
 
-  revalidatePath("/admin/pass-requests");
+  revalidatePath("/admin/passes");
 }

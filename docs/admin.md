@@ -24,7 +24,20 @@ sidebar's single Email row opens `/admin/email`, which the middleware forwards
 to the first tab in `EMAIL_TAB_ROUTES` (`lib/permissions.ts`) the viewer holds;
 each tab keeps its own key. The landing's any-of rule lives in
 `ADMIN_EXACT_ROUTE_PERMISSIONS`, so it covers that one path; anything else
-under `/admin/email` needs `email.view` unless it has its own row.
+under `/admin/email` needs `email.view` unless it has its own row. Teams does
+the same: `/admin/teams` opens on `teams.manage` or `moderation.manage` and
+shows each holder its part (the team list, the logo review queue on top); a
+team's own pages stay on `teams.manage`.
+
+## Folded pages
+
+- **Pass requests** live at the top of `/admin/passes` ("Feedback requests",
+  shown only while one is open). `/admin/pass-requests` redirects there.
+- **Moderation** (team logos) lives at the top of `/admin/teams` ("Logos to
+  review"). `/admin/moderation` redirects there; new-logo bells link there.
+- **Student progress** (`/admin/progress`) counts handed-in assignments and
+  challenge entries as activity, like a student's own page, so nobody who
+  only submitted work is listed as never started.
 
 ## Retired (October 2026)
 

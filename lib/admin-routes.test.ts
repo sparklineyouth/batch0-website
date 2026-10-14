@@ -87,3 +87,11 @@ test("an any-of requirement covers only its exact landing page", () => {
   assert.deepEqual(loose, []);
   assert.equal(permissionForAdminPath("/admin/email/not-a-page"), "email.view");
 });
+
+test("the team list opens on either team key; a team's own pages don't", () => {
+  // /admin/teams carries the logo review queue (moderation.manage) on top of
+  // the team list (teams.manage).
+  assert.deepEqual(permissionForAdminPath("/admin/teams"), ["teams.manage", "moderation.manage"]);
+  assert.equal(permissionForAdminPath("/admin/teams/sample"), "teams.manage");
+  assert.equal(permissionForAdminPath("/admin/teams/new"), "teams.manage");
+});

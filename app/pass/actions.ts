@@ -205,7 +205,7 @@ export async function redeemFeedbackCreditAction(input: {
   await pingAdminFeed(
     `Feedback credit redeemed: ${who}`,
     `On: ${feedbackTopicLabel(input.topic)}`,
-    `${env.siteUrl}/admin/pass-requests`,
+    `${env.siteUrl}/admin/passes#requests`,
   );
 
   revalidatePath("/pass");

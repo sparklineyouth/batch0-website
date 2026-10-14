@@ -84,6 +84,9 @@ const nextConfig = {
         ["/admin/course/analytics/:path*", "/admin/course"],
         ["/admin/payments/acquisition/:path*", "/admin/payments"],
         ["/admin/email/phone-request/:path*", "/admin/email"],
+        // Folded into the page that owns them.
+        ["/admin/pass-requests", "/admin/passes"],
+        ["/admin/moderation", "/admin/teams"],
       ].map(([source, destination]) => ({ source, destination, permanent: true })),
       // Office hours were retired; old links land on 1:1 calls.
       { source: "/dashboard/office-hours", destination: "/dashboard/calls", permanent: false },
