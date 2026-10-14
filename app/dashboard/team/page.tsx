@@ -93,6 +93,7 @@ export default async function TeamPage(props: {
             : null
         }
         showAi={showAi}
+        preCohort={access.preCohort}
       />
     );
   }

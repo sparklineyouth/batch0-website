@@ -10,7 +10,7 @@
 // client components can import it.
 // ---------------------------------------------------------------------------
 
-import { PRE_COHORT_ALLOWED_HREFS } from "./pre-cohort.ts";
+import { PRE_COHORT_ALLOWED_HREFS, isPreCohortAllowedPath } from "./pre-cohort.ts";
 
 /** No student ever sees more links than this (lib/student-nav.test.ts). */
 export const STUDENT_NAV_MAX = 12;
@@ -89,7 +89,7 @@ export type StudentNavContext = {
  * Lifecycle items keep the list short at every stage: Application until
  * enrolled (the home hero carries it after), Kickoff only while counting
  * down, Scholarships and Refer friends until the cohort starts (Billing links
- * Scholarships after that). Their pages stay reachable by URL throughout.
+ * both after that, and nav search finds them under Billing).
  */
 export function isStudentHrefVisible(href: string, ctx: StudentNavContext): boolean {
   if (ctx.preCohort && !PRE_COHORT_ALLOWED_HREFS.has(href)) return false;
@@ -110,4 +110,26 @@ export function isStudentHrefVisible(href: string, ctx: StudentNavContext): bool
       break;
   }
   return ctx.enrolled || !ENROLLED_ONLY_HREFS.has(href);
+}
+
+/**
+ * The startup-tool chips on the Team page (app/dashboard/team/team-home.tsx).
+ * Team opens before kickoff, so a chip shown pre-cohort must be a route the
+ * middleware lets through, or the click bounces the student home.
+ */
+export const TEAM_TOOL_HREFS = [
+  "/dashboard/intros",
+  "/dashboard/team/offers",
+  "/dashboard/team/pitch-coach",
+  "/dashboard/ai",
+] as const;
+
+export type TeamToolHref = (typeof TEAM_TOOL_HREFS)[number];
+
+export function isTeamToolVisible(
+  href: TeamToolHref,
+  ctx: { preCohort: boolean; ai: boolean },
+): boolean {
+  if (href === "/dashboard/ai" && !ctx.ai) return false;
+  return !ctx.preCohort || isPreCohortAllowedPath(href);
 }

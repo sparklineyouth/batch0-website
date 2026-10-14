@@ -112,7 +112,7 @@ const STUDENT_ICONS: Record<StudentNavHref, LucideIcon> = {
 /** Words the nav search also matches: pages reached from inside another one. */
 const STUDENT_KEYWORDS: Partial<Record<StudentNavHref, readonly string[]>> = {
   "/dashboard/team": ["investor intros", "ai co-founder", "pitch", "drive"],
-  "/dashboard/billing": ["receipts", "scholarships", "fees"],
+  "/dashboard/billing": ["receipts", "scholarships", "fees", "refer friends", "referrals"],
 };
 
 export const STUDENT_NAV_GROUPS: NavGroup[] = STUDENT_NAV_LAYOUT.map((g) => ({

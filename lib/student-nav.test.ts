@@ -4,9 +4,11 @@ import {
   STUDENT_NAV_LAYOUT,
   STUDENT_NAV_MAX,
   isStudentHrefVisible,
+  TEAM_TOOL_HREFS,
+  isTeamToolVisible,
   type StudentNavContext,
 } from "./student-nav.ts";
-import { PRE_COHORT_ALLOWED_HREFS } from "./pre-cohort.ts";
+import { PRE_COHORT_ALLOWED_HREFS, isPreCohortAllowedPath } from "./pre-cohort.ts";
 
 const HREFS = STUDENT_NAV_LAYOUT.flatMap((g) => g.items.map((i) => i.href));
 
@@ -87,4 +89,18 @@ test("flags hide Community and Refer friends", () => {
   const v = visible({ enrolled: false, preCohort: false, discordEnabled: false, referralsEnabled: false });
   assert.ok(!v.includes("/dashboard/community"));
   assert.ok(!v.includes("/dashboard/referrals"));
+});
+
+test("Team page tool chips shown pre-cohort all pass the middleware", () => {
+  for (const ai of [false, true]) {
+    for (const h of TEAM_TOOL_HREFS) {
+      if (isTeamToolVisible(h, { preCohort: true, ai })) {
+        assert.ok(isPreCohortAllowedPath(h), h);
+      }
+    }
+  }
+  assert.ok(!isTeamToolVisible("/dashboard/intros", { preCohort: true, ai: true }));
+  assert.ok(isTeamToolVisible("/dashboard/intros", { preCohort: false, ai: false }));
+  assert.ok(isTeamToolVisible("/dashboard/team/offers", { preCohort: true, ai: false }));
+  assert.ok(!isTeamToolVisible("/dashboard/ai", { preCohort: false, ai: false }));
 });

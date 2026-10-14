@@ -8,7 +8,8 @@ import { ChargePayButton } from "@/components/charge-pay-button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { ChargeHelp, HELP_LINK, billingSupportHref, inRefundWindow } from "./charge-help";
-import { GraduationCap, LifeBuoy, Receipt } from "lucide-react";
+import { getSiteConfig } from "@/lib/site-config";
+import { GraduationCap, LifeBuoy, Receipt, Star } from "lucide-react";
 
 export const metadata = { title: "Billing · batch0" };
 
@@ -37,8 +38,13 @@ export default async function BillingPage(
   // sitting in "Outstanding" until the webhook catches up.
   const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
-  const [{ data: payments }, { data: profile }, { data: charges }, { data: tickets }] =
-    await Promise.all([
+  const [
+    { data: payments },
+    { data: profile },
+    { data: charges },
+    { data: tickets },
+    siteConfig,
+  ] = await Promise.all([
       supabase
         .from("payments")
         .select("*")
@@ -63,6 +69,7 @@ export default async function BillingPage(
         .eq("user_id", user.id)
         .in("status", ["paid", "refunded"])
         .order("paid_at", { ascending: false }),
+      getSiteConfig(),
     ]);
 
   const hasStripeCustomer = Boolean(profile?.stripe_customer_id);
@@ -99,6 +106,17 @@ export default async function BillingPage(
             <GraduationCap className="h-3.5 w-3.5" />
             Scholarships
           </Link>
+          {/* The nav drops Refer friends once the cohort starts (12-link
+              cap, lib/student-nav.ts); this keeps it a click away. */}
+          {siteConfig.settings.referralsEnabled && (
+            <Link
+              href="/dashboard/referrals"
+              className="inline-flex items-center gap-1.5 px-1 text-xs text-ink-soft hover:text-ink"
+            >
+              <Star className="h-3.5 w-3.5" />
+              Refer friends
+            </Link>
+          )}
           <Link
             href="/dashboard/billing/receipts"
             className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-1.5 text-xs font-medium text-ink hover:border-ink/30 hover:bg-wash"

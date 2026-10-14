@@ -19,6 +19,7 @@ import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
 import { OlderUploads } from "@/components/team/older-uploads";
 import type { OlderUploadsState, TeamDriveState } from "@/lib/team-drive";
 import { TeamPitchTab } from "./team-pitch-tab";
+import { isTeamToolVisible, type TeamToolHref } from "@/lib/student-nav";
 
 type Team = {
   id: string;
@@ -52,6 +53,7 @@ export function TeamHome({
   passHolderIds = [],
   discordChannelUrl = null,
   showAi = false,
+  preCohort = false,
 }: {
   /** From ?tab=, so links can open a tab directly. */
   initialTab?: string;
@@ -67,6 +69,8 @@ export function TeamHome({
   discordChannelUrl?: string | null;
   /** The AI co-founder is open to this student (and configured). */
   showAi?: boolean;
+  /** Before kickoff: only the tools middleware lets through get a chip. */
+  preCohort?: boolean;
 }) {
   const [picked, setTab] = useState<string | undefined>(initialTab);
 
@@ -77,6 +81,7 @@ export function TeamHome({
     { id: "pitch", label: "Demo Day", icon: Rocket },
   ];
   const tab: Tab = tabs.some((t) => t.id === picked) ? (picked as Tab) : "overview";
+  const tool = (href: TeamToolHref) => isTeamToolVisible(href, { preCohort, ai: showAi });
 
   const showApprovedLogo =
     team.logo_status === "approved" && team.logo_url;
@@ -138,16 +143,22 @@ export function TeamHome({
             <MessageSquare className="h-3.5 w-3.5" /> Team chat on Discord
           </a>
         )}
-        <Link href="/dashboard/intros" className={CHIP}>
-          <Handshake className="h-3.5 w-3.5" /> Investor intros
-        </Link>
-        <Link href="/dashboard/team/offers" className={CHIP}>
-          <FileSignature className="h-3.5 w-3.5" /> SAFE offers
-        </Link>
-        <Link href="/dashboard/team/pitch-coach" className={CHIP}>
-          <Sparkles className="h-3.5 w-3.5" /> Pitch coach
-        </Link>
-        {showAi && (
+        {tool("/dashboard/intros") && (
+          <Link href="/dashboard/intros" className={CHIP}>
+            <Handshake className="h-3.5 w-3.5" /> Investor intros
+          </Link>
+        )}
+        {tool("/dashboard/team/offers") && (
+          <Link href="/dashboard/team/offers" className={CHIP}>
+            <FileSignature className="h-3.5 w-3.5" /> SAFE offers
+          </Link>
+        )}
+        {tool("/dashboard/team/pitch-coach") && (
+          <Link href="/dashboard/team/pitch-coach" className={CHIP}>
+            <Sparkles className="h-3.5 w-3.5" /> Pitch coach
+          </Link>
+        )}
+        {tool("/dashboard/ai") && (
           <Link href="/dashboard/ai" className={CHIP}>
             <Bot className="h-3.5 w-3.5" /> AI co-founder
           </Link>
