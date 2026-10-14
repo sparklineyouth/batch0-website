@@ -587,13 +587,32 @@ async function enterRoom(page: Page, label: string): Promise<boolean> {
     return false;
   }
   await button.first().click();
+  let pressedAt = Date.now();
+  let presses = 1;
   // The press must actually take: the green room goes away (or the button
   // turns into "Connecting…"). A press that lands before hydration used to
   // be swallowed silently and the whole room section timed out behind it.
+  // A webinar host's Join re-reads who is hosting first; when that changed
+  // (someone went live or started recording since the last poll) the green
+  // room stays to show it, and the button is pressed again.
   const left = await until(
     `${label} to leave the green room`,
-    async () => (await button.count()) === 0 || !(await button.first().isVisible()),
-    15_000,
+    async () => {
+      if ((await button.count()) === 0 || !(await button.first().isVisible())) return true;
+      const again =
+        presses < 3 &&
+        Date.now() - pressedAt > 2_000 &&
+        (await button.first().isEnabled().catch(() => false)) &&
+        !/connecting/i.test((await button.first().innerText().catch(() => "")) || "");
+      if (again) {
+        info(`[${label}] still in the green room (now "${await button.first().innerText().catch(() => "")}"); pressing again`);
+        await button.first().click().catch(() => {});
+        pressedAt = Date.now();
+        presses++;
+      }
+      return false;
+    },
+    20_000,
   );
   if (!left) {
     info(`[${label}] still in the green room after pressing join`);
@@ -1207,6 +1226,17 @@ async function main() {
     const primaryRes = await fetch(`${url}/rest/v1/events?id=eq.${eventId}&select=live_primary_host_id`, { headers: adm });
     const primaryRows = (await primaryRes.json()) as { live_primary_host_id: string | null }[];
     check(primaryRows[0]?.live_primary_host_id === cohostUserId, "the server holds the pin (events.live_primary_host_id)");
+    check(
+      !!(await until(
+        "the host to be told the pin landed",
+        async () =>
+          /is on the main stage for everyone/i.test(
+            (await host.page.getByTestId("room-toasts").innerText().catch(() => "")) || "",
+          ),
+        15_000,
+      )),
+      "the host who pinned is told it landed (a toast)",
+    );
 
     // And back: the host pins themselves for everyone.
     const selfTile = host.page.locator(`[data-peer="${hostUserId}"][data-kind="camera"]`);
@@ -1228,11 +1258,11 @@ async function main() {
         (await tap(cohost.page, "leave-leave", "co-host's Leave menu item")),
       "the co-host left (the webinar keeps running)",
     );
-    check(
-      !!(await until("co-host left screen", async () => (await count(cohost.page, "end-left")) > 0, 15_000)),
-      "the co-host sees \"You've left\"",
-    );
-    await cohost.ctx.close().catch(() => {});
+    const cohostLeft = !!(await until("co-host left screen", async () => (await count(cohost.page, "end-left")) > 0, 15_000));
+    check(cohostLeft, "the co-host sees \"You've left\"");
+    // The co-host stays on "You've left" until after End for everyone (below):
+    // their Rejoin then must land on the ended screen, not on Start webinar.
+    if (!cohostLeft) await cohost.ctx.close().catch(() => {});
 
     // --- camera off must read as "camera off", not as a black frame -------
     //
@@ -1352,6 +1382,21 @@ async function main() {
     );
     check(!!hostEnded, "host lands on the ended screen");
     check(!!(await liveEndedAt(eventId)), "live_ended_at is stamped in the database");
+
+    // A host who left before the End and presses Rejoin after it lands on the
+    // ended screen (Reopen for staff) — the page's fresh render is the truth —
+    // never back in a green room offering "Start webinar".
+    if (cohostLeft) {
+      check(await tap(cohost.page, "end-rejoin", "co-host's Rejoin after the End"), "the co-host pressed Rejoin after the End");
+      const cohostOnEnded = await until(
+        "the co-host's Rejoin to land on the ended screen",
+        async () => (await count(cohost.page, "end-ended")) > 0 && (await count(cohost.page, "end-reopen")) > 0,
+        30_000,
+      );
+      check(!!cohostOnEnded, "a host who left, rejoining after End for everyone, lands on the ended screen with Reopen");
+      check((await count(cohost.page, "green-room-join")) === 0, "and is not offered Start webinar");
+      await cohost.ctx.close().catch(() => {});
+    }
 
     const endedClosed = await until(
       "viewer's connections to close after End",

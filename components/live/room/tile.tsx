@@ -151,7 +151,15 @@ export function Tile({
       {(onPin || onPinForEveryone || (fullscreen && fs.supported)) && (
         <div className="absolute right-1.5 top-1.5 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
           {onPinForEveryone ? (
-            <TileAction label="Pin for everyone" onClick={onPinForEveryone} testId="tile-pin-everyone" text={!small}>
+            // Small tiles: an icon on hover screens (the tooltip names it); touch
+            // screens have no tooltip, so it says "Everyone" next to the local Pin.
+            <TileAction
+              label="Pin for everyone"
+              onClick={onPinForEveryone}
+              testId="tile-pin-everyone"
+              text={small ? "touch" : true}
+              shortText="Everyone"
+            >
               <Users className="h-3.5 w-3.5" />
             </TileAction>
           ) : null}
@@ -177,12 +185,15 @@ function TileAction({
   children,
   testId,
   text = false,
+  shortText,
 }: {
   label: string;
   onClick: () => void;
   children: ReactNode;
   testId?: string;
-  text?: boolean;
+  /** Show a label: always, or only on touch screens (`shortText`, as there is no tooltip). */
+  text?: boolean | "touch";
+  shortText?: string;
 }) {
   return (
     <button
@@ -194,10 +205,13 @@ function TileAction({
         e.stopPropagation();
         onClick();
       }}
-      className={`inline-flex h-7 items-center gap-1.5 rounded bg-[rgba(0,0,0,0.65)] px-2 text-xs text-[#fff] hover:bg-[rgba(0,0,0,0.85)] ${FOCUS}`}
+      className={`inline-flex h-7 items-center gap-1.5 rounded bg-[rgba(0,0,0,0.65)] px-2 text-xs text-[#fff] hover:bg-[rgba(0,0,0,0.85)] ${
+        text === "touch" ? "[@media(hover:none)]:gap-1 [@media(hover:none)]:px-1.5" : ""
+      } ${FOCUS}`}
     >
       {children}
-      {text ? <span>{label}</span> : null}
+      {text === true ? <span>{label}</span> : null}
+      {text === "touch" ? <span className="hidden text-[11px] [@media(hover:none)]:inline">{shortText ?? label}</span> : null}
     </button>
   );
 }

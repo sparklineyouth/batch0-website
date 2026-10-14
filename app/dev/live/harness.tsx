@@ -11,6 +11,7 @@ import {
   type RoomRecordingView,
 } from "@/components/live/room";
 import { useLocalMedia } from "@/components/live/use-local-media";
+import { LocalTime } from "@/components/ui/local-time";
 import { FakePanel, FakeReactionsButton, FakeReactionsOverlay } from "./fake-panel";
 import { makeDeckPdf, useFakeFeeds, useFakeLocalMedia, type FakeFeeds } from "./fake-media";
 import { HARNESS_STATES as STATES } from "./states";
@@ -167,6 +168,8 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     state === "live-host" ? SELF.id : isCall ? null : ANA.id,
   );
   const [endedByMe, setEndedByMe] = useState(w === "byme");
+  // Rehearsal: the go-live window opens in two hours.
+  const [opensAt] = useState(() => new Date(Date.now() + 2 * 3600_000).toISOString());
 
   const fakeMedia = useFakeLocalMedia(feeds, SELF.name, {
     cameraOn: !(state === "prejoin" && w === "cohost"),
@@ -213,7 +216,7 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
       case "connecting":
         return [];
       case "live-host":
-        if (w === "solo") return [];
+        if (w === "solo" || w === "rehearsal") return [];
         return [
           peer(BEN, feeds, { hue: 140, freq: 260, offset: 3000, state: w === "reconnecting" ? "reconnecting" : "live" }),
         ];
@@ -234,6 +237,8 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
         ];
       case "presenting-deck":
         if (w === "viewer") return [peer(ANA, feeds, { hue: 20, screen: [1920, 1080] })];
+        // Ana (the primary) shares her screen: it keeps the stage, our slides wait.
+        if (w === "behind") return [peer(ANA, feeds, { hue: 20, freq: 210, screen: [1440, 900] })];
         return [peer(ANA, feeds, { hue: 20, freq: 210 })];
       case "call-2":
         if (w === "waiting") return [peer(ANA, feeds, { state: "connecting", seenLive: false })];
@@ -307,7 +312,10 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
         setJoinFailed(false);
         later(() => setJoined(true), 600);
       },
-      pinForEveryone: (id: string) => setPrimaryId(id),
+      pinForEveryone: (id: string) => {
+        setPrimaryId(id);
+        return Promise.resolve({ ok: true as const });
+      },
     }),
     [],
   );
@@ -351,11 +359,19 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     },
     room: {
       primaryId,
-      liveStartedAt: kind === "webinar" && !(state === "live-viewer" && (w === "waiting" || w === "starts")) && state !== "connecting" ? new Date(Date.now() - 754_000).toISOString() : null,
+      liveStartedAt:
+        kind === "webinar" &&
+        !(state === "live-viewer" && (w === "waiting" || w === "starts")) &&
+        state !== "connecting" &&
+        w !== "rehearsal"
+          ? new Date(Date.now() - 754_000).toISOString()
+          : null,
       liveEndedAt: null,
-      canEnd: broadcaster,
+      canEnd: broadcaster && w !== "rehearsal",
       recording:
-        w === "rec-other"
+        w === "recorded"
+          ? { sessionId: "s1", byUserId: SELF.id, byName: SELF.name, startedAt: new Date(Date.now() - 300_000).toISOString() }
+          : w === "rec-other"
           ? { sessionId: "s1", byUserId: ANA.id, byName: ANA.name, startedAt: new Date(Date.now() - 754_000).toISOString() }
           : recording.mine
             ? { sessionId: "s1", byUserId: SELF.id, byName: SELF.name, startedAt: new Date().toISOString() }
@@ -378,10 +394,25 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
       canReopen: broadcaster && kind === "webinar",
       rejoinUntil: new Date(Date.now() + 2 * 3600_000).toISOString(),
       reason: w === "revoked" ? "revoked" : w === "cancelled" ? "cancelled" : w === "closed" ? "closed" : undefined,
+      recording:
+        w === "saved"
+          ? { saved: true, error: null }
+          : w === "rec-error"
+            ? { saved: true, error: "Recording stopped. What reached the server is saved." }
+            : null,
     },
     busy,
     actionError: w === "toast" ? "Couldn't pin that host. Try again." : null,
     leaveHint: state === "live-host" && w === "leave" ? "You're the only host on air." : null,
+    notice:
+      state === "live-host" && w === "rehearsal" ? (
+        <span>
+          Not live yet: students can join from <LocalTime value={opensAt} mode="time" />
+        </span>
+      ) : null,
+    subline:
+      w === "recorded" ? "This call is recorded. Only you, Ana Ruiz and batch0 admins can watch it back." : null,
+    rehearsalUntil: state === "prejoin" && w === "rehearsal" ? opensAt : null,
     actions,
     onSharedLayout,
   };

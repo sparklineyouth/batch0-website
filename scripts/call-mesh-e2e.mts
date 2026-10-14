@@ -358,6 +358,56 @@ async function main() {
         info(`${label}: ${JSON.stringify(await p.page.evaluate(LINKS))}`);
       }
     }
+
+    console.log("\nwho can watch it back; then a decline");
+    // A recorded 1:1 keeps saying who can watch it back, read from the live
+    // staff list: three people on it now, so "the people on this call".
+    const sublines = () =>
+      Promise.all([h, s, m].map((p) => p.page.getByTestId("room-subline").innerText().catch(() => "")));
+    const told = await until(
+      "everyone to read who can watch the recording",
+      async () => {
+        const lines = await sublines();
+        return lines.every((t) => /this call is recorded\. only the people on this call and batch0 admins/i.test(t))
+          ? lines
+          : null;
+      },
+      60_000,
+    );
+    check(!!told, "everyone on the recorded call is told who can watch it back (from the live staff list)");
+    if (!told) info(`lines: ${JSON.stringify(await sublines())}`);
+
+    // The student declines while the team waits in the room (the status write
+    // declineCall makes): every room closes at once, as for a cancel — never
+    // "You no longer have access".
+    const declined = await fetch(`${url}/rest/v1/call_invites?id=eq.${inviteId}`, {
+      method: "PATCH",
+      headers: adm,
+      body: JSON.stringify({ status: "declined" }),
+    });
+    check(declined.ok, "the call is declined while everyone is in it");
+    const endTexts = () =>
+      Promise.all([h, s, m].map((p) => p.page.getByTestId("end-ended").innerText().catch(() => "")));
+    const closedAll = await until(
+      "every room to close as cancelled",
+      async () => ((await endTexts()).every((t) => /this call was cancelled/i.test(t)) ? true : null),
+      45_000,
+    );
+    check(!!closedAll, "a declined call closes every room as \"This call was cancelled\"");
+    if (!closedAll) info(`end screens: ${JSON.stringify(await endTexts())}`);
+    // Whoever recorded is told, once the upload is done, that it was saved.
+    const saved = await until(
+      "the recorder's end screen to say the recording was saved",
+      async () => {
+        for (const p of [h, m]) {
+          const outcome = p.page.locator('[data-testid="recording-outcome"][data-outcome="saved"]');
+          if ((await outcome.count()) > 0) return true;
+        }
+        return null;
+      },
+      90_000,
+    );
+    check(!!saved, "the recorder's end screen says \"Recording saved.\" once the upload is done");
   } finally {
     await browser?.close().catch(() => {});
     await cleanup();

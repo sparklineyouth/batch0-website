@@ -2117,11 +2117,12 @@ function closeReasonForRefusal(reason: JoinRefusal): CloseReason | null {
     case "ended":
     case "completed":
       return "ended";
+    // A declined call isn't happening: it closes like a cancelled one.
     case "cancelled":
+    case "declined":
       return "cancelled";
     case "closed":
       return "closed";
-    case "declined":
     case "no-access":
       return "revoked";
     default:

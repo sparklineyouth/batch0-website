@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, CircleDot, Headphones } from "lucide-react";
+import { LocalTime } from "@/components/ui/local-time";
 import { greenRoomCta } from "../logic";
 import type { LocalMediaView, RoomKind } from "../types";
 import { RoomButton, Spinner } from "../ui";
@@ -21,6 +22,7 @@ export function GreenRoom({
   recordingNotice,
   joining,
   error,
+  rehearsalUntil = null,
   onJoin,
 }: {
   kind: RoomKind;
@@ -32,9 +34,11 @@ export function GreenRoom({
   recordingNotice: ReactNode | null | undefined;
   joining: boolean;
   error: string | null | undefined;
+  /** Webinar hosts before the go-live window (ISO): a rehearsal, students join from then. */
+  rehearsalUntil?: string | null;
   onJoin: () => void;
 }) {
-  const cta = greenRoomCta({ kind, broadcaster: !!media, hosting });
+  const cta = greenRoomCta({ kind, broadcaster: !!media, hosting, rehearsal: !!rehearsalUntil });
   // A click before hydration would be lost: the button waits for it.
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
@@ -60,6 +64,11 @@ export function GreenRoom({
       ) : null}
       {cta.cohost ? (
         <p className="text-center text-xs text-[#71717a]">You join with camera and mic off.</p>
+      ) : null}
+      {rehearsalUntil ? (
+        <p className="text-center text-sm text-[#a1a1aa]" data-testid="green-room-rehearsal">
+          Not live yet: students can join from <LocalTime value={rehearsalUntil} mode="time" />.
+        </p>
       ) : null}
       {error ? (
         <p className="text-center text-sm text-[#ff8a8d]" role="alert" data-testid="green-room-error">

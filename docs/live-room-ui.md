@@ -13,6 +13,10 @@ renders `<LiveRoom/>` with data + callbacks. Every prop is documented on
   stops above the control bar.
 - Control bar pinned at the bottom; menus are popovers anchored to their
   button (one open at a time); toasts sit above the bar, never on it.
+- Notices and toasts stack at the top of the stage. On touch screens a tile's
+  Pin / Full screen buttons are always shown, so the stack starts below the
+  main tile's action row; small tiles label "Pin for everyone" as "Everyone"
+  there (no tooltip on touch).
 
 ## Main stage (`stage-model.ts`, tested in `lib/live-stage-model.test.ts`)
 1. The viewer's local pin.
@@ -23,7 +27,9 @@ renders `<LiveRoom/>` with data + callbacks. Every prop is documented on
 
 Presentations are `object-contain` on black; cameras `object-cover`. A
 presenter never sees their own capture: "You're presenting" (screen) or the
-presenter view (slides). `sharedLayout()` (no local pin) is what the recorder
+presenter view (slides). When another presentation holds the stage, their own
+is a filmstrip card ("You're presenting", or slides n/N with previous / next /
+Stop) and a toast says whose is up. `sharedLayout()` (no local pin) is what the recorder
 should compose.
 
 ## Presenting (`usePresentation`)
@@ -49,5 +55,6 @@ Shortcuts: Ctrl/Cmd+D mic, Ctrl/Cmd+E camera.
 ## Harness
 `/dev/live` (localhost only) renders every state on a fake session:
 `/dev/live?state=<state>&w=<variant>`; the index lists them. `npm run
-room-screens` screenshots all of them at 1440×900 and 390×844 and checks the
-layout (bar on screen, nothing over it, presentations not cropped).
+room-screens` screenshots all of them at 1440×900, 390×844 and 320×700 (the
+phones as touch screens) and checks the layout (bar on screen, nothing over
+it, notices off the main tile's buttons, presentations not cropped).

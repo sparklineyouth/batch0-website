@@ -88,6 +88,18 @@ test("green room CTA per room kind and role", () => {
   );
 });
 
+test("green room CTA before the go-live window: Enter room, not Start", () => {
+  assert.equal(greenRoomCta({ kind: "webinar", broadcaster: true, hosting: [], rehearsal: true }).label, "Enter room");
+  assert.equal(greenRoomCta({ kind: "webinar", broadcaster: true, hosting: null, rehearsal: true }).label, "Enter room");
+  // Joining someone already in the room is still joining as a co-host.
+  assert.equal(
+    greenRoomCta({ kind: "webinar", broadcaster: true, hosting: ["Ana"], rehearsal: true }).label,
+    "Join as co-host",
+  );
+  assert.equal(greenRoomCta({ kind: "webinar", broadcaster: false, hosting: [], rehearsal: true }).label, "Join");
+  assert.equal(greenRoomCta({ kind: "call", broadcaster: true, hosting: [], rehearsal: true }).label, "Join call");
+});
+
 test("screen share errors: cancel is silent, a macOS block explains the fix", () => {
   assert.equal(screenShareError("NotAllowedError", "Permission denied"), null);
   assert.equal(screenShareError("AbortError", ""), null);

@@ -97,7 +97,8 @@ export type WebinarBinding = {
   reopenLive: () => Promise<void>;
   fetchLiveState: () => Promise<WebinarLiveState>;
   setPrimaryHost: (userId: string) => Promise<ActionResult>;
-  hostingStatus: () => Promise<{ hosts: { userId: string; name: string }[] }>;
+  /** Who else is hosting, and whether a take is running (getHostingStatus). */
+  hostingStatus: () => Promise<{ hosts: { userId: string; name: string }[]; recording?: boolean }>;
 };
 
 export type CallBinding = {
@@ -133,6 +134,8 @@ type RejoinOptions = { endedAt?: string | null; role?: LiveRole };
 const NO_STAFF: readonly string[] = [];
 /** How often the green room asks who is hosting. */
 const HOSTING_POLL_MS = 10_000;
+/** Join's last look at who is hosting waits this long at most. */
+const JOIN_RECHECK_MS = 4_000;
 /** Ended screens poll for a Reopen: 15 s, 30 s after an empty answer, jittered. */
 const ENDED_POLL_MS = 15_000;
 const ENDED_POLL_BACKOFF_MS = 30_000;
@@ -158,6 +161,16 @@ export function RoomController(props: RoomControllerProps) {
     },
     [router],
   );
+
+  // A fresh server render (Rejoin's refresh) is the truth about End from then
+  // on: what a Rejoin carried across only covers the gap until it lands.
+  const propEndedAt = props.webinar?.liveEndedAt ?? null;
+  const lastPropEndedAt = useRef(propEndedAt);
+  useEffect(() => {
+    if (lastPropEndedAt.current === propEndedAt) return;
+    lastPropEndedAt.current = propEndedAt;
+    setEndedOverride(null);
+  }, [propEndedAt]);
 
   // A 1:1's latch lives above the remount (and in sessionStorage across a
   // reload): someone back in the room after the other person left keeps End call.
@@ -236,7 +249,10 @@ function RoomSession({
   const [endedByMe, setEndedByMe] = useState(false);
   const [closedReason, setClosedReason] = useState<CloseReason | null>(null);
   const [busy, setBusy] = useState<RoomBusy>(null);
+  /** Join, Reopen: shown where they happened (green room, end screen). */
   const [actionError, setActionError] = useState<string | null>(null);
+  /** End for everyone failed: shown in the End confirm, nowhere else. */
+  const [endError, setEndError] = useState<string | null>(null);
   // Off air the moment an exit is committed, not when the phase changes (the
   // phase waits for the recorder's final part).
   const [leaving, setLeaving] = useState(false);
@@ -352,21 +368,46 @@ function RoomSession({
     layout,
   });
 
+  // This tab recorded in this session: the end screens then say how it went.
+  const [recordedHere, setRecordedHere] = useState(false);
+  useEffect(() => {
+    if (recording.mine) setRecordedHere(true);
+  }, [recording.mine]);
+
   // ── Green room ────────────────────────────────────────────────────────────
-  // Who else is hosting decides the CTA: "Start webinar" or "Join as co-host".
+  // Who else is hosting decides the CTA: "Start webinar" or "Join as co-host";
+  // the same answer says whether the room is recording right now, so the
+  // recording notice is as current as the hosting line (hosts only — they are
+  // the ones on camera).
   const hostingStatus = webinar?.hostingStatus;
   const [hosting, setHosting] = useState<string[] | null>(null);
+  // A webinar that isn't auto-recorded may still be recording right now.
+  const autoRecord = !!webinar?.autoRecord;
+  const [recordingNow, setRecordingNow] = useState(false);
+  const hostingRef = useRef(hosting);
+  hostingRef.current = hosting;
+  const recordingNowRef = useRef(recordingNow);
+  recordingNowRef.current = recordingNow;
+  /** One read of the green room's server truth; null when it couldn't be read. */
+  const readHosting = useCallback(async (): Promise<{ hosts: string[]; recording: boolean } | null> => {
+    if (!hostingStatus) return null;
+    try {
+      const r = await hostingStatus();
+      return { hosts: r.hosts.map((h) => h.name), recording: !!r.recording };
+    } catch {
+      return null; // The next tick asks again; the server still decides who is primary.
+    }
+  }, [hostingStatus]);
   useEffect(() => {
     if (!hostingStatus || !broadcaster || phase !== "prejoin") return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const tick = async () => {
       if (!document.hidden) {
-        try {
-          const r = await hostingStatus();
-          if (!stopped) setHosting(r.hosts.map((h) => h.name));
-        } catch {
-          // The next tick asks again; the server still decides who is primary.
+        const r = await readHosting();
+        if (!stopped && r) {
+          setHosting(r.hosts);
+          setRecordingNow(r.recording);
         }
       }
       if (!stopped) timer = setTimeout(tick, HOSTING_POLL_MS);
@@ -376,13 +417,11 @@ function RoomSession({
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [hostingStatus, broadcaster, phase]);
+  }, [hostingStatus, readHosting, broadcaster, phase]);
 
-  // A webinar that isn't auto-recorded may still be recording right now.
-  const autoRecord = !!webinar?.autoRecord;
-  const [recordingNow, setRecordingNow] = useState(false);
+  // Viewers aren't recorded; they are told once whether hosts are.
   useEffect(() => {
-    if (kind !== "webinar" || autoRecord || phase !== "prejoin") return;
+    if (kind !== "webinar" || broadcaster || autoRecord || phase !== "prejoin") return;
     let stopped = false;
     fetch(`/api/recordings/active?kind=webinar&room=${encodeURIComponent(roomId)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -393,7 +432,7 @@ function RoomSession({
     return () => {
       stopped = true;
     };
-  }, [kind, autoRecord, phase, roomId]);
+  }, [kind, broadcaster, autoRecord, phase, roomId]);
 
   // Co-hosts join with camera and mic off, applied once the stream exists.
   const joinMuted = useRef(false);
@@ -404,11 +443,36 @@ function RoomSession({
     if (media.micOn) media.toggleMic();
   }, [media, phase]);
 
-  const join = useCallback(() => {
+  const joiningRef = useRef(false);
+  const join = useCallback(async () => {
+    if (joiningRef.current) return;
     setActionError(null);
-    joinMuted.current = !!webinar && broadcaster && !!hosting && hosting.some((n) => n.trim());
+    // A webinar host re-reads who is hosting and whether a take is running
+    // before going in: a host who went live, or pressed Record, since the last
+    // poll changes what this person joins as. If it changed, they stay here to
+    // see the notice and the "Join as co-host" line first, and press again.
+    if (webinar && broadcaster && hostingStatus) {
+      joiningRef.current = true;
+      setBusy("joining");
+      const fresh = await Promise.race([
+        readHosting(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), JOIN_RECHECK_MS)),
+      ]);
+      joiningRef.current = false;
+      setBusy(null);
+      if (fresh) {
+        const before = (hostingRef.current ?? []).some((n) => n.trim());
+        const newlyRecorded = fresh.recording && !recordingNowRef.current && !autoRecord;
+        hostingRef.current = fresh.hosts;
+        setHosting(fresh.hosts);
+        setRecordingNow(fresh.recording);
+        if ((fresh.hosts.some((n) => n.trim()) && !before) || newlyRecorded) return;
+      }
+    }
+    joinMuted.current =
+      !!webinar && broadcaster && !!hostingRef.current && hostingRef.current.some((n) => n.trim());
     setPhase("live");
-  }, [webinar, broadcaster, hosting]);
+  }, [webinar, broadcaster, hostingStatus, readHosting, autoRecord]);
 
   // ── Teardown ──────────────────────────────────────────────────────────────
   const stopRecording = recording.stop;
@@ -424,10 +488,32 @@ function RoomSession({
       }
       stopPresenting();
       stopMedia();
+      // What went wrong in the room (a failed End) isn't news on the screen
+      // after it; errors raised there (Reopen) are set later and stay.
+      setActionError(null);
+      setEndError(null);
       setPhase(next);
     },
     [stopRecording, stopPresenting, stopMedia],
   );
+
+  // In the green room, a fresh server render (after Rejoin's refresh) is the
+  // truth about End: a host who left, and comes back after another host ended
+  // the webinar, lands on the ended screen (Reopen for staff), not on Start —
+  // and the camera the green room opened goes off. Only a change of the prop
+  // counts; the mount already used what it knew.
+  const propEndedAt = webinar?.liveEndedAt ?? null;
+  const seenPropEndedAt = useRef(propEndedAt);
+  useEffect(() => {
+    if (seenPropEndedAt.current === propEndedAt) return;
+    seenPropEndedAt.current = propEndedAt;
+    if (phase !== "prejoin") return;
+    setEndedAt(propEndedAt);
+    if (!propEndedAt) return;
+    stopPresenting();
+    stopMedia();
+    setPhase("ended");
+  }, [propEndedAt, phase, stopPresenting, stopMedia]);
 
   // Ways off the left/ended screens wait for the uploads (bounded), one at a time.
   const drain = recording.drain;
@@ -511,15 +597,15 @@ function RoomSession({
     if (!endLive || exiting.current) return;
     exiting.current = true;
     setBusy("ending");
-    setActionError(null);
+    setEndError(null);
     let stored: string;
     try {
       stored = await endLive();
     } catch (err) {
-      // Nothing torn down: still live, told why, can press it again.
+      // Nothing torn down: still live, told why (in the confirm), can press it again.
       exiting.current = false;
       setBusy(null);
-      setActionError(getActionError(err, "Couldn't end the webinar. Try again."));
+      setEndError(getActionError(err, "Couldn't end the webinar. Try again."));
       afterFailedEnd();
       return;
     }
@@ -570,6 +656,8 @@ function RoomSession({
       stopPresenting();
       stopMedia();
       const completed = ended ? await ended : true;
+      setActionError(null);
+      setEndError(null);
       if (how === "elsewhere" && (reason === "closed" || reason === "revoked")) {
         setClosedReason(reason);
         setPhase("closed");
@@ -660,17 +748,54 @@ function RoomSession({
       </span>
     ) : null;
 
+  // The green room before the go-live window says so (and "Enter room", not
+  // "Start webinar"). Read after mount, so the server render never disagrees.
+  const [beforeOpen, setBeforeOpen] = useState(false);
+  useEffect(() => {
+    if (opensAt === null) return;
+    const wait = opensAt - Date.now();
+    setBeforeOpen(wait > 0);
+    if (!(wait > 0)) return;
+    const t = setTimeout(() => setBeforeOpen(false), Math.min(wait + 500, 2_147_483_647));
+    return () => clearTimeout(t);
+  }, [opensAt]);
+  const rehearsalUntil =
+    phase === "prejoin" && broadcaster && beforeOpen && opensAt !== null && !webinar?.liveStartedAt
+      ? new Date(opensAt).toISOString()
+      : null;
+
+  // A rehearsal turns into the real thing on a heartbeat inside the window:
+  // the host is told, once (students are let in; an auto-recorded event starts
+  // recording).
+  const [flash, setFlash] = useState<{ id: string; message: string } | null>(null);
+  const wasRehearsing = useRef(false);
+  useEffect(() => {
+    if (rehearsing) {
+      wasRehearsing.current = true;
+      return;
+    }
+    if (!wasRehearsing.current || phase !== "live" || !room.liveStartedAt) return;
+    wasRehearsing.current = false;
+    setFlash({
+      id: "went-live",
+      message: autoRecord
+        ? "You're live. Students can join now. Recording starts automatically."
+        : "You're live. Students can join now.",
+    });
+  }, [rehearsing, phase, room.liveStartedAt, autoRecord]);
+
   // ── Pin for everyone (webinar staff) ──────────────────────────────────────
+  // The outcome goes back to the room, which says it where the pin was made
+  // (a toast); it never lands in the room-wide action error.
   const setPrimaryHost = webinar?.setPrimaryHost;
   const pinForEveryone = useCallback(
-    async (peerId: string) => {
-      if (!setPrimaryHost) return;
-      setActionError(null);
+    async (peerId: string): Promise<ActionResult> => {
+      if (!setPrimaryHost) return { ok: false, error: "Couldn't pin that host. Try again." };
       const res = await setPrimaryHost(peerId).catch(
         (err): ActionResult => ({ ok: false, error: getActionError(err, "Couldn't pin that host. Try again.") }),
       );
       if (res.ok) recheck();
-      else setActionError(res.error);
+      return res;
     },
     [setPrimaryHost, recheck],
   );
@@ -722,6 +847,9 @@ function RoomSession({
       closedReason === "cancelled" || closedReason === "closed" || closedReason === "revoked"
         ? closedReason
         : undefined,
+    // Said once the upload is done: saved, or what went wrong (a take that
+    // lost its lease while draining says so here, not in a toast nobody sees).
+    recording: canRecord && (recordedHere || recording.error) ? { saved: recordedHere, error: recording.error } : null,
   };
 
   const recordingNotice = call ? (
@@ -731,6 +859,16 @@ function RoomSession({
       <p className="font-medium">This webinar is recorded</p>
       <p className="mt-0.5 text-[#e8b4b5]">Hosts are recorded. Viewers aren&rsquo;t.</p>
     </>
+  ) : null;
+
+  // In a recorded 1:1, everyone on it keeps being told who can watch it back
+  // (read from the live staff list: a co-host added mid-call changes it).
+  const callRecorded =
+    !!call && phase === "live" && (!!room.recording || recording.mine || !!recording.by);
+  const subline = callRecorded ? (
+    <span data-testid="call-recorded-line">
+      This call is recorded. {whoCanWatch(staffIds.length + 1, call.otherName)}
+    </span>
   ) : null;
 
   const panelRole = isStaffHost ? "staff" : broadcaster ? "speaker" : "viewer";
@@ -779,13 +917,13 @@ function RoomSession({
 
   const actions = useMemo<LiveRoomProps["actions"]>(
     () => ({
-      join,
+      join: () => void join(),
       leave: () => void leaveNow(),
       end: broadcaster || call ? () => void (call ? finishCall("mine") : endWebinar()) : undefined,
       rejoin: () => void doRejoin(),
       reopen: isStaffHost ? () => void reopen() : undefined,
       retry,
-      pinForEveryone: webinar && isStaffHost ? (id: string) => void pinForEveryone(id) : undefined,
+      pinForEveryone: webinar && isStaffHost ? pinForEveryone : undefined,
       back: () => void back(),
     }),
     [join, leaveNow, broadcaster, call, finishCall, endWebinar, doRejoin, isStaffHost, reopen, retry, webinar, pinForEveryone, back],
@@ -831,20 +969,28 @@ function RoomSession({
       end={end}
       busy={busy}
       actionError={actionError}
+      endError={endError}
       leaveHint={leaveHint}
       notice={notice}
+      subline={subline}
+      rehearsalUntil={rehearsalUntil}
+      flash={flash}
       actions={actions}
       onSharedLayout={onSharedLayout}
     />
   );
 }
 
+/** Who can watch a 1:1's recording: "recorded" with no audience named reads as "for anyone". */
+function whoCanWatch(people: number, otherName: string): string {
+  return people <= 2
+    ? `Only you, ${otherName} and batch0 admins can watch it back.`
+    : "Only the people on this call and batch0 admins can watch it back.";
+}
+
 /** The 1:1 green-room notice: before Join, for everyone (minors are on these calls). */
 function CallRecordingNotice({ staff, people, otherName }: { staff: boolean; people: number; otherName: string }) {
-  const who =
-    people <= 2
-      ? `Only you, ${otherName} and batch0 admins can watch it back.`
-      : "Only the people on this call and batch0 admins can watch it back.";
+  const who = whoCanWatch(people, otherName);
   return (
     <>
       <p className="font-medium">This call is recorded</p>

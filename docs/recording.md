@@ -33,8 +33,10 @@ one seekable file.
 - **Everyone sees REC** (viewers included) from the session's heartbeat
   answer (`session.room.recording`, filled by `activeRecordingFor()`), plus
   this tab's own take — no extra polling. The green room says so before Join
-  (calls always; webinars that record automatically, or that a single
-  `GET /api/recordings/active` on entry finds recording).
+  (calls always; webinars that record automatically, or that are recording
+  now: hosts read it with the green room's 10 s `getHostingStatus` poll and
+  again when Join is pressed, viewers from one `GET /api/recordings/active` on
+  entry).
 - **What is recorded** is the room's main stage
   (`lib/recording-layout.ts`): a screen share or slide deck full-frame with
   faces inset, else the primary camera with insets, else everyone side by side

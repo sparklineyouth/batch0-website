@@ -1,7 +1,7 @@
 "use client";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, CloudUpload, Loader2, LogOut, PhoneOff, Radio, ShieldOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CloudUpload, Loader2, LogOut, PhoneOff, Radio, ShieldOff } from "lucide-react";
 import { LocalTime } from "@/components/ui/local-time";
 import type { StageNoticeKind } from "./logic";
 import type { RoomBusy, RoomEnd, RoomKind, RoomPhase, RoomSelf } from "./types";
@@ -150,9 +150,46 @@ export function EndScreen({
           <div className="px-6">
             <UploadingRecording />
           </div>
+        ) : end.recording ? (
+          <div className="px-6">
+            <RecordingOutcome saved={end.recording.saved} error={end.recording.error} />
+          </div>
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Once this tab's upload is done: whether the recording made it. A take that
+ * stopped early says so ("What reached the server is saved"); a start that
+ * failed says the recording didn't start.
+ */
+function RecordingOutcome({ saved, error }: { saved: boolean; error: string | null }) {
+  if (error) {
+    return (
+      <p
+        className="flex max-w-md items-start gap-2 rounded-md border border-[#4a3a12] bg-[#241d0c] px-3 py-2.5 text-sm text-[#ffe3a3]"
+        role="status"
+        data-testid="recording-outcome"
+        data-outcome="error"
+      >
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#ffb224]" aria-hidden />
+        <span>{saved ? error : "The recording didn't start."}</span>
+      </p>
+    );
+  }
+  if (!saved) return null;
+  return (
+    <p
+      className="flex max-w-md items-center gap-2 text-sm text-[#a1a1aa]"
+      role="status"
+      data-testid="recording-outcome"
+      data-outcome="saved"
+    >
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-[#46a758]" aria-hidden />
+      Recording saved.
+    </p>
   );
 }
 

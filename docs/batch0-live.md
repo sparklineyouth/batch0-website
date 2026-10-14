@@ -46,27 +46,38 @@ emails, ICS files and cards keep working).
 - **Green room** for everyone: camera preview, mic meter, device pickers,
   test sound, mic test (viewers: speaker only). A webinar host sees **Start
   webinar** when nobody is hosting, else **Join as co-host · Ana is hosting**
-  (`getHostingStatus`, never the caller, polled every 10 s); co-hosts join with
-  camera and mic off. The recording notice is shown before Join whenever the
-  room records or will (calls always; webinars with auto-record or a take
-  running).
+  (`getHostingStatus`, never the caller, polled every 10 s, and read once more
+  when Join is pressed: if someone went live or started recording since, the
+  host stays to see it first); co-hosts join with camera and mic off. Before
+  the go-live window the button is **Enter room** with "students can join
+  from <time>". The recording notice is shown before Join whenever the room
+  records or will (calls always; webinars with auto-record, or a take running
+  — hosts learn that from the same 10 s poll, viewers once on entry).
 - **Main stage**: your own local pin, else a presentation (screen share or
   slides; the primary's, else the most recent), else the webinar's primary
   host, else (1:1) the other person with yourself as a PiP, else a grid.
   Presentations are never cropped. Everyone else is in the filmstrip.
 - **Pin for everyone** (webinar staff): `setPrimaryHost` writes the primary;
   the server publishes `room-changed` and every client reads the new
-  `session.room.primaryId`. The first host in becomes primary; a host who
-  joins while the primary is gone takes it over.
+  `session.room.primaryId`; the presser is told in a toast (their own stage
+  may not move: a local pin wins). The first host in becomes primary; a host
+  who joins while the primary is gone takes it over.
 - **Present**: share a screen, or present a PDF — from disk, or (webinars) the
   event's uploaded deck (`event_assets` kind `deck`, PDF, signed for 6 h).
   pdf.js draws it onto a 1920×1080 canvas whose stream goes through the screen
-  slot, so viewers and the recording need nothing new.
+  slot, so viewers and the recording need nothing new. While another
+  presentation holds the stage (the primary's always does), a presenter is
+  told so ("Cy is presenting. Yours shows when they stop.") and drives their
+  slides from a filmstrip card (n/N, previous, next, Stop).
 - **REC badge** for everyone from `session.room.recording` (and this tab's own
-  take). Record/Stop for webinar hosts and a call's staff.
+  take). Record/Stop for webinar hosts and a call's staff. A recorded 1:1 also
+  keeps a line under the top bar saying who can watch it back (from the live
+  staff list). The end screens say "Recording saved." once this tab's upload
+  is done, or what went wrong (a take that lost its lease while draining).
 - **Rehearsal**: a host in the room before the go-live window (start − 60 min)
   sees "Not live yet: students can join from <time>"; nothing is stamped and
-  Leave is the only way out.
+  Leave is the only way out. The heartbeat that crosses into the window stamps
+  `live_started_at` and the host is told "You're live".
 
 ## Leave, End, and the other ways out
 
@@ -103,13 +114,17 @@ Back wait for it first (bounded at 90 s).
   upload, goes back to their calls list (if still on the page). Everyone else
   closes on the hint or the next heartbeat. `endCall` revalidates nothing, so
   the room stays mounted through the upload. Cancelling or declining a running
-  call closes every room the same way.
+  call closes every room the same way, at once ("This call was cancelled").
 - **Someone left a call** — the others see "<name> left the call. They can
   rejoin until <end + 3 h>"; a person not yet on the page reads as "Waiting
   for <name> to join" (`RemotePeer.heard` tells them apart).
 - **The server closes it** — a heartbeat or re-check answering `ended`,
-  `cancelled`, `closed` (window over, no host) or `revoked` (access removed;
-  `closed`/`revoked` only on two answers in a row) runs the same teardown.
+  `cancelled` (a declined 1:1 too), `closed` (window over, no host) or
+  `revoked` (access removed; `closed`/`revoked` only on two answers in a row)
+  runs the same teardown.
+- **Rejoin after an End elsewhere** — Rejoin refreshes the page; a host whose
+  fresh render says the webinar ended lands on the ended screen (Reopen for
+  staff), not on Start.
 - **A closing tab is a Leave**: `pagehide` sends `bye` on every connection and
   beacons `POST /api/live/leave` (cookie-authenticated, same-origin only).
   Coming back through the back-forward cache reloads into the green room.
@@ -223,3 +238,9 @@ replaced it, and the Daily code, scripts and dependency are gone. The
 `daily_room_*` columns stay as history; nothing reads them. Moving to a vendor
 again means wiring it behind `lib/live-signal.ts` and proving it with
 `webinar-e2e`.
+
+**Deploy step:** delete `DAILY_API_KEY`, `NEXT_PUBLIC_DAILY_DOMAIN`,
+`DAILY_ENABLE_RECORDING` and `DAILY_LARGE_CALLS` from the Vercel environment
+(every environment), and revoke the API key in the Daily dashboard: it could
+create rooms and mint owner tokens for any room on the domain, and nothing
+uses it now.

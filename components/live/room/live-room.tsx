@@ -11,7 +11,7 @@ import { PopoverProvider, useCloseAllPopovers } from "./popover";
 import { PresentingScreen } from "./presenting";
 import { EndScreen, StageNotice } from "./screens";
 import { RoomShell, TopBar } from "./shell";
-import { PresentingThumb, Stage, type TileView } from "./stage";
+import { PresentingDeckThumb, PresentingThumb, Stage, type TileView } from "./stage";
 import { computeStage, type StagePerson, type StageTile } from "./stage-model";
 import { ToastProvider, useToasts } from "./toasts";
 import type { LiveRoomProps, PanelTab, PanelUnread, RoomPeer } from "./types";
@@ -129,6 +129,10 @@ function RoomBody(
   useEffect(() => {
     if (actionError && phase === "live") toast.push({ tone: "error", message: actionError });
   }, [actionError, phase, toast]);
+  const flash = props.flash ?? null;
+  useEffect(() => {
+    if (flash) toast.push({ id: flash.id, tone: "info", message: flash.message });
+  }, [flash, toast]);
 
   // ── Panel ─────────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<PanelTab>(panel?.tabs[0] ?? "chat");
@@ -218,6 +222,51 @@ function RoomBody(
     },
     [localPin, toast],
   );
+
+  // Pin for everyone, said where it was pressed: the presser's own stage may
+  // not move (their local pin wins there).
+  const pinAction = actions.pinForEveryone;
+  const nameOf = useRef<(id: string) => string>(() => "");
+  nameOf.current = (id) => (id === self.id ? self.name : remotes.find((r) => r.peerId === id)?.name || "That host");
+  const pinForEveryone = useMemo(
+    () =>
+      pinAction
+        ? (peerId: string) => {
+            const failed = (message: string) => toast.push({ id: "pin", tone: "error", message });
+            void Promise.resolve(pinAction(peerId))
+              .then((r) => {
+                if (!r) return;
+                if (!r.ok) return failed(r.error);
+                toast.push({
+                  id: "pin",
+                  tone: "info",
+                  message:
+                    peerId === self.id
+                      ? "You're on the main stage for everyone"
+                      : `${nameOf.current(peerId)} is on the main stage for everyone`,
+                });
+              })
+              .catch(() => failed("Couldn't pin that host. Try again."));
+          }
+        : null,
+    [pinAction, self.id, toast],
+  );
+
+  // Another presentation holds the main stage (the primary's always does; else
+  // the most recent): a presenter is told theirs waits, and drives their
+  // slides from the filmstrip card meanwhile.
+  const otherPresenterId = shared.presenter && !shared.presenter.isSelf ? shared.presenter.peerId : null;
+  const otherPresenterName = otherPresenterId ? shared.presenter?.name || "Someone" : null;
+  useEffect(() => {
+    if (phase !== "live" || !selfPresenting || !otherPresenterId) return;
+    toast.push({
+      id: "presenting-behind",
+      tone: "info",
+      message: `${otherPresenterName} is presenting. Yours shows when they stop.`,
+    });
+  }, [phase, selfPresenting, otherPresenterId, otherPresenterName, toast]);
+  // Starting one now wouldn't take the stage: the Present menu says so first.
+  const presentHeldBy = kind === "webinar" && otherPresenterId && otherPresenterId === primaryId ? otherPresenterName : null;
 
   const peers = useMemo(() => new Map(remotes.map((r) => [r.peerId, r])), [remotes]);
   const view = useCallback(
@@ -352,7 +401,11 @@ function RoomBody(
           <Spinner className="h-3.5 w-3.5" /> Reconnecting…
         </Chip>
       ) : null}
-      {props.notice ? <Chip testId="chip-notice">{props.notice}</Chip> : null}
+      {props.notice ? (
+        <Chip testId="chip-notice" wrap>
+          {props.notice}
+        </Chip>
+      ) : null}
       {waitingChip}
       {sheetOpen ? null : toasts}
     </>
@@ -400,17 +453,29 @@ function RoomBody(
   // Everyone sees REC: the server's word, or this tab's own take / refused start.
   const recBy = recording?.mine ? null : (room.recording?.byName ?? recording?.by?.name ?? null);
   const recActive = phase === "live" && (!!room.recording || !!recording?.mine || !!recording?.by);
+  const subline = phase === "live" ? (props.subline ?? null) : null;
   const top = (
-    <TopBar
-      title={phase === "prejoin" ? "" : title}
-      backHref={phase === "live" ? null : backHref}
-      live={live}
-      rec={recActive ? { by: recBy } : null}
-      since={phase === "live" ? (kind === "webinar" ? room.liveStartedAt : firstLive.current) : null}
-      audienceCount={phase === "live" ? props.audienceCount : null}
-      role={phase === "live" && kind === "webinar" ? (self.broadcaster ? "Hosting" : "Watching") : null}
-      connecting={phase === "live" && !connection.joined && !connection.joinFailed}
-    />
+    <>
+      <TopBar
+        title={phase === "prejoin" ? "" : title}
+        // The end screens have their own Back, which waits for the recording's upload.
+        backHref={phase === "prejoin" ? backHref : null}
+        live={live}
+        rec={recActive ? { by: recBy } : null}
+        since={phase === "live" ? (kind === "webinar" ? room.liveStartedAt : firstLive.current) : null}
+        audienceCount={phase === "live" ? props.audienceCount : null}
+        role={phase === "live" && kind === "webinar" ? (self.broadcaster ? "Hosting" : "Watching") : null}
+        connecting={phase === "live" && !connection.joined && !connection.joinFailed}
+      />
+      {subline ? (
+        <p
+          className="-mt-1 shrink-0 px-3 pb-1.5 text-[11px] leading-snug text-[#a1a1aa] sm:px-4 sm:text-xs"
+          data-testid="room-subline"
+        >
+          {subline}
+        </p>
+      ) : null}
+    </>
   );
 
   // ── Phases ────────────────────────────────────────────────────────────────
@@ -426,6 +491,7 @@ function RoomBody(
           recordingNotice={props.recordingNotice}
           joining={busy === "joining"}
           error={actionError}
+          rehearsalUntil={props.rehearsalUntil ?? null}
           onJoin={actions.join}
         />
       </RoomShell>
@@ -477,6 +543,7 @@ function RoomBody(
             selfId={self.id}
             media={self.broadcaster ? media : null}
             presentation={self.broadcaster ? presentation : null}
+            presentHeldBy={presentHeldBy}
             recording={canRecord ? recording : null}
             reactions={reactions?.button ?? null}
             panel={
@@ -490,7 +557,7 @@ function RoomBody(
               onLeave: actions.leave,
               onEnd: actions.end,
               busy,
-              error: actionError,
+              error: props.endError ?? null,
               hint: props.leaveHint ?? null,
             }}
           />
@@ -500,10 +567,14 @@ function RoomBody(
           model={model}
           view={view}
           onPin={onPin}
-          pinForEveryone={kind === "webinar" && self.staff ? actions.pinForEveryone ?? null : null}
+          pinForEveryone={kind === "webinar" && self.staff ? pinForEveryone : null}
           selfMain={selfMain}
           selfThumb={(t) =>
-            t.presenting === "screen" ? <PresentingThumb onStop={presentation?.stop} /> : null
+            t.presenting === "screen" ? (
+              <PresentingThumb onStop={presentation?.stop} />
+            ) : t.presenting === "deck" && presentation?.deck ? (
+              <PresentingDeckThumb deck={presentation.deck} onStop={presentation.stop} />
+            ) : null
           }
           empty={
             <StageNotice

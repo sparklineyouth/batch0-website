@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { isMissingSchemaError } from "@/lib/schema-ready";
+import { activeRecordingFor } from "@/lib/recording-sessions";
 import { callStaffIds, type LiveRoomState, type RoomStatus } from "@/lib/live";
 import { isHostedOnBatch0, type AudienceMode } from "@/lib/webinars";
 import {
@@ -613,6 +614,9 @@ export async function setPrimaryHost(
 /**
  * Who ELSE is hosting right now — for the green room's "Start webinar" vs
  * "Join as co-host · Ana is hosting". The primary first, then by arrival.
+ * And whether the room is being recorded, so the green room's recording
+ * notice is as current as its hosting line (a host who presses Record while
+ * a speaker waits there puts the notice up before the speaker joins).
  *
  * Never the caller: a host who reloads before their own row goes stale (the
  * leave beacon lost) is not someone already hosting for them to join.
@@ -621,13 +625,16 @@ export async function setPrimaryHost(
  */
 export async function getHostingStatus(
   eventId: string,
-): Promise<{ hosts: { userId: string; name: string }[] }> {
+): Promise<{ hosts: { userId: string; name: string }[]; recording: boolean }> {
   const access = await resolveEventAccess(eventId);
-  if (!access.ok || !access.isHost) return { hosts: [] };
-  const hosts = (await presentHosts(access.event.id, PEER_TIMEOUT_MS)) ?? [];
+  if (!access.ok || !access.isHost) return { hosts: [], recording: false };
+  const [present, active] = await Promise.all([
+    presentHosts(access.event.id, PEER_TIMEOUT_MS),
+    activeRecordingFor("webinar", access.event.id).catch(() => null),
+  ]);
   const primary = access.event.primaryHostId;
   return {
-    hosts: hosts
+    hosts: (present ?? [])
       .filter((h) => h.userId !== access.userId)
       .sort(
         (a, b) =>
@@ -635,5 +642,6 @@ export async function getHostingStatus(
           a.joinedAt.localeCompare(b.joinedAt),
       )
       .map((h) => ({ userId: h.userId, name: h.name })),
+    recording: active !== null,
   };
 }

@@ -246,11 +246,28 @@ async function enterRoom(page: Page, label: string): Promise<boolean> {
   const cameraOff = page.getByRole("button", { name: /turn camera off/i });
   if ((await cameraOff.count()) > 0) await cameraOff.first().click().catch(() => {});
   await button.first().click();
+  let pressedAt = Date.now();
+  let presses = 1;
   const tabs = page.getByRole("tablist", { name: "Webinar panel" });
   const shown = await until(
     `${label} panel`,
     async () => {
       if ((await tabs.count()) > 0 && (await tabs.first().isVisible())) return true;
+      // A host's Join re-reads who is hosting first; when that changed the
+      // green room stays to show it (now "Join as co-host"): press again.
+      if (
+        presses < 3 &&
+        Date.now() - pressedAt > 2_000 &&
+        (await button.count()) > 0 &&
+        (await button.first().isVisible().catch(() => false)) &&
+        (await button.first().isEnabled().catch(() => false)) &&
+        !/connecting/i.test((await button.first().innerText().catch(() => "")) || "")
+      ) {
+        await button.first().click().catch(() => {});
+        pressedAt = Date.now();
+        presses++;
+        return false;
+      }
       // A room that keeps the panel closed: open it.
       const toggle = page.getByRole("button", { name: /^chat$/i });
       if ((await toggle.count()) > 0) await toggle.first().click();
