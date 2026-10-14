@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireUser, getProfile } from "@/lib/auth";
+import { requireUser, getProfile, getViewer } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { LocalTime } from "@/components/ui/local-time";
 import { ButtonLink } from "@/components/ui/button";
 import { FounderPassCard } from "./founder-pass-card";
@@ -37,6 +38,12 @@ const DAY_MS = 24 * 60 * 60_000;
 
 export default async function DashboardHome() {
   const user = await requireUser();
+  // Mentors, investors and admin-area roles are sent to their own home by the
+  // middleware, so the only viewer here without student.dashboard is one whose
+  // role opens no section at all (say, a custom role whose only keys were
+  // retired). Tell them, rather than render a student home that isn't theirs.
+  const viewer = await getViewer();
+  if (viewer && !can(viewer.caps, "student.dashboard")) return <NoSection />;
   const supabase = await createClient();
   const admin = createAdminClient();
   const now = new Date();
@@ -311,6 +318,23 @@ function NeedsItem({ row }: { row: NeedsRow }) {
     <Link href={row.href} prefetch={false} className={`press ${cls} hover:bg-wash`}>
       {body}
     </Link>
+  );
+}
+
+function NoSection() {
+  return (
+    <div className="mx-auto max-w-xl">
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
+        Nothing to open yet
+      </h1>
+      <p className="mt-2 text-sm text-ink-soft">
+        Your account&apos;s role doesn&apos;t include any section of batch0. If that&apos;s a
+        mistake, ask the team to update it.
+      </p>
+      <ButtonLink href="/dashboard/support/new?topic=account" className="mt-5">
+        Ask the team
+      </ButtonLink>
+    </div>
   );
 }
 

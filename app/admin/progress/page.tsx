@@ -4,7 +4,15 @@ import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { Meter } from "@/components/admin/charts";
 import { getRosterProgress, type RosterProgress } from "@/lib/progress";
-import { BookOpen, Sparkles, FolderOpen, ArrowRight, Users } from "lucide-react";
+import {
+  BookOpen,
+  Sparkles,
+  FolderOpen,
+  ArrowRight,
+  Users,
+  ClipboardList,
+  Trophy,
+} from "lucide-react";
 
 export const metadata = { title: "Progress · Admin" };
 export const dynamic = "force-dynamic";
@@ -13,8 +21,8 @@ const AREA_ICON = {
   course: BookOpen,
   flow: Sparkles,
   resource: FolderOpen,
-  challenge: Sparkles,
-  assignment: BookOpen,
+  challenge: Trophy,
+  assignment: ClipboardList,
 } as const;
 
 /**
@@ -138,6 +146,7 @@ export default async function AdminProgressPage(
                   <th className="px-5 py-3">Student</th>
                   <th className="px-5 py-3">Stopped at</th>
                   <th className="px-5 py-3">Last seen</th>
+                  <th className="px-5 py-3">Assignments</th>
                   <th className="px-5 py-3">Course</th>
                   <th className="px-5 py-3">Flows</th>
                   <th className="px-5 py-3">Resources</th>
@@ -213,6 +222,7 @@ function Row({ row }: { row: RosterProgress }) {
           "—"
         )}
       </td>
+      <td className="px-5 py-3 tabular-nums text-ink-soft">{row.assignmentsDone}</td>
       <td className="px-5 py-3 tabular-nums text-ink-soft">{row.lessonsDone}</td>
       <td className="px-5 py-3 tabular-nums text-ink-soft">{row.flowsDone}</td>
       <td className="px-5 py-3 tabular-nums text-ink-soft">

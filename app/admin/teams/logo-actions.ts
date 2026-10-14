@@ -42,7 +42,7 @@ export async function approveTeamLogo(input: { teamId: string }) {
       link: "/dashboard/team",
     })),
   );
-  revalidatePath("/admin/moderation");
+  revalidatePath("/admin/teams");
   revalidatePath("/dashboard/team");
 }
 
@@ -102,6 +102,6 @@ export async function rejectTeamLogo(input: {
       link: "/dashboard/team",
     })),
   );
-  revalidatePath("/admin/moderation");
+  revalidatePath("/admin/teams");
   revalidatePath("/dashboard/team");
 }

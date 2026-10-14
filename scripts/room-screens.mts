@@ -1,12 +1,14 @@
 /**
- * Screenshot every live-room harness state (/dev/live) at desktop, phone and
- * narrow-phone (320px) sizes and check the layout: control bar on screen with
- * every control inside it, nothing over it but its own menus, notices and
- * toasts stacked (never on each other, the filmstrip, the side panel or the
- * main tile's Pin / Full screen buttons when they show), the side panel's own
- * controls uncovered, no sideways scroll, presentations never cropped, no
- * page errors. Phone sizes are touch screens (the main tile's actions always
- * shown; a filmstrip or PiP tile's only after a tap, so none show here).
+ * Screenshot every live-room harness state (/dev/live) at desktop, phone,
+ * narrow-phone (320px) and phone-on-its-side sizes and check the layout:
+ * control bar on screen with every control inside it, nothing over it but its
+ * own menus, notices and toasts stacked (never on each other, the filmstrip,
+ * the side panel or the main tile's Pin / Full screen buttons when they
+ * show), the side panel's own controls uncovered and, in landscape, beside
+ * the stage rather than over it, no sideways scroll, presentations never
+ * cropped, no page errors. Phone sizes are touch screens (the main tile's
+ * actions always shown; a filmstrip or PiP tile's only after a tap, so none
+ * show here).
  *
  *   npx next dev -p 3102
  *   E2E_BASE_URL=http://localhost:3102 npm run room-screens -- --out=/tmp/room-screens
@@ -29,6 +31,8 @@ const VIEWPORTS = [
   { name: "phone", width: 390, height: 844, touch: true },
   // Android "display size" set large: 320 CSS pixels.
   { name: "narrow", width: 320, height: 700, touch: true },
+  // A phone on its side: the side panel is a column, the stage stays usable.
+  { name: "landscape", width: 844, height: 390, touch: true },
 ];
 
 // Runs in the page.
@@ -60,6 +64,7 @@ const CHECK = `(() => {
   // Notices and toasts over the stage: never on the side panel, the filmstrip or each other.
   const panel = document.querySelector('[data-testid="side-panel"]');
   const pr = panel && shown(panel) ? box(panel) : null;
+  if (pr && vw > vh && hit(pr, box(document.querySelector('[data-testid="stage-main"]')))) out.push('side panel over the stage');
   const fr = box(document.querySelector('[data-testid="filmstrip"]'));
   const floating = [...document.querySelectorAll(FLOATING)].filter((el) => box(el) && !(panel && panel.contains(el)));
   const label = (el) => (el.closest('[data-testid="room-toasts"]') ? 'toast' : el.getAttribute('data-testid') || 'notice');

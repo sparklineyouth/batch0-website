@@ -6,6 +6,7 @@ import {
   canEndForEveryone,
   chatMessageIsLive,
   defaultAudienceModeFor,
+  followUpLine,
   formatBytes,
   isDeckFile,
   isHostedOnBatch0,
@@ -393,4 +394,10 @@ test("a new event's chat: open for a cohort, moderated for everyone signed in", 
   assert.equal(defaultAudienceModeFor("staff"), "open");
   // Anyone with an account can be in a public room: a host reads first.
   assert.equal(defaultAudienceModeFor("public"), "moderated");
+});
+
+test("the follow-up names only what it shares", () => {
+  assert.equal(followUpLine(true, true), "The recording and the slides are up.");
+  assert.equal(followUpLine(true, false), "The recording is up.");
+  assert.equal(followUpLine(false, true), "The slides are up.");
 });

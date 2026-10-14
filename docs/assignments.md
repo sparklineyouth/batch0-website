@@ -28,11 +28,11 @@ Status is derived, not stored: Open, Due today, Late/Missing, Submitted (late), 
 ## Notifications
 
 Hourly cron `/api/cron/assignment-reminders` (Bearer `CRON_SECRET`):
-release bell when a scheduled assignment opens; bell + email (`assignment.due_soon`, editable at /admin/email/templates after "Seed system templates") 24h before the deadline to students who haven't handed in. Both deduped per student per assignment. Reviews notify the student; new submissions notify the student's directly assigned mentors.
+release bell when a scheduled assignment opens; bell + email (`assignment.due_soon`, editable at /admin/email/templates after "Add built-in templates") 24h before the deadline to students who haven't handed in. Both deduped per student per assignment. Reviews notify the student; new submissions notify the student's directly assigned mentors.
 
 ## Data
 
-`course_assignments`, `course_assignment_targets`, `course_assignment_submissions`. Read-only RLS; every write is a service-role server action. `student_checkins` / `checkin_feedback` are kept read-only for the record.
+`course_assignments`, `course_assignment_targets`, `course_assignment_submissions`. Read-only RLS; every write is a service-role server action. `student_checkins` / `checkin_feedback` are kept read-only for the record, and shown that way: "Earlier check-ins", collapsed, with the feedback on each, on the student's `/dashboard/assignments`, the mentor's `/mentor/students/[id]` and the admin's `/admin/students/[id]` (`lib/checkin-history-server.ts`; absent for anyone who never posted one).
 
 0093 seeds the running Fall cohort with a "Weekly update" series (weeks 5–9) and the Demo Day submission. Check-ins posted for one of those weeks before the switch become that week's submission (a mentor reply becomes its review).
 

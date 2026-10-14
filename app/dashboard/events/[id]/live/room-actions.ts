@@ -1,14 +1,18 @@
 "use server";
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/audit";
+import { runAction, type ActionResult } from "@/lib/action-result";
 import { closeOpenAttendance, notifyRoom, notifyStage } from "@/lib/live-rooms";
 import { webinarHasBegun } from "@/lib/live";
+import { earlyStartSchedule, staleRunStamps } from "@/lib/event-form";
 import { canEnd, gateRoom, gateVisible } from "@/lib/webinar-gate";
 import { withinHardClose } from "@/lib/live-access";
+import { announceLive } from "@/app/admin/events/notify";
 
 /**
- * Server actions for the webinar room's live state: End, Reopen and the
- * live-state read. The side panel's reads and writes are the route
+ * Server actions for the webinar room's live state: Go live now, End, Reopen
+ * and the live-state read. The side panel's reads and writes are the route
  * GET/POST /api/live/panel (lib/webinar-data.ts, lib/webinar-panel-writes.ts),
  * off Next's serial action queue.
  *
@@ -19,8 +23,107 @@ import { withinHardClose } from "@/lib/live-access";
 const roomOf = (eventId: string) => `event:${eventId}`;
 
 // ---------------------------------------------------------------------------
-// End, Reopen, live state
+// Go live now, End, Reopen, live state
 // ---------------------------------------------------------------------------
+
+/**
+ * Go live now: staff, from a room they are rehearsing in. Inside the go-live
+ * window (start − 60 min) a host's arrival already does this (claimStage);
+ * before it, this is how a webinar starts early. The run then begins now:
+ * the event moves to this minute, keeping its length (earlyStartSchedule),
+ * and is stamped live, so the audience is let in, End is offered, and the
+ * follow-up and the lists see one run. Everyone the event is for is told
+ * it's live (not for a staff-only event). Returns the stored start stamp.
+ *
+ * Compare-and-set on the stamps and the schedule just read: a host's
+ * arrival or an edit in between wins, and this reports what is stored.
+ */
+export async function goLiveNow(eventId: string): Promise<ActionResult<string>> {
+  return runAction({ name: "goLiveNow" }, () => startEarly(eventId));
+}
+
+async function startEarly(eventId: string): Promise<string> {
+  const gate = await gateVisible(eventId);
+  if (!gate?.isStaff) throw new Error("Only staff can start a webinar early.");
+  if (gate.liveEndedAt) throw new Error("This webinar has ended.");
+  if (gate.liveStartedAt) return gate.liveStartedAt;
+  if (!withinHardClose(gate)) throw new Error("This webinar closed a while ago.");
+
+  const admin = createAdminClient();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const moved = earlyStartSchedule(gate.startsAt, gate.endsAt, nowDate);
+  let reset = {};
+  if (moved) {
+    // A share left over from an earlier run of this row goes with it.
+    const { data: prior } = await admin
+      .from("events")
+      .select("assets_shared_at")
+      .eq("id", eventId)
+      .maybeSingle();
+    reset = staleRunStamps({ assets_shared_at: (prior as any)?.assets_shared_at ?? null }, moved.startsAt);
+  }
+  let claim = admin
+    .from("events")
+    .update({
+      live_started_at: now,
+      ...(moved ? { starts_at: moved.startsAt, ends_at: moved.endsAt, ...reset } : {}),
+    })
+    .eq("id", eventId)
+    .is("live_started_at", null)
+    .is("live_ended_at", null);
+  if (moved) claim = claim.eq("starts_at", gate.startsAt);
+  const { data, error } = await claim
+    .select("live_started_at, title, visibility, cohort_id, starts_at, live_mode")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) {
+    const { data: stored } = await admin
+      .from("events")
+      .select("live_started_at")
+      .eq("id", eventId)
+      .maybeSingle();
+    const started = (stored as any)?.live_started_at as string | null | undefined;
+    if (started) return started;
+    throw new Error("The schedule just changed. Try again.");
+  }
+  const row = data as Record<string, string | null>;
+
+  await logAudit({
+    action: "event.live_started",
+    targetType: "event",
+    targetId: eventId,
+    payload: moved ? { early: true, scheduledFor: gate.startsAt } : { early: false },
+  });
+  // Everyone in the room re-reads it. The lists are rendered per request; the
+  // cached timetables catch up within minutes (no revalidation here: it would
+  // re-render this room's page under the people in it).
+  await notifyStage(roomOf(eventId), { t: "room-changed" });
+
+  if (row.visibility !== "staff") {
+    const { data: me } = await admin
+      .from("profiles")
+      .select("full_name")
+      .eq("id", gate.userId)
+      .maybeSingle();
+    const hostName = ((me as { full_name?: string | null } | null)?.full_name ?? "").trim() || "batch0";
+    after(() =>
+      announceLive(
+        {
+          id: eventId,
+          title: row.title ?? "Webinar",
+          startsAt: row.starts_at!,
+          visibility: row.visibility ?? "enrolled",
+          cohortId: row.cohort_id,
+          liveMode: row.live_mode ?? "hosted",
+          externalUrl: null,
+        },
+        hostName,
+      ),
+    );
+  }
+  return row.live_started_at ?? now;
+}
 
 /**
  * End the webinar for everyone. Returns the STORED `live_ended_at` (the first

@@ -253,7 +253,8 @@ try {
     ['href="/admin/email"', EMAIL_PERMISSIONS],
     ["Fees &amp; fines", ["charges.manage"]],
     ["Audit log", ["audit.view"]],
-    ["Moderation", ["moderation.manage"]],
+    // Teams opens on either key: the logo review queue sits on top of it.
+    ['href="/admin/teams"', ["teams.manage", "moderation.manage"]],
     ["Discord", ["discord.manage"]],
   ];
   for (const [label, perms] of NAV_LABELS) {

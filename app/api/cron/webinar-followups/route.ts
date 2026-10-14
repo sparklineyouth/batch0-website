@@ -8,6 +8,7 @@ import { JOIN_CLOSES_MINUTES_AFTER, roomWindow } from "@/lib/live";
 import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import { presentHosts } from "@/lib/live-rooms";
 import { listAssets } from "@/lib/webinar-data";
+import { followUpLine } from "@/lib/webinars";
 import { recordingStateFor, sweepStaleRecordings } from "@/lib/recording-sessions";
 
 export const runtime = "nodejs";
@@ -266,9 +267,7 @@ export async function GET(req: Request) {
           userId: r.user_id,
           type: "event_posted",
           title: ev.title,
-          body: hasRecording
-            ? "The recording and the slides are up."
-            : "The slides are up.",
+          body: followUpLine(hasRecording, hasDeck),
           link: eventPath,
         })),
       );

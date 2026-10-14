@@ -24,9 +24,9 @@ export const dynamic = "force-dynamic";
  * next.
  *
  * Lessons link out to /dashboard/course/[id] rather than being reimplemented
- * here. That page is a video player with materials, comments and a progress
- * recorder — none of which gets better by being rebuilt at 390px, and all of
- * which would then need maintaining twice. What this screen owns is the map:
+ * here. That page is a video player with materials and a progress recorder —
+ * none of which gets better by being rebuilt at 390px, and all of which would
+ * then need maintaining twice. What this screen owns is the map:
  * every week, how much of it is done, and one tap into any lesson.
  *
  * The current week is expanded and the rest collapse to a single row with a
@@ -230,7 +230,7 @@ export default async function StudentAppCourse() {
         )}
 
         <p className="mt-6 text-center text-[12px] text-ink-faint">
-          Assignments, comments and materials live in the{" "}
+          Videos and materials live in the{" "}
           <Link
             href="/dashboard/course"
             prefetch={false}

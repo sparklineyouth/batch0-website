@@ -14,6 +14,7 @@ import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import { joinNames } from "@/lib/live";
 import { adminGroup, EVENT_TYPE_LABEL, isEventType, isUuid, roomActionLabel } from "@/lib/event-form";
 import { LiveControls } from "../live-controls";
+import { ShareFiles } from "../share-files";
 import { FileDown, Pencil, Video } from "lucide-react";
 
 export const metadata = {
@@ -33,7 +34,7 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
   const { data: event } = await admin
     .from("events")
     .select(
-      "id, title, type, cohort_id, starts_at, ends_at, visibility, live_mode, recording_url, live_started_at, live_ended_at, cohort:cohorts(name)",
+      "id, title, type, cohort_id, starts_at, ends_at, visibility, live_mode, recording_url, live_started_at, live_ended_at, auto_share, assets_shared_at, cohort:cohorts(name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -155,6 +156,27 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
               Recording link →
             </a>
           )}
+          {hosted && ev.visibility !== "staff" && group === "past" ? (
+            ev.assets_shared_at ? (
+              <p className="mt-3 text-xs text-ink-faint" data-testid="files-shared">
+                Shared with students <LocalTime value={ev.assets_shared_at} mode="datetime-short" />
+              </p>
+            ) : (
+              // Not shared yet. With the email on, the follow-up cron shares it
+              // once the recording has saved (up to two hours past its due time),
+              // and emails only a cohort; sharing first means no email at all.
+              <ShareFiles
+                eventId={ev.id}
+                note={
+                  !ev.auto_share
+                    ? undefined
+                    : ev.cohort_id
+                      ? "The follow-up email will share it once the recording has saved. Share now to let students watch sooner; no email is sent then."
+                      : "It\u2019s shared automatically once the recording has saved, with no email (the event has no cohort). Share now to let students watch sooner."
+                }
+              />
+            )
+          ) : null}
         </Section>
       )}
 

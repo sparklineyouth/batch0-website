@@ -5,10 +5,12 @@ import {
   audienceFor,
   durationOf,
   durationOptions,
+  earlyStartSchedule,
   endsAtFor,
   eventNoticeLink,
   floorToMinute,
   fromLocalInput,
+  goLiveNowAudience,
   liveForAudience,
   nextRoundHour,
   parseHttpUrl,
@@ -20,9 +22,10 @@ import {
   toLocalInput,
   validateEventFields,
   whoFromRow,
+  cohortWho,
   whoValue,
 } from "./event-form.ts";
-import { roomAccess, roomIsOpen } from "./live.ts";
+import { roomAccess, roomIsOpen, shouldStampLiveStart } from "./live.ts";
 
 const COHORT = "6350c6ac-70f0-4f53-93d5-c99e397185a9";
 const OTHER = "76bc78bc-1724-48d3-9215-9049045b279a";
@@ -112,6 +115,13 @@ test("parseWho / whoValue round-trip and reject junk", () => {
   assert.equal(parseWho("cohort:not-a-uuid"), null);
   assert.equal(parseWho("enrolled"), null);
   assert.equal(parseWho(undefined), null);
+});
+
+test("a cohort option's value is what the server action parses", () => {
+  // The forms build their cohort options with cohortWho; saveEvent and
+  // startWebinarNow read them back with parseWho.
+  assert.deepEqual(parseWho(cohortWho(COHORT)), { kind: "cohort", cohortId: COHORT });
+  assert.equal(cohortWho(COHORT), whoValue({ kind: "cohort", cohortId: COHORT }));
 });
 
 test("enrolled always carries a cohort", () => {
@@ -292,6 +302,45 @@ test("staleRunStamps clears a previous run's stamps on reschedule", () => {
     {},
   );
   assert.deepEqual(staleRunStamps({}, start), {});
+});
+
+test("going live hours early moves the run to now, keeping its length", () => {
+  const now = new Date("2026-10-20T14:07:30.000Z");
+  const moved = earlyStartSchedule("2026-10-20T17:00:00.000Z", "2026-10-20T18:30:00.000Z", now);
+  assert.deepEqual(moved, { startsAt: "2026-10-20T14:07:00.000Z", endsAt: "2026-10-20T15:37:00.000Z" });
+  // The stamp written with it belongs to the new run: stampable, never stale.
+  assert.equal(
+    shouldStampLiveStart({ startsAt: moved!.startsAt, endsAt: moved!.endsAt, liveStartedAt: null, liveEndedAt: null, now }),
+    true,
+  );
+  assert.deepEqual(staleRunStamps({ live_started_at: now.toISOString() }, moved!.startsAt), {});
+  // No end: the default length.
+  const open = earlyStartSchedule("2026-10-20T17:00:00.000Z", null, now)!;
+  assert.equal(Date.parse(open.endsAt) - Date.parse(open.startsAt), 60 * 60_000);
+  // Inside the go-live window the schedule stands: a host's arrival stamps it.
+  assert.equal(earlyStartSchedule("2026-10-20T15:00:00.000Z", null, now), null);
+  assert.equal(earlyStartSchedule("2026-10-20T13:00:00.000Z", null, now), null);
+});
+
+test("Go live now's confirm names who is told, as announceLive picks them", () => {
+  assert.equal(
+    goLiveNowAudience({ visibility: "enrolled", cohortId: COHORT, cohortName: " Winter 2027 " }),
+    "Everyone in Winter 2027 gets a notification and an email.",
+  );
+  // "Everyone signed in" that kept its cohort: that cohort is told.
+  assert.equal(
+    goLiveNowAudience({ visibility: "public", cohortId: COHORT, cohortName: null }),
+    "Everyone in its cohort gets a notification and an email.",
+  );
+  assert.equal(
+    goLiveNowAudience({ visibility: "public", cohortId: null }),
+    "Students in every upcoming and active cohort get a notification and an email.",
+  );
+  assert.equal(
+    goLiveNowAudience({ visibility: "staff", cohortId: COHORT, cohortName: "Winter 2027" }),
+    "It's staff-only, so nobody is notified.",
+  );
+  assert.equal(goLiveNowAudience({ visibility: "enrolled", cohortId: null }), "Nobody is notified: it has no cohort.");
 });
 
 test("studentEventStatus opens early when a host goes live", () => {

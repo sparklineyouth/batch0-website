@@ -16,8 +16,7 @@ import type { Role } from "@/lib/types";
  * `assertPermission("area.verb")` is the one to reach for: it names the
  * capability the action needs, which is the same string an admin ticks for a
  * role at /admin/roles. The older role-shaped guards below are kept for the
- * handful of places where the check really is "is this person an admin" or
- * "is this person mentor-or-above".
+ * handful of places where the check really is "is this person an admin".
  *
  * A page-level guard is not enough on its own — server actions are their own
  * entry point and are callable by anyone who can guess the action id, so
@@ -115,16 +114,6 @@ export async function assertAdmin(): Promise<{ userId: string }> {
   const actor = await getActor();
   if (!actor.caps.superAdmin) throw new Error("Forbidden");
   return { userId: actor.userId };
-}
-
-/** Mentor-or-above: write access to program content and student feedback. */
-export async function assertStaff(): Promise<{
-  userId: string;
-  role: Role;
-}> {
-  const actor = await getActor();
-  if (!can(actor.caps, "mentor.panel")) throw new Error("Forbidden");
-  return { userId: actor.userId, role: actor.role };
 }
 
 export async function assertSelf(): Promise<{ userId: string }> {

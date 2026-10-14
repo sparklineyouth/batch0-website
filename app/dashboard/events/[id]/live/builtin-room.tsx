@@ -10,7 +10,7 @@ import {
   setPrimaryHost,
   getHostingStatus,
 } from "@/app/live/actions";
-import { endLive, fetchLiveState, reopenLive } from "./room-actions";
+import { endLive, fetchLiveState, goLiveNow, reopenLive } from "./room-actions";
 import type { LiveRole } from "@/lib/live";
 import type { SignalRole } from "@/lib/live-signal";
 import type { WebinarPanelInitial } from "@/lib/webinar-panel";
@@ -40,6 +40,7 @@ export function BuiltinEventRoom({
   deckUrl,
   deckName,
   panel,
+  goLiveAudience = null,
   recordingReady = true,
 }: {
   eventId: string;
@@ -62,6 +63,8 @@ export function BuiltinEventRoom({
   deckUrl: string | null;
   deckName: string | null;
   panel: WebinarPanelInitial;
+  /** Staff before it's live: who Go live now tells (goLiveNowAudience). */
+  goLiveAudience?: string | null;
   /** False before migration 0095 (recordingsReady). */
   recordingReady?: boolean;
 }) {
@@ -76,6 +79,7 @@ export function BuiltinEventRoom({
     }),
     [eventId],
   );
+  const onGoLiveNow = useCallback(() => goLiveNow(eventId), [eventId]);
   const onEndLive = useCallback(() => endLive(eventId), [eventId]);
   const onReopenLive = useCallback(() => reopenLive(eventId), [eventId]);
   const onFetchLiveState = useCallback(() => fetchLiveState(eventId), [eventId]);
@@ -98,6 +102,8 @@ export function BuiltinEventRoom({
       canEnd,
       deck,
       panel,
+      goLiveNow: isStaffHost ? onGoLiveNow : undefined,
+      goLiveAudience,
       endLive: onEndLive,
       reopenLive: onReopenLive,
       fetchLiveState: onFetchLiveState,
@@ -115,6 +121,8 @@ export function BuiltinEventRoom({
       canEnd,
       deck,
       panel,
+      onGoLiveNow,
+      goLiveAudience,
       onEndLive,
       onReopenLive,
       onFetchLiveState,

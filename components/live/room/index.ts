@@ -35,7 +35,6 @@ export { useScreenShare, DISPLAY_MEDIA_OPTIONS } from "./use-screen-share";
 export { useRoomShortcuts } from "./use-shortcuts";
 export {
   computeStage,
-  sharedLayout,
   cameraKey,
   presentationKey,
   type StageInput,

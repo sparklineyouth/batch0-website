@@ -4,6 +4,7 @@ import { emailLayout as layout, escapeEmail as escape } from "@/lib/email/layout
 import { formatTicketAmount as fmtTicketMoney } from "@/lib/demo-day-ticket-input";
 import { formatEasternDateTime } from "@/lib/call-lifecycle";
 import { joinNames } from "@/lib/live";
+import { followUpLine } from "@/lib/webinars";
 import {
   AUTO_RESOLVE_NOTE,
   REFUND_WINDOW_HOURS,
@@ -658,11 +659,9 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }) => ({
     subject: args.attended
       ? `Your notes from ${args.title}`
-      : `You missed ${args.title} — here's the recording`,
+      : `You missed ${args.title} — ${args.hasRecording ? "here's the recording" : "here are the slides"}`,
     html: layout({
-      preheader: args.hasRecording
-        ? "The recording and the slides are ready."
-        : "The slides are ready.",
+      preheader: followUpLine(args.hasRecording, args.hasDeck),
       body: `
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
         <p>${
@@ -673,7 +672,6 @@ One account, one pass — the code stops working the moment it's claimed.`,
         <ul style="margin:12px 0;padding-left:18px">
           ${args.hasRecording ? "<li>The full recording</li>" : ""}
           ${args.hasDeck ? "<li>The slides</li>" : ""}
-          <li>The questions that were asked, and the answers</li>
         </ul>
       `,
       cta: { url: args.eventUrl, label: "Open the event" },

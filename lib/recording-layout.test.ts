@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insetBoxes, planStage, tileBoxes, type Box } from "./recording-layout.ts";
+import { insetBoxes, planStage, presentationBoxes, tileBoxes, type Box } from "./recording-layout.ts";
 
 // Run with `npm test`.
 
@@ -44,6 +44,34 @@ test("insets stay in frame, 16:9, and never overlap each other", () => {
   }
 });
 
+test("faces sit beside a presentation, never on it", () => {
+  for (const [w, h] of [[1280, 720], [1920, 1080], [640, 360]]) {
+    for (const n of [1, 2, 3, 4, 5, 8, 12]) {
+      const { screen, faces } = presentationBoxes(n, w, h);
+      assert.equal(faces.length, n);
+      assert.ok(inside(screen, w, h), `${w} screen`);
+      // A 16:9 slide keeps most of the frame.
+      assert.ok(screen.w >= w * 0.78 && screen.h === h, `${w} screen ${JSON.stringify(screen)}`);
+      for (const f of faces) {
+        assert.ok(inside(f, w, h), `${w} n=${n} ${JSON.stringify(f)}`);
+        assert.equal(overlaps(f, screen), false, `${w} n=${n} face on the screen`);
+        assert.ok(Math.abs(f.w / f.h - 16 / 9) < 0.05, `${w} n=${n} aspect`);
+      }
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          assert.equal(overlaps(faces[i], faces[j]), false, `${w} n=${n} ${i}/${j}`);
+        }
+      }
+    }
+  }
+  // A few faces are a filmstrip-sized column, centred.
+  const { faces } = presentationBoxes(2, 1280, 720);
+  assert.deepEqual(faces, [
+    { x: 1024, y: 221, w: 240, h: 135 },
+    { x: 1024, y: 364, w: 240, h: 135 },
+  ]);
+});
+
 const W = 1280;
 const H = 720;
 const nobody = { mainId: null, mainIsPresentation: false };
@@ -54,7 +82,7 @@ test("a 1:1 with nobody presenting is side by side", () => {
   if (plan.kind === "grid") assert.deepEqual(plan.tiles.map((t) => t.id), ["a", "b"]);
 });
 
-test("the stage's presentation fills the frame, with every face inset", () => {
+test("the stage's presentation takes the frame beside every face", () => {
   const people = [
     { id: "host", presenting: true },
     { id: "guest", presenting: true },
@@ -64,8 +92,10 @@ test("the stage's presentation fills the frame, with every face inset", () => {
   assert.equal(plan.kind, "presentation");
   if (plan.kind === "presentation") {
     assert.equal(plan.presenter, "guest");
-    assert.deepEqual(plan.full, { x: 0, y: 0, w: W, h: H });
+    const boxes = presentationBoxes(3, W, H);
+    assert.deepEqual(plan.screen, boxes.screen);
     assert.deepEqual(plan.insets.map((i) => i.id), ["host", "guest", "cohost"]);
+    for (const i of plan.insets) assert.equal(overlaps(i.box, plan.screen), false);
   }
 });
 

@@ -889,7 +889,7 @@ export type SeedReport = {
 /**
  * Insert any system template that doesn't exist yet.
  *
- * Called from the templates page's "Restore built-in templates" button. Runs
+ * Called from the templates page's "Add built-in templates" button. Runs
  * key-by-key rather than as one bulk upsert so that a single bad row can't
  * take the whole seed down, and so the report can tell an admin exactly what
  * it added.

@@ -349,13 +349,13 @@ export async function setTeamLogo(input: {
         type: "team_logo_pending",
         title: "Team logo pending review",
         body: "A team uploaded a new logo for moderation.",
-        link: "/admin/moderation",
+        link: "/admin/teams",
       });
     }
   } catch {}
 
   revalidatePath("/dashboard/team");
-  revalidatePath("/admin/moderation");
+  revalidatePath("/admin/teams");
 }
 
 async function runLogoSafetyCheck(teamId: string, publicUrl: string) {

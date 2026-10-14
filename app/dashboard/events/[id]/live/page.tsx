@@ -8,6 +8,7 @@ import {
   type LiveRole,
 } from "@/lib/live";
 import { isDeckFile, isHostedOnBatch0, type EventAsset } from "@/lib/webinars";
+import { goLiveNowAudience } from "@/lib/event-form";
 import {
   listAssets,
   loadWebinarPanelInitial,
@@ -187,10 +188,16 @@ export default async function EventLivePage(
   // actually joining, so this page renders as fast as its own queries. The
   // side panel's first state is shaped for this reader by the same loader the
   // panel's own reads use; hosts also get the event's PDF deck to present.
-  const [deck, panel, recordingReady] = await Promise.all([
+  const [deck, panel, recordingReady, goLiveAudience] = await Promise.all([
     role === "host" ? presentableDeck(ev.id) : Promise.resolve(null),
     loadWebinarPanelInitial(ev.id, access),
     recordingsReady(),
+    // Staff can Go live now from a rehearsal; its confirm says who is told.
+    isStaffHost
+      ? cohortName(ev.cohortId).then((name) =>
+          goLiveNowAudience({ visibility: ev.visibility, cohortId: ev.cohortId, cohortName: name }),
+        )
+      : Promise.resolve(null),
   ]);
 
   return (
@@ -214,6 +221,7 @@ export default async function EventLivePage(
       deckUrl={deck?.url ?? null}
       deckName={deck?.name ?? null}
       panel={panel}
+      goLiveAudience={goLiveAudience}
       recordingReady={recordingReady}
     />
   );
@@ -234,6 +242,17 @@ async function presentableDeck(eventId: string): Promise<{ url: string; name: st
 }
 
 const DECK_URL_SECONDS = 6 * 60 * 60;
+
+/** A cohort's name, or null (none, or unreadable: the confirm says "its cohort"). */
+async function cohortName(cohortId: string | null): Promise<string | null> {
+  if (!cohortId) return null;
+  const { data } = await createAdminClient()
+    .from("cohorts")
+    .select("name")
+    .eq("id", cohortId)
+    .maybeSingle();
+  return ((data as { name?: string | null } | null)?.name ?? null) || null;
+}
 
 type SignedFile = EventAsset & { url: string | null };
 

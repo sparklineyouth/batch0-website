@@ -38,8 +38,32 @@ check-ins, in-app files, discussions and the old recorder at once:
 - **The app works before they run.** Code that reads a new table or column
   treats "does not exist" as "not set up yet" (`lib/schema-ready.ts`): the
   feature shows an empty state, nothing returns a 500.
-- **Nothing is dropped.** Retired features keep their tables and rows; only
-  policies, grants and defaults change.
+- **No tables or columns are dropped**, and retired features keep their
+  tables and rows. But these files **change data**, not only policies,
+  grants and defaults (each change is guarded, so a re-run changes nothing).
+  Take a backup first if you may want the old wording back:
+  - 0093 rewrites check-in wording to "weekly update" / Assignments in
+    lesson titles and descriptions, the stored `cohort.next_steps` and
+    `cohort.week3` emails, the mentor role's description and the Fall Demo
+    Day event. It repoints old check-in, Pulse, at-risk and cohort-health
+    notification links, and marks unread check-in and at-risk notifications
+    read. It disables the `cohort.checkin_reminder` email, every automation
+    step that sends it, and any automation left with no enabled step. It
+    seeds Fall's weeks 5–9 and Demo Day assignments, and copies check-ins
+    already posted for those weeks (with mentor replies) in as submissions.
+    Roles lose `pulse.view` and `interventions.manage`; an intern role that
+    runs the course gains `assignments.manage`.
+  - 0094 repairs pitch video links that aren't https; one it can't repair is
+    cleared and kept in the team's notes as "Video link: …". Lesson and
+    notification links to the Files page point at the team's Drive tab.
+  - 0097 repoints old office-hours notification links to 1:1 calls.
+  - 0099 removes `discussions.manage` from roles, takes DMs off realtime,
+    turns open private questions and open DM reports into Support tickets,
+    and rewrites lesson text that sent students to Discussions, office hours
+    or the check-in.
+  - 0100 removes `ai_usage.view` from roles and **deletes** leftover
+    founder-pass self-check rows (`batch = 'selftest'`, negative serials;
+    never real passes).
 - **Don't roll back past this deploy once 0093, 0099 or 0100 has run.** The
   previous code writes check-ins (0093), lesson comments and announcement
   reactions (0099) as the signed-in user, and those write policies are gone:
@@ -56,14 +80,14 @@ check-ins, in-app files, discussions and the old recorder at once:
 
 | # | File | What it does |
 |---|------|--------------|
-| 0093 | `0093_assignments.sql` | Assignment tracker tables (`course_assignments`, `course_assignment_targets`, `course_assignment_submissions`), read-only to clients. Check-ins go read-only, the check-in reminder is disabled, and the running Fall cohort gets weeks 5–9 plus Demo Day. |
-| 0094 | `0094_google_drive.sql` | `team_drive_links` (a team's Drive folder and pinned files) and `pitch_submissions.deck_url`. Pitch links must be https. The old in-app file stores freeze read-only. |
+| 0093 | `0093_assignments.sql` | Assignment tracker tables (`course_assignments`, `course_assignment_targets`, `course_assignment_submissions`), read-only to clients. Check-ins go read-only, the check-in reminder is disabled, and the running Fall cohort gets weeks 5–9 plus Demo Day (check-ins already posted for those weeks carry over as submissions). Check-in wording in lessons, two stored emails and the Fall Demo Day event becomes "weekly update"; old notification links are repointed. |
+| 0094 | `0094_google_drive.sql` | `team_drive_links` (a team's Drive folder and pinned files) and `pitch_submissions.deck_url`. Pitch links must be https: existing video links are repaired, or moved into the team's notes. The old in-app file stores freeze read-only, and links to the Files page point at the Drive tab. |
 | 0095 | `0095_recordings.sql` | `recording_sessions` (one continuous file per take), `recording_mint_part()`, and the private `recordings` bucket (16 MB parts, WebM/MP4). |
 | 0096 | `0096_live_stage.sql` | `events.live_primary_host_id`: the webinar host everyone sees on the main stage. |
 | 0097 | `0097_calls.sql` | 1:1 calls, 1:1 requests and office hours lose client write policies; writes go through server actions. Old office-hours links point at 1:1 calls. |
 | 0098 | `0098_events.sql` | Event writes need `events.manage`; "Everyone signed in" events are no longer readable without signing in. New events default to chat on and auto-record (the admin form starts "Everyone signed in" events moderated). |
 | 0099 | `0099_retire_community.sql` | Discussions, team thread, reactions, lesson comments and DMs lose client write policies. Open private questions and open DM reports move into Support. Lessons that sent students to Discussions, office hours or the check-in point at Discord, Support and 1:1 calls. |
-| 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and leftover founder-pass self-check rows. |
+| 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 
 ## Verify
 

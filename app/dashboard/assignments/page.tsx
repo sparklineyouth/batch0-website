@@ -6,6 +6,8 @@ import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { loadStudentAssignments, type StudentItem } from "@/lib/assignments-server";
 import { formatEastern, studentGroup } from "@/lib/assignments";
 import { StatusChip } from "@/components/assignments/status-chip";
+import { loadCheckinHistory } from "@/lib/checkin-history-server";
+import { EarlierCheckins } from "@/components/assignments/earlier-checkins";
 
 export const metadata = { title: "Assignments · batch0" };
 
@@ -23,7 +25,11 @@ export default async function AssignmentsPage() {
     return <LockedFeature title="Assignments" applicationStatus={access.applicationStatus} />;
   }
   const now = new Date();
-  const { ready, items } = await loadStudentAssignments(await createClient(), user.id, { now });
+  const [{ ready, items }, checkins] = await Promise.all([
+    loadStudentAssignments(await createClient(), user.id, { now }),
+    // Their own weekly check-ins from before assignments, with feedback.
+    loadCheckinHistory(user.id),
+  ]);
   const grouped = Object.fromEntries(GROUPS.map((g) => [g.key, [] as StudentItem[]])) as Record<
     (typeof GROUPS)[number]["key"],
     StudentItem[]
@@ -65,6 +71,7 @@ export default async function AssignmentsPage() {
           </section>
         ))
       )}
+      <EarlierCheckins items={checkins} className="mt-10" />
     </div>
   );
 }

@@ -1,11 +1,22 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireMentor, getCapabilities } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { Card } from "@/components/ui/card";
+import { loadUpcomingOfficeHours } from "@/lib/office-hours-server";
+import { OfficeHoursSessions } from "@/components/calls/office-hours-sessions";
 
 export const metadata = { title: "Mentor · batch0" };
 
 export default async function MentorOverview() {
   const admin = createAdminClient();
+  // Request-cached: the layout already ran both.
+  const [profile, caps] = await Promise.all([requireMentor(), getCapabilities()]);
+  // Office hours booked before the cut are listed on /mentor/calls, which
+  // needs calls.invite. A custom mentor-panel role without it (the old
+  // office-hours page needed only the panel) sees its bookings here instead,
+  // which is also where /mentor/office-hours ends up for it.
+  const officeHoursHere = !can(caps, "calls.invite");
 
   const [
     { count: totalStudents },
@@ -13,6 +24,7 @@ export default async function MentorOverview() {
     { data: cohorts },
     { count: completionCount },
     { count: activeLearnerCount },
+    officeHours,
   ] = await Promise.all([
     admin
       .from("profiles")
@@ -42,6 +54,7 @@ export default async function MentorOverview() {
         head: true,
       })
       .not("lesson_progress.completed_at", "is", null),
+    officeHoursHere ? loadUpcomingOfficeHours("mentor", profile.id) : Promise.resolve([]),
   ]);
 
   const completions = completionCount ?? 0;
@@ -53,6 +66,8 @@ export default async function MentorOverview() {
       <p className="mt-1 text-sm text-ink-faint">
         Cohorts, students and activity.
       </p>
+
+      <OfficeHoursSessions sessions={officeHours} className="mt-8" />
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Total students" value={(totalStudents ?? 0).toString()} />

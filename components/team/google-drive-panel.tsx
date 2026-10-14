@@ -265,7 +265,7 @@ function FolderSection({
       {!folder && (
         <p className="mt-2 text-xs text-ink-faint">
           {canEdit
-            ? "Share the folder with your team in Google Drive, then paste its link."
+            ? "In Google Drive, share the folder with your teammates' and your mentor's Google accounts, then paste its link."
             : "No folder linked yet."}
         </p>
       )}
@@ -280,7 +280,8 @@ function FolderSection({
           />
           <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <p className="text-xs text-ink-faint">
-              Blank or asking to sign in? In Drive, share the folder with “Anyone with the link”.
+              Blank or asking to sign in? Use Open in Drive; some browsers block Google sign-in inside a page.
+              If Drive asks you to request access, the folder isn't shared with your Google account.
             </p>
             {canEdit && !replacing && (
               <div className="flex gap-1">

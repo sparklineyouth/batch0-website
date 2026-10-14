@@ -11,6 +11,8 @@ import { declineInvite } from "@/app/calls/actions";
 import type { CallInvite } from "@/lib/live";
 import type { InterviewRequest } from "@/lib/interview-requests";
 import type { RequestCardState } from "@/lib/call-lifecycle";
+import type { OfficeHoursSession } from "@/lib/office-hours";
+import { OfficeHoursSessions } from "@/components/calls/office-hours-sessions";
 
 /** The student's calls: the request card, what's coming up, and the past. */
 export function StudentCalls({
@@ -20,6 +22,7 @@ export function StudentCalls({
   requestState,
   requestIsScholarship,
   scholarship,
+  officeHours = [],
 }: {
   invites: CallInvite[];
   /** The server's render time (ISO). */
@@ -28,6 +31,8 @@ export function StudentCalls({
   requestState: RequestCardState;
   requestIsScholarship: boolean;
   scholarship: ScholarshipCallState | null;
+  /** Office hours booked before they were retired, still ahead. */
+  officeHours?: OfficeHoursSession[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -85,6 +90,8 @@ export function StudentCalls({
           pending={pending}
         />
       </section>
+
+      <OfficeHoursSessions sessions={officeHours} className="mt-8" />
     </div>
   );
 }

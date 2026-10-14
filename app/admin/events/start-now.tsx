@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Input, Label, Select, FieldError } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
-import { DEFAULT_LIVE_TITLE } from "@/lib/event-form";
+import { cohortWho, DEFAULT_LIVE_TITLE } from "@/lib/event-form";
 import { joinNames } from "@/lib/live";
 import { startWebinarNow } from "./actions";
 import type { CohortOption } from "./types";
@@ -37,7 +37,7 @@ export function StartNowButton({
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [who, setWho] = useState(defaultCohortId ? `cohort:${defaultCohortId}` : "public");
+  const [who, setWho] = useState(defaultCohortId ? cohortWho(defaultCohortId) : "public");
   const [notify, setNotify] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // One the server found live for the same people after this page loaded.
@@ -127,7 +127,7 @@ export function StartNowButton({
                 }}
               >
                 {cohorts.map((c) => (
-                  <option key={c.id} value={`cohort:${c.id}`}>
+                  <option key={c.id} value={cohortWho(c.id)}>
                     {c.name}
                   </option>
                 ))}

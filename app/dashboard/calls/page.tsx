@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callCreditsForUser, scholarshipApplicationIdForRequest } from "@/lib/scholarships";
 import type { ScholarshipCallState } from "@/components/interview-request-card";
 import { canRequestTeamCall, requestCardState } from "@/lib/call-lifecycle";
+import { loadUpcomingOfficeHours } from "@/lib/office-hours-server";
 
 export const metadata = { title: "1:1 calls · batch0" };
 
@@ -18,11 +19,13 @@ export default async function StudentCallsPage() {
   const profile = await getProfile();
   const access = await getStudentAccess((profile?.role as Role) ?? "student");
   const admin = createAdminClient();
-  const [invites, request, callAward] = await Promise.all([
+  const [invites, request, callAward, officeHours] = await Promise.all([
     profile ? listInvitesForInvitee(profile.id) : Promise.resolve([]),
     profile ? getInterviewRequestForStudent(profile.id) : Promise.resolve(null),
     // Service role: "no award" and "RLS said no" must not look the same.
     profile ? callCreditsForUser(admin, profile.id) : Promise.resolve(null),
+    // Old office-hours links land here (next.config.js).
+    profile ? loadUpcomingOfficeHours("student", profile.id) : Promise.resolve([]),
   ]);
 
   const now = new Date();
@@ -50,6 +53,7 @@ export default async function StudentCallsPage() {
       requestState={state}
       requestIsScholarship={requestIsScholarship}
       scholarship={scholarship}
+      officeHours={officeHours}
     />
   );
 }

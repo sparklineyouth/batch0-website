@@ -11,7 +11,7 @@ import {
   type RoomRecordingView,
 } from "@/components/live/room";
 import { useLocalMedia } from "@/components/live/use-local-media";
-import { LocalTime } from "@/components/ui/local-time";
+import { RehearsalNotice } from "@/components/live/room/rehearsal-notice";
 import { FakePanel, FakeReactionsButton, FakeReactionsOverlay } from "./fake-panel";
 import { makeDeckPdf, useFakeFeeds, useFakeLocalMedia, type FakeFeeds } from "./fake-media";
 import { HARNESS_STATES as STATES } from "./states";
@@ -168,8 +168,11 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     state === "live-host" ? SELF.id : isCall ? null : ANA.id,
   );
   const [endedByMe, setEndedByMe] = useState(w === "byme");
-  // Rehearsal: the go-live window opens in two hours.
-  const [opensAt] = useState(() => new Date(Date.now() + 2 * 3600_000).toISOString());
+  // Rehearsal: the go-live window opens in two hours (Go live now's confirm:
+  // in two days, so the dates show).
+  const [opensAt] = useState(() =>
+    new Date(Date.now() + (w === "rehearsal-confirm" ? 50 : 2) * 3600_000).toISOString(),
+  );
 
   const fakeMedia = useFakeLocalMedia(feeds, SELF.name, {
     cameraOn: !(state === "prejoin" && w === "cohost"),
@@ -406,9 +409,15 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     leaveHint: state === "live-host" && w === "leave" ? "You're the only host on air." : null,
     notice:
       state === "live-host" && w.startsWith("rehearsal") ? (
-        <span>
-          Not live yet: students can join from <LocalTime value={opensAt} mode="time" />
-        </span>
+        <RehearsalNotice
+          opensAt={opensAt}
+          goLive={{
+            startsAt: new Date(Date.parse(opensAt) + 3600_000).toISOString(),
+            audience: "Everyone in Winter 2027 gets a notification and an email.",
+            busy: false,
+            onConfirm: () => {},
+          }}
+        />
       ) : null,
     subline:
       w === "recorded" ? "This call is recorded. Only you, Ana Ruiz and batch0 admins can watch it back." : null,
@@ -440,6 +449,7 @@ function AutoOpen({ state, w, props }: { state: string; w: string; props: LiveRo
         }
       }
       if ((w === "panel" || w === "toast" || w === "rehearsal-chat") && window.innerWidth < 1024) click("ctrl-panel");
+      if (w === "rehearsal-confirm") click("go-live-now");
       if (w === "pin-self") document.querySelector<HTMLElement>('[data-testid="stage-pip"] [data-testid="tile-pin"]')?.click();
     }, 400);
     return () => clearTimeout(t);

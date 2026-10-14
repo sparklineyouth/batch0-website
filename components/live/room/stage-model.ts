@@ -2,8 +2,9 @@
  * Who is on the main stage, who is in the filmstrip, and what a presenter sees.
  *
  * Pure and import-free so it runs under `node --test` (lib/live-stage-model.test.ts).
- * The room view calls it with the viewer's local pin; the recorder calls it with
- * `localPin: null` (see `sharedLayout`) so a recording matches what the room sees,
+ * The room view calls it twice: with the viewer's local pin for what they see,
+ * and with `localPin: null` for the shared view, which the recorder composes
+ * (live-room.tsx → onSharedLayout) so a recording matches what the room sees,
  * not one host's private pin.
  *
  * Main-stage priority:
@@ -251,17 +252,6 @@ export function computeStage(input: StageInput): StageModel {
       main && main.kind === "presentation" && main.isSelf ? main.presenting : null,
     why,
   };
-}
-
-/** What the recorder composes: the room's shared view, never a local pin. */
-export function sharedLayout(
-  input: Omit<StageInput, "localPin">,
-): { mainId: string | null; mainIsPresentation: boolean } {
-  const model = computeStage({ ...input, localPin: null });
-  if (model.main) {
-    return { mainId: model.main.peerId, mainIsPresentation: model.main.kind === "presentation" };
-  }
-  return { mainId: null, mainIsPresentation: false };
 }
 
 /**

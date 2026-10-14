@@ -41,5 +41,12 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-/** The side panel is a column at this width and up, a bottom sheet below it. */
+/** Desktop: the side panel starts open. */
 export const DESKTOP_QUERY = "(min-width: 1024px)";
+
+/**
+ * The side panel is a column beside the stage here, a bottom sheet elsewhere
+ * (portrait phones). A phone on its side is too short for a sheet: it would
+ * leave a sliver of the stage and a line or two of chat.
+ */
+export const PANEL_COLUMN_QUERY = "(min-width: 1024px), (min-width: 640px) and (orientation: landscape)";
