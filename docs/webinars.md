@@ -3,9 +3,9 @@
 A webinar is an event (`type = 'webinar'`, `live_mode = 'hosted'`) with
 slides, a recording, guest speakers and a live audience channel.
 
-Everything here sits on top of batch0 Live (`docs/batch0-live.md`), which is
-unchanged: the media path, the star topology and the signalling protocol are
-exactly as they were. What is new is everything around the video.
+Everything here sits on top of batch0 Live (`docs/batch0-live.md`), which
+covers the media path, signalling, the room and recording. This file covers
+everything around the video.
 
 ---
 
@@ -332,7 +332,7 @@ window, like the other live stamps. A webinar whose recording is still saving (a
 take recording or not yet finalized), or an auto-recorded one with no
 recording yet, is left for later runs (up to two hours).
 A **staff-only** event is never shared — it is a rehearsal — and the form shows
-"Share afterwards" off for one.
+"Email the recording and slides afterwards" off for one.
 
 `assets_shared_at` is the claim, and it is stamped **before** the sending
 starts. A run that dies halfway costs one webinar's follow-up rather than
@@ -340,9 +340,6 @@ mailing the whole cohort twice on the next run.
 
 It goes to everyone enrolled, not only to attendees. The people who most need a
 recording are the ones who missed it.
-
-The email and the bell link to `/dashboard/events`. They used to link to
-`/dashboard/events/<id>`, which has no page.
 
 ---
 

@@ -9,6 +9,7 @@ import { getActionError } from "@/lib/action-error";
 import type { ActionResult } from "@/lib/action-result";
 import { selfIsCallStaff } from "@/lib/call-roster";
 import {
+  canSeeRoster,
   isCallCounterpart,
   ROOM_HARD_CLOSE_MINUTES_AFTER,
   roomWindow,
@@ -986,7 +987,7 @@ function RoomSession({
       remotes={session.remotes}
       connection={connection}
       room={{ ...room, canEnd }}
-      audienceCount={broadcaster ? audienceCount : null}
+      audienceCount={canSeeRoster(role) ? audienceCount : null}
       recording={recording}
       canRecord={canRecord}
       hosting={hosting}
