@@ -237,7 +237,14 @@ async function openAs(
   await ctx.addInitScript(TRACE_PCS);
   const page = await ctx.newPage();
   page.on("pageerror", (e) => info(`[${label}] page error: ${e.message}`));
-  await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
+  // next dev compiles a room route on its first visit, which on a loaded
+  // machine has taken ~25 s and answered just under Playwright's 30 s default.
+  // A slow first compile is not a failure; give it the same room as
+  // webinar-panel-e2e and room-screens.
+  await page.goto(`${BASE}${path}`, {
+    waitUntil: "domcontentloaded",
+    timeout: 180_000,
+  });
   return { ctx, page };
 }
 
