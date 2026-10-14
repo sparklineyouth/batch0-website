@@ -79,6 +79,7 @@ export function usePresentation({
   const [deckError, setDeckError] = useState<string | null>(null);
   const [deckLoading, setDeckLoading] = useState(false);
   const deckRef = useRef<DeckEngine | null>(null);
+  const deckAttempt = useRef(0);
   const snap = useDeckSnapshot(deck);
 
   const engine = useCallback((): DeckEngine => {
@@ -119,10 +120,13 @@ export function usePresentation({
       setDeckError(null);
       clearShareError();
       setDeckLoading(true);
+      const attempt = ++deckAttempt.current;
       const e = engine();
       void e
         .open(source === "event" ? { kind: "url", ...eventDeck! } : { kind: "file", file: source })
         .then((ok) => {
+          // A newer pick owns the spinner and the outcome.
+          if (attempt !== deckAttempt.current) return;
           setDeckLoading(false);
           if (ok) {
             stopShare();
@@ -139,6 +143,8 @@ export function usePresentation({
 
   const stop = useCallback(() => {
     stopShare();
+    deckAttempt.current++;
+    setDeckLoading(false);
     deckRef.current?.close();
     setActive("none");
     setStartedAt(null);

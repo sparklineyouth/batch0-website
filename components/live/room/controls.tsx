@@ -105,7 +105,7 @@ export function ControlBar(props: ControlBarProps) {
         {panel ? (
           <div className="lg:hidden">
             <CtrlButton
-              label={panel.open ? "Close panel" : "Open chat"}
+              label={panel.open ? "Close chat" : "Chat"}
               on={panel.open}
               onClick={() => panel.onToggle(panel.tab)}
               testId="ctrl-panel"
