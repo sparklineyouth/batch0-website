@@ -335,28 +335,35 @@ async function main() {
     console.log("\ndelete your own");
     await say(ben.page, "oops wrong room");
     await until("Ada sees Ben's", () => hasMessage(ada.page, "oops wrong room"));
+    await until("host sees Ben's", () => hasMessage(host.page, "oops wrong room"));
     const others = message(ada.page, "oops wrong room");
     check(
       (await others.getByRole("button", { name: "Delete", exact: true }).count()) === 0 &&
         (await others.getByRole("button", { name: "Remove", exact: true }).count()) === 0,
       "a student cannot delete someone else's message",
     );
-    await rowAction(message(ben.page, "oops wrong room"), "Delete");
-    const delSelf = await timed("gone for Ben", async () => !(await hasMessage(ben.page, "oops wrong room")), 1500);
-    const delAda = await timed("gone for Ada", async () => !(await hasMessage(ada.page, "oops wrong room")));
-    const delHost = await timed("gone for host", async () => !(await hasMessage(host.page, "oops wrong room")));
+    await message(ben.page, "oops wrong room").hover();
+    const [delSelf, delAda, delHost] = await Promise.all([
+      timed("gone for Ben", async () => !(await hasMessage(ben.page, "oops wrong room")), 1500),
+      timed("gone for Ada", async () => !(await hasMessage(ada.page, "oops wrong room"))),
+      timed("gone for host", async () => !(await hasMessage(host.page, "oops wrong room"))),
+      message(ben.page, "oops wrong room").getByRole("button", { name: "Delete", exact: true }).click(),
+    ]);
     check(delSelf !== null, `gone for its author at once (${delSelf}ms)`);
-    check(delAda !== null && delHost !== null, `gone for everyone (Ada +${delAda}ms, host +${delHost}ms)`);
+    check(delAda !== null && delHost !== null, `gone for everyone (Ada ${delAda}ms, host ${delHost}ms)`);
 
     // --- host removes -----------------------------------------------------------
     console.log("\nhost removes");
-    await rowAction(message(host.page, "hello from Ada"), "Remove");
-    const remHost = await timed("gone for host", async () => !(await hasMessage(host.page, "hello from Ada")), 1500);
-    const remAda = await timed("gone for Ada", async () => !(await hasMessage(ada.page, "hello from Ada")));
-    const remBen = await timed("gone for Ben", async () => !(await hasMessage(ben.page, "hello from Ada")));
+    await message(host.page, "hello from Ada").hover();
+    const [remHost, remAda, remBen] = await Promise.all([
+      timed("gone for host", async () => !(await hasMessage(host.page, "hello from Ada")), 1500),
+      timed("gone for Ada", async () => !(await hasMessage(ada.page, "hello from Ada"))),
+      timed("gone for Ben", async () => !(await hasMessage(ben.page, "hello from Ada"))),
+      message(host.page, "hello from Ada").getByRole("button", { name: "Remove", exact: true }).click(),
+    ]);
     check(remHost !== null, `gone for the host at once (${remHost}ms)`);
-    check(remAda !== null, `gone for its author (+${remAda}ms)`);
-    check(remBen !== null, `gone for Ben (+${remBen}ms)`);
+    check(remAda !== null, `gone for its author (${remAda}ms)`);
+    check(remBen !== null, `gone for Ben (${remBen}ms)`);
 
     info("waiting out a full resync (22s)…");
     await new Promise((r) => setTimeout(r, 22_000));
@@ -481,8 +488,9 @@ async function main() {
     );
 
     await tab(ben.page, /^Chat/);
-    for (let i = 0; i < 14; i++) await say(host.page, `filler ${i} ${"lorem ipsum ".repeat(6)}`);
-    await until("filler on Ben", () => hasMessage(ben.page, "filler 13"), 15_000);
+    // Four long lines (the chat rate limit is 5 per 10s) to overflow the log.
+    for (let i = 0; i < 4; i++) await say(host.page, `filler ${i} ${"lorem ipsum ".repeat(30)}`);
+    await until("filler on Ben", () => hasMessage(ben.page, "filler 3"));
     const log = ben.page.getByRole("log", { name: "Chat messages" });
     const nearBottom = () => log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight < 60);
     check(await nearBottom(), "a reader at the bottom follows new messages");

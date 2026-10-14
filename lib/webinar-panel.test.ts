@@ -5,6 +5,7 @@ import {
   baseFrom,
   chatRemovedHint,
   chooseOption,
+  contradictedHints,
   emptyReadRequest,
   hideRow,
   isIsoTimestamp,
@@ -26,6 +27,7 @@ import {
   withOverrides,
   CHAT_CURSOR_OVERLAP_MS,
   CHAT_KEEP,
+  OUTBOX_MAX_ATTEMPTS,
   type Override,
   type PanelBase,
   type WebinarPanelInitial,
@@ -200,6 +202,23 @@ test("a forged removal hint undoes itself on the next read", () => {
   assert.deepEqual(ids(viewChat(read, o)), [ID(1), ID(2)]);
 });
 
+test("a replayed forged removal hint stops being trusted after one read", () => {
+  const forged = new Map<string, Override<ChatMessage>>([
+    [ID(2), { settledAt: 1_000, patch: hideRow, fromHint: true }],
+    // A real removal: the read that follows no longer returns the row.
+    [ID(3), { settledAt: 1_000, patch: hideRow, fromHint: true }],
+    // The reader's own removal is never second-guessed.
+    [ID(4), { settledAt: 1_000, patch: hideRow }],
+  ]);
+  const returned = new Set([ID(1), ID(2), ID(4)]);
+  assert.deepEqual(contradictedHints(forged, 1_100, returned), [ID(2)]);
+  assert.deepEqual(
+    contradictedHints(forged, 900, returned),
+    [],
+    "a read that started before the hint says nothing about it",
+  );
+});
+
 test("an own send shows until a read that started after it confirms", () => {
   const base = baseFrom(initial([msg(1)]));
   const mine = msg(2, { mine: true, authorName: "You" });
@@ -361,6 +380,7 @@ test("timestamps and ids", () => {
 
 test("retries back off and honour the server's hint", () => {
   assert.deepEqual([1, 2, 3, 4, 5].map((a) => retryDelayMs(a)), [1000, 2000, 4000, 8000, 8000]);
+  assert.ok(OUTBOX_MAX_ATTEMPTS * 3000 > 20_000, "rides out a rate-limit window");
   assert.equal(retryDelayMs(1, 3000), 3000);
   assert.equal(retryDelayMs(1, 60_000), 15_000);
 });

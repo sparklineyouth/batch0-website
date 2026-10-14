@@ -5,6 +5,7 @@ import { sortQuestions, type ChatMessage, type RoomQuestion, type WebinarPoll } 
 import {
   applyRead,
   baseFrom,
+  contradictedHints,
   emptyReadRequest,
   fullReadRequest,
   mergeReadRequests,
@@ -63,6 +64,8 @@ export function usePanelFeed({
   // --- reads ---------------------------------------------------------------
 
   const inFlight = useRef(false);
+  /** Ids whose removal hint a read contradicted: their hints only trigger reads. */
+  const distrusted = useRef(new Set<string>());
   const queued = useRef<ReadRequest | null>(null);
   const failures = useRef(0);
   const readRef = useRef<(req: ReadRequest) => void>(() => {});
@@ -87,10 +90,15 @@ export function usePanelFeed({
           baseRef.current = applyRead(baseRef.current, next);
           setBase(baseRef.current);
           if (next.chat) {
-            const returned = next.chat.full
-              ? undefined
-              : new Set(next.chat.messages.map((m) => m.id));
-            setChatO((o) => pruneOverrides(o, startedAt, returned));
+            const ids = new Set(next.chat.messages.map((m) => m.id));
+            const full = next.chat.full;
+            setChatO((o) => {
+              // Idempotent, so safe in an updater React may run twice.
+              if (full) {
+                for (const id of contradictedHints(o, startedAt, ids)) distrusted.current.add(id);
+              }
+              return pruneOverrides(o, startedAt, full ? undefined : ids);
+            });
           }
           if (next.questions) setQaO((o) => pruneOverrides(o, startedAt));
           if (next.polls) setPollO((o) => pruneOverrides(o, startedAt));
@@ -139,11 +147,13 @@ export function usePanelFeed({
     const onPayload = (payload: unknown) => {
       const hint = parseRoomHint(payload);
       if (!hint || hint.kind !== "bump") return;
-      if (hint.removed) {
+      if (hint.removed && !distrusted.current.has(hint.removed)) {
         // Drop it now; the full read this schedules confirms it — or, for a
         // forged hint, brings the row straight back.
         const id = hint.removed;
-        setChatO((o) => new Map(o).set(id, { settledAt: Date.now(), patch: hideRow }));
+        setChatO((o) =>
+          new Map(o).set(id, { settledAt: Date.now(), patch: hideRow, fromHint: true }),
+        );
       }
       schedule(requestFor(emptyReadRequest(), hint));
     };

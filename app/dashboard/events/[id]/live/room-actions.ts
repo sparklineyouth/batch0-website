@@ -228,13 +228,14 @@ export async function deleteChatMessage(
       if (!own) throw new Refusal("You can only delete your own messages.");
       return null;
     }
+    // Tell the room first: the audit row can land a beat later.
+    await notifyRoom(roomOf(eventId), chatRemovedHint(id));
     await logAudit({
       action: "webinar.chat_deleted",
       targetType: "webinar_message",
       targetId: id,
       payload: { eventId },
     });
-    await notifyRoom(roomOf(eventId), chatRemovedHint(id));
     return null;
   });
 }
@@ -264,6 +265,7 @@ export async function moderateChatMessage(
         .is("removed_at", null)
         .select("id");
       check(error);
+      await notifyRoom(roomOf(eventId), chatRemovedHint(id));
       if (data?.length) {
         await logAudit({
           action: "webinar.chat_removed",
@@ -272,7 +274,6 @@ export async function moderateChatMessage(
           payload: { eventId, byStaff: gate.isStaff },
         });
       }
-      await notifyRoom(roomOf(eventId), chatRemovedHint(id));
       return null;
     }
 

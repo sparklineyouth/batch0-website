@@ -199,6 +199,8 @@ export type Override<T> = {
   patch?: (row: T) => T | null;
   /** A row to show even before any read returns it (an own send). */
   insert?: T;
+  /** Placed by a removal hint, which anyone holding the topic could send. */
+  fromHint?: boolean;
 };
 export type Overrides<T> = ReadonlyMap<string, Override<T>>;
 
@@ -219,6 +221,26 @@ export function pruneOverrides<T>(
     next.delete(id);
   }
   return next;
+}
+
+/**
+ * Removal hints a full read just contradicted: the hint hid a row the server
+ * still returns (a real removal is written before its hint is sent). Those ids
+ * stop being trusted, so replaying a forged hint blanks a message for one
+ * read at most.
+ */
+export function contradictedHints<T>(
+  overrides: Overrides<T>,
+  readStartedAt: number,
+  returnedIds: ReadonlySet<string>,
+): string[] {
+  const out: string[] = [];
+  for (const [id, o] of overrides) {
+    if (o.fromHint && o.settledAt !== null && o.settledAt < readStartedAt && returnedIds.has(id)) {
+      out.push(id);
+    }
+  }
+  return out;
 }
 
 /** Server rows with patches applied, hidden rows dropped, inserts appended. */
@@ -366,8 +388,11 @@ export function mergeReadRequests(a: ReadRequest, b: ReadRequest): ReadRequest {
 // Outbox and unread
 // ---------------------------------------------------------------------------
 
-/** Automatic attempts before a send waits for the person to press Retry. */
-export const OUTBOX_MAX_ATTEMPTS = 4;
+/**
+ * Automatic attempts before a send waits for the person to press Retry —
+ * enough to ride out a rate-limit window (5 per 10s) on a fast typist.
+ */
+export const OUTBOX_MAX_ATTEMPTS = 8;
 
 /** Backoff before attempt `attempt + 1`: 1s, 2s, 4s… capped at 8s, or the server's hint. */
 export function retryDelayMs(attempt: number, hintMs?: number): number {
