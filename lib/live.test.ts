@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  canJoin,
   canSeeRoster,
   joinState,
   inviteEndsAt,
@@ -127,13 +126,6 @@ test("an event with no end time is assumed to run the default length", () => {
     ),
     "ended",
   );
-});
-
-test("only open and live are joinable", () => {
-  assert.equal(canJoin("open"), true);
-  assert.equal(canJoin("live"), true);
-  assert.equal(canJoin("early"), false);
-  assert.equal(canJoin("ended"), false);
 });
 
 test("joinState accepts ISO strings as well as Dates", () => {

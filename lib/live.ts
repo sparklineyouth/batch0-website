@@ -234,10 +234,6 @@ export function joinState(
   return t < start ? "open" : "live";
 }
 
-export function canJoin(state: JoinState): boolean {
-  return state === "open" || state === "live";
-}
-
 /** End time for an invite, derived from its duration. */
 export function inviteEndsAt(
   invite: Pick<CallInvite, "startsAt" | "durationMinutes">,
