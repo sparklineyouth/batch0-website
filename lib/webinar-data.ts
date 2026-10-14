@@ -52,7 +52,6 @@ export type WebinarEvent = {
   qaOpensAt: string | null;
   liveStartedAt: string | null;
   liveEndedAt: string | null;
-  displayViewerCount: number | null;
   recordingUrl: string | null;
   cohortId: string | null;
   visibility: string;
@@ -69,7 +68,7 @@ export type WebinarEvent = {
 export const WEBINAR_EVENT_COLUMNS =
   "id, title, description, type, starts_at, ends_at, live_mode, audience_mode, " +
   "auto_record, auto_share, premiere_seconds, qa_opens_at, live_started_at, " +
-  "live_ended_at, display_viewer_count, recording_url, cohort_id, visibility";
+  "live_ended_at, recording_url, cohort_id, visibility";
 
 export function toWebinarEvent(row: any): WebinarEvent {
   return {
@@ -90,7 +89,6 @@ export function toWebinarEvent(row: any): WebinarEvent {
     qaOpensAt: row.qa_opens_at ?? null,
     liveStartedAt: row.live_started_at ?? null,
     liveEndedAt: row.live_ended_at ?? null,
-    displayViewerCount: row.display_viewer_count ?? null,
     recordingUrl: row.recording_url ?? null,
     cohortId: row.cohort_id ?? null,
     visibility: row.visibility,

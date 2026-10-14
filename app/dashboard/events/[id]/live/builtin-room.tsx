@@ -65,7 +65,6 @@ export function BuiltinEventRoom({
   canEnd,
   backHref,
   audienceMode,
-  displayViewerCount,
   autoRecord,
   premiere,
   liveEndedAt,
@@ -111,8 +110,6 @@ export function BuiltinEventRoom({
    */
   backHref: string;
   audienceMode: AudienceMode;
-  /** Admin-announced headcount, shown to everyone. Null = hidden roster. */
-  displayViewerCount: number | null;
   autoRecord: boolean;
   /** Null for an ordinary live webinar. */
   premiere:
@@ -272,7 +269,6 @@ export function BuiltinEventRoom({
       title={title}
       role={role}
       backHref={backHref}
-      displayViewerCount={displayViewerCount}
       webinar={webinar}
       {...actions}
     />

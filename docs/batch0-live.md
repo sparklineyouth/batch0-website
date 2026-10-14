@@ -136,8 +136,14 @@ life of the call:
 - stop presenting → `replaceTrack(null)`
 
 None of those touch the SDP. The fixed order is also how a receiver tells
-camera from screen: slot *i* is transceiver *i* is `mid` *i*. No side-channel
-message, nothing to fall out of sync.
+camera from screen: slot *i* is transceiver *i* is `mid` *i*.
+
+Whether a slot is actually carrying media is the sender's word, because a
+receiver cannot tell a detached sender from a quiet one: every offer and
+answer carries `slots` (so a viewer who joins mid-share sees the screen from
+the first frame — a separate `media` message sent alongside the offer used to
+be dropped, because the viewer had no connection yet), and a `media` message
+repeats it on connect, on every change and on every heartbeat.
 
 Glare is impossible rather than merely unlikely: a host always offers to a
 viewer, and two hosts break the tie by comparing peer ids.
@@ -193,9 +199,20 @@ The ordering problem is that students arrive before the host does.
   itself is **unauthenticated** — the stage topic is derivable, and nothing
   verifies a stage message in the browser — so it carries nothing and decides
   nothing. A forged one costs one throttled re-check. `host-online` is a hint
-  in exactly the same sense. A 1:1 learns that it was ended or cancelled from
-  its own status poll (`getCallRoomStatus`, every 15s) or the heartbeat's
-  answer, whichever comes first.
+  in exactly the same sense (and re-dials only a host the receiver already
+  knows, at most once per `HOST_ONLINE_FLOOR_MS` per host). A 1:1 hears it from
+  `notifyCallChanged(inviteId)` (`lib/live-rooms.ts`) on End call and Cancel,
+  and otherwise from its status poll or the heartbeat's answer.
+- Only a broadcaster offers. An offer on a viewer's (pinned) inbox, or from a
+  peer known as a viewer, is dropped (`offerDisposition`) — it used to put a
+  phantom "host" tile on hosts' screens. A 1:1's credentials carry no inbox,
+  no lobby, room or moderation topic and no stage proof
+  (`credentialsFor({ kind })`): each pair of people on the call gets its own
+  line (`pairTopic`, keyed on the room and the two ids, handed to those two
+  only), both ends pin it to the other, and an offer counts only on a pair
+  line from someone on the server's roster. When every party held every other
+  party's inbox, a student could offer on a staff inbox as a made-up "Admin",
+  or as a real co-host's id, and be drawn (and recorded) as them.
 - A departure is a `bye` with `reason: "leave"` (a connection being rebuilt
   sends `reason: "rebuild"`, which is not a departure), addressed with `to` to
   the one peer it concerns. The other side marks
@@ -284,8 +301,37 @@ student about anyone added after booking. And a big call is a heavy one (see
 
 | | Opens | Closes |
 | --- | --- | --- |
-| Viewer | start − 15 min | end + 30 min; **or** later while a host is still present and nobody pressed End, up to end + 3 h; **or** immediately when End is pressed |
-| Host (staff or speaker) | start − 60 min | end + 3 h — including after End, so staff can reach the ended screen and Reopen |
+| Viewer | start − 15 min, **or** as soon as a host has gone live (`live_started_at`) | end + 30 min; **or** later while a host is still present and nobody pressed End, up to end + 3 h; **or** immediately when End is pressed |
+| Host (staff or speaker) | any time | end + 3 h — including after End, so staff can reach the ended screen and Reopen |
+
+A host in the room from start − 60 min on is the start: joining or
+heartbeating stamps `live_started_at` if it is unset (`shouldStampLiveStart`;
+never for a premiere), which lets the audience in and makes End for everyone
+available (`mayEndWebinar`: from the start or a go-live, staff always, a guest
+speaker only with no staff host present). Earlier than that a host is
+rehearsing: nothing is stamped, students stay out, End is not offered (Leave
+is the way out), and a host still in the room when the hour opens goes live
+on their next heartbeat. Lists follow the room (`eventLiveStatus` reads
+`liveStartedAt`), and an admin save clears only stamps older than the
+go-live window (an earlier run).
+
+**Primary host** (migration 0096, `events.live_primary_host_id`): the stage
+everyone sees when nobody is presenting. The first host in takes it, a host
+joining or heartbeating while its holder is gone (no heartbeat for
+`PEER_TIMEOUT_MS`) takes it over, and staff can pin any present host with
+`setPrimaryHost`. Server-written only (`claimStage`, compare-and-set), never
+carried on the public stage channel. `getHostingStatus` tells the green room
+who is hosting (hosts only; viewers get an empty list). Without the migration
+the room runs with no primary.
+
+Every join and heartbeat answer carries `room: LiveRoomState` — primary,
+live stamps, `canEnd` for the caller, and the running recording — and the
+engine exposes it as `session.room`.
+
+1:1 calls use `callRoomAccess`: an invite nobody has answered yet is joinable
+like an accepted one (the student can still Decline beforehand); the staff side
+may enter from start − 60 min, the student from start − 15 min; the room stays
+open until End call, a cancel, or end + 3 h.
 
 Leaving is never window-gated (it authorizes by identity alone), and End /
 Reopen are bounded only by the hard stop at end + 3 h, so an overrunning
@@ -302,8 +348,10 @@ the middleware's `student.dashboard` role gate (`isLiveRoomPath` and
 `bouncesFromDashboard` in `lib/dashboard-gate.ts`, tested). The page and the
 actions do the authorizing instead, so a mentor or investor who booked a call,
 an intern with `events.manage`, and a mentor invited as a guest speaker can all
-reach a room they host. The pre-cohort lockdown is unchanged: a 1:1 room is on
-its allowed list (under `/dashboard/calls`), a webinar room is not. Back links
+reach a room they host. Both rooms are on the pre-cohort allow list (a 1:1 room
+under `/dashboard/calls`, and the webinar room itself — not the events list —
+so a pre-start orientation webinar can be attended; RLS still decides who may
+see the event). Back links
 are role-aware: a staff webinar host goes back to `/admin/events`, a call's
 host to their own calls page (`hostCallsHref` in `lib/call-lifecycle.ts`:
 `/admin/calls`, `/mentor/calls` or `/investor/calls`), a student to
@@ -408,12 +456,20 @@ Join, no Cancel — even if nobody pressed End call (`callPhase` in
 The host encodes once but **sends one copy per viewer**. That is the cost of
 having no media server.
 
-| Viewers | Host upstream needed (~600 kbps each) |
+Every video sender is capped after negotiation (`encodingFor` in
+`lib/live-signal.ts`): the screen ~1.5 Mbps at 15 fps (5 for a deck hinted
+`text`), resolution kept over frame rate; the camera ~500 kbps, and a 1/3-scale
+thumbnail at ~150 kbps while presenting. Each budget is split across the links
+a sender serves, between a floor and a ceiling, so a full room degrades
+gradually. A failed link (or one disconnected for 5 s) gets an ICE restart from
+the side that offered (`iceRecovery`), and is rebuilt only after two restarts.
+
+| Viewers | Host upstream, camera only (~500 kbps each) |
 | --- | --- |
-| 5 | ~3 Mbps |
-| 12 (a current cohort) | ~7 Mbps |
-| 25 | ~15 Mbps |
-| 50 | ~30 Mbps — don't |
+| 5 | ~2.5 Mbps |
+| 12 (a current cohort) | ~6 Mbps |
+| 25 | ~6 Mbps (caps shrink to ~240 kbps) |
+| 50 | ~7.5 Mbps (floor 150 kbps) — don't |
 
 **Comfortable to about 25 viewers** on decent home broadband. Past that the
 host's upstream, not the code, is the limit, and the right fix is an SFU
@@ -446,7 +502,10 @@ LIVE_TURN_CREDENTIAL=…
 
 Server-only, and handed to the browser per join rather than inlined into the
 bundle, so credentials can be rotated or made short-lived without a redeploy.
-`npm run webinar-doctor` warns when it is unset.
+Validated before it is handed out (`turnServerFrom`): a bad URL, or TURN
+without a username and credential, is dropped and logged rather than making
+every browser's `new RTCPeerConnection` throw. `npm run webinar-doctor` warns
+when it is unset.
 
 ---
 
@@ -484,6 +543,7 @@ npm run webinar-doctor    # configuration, signalling, scheduled webinars
 npm run dev               # then, in another terminal:
 npm run webinar-e2e       # two real browsers, real accounts, decoded frames
 npm run webinar-e2e -- --headed    # watch it happen
+npm run call-mesh-e2e     # a 1:1 that gains a co-host mid-call: everyone decodes everyone
 ```
 
 `webinar-doctor` is provider-aware and checks what `LIVE_PROVIDER` selects.
@@ -504,6 +564,11 @@ asserts:
 - the host's headcount reads **2**
 
 Everything it creates is deleted in a `finally` block, including on failure.
+
+`call-mesh-e2e` covers what a two-person call cannot: a host and a student in
+an unanswered call, then a mentor added while it runs, until all three decode
+both others over their per-pair lines. Who offers to whom follows the random
+ids, so run it a few times.
 
 This exists because `daily-doctor` passed for months while webinars were
 completely broken. A configuration check cannot tell you a student sees the

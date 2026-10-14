@@ -18,6 +18,7 @@ import {
   staffCallsHref,
 } from "@/lib/calls";
 import {
+  callRoomAccess,
   callStaffIds,
   isOnCall,
   isStaffOnCall,
@@ -32,7 +33,6 @@ import {
   canMarkCallCompleted,
   canRespondToCall,
   cohostsToAdd,
-  isPastPhase,
   type CallPhase,
   type CallTiming,
 } from "@/lib/call-lifecycle";
@@ -808,5 +808,13 @@ export async function getCallRoomStatus(
   const row = invite as any;
   if (!row) return null;
   if (!(await onCall(admin, row, actor.userId))) return null;
-  return { over: isPastPhase(callPhase(timingOf(row))) };
+  // The room's own rule (callRoomAccess): over once ended, cancelled or
+  // declined, or past the hard stop — never at end+30m while people are in it.
+  const access = callRoomAccess({
+    status: row.status,
+    startsAt: row.starts_at,
+    durationMinutes: row.duration_minutes,
+    isStaff: true,
+  });
+  return { over: access !== "open" && access !== "live" && access !== "early" };
 }

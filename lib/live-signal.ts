@@ -32,10 +32,7 @@
  *     broadcasting. The lobby channel that carries those announcements is
  *     itself keyed by an HMAC only hosts are given.
  *
- * Contrast with the Daily setup this replaces, which hid viewers with
- * `hasPresence: false`: that hid them from the HOST too, so nobody could tell
- * whether anyone was watching. Here the host sees the audience and the
- * audience cannot see itself, which is the split that was actually wanted.
+ * The host sees the audience; the audience cannot see itself.
  */
 
 /** What a person may do in a room. Mirrors LiveRole in lib/live.ts. */
@@ -110,6 +107,23 @@ export function inboxTopic(eventId: string, inboxKey: string): string {
 }
 
 /**
+ * A 1:1's private line between two of the people on it. `pairKey` is
+ * `HMAC(secret, room + the two ids in a fixed order)`, so both ends are given
+ * the same topic, and nobody else on the call can derive it.
+ *
+ * A call has no open inbox. When every party was handed every other party's
+ * inbox, a student could publish an offer on a staff member's inbox with any
+ * `from` and any name, and be drawn on staff screens (and recorded) as a
+ * co-host — or, with a real co-host's id, replace that co-host's link under
+ * their name. On a pair line only the other end can publish, and each end
+ * pins the line to that person, so who sent a message is implied by where it
+ * arrived.
+ */
+export function pairTopic(roomId: string, pairKey: string): string {
+  return `${NS}:${roomId}:pair:${pairKey}`;
+}
+
+/**
  * Which channel a connection is negotiated on — and the reason a viewer is
  * never told the host's inbox.
  *
@@ -125,9 +139,10 @@ export function inboxTopic(eventId: string, inboxKey: string): string {
  * never learns any topic but its own, and there is no channel in the system
  * on which one viewer could observe another.
  *
- * Host↔host (a 1:1, or two staff in a webinar) is the ordinary case: each
- * publishes to the other's inbox and listens on its own. There is no audience
- * to protect between two broadcasters.
+ * Host↔host in a webinar (two staff, or staff and a speaker) is the ordinary
+ * case: each publishes to the other's inbox and listens on its own. There is
+ * no audience to protect between two broadcasters. In a 1:1 `peerInbox` is
+ * the pair's own line (pairTopic), which both ends publish on and listen to.
  */
 export function connectionTopic({
   selfRole,
@@ -177,8 +192,33 @@ export const SIGNAL_EVENT = "b0live";
  * accepted exactly as it always was, so a deploy never splits a live room.
  */
 export type SignalMessage =
-  | { t: "offer"; from: string; name: string; sdp: string }
-  | { t: "answer"; from: string; name: string; sdp: string; to?: string }
+  /**
+   * `slots` (optional, like `to`) is the sender's media state at the moment
+   * of the offer. A webinar viewer has no connection until the offer lands, so
+   * a `media` message sent alongside it was dropped, and a viewer joining
+   * mid-share saw the camera instead of the screen. Carrying it here seeds
+   * the receiver's state with the connection itself (see readSlots).
+   *
+   * `restart` marks an ICE restart of a connection the receiver already has:
+   * apply it there instead of treating it as a new connection. A tab that
+   * predates the field rebuilds instead, which is what it always did.
+   */
+  | {
+      t: "offer";
+      from: string;
+      name: string;
+      sdp: string;
+      slots?: Record<MediaSlot, boolean>;
+      restart?: boolean;
+    }
+  | {
+      t: "answer";
+      from: string;
+      name: string;
+      sdp: string;
+      to?: string;
+      slots?: Record<MediaSlot, boolean>;
+    }
   | { t: "ice"; from: string; candidates: unknown[]; to?: string }
   /**
    * Sender is going away — tear the connection down now, don't wait for ICE
@@ -206,8 +246,10 @@ export type SignalMessage =
   /**
    * Which of the sender's slots are actually carrying media right now.
    *
-   * Sent by a broadcaster when a connection comes up and on every change
-   * afterwards, because the receiving end cannot work this out for itself.
+   * Sent by a broadcaster with every offer/answer (`slots`), when a
+   * connection comes up, on every change, and on every heartbeat — it is
+   * unacknowledged, so repetition is what repairs a lost one. The receiving
+   * end cannot work this out for itself.
    * The obvious source — `receiver.track.muted` — does not answer it:
    *
    *  - Detaching a sender (`replaceTrack(null)`) stops the RTP but does not
@@ -261,7 +303,45 @@ export function shouldApplyAnswer(signalingState: string): boolean {
 }
 
 /**
+ * May an incoming offer be acted on?
+ *
+ * A webinar — only a broadcaster ever offers, so:
+ *  - `pinned`: it arrived on a topic pinned to one peer — a VIEWER's inbox,
+ *    which only accepts messages from that viewer. A viewer never offers, so
+ *    this is a forgery (it used to build a phantom "host" tile, named by the
+ *    viewer, on every host's screen). Dropped.
+ *  - a broadcaster hearing an offer from a peer it knows as a viewer: same.
+ *  Anything else arrived on our own inbox, which only hosts can derive, so an
+ *  unknown sender is a host.
+ *
+ * A 1:1 — offers arrive only on a pair line (pairTopic), pinned to the one
+ * other person who holds it, and that person must be on the roster the
+ * server gave us (`knownRole`). Anything else — unpinned, or from someone the
+ * server never named — is dropped: a call never builds a peer out of what a
+ * message claims about its sender.
+ */
+export function offerDisposition({
+  kind,
+  pinned,
+  selfRole,
+  knownRole,
+}: {
+  kind: "event" | "call";
+  pinned: boolean;
+  selfRole: SignalRole;
+  knownRole: SignalRole | null;
+}): "accept" | "drop" {
+  if (kind === "call") return pinned && knownRole !== null ? "accept" : "drop";
+  if (pinned) return "drop";
+  if (selfRole === "host" && knownRole === "viewer") return "drop";
+  return "accept";
+}
+
+/**
  * Messages on the stage channel. BOTH ARE UNAUTHENTICATED HINTS.
+ *
+ * (In a 1:1 every party is a broadcaster and none holds a proof; `proof` is
+ * then empty. Nothing ever verified it.)
  *
  * The stage topic is derivable from the event id, so any participant can
  * publish anything here. `host-online` carries a `proof` (an HMAC the server
@@ -274,8 +354,9 @@ export function shouldApplyAnswer(signalingState: string): boolean {
  *   host-online   "A host may have just arrived" — re-announce now instead of
  *                 at the next heartbeat. A forged one costs one server action.
  *   room-changed  "This room's state changed" — sent by the SERVER (service
- *                 role) when a webinar is ended or reopened and when a 1:1 is
- *                 cancelled or completed. Content-free on purpose: the client
+ *                 role) when a webinar is ended or reopened, when its primary
+ *                 host changes, and when a 1:1 is cancelled or completed
+ *                 (notifyCallChanged). Content-free on purpose: the client
  *                 answers it by re-asking the server for its status (throttled
  *                 to once a second), and acts only on what the server says. A
  *                 forged one costs a re-check, never a torn-down room.
@@ -386,6 +467,180 @@ export function slotIsActive({
   return slot === "screen" ? false : trackLive;
 }
 
+/**
+ * The slots a `media` message, offer or answer announced — only the ones that
+ * are real booleans. Anything else (an older tab, a malformed message) is
+ * left unannounced rather than guessed.
+ */
+export function readSlots(raw: unknown): Partial<Record<MediaSlot, boolean>> {
+  const out: Partial<Record<MediaSlot, boolean>> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const slot of MEDIA_SLOTS) {
+    const v = (raw as Record<string, unknown>)[slot];
+    if (typeof v === "boolean") out[slot] = v;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Encoding policy
+// ---------------------------------------------------------------------------
+
+/**
+ * What one sender should be capped at — applied with RTCRtpSender
+ * .setParameters after negotiation, and again whenever the inputs change.
+ *
+ * Without caps every link ramps toward ~2.5 Mbps per video stream, and a
+ * webinar host encodes once PER VIEWER (a star), so the uplink and CPU
+ * collapse and the screen — the thing people came to see — is what drops
+ * frames. So:
+ *   screen  ~1.5 Mbps, 15 fps (5 for a deck hinted "text", 30 for "motion"),
+ *           resolution kept over frame rate so text stays sharp.
+ *   camera  ~500 kbps; while presenting a thumbnail (1/3 scale, 15 fps,
+ *           ~150 kbps), so the screen gets the uplink.
+ * Each budget is split across `links` (the connections this sender serves)
+ * between a floor and a ceiling, so a full room degrades gracefully instead
+ * of all at once. Audio is left alone (null).
+ */
+export type SenderEncoding = {
+  maxBitrate: number;
+  maxFramerate: number;
+  scaleResolutionDownBy: number;
+  degradationPreference?: "maintain-resolution" | "maintain-framerate" | "balanced";
+};
+
+export const SCREEN_BUDGET_BPS = 12_000_000;
+export const CAMERA_BUDGET_BPS = 6_000_000;
+
+function share(budget: number, links: number, min: number, max: number): number {
+  const n = Math.max(1, Math.floor(links) || 1);
+  return Math.max(min, Math.min(max, Math.round(budget / n)));
+}
+
+export function encodingFor({
+  slot,
+  contentHint,
+  presenting,
+  links,
+}: {
+  slot: MediaSlot;
+  /** The track's contentHint ("" when unset). */
+  contentHint: string;
+  /** Is this sender also sending a screen/deck right now? */
+  presenting: boolean;
+  links: number;
+}): SenderEncoding | null {
+  if (slot === "audio") return null;
+  if (slot === "screen") {
+    return {
+      maxBitrate: share(SCREEN_BUDGET_BPS, links, 300_000, 1_500_000),
+      maxFramerate: contentHint === "text" ? 5 : contentHint === "motion" ? 30 : 15,
+      scaleResolutionDownBy: 1,
+      degradationPreference: "maintain-resolution",
+    };
+  }
+  if (presenting) {
+    return {
+      maxBitrate: share(1_500_000, links, 80_000, 150_000),
+      maxFramerate: 15,
+      scaleResolutionDownBy: 3,
+    };
+  }
+  return {
+    maxBitrate: share(CAMERA_BUDGET_BPS, links, 150_000, 500_000),
+    maxFramerate: 30,
+    scaleResolutionDownBy: links > 12 ? 2 : 1,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// ICE
+// ---------------------------------------------------------------------------
+
+/** How long a link may sit in "disconnected" before we restart ICE. */
+export const ICE_DISCONNECT_GRACE_MS = 5_000;
+/** ICE restarts tried on one connection before it is rebuilt from scratch. */
+export const MAX_ICE_RESTARTS = 2;
+
+/**
+ * What to do about a link that is not connected.
+ *
+ * Only the side that offered acts (the other side waits for its offer), so
+ * the two never collide. A failed link — or one disconnected past the grace
+ * — gets an ICE restart (seconds, same connection, no flash of "left"); after
+ * MAX_ICE_RESTARTS it is rebuilt. Before this, a failed link sat on
+ * "Reconnecting…" for 15–50 s until a prune or the heartbeat's rebuild.
+ */
+export function iceRecovery({
+  connectionState,
+  disconnectedForMs,
+  offerer,
+  restarts,
+}: {
+  connectionState: string;
+  disconnectedForMs: number;
+  offerer: boolean;
+  restarts: number;
+}): "restart" | "rebuild" | "wait" {
+  if (!offerer) return "wait";
+  const broken =
+    connectionState === "failed" ||
+    (connectionState === "disconnected" &&
+      disconnectedForMs >= ICE_DISCONNECT_GRACE_MS);
+  if (!broken) return "wait";
+  return restarts < MAX_ICE_RESTARTS ? "restart" : "rebuild";
+}
+
+/**
+ * Validate the optional TURN relay config before it reaches a browser.
+ *
+ * `new RTCPeerConnection` throws on a bad ICE URL, or on a turn: URL with no
+ * username/credential — which used to kill every connection with no message
+ * at all. Bad entries are dropped (and named in `problem`, for the server
+ * log); STUN still works without them.
+ */
+const ICE_URL = /^(stuns?|turns?):[^\s/?#]+(\?transport=(udp|tcp))?$/i;
+
+export function turnServerFrom({
+  urls,
+  username,
+  credential,
+}: {
+  urls: string | null | undefined;
+  username: string | null | undefined;
+  credential: string | null | undefined;
+}): {
+  server: { urls: string[]; username?: string; credential?: string } | null;
+  problem: string | null;
+} {
+  const list = (urls ?? "")
+    .split(",")
+    .map((u) => u.trim())
+    .filter(Boolean);
+  if (list.length === 0) return { server: null, problem: null };
+  const valid = list.filter((u) => ICE_URL.test(u));
+  const problems: string[] = [];
+  if (valid.length < list.length) problems.push("LIVE_TURN_URLS has an invalid URL");
+  const needsAuth = valid.some((u) => /^turns?:/i.test(u));
+  if (needsAuth && (!username || !credential)) {
+    problems.push("TURN needs LIVE_TURN_USERNAME and LIVE_TURN_CREDENTIAL");
+    const stunOnly = valid.filter((u) => /^stuns?:/i.test(u));
+    return {
+      server: stunOnly.length > 0 ? { urls: stunOnly } : null,
+      problem: problems.join("; "),
+    };
+  }
+  return {
+    server:
+      valid.length === 0
+        ? null
+        : needsAuth
+          ? { urls: valid, username: username!, credential: credential! }
+          : { urls: valid },
+    problem: problems.length > 0 ? problems.join("; ") : null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Timings
 // ---------------------------------------------------------------------------
@@ -482,6 +737,33 @@ export function countLiveAudience(
   let n = 0;
   for (const c of conns) if (c.role === "viewer" && c.state === "live") n += 1;
   return n;
+}
+
+/**
+ * The session's overall state, as the room shows it.
+ *
+ *   1:1             live while anyone is connected; a lone party is waiting.
+ *   webinar host    live: they are broadcasting whatever any one viewer's link
+ *                   is doing. (One failed viewer used to turn a host's whole
+ *                   room "failed", hiding the LIVE badge.)
+ *   webinar viewer  follows their links to the hosts.
+ */
+export function overallState({
+  kind,
+  broadcaster,
+  links,
+}: {
+  kind: "event" | "call";
+  broadcaster: boolean;
+  links: readonly PeerLinkState[];
+}): PeerLinkState {
+  if (kind === "event" && broadcaster) return "live";
+  if (links.some((s) => s === "live")) return "live";
+  if (links.some((s) => s === "reconnecting")) return "reconnecting";
+  if (kind === "event" && links.length > 0 && links.every((s) => s === "failed")) {
+    return "failed";
+  }
+  return "connecting";
 }
 
 /**

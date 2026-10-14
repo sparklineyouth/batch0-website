@@ -15,9 +15,19 @@ import {
   nextStatusAction,
   shouldApplyAnswer,
   shouldPruneConnection,
+  encodingFor,
+  iceRecovery,
+  ICE_DISCONNECT_GRACE_MS,
+  MAX_ICE_RESTARTS,
+  offerDisposition,
+  pairTopic,
+  overallState,
+  readSlots,
+  turnServerFrom,
   type SignalMessage,
   type StageMessage,
 } from "./live-signal.ts";
+import { deriveKey, pairKeyParts } from "./live-keys.ts";
 
 /**
  * The batch0 Live protocol rules that are load-bearing for privacy.
@@ -424,4 +434,264 @@ test("an answer is applied only while our own offer is outstanding", () => {
   for (const state of ["stable", "have-remote-offer", "closed", "have-local-pranswer"]) {
     assert.equal(shouldApplyAnswer(state), false, state);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Media state rides on the offer — the late-joiner screen-share fix
+// ---------------------------------------------------------------------------
+
+test("an offer can carry the sender's slots, and only real booleans are read", () => {
+  const offer: SignalMessage = {
+    t: "offer",
+    from: "host",
+    name: "Ana",
+    sdp: "v=0",
+    slots: { camera: true, screen: true, audio: false },
+  };
+  assert.deepEqual(readSlots(offer.t === "offer" ? offer.slots : null), {
+    camera: true,
+    screen: true,
+    audio: false,
+  });
+  // A tab from before the field sends none: nothing is assumed.
+  assert.deepEqual(readSlots(undefined), {});
+  assert.deepEqual(readSlots({ camera: "yes", screen: 1, audio: true }), { audio: true });
+  assert.deepEqual(readSlots("nope"), {});
+});
+
+test("a screen announced on the offer is active before any `media` message", () => {
+  const seeded = readSlots({ camera: true, screen: true, audio: true });
+  // The muted-at-first receiver track is irrelevant once announced.
+  assert.equal(
+    slotIsActive({ slot: "screen", announced: seeded.screen, trackLive: false }),
+    true,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Offers: only broadcasters offer
+// ---------------------------------------------------------------------------
+
+test("an offer on a viewer's pinned inbox is a forgery and is dropped", () => {
+  const offer = (knownRole: "host" | "viewer" | null) =>
+    offerDisposition({ kind: "event", pinned: true, selfRole: "host", knownRole });
+  assert.equal(offer(null), "drop");
+  assert.equal(offer("host"), "drop");
+});
+
+test("a host drops an offer from someone it knows as a viewer", () => {
+  assert.equal(
+    offerDisposition({ kind: "event", pinned: false, selfRole: "host", knownRole: "viewer" }),
+    "drop",
+  );
+});
+
+test("offers from hosts on our own inbox are accepted", () => {
+  const offer = (selfRole: "host" | "viewer", knownRole: "host" | null) =>
+    offerDisposition({ kind: "event", pinned: false, selfRole, knownRole });
+  assert.equal(offer("host", "host"), "accept");
+  assert.equal(offer("host", null), "accept");
+  // A viewer learns of a host from its first offer.
+  assert.equal(offer("viewer", null), "accept");
+});
+
+// The 1:1 forgery: every party used to hold every other party's inbox, so a
+// student could offer on a staff member's inbox as a made-up "Admin" (drawn on
+// staff screens and recorded), or as a real co-host's id, replacing that
+// co-host's link under their name.
+test("a 1:1 accepts an offer only on its pair line, from someone on the roster", () => {
+  const offer = (pinned: boolean, knownRole: "host" | null) =>
+    offerDisposition({ kind: "call", pinned, selfRole: "host", knownRole });
+  assert.equal(offer(true, "host"), "accept");
+  assert.equal(offer(true, null), "drop", "a sender the server never named");
+  assert.equal(offer(false, "host"), "drop", "a call has no open inbox");
+  assert.equal(offer(false, null), "drop");
+});
+
+// ---------------------------------------------------------------------------
+// Encoding policy
+// ---------------------------------------------------------------------------
+
+test("the screen gets ~1.5 Mbps at 15 fps, kept sharp", () => {
+  const e = encodingFor({ slot: "screen", contentHint: "detail", presenting: true, links: 1 })!;
+  assert.equal(e.maxBitrate, 1_500_000);
+  assert.equal(e.maxFramerate, 15);
+  assert.equal(e.scaleResolutionDownBy, 1);
+  assert.equal(e.degradationPreference, "maintain-resolution");
+});
+
+test("a deck hinted 'text' drops to 5 fps; 'motion' gets 30", () => {
+  assert.equal(
+    encodingFor({ slot: "screen", contentHint: "text", presenting: true, links: 1 })!.maxFramerate,
+    5,
+  );
+  assert.equal(
+    encodingFor({ slot: "screen", contentHint: "motion", presenting: true, links: 1 })!.maxFramerate,
+    30,
+  );
+  assert.equal(
+    encodingFor({ slot: "screen", contentHint: "", presenting: true, links: 1 })!.maxFramerate,
+    15,
+  );
+});
+
+test("the camera is ~500 kbps, and a small thumbnail while presenting", () => {
+  const cam = encodingFor({ slot: "camera", contentHint: "", presenting: false, links: 1 })!;
+  assert.equal(cam.maxBitrate, 500_000);
+  assert.equal(cam.scaleResolutionDownBy, 1);
+  const thumb = encodingFor({ slot: "camera", contentHint: "", presenting: true, links: 1 })!;
+  assert.ok(thumb.maxBitrate <= 150_000);
+  assert.equal(thumb.scaleResolutionDownBy, 3);
+  assert.equal(thumb.maxFramerate, 15);
+});
+
+test("caps shrink as the audience grows, down to a floor", () => {
+  const screen = (links: number) =>
+    encodingFor({ slot: "screen", contentHint: "detail", presenting: true, links })!.maxBitrate;
+  assert.equal(screen(8), 1_500_000);
+  assert.equal(screen(20), 600_000);
+  assert.equal(screen(500), 300_000);
+  assert.ok(screen(20) < screen(10));
+  const camera = (links: number) =>
+    encodingFor({ slot: "camera", contentHint: "", presenting: false, links })!;
+  assert.equal(camera(30).maxBitrate, 200_000);
+  assert.equal(camera(30).scaleResolutionDownBy, 2);
+  assert.equal(camera(1000).maxBitrate, 150_000);
+});
+
+test("audio is never capped", () => {
+  assert.equal(encodingFor({ slot: "audio", contentHint: "", presenting: true, links: 50 }), null);
+});
+
+// ---------------------------------------------------------------------------
+// ICE recovery and the session's overall state
+// ---------------------------------------------------------------------------
+
+test("only the offerer restarts ICE, on failure or a long disconnect", () => {
+  const r = (o: Partial<Parameters<typeof iceRecovery>[0]>) =>
+    iceRecovery({ connectionState: "failed", disconnectedForMs: 0, offerer: true, restarts: 0, ...o });
+  assert.equal(r({}), "restart");
+  assert.equal(r({ offerer: false }), "wait");
+  assert.equal(r({ connectionState: "disconnected", disconnectedForMs: 1_000 }), "wait");
+  assert.equal(
+    r({ connectionState: "disconnected", disconnectedForMs: ICE_DISCONNECT_GRACE_MS }),
+    "restart",
+  );
+  assert.equal(r({ connectionState: "connected" }), "wait");
+  assert.equal(r({ restarts: MAX_ICE_RESTARTS }), "rebuild");
+});
+
+test("a webinar host is live whatever one viewer's link is doing", () => {
+  assert.equal(overallState({ kind: "event", broadcaster: true, links: ["failed"] }), "live");
+  assert.equal(overallState({ kind: "event", broadcaster: true, links: [] }), "live");
+});
+
+test("a viewer follows their links to the hosts", () => {
+  const v = (links: Parameters<typeof overallState>[0]["links"]) =>
+    overallState({ kind: "event", broadcaster: false, links });
+  assert.equal(v([]), "connecting");
+  assert.equal(v(["failed", "live"]), "live");
+  assert.equal(v(["reconnecting", "failed"]), "reconnecting");
+  assert.equal(v(["failed", "failed"]), "failed");
+});
+
+test("a 1:1 is live only while someone is connected", () => {
+  const c = (links: Parameters<typeof overallState>[0]["links"]) =>
+    overallState({ kind: "call", broadcaster: true, links });
+  assert.equal(c([]), "connecting");
+  assert.equal(c(["connecting", "live"]), "live");
+  assert.equal(c(["reconnecting"]), "reconnecting");
+  assert.equal(c(["failed"]), "connecting");
+});
+
+// ---------------------------------------------------------------------------
+// TURN config validation
+// ---------------------------------------------------------------------------
+
+test("unset TURN is no relay and no problem", () => {
+  assert.deepEqual(turnServerFrom({ urls: undefined, username: null, credential: null }), {
+    server: null,
+    problem: null,
+  });
+  assert.deepEqual(turnServerFrom({ urls: " , ", username: null, credential: null }), {
+    server: null,
+    problem: null,
+  });
+});
+
+test("a valid TURN config passes through", () => {
+  const r = turnServerFrom({
+    urls: "turn:turn.example.com:3478, turns:turn.example.com:5349?transport=tcp",
+    username: "u",
+    credential: "c",
+  });
+  assert.equal(r.problem, null);
+  assert.deepEqual(r.server, {
+    urls: ["turn:turn.example.com:3478", "turns:turn.example.com:5349?transport=tcp"],
+    username: "u",
+    credential: "c",
+  });
+});
+
+test("a bad URL is dropped and named; the good ones survive", () => {
+  const r = turnServerFrom({
+    urls: "https://turn.example.com,turn:ok.example.com:3478",
+    username: "u",
+    credential: "c",
+  });
+  assert.deepEqual(r.server?.urls, ["turn:ok.example.com:3478"]);
+  assert.match(r.problem ?? "", /invalid URL/);
+});
+
+test("TURN without credentials is refused (the browser would throw)", () => {
+  const r = turnServerFrom({ urls: "turn:t.example.com:3478", username: "", credential: null });
+  assert.equal(r.server, null);
+  assert.match(r.problem ?? "", /USERNAME/);
+  // A STUN entry alongside still works.
+  const mixed = turnServerFrom({
+    urls: "stun:s.example.com:3478,turn:t.example.com:3478",
+    username: null,
+    credential: null,
+  });
+  assert.deepEqual(mixed.server, { urls: ["stun:s.example.com:3478"] });
+});
+
+// ---------------------------------------------------------------------------
+// Channel keys — byte-identical to the derivation every live room already uses
+// ---------------------------------------------------------------------------
+
+test("deriveKey matches the keys rooms were minted with (U+0000-joined HMAC)", () => {
+  // Reference values computed from the original lib/live-rooms.ts derive(),
+  // whose separator was a raw NUL byte in the source. A change here would
+  // split every live room between old and new tabs mid-deploy.
+  const S = "test-secret-for-live-keys";
+  const E = "event:7d8a4c1e-0000-4000-8000-000000000001";
+  assert.equal(deriveKey(S, "inbox", E, "user-1"), "Hc8avm01uLCUFqopq4Kf_2");
+  assert.equal(deriveKey(S, "lobby", E), "9q7ztKUpsIor13zfNBnfMn");
+  assert.equal(deriveKey(S, "room", E), "cEXo-9fdaviVplBPXlN5FE");
+  assert.equal(deriveKey(S, "moderation", E), "0XMuYD_HdUpgB-aNkGwVj6");
+  assert.equal(deriveKey(S, "stage", E, "host-1"), "3t0n8QJOLNDQAE88v0mmBN");
+  assert.equal(
+    deriveKey(S, "inbox", "call:7d8a4c1e-0000-4000-8000-000000000002", "user-2"),
+    "aZ4AIApBGTcL0jz0k1GQU-",
+  );
+});
+
+test("a 1:1 pair line: both ends derive the same key, nobody else's pair does", () => {
+  const S = "test-secret-for-live-keys";
+  const R = "call:7d8a4c1e-0000-4000-8000-000000000002";
+  const pair = (a: string, b: string) => deriveKey(S, "pair", ...pairKeyParts(R, a, b));
+  assert.equal(pair("student", "staff-a"), pair("staff-a", "student"));
+  assert.notEqual(pair("student", "staff-a"), pair("student", "staff-b"));
+  assert.notEqual(pair("staff-a", "staff-b"), pair("student", "staff-b"));
+  // Never an inbox key, for either end.
+  assert.notEqual(pair("student", "staff-a"), deriveKey(S, "inbox", R, "student"));
+  assert.notEqual(pair("student", "staff-a"), deriveKey(S, "inbox", R, "staff-a"));
+  assert.match(pairTopic(R, "KEY"), /^b0live:call:7d8a4c1e-0000-4000-8000-000000000002:pair:KEY$/);
+  assert.notEqual(pairTopic(R, "KEY"), inboxTopic(R, "KEY"));
+});
+
+test("deriveKey separates its parts, so shifting a boundary changes the key", () => {
+  assert.notEqual(deriveKey("s", "inbox", "ab", "c"), deriveKey("s", "inbox", "a", "bc"));
+  assert.equal(deriveKey("s", "inbox", "a").length, 22);
 });

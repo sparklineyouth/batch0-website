@@ -6,16 +6,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getInvite } from "@/lib/calls";
 import { createRoom, dailyConfigured, mintToken, roomIsLive } from "@/lib/daily";
 import {
+  callRoomAccess,
   callStaffIds,
-  canJoin,
+  CALL_STAFF_OPENS_MINUTES_BEFORE,
   inviteEndsAt,
   isOnCall,
   isStaffOnCall,
+  JOIN_OPENS_MINUTES_BEFORE,
   joinNames,
-  joinState,
   staffNames,
 } from "@/lib/live";
-import { callPhase, hostCallsHref } from "@/lib/call-lifecycle";
+import { hostCallsHref } from "@/lib/call-lifecycle";
 import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
 import { BuiltinCallRoom } from "./builtin-room";
 import { env } from "@/lib/env";
@@ -62,36 +63,33 @@ export default async function CallLivePage(
       })
     : "/dashboard/calls";
 
-  // Every reason the door is shut, from the one rule the lists use
-  // (lib/call-lifecycle.ts), so this page and the card that linked here can
-  // never disagree about whether the call is still on.
-  const phase = callPhase(invite);
-  if (invite.status !== "accepted" || phase === "ended") {
+  // The same rule joinRoom applies (callRoomAccess in lib/live.ts): an
+  // unanswered invite is joinable like an accepted one, the staff side may
+  // come in an hour early, and the room stays open until End call or the
+  // hard stop.
+  const access = callRoomAccess({ ...invite, isStaff });
+  if (access !== "open" && access !== "live" && access !== "early") {
     const why: Record<string, string> = {
-      needs_answer: "This call hasn't been accepted yet.",
-      expired: "This invite was never answered, and its time has passed.",
-      ended: "This call has ended.",
+      closed: "This call has ended.",
       completed: "This call has ended.",
       declined: "This call was declined.",
       cancelled: "This call was cancelled.",
     };
     return (
       <Shell title={invite.topic || "1:1 call"}>
-        <p className="text-sm text-ink-soft">
-          {why[phase] ?? "This call isn't open."}
-        </p>
+        <p className="text-sm text-ink-soft">{why[access]}</p>
         <BackLink href={backHref} />
       </Shell>
     );
   }
 
   const endsAt = inviteEndsAt(invite);
-  const state = joinState(invite.startsAt, endsAt);
-  if (!canJoin(state)) {
+  if (access === "early") {
+    const opens = isStaff ? CALL_STAFF_OPENS_MINUTES_BEFORE : JOIN_OPENS_MINUTES_BEFORE;
     return (
       <Shell title={invite.topic || "1:1 call"}>
         <p className="text-sm text-ink-soft">
-          This opens 15 minutes before it starts —{" "}
+          This opens {opens} minutes before it starts —{" "}
           <LocalTime value={invite.startsAt} />.
         </p>
         <BackLink href={backHref} />

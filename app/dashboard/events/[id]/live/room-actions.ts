@@ -159,7 +159,7 @@ async function gateVisible(
  * Role, visibility, AND the caller's window — the gate for every read and
  * write in the room.
  *
- * The window is `roomAccess`, per role: a moderator's is start-60m to end+3h
+ * The window is `roomAccess`, per role: a moderator's is any time to end+3h
  * whatever End says (so staff keep moderating an overrunning webinar and can
  * reach the ended screen), a viewer's is the audience window, extended while a
  * host is present. A viewer is ALSO let through once the webinar has ended,
