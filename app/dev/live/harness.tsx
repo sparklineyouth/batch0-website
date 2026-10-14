@@ -406,9 +406,18 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     leaveHint: state === "live-host" && w === "leave" ? "You're the only host on air." : null,
     notice:
       state === "live-host" && w.startsWith("rehearsal") ? (
-        <span>
-          Not live yet: students can join from <LocalTime value={opensAt} mode="time" />
-        </span>
+        <>
+          <span>
+            Not live yet: students can join from <LocalTime value={opensAt} mode="time" />
+          </span>
+          <button
+            type="button"
+            className="pointer-events-auto font-semibold text-[#FFBB00] hover:underline"
+            data-testid="go-live-now"
+          >
+            Go live now
+          </button>
+        </>
       ) : null,
     subline:
       w === "recorded" ? "This call is recorded. Only you, Ana Ruiz and batch0 admins can watch it back." : null,
