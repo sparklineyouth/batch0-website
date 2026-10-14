@@ -28,6 +28,8 @@ only, rate-limited per user).
 `/events` and `/team` read with the service role, so they filter events like
 the `events read` policy would (`lib/student-event-filter.ts`): public events
 plus `enrolled` events of the caller's cohorts. Staff-only events never show.
+Public means "Everyone signed in", so a Discord member who never linked a
+batch0 account gets "Link your account first" instead of a list.
 
 ## Retired (October 2026)
 

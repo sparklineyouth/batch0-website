@@ -17,6 +17,12 @@ test("staff-only events are never student-visible", () => {
   }
 });
 
+test("no batch0 account: no events, not even public ones", () => {
+  // 0098: `public` means "Everyone signed in", and those rows carry join
+  // links. A Discord member who never linked has no filter at all.
+  assert.equal(studentEventsOrFilter(null), null);
+});
+
 test("no enrollment: public events only", () => {
   assert.equal(studentEventsOrFilter([]), "visibility.eq.public");
   assert.equal(studentEventsOrFilter([null, undefined]), "visibility.eq.public");

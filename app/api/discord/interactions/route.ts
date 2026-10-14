@@ -253,19 +253,23 @@ async function handleEvents(
   admin: ReturnType<typeof createAdminClient>,
   discordUserId: string,
 ) {
-  let cohortIds: string[] = [];
-  if (discordUserId) {
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("discord_user_id", discordUserId)
-      .maybeSingle();
-    if (profile) cohortIds = await enrolledCohortIds(admin, profile.id);
+  if (!discordUserId) return ephemeral("Couldn't identify you.");
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("discord_user_id", discordUserId)
+    .maybeSingle();
+  // "Everyone signed in" events carry join links: none for an unlinked caller.
+  const filter = studentEventsOrFilter(
+    profile ? await enrolledCohortIds(admin, profile.id) : null,
+  );
+  if (!filter) {
+    return ephemeral(`Link your account first: ${env.siteUrl}/dashboard/settings`);
   }
   const { data: events } = await admin
     .from("events")
     .select("title, type, starts_at, ends_at, location, zoom_url, description, cohort:cohorts(name)")
-    .or(studentEventsOrFilter(cohortIds))
+    .or(filter)
     .gte("starts_at", new Date().toISOString())
     .order("starts_at", { ascending: true })
     .limit(5);
