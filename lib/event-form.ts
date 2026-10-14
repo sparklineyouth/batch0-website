@@ -351,9 +351,10 @@ export function roomActionLabel(
 
 /**
  * live_started_at / live_ended_at / assets_shared_at describe one run of an
- * event. A stamp from more than an hour before its (new) start belongs to an
- * earlier run — a reschedule or a reused row — and is cleared on save so the
- * event doesn't open as "Ended" or already shared.
+ * event. A run's stamps never predate its go-live window (lib/live.ts
+ * roomWindow().goLiveOpensAt, the bound claimStage stamps from), so an older
+ * one belongs to an earlier run — a reschedule or a reused row — and is
+ * cleared on save so the event doesn't open as "Ended" or already shared.
  */
 export const RUN_STAMPS = ["live_started_at", "live_ended_at", "assets_shared_at"] as const;
 export type RunStamp = (typeof RUN_STAMPS)[number];
@@ -362,7 +363,7 @@ export function staleRunStamps(
   prior: Partial<Record<RunStamp, string | null>>,
   startsAtIso: string,
 ): Partial<Record<RunStamp, null>> {
-  const runOpensAt = new Date(startsAtIso).getTime() - 60 * MINUTE;
+  const runOpensAt = roomWindow(startsAtIso, null).goLiveOpensAt;
   const out: Partial<Record<RunStamp, null>> = {};
   for (const col of RUN_STAMPS) {
     const at = prior[col];
@@ -372,23 +373,27 @@ export function staleRunStamps(
 }
 
 /**
- * A student's view of an event: the list status, plus "live" whenever a host
- * has gone live and nobody has ended it yet (until the room's hard close) —
- * a host who starts early lets people in early.
+ * A student's view of an event: the list status (lib/live.ts eventLiveStatus,
+ * which opens early once a host has gone live and closes with the viewer
+ * window, like roomAccess), shown as "live" while a host is on air early.
  */
 export function studentEventStatus(
   e: Timing,
   now: Date,
 ): "upcoming" | "open" | "live" | "ended" | "past" {
   const s = eventLiveStatus(
-    { startsAt: e.startsAt, endsAt: e.endsAt, liveEndedAt: e.liveEndedAt },
+    {
+      startsAt: e.startsAt,
+      endsAt: e.endsAt,
+      liveStartedAt: e.liveStartedAt,
+      liveEndedAt: e.liveEndedAt,
+    },
     now,
   );
-  if (s === "ended" || s === "live") return s;
   if (
+    s === "open" &&
     e.liveStartedAt &&
-    new Date(e.liveStartedAt).getTime() <= now.getTime() &&
-    now.getTime() <= roomWindow(e.startsAt, e.endsAt).hardCloseAt
+    new Date(e.liveStartedAt).getTime() <= now.getTime()
   ) {
     return "live";
   }
