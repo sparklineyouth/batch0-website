@@ -36,12 +36,6 @@ export type CallInviteStatus =
   | "cancelled"
   | "completed";
 
-export type LiveRoom = {
-  /** Provider-side room identifier. Null until a room has been created. */
-  roomName: string | null;
-  roomUrl: string | null;
-};
-
 // ---------------------------------------------------------------------------
 // Audience privacy
 // ---------------------------------------------------------------------------
@@ -87,7 +81,7 @@ export type LiveEvent = {
    * schedule's answer.
    */
   liveStartedAt?: string | null;
-} & LiveRoom;
+};
 
 /** Someone on a call's staff side who did not send the invite (migration 0092). */
 export type CallCohost = { id: string; name: string; role: string };
@@ -129,7 +123,7 @@ export type CallInvite = {
    * lib/call-recording.ts).
    */
   updatedAt?: string;
-} & LiveRoom;
+};
 
 // ---------------------------------------------------------------------------
 // Webinar Q&A

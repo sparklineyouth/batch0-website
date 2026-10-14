@@ -1,6 +1,7 @@
 "use client";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from "pdfjs-dist";
-import { fitRect, looksLikePdf, Lru, MAX_DECK_BYTES } from "../logic";
+import { fitRect, looksLikePdf, Lru } from "../logic";
+import { MAX_DECK_BYTES } from "@/lib/webinars";
 
 /**
  * Renders a PDF deck to a 1920×1080 canvas and streams it.
@@ -108,7 +109,7 @@ function closeFrame(f: Frame) {
 
 function friendlyError(e: unknown): string {
   const name = (e as { name?: string })?.name ?? "";
-  if (name === "TooBig") return "That PDF is too big (150 MB max).";
+  if (name === "TooBig") return `That PDF is too big (${MAX_DECK_BYTES / 1024 / 1024} MB max).`;
   if (name === "PasswordException") return "That PDF is password-protected.";
   if (name === "InvalidPDFException") return "That file isn't a PDF we can open.";
   if (name === "MissingPDFException" || name === "ResponseException" || name === "UnexpectedResponseException") {

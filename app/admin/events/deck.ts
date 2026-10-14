@@ -1,6 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isDeckFile, MAX_UPLOAD_BYTES } from "@/lib/webinars";
+import { isDeckFile, MAX_DECK_BYTES } from "@/lib/webinars";
 
 /**
  * Slides for an event: one PDF in the private `webinar-media` bucket at
@@ -67,8 +67,8 @@ export async function verifyStagedDeck(
   if (!isDeckFile(deck.filename, deck.mimeType)) {
     throw new Error("Slides have to be a PDF.");
   }
-  if (deck.sizeBytes != null && deck.sizeBytes > MAX_UPLOAD_BYTES) {
-    throw new Error("Slides are capped at 2 GB.");
+  if (deck.sizeBytes != null && deck.sizeBytes > MAX_DECK_BYTES) {
+    throw new Error(`Slides are capped at ${MAX_DECK_BYTES / 1024 / 1024} MB.`);
   }
   const name = deck.storagePath.slice(`${eventId}/deck/`.length);
   const { data } = await admin.storage

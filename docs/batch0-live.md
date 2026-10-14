@@ -240,7 +240,7 @@ again means wiring it behind `lib/live-signal.ts` and proving it with
 `webinar-e2e`.
 
 **Deploy step:** delete `DAILY_API_KEY`, `NEXT_PUBLIC_DAILY_DOMAIN`,
-`DAILY_ENABLE_RECORDING` and `DAILY_LARGE_CALLS` from the Vercel environment
-(every environment), and revoke the API key in the Daily dashboard: it could
-create rooms and mint owner tokens for any room on the domain, and nothing
-uses it now.
+`DAILY_ENABLE_RECORDING`, `DAILY_LARGE_CALLS` and `LIVE_PROVIDER` from the
+Vercel environment (every environment), and revoke the API key in the Daily
+dashboard: it could create rooms and mint owner tokens for any room on the
+domain, and nothing uses it now.

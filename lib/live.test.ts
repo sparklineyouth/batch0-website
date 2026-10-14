@@ -150,8 +150,6 @@ test("an invite ends its duration after it starts", () => {
     durationMinutes: 45,
     topic: null,
     status: "accepted",
-    roomName: null,
-    roomUrl: null,
   } satisfies CallInvite;
 
   assert.equal(inviteEndsAt(invite), at(45).toISOString());

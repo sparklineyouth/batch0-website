@@ -10,14 +10,14 @@ export const fullColumns: Record<Table, string> = {
   modules: 'id,cohort_id,week,title,summary,position,created_at',
   lessons: 'id,module_id,title,description,video_path,video_url,duration_seconds,materials,position,created_at',
   resources: 'id,cohort_id,category,title,description,storage_path,external_url,size_bytes,mime_type,pre_cohort,created_at,updated_at',
-  events: 'id,cohort_id,type,title,description,starts_at,ends_at,location,zoom_url,recording_url,visibility,live_mode,daily_room_name,daily_room_url,created_at,updated_at',
+  events: 'id,cohort_id,type,title,description,starts_at,ends_at,location,zoom_url,recording_url,visibility,live_mode,created_at,updated_at',
 };
 const compactColumns: Record<Table, string> = {
   ...fullColumns,
   modules: 'id,cohort_id,week,title,position',
   lessons: 'id,module_id,title,duration_seconds,position',
   resources: 'id,cohort_id,category,title,external_url,storage_path,pre_cohort',
-  events: 'id,cohort_id,type,title,starts_at,ends_at,visibility,live_mode,zoom_url,daily_room_name',
+  events: 'id,cohort_id,type,title,starts_at,ends_at,visibility,live_mode,zoom_url',
 };
 const order: Record<Table, string> = { cohort_kickoff: 'updated_at.desc,cohort_id', cohorts: 'starts_on.desc.nullslast,id', modules: 'week,position,id', lessons: 'position,id', resources: 'category,title,id', events: 'starts_at.desc,id' };
 function canonical(value: unknown): unknown {

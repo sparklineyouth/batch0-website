@@ -188,9 +188,6 @@ function toInvite(row: any): CallInvite {
     topic: row.topic,
     status: row.status as CallInviteStatus,
     updatedAt: row.updated_at ?? undefined,
-    // batch0 Live needs no provider-side room.
-    roomName: null,
-    roomUrl: null,
   };
 }
 
