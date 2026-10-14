@@ -6,8 +6,6 @@ import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { Megaphone } from "lucide-react";
-import { Reactions } from "./reactions";
-import { EMOJIS, type Emoji } from "./emoji";
 
 export const metadata = { title: "Announcements · batch0" };
 export const dynamic = "force-dynamic";
@@ -63,40 +61,13 @@ export default async function AnnouncementsPage() {
     );
   }
 
-  const announcementIds = (anns ?? []).map((a: any) => a.id);
-  const { data: allReactions } = announcementIds.length
-    ? await supabase
-        .from("announcement_reactions")
-        .select("announcement_id, user_id, emoji")
-        .in("announcement_id", announcementIds)
-    : { data: [] as any[] };
-
-  // Index reactions per-announcement so the render loop is O(1) per ann.
-  type CountsByEmoji = Record<Emoji, number>;
-  function emptyCounts(): CountsByEmoji {
-    return EMOJIS.reduce((acc, e) => ({ ...acc, [e]: 0 }), {} as CountsByEmoji);
-  }
-  const countsByAnn = new Map<string, CountsByEmoji>();
-  const mineByAnn = new Map<string, Set<Emoji>>();
-  for (const r of (allReactions ?? []) as any[]) {
-    const c = countsByAnn.get(r.announcement_id) ?? emptyCounts();
-    c[r.emoji as Emoji] = (c[r.emoji as Emoji] ?? 0) + 1;
-    countsByAnn.set(r.announcement_id, c);
-    if (r.user_id === user.id) {
-      const set = mineByAnn.get(r.announcement_id) ?? new Set<Emoji>();
-      set.add(r.emoji as Emoji);
-      mineByAnn.set(r.announcement_id, set);
-    }
-  }
-
   return (
     <div className="mx-auto max-w-3xl">
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Announcements</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Updates from the batch0 team. React to let us know they
-            landed.
+            Updates from the batch0 team.
           </p>
         </div>
         {/* access.staff, not `role === "admin"`: roles are data since
@@ -124,8 +95,6 @@ export default async function AnnouncementsPage() {
         <ul className="mt-6 space-y-4">
           {(anns ?? []).map((a: any) => {
             const cohort = Array.isArray(a.cohort) ? a.cohort[0] : a.cohort;
-            const counts = countsByAnn.get(a.id) ?? emptyCounts();
-            const mine = Array.from(mineByAnn.get(a.id) ?? []);
             return (
               <li
                 id={`a-${a.id}`}
@@ -150,11 +119,6 @@ export default async function AnnouncementsPage() {
                 <p className="mt-3 whitespace-pre-wrap break-words text-sm text-ink-soft">
                   {a.body}
                 </p>
-                <Reactions
-                  announcementId={a.id}
-                  initialCounts={counts}
-                  initialMine={mine}
-                />
               </li>
             );
           })}

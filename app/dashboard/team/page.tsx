@@ -32,7 +32,6 @@ export default async function TeamPage() {
       { data: members },
       { data: invites },
       { data: files },
-      { data: messages },
       { data: pitch },
       passHolders,
     ] = await Promise.all([
@@ -57,14 +56,6 @@ export default async function TeamPage() {
         .eq("team_id", team.id)
         .order("created_at", { ascending: false }),
       admin
-        .from("team_messages")
-        .select(
-          "id, body, kind, created_at, author_id, author:profiles(full_name, email, role)",
-        )
-        .eq("team_id", team.id)
-        .order("created_at", { ascending: true })
-        .limit(100),
-      admin
         .from("pitch_submissions")
         .select("*")
         .eq("team_id", team.id)
@@ -79,7 +70,6 @@ export default async function TeamPage() {
         members={(members ?? []) as any[]}
         pendingInvites={(invites ?? []) as any[]}
         files={(files ?? []) as any[]}
-        messages={(messages ?? []) as any[]}
         pitch={pitch as any}
         passHolderIds={[...passHolders]}
       />

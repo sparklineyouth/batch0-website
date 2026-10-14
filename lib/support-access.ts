@@ -169,7 +169,7 @@ export const CATEGORY_HINTS: Record<TicketCategory, string> = {
   application:
     "Your application's status, deadlines, choosing a cohort, or a scholarship application.",
   program:
-    "Schedule, assignments, your team, your mentor, or Demo Day logistics. Questions about lesson content get a faster answer in Discussions.",
+    "Schedule, assignments, your team, your mentor, or Demo Day logistics.",
   concern:
     "Safety, bullying or harassment, inappropriate behaviour by anyone — a student, a mentor or staff — or someone's wellbeing. Only a few senior staff can read these.",
   accessibility:

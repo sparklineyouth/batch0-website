@@ -6,7 +6,6 @@ import {
   Users,
   Settings,
   FolderOpen,
-  MessageSquare,
   Rocket,
   FileSignature,
   Sparkles,
@@ -14,7 +13,6 @@ import {
 import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
 import { TeamDrive } from "@/components/team/team-drive";
-import { TeamThreadTab } from "./team-thread-tab";
 import { TeamPitchTab } from "./team-pitch-tab";
 
 type Team = {
@@ -32,7 +30,7 @@ type Team = {
   my_role: string;
 };
 
-type Tab = "overview" | "members" | "drive" | "thread" | "pitch";
+type Tab = "overview" | "members" | "drive" | "pitch";
 
 export function TeamHome({
   currentUserId,
@@ -40,7 +38,6 @@ export function TeamHome({
   members,
   pendingInvites,
   files,
-  messages,
   pitch,
   passHolderIds = [],
 }: {
@@ -49,7 +46,6 @@ export function TeamHome({
   members: any[];
   pendingInvites: any[];
   files: any[];
-  messages: any[];
   pitch: any;
   passHolderIds?: string[];
 }) {
@@ -58,7 +54,6 @@ export function TeamHome({
   const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: "overview", label: "Profile", icon: Settings },
     { id: "members", label: `Members (${members.length})`, icon: Users },
-    { id: "thread", label: "Thread", icon: MessageSquare },
     { id: "drive", label: `Drive (${files.length})`, icon: FolderOpen },
     { id: "pitch", label: "Demo Day", icon: Rocket },
   ];
@@ -157,13 +152,6 @@ export function TeamHome({
             team={team}
             members={members}
             pendingInvites={pendingInvites}
-            passHolderIds={passHolderIds}
-          />
-        )}
-        {tab === "thread" && (
-          <TeamThreadTab
-            teamId={team.id}
-            messages={messages}
             passHolderIds={passHolderIds}
           />
         )}

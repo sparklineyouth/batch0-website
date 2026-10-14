@@ -12,12 +12,8 @@ import {
   GraduationCap,
   CreditCard,
   CheckCircle,
-  MessageCircleQuestion,
-  Flag,
   LifeBuoy,
 } from "lucide-react";
-import { countQuestionsNeedingReply } from "@/lib/discussions";
-import { countOpenReports } from "@/lib/dm";
 import { countTicketsNeedingReply } from "@/lib/support";
 
 export const metadata = { title: "Admin · batch0" };
@@ -38,8 +34,6 @@ export default async function AdminOverview() {
   const seeApplications = can(caps, "applications.view");
   const seePeople = can(caps, "people.view");
   const seeRevenue = can(caps, "payments.view");
-  const seeDiscussions = can(caps, "discussions.manage");
-  const seeReports = can(caps, "moderation.manage");
   const seeSupport = can(caps, "support.view");
 
   const admin = createAdminClient();
@@ -53,8 +47,6 @@ export default async function AdminOverview() {
     { data: chargesData, error: chargesError },
     { data: ticketData, error: ticketError },
     { data: recentApps },
-    openQuestions,
-    openReports,
     openTickets,
   ] = await Promise.all([
     seeApplications
@@ -103,8 +95,6 @@ export default async function AdminOverview() {
           .order("created_at", { ascending: false })
           .limit(8)
       : { data: null, error: null },
-    seeDiscussions ? countQuestionsNeedingReply() : Promise.resolve(0),
-    seeReports ? countOpenReports(profile.id).catch(() => 0) : Promise.resolve(0),
     seeSupport ? countTicketsNeedingReply() : Promise.resolve(0),
   ]);
 
@@ -135,19 +125,6 @@ export default async function AdminOverview() {
           },
         ]
       : []),
-    // A student's private question waiting on the team is as actionable as
-    // an application waiting on review, so it sits in the same row.
-    ...(seeDiscussions
-      ? [
-          {
-            icon: MessageCircleQuestion,
-            label: "Questions awaiting reply",
-            count: openQuestions,
-            href: "/admin/discussions",
-            tone: openQuestions > 0 ? "phosphor" : "muted",
-          },
-        ]
-      : []),
     // Same row, same reason: a support request waiting on us is someone
     // blocked on us, and a refund request in there has a deadline attached.
     ...(seeSupport
@@ -158,19 +135,6 @@ export default async function AdminOverview() {
             count: openTickets,
             href: "/admin/support",
             tone: openTickets > 0 ? "phosphor" : "muted",
-          },
-        ]
-      : []),
-    // A reported DM is the one kind of message the team can read, and it got
-    // that way because somebody asked for help. It belongs in this row.
-    ...(seeReports
-      ? [
-          {
-            icon: Flag,
-            label: "Reported DMs",
-            count: openReports,
-            href: "/admin/messages",
-            tone: openReports > 0 ? "phosphor" : "muted",
           },
         ]
       : []),

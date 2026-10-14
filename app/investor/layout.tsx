@@ -1,7 +1,6 @@
 import { requireInvestor, getCapabilities } from "@/lib/auth";
 import { RoleSidebar } from "@/components/role-sidebar";
 import { MobileNav } from "@/components/mobile-nav";
-import { ChatDock } from "@/components/messages/chat-dock";
 
 export default async function InvestorLayout({
   children,
@@ -29,7 +28,6 @@ export default async function InvestorLayout({
           {children}
         </main>
       </div>
-      <ChatDock />
     </div>
   );
 }

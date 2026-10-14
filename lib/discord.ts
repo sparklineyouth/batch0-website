@@ -1311,14 +1311,6 @@ export const SLASH_COMMANDS = [
       },
     ],
   },
-  {
-    name: "announce",
-    description: "Admins only — broadcast to enrolled students.",
-    options: [
-      { name: "title", description: "Announcement title.", type: 3, required: true },
-      { name: "message", description: "Body of the announcement.", type: 3, required: true },
-    ],
-  },
   // --- 0033 feature pack ---------------------------------------------------
   {
     name: "checkin",

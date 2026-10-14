@@ -6,7 +6,6 @@ import { FounderPassBadge } from "@/components/founder-pass-badge";
 import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { TeamThread } from "@/components/team-thread";
 import { TeamDrive } from "@/components/team/team-drive";
 import { ScoreCard } from "./score-card";
 import { RubricScoreCard } from "./rubric-score-card";
@@ -32,7 +31,6 @@ export default async function InvestorTeamDetailPage(
   const [
     { data: team },
     { data: members },
-    { data: messages },
     { data: pitch },
     { data: files },
     { data: myScore },
@@ -53,14 +51,6 @@ export default async function InvestorTeamDetailPage(
       .from("team_members")
       .select("user_id, role, profile:profiles(full_name)")
       .eq("team_id", params.id),
-    admin
-      .from("team_messages")
-      .select(
-        "id, body, kind, created_at, author_id, author:profiles(full_name, email)",
-      )
-      .eq("team_id", params.id)
-      .order("created_at", { ascending: true })
-      .limit(200),
     admin
       .from("pitch_submissions")
       .select("*")
@@ -277,13 +267,6 @@ export default async function InvestorTeamDetailPage(
         <SafeOfferForm teamId={params.id} />
       </div>
 
-      <div className="mt-6">
-        <TeamThread
-          teamId={params.id}
-          messages={(messages ?? []) as any[]}
-          passHolderIds={[...passHolders]}
-        />
-      </div>
     </div>
   );
 }

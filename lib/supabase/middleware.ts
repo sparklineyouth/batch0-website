@@ -304,11 +304,6 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/mentor") ||
     path.startsWith("/investor") ||
     path.startsWith("/notifications") ||
-    // Messages, like notifications: every account has it, so it carries no
-    // role gate of its own and must not sit under /dashboard (which is gated
-    // on student.dashboard — a mentor following a "someone messaged you" link
-    // would have been bounced straight back out).
-    path.startsWith("/messages") ||
     // The installable app (app/app/**). Every route under it is authenticated;
     // the per-side permission gates live in its layouts, the same way /dashboard
     // and /admin work. It has to be listed here so a signed-out tap on the home
@@ -424,7 +419,6 @@ export async function updateSession(request: NextRequest) {
     // too, so an /app request now does zero database work in middleware.
     const finePath =
       (path.startsWith("/dashboard") ||
-        path.startsWith("/messages") ||
         path.startsWith("/apply") ||
         path.startsWith("/mentor") ||
         path.startsWith("/investor")) &&

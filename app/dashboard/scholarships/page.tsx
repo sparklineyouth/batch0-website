@@ -396,7 +396,7 @@ function MyApplicationRow({ card }: { card: ScholarshipCard }) {
         <p className="mt-3 text-xs text-ink-faint">
           This doesn't change your place at batch0. If cost is what's standing
           between you and the program,{" "}
-          <Link href="/dashboard/discussions" className="underline">
+          <Link href="/dashboard/support/new" className="underline">
             tell the team
           </Link>{" "}
           — we'd rather hear it.

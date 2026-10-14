@@ -241,8 +241,6 @@ export async function POST(req: Request) {
       : null;
 
   let teamRetrieval: any = null;
-  let teamMessages: { author: string | null; body: string; created_at: string }[] =
-    [];
   let curriculumCorpus: string | null = null;
 
   await Promise.all([
@@ -255,7 +253,7 @@ export async function POST(req: Request) {
     }),
     (async () => {
       if (!teamId) return;
-      const [{ data: team }, { count }, { data: pitch }, { data: tMsgs }] =
+      const [{ data: team }, { count }, { data: pitch }] =
         await Promise.all([
           supabase
             .from("teams")
@@ -271,14 +269,6 @@ export async function POST(req: Request) {
             .select("submitted_at")
             .eq("team_id", teamId)
             .maybeSingle(),
-          supabase
-            .from("team_messages")
-            .select(
-              "body, created_at, kind, author:profiles(full_name)",
-            )
-            .eq("team_id", teamId)
-            .order("created_at", { ascending: false })
-            .limit(8),
         ]);
       if (team) {
         teamRetrieval = {
@@ -288,16 +278,6 @@ export async function POST(req: Request) {
           member_count: count ?? 1,
           submitted_pitch_at: pitch?.submitted_at ?? null,
         };
-        teamMessages = (tMsgs ?? [])
-          .filter((m: any) => m.kind !== "system")
-          .map((m: any) => {
-            const author = Array.isArray(m.author) ? m.author[0] : m.author;
-            return {
-              author: author?.full_name ?? null,
-              body: m.body,
-              created_at: m.created_at,
-            };
-          });
         // Pin the conversation to the team so subsequent messages
         // continue routing the same way.
         if (!convo.team_id) {
@@ -356,7 +336,6 @@ export async function POST(req: Request) {
         next_up: c.next_up,
         blockers: c.blockers,
       })),
-      team_messages: teamMessages,
     },
   });
 

@@ -308,16 +308,6 @@ export function NewTicketForm({
           .
         </p>
       )}
-      {category === "program" && (
-        <p className="rounded-lg border border-line bg-wash px-3 py-2.5 text-xs leading-relaxed text-ink-soft">
-          A question about lesson content gets a faster answer in{" "}
-          <Link href="/dashboard/discussions" prefetch={false} className="link-ink">
-            Discussions
-          </Link>
-          , where mentors and your cohort can jump in. This form is for
-          schedules, assignments, your team, your mentor and Demo Day logistics.
-        </p>
-      )}
 
       <div>
         <Label htmlFor="support-subject">

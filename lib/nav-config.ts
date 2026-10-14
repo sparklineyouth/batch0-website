@@ -19,9 +19,6 @@ import {
   ScrollText,
   Handshake,
   MessagesSquare,
-  MessageSquareText,
-  MessageCircleQuestion,
-  MessageCircle,
   Star,
   Megaphone,
   CheckCircle,
@@ -103,14 +100,6 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
   {
     label: "Workspace",
     items: [
-      {
-        href: "/dashboard/discussions",
-        label: "Discussions",
-        icon: MessageSquareText,
-      },
-      // Lives at /messages, not /dashboard/messages: every account has DMs,
-      // so the page carries no role gate (see lib/supabase/middleware.ts).
-      { href: "/messages", label: "Messages", icon: MessageCircle },
       { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
       { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
       { href: "/dashboard/ai", label: "AI co-founder", icon: Sparkles },
@@ -162,11 +151,6 @@ export const ENROLLED_ONLY_HREFS = new Set<string>([
   // visible to them anyway, which read as "the team has said nothing"
   // rather than "this unlocks when you enroll".
   "/dashboard/announcements",
-  // Same reasoning: a cohort discussion board is scoped to the cohort the
-  // student is enrolled in, and a private question to the team is a thing
-  // an enrolled student does. RLS (migration 0068) returns nothing for an
-  // applicant either way.
-  "/dashboard/discussions",
   "/dashboard/checkin",
   "/dashboard/office-hours",
   "/dashboard/events",
@@ -351,12 +335,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: Megaphone,
         perm: "announcements.manage",
       },
-      {
-        href: "/admin/discussions",
-        label: "Discussions",
-        icon: MessageCircleQuestion,
-        perm: "discussions.manage",
-      },
     ],
   },
   {
@@ -486,12 +464,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         perm: "moderation.manage",
       },
       {
-        href: "/admin/messages",
-        label: "Reported DMs",
-        icon: MessageCircle,
-        perm: "moderation.manage",
-      },
-      {
         href: "/admin/discord",
         label: "Discord",
         icon: MessagesSquare,
@@ -544,7 +516,6 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/mentor", label: "Overview", icon: LayoutDashboard, exact: true },
-      { href: "/messages", label: "Messages", icon: MessageCircle },
       // Under /dashboard but open to every role (lib/dashboard-gate.ts): a
       // mentor's own requests to the team, not the student view.
       { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
@@ -589,7 +560,6 @@ export const INVESTOR_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/investor", label: "Overview", icon: LayoutDashboard, exact: true },
-      { href: "/messages", label: "Messages", icon: MessageCircle },
       // Same exemption as the mentor's — see MENTOR_NAV_GROUPS.
       { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
     ],

@@ -47,7 +47,6 @@ export const PERMISSION_KEYS = [
   "resources.manage",
   "flows.manage",
   "announcements.manage",
-  "discussions.manage",
   // Finance
   "charges.manage",
   "payments.view",
@@ -215,13 +214,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         label: "Post announcements",
         description: "Publish announcements to students.",
       },
-      {
-        key: "discussions.manage",
-        label: "Answer student questions",
-        description:
-          "Read and reply to private questions students send the team, and moderate cohort discussions.",
-        sensitive: true,
-      },
     ],
   },
   {
@@ -344,7 +336,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       {
         key: "moderation.manage",
         label: "Moderate",
-        description: "Review reported content and act on it.",
+        description: "Approve or reject team logos.",
       },
       {
         key: "discord.manage",
@@ -642,8 +634,6 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/support/new", "support.manage"],
   ["/admin/support", "support.view"],
   ["/admin/moderation", "moderation.manage"],
-  ["/admin/messages", "moderation.manage"],
-  ["/admin/discussions", "discussions.manage"],
   ["/admin/discord", "discord.manage"],
   ["/admin/audit", "audit.view"],
   ["/admin/settings", "settings.manage"],

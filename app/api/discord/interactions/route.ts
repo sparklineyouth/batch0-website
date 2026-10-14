@@ -154,7 +154,7 @@ export async function POST(req: Request) {
 
     // Rate limit per (user, command). Heavier commands get tighter budgets.
     if (discordUserId) {
-      const heavy = ["announce", "ask"].includes(name);
+      const heavy = name === "ask";
       const rl = await checkRateLimit({
         kind: `discord-cmd-${name || "unknown"}`,
         identifier: discordUserId,
@@ -188,8 +188,6 @@ export async function POST(req: Request) {
         return await handleWhois(admin, discordUserId, body);
       case "help":
         return handleHelp();
-      case "announce":
-        return await handleAnnounce(admin, discordUserId, body);
       case "checkin":
         return handleCheckinModalOpen();
       case "team":
@@ -459,53 +457,6 @@ async function handleCohort(admin: ReturnType<typeof createAdminClient>, discord
     ]
       .filter(Boolean)
       .join("\n"),
-  );
-}
-
-async function handleAnnounce(
-  admin: ReturnType<typeof createAdminClient>,
-  discordUserId: string,
-  body: any,
-) {
-  if (!discordUserId) return ephemeral("Couldn't identify you.");
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id, role")
-    .eq("discord_user_id", discordUserId)
-    .maybeSingle();
-  if (!profile || profile.role !== "admin") {
-    return ephemeral("Only admins can run /announce.");
-  }
-  const opts: { name: string; value: string }[] = body.data?.options ?? [];
-  const title = opts.find((o) => o.name === "title")?.value?.trim() ?? "";
-  const messageBody = opts.find((o) => o.name === "message")?.value?.trim() ?? "";
-  if (!title || !messageBody) {
-    return ephemeral("Need both `title` and `message`.");
-  }
-  const settings = await getDiscordSettings();
-  if (settings.announcementsChannelId) {
-    await postChannelMessage(settings.announcementsChannelId, {
-      embeds: [
-        announcementEmbed({ title, body: messageBody, link: `${env.siteUrl}/dashboard` }),
-      ],
-    });
-  }
-  const { data: students } = await admin
-    .from("enrollments")
-    .select("user_id");
-  if ((students?.length ?? 0) > 0) {
-    await admin.from("notifications").insert(
-      (students ?? []).map((s: any) => ({
-        user_id: s.user_id,
-        type: "announcement",
-        title,
-        body: messageBody.slice(0, 240),
-        link: "/dashboard",
-      })),
-    );
-  }
-  return ephemeral(
-    `Posted to ${students?.length ?? 0} student${students?.length === 1 ? "" : "s"} + the announcements channel.`,
   );
 }
 

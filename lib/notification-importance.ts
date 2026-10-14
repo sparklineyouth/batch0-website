@@ -345,12 +345,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
-    type: "team_message",
-    label: "Message in your team",
-    group: "Your team",
-    default: "other",
-  },
-  {
     type: "team_logo_rejected",
     label: "Team logo rejected",
     group: "Your team",
@@ -376,24 +370,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   },
 
   // ── Conversations ─────────────────────────────────────────────────────
-  {
-    type: "direct_message",
-    label: "Direct messages",
-    group: "Conversations",
-    default: "important",
-  },
-  {
-    type: "discussion_question",
-    label: "A question for the team",
-    group: "Conversations",
-    default: "other",
-  },
-  {
-    type: "discussion_reply",
-    label: "Reply in a discussion",
-    group: "Conversations",
-    default: "other",
-  },
   {
     type: "intro_request",
     label: "Intro requested",
@@ -460,13 +436,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     label: "Someone booked a scholarship call",
     group: "Staff queues",
     default: "other",
-  },
-  {
-    type: "dm_reported",
-    label: "A conversation was reported",
-    hint: "Opens a private DM to moderators — worth seeing promptly.",
-    group: "Staff queues",
-    default: "important",
   },
   {
     type: "discord_blocker",
