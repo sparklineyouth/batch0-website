@@ -8,9 +8,10 @@ import { LiveDot } from "@/components/live/call-stage";
 import { AddPeopleForm, JoinCallConfirm, addableStaff } from "@/components/live/add-to-call";
 import { EditCallForm, type InviteeOption } from "@/components/live/invite-form";
 import { CallRecordings } from "@/components/live/recording-player";
-import { inviteEndsAt, joinNames, relativeTime, staffNames, type CallInvite } from "@/lib/live";
+import { joinNames, relativeTime, staffNames, type CallInvite } from "@/lib/live";
 import {
   callBadge,
+  callListPhase,
   callPhase,
   canAddCallCohosts,
   canCancelCall,
@@ -18,6 +19,7 @@ import {
   canEditCall,
   isPastPhase,
   isRoomOpenPhase,
+  isRunningOver,
   mayHaveCallRecording,
   splitCalls,
   type CallPhase,
@@ -87,13 +89,15 @@ export function InviteCard({
   const [panel, setPanel] = useState<"add" | "edit" | null>(null);
 
   const side = perspective === "invitee" ? "student" : "staff";
-  const phase: CallPhase | null = now ? callPhase(invite, now, side) : null;
-  const roomOpen = !!phase && isRoomOpenPhase(phase);
+  // What the list says (a call nobody ended is over 30 minutes after its
+  // end), and whether the room's door is still open (to the hard close).
+  const phase: CallPhase | null = now ? callListPhase(invite, now, side) : null;
+  const joinable = !!phase && isRoomOpenPhase(phase);
+  const rejoinable =
+    phase === "ended" && !!now && isRoomOpenPhase(callPhase(invite, now, side));
   const participant = perspective !== "observer";
   const roomHref = `/dashboard/calls/${invite.id}/live`;
-  // Live, and still inside its scheduled time. Past that the room stays open
-  // (running over) until someone ends it or the hard close.
-  const overrun = phase === "live" && !!now && now.getTime() > Date.parse(inviteEndsAt(invite));
+  const overrun = !!now && isRunningOver(invite, now);
 
   const host = perspective === "host";
   const addable = !!now && canAddCallCohosts(invite, now);
@@ -181,10 +185,18 @@ export function InviteCard({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {participant && roomOpen && (
+          {participant && joinable && (
             <ButtonLink size="sm" href={roomHref}>
               {phase === "live" ? "Join now" : "Join"}
             </ButtonLink>
+          )}
+
+          {/* Over by the list, but the room is still open for anyone who
+              dropped out of a call that ran long. */}
+          {participant && rejoinable && (
+            <Link href={roomHref} className="text-xs text-ink-faint underline underline-offset-2 hover:text-ink">
+              Rejoin
+            </Link>
           )}
 
           {participant && (phase === "needs_answer" || phase === "upcoming") && (
@@ -213,7 +225,7 @@ export function InviteCard({
 
           {canJoinCall &&
             !panel &&
-            (roomOpen ? (
+            (joinable ? (
               <Button size="sm" onClick={() => setPanel("add")}>
                 Join call
               </Button>
@@ -260,7 +272,7 @@ export function InviteCard({
           inviteId={invite.id}
           viewerId={viewerId}
           studentName={invite.inviteeName}
-          enterHref={roomOpen ? roomHref : null}
+          enterHref={joinable ? roomHref : null}
           onClose={() => setPanel(null)}
         />
       )}

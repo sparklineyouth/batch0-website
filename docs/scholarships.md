@@ -206,7 +206,9 @@ ticking "Use a scholarship mentor call".
 
 **The credit is spent when the team schedules the call**, not when the student
 asks. A request nobody picks up costs them nothing. Cancelling a scheduled call
-(or the student declining it) hands the credit back.
+(until 30 minutes after its end), or the student declining it before it
+starts, hands the credit back. A booked call nobody cancelled counts as held:
+a no-show keeps the credit spent (docs/calls.md).
 
 **The calls belong to the cohort the award was made in.** A request is refused
 once that cohort has ended, a proposed time after its last day (Eastern) is

@@ -106,6 +106,14 @@ export function CallsPanel({
         </Button>
       </div>
 
+      {/* Above the list, where it is seen: a refused Cancel on a long list
+          otherwise reads as a click that did nothing. */}
+      {error && (
+        <p role="alert" className="mb-4 text-xs text-red-700 dark:text-red-400">
+          {error}
+        </p>
+      )}
+
       <CallSections
         invites={invites}
         perspective="host"
@@ -116,8 +124,6 @@ export function CallsPanel({
         pending={pending}
         staff={staff}
       />
-
-      {error && <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>}
     </div>
   );
 }

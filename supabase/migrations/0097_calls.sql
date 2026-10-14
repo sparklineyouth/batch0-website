@@ -33,7 +33,14 @@ comment on table public.call_invites is
   '1:1 calls: one student and a staff side (host + call_invite_cohosts). No accept step: invited is joinable. Written only by service-role server actions.';
 
 -- call_invite_cohosts (0092 gave it a read policy only) -------------------------
-revoke insert, update, delete on public.call_invite_cohosts from anon, authenticated;
+-- Guarded: a database without 0092 has no such table, and this script must
+-- still close the holes above and below when pasted in one go.
+do $$
+begin
+  if to_regclass('public.call_invite_cohosts') is not null then
+    execute 'revoke insert, update, delete on public.call_invite_cohosts from anon, authenticated';
+  end if;
+end $$;
 
 -- interview_requests ("Request a 1:1") ---------------------------------------
 drop policy if exists "interview_requests student insert" on public.interview_requests;

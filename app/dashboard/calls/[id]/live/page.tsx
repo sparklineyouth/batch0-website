@@ -2,9 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requireUser, getViewer } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getInvite } from "@/lib/calls";
-import { createRoom, dailyConfigured, mintToken, roomIsLive } from "@/lib/daily";
 import {
   callStaffIds,
   inviteEndsAt,
@@ -14,9 +12,7 @@ import {
   staffNames,
 } from "@/lib/live";
 import { callPhase, hostCallsHref, isRoomOpenPhase } from "@/lib/call-lifecycle";
-import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
 import { BuiltinCallRoom } from "./builtin-room";
-import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -95,127 +91,33 @@ export default async function CallLivePage(
     invite.topic ||
     `1:1 with ${isStaff ? invite.inviteeName : joinNames(staffNames(invite))}`;
 
-  // ---- batch0 Live (the default) ------------------------------------------
-  //
-  // A 1:1 needs no room to exist in advance and none to be healed: everyone
-  // on it is known from the invite row, so each is handed everyone else's
-  // inbox and they connect directly. The lazy room creation, the
-  // compare-and-set race between two people clicking Join at once, and the
-  // dead-room recovery below all exist only because Daily needed a
-  // provider-side room. None of it has an equivalent here.
+  // batch0 Live. A 1:1 needs no room to exist in advance: everyone on it is
+  // known from the invite row, so each is handed everyone else's inbox and
+  // they connect directly.
   //
   // What this render knows is the call as it stands NOW. Someone added while
   // it runs (addCallCohosts) reaches the people already in the room through
   // the heartbeat, which answers a call with its roster (announcePresence),
   // and the room elects its recorder from the server's staff list from then
   // on — `recorderIds` here is only where it starts.
-  if (env.liveProvider === "builtin") {
-    const everyone = [
-      { id: invite.inviteeId, name: invite.inviteeName },
-      { id: invite.hostId, name: invite.hostName },
-      ...invite.cohosts.map((c) => ({ id: c.id, name: c.name })),
-    ];
-    const self = everyone.find((p) => p.id === profile.id);
-    return (
-      <BuiltinCallRoom
-        inviteId={invite.id}
-        startsAt={invite.startsAt}
-        title={callTitle}
-        selfUserId={profile.id}
-        recorderIds={callStaffIds(invite)}
-        selfName={self?.name || profile.full_name || "You"}
-        otherName={joinNames(
-          everyone.filter((p) => p.id !== profile.id).map((p) => p.name),
-        )}
-        endsAt={endsAt}
-        backHref={backHref}
-      />
-    );
-  }
-
-  // ---- Daily (opt-in via LIVE_PROVIDER=daily) -----------------------------
-  if (!dailyConfigured()) {
-    return (
-      <Shell title={callTitle}>
-        <p className="text-sm text-ink-soft">
-          Live video isn&rsquo;t configured on this environment.
-        </p>
-        <BackLink href={backHref} />
-      </Shell>
-    );
-  }
-
-  // Created on first join rather than when the invite was sent. An invite that
-  // is declined or ignored should never have cost a room, and a room made
-  // weeks ahead would have expired before anyone arrived. Whoever arrives
-  // first creates it; the second person finds it already there.
-  let roomName = invite.roomName;
-  let roomUrl = invite.roomUrl;
-  const admin = createAdminClient();
-
-  // A stored room can be stale. Daily deletes every room at its `exp`, but the
-  // invite row keeps the name and URL — so a call joined once and rejoined
-  // after the room expired points at a room that is no longer there. Minting a
-  // token for a missing room still succeeds server-side; the only symptom is
-  // the browser failing to connect ("Could not connect to the room"), and the
-  // row never heals itself, so the call stays broken forever. A name that no
-  // longer resolves is therefore cleared here and treated as if no room was
-  // ever created, dropping straight into the lazy-creation path below.
-  if (roomName && !(await roomIsLive(roomName))) {
-    await admin
-      .from("call_invites")
-      .update({ daily_room_name: null, daily_room_url: null })
-      .eq("id", invite.id)
-      // Clear only the exact dead value we saw — if someone else has already
-      // replaced it with a fresh room, leave theirs in place.
-      .eq("daily_room_name", roomName);
-    roomName = null;
-    roomUrl = null;
-  }
-
-  if (!roomName || !roomUrl) {
-    const room = await createRoom({
-      namePrefix: invite.topic || "1-1",
-      // Not "webinar": both people need camera and mic.
-      mode: "meeting",
-      expiresAt: new Date(new Date(endsAt).getTime() + 2 * 60 * 60 * 1000),
-    });
-    roomName = room.name;
-    roomUrl = room.url;
-    await admin
-      .from("call_invites")
-      .update({ daily_room_name: roomName, daily_room_url: roomUrl })
-      .eq("id", invite.id)
-      // Only claim the row if nobody else has — if both people click Join at
-      // the same instant, the loser's room is simply orphaned and expires,
-      // rather than overwriting the URL the winner is already connecting to.
-      .is("daily_room_name", null);
-
-    // Re-read so both racers converge on whichever room actually landed.
-    const settled = await getInvite(invite.id);
-    if (settled?.roomName && settled.roomUrl) {
-      roomName = settled.roomName;
-      roomUrl = settled.roomUrl;
-    }
-  }
-
-  const token = await mintToken({
-    roomName,
-    userId: profile.id,
-    userName: profile.full_name || "Guest",
-    // Everyone is a host in a 1:1 — there is no audience to hide, and a
-    // viewer token would leave someone unable to speak.
-    role: "host",
-    expiresAt: new Date(new Date(endsAt).getTime() + 60 * 60 * 1000),
-  });
-
+  const everyone = [
+    { id: invite.inviteeId, name: invite.inviteeName },
+    { id: invite.hostId, name: invite.hostName },
+    ...invite.cohosts.map((c) => ({ id: c.id, name: c.name })),
+  ];
+  const self = everyone.find((p) => p.id === profile.id);
   return (
-    <LiveRoom
+    <BuiltinCallRoom
+      inviteId={invite.id}
+      startsAt={invite.startsAt}
       title={callTitle}
-      roomUrl={roomUrl}
-      token={token}
-      role="host"
-      kind="call"
+      selfUserId={profile.id}
+      recorderIds={callStaffIds(invite)}
+      selfName={self?.name || profile.full_name || "You"}
+      otherName={joinNames(
+        everyone.filter((p) => p.id !== profile.id).map((p) => p.name),
+      )}
+      endsAt={endsAt}
       backHref={backHref}
     />
   );

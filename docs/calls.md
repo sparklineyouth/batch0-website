@@ -12,8 +12,9 @@ room at `/dashboard/calls/<id>/live`. Every call is recorded.
 - **Schedule**: the same, at a chosen time. The server accepts a start up to
   5 minutes in the past (`callStartProblem`).
 - **No accept step.** A booked call (`invited`) is joinable. The student sees
-  **Join** when their room opens and a small **Can't make it? Decline**.
-  `accepted` exists only on older rows and behaves the same.
+  **Join** when their room opens and, until the call starts, a small
+  **Can't make it? Decline**. `accepted` exists only on older rows and behaves
+  the same.
 - **Edit** (staff side or admin): time, length, topic (`updateInvite`). A new
   time goes back to `invited` (so it can be declined); the student gets a bell
   and, for a new time or length, an email.
@@ -25,20 +26,33 @@ room at `/dashboard/calls/<id>/live`. Every call is recorded.
 
 Enrolled students ask the team from one card on `/dashboard/calls`
 (`interview_requests`): a preferred time, an optional backup, a note. One open
-request at a time. A student with scholarship mentor calls ticks "Use a
-scholarship mentor call"; the credit is spent when the team books it and handed
-back if the call is cancelled or declined. The team books or declines from
-**Requests** on `/admin/calls`.
+request at a time; a booked call doesn't count, so the card (and a
+scholarship balance) is always there. A student with scholarship mentor calls
+ticks "Use a scholarship mentor call"; the credit is spent when the team books
+it and handed back if the call is cancelled or declined. The team books or
+declines from **Requests** on `/admin/calls`.
 
-## Windows (`lib/call-lifecycle.ts`)
+## Windows (`lib/call-lifecycle.ts`, numbers from `lib/live.ts`)
 
 | | |
 |---|---|
 | Staff side may enter | start − 60 min |
 | Student may enter | start − 15 min |
-| Room stays open | until End call, a cancel, a decline, or the hard close (end + 3 h) |
-| End call | completes the call once the room has opened; anyone on the call |
+| Room stays open | until End call, a cancel, or the hard close (end + 3 h) |
+| Lists | a call nobody ended shows "running over" until end + 30 min, then moves to Past (with **Rejoin** while the room is still open) |
+| Student may decline | until the start |
+| Staff side may cancel, edit, add people | until end + 30 min |
+| End call | completes the call once it has started; anyone on the call |
 | Sweep (`/api/cron/call-lifecycle`, every 15 min) | stamps `completed` on booked calls past the hard close (last 7 days only) |
+
+**No-shows.** A booked call nobody cancelled counts as held: the sweep
+completes it and a scholarship credit stays spent. A student who can't make it
+declines before the start; a host whose student doesn't show cancels (until
+end + 30 min). Both hand the credit back.
+
+**Before the accept step went** (`ACCEPT_STEP_REMOVED_AT`), an unanswered
+invite could not be joined. The sweep withdraws those that had already expired
+(`cancelled`, credit back) instead of completing them.
 
 End call, cancel, decline and edits publish `room-changed` on the call's stage
 topic (`notifyCallChanged`), so everyone in the room re-checks at once.

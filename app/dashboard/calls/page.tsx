@@ -26,7 +26,7 @@ export default async function StudentCallsPage() {
   ]);
 
   const now = new Date();
-  const state = requestCardState(request, canRequestTeamCall(access), now);
+  const state = requestCardState(request, canRequestTeamCall(access));
   const requestIsScholarship =
     state === "requested" && request
       ? !!(await scholarshipApplicationIdForRequest(admin, request.id))

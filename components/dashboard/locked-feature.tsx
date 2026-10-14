@@ -49,9 +49,9 @@ export function LockedFeature({
       <div className="mt-10 flex items-start gap-3 rounded-xl border border-line bg-wash px-5 py-4 text-sm text-ink-soft">
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-ink-faint" />
         <p>
-          Cohort-only features (Team, Check-in, Course, Office hours, Events,
-          Resources, Files, Announcements) unlock once you're enrolled. You'll
-          see them in the sidebar then.
+          Cohort-only features (Team, Check-in, Course, Events, Resources,
+          Files, Announcements) unlock once you're enrolled. You'll see them
+          in the sidebar then.
         </p>
       </div>
     </div>

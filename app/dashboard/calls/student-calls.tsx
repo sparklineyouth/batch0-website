@@ -68,7 +68,11 @@ export function StudentCalls({
         </div>
       )}
 
-      {error && <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-4 text-xs text-red-700 dark:text-red-400">
+          {error}
+        </p>
+      )}
 
       <section className="mt-8">
         <CallSections

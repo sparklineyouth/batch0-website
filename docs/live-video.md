@@ -392,20 +392,19 @@ create table public.call_invites (
 );
 ```
 
-RLS: host or invitee may read; host may insert/update; invitee may update only
-`status` (accept/decline). Staff-with-permission checks belong in the server
-action via `assertPermission("calls.invite")` — RLS is the backstop, the action
-is the gate, exactly as the rest of this codebase does it.
+RLS: the people on a call (and admins) may read. Nobody writes through the
+API (0097): every write is a service-role server action that re-checks
+`assertPermission("calls.invite")` or who is on the call.
 
 **UI**, one shared component rendered from three routes (the panels have
 different layouts but identical needs):
 
 - `/mentor/calls`, `/investor/calls`, `/admin/calls` — "Invite a student":
   person picker, datetime, duration, topic. Then a list of upcoming/past invites.
-- `/dashboard/calls` — student's incoming invites, accept/decline, join button.
-- Reuse the join route shape from webinars: `/dashboard/calls/[id]/live`, room
-  created lazily on first join, both participants owners (it's a 1:1, both need
-  camera and mic).
+- `/dashboard/calls` — the student's calls (Join; Decline until the start) and
+  the "Request a 1:1" card. No accept step (docs/calls.md).
+- Reuse the join route shape from webinars: `/dashboard/calls/[id]/live`,
+  everyone on it a host (it's a 1:1, all need camera and mic).
 
 **On invite**, reuse existing plumbing rather than inventing any:
 `notifyMany` (`lib/notifications.ts`), a new `Templates.callInvite` alongside

@@ -53,7 +53,7 @@ function officeHoursSlice(sql: string): string {
 // The slice of 0001..0096 these migrations depend on, plus a settable
 // auth.uid() and Supabase's default grants, so a missing write policy (and a
 // revoked privilege) is tested for real.
-await db.exec(`
+const BASE = `
   create role anon; create role authenticated; create role service_role;
   create schema if not exists auth;
   create or replace function auth.uid() returns uuid language sql stable as $$
@@ -99,13 +99,19 @@ await db.exec(`
     ('${OTHER_MENTOR}', 'Other Mentor', 'mentor'),
     ('${STUDENT}', 'Ana Student', 'student'),
     ('${OTHER_STUDENT}', 'Ben Student', 'student');
-`);
+`;
 
-await db.exec(officeHoursSlice(await file("0011_phase2_features.sql")));
-await db.exec(await file("0026_booking_recaps.sql"));
-await db.exec(await file("0059_call_invites.sql"));
-await db.exec(await file("0061_interview_requests.sql"));
-await db.exec(await file("0092_call_cohosts.sql"));
+/** A database at 0091 or 0092: every table 0097 touches, with or without co-hosts. */
+async function upTo(target: typeof db, withCohosts: boolean) {
+  await target.exec(BASE);
+  await target.exec(officeHoursSlice(await file("0011_phase2_features.sql")));
+  await target.exec(await file("0026_booking_recaps.sql"));
+  await target.exec(await file("0059_call_invites.sql"));
+  await target.exec(await file("0061_interview_requests.sql"));
+  if (withCohosts) await target.exec(await file("0092_call_cohosts.sql"));
+}
+
+await upTo(db, true);
 
 // Rows that exist before 0097, as in production.
 const seeded = await q<{ call: string; req: string; slot: string; booking: string }>(`
@@ -308,4 +314,25 @@ test("notifications into the removed office-hours pages open 1:1 calls", async (
     { type: "office_hours_booked", link: "/mentor/calls" },
     { type: "office_hours_recap", link: "/dashboard/calls" },
   ]);
+});
+
+test("on a database without 0092, 0097 still closes every other table", async () => {
+  const bare = new PGlite();
+  await upTo(bare, false);
+  await bare.exec(MIGRATION);
+  await bare.exec(MIGRATION);
+  const { rows } = (await bare.query(
+    `select tablename, cmd from pg_policies where tablename = any($1) and cmd <> 'SELECT'`,
+    [TABLES],
+  )) as { rows: unknown[] };
+  assert.deepEqual(rows, []);
+  const grants = (await bare.query(
+    `select count(*)::int as n from information_schema.role_table_grants
+      where table_schema = 'public' and table_name = any($1)
+        and grantee in ('anon', 'authenticated')
+        and privilege_type in ('INSERT', 'UPDATE', 'DELETE')`,
+    [TABLES],
+  )) as { rows: { n: number }[] };
+  assert.equal(grants.rows[0].n, 0);
+  await bare.close();
 });

@@ -28,6 +28,7 @@ import {
 } from "@/lib/live";
 import {
   callDurationProblem,
+  callListPhase,
   callPhase,
   callStartProblem,
   canAddCallCohosts,
@@ -278,7 +279,7 @@ async function updateInviteNow(input: UpdateInput): Promise<{ changed: boolean }
     throw new Error("Only the people running this call can change it.");
   }
   if (!canEditCall(timingOf(row))) {
-    throw new Error(whyNotActive(callPhase(timingOf(row), new Date(), "staff"), "changed"));
+    throw new Error(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "changed"));
   }
 
   const startsAt = new Date(input.startsAt);
@@ -405,7 +406,7 @@ async function addCallCohostsNow(
     throw new Error("You're not on this call, so you can't add anyone to it.");
   }
   if (!canAddCallCohosts(timingOf(row))) {
-    throw new Error(whyNotActive(callPhase(timingOf(row), new Date(), "staff"), "joined"));
+    throw new Error(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "joined"));
   }
 
   const plan = cohostsToAdd(Array.isArray(cohostIds) ? cohostIds : [], parties);
@@ -489,15 +490,25 @@ function whyNotActive(phase: CallPhase, verb: "changed" | "joined"): string {
 // Declining, cancelling, ending
 // ---------------------------------------------------------------------------
 
-/** The student can't make it. Invitee only; co-hosts never answer for them. */
+/**
+ * The student can't make it — until the call starts (canDeclineCall). Invitee
+ * only; co-hosts never answer for them. Hands back a scholarship credit.
+ */
 export async function declineInvite(id: string): Promise<ActionResult> {
   return runAction({ name: "declineInvite" }, async () => {
     const actor = await requireActor();
     const admin = createAdminClient();
     const row = await readCall(admin, id);
     if (row.invitee_id !== actor.userId) throw new Error("Only the student on a call can decline it.");
+    const phase = callPhase(timingOf(row));
     if (!canDeclineCall(timingOf(row))) {
-      throw new Error(whyNotActive(callPhase(timingOf(row)), "changed"));
+      throw new Error(
+        phase === "declined"
+          ? "You already declined that call."
+          : phase === "live"
+            ? "That call has already started."
+            : whyNotActive(phase, "changed"),
+      );
     }
 
     const { data: updated, error } = await admin
@@ -507,9 +518,13 @@ export async function declineInvite(id: string): Promise<ActionResult> {
       .eq("invitee_id", actor.userId)
       // A decline racing a cancel: exactly one wins, so the refund runs once.
       .in("status", ["invited", "accepted"])
+      // And never once it has started, whatever the clock said a moment ago.
+      .gt("starts_at", new Date().toISOString())
       .select("id");
     if (error) throw new Error(error.message);
-    if (!updated || updated.length === 0) throw new Error("That call was already changed.");
+    if (!updated || updated.length === 0) {
+      throw new Error("That call has started or was changed. Reload to see it.");
+    }
 
     await refundScholarshipCreditFor(admin, row.id);
     await logAudit({ action: "call_invite.declined", targetType: "call_invite", targetId: row.id });
@@ -532,9 +547,10 @@ export async function declineInvite(id: string): Promise<ActionResult> {
 }
 
 /**
- * Cancel. The staff side or a superAdmin, until the hard close — including
- * while live, for a host giving up on a no-show. Hands back a scholarship
- * credit, and closes the room for anyone in it.
+ * Cancel. The staff side or a superAdmin, until shortly after the scheduled
+ * end (canCancelCall) — including while live, for a host giving up on a
+ * no-show. Hands back a scholarship credit, and closes the room for anyone in
+ * it.
  */
 export async function cancelInvite(id: string): Promise<ActionResult> {
   return runAction({ name: "cancelInvite" }, async () => {
@@ -546,7 +562,7 @@ export async function cancelInvite(id: string): Promise<ActionResult> {
       throw new Error("Only the people running this call can cancel it.");
     }
     if (!canCancelCall(timingOf(row))) {
-      throw new Error(whyNotActive(callPhase(timingOf(row), new Date(), "staff"), "changed"));
+      throw new Error(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "changed"));
     }
 
     const { data: updated, error } = await admin
@@ -592,7 +608,7 @@ export async function cancelInvite(id: string): Promise<ActionResult> {
 
 /**
  * End a call for everyone on it — anyone on the call, from the room. Marks it
- * completed once the room has opened (canMarkCallCompleted); idempotent.
+ * completed once it has started (canMarkCallCompleted); idempotent.
  *
  * Revalidates NOTHING on purpose: revalidating re-renders the current route,
  * which is the room, and would unmount it while the recording still uploads.

@@ -1,8 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAllRoles } from "@/lib/roles";
-import type { CallTiming } from "@/lib/call-lifecycle";
-import type { CallInviteStatus } from "@/lib/live";
 
 /**
  * Reads for "Request a 1:1" (`interview_requests`, migration 0061): an
@@ -33,12 +31,6 @@ export type InterviewRequest = {
   note: string | null;
   status: InterviewRequestStatus;
   callInviteId: string | null;
-  /**
-   * The call this request booked — null until it is scheduled, or if the
-   * call was deleted. The request's own status stops at `scheduled` for ever,
-   * so whether that call still stands is read from the call.
-   */
-  call: CallTiming | null;
   createdAt: string;
 };
 
@@ -46,8 +38,7 @@ const SELECT = `
   id, student_id, cohort_id, preferred_at, alt_at, note, status,
   call_invite_id, created_at,
   student:profiles!interview_requests_student_id_fkey(full_name, email),
-  cohort:cohorts(name),
-  call:call_invites!interview_requests_call_invite_id_fkey(status, starts_at, duration_minutes)
+  cohort:cohorts(name)
 `;
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -57,7 +48,6 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 function toRequest(row: any): InterviewRequest {
   const student = one<any>(row.student);
   const cohort = one<any>(row.cohort);
-  const call = one<any>(row.call);
   return {
     id: row.id,
     studentId: row.student_id,
@@ -69,21 +59,13 @@ function toRequest(row: any): InterviewRequest {
     note: row.note,
     status: row.status as InterviewRequestStatus,
     callInviteId: row.call_invite_id,
-    call: call
-      ? {
-          status: call.status as CallInviteStatus,
-          startsAt: call.starts_at,
-          durationMinutes: call.duration_minutes,
-        }
-      : null,
     createdAt: row.created_at,
   };
 }
 
 /**
- * This student's newest request that is waiting or scheduled. Declined and
- * withdrawn ones are history. Read a scheduled one through its `call`
- * (requestCardState in lib/call-lifecycle.ts), never its status alone.
+ * This student's request still waiting on the team, if any (the database
+ * allows one). Booked, declined and withdrawn ones are history.
  */
 export async function getInterviewRequestForStudent(
   studentId: string,
@@ -93,7 +75,7 @@ export async function getInterviewRequestForStudent(
     .from("interview_requests")
     .select(SELECT)
     .eq("student_id", studentId)
-    .in("status", ["requested", "scheduled"])
+    .eq("status", "requested")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

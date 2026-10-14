@@ -89,6 +89,13 @@ export function InterviewRequestCard({
   if (state === "hidden") return null;
 
   const shell = "rounded-xl border border-line bg-wash p-5";
+  // An award whose balance is out of sight gets forgotten: shown on every state.
+  const balance = scholarship && (
+    <p className="mt-1 text-xs text-ink-faint">
+      {scholarship.scholarshipName}: {scholarship.remaining} of {scholarship.granted} mentor calls left
+      {scholarship.closedReason ? `. ${scholarship.closedReason}` : "."}
+    </p>
+  );
 
   if (state === "requested" && request) {
     return (
@@ -109,6 +116,7 @@ export function InterviewRequestCard({
           )}
           . The team will book a time.
         </p>
+        {balance}
         <button
           type="button"
           onClick={() => run(() => cancelInterviewRequest(request.id))}
@@ -128,12 +136,7 @@ export function InterviewRequestCard({
       <p className="mt-2 text-sm text-ink-soft">
         A private video call with the batch0 team. Suggest a time; we&rsquo;ll book it.
       </p>
-      {scholarship && (
-        <p className="mt-1 text-xs text-ink-faint">
-          {scholarship.scholarshipName}: {scholarship.remaining} of {scholarship.granted} mentor calls left
-          {scholarship.closedReason ? `. ${scholarship.closedReason}` : "."}
-        </p>
-      )}
+      {balance}
 
       {!composing ? (
         <Button className="mt-4" onClick={() => setComposing(true)}>
