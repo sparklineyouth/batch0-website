@@ -5,6 +5,8 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
 import {
+  DECK_EXTENSIONS,
+  DECK_MIME_TYPES,
   DEFAULT_AUDIENCE_MODE,
   formatBytes,
   isDeckFile,
@@ -34,7 +36,7 @@ import {
   removeWebinarAsset,
   saveSpeakers,
 } from "./webinar-actions";
-import { SpeakersEditor, type SpeakerDraft } from "./speakers-editor";
+import { SpeakersEditor, toSpeakerDraft, type SpeakerDraft } from "./speakers-editor";
 import type { StagedDeck } from "./deck";
 import type { AdminEventRow, CohortOption } from "./types";
 import { FileText, Loader2, Upload, X } from "lucide-react";
@@ -128,18 +130,7 @@ export function EventForm({
     let cancelled = false;
     void fetchWebinarExtras(event.id).then((r) => {
       if (cancelled || !r.ok || !r.data) return;
-      setSpeakers(
-        r.data.speakers.map((sp) => ({
-          id: sp.id,
-          name: sp.name,
-          title: sp.title ?? "",
-          email: sp.email ?? "",
-          linkUrl: sp.linkUrl ?? "",
-          bio: sp.bio ?? "",
-          photoUrl: sp.photoUrl ?? "",
-          userId: sp.userId,
-        })),
-      );
+      setSpeakers(r.data.speakers.map(toSpeakerDraft));
       setSpeakersLoaded(true);
       const d = r.data.deck;
       if (d) setSavedDeck({ id: d.id, filename: d.filename, sizeBytes: d.sizeBytes });
@@ -155,7 +146,7 @@ export function EventForm({
   const inPast =
     !!startsIso &&
     new Date(startsIso).getTime() < Date.now() - 60_000 &&
-    (isNew || startsIso !== event?.startsAt);
+    (isNew || new Date(startsIso).getTime() !== new Date(event!.startsAt).getTime());
 
   function pickWhere(mode: "hosted" | "external") {
     setLiveMode(mode);
@@ -283,7 +274,10 @@ export function EventForm({
           })),
         );
         if (!sr.ok) problem = `Saved the event, but not the speakers: ${sr.error}`;
-        else setSpeakersDirty(false);
+        else {
+          setSpeakersDirty(false);
+          setSpeakers((sr.data ?? []).map(toSpeakerDraft));
+        }
       }
       if (problem) {
         setWarning(problem);
@@ -527,7 +521,7 @@ export function EventForm({
                     <input
                       type="file"
                       className="hidden"
-                      accept=".pdf,application/pdf"
+                      accept={[...DECK_EXTENSIONS, ...DECK_MIME_TYPES].join(",")}
                       disabled={busy}
                       onChange={(e) => {
                         const f = e.target.files?.[0];

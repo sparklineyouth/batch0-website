@@ -29,7 +29,7 @@
  * itself — a name on a message is a disclosure that the person is in the room,
  * and no amount of care in the UI changes that. So instead of weakening a
  * guarantee the whole system is built on, the guarantee becomes a per-event
- * setting an admin chooses, defaulting to exactly what happens today.
+ * setting an admin chooses.
  *
  *   private    A viewer sees only their own questions, and there is no chat.
  *              Nothing on the wire tells one student that another exists. What

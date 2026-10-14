@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
+import type { EventSpeaker } from "@/lib/webinars";
 import { sendSpeakerInvite, speakerInviteLink } from "./webinar-actions";
 import { Copy, Mail, Plus, X } from "lucide-react";
 
@@ -20,6 +21,20 @@ export type SpeakerDraft = {
 
 export function emptySpeaker(): SpeakerDraft {
   return { name: "", title: "", email: "", linkUrl: "", bio: "", photoUrl: "" };
+}
+
+/** A saved speaker as the editor holds it. */
+export function toSpeakerDraft(sp: EventSpeaker): SpeakerDraft {
+  return {
+    id: sp.id,
+    name: sp.name,
+    title: sp.title ?? "",
+    email: sp.email ?? "",
+    linkUrl: sp.linkUrl ?? "",
+    bio: sp.bio ?? "",
+    photoUrl: sp.photoUrl ?? "",
+    userId: sp.userId,
+  };
 }
 
 /**
