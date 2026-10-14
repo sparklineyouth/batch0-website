@@ -4,25 +4,38 @@ import { can, type Capabilities } from "@/lib/permissions";
 import { capabilitiesForRole } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMissingSchemaError } from "@/lib/schema-ready";
+import { activeRecordingFor } from "@/lib/recording-sessions";
 import {
+  callRoomAccess,
   inviteEndsAt,
   isOnCall,
   isStaffOnCall,
+  mayEndCall,
+  mayEndWebinar,
   roomAccess,
   roomWindow,
+  shouldClaimPrimary,
   type CallCohost,
   type CallInviteStatus,
+  type CallRoomAccess,
+  type LiveRoomState,
   type RoomAccess,
   type RoomStatus,
 } from "@/lib/live";
-import { callPhase, type CallPhase } from "@/lib/call-lifecycle";
 import {
   canBroadcast,
+  isPremiere,
   normalizeAudienceMode,
   type AudienceMode,
 } from "@/lib/webinars";
 import { PEER_TIMEOUT_MS, type SignalRole } from "@/lib/live-signal";
-import { markLeft, notifyHosts, presentHosts } from "@/lib/live-rooms";
+import {
+  markLeft,
+  notifyHosts,
+  notifyStage,
+  presentHosts,
+} from "@/lib/live-rooms";
 import {
   COHOSTS_EMBED,
   cohostsFromRow,
@@ -76,9 +89,28 @@ export type LiveRoomKind = "event" | "call";
 /** The columns every live surface needs. Names no column a student may not see. */
 const EVENT_COLUMNS =
   "id, title, description, type, starts_at, ends_at, live_mode, audience_mode, " +
-  "display_viewer_count, auto_record, premiere_seconds, qa_opens_at, " +
-  "live_started_at, live_ended_at, visibility, cohort_id, recording_url, " +
-  "daily_room_name, daily_room_url";
+  "auto_record, premiere_seconds, qa_opens_at, " +
+  "live_started_at, live_ended_at, visibility, cohort_id, recording_url";
+
+/**
+ * Migration 0096's primary-host column, read alongside EVENT_COLUMNS.
+ *
+ * Production gets this code before the migration runs, so a read that names
+ * it fails with 42703 / PGRST204 there; the read is retried without it and the
+ * room runs with no primary (`primaryHostId` null). Remembered for a minute so
+ * a missing column costs one extra query a minute per instance, not per read.
+ */
+const PRIMARY_COLUMN = "live_primary_host_id";
+let primaryColumnMissingUntil = 0;
+const PRIMARY_RECHECK_MS = 60_000;
+
+export function primaryColumnMissing(): boolean {
+  return Date.now() < primaryColumnMissingUntil;
+}
+
+export function notePrimaryColumnMissing(): void {
+  primaryColumnMissingUntil = Date.now() + PRIMARY_RECHECK_MS;
+}
 
 export type LiveAccessEvent = {
   id: string;
@@ -89,7 +121,6 @@ export type LiveAccessEvent = {
   endsAt: string | null;
   liveMode: string;
   audienceMode: AudienceMode;
-  displayViewerCount: number | null;
   autoRecord: boolean;
   premiereSeconds: number | null;
   qaOpensAt: string | null;
@@ -98,9 +129,11 @@ export type LiveAccessEvent = {
   visibility: string;
   cohortId: string | null;
   recordingUrl: string | null;
-  /** Daily-provider leftovers. Only the opt-in Daily branch of the page reads these. */
-  dailyRoomName: string | null;
-  dailyRoomUrl: string | null;
+  /**
+   * The primary host — the stage everyone sees when nobody is presenting
+   * (migration 0096). Null when unset or before the migration has run.
+   */
+  primaryHostId: string | null;
 };
 
 export type EventAccess = {
@@ -150,11 +183,7 @@ export async function resolveEventAccess(
   const isStaff = can(actor.caps, "events.manage");
 
   const supabase = await createClient();
-  const first = await supabase
-    .from("events")
-    .select(EVENT_COLUMNS)
-    .eq("id", eventId)
-    .maybeSingle();
+  const first = await readEvent(supabase, eventId);
   if (first.error && !isBadId(first.error)) {
     console.error("[live-access] event read failed", first.error.message);
     return { ok: false, reason: "error" };
@@ -165,11 +194,7 @@ export async function resolveEventAccess(
   // lives nowhere else.
   if (!row && isStaff && !first.error) {
     const admin = createAdminClient();
-    const second = await admin
-      .from("events")
-      .select(EVENT_COLUMNS)
-      .eq("id", eventId)
-      .maybeSingle();
+    const second = await readEvent(admin, eventId);
     if (second.error && !isBadId(second.error)) {
       console.error("[live-access] staff event read failed", second.error.message);
       return { ok: false, reason: "error" };
@@ -223,6 +248,7 @@ export async function roomAccessFor(
   const input = {
     startsAt: access.event.startsAt,
     endsAt: access.event.endsAt,
+    liveStartedAt: access.event.liveStartedAt,
     liveEndedAt: access.event.liveEndedAt,
     isHost: access.isHost,
     now,
@@ -257,7 +283,9 @@ export async function roomAccessFor(
  */
 export async function presentHostRoles(
   eventId: string,
-): Promise<{ userId: string; joinedAt: string; isStaff: boolean }[] | null> {
+): Promise<
+  { userId: string; joinedAt: string; name: string; isStaff: boolean }[] | null
+> {
   const hosts = await presentHosts(eventId, PEER_TIMEOUT_MS);
   if (hosts === null) return null;
   if (hosts.length === 0) return [];
@@ -312,6 +340,164 @@ export function withinHardClose(
 }
 
 // ---------------------------------------------------------------------------
+// The webinar stage: going live, the primary host, and the room's state
+// ---------------------------------------------------------------------------
+
+/**
+ * A host is in the room (joining, or heartbeating): make the room reflect it.
+ *
+ *   - `live_started_at` is stamped if unset — the first host in IS the start,
+ *     which opens the room to the audience early and makes End available.
+ *     Never for a premiere, whose stamp hands the recording over to the live
+ *     Q&A. Never after End.
+ *   - the primary seat is claimed when nobody holds it or its holder is no
+ *     longer present (shouldClaimPrimary). Presence here ignores `left_at` and
+ *     reads only the heartbeat, so a primary who reloads keeps the seat
+ *     instead of handing it to whichever co-host heartbeats first.
+ *
+ * Both writes are compare-and-set on the value just read, so two hosts
+ * arriving together converge on one answer. A change is announced with a
+ * content-free `room-changed` on the stage, and every client re-reads it.
+ * Updates `access.event` in place with what is now stored. Best-effort: a
+ * failure leaves the room exactly as it was.
+ */
+export async function claimStage(access: EventAccess): Promise<void> {
+  if (!access.isHost || access.event.liveEndedAt) return;
+  const ev = access.event;
+  const admin = createAdminClient();
+  let changed = false;
+
+  if (!ev.liveStartedAt && !isPremiere(ev.liveMode)) {
+    const now = new Date().toISOString();
+    const { data, error } = await admin
+      .from("events")
+      .update({ live_started_at: now })
+      .eq("id", ev.id)
+      .is("live_started_at", null)
+      .is("live_ended_at", null)
+      .select("live_started_at")
+      .maybeSingle();
+    if (error) {
+      console.error("[live-access] live start stamp failed", error.message);
+    } else if (data) {
+      ev.liveStartedAt = (data as any).live_started_at ?? now;
+      changed = true;
+    }
+  }
+
+  if (!primaryColumnMissing() && ev.primaryHostId !== access.userId) {
+    const present = ev.primaryHostId
+      ? await recentHostIds(ev.id, PEER_TIMEOUT_MS)
+      : [];
+    if (
+      shouldClaimPrimary({
+        current: ev.primaryHostId,
+        selfId: access.userId,
+        present,
+      })
+    ) {
+      const q = admin
+        .from("events")
+        .update({ [PRIMARY_COLUMN]: access.userId })
+        .eq("id", ev.id);
+      const { data, error } = await (ev.primaryHostId
+        ? q.eq(PRIMARY_COLUMN, ev.primaryHostId)
+        : q.is(PRIMARY_COLUMN, null)
+      )
+        .select(PRIMARY_COLUMN)
+        .maybeSingle();
+      if (error) {
+        if (isMissingSchemaError(error)) notePrimaryColumnMissing();
+        else console.error("[live-access] primary claim failed", error.message);
+      } else if (data) {
+        ev.primaryHostId = access.userId;
+        changed = true;
+      } else {
+        // Someone else's claim landed first: report theirs.
+        ev.primaryHostId = await readPrimary(ev.id);
+      }
+    }
+  }
+
+  if (changed) await notifyStage(`event:${ev.id}`, { t: "room-changed" });
+}
+
+/** The server truth a webinar's join and heartbeat answers carry. */
+export async function webinarRoomState(
+  access: EventAccess,
+  now: Date = new Date(),
+): Promise<LiveRoomState> {
+  const ev = access.event;
+  const [staffPresent, recording] = await Promise.all([
+    // Only a guest speaker's End depends on who else is here.
+    access.isSpeaker ? staffHostPresent(ev.id, access.userId) : false,
+    activeRecordingFor("webinar", ev.id).catch(() => null),
+  ]);
+  return {
+    primaryId: ev.primaryHostId,
+    liveStartedAt: ev.liveStartedAt,
+    liveEndedAt: ev.liveEndedAt,
+    canEnd: mayEndWebinar({
+      isStaff: access.isStaff,
+      isSpeaker: access.isSpeaker,
+      staffPresent,
+      startsAt: ev.startsAt,
+      endsAt: ev.endsAt,
+      liveStartedAt: ev.liveStartedAt,
+      liveEndedAt: ev.liveEndedAt,
+      now,
+    }),
+    recording,
+  };
+}
+
+/**
+ * Is a staff host other than `exceptId` in the room? An unreadable table
+ * counts as no: a guest-only webinar must stay endable (staff can Reopen).
+ */
+async function staffHostPresent(eventId: string, exceptId: string): Promise<boolean> {
+  const hosts = await presentHostRoles(eventId);
+  return !!hosts && hosts.some((h) => h.isStaff && h.userId !== exceptId);
+}
+
+/**
+ * Host ids with a heartbeat inside `sinceMs`, whether or not they have since
+ * said Leave — the primary seat's notion of "still here". Null when the
+ * attendance table cannot be read.
+ */
+async function recentHostIds(eventId: string, sinceMs: number): Promise<string[] | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("live_participants")
+    .select("user_id")
+    .eq("event_id", eventId)
+    .eq("role", "host")
+    .gte("last_seen_at", new Date(Date.now() - sinceMs).toISOString())
+    .limit(50);
+  if (error) {
+    if (!isMissingSchemaError(error)) {
+      console.error("[live-access] host heartbeat read failed", error.message);
+    }
+    return null;
+  }
+  return (data ?? []).map((r: any) => r.user_id as string);
+}
+
+async function readPrimary(eventId: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("events")
+    .select(PRIMARY_COLUMN)
+    .eq("id", eventId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingSchemaError(error)) notePrimaryColumnMissing();
+    return null;
+  }
+  return ((data as any)?.[PRIMARY_COLUMN] as string | null) ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // 1:1 calls
 // ---------------------------------------------------------------------------
 
@@ -349,12 +535,8 @@ export type CallAccess = {
   durationMinutes: number;
   endsAt: string;
   topic: string | null;
-  /**
-   * callPhase (lib/call-lifecycle.ts) at resolve time — the same answer the
-   * lists, the page and the lifecycle sweep use. See callRefusal for what
-   * each means for a join.
-   */
-  phase: CallPhase;
+  /** callRoomAccess (lib/live.ts) for the caller at resolve time. */
+  roomAccess: CallRoomAccess;
 };
 
 const CALL_COLUMNS =
@@ -373,10 +555,10 @@ const CALL_COLUMNS =
  * walk into a call they were not put on. Admins "always host" webinars; a
  * private call is not a webinar.
  *
- * Returns the phase instead of refusing on it, because the answers after the
- * party check differ by caller: leaving needs only identity, and the join and
- * the heartbeat need `callRefusal(phase)` / `callRoomStatus(phase)`. Nothing
- * about a call's status is revealed to a non-party.
+ * Returns the caller's room access instead of refusing on it, because the
+ * answers after the party check differ by caller: leaving needs only
+ * identity, and the join and the heartbeat need `callRefusal` /
+ * `callRoomStatus`. Nothing about a call's status is revealed to a non-party.
  *
  * Reads the co-hosts in the same query, falling back to a read without them
  * on a database where 0092 hasn't run (see lib/calls.ts) — so a deploy that
@@ -443,18 +625,21 @@ export async function resolveCallAccess(
     durationMinutes: invite.durationMinutes,
     endsAt: inviteEndsAt(invite),
     topic: row.topic ?? null,
-    phase: callPhase(invite, now),
+    roomAccess: callRoomAccess({
+      ...invite,
+      isStaff: isStaffOnCall(parties, actor.userId),
+      now,
+    }),
   };
 }
 
 /**
  * Why a party may not be in their call right now, or null when they may.
  *
- *   joinable / live       null — come in.
- *   upcoming              'early'
- *   needs_answer/expired  'closed' (never accepted; there is no call yet)
- *   completed / ended     'completed' (End call pressed, or the window closed
- *                         — the same call to a person; see callPhase)
+ *   open / live           null — come in.
+ *   early                 'early'
+ *   closed                'closed' (past the hard stop)
+ *   completed             'completed' (End call was pressed)
  *   cancelled / declined  as named
  */
 export type CallRefusal =
@@ -464,21 +649,32 @@ export type CallRefusal =
   | "cancelled"
   | "declined";
 
-export function callRefusal(phase: CallPhase): CallRefusal | null {
-  if (phase === "joinable" || phase === "live") return null;
-  if (phase === "upcoming") return "early";
-  if (phase === "completed" || phase === "ended") return "completed";
-  if (phase === "cancelled" || phase === "declined") return phase;
+export function callRefusal(access: CallRoomAccess): CallRefusal | null {
+  if (access === "open" || access === "live") return null;
+  return access;
+}
+
+/** The heartbeat's answer for a call the caller stands here with. */
+export function callRoomStatus(access: CallRoomAccess): RoomStatus {
+  if (access === "open" || access === "live") return "ok";
+  if (access === "completed") return "ended";
+  if (access === "cancelled") return "cancelled";
+  if (access === "declined") return "revoked";
   return "closed";
 }
 
-/** The heartbeat's answer for a call in this phase. */
-export function callRoomStatus(phase: CallPhase): RoomStatus {
-  if (phase === "joinable" || phase === "live") return "ok";
-  if (phase === "completed" || phase === "ended") return "ended";
-  if (phase === "cancelled") return "cancelled";
-  if (phase === "declined") return "revoked";
-  return "closed";
+/** The server truth a call's join and heartbeat answers carry. */
+export async function callRoomState(
+  access: CallAccess,
+  now: Date = new Date(),
+): Promise<LiveRoomState> {
+  return {
+    primaryId: null,
+    liveStartedAt: null,
+    liveEndedAt: null,
+    canEnd: mayEndCall({ status: access.status, startsAt: access.startsAt, now }),
+    recording: await activeRecordingFor("call", access.inviteId).catch(() => null),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +732,26 @@ const UUID =
  * `speakerUserIds` helper that the gates used to share, which swallowed
  * errors into an empty list.)
  */
+/**
+ * The event row, with the primary-host column when the database has it. See
+ * PRIMARY_COLUMN for the fallback.
+ */
+async function readEvent(
+  client: { from: ReturnType<typeof createAdminClient>["from"] },
+  eventId: string,
+): Promise<{ data: any; error: { code?: string; message: string } | null }> {
+  const read = (columns: string) =>
+    client.from("events").select(columns).eq("id", eventId).maybeSingle();
+  if (!primaryColumnMissing()) {
+    const withPrimary = await read(`${EVENT_COLUMNS}, ${PRIMARY_COLUMN}`);
+    if (!withPrimary.error || !isMissingSchemaError(withPrimary.error)) {
+      return withPrimary;
+    }
+    notePrimaryColumnMissing();
+  }
+  return read(EVENT_COLUMNS);
+}
+
 async function readSpeakerIds(eventId: string): Promise<string[] | null> {
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -545,7 +761,7 @@ async function readSpeakerIds(eventId: string): Promise<string[] | null> {
     .not("user_id", "is", null)
     .limit(20);
   if (error) {
-    if (isMissingTable(error)) return [];
+    if (isMissingSchemaError(error)) return [];
     console.error("[live-access] speaker read failed", error.message);
     return null;
   }
@@ -562,7 +778,6 @@ function toAccessEvent(row: any): LiveAccessEvent {
     endsAt: row.ends_at ?? null,
     liveMode: row.live_mode,
     audienceMode: normalizeAudienceMode(row.audience_mode),
-    displayViewerCount: row.display_viewer_count ?? null,
     autoRecord: !!row.auto_record,
     premiereSeconds: row.premiere_seconds ?? null,
     qaOpensAt: row.qa_opens_at ?? null,
@@ -571,8 +786,7 @@ function toAccessEvent(row: any): LiveAccessEvent {
     visibility: row.visibility,
     cohortId: row.cohort_id ?? null,
     recordingUrl: row.recording_url ?? null,
-    dailyRoomName: row.daily_room_name ?? null,
-    dailyRoomUrl: row.daily_room_url ?? null,
+    primaryHostId: row.live_primary_host_id ?? null,
   };
 }
 
@@ -583,12 +797,4 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 /** A malformed id (22P02) is "no such row", not a database failure. */
 function isBadId(error: { code?: string }): boolean {
   return error.code === "22P02";
-}
-
-function isMissingTable(error: { code?: string; message?: string }): boolean {
-  return (
-    error.code === "PGRST205" ||
-    error.code === "42P01" ||
-    /does not exist|schema cache/i.test(error.message ?? "")
-  );
 }

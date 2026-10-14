@@ -581,12 +581,11 @@ export async function updateSession(request: NextRequest) {
       // Every other /dashboard route bounces home. The sidebar hides the
       // links too; this is the hard server-side gate, so a typed URL, a
       // stale link, or a prefetch can't reach past the designated pages.
-      // Staff previewing the student view are exempt. The live rooms get no
-      // exemption of their own here: a 1:1 room is under /dashboard/calls,
-      // which is on the allowed list (pre-cohort interviews are the point of
-      // it), and a webinar room stays locked like the events list that links
-      // to it, so a pre-cohort student cannot walk into a cohort webinar
-      // their RLS read happens to allow.
+      // Staff previewing the student view are exempt. Both live rooms are on
+      // the allowed list (lib/pre-cohort.ts): a 1:1 room is under
+      // /dashboard/calls, and a webinar room is allowed so a pre-start
+      // orientation webinar can be attended — the event's RLS still decides
+      // who may see it, and the events list itself stays locked.
       if (
         path.startsWith("/dashboard") &&
         !canAccessAdmin(caps) &&

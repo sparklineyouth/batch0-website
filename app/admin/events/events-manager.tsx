@@ -11,7 +11,6 @@ import {
   FieldError,
 } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
-import { normalizeDisplayViewers } from "@/lib/live";
 import { isHostedOnBatch0, isPremiere } from "@/lib/webinars";
 import { Toggle } from "@/components/ui/toggle";
 import { ConfirmDialog } from "@/components/ui/dialog";
@@ -224,7 +223,6 @@ export function EventsManager({
               recording_url: null,
               visibility: "enrolled",
               live_mode: "external",
-              display_viewer_count: null,
               daily_room_name: null,
               daily_room_url: null,
             })
@@ -285,7 +283,7 @@ export function EventsManager({
                     href={`/dashboard/events/${e.id}/live`}
                     className="p-1.5 text-ink-faint hover:text-ink"
                     aria-label="Host room"
-                    title="Host room — opens an hour before the start"
+                    title="Host room"
                   >
                     <Video className="inline h-4 w-4" />
                   </Link>
@@ -579,37 +577,13 @@ function EventForm({
               >
                 /dashboard/events/{initial.id}/live — Host room
               </Link>
-              . Hosts can open it from an hour before the start; students from
-              15 minutes before.
+              . Hosts can open it any time; students from 15 minutes before, or
+              once a host is live.
             </>
           ) : (
             <>The room link appears here once you save the event.</>
           )}
         </p>
-      )}
-      {e.live_mode !== "external" && (
-        <div>
-          <Label>Shown attendees (optional)</Label>
-          <Input
-            type="number"
-            min={0}
-            inputMode="numeric"
-            value={e.display_viewer_count ?? ""}
-            onChange={(ev) =>
-              setE({
-                ...e,
-                display_viewer_count: normalizeDisplayViewers(ev.target.value),
-              })
-            }
-            placeholder="Leave blank to hide the count"
-          />
-          <p className="mt-1.5 text-xs text-ink-faint">
-            {e.display_viewer_count !== null &&
-            e.display_viewer_count !== undefined
-              ? `Everyone watching sees “${e.display_viewer_count.toLocaleString()} watching,” in place of the hidden headcount.`
-              : "Blank keeps turnout hidden from the audience. Set a number to announce that many watching to everyone."}
-          </p>
-        </div>
       )}
       <div>
         <Label>Recording URL (after the event)</Label>

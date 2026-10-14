@@ -20,7 +20,6 @@ import {
 } from "@/lib/daily";
 import {
   DEFAULT_EVENT_MINUTES,
-  normalizeDisplayViewers,
   roomWindow,
   type LiveMode,
 } from "@/lib/live";
@@ -79,12 +78,6 @@ export type EventInput = {
   recording_url: string | null;
   visibility: "enrolled" | "staff" | "public";
   live_mode: LiveMode;
-  /**
-   * Announced attendance shown in the live room in place of the hidden roster
-   * ("43 watching"). Null / omitted = the private default. Display only — see
-   * lib/live.ts. Sanitized on save regardless of what the form sends.
-   */
-  display_viewer_count?: number | null;
   daily_room_name?: string | null;
   daily_room_url?: string | null;
 
@@ -229,9 +222,12 @@ export async function saveEvent(
       .maybeSingle();
     const p = prior as any;
     if (p) {
-      const w = roomWindow(input.starts_at, input.ends_at || null);
+      // A stamp from more than an hour before this run's start belongs to an
+      // earlier run.
+      const runOpensAt =
+        roomWindow(input.starts_at, input.ends_at || null).start - 60 * 60_000;
       const stale = (at: string | null) =>
-        !!at && new Date(at).getTime() < w.hostOpensAt;
+        !!at && new Date(at).getTime() < runOpensAt;
       if (stale(p.live_started_at)) liveReset.live_started_at = null;
       if (stale(p.live_ended_at)) liveReset.live_ended_at = null;
       if (stale(p.assets_shared_at)) liveReset.assets_shared_at = null;
@@ -260,15 +256,11 @@ export async function saveEvent(
     recording_url: input.recording_url?.trim() || null,
     visibility: input.visibility,
     live_mode: input.live_mode,
-    // Re-sanitized here, not trusted from the form: the room reads this back to
-    // decide what number the whole audience sees.
-    display_viewer_count: normalizeDisplayViewers(input.display_viewer_count),
     daily_room_name: roomName,
     daily_room_url: roomUrl,
 
-    // Re-sanitized on the way in, exactly like display_viewer_count and for a
-    // sharper reason: this value decides whether one student's words are shown
-    // to another. `normalizeAudienceMode` fails closed, so a form that sends
+    // Re-sanitized on the way in: this value decides whether one student's
+    // words are shown to another. `normalizeAudienceMode` fails closed, so a form that sends
     // nothing, or a value this build does not recognise, stores 'private'.
     audience_mode: normalizeAudienceMode(input.audience_mode),
     auto_record: !!input.auto_record,

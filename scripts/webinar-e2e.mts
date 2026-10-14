@@ -37,6 +37,8 @@
  *   - the host presses End for everyone (arm, then confirm): every viewer is
  *     moved to "This webinar has ended" within seconds, their connections
  *     close and frames stop, and a fresh join is refused;
+ *   - the host shares a screen: a connected viewer and one who joins
+ *     MID-SHARE both see it, and stopping returns everyone to the camera;
  *   - the host presses Reopen, goes back on air, and the ended viewer is
  *     offered Rejoin (the ended screen's slow poll) and decodes video again;
  *   - the 1:1 is hosted by a MENTOR (the live-room middleware exemption):
@@ -418,11 +420,52 @@ window.RTCPeerConnection.prototype = Native.prototype;
 Object.assign(window.RTCPeerConnection, Native);
 `;
 
+// --- screen share (fake) ---------------------------------------------------
+/**
+ * A deterministic "screen" for the host: getDisplayMedia answers with a
+ * moving canvas instead of a picker, so a headless run can share. The app
+ * cannot tell the difference — any video track can fill the screen slot.
+ */
+const FAKE_DISPLAY = `
+if (navigator.mediaDevices) {
+  navigator.mediaDevices.getDisplayMedia = async () => {
+    const c = document.createElement("canvas");
+    c.width = 1280; c.height = 720;
+    const g = c.getContext("2d");
+    let n = 0;
+    setInterval(() => {
+      g.fillStyle = n % 2 ? "#123456" : "#654321";
+      g.fillRect(0, 0, c.width, c.height);
+      g.fillStyle = "#fff";
+      g.font = "72px sans-serif";
+      g.fillText("slide " + n++, 80, 200);
+    }, 100);
+    return c.captureStream(10);
+  };
+}
+`;
+
+/** Decoded frames on the SCREEN slot (mid 1) of connections built after `from`. */
+const screenFramesSince = (from: number) => `(async () => {
+  let frames = 0;
+  for (const pc of (window.__b0pcs || []).slice(${from})) {
+    let report;
+    try { report = await pc.getStats(); } catch { continue; }
+    report.forEach((s) => {
+      if (s.type === "inbound-rtp" && s.kind === "video" && s.mid === "1") {
+        frames += s.framesDecoded || 0;
+      }
+    });
+  }
+  return frames;
+})()`;
+
 async function openAs(
   browser: Browser,
   email: string,
   path: string,
   label: string,
+  initScript?: string,
 ): Promise<{ ctx: BrowserContext; page: Page }> {
   const ctx = await browser.newContext({
     permissions: ["camera", "microphone"],
@@ -440,6 +483,7 @@ async function openAs(
     })),
   );
   await ctx.addInitScript(TRACE_PCS);
+  if (initScript) await ctx.addInitScript(initScript);
   const page = await ctx.newPage();
   page.on("pageerror", (e) => info(`[${label}] page error: ${e.message}`));
   page.on("console", (m) => {
@@ -618,7 +662,7 @@ async function main() {
 
     // --- host starts ------------------------------------------------------
     console.log("\nhost");
-    const host = await openAs(browser, HOST_EMAIL, live, "host");
+    const host = await openAs(browser, HOST_EMAIL, live, "host", FAKE_DISPLAY);
     contexts.push(host.ctx);
     check(await enterRoom(host.page, "host"), "host reached the green room and started");
 
@@ -814,6 +858,59 @@ async function main() {
       return /2\s+watching/i.test(body);
     }, 30_000);
     check(!!countsTwo, "host's headcount reflects BOTH students");
+
+    // --- screen share, and a viewer who arrives MID-SHARE ----------------
+    //
+    // The share's on/off rides on the offer itself (`slots`), because a
+    // viewer has no connection to file a separate `media` message under
+    // until the offer lands — that message used to be dropped, and anyone
+    // who joined or reloaded mid-share watched the host's face instead of
+    // the slides until the host happened to toggle something.
+    console.log("\nhost shares the screen; a viewer arrives mid-share");
+    check(
+      await press(host.page, /^share screen$/i, "host's Share screen"),
+      "host started sharing (a fake capture)",
+    );
+    const sharedSeen = await until(
+      "connected viewer to be shown the share",
+      async () => (await viewer2.page.getByText(/presenting/i).count()) > 0,
+      20_000,
+    );
+    check(!!sharedSeen, "a viewer already in the room is shown the share");
+
+    await viewer2.page.reload({ waitUntil: "domcontentloaded" });
+    check(await enterRoom(viewer2.page, "viewer2 mid-share"), "a viewer joins mid-share");
+    const midShare = await until(
+      "mid-share viewer to be shown the share",
+      async () => (await viewer2.page.getByText(/presenting/i).count()) > 0,
+      30_000,
+    );
+    check(!!midShare, "a viewer who joins MID-SHARE is shown the screen");
+    const shareA: any = await until(
+      "mid-share viewer to decode the screen",
+      async () => {
+        const n = (await viewer2.page.evaluate(screenFramesSince(0))) as number;
+        return n > 0 ? n : null;
+      },
+      30_000,
+    );
+    await new Promise((r) => setTimeout(r, 2000));
+    const shareB = (await viewer2.page.evaluate(screenFramesSince(0))) as number;
+    check(!!shareA && shareB > shareA, "…and decodes it (screen frames climb)");
+
+    check(
+      await press(host.page, /^stop sharing screen$/i, "host's Stop sharing"),
+      "host stopped sharing",
+    );
+    const unshared = await until(
+      "viewers to leave the presenting layout",
+      async () =>
+        (await viewer.page.getByText(/presenting/i).count()) === 0 &&
+        (await viewer2.page.getByText(/presenting/i).count()) === 0,
+      20_000,
+    );
+    check(!!unshared, "stopping the share takes every viewer back to the camera");
+    // --- end screen share ---------------------------------------------------
 
     // --- camera off must read as "camera off", not as a black frame -------
     //

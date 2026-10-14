@@ -9,7 +9,6 @@ import { QAPanel } from "@/components/live/qa-panel";
 import { Button, ButtonLink } from "@/components/ui/button";
 import {
   canSeeRoster,
-  headcountLabel,
   type LiveRole,
   type WebinarQuestion,
 } from "@/lib/live";
@@ -102,7 +101,6 @@ export function LiveRoom({
   role,
   kind = "event",
   backHref,
-  displayViewerCount = null,
   qa,
 }: {
   title: string;
@@ -115,12 +113,6 @@ export function LiveRoom({
    */
   kind?: "event" | "call";
   backHref: string;
-  /**
-   * Admin-announced headcount shown to everyone in the header. Null = nothing
-   * shown here (Daily owns its own participants bar for the host). See
-   * `headcountLabel`.
-   */
-  displayViewerCount?: number | null;
   // Present for webinars, absent for 1:1 calls. When set, the room is a
   // hosted webinar: the audience is hidden, Daily's chat is off, and questions
   // flow through our own Q&A panel instead. A 1:1 has no audience to hide and
@@ -132,15 +124,6 @@ export function LiveRoom({
   const callRef = useRef<DailyCall | null>(null);
   const [phase, setPhase] = useState<Phase>("prejoin");
   const [error, setError] = useState<string | null>(null);
-
-  // The announced headcount, if the admin set one. Daily manages its own
-  // roster, so a host relies on Prebuilt's participants bar for the truth and
-  // this only ever renders the announced figure — to everyone, or to no one.
-  const headcount = headcountLabel({
-    role,
-    displayCount: displayViewerCount,
-    realCount: null,
-  });
 
   const destroy = useCallback(() => {
     const call = callRef.current;
@@ -294,9 +277,6 @@ export function LiveRoom({
             {phase === "joined" && <LiveDot />}
           </div>
           <div className="flex items-center gap-2 text-xs text-ink-faint">
-            {headcount && (
-              <span>{headcount.count.toLocaleString()} watching</span>
-            )}
             <span
               className={`shrink-0 rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
                 role === "host"

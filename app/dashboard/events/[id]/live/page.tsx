@@ -3,16 +3,7 @@ import Link from "next/link";
 import { requireUser, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  createRoom,
-  dailyConfigured,
-  mintToken,
-  roomIsLive,
-} from "@/lib/daily";
-import {
-  HOST_JOIN_OPENS_MINUTES_BEFORE,
   JOIN_OPENS_MINUTES_BEFORE,
-  normalizeDisplayViewers,
-  roomWindow,
   webinarHasBegun,
   type LiveRole,
 } from "@/lib/live";
@@ -35,9 +26,7 @@ import {
 import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
 import { claimSpeakerSlot } from "@/app/admin/events/webinar-actions";
 import { fetchRoomState } from "./room-actions";
-import { LiveRoom } from "./live-room";
 import { BuiltinEventRoom } from "./builtin-room";
-import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -46,9 +35,7 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-// A meeting token is minted per request and expires; there is nothing here
-// worth caching, and a cached page would hand a stale token to the next
-// viewer.
+// Per-user, per-moment access: nothing here is worth caching.
 export const dynamic = "force-dynamic";
 
 export default async function EventLivePage(
@@ -139,15 +126,14 @@ export default async function EventLivePage(
     );
   }
 
-  // The window, per role, re-checked here because this is the side that
-  // hands out credentials. Without it a student could open this page three
-  // weeks early and hold a valid token for a room nobody is watching.
+  // The window, per role (roomAccess in lib/live.ts):
   //
-  //   hosts    from an hour before the start (to set up) until three hours
-  //            after the scheduled end — INCLUDING after End, so staff reach
-  //            the ended screen and can Reopen.
-  //   viewers  from 15 minutes before; refused once the webinar has been
-  //            ended; and past end+30m only while a host is still present.
+  //   hosts    any time until three hours after the scheduled end —
+  //            INCLUDING after End, so staff reach the ended screen and can
+  //            Reopen.
+  //   viewers  from 15 minutes before, or as soon as a host has gone live;
+  //            refused once the webinar has been ended; and past end+30m only
+  //            while a host is still present.
   const where = await roomAccessFor(access);
   if (where === "ended") {
     // Viewers only — a host's window ignores End. The ended shell, rather
@@ -181,16 +167,12 @@ export default async function EventLivePage(
     );
   }
   if (where === "early" || where === "closed") {
-    const opensMinutes =
-      role === "host" ? HOST_JOIN_OPENS_MINUTES_BEFORE : JOIN_OPENS_MINUTES_BEFORE;
     const files = where === "closed" ? await sharedSessionFiles(ev.id) : null;
     return (
       <Shell title={ev.title}>
         {where === "early" ? (
           <p className="text-sm text-ink-soft">
-            {role === "host"
-              ? `The room opens for hosts ${opensMinutes} minutes before it starts`
-              : `This opens ${opensMinutes} minutes before it starts`}{" "}
+            {`This opens ${JOIN_OPENS_MINUTES_BEFORE} minutes before it starts`}{" "}
             — <LocalTime value={ev.startsAt} />.
           </p>
         ) : (
@@ -214,217 +196,118 @@ export default async function EventLivePage(
 
   const speakers = await listSpeakers(ev.id);
 
-  // The admin-announced headcount, if any — shown to everyone in the room in
-  // place of the hidden roster. Sanitized here (not trusted from the row) since
-  // the room renders it straight into the header.
-  const displayViewerCount = normalizeDisplayViewers(ev.displayViewerCount);
-
-  const end = new Date(roomWindow(ev.startsAt, ev.endsAt).end);
-
-  // Seeding the Q&A panel is a query against our own database and needs
-  // nothing from Daily, so it is kicked off first and awaited last: the room
-  // check and the token mint below are HTTP calls to Daily, and this takes
-  // the slower side off the critical path instead of adding to it.
-  //
   // The Q&A seed keeps the audience-privacy split from the first paint: the
   // host gets the whole queue, a viewer only ever gets their own questions —
   // the same rule the panel's polling enforces, so nothing is briefly visible
-  // that then disappears.
+  // that then disappears. Kicked off first and awaited last.
   const questionsPromise =
     role === "host"
       ? listQuestionsForEvent(ev.id)
       : listQuestionsForAsker(ev.id, access.userId);
-  // It is awaited below, where a failure still fails the page. This just
-  // keeps a rejection that lands while a provider round trip is in flight
-  // from being "unhandled" in the meantime.
   questionsPromise.catch(() => {});
 
-  // ---- batch0 Live (the default) ------------------------------------------
+  // The credentials are issued by a server action once the browser is
+  // actually joining, so this page renders as fast as its own queries.
+  const audienceMode = ev.audienceMode;
+
+  // ---- Premiere -------------------------------------------------------
   //
-  // Nothing to mint and no provider to call: the credentials are issued by a
-  // server action once the browser is actually joining, so this page renders
-  // as fast as the Q&A query. The comparison with the Daily branch below is
-  // the honest argument for the switch — that path cannot render at all
-  // without two HTTP round trips to a third party that currently refuses
-  // every media session.
-  if (env.liveProvider === "builtin") {
-    const audienceMode = ev.audienceMode;
-
-    // ---- Premiere -------------------------------------------------------
-    //
-    // Resolved on the SERVER, from the server's clock. This is the one number
-    // in the feature that must not come from the browser: a viewer whose
-    // laptop is four minutes fast would sit four minutes ahead of the room —
-    // visibly, in chat, reacting to something nobody else has seen yet — and
-    // one whose clock is out by an hour would watch a black screen and
-    // conclude the webinar never started.
-    //
-    // `liveEndedAt` goes in too: an ended premiere is ended, not still
-    // playing to the audience under an "Ended" badge.
-    const premiere = isPremiere(ev.liveMode)
-      ? premiereState({
-          startsAt: ev.startsAt,
-          premiereSeconds: ev.premiereSeconds,
-          qaOpensAt: ev.qaOpensAt,
-          liveStartedAt: ev.liveStartedAt,
-          liveEndedAt: ev.liveEndedAt,
-          endsAt: ev.endsAt,
-        })
-      : null;
-
-    // The recording and the deck, signed only for the people entitled to them
-    // right now. Read together because both are one query against our own
-    // database and neither is on the critical path of "the host pressed Start".
-    // `fetchRoomState` is a server action, and calling one from a server
-    // component is just calling an async function — so the chat, the question
-    // queue and the polls are seeded here rather than fetched on mount. That
-    // is not only a saved round trip: the panel's privacy shaping (what a
-    // viewer may see in each audience mode) lives inside that one function, and
-    // re-deriving a seed here would be a second copy of the rule that decides
-    // whether one student's words reach another.
-    const [assets, initialRoomState] = await Promise.all([
-      listAssets(ev.id, ["premiere", "deck", "handout"]),
-      fetchRoomState(ev.id),
-    ]);
-    const speakerCards = speakers;
-
-    const premiereAsset = assets.find((a) => a.kind === "premiere") ?? null;
-    // Signed for two hours rather than the usual ten minutes, and this is the
-    // one place in the repo that deviates. A premiere is a single continuous
-    // playback that can run the length of a talk; a ten-minute URL would expire
-    // under a viewer mid-sentence, and although the player re-mints on error,
-    // doing that eight times an hour for every viewer is a lot of machinery to
-    // avoid one number. Two hours covers the longest premiere the CHECK allows
-    // to start, and the URL is useless to anyone who cannot already see the
-    // event.
-    const premiereUrl = premiereAsset
-      ? await signedAssetUrl(premiereAsset.storagePath, 60 * 120)
-      : null;
-
-    // Decks are offered in the room only when the admin meant them to be. The
-    // default is that the follow-up email carries them AFTER the webinar —
-    // handing out the slides at minute one is how an audience reads ahead
-    // instead of listening.
-    const deck = assets.filter((a) => a.kind !== "premiere");
-
-    return (
-      <BuiltinEventRoom
-        eventId={ev.id}
-        // The id every other host's browser knows this one by (a peer's id
-        // is its user id) — what the recorder election compares.
-        selfUserId={access.userId}
-        selfName={profile?.full_name || "Host"}
-        title={ev.title}
-        startsAt={ev.startsAt}
-        endsAt={ev.endsAt}
-        role={role}
-        isStaffHost={isStaffHost}
-        // From the start only; then staff always, and a guest speaker only
-        // while no staff host is present. The room-state read computes it
-        // with the server's presence data; without that read (0084 not
-        // applied) only staff can end, and still not before the start.
-        canEnd={
-          initialRoomState?.canEnd ??
-          (isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt))
-        }
-        backHref={backHref}
-        audienceMode={audienceMode}
-        displayViewerCount={displayViewerCount}
-        autoRecord={ev.autoRecord}
-        premiere={
-          premiere && premiereUrl && ev.premiereSeconds
-            ? {
-                ...premiere,
-                url: premiereUrl,
-                durationSeconds: ev.premiereSeconds,
-              }
-            : null
-        }
-        liveEndedAt={ev.liveEndedAt}
-        speakers={speakerCards}
-        deck={deck.map((a) => ({
-          id: a.id,
-          filename: a.filename,
-          sizeBytes: a.sizeBytes,
-        }))}
-        initialQuestions={await questionsPromise}
-        initialRoomState={initialRoomState}
-      />
-    );
-  }
-
-  // ---- Daily (opt-in via LIVE_PROVIDER=daily) -----------------------------
+  // Resolved on the SERVER, from the server's clock. This is the one number
+  // in the feature that must not come from the browser: a viewer whose
+  // laptop is four minutes fast would sit four minutes ahead of the room —
+  // visibly, in chat, reacting to something nobody else has seen yet — and
+  // one whose clock is out by an hour would watch a black screen and
+  // conclude the webinar never started.
   //
-  // Behind exactly the same gates as the built-in room above — access, role,
-  // window, End — because they all ran before this branch.
-  if (!dailyConfigured() || !ev.dailyRoomName) {
-    return (
-      <Shell title={ev.title}>
-        <p className="text-sm text-ink-soft">
-          Live video isn&rsquo;t configured on this environment.
-        </p>
-        <BackLink href={backHref} />
-      </Shell>
-    );
-  }
+  // `liveEndedAt` goes in too: an ended premiere is ended, not still
+  // playing to the audience under an "Ended" badge.
+  const premiere = isPremiere(ev.liveMode)
+    ? premiereState({
+        startsAt: ev.startsAt,
+        premiereSeconds: ev.premiereSeconds,
+        qaOpensAt: ev.qaOpensAt,
+        liveStartedAt: ev.liveStartedAt,
+        liveEndedAt: ev.liveEndedAt,
+        endsAt: ev.endsAt,
+      })
+    : null;
 
-  // The stored room can be dead. Daily deletes a room at its `exp` — the
-  // event's end time as it was when the room was made — so a webinar moved to
-  // a later date (the Sunday reschedule in migration 0069, or any edit that
-  // predates saveEvent re-stamping the room) still points at a room Daily has
-  // reaped. Minting a token for it succeeds server-side; the only symptom is
-  // the browser failing to connect, with no way for the row to heal. So the
-  // same recovery the 1:1 call page uses: a name that no longer resolves is
-  // replaced by a fresh room, claimed with a compare-and-set so two people
-  // arriving at once converge on one room rather than two.
-  let roomName: string = ev.dailyRoomName;
-  let roomUrl: string = ev.dailyRoomUrl ?? "";
-  if (!(await roomIsLive(roomName, end))) {
-    const admin = createAdminClient();
-    const fresh = await createRoom({
-      namePrefix: ev.title || "event",
-      mode: "webinar",
-      expiresAt: new Date(end.getTime() + 2 * 60 * 60 * 1000),
-      enableRecording: true,
-    });
-    await admin
-      .from("events")
-      .update({ daily_room_name: fresh.name, daily_room_url: fresh.url })
-      .eq("id", ev.id)
-      // Replace only the exact dead value we saw — if someone else has
-      // already swapped in a live room, theirs stands and ours is orphaned
-      // and expires on its own.
-      .eq("daily_room_name", roomName);
-    const { data: settled } = await admin
-      .from("events")
-      .select("daily_room_name, daily_room_url")
-      .eq("id", ev.id)
-      .maybeSingle();
-    roomName = (settled as any)?.daily_room_name ?? fresh.name;
-    roomUrl = (settled as any)?.daily_room_url ?? fresh.url;
-  }
-
-  const [token, initialQuestions] = await Promise.all([
-    mintToken({
-      roomName,
-      userId: access.userId,
-      userName: profile?.full_name || "Guest",
-      role,
-      // Slightly past the end so the call can overrun, but not open-ended.
-      expiresAt: new Date(end.getTime() + 60 * 60 * 1000),
-    }),
-    questionsPromise,
+  // The recording and the deck, signed only for the people entitled to them
+  // right now. Read together because both are one query against our own
+  // database and neither is on the critical path of "the host pressed Start".
+  // `fetchRoomState` is a server action, and calling one from a server
+  // component is just calling an async function — so the chat, the question
+  // queue and the polls are seeded here rather than fetched on mount. That
+  // is not only a saved round trip: the panel's privacy shaping (what a
+  // viewer may see in each audience mode) lives inside that one function, and
+  // re-deriving a seed here would be a second copy of the rule that decides
+  // whether one student's words reach another.
+  const [assets, initialRoomState] = await Promise.all([
+    listAssets(ev.id, ["premiere", "deck", "handout"]),
+    fetchRoomState(ev.id),
   ]);
+  const speakerCards = speakers;
+
+  const premiereAsset = assets.find((a) => a.kind === "premiere") ?? null;
+  // Signed for two hours rather than the usual ten minutes, and this is the
+  // one place in the repo that deviates. A premiere is a single continuous
+  // playback that can run the length of a talk; a ten-minute URL would expire
+  // under a viewer mid-sentence, and although the player re-mints on error,
+  // doing that eight times an hour for every viewer is a lot of machinery to
+  // avoid one number. Two hours covers the longest premiere the CHECK allows
+  // to start, and the URL is useless to anyone who cannot already see the
+  // event.
+  const premiereUrl = premiereAsset
+    ? await signedAssetUrl(premiereAsset.storagePath, 60 * 120)
+    : null;
+
+  // Decks are offered in the room only when the admin meant them to be. The
+  // default is that the follow-up email carries them AFTER the webinar —
+  // handing out the slides at minute one is how an audience reads ahead
+  // instead of listening.
+  const deck = assets.filter((a) => a.kind !== "premiere");
 
   return (
-    <LiveRoom
+    <BuiltinEventRoom
+      eventId={ev.id}
+      // The id every other host's browser knows this one by (a peer's id
+      // is its user id) — what the recorder election compares.
+      selfUserId={access.userId}
+      selfName={profile?.full_name || "Host"}
       title={ev.title}
-      roomUrl={roomUrl}
-      token={token}
+      startsAt={ev.startsAt}
+      endsAt={ev.endsAt}
       role={role}
+      isStaffHost={isStaffHost}
+      // From the start only; then staff always, and a guest speaker only
+      // while no staff host is present. The room-state read computes it
+      // with the server's presence data; without that read (0084 not
+      // applied) only staff can end, and still not before the start.
+      canEnd={
+        initialRoomState?.canEnd ??
+        (isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt))
+      }
       backHref={backHref}
-      displayViewerCount={displayViewerCount}
-      qa={{ eventId: ev.id, initialQuestions }}
+      audienceMode={audienceMode}
+      autoRecord={ev.autoRecord}
+      premiere={
+        premiere && premiereUrl && ev.premiereSeconds
+          ? {
+              ...premiere,
+              url: premiereUrl,
+              durationSeconds: ev.premiereSeconds,
+            }
+          : null
+      }
+      liveEndedAt={ev.liveEndedAt}
+      speakers={speakerCards}
+      deck={deck.map((a) => ({
+        id: a.id,
+        filename: a.filename,
+        sizeBytes: a.sizeBytes,
+      }))}
+      initialQuestions={await questionsPromise}
+      initialRoomState={initialRoomState}
     />
   );
 }

@@ -39,8 +39,8 @@
  * Only the rooms — not /dashboard/calls or /dashboard/events, which are the
  * student's own lists and would show a mentor an empty page. And only this
  * gate: the pre-cohort lockdown in the middleware still applies to the rooms
- * as to every other /dashboard path (the 1:1 room is on its allowed list, the
- * webinar room is not, like the events list that links to it).
+ * as to every other /dashboard path (both rooms are on its allowed list; see
+ * isPreCohortAllowedPath).
  *
  * Pure and import-free, because middleware imports it (Edge) and
  * lib/dashboard-gate.test.ts runs it under plain `node --test`.

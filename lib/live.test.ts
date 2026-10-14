@@ -6,15 +6,15 @@ import {
   joinState,
   inviteEndsAt,
   normalizeQuestion,
-  normalizeDisplayViewers,
-  headcountLabel,
   MAX_QUESTION_LENGTH,
-  MAX_DISPLAY_VIEWERS,
   JOIN_OPENS_MINUTES_BEFORE,
   JOIN_CLOSES_MINUTES_AFTER,
   DEFAULT_EVENT_MINUTES,
-  HOST_JOIN_OPENS_MINUTES_BEFORE,
+  CALL_STAFF_OPENS_MINUTES_BEFORE,
   ROOM_HARD_CLOSE_MINUTES_AFTER,
+  callRoomAccess,
+  mayEndCall,
+  mayEndWebinar,
   roomAccess,
   roomIsOpen,
   roomWindow,
@@ -26,8 +26,11 @@ import {
   isStaffOnCall,
   joinNames,
   normalizeCohostIds,
+  sameRoomState,
+  shouldClaimPrimary,
   staffNames,
   type CallInvite,
+  type LiveRoomState,
   type LiveRole,
   type RoomAccess,
 } from "./live.ts";
@@ -275,76 +278,6 @@ test("an over-long question is capped at the DB limit", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Announced attendance
-// ---------------------------------------------------------------------------
-//
-// normalizeDisplayViewers is the shared truth the form, the server action, and
-// the room all read, so "what counts as nothing" (null) and "what counts as a
-// figure" both matter. headcountLabel is where the privacy default and the
-// announced override meet — the case that must never regress is a viewer with
-// no announced count seeing nothing at all.
-
-test("an unset / blank shown-attendees value announces nothing", () => {
-  assert.equal(normalizeDisplayViewers(null), null);
-  assert.equal(normalizeDisplayViewers(undefined), null);
-  assert.equal(normalizeDisplayViewers(""), null);
-  assert.equal(normalizeDisplayViewers("   "), null);
-});
-
-test("a real shown-attendees figure is kept, from a string or a number", () => {
-  assert.equal(normalizeDisplayViewers("43"), 43);
-  assert.equal(normalizeDisplayViewers(43), 43);
-  assert.equal(normalizeDisplayViewers("  43 "), 43);
-  assert.equal(normalizeDisplayViewers(0), 0); // an explicit, deliberate zero
-});
-
-test("a fractional or negative figure is floored / rejected", () => {
-  assert.equal(normalizeDisplayViewers("12.9"), 12);
-  assert.equal(normalizeDisplayViewers(-5), null);
-  assert.equal(normalizeDisplayViewers("nope"), null);
-});
-
-test("a wildly large figure is clamped to the cap, not rejected", () => {
-  assert.equal(normalizeDisplayViewers(MAX_DISPLAY_VIEWERS + 1), MAX_DISPLAY_VIEWERS);
-  assert.equal(normalizeDisplayViewers("99999999"), MAX_DISPLAY_VIEWERS);
-});
-
-test("an announced count overrides the roster for everyone, including viewers", () => {
-  // The whole point of the field: the audience sees the chosen number.
-  assert.deepEqual(headcountLabel({ role: "viewer", displayCount: 43, realCount: null }), {
-    count: 43,
-    announced: true,
-  });
-  // A host sees exactly what the audience sees; `announced` lets the caller
-  // still surface the true roster alongside.
-  assert.deepEqual(headcountLabel({ role: "host", displayCount: 43, realCount: 2 }), {
-    count: 43,
-    announced: true,
-  });
-});
-
-test("with no announced count, the privacy default holds", () => {
-  // A viewer sees nothing at all — never a "0".
-  assert.equal(headcountLabel({ role: "viewer", displayCount: null, realCount: 5 }), null);
-  assert.equal(headcountLabel({ role: "viewer", displayCount: null, realCount: null }), null);
-  // A host sees the real roster size.
-  assert.deepEqual(headcountLabel({ role: "host", displayCount: null, realCount: 5 }), {
-    count: 5,
-    announced: false,
-  });
-});
-
-test("a backend with no client-side roster shows the announced figure or nothing", () => {
-  // realCount null models Daily, which owns its own participant list.
-  assert.deepEqual(headcountLabel({ role: "host", displayCount: 43, realCount: null }), {
-    count: 43,
-    announced: true,
-  });
-  assert.equal(headcountLabel({ role: "host", displayCount: null, realCount: null }), null);
-});
-
-
-// ---------------------------------------------------------------------------
 // Room access — the per-role gate every server path shares
 // ---------------------------------------------------------------------------
 //
@@ -354,11 +287,17 @@ test("a backend with no client-side roster shows the announced figure or nothing
 
 function viewer(
   minutes: number,
-  opts: { liveEndedAt?: string | null; hostPresent?: boolean; endsAt?: Date | null } = {},
+  opts: {
+    liveEndedAt?: string | null;
+    liveStartedAt?: string | null;
+    hostPresent?: boolean;
+    endsAt?: Date | null;
+  } = {},
 ): RoomAccess {
   return roomAccess({
     startsAt: START,
     endsAt: opts.endsAt === undefined ? END : opts.endsAt,
+    liveStartedAt: opts.liveStartedAt ?? null,
     liveEndedAt: opts.liveEndedAt ?? null,
     isHost: false,
     hostPresent: opts.hostPresent ?? false,
@@ -377,24 +316,19 @@ function host(minutes: number, liveEndedAt: string | null = null): RoomAccess {
   });
 }
 
-test("the host window is wider than the audience's, and the constants say so", () => {
-  assert.equal(HOST_JOIN_OPENS_MINUTES_BEFORE, 60);
+test("the window constants and instants", () => {
   assert.equal(ROOM_HARD_CLOSE_MINUTES_AFTER, 180);
   const w = roomWindow(START, END);
-  assert.equal(w.hostOpensAt, at(-60).getTime());
   assert.equal(w.viewerOpensAt, at(-15).getTime());
   assert.equal(w.viewerClosesAt, at(90).getTime());
   assert.equal(w.hardCloseAt, at(240).getTime());
 });
 
-test("a webinar has begun at its start, or earlier only when a host went live", () => {
-  // The host window opens an hour early for setup; a camera check at 17:10
-  // is not the webinar, and End for everyone must not exist there.
+test("a webinar has begun at its start, or earlier once a host went live", () => {
   assert.equal(webinarHasBegun(START, null, at(-50).getTime()), false);
   assert.equal(webinarHasBegun(START, null, at(-1).getTime()), false);
   assert.equal(webinarHasBegun(START, null, at(0).getTime()), true);
   assert.equal(webinarHasBegun(START, null, at(30).getTime()), true);
-  // A premiere handed over early ("Go live now") has begun, whatever the clock.
   assert.equal(
     webinarHasBegun(START, at(-10).toISOString(), at(-5).getTime()),
     true,
@@ -409,10 +343,23 @@ test("a viewer: early before start-15m, open at start-15m, live after the start"
   assert.equal(viewer(30), "live");
 });
 
+test("a viewer may come in early once a host has gone live", () => {
+  const wentLive = at(-120).toISOString();
+  assert.equal(viewer(-119, { liveStartedAt: wentLive }), "open");
+  assert.equal(viewer(-24 * 60, { liveStartedAt: wentLive }), "open");
+  assert.equal(viewer(5, { liveStartedAt: wentLive }), "live");
+  // Going live early widens the start, not the end.
+  assert.equal(viewer(91, { liveStartedAt: wentLive }), "closed");
+  // And End still wins.
+  assert.equal(
+    viewer(-60, { liveStartedAt: wentLive, liveEndedAt: at(-61).toISOString() }),
+    "ended",
+  );
+});
+
 test("a viewer is refused ('ended') inside the window once a host pressed End", () => {
   const ended = at(40).toISOString();
   assert.equal(viewer(41, { liveEndedAt: ended }), "ended");
-  // Even with a host still present — End is terminal for the audience.
   assert.equal(viewer(41, { liveEndedAt: ended, hostPresent: true }), "ended");
 });
 
@@ -428,15 +375,14 @@ test("the extension stops at the hard close, host or no host", () => {
 });
 
 test("a room with no end time is assumed to run the default length", () => {
-  // No end: the viewer window closes at start + 60 + 30.
   assert.equal(viewer(DEFAULT_EVENT_MINUTES + 30, { endsAt: null }), "live");
   assert.equal(viewer(DEFAULT_EVENT_MINUTES + 31, { endsAt: null }), "closed");
 });
 
-test("a host may open the room an hour early — an admin setting up is not 'early'", () => {
-  assert.equal(host(-61), "early");
-  assert.equal(host(-60), "open");
-  assert.equal(host(-30), "open");
+test("a host may open the room any time before the hard close — never 'early'", () => {
+  assert.equal(host(-7 * 24 * 60), "open");
+  assert.equal(host(-61), "open");
+  assert.equal(host(-1), "open");
   assert.equal(host(5), "live");
 });
 
@@ -486,4 +432,135 @@ test("an event with no end time lists with the default length", () => {
     at(DEFAULT_EVENT_MINUTES + 31),
   );
   assert.equal(s, "past");
+});
+
+// ---------------------------------------------------------------------------
+// End for everyone, and the primary seat
+// ---------------------------------------------------------------------------
+
+function mayEnd(
+  minutes: number,
+  who: { isStaff?: boolean; isSpeaker?: boolean; staffPresent?: boolean },
+  stamps: { liveStartedAt?: string | null; liveEndedAt?: string | null } = {},
+): boolean {
+  return mayEndWebinar({
+    isStaff: !!who.isStaff,
+    isSpeaker: !!who.isSpeaker,
+    staffPresent: !!who.staffPresent,
+    startsAt: START,
+    endsAt: END,
+    liveStartedAt: stamps.liveStartedAt ?? null,
+    liveEndedAt: stamps.liveEndedAt ?? null,
+    now: at(minutes),
+  });
+}
+
+test("End exists once a host went live or the start passed, up to the hard close", () => {
+  assert.equal(mayEnd(-30, { isStaff: true }), false, "not before it began");
+  assert.equal(
+    mayEnd(-30, { isStaff: true }, { liveStartedAt: at(-40).toISOString() }),
+    true,
+    "a host going live early is the start",
+  );
+  assert.equal(mayEnd(0, { isStaff: true }), true);
+  assert.equal(mayEnd(240, { isStaff: true }), true);
+  assert.equal(mayEnd(241, { isStaff: true }), false);
+  assert.equal(
+    mayEnd(10, { isStaff: true }, { liveEndedAt: at(5).toISOString() }),
+    false,
+    "already ended",
+  );
+});
+
+test("End: staff always; a speaker only with no staff host present; a viewer never", () => {
+  assert.equal(mayEnd(10, { isStaff: true, staffPresent: true }), true);
+  assert.equal(mayEnd(10, { isSpeaker: true, staffPresent: false }), true);
+  assert.equal(mayEnd(10, { isSpeaker: true, staffPresent: true }), false);
+  assert.equal(mayEnd(10, {}), false);
+});
+
+test("the primary seat: claimed when free or its holder is gone, never on a guess", () => {
+  assert.equal(shouldClaimPrimary({ current: null, selfId: "a", present: null }), true);
+  assert.equal(shouldClaimPrimary({ current: null, selfId: "a", present: [] }), true);
+  assert.equal(shouldClaimPrimary({ current: "a", selfId: "a", present: [] }), false);
+  assert.equal(shouldClaimPrimary({ current: "b", selfId: "a", present: ["b"] }), false);
+  assert.equal(shouldClaimPrimary({ current: "b", selfId: "a", present: ["a"] }), true);
+  assert.equal(
+    shouldClaimPrimary({ current: "b", selfId: "a", present: null }),
+    false,
+    "presence unreadable: keep the holder",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 1:1 room access
+// ---------------------------------------------------------------------------
+
+function call(
+  minutes: number,
+  status: string,
+  isStaff: boolean,
+  durationMinutes = 30,
+) {
+  return callRoomAccess({ status, startsAt: START, durationMinutes, isStaff, now: at(minutes) });
+}
+
+test("an unanswered invite is joinable exactly like an accepted one", () => {
+  for (const status of ["invited", "accepted"]) {
+    assert.equal(call(-10, status, false), "open", status);
+    assert.equal(call(10, status, false), "live", status);
+    assert.equal(call(10, status, true), "live", status);
+  }
+});
+
+test("declined, cancelled and completed calls are shut; an unknown status too", () => {
+  assert.equal(call(10, "declined", true), "declined");
+  assert.equal(call(10, "cancelled", false), "cancelled");
+  assert.equal(call(10, "completed", false), "completed");
+  assert.equal(call(10, "something-new", true), "cancelled");
+});
+
+test("the staff side may come in an hour early, the student 15 minutes early", () => {
+  assert.equal(CALL_STAFF_OPENS_MINUTES_BEFORE, 60);
+  assert.equal(call(-60, "accepted", true), "open");
+  assert.equal(call(-61, "accepted", true), "early");
+  assert.equal(call(-15, "accepted", false), "open");
+  assert.equal(call(-16, "accepted", false), "early");
+});
+
+test("a call that runs long is not cut off at end+30m; it closes at end+3h", () => {
+  // 30-minute call: end at +30, hard stop at +210.
+  assert.equal(call(30 + JOIN_CLOSES_MINUTES_AFTER + 1, "accepted", false), "live");
+  assert.equal(call(30 + ROOM_HARD_CLOSE_MINUTES_AFTER, "accepted", true), "live");
+  assert.equal(call(30 + ROOM_HARD_CLOSE_MINUTES_AFTER + 1, "accepted", true), "closed");
+});
+
+test("End call: from the start, while the call is open", () => {
+  const end = (minutes: number, status: string) =>
+    mayEndCall({ status, startsAt: START, now: at(minutes) });
+  assert.equal(end(-1, "accepted"), false);
+  assert.equal(end(0, "accepted"), true);
+  assert.equal(end(5, "invited"), true);
+  assert.equal(end(5, "completed"), false);
+  assert.equal(end(5, "cancelled"), false);
+});
+
+// ---------------------------------------------------------------------------
+// Room state equality
+// ---------------------------------------------------------------------------
+
+test("room state: equal by value, recording included", () => {
+  const base: LiveRoomState = {
+    primaryId: "a",
+    liveStartedAt: "t1",
+    liveEndedAt: null,
+    canEnd: true,
+    recording: { sessionId: "s", byUserId: "a", byName: "Ana", startedAt: "t2" },
+  };
+  assert.equal(sameRoomState(base, { ...base, recording: { ...base.recording! } }), true);
+  assert.equal(sameRoomState(base, { ...base, primaryId: "b" }), false);
+  assert.equal(sameRoomState(base, { ...base, canEnd: false }), false);
+  assert.equal(sameRoomState(base, { ...base, recording: null }), false);
+  assert.equal(sameRoomState(null, null), true);
+  assert.equal(sameRoomState(base, null), false);
 });

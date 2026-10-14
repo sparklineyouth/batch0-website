@@ -25,7 +25,6 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { getActionError } from "@/lib/action-error";
 import {
-  headcountLabel,
   isCallCounterpart,
   JOIN_CLOSES_MINUTES_AFTER,
   roomWindow,
@@ -67,11 +66,7 @@ import { AlertTriangle, Users, Loader2, CircleDot, PhoneOff } from "lucide-react
  *     connection recvonly, so there is nothing to un-mute;
  *   - a viewer sees the host and no one else, because the server never told
  *     it anyone else exists;
- *   - only the host sees the real headcount.
- *
- * The one deliberate exception to that last rule is an admin-announced
- * `displayViewerCount`, which is shown to everyone. `headcountLabel` owns the
- * precedence so this room and the Daily one cannot disagree about it.
+ *   - only the host sees the headcount.
  *
  * ---------------------------------------------------------------------------
  * Leave vs End — the two ways out, and why they are different buttons
@@ -289,13 +284,6 @@ type RoomProps = {
    * nothing in a tab opened from a calendar invite.
    */
   backHref: string;
-  /**
-   * Admin-announced headcount (events.display_viewer_count). When set it is
-   * shown to everyone in place of the hidden roster — the deliberate
-   * exception to audience privacy. Null keeps the default: the host sees the
-   * real count, a viewer sees nothing.
-   */
-  displayViewerCount?: number | null;
   /** Present for webinars, absent for 1:1 calls. */
   qa?: { eventId: string; initialQuestions: WebinarQuestion[] };
   /**
@@ -406,7 +394,6 @@ function BroadcastSession({
   title,
   role,
   backHref,
-  displayViewerCount = null,
   qa,
   webinar,
   call,
@@ -505,7 +492,15 @@ function BroadcastSession({
         // that is working.
       }
     };
-    pollNow.current = () => void tick();
+    // Throttled: `stage-change` arrives on a channel any participant can
+    // publish on, and each one used to cost every client a server action.
+    let lastPoll = 0;
+    pollNow.current = () => {
+      const now = Date.now();
+      if (now - lastPoll < 2_000) return;
+      lastPoll = now;
+      void tick();
+    };
     void tick();
     // Every eight seconds. Frequent enough that "go live early" reaches the
     // room while the host is still saying "we're going live now", cheap enough
@@ -539,8 +534,8 @@ function BroadcastSession({
       return;
     }
     setWebinarBegun(false);
-    // Capped at setTimeout's ceiling; hosts can only be in the room from an
-    // hour before the start, so the cap never binds in practice.
+    // Capped at setTimeout's ceiling (~24 days); the server's canEnd still
+    // decides whether End is offered.
     const t = setTimeout(() => setWebinarBegun(true), Math.min(wait, 2_147_483_647));
     return () => clearTimeout(t);
   }, [webinarStartsAt]);
@@ -615,15 +610,9 @@ function BroadcastSession({
     listPeers,
   });
 
-  // Unlike Daily, this provider knows its own roster, so `realCount` is a
-  // real number for a host rather than null — the default "host sees the
-  // truth, viewer sees nothing" comes out of `headcountLabel` directly. The
-  // engine reports null in a 1:1, so a call never grows a "0 watching" chip.
-  const headcount = headcountLabel({
-    role,
-    displayCount: displayViewerCount,
-    realCount: session.audienceCount,
-  });
+  // Hosts only: the engine reports null for a viewer and in a 1:1, so a
+  // student is never shown a count and a call never grows "0 watching".
+  const headcount = isHost ? session.audienceCount : null;
 
   // ---- Recording ----------------------------------------------------------
   //
@@ -1794,25 +1783,12 @@ function BroadcastSession({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {/*
-            By default the headcount is host-only and has no viewer
-            equivalent — `audienceCount` is null for a viewer, so there is no
-            number here to hide. A student must not be able to tell whether
-            they are one of three or one of thirty.
-
-            An announced count overrides that for everyone, which is the point
-            of the field. The host is not lied to: when the figure is
-            announced, the real roster is shown beside it.
-          */}
-          {headcount && (
+          {/* Host-only: a student must not be able to tell whether they
+              are one of three or one of thirty. */}
+          {headcount !== null && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-ink-faint">
               <Users className="h-3.5 w-3.5" />
-              {headcount.count.toLocaleString()} watching
-              {headcount.announced && isHost && session.audienceCount !== null && (
-                <span className="text-ink-faint/70">
-                  · {session.audienceCount} really here
-                </span>
-              )}
+              {headcount.toLocaleString()} watching
             </span>
           )}
           <span

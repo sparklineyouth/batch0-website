@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
   deviceSwitchError,
   groupDevices,
+  mediaErrorKind,
+  mediaStatusText,
+  overallMediaStatus,
   selectedDevice,
 } from "./media-devices.ts";
 
@@ -64,4 +67,37 @@ test("a failed switch says what to do, by error", () => {
   assert.match(deviceSwitchError("NotFoundError", "audio"), /microphone isn't connected/);
   assert.match(deviceSwitchError("NotAllowedError", "audio"), /blocked that microphone/);
   assert.match(deviceSwitchError(undefined, "video"), /previous one/);
+});
+
+test("a getUserMedia failure maps to what is wrong with that device", () => {
+  assert.equal(mediaErrorKind("NotAllowedError"), "denied");
+  assert.equal(mediaErrorKind("SecurityError"), "denied");
+  assert.equal(mediaErrorKind("NotFoundError"), "missing");
+  assert.equal(mediaErrorKind("OverconstrainedError"), "missing");
+  assert.equal(mediaErrorKind("NotReadableError"), "error");
+  assert.equal(mediaErrorKind(undefined), "error");
+});
+
+test("the stream is ready while either device works", () => {
+  assert.equal(overallMediaStatus("ready", "ready"), "ready");
+  assert.equal(overallMediaStatus("error", "ready"), "ready", "busy camera, working mic");
+  assert.equal(overallMediaStatus("ready", "missing"), "ready", "camera, no mic");
+  assert.equal(overallMediaStatus("off", "off"), "idle");
+  assert.equal(overallMediaStatus("denied", "denied"), "denied");
+  assert.equal(overallMediaStatus("denied", "missing"), "denied");
+  assert.equal(overallMediaStatus("missing", "missing"), "missing");
+  assert.equal(overallMediaStatus("error", "missing"), "error");
+});
+
+test("the message names the device that is not working, tersely", () => {
+  assert.equal(mediaStatusText("ready", "ready"), null);
+  assert.equal(mediaStatusText("off", "off"), null);
+  assert.match(mediaStatusText("error", "ready")!, /^Camera is busy.*still talk/);
+  assert.match(mediaStatusText("ready", "missing")!, /^Microphone isn't connected.*camera still works/);
+  assert.equal(
+    mediaStatusText("denied", "denied"),
+    "Camera and microphone are blocked — allow them in the address bar.",
+  );
+  assert.equal(mediaStatusText("missing", "missing"), "No camera or microphone found.");
+  assert.match(mediaStatusText("error", "denied")!, /^Camera is busy.*Microphone is blocked/);
 });

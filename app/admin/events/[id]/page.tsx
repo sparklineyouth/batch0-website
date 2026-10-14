@@ -187,7 +187,7 @@ export default async function AdminWebinarPage(props: {
                 ) : liveStatus === "live" ? (
                   "Running. End for everyone closes it for the whole room."
                 ) : (
-                  "Hosts can open the room from an hour before the start; students from 15 minutes before."
+                  "Hosts can open the room any time; students from 15 minutes before, or once a host is live."
                 )}
               </p>
             </div>

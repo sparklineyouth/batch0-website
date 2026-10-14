@@ -5,6 +5,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { VideoTile } from "@/components/live/video-tile";
 import { CallControls, MicMeter } from "@/components/live/call-controls";
 import { useLocalMedia } from "@/components/live/use-local-media";
+import { useMicLevel } from "@/components/live/use-mic-level";
 import { DeviceSettings } from "@/components/live/device-settings";
 import type { LiveRole } from "@/lib/live";
 import { AlertTriangle, Radio, Loader2 } from "lucide-react";
@@ -119,13 +120,18 @@ export function PreJoin({
                   Waiting for camera and microphone permission…
                 </p>
               )}
-              {media.status === "ready" && (
+              {media.status === "ready" && media.micStatus === "ready" && (
                 <div className="mt-3 flex items-center gap-3">
-                  <MicMeter level={media.level} muted={!media.micOn} />
+                  <StreamMicMeter stream={media.stream} muted={!media.micOn} />
                   <span className="text-xs text-ink-faint">
                     {media.micOn ? "Say something to test your mic" : "Muted"}
                   </span>
                 </div>
+              )}
+              {media.status === "ready" && media.error && (
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  {media.error}
+                </p>
               )}
               {/* Pick the right devices BEFORE joining — remembered, so the
                   call opens on them. Also changeable in the call itself. */}
@@ -248,4 +254,16 @@ export function PreJoin({
       </div>
     </div>
   );
+}
+
+/** The mic meter as a leaf: only this re-renders at the meter's rate. */
+function StreamMicMeter({
+  stream,
+  muted,
+}: {
+  stream: MediaStream | null;
+  muted: boolean;
+}) {
+  const level = useMicLevel(stream);
+  return <MicMeter level={level} muted={muted} />;
 }

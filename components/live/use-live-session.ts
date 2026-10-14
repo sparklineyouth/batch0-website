@@ -5,11 +5,17 @@ import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import {
   connectionTopic,
   countLiveAudience,
+  encodingFor,
   HEARTBEAT_MS,
   ICE_BATCH_MS,
+  ICE_DISCONNECT_GRACE_MS,
+  iceRecovery,
   isAddressedTo,
   MEDIA_SLOTS,
   nextStatusAction,
+  offerDisposition,
+  overallState,
+  readSlots,
   ROOM_CHANGED_THROTTLE_MS,
   shouldApplyAnswer,
   shouldPruneConnection,
@@ -23,6 +29,7 @@ import {
   type SignalRole,
   type StageMessage,
 } from "@/lib/live-signal";
+import { sameRoomState, type LiveRoomState } from "@/lib/live";
 import type { LiveCredentials, LivePeer } from "@/lib/live-rooms";
 import {
   mergeCallPeers,
@@ -86,13 +93,26 @@ import type {
  * on a frozen last frame with nothing to explain it — and a decoded-frames
  * check sails straight past both bugs, which is how they reached an audience.
  *
- * So the sender says what it is sending, in a `media` message on the same
- * channel as the rest of the signalling, when a connection comes up and on
- * every change after. `slotIsActive` reconciles that with what the transport
- * can see: the announcement wins where we have one, the track is the fallback
- * for camera and audio so a dropped message cannot cost the webinar, and an
- * unannounced screen slot is off, because nobody is presenting until a host
- * says so.
+ * So the sender says what it is sending: in every offer and answer (`slots`,
+ * which seeds the receiver's connection as it is built — a webinar viewer has
+ * no connection before the offer, so a separate message sent alongside it
+ * used to be dropped, and a viewer joining mid-share never saw the screen),
+ * and in a `media` message when the link connects, on every change, and on
+ * every heartbeat (unacknowledged messages are repaired by repetition).
+ * `slotIsActive` reconciles that with what the transport can see: the
+ * announcement wins where we have one, the track is the fallback for camera
+ * and audio, and an unannounced screen slot is off.
+ *
+ * ---------------------------------------------------------------------------
+ * Encoding and recovery
+ * ---------------------------------------------------------------------------
+ *
+ * Every video sender is capped after negotiation (encodingFor in
+ * lib/live-signal.ts: the screen gets the uplink, the camera shrinks while
+ * presenting, budgets split across links), and re-capped whenever the source,
+ * the presenting state or the number of links changes. A link that fails, or
+ * sits disconnected past ICE_DISCONNECT_GRACE_MS, gets an ICE restart from
+ * the side that offered (iceRecovery), and is rebuilt only if that fails.
  *
  * ---------------------------------------------------------------------------
  * Leaving, being ended, and being shut out
@@ -274,6 +294,12 @@ export type LiveSession = {
    * may have changed — the panel's `stage-change` bump, for one.
    */
   recheck: () => void;
+  /**
+   * Server truth about the room from the latest join or heartbeat answer:
+   * the primary host, live stamps, whether this person may End, the running
+   * recording. Null until the join lands. A new object only when it changed.
+   */
+  room: LiveRoomState | null;
 };
 
 type PeerConnection = {
@@ -329,6 +355,18 @@ type PeerConnection = {
    * or null if it never was. What the pruning rules measure staleness from.
    */
   lastLiveAt: number | null;
+  /** Did we send this connection's offer? Only the offerer restarts ICE. */
+  offerer: boolean;
+  /** ICE restarts tried since it was last connected (see iceRecovery). */
+  restarts: number;
+  /** When it went "disconnected", or null. */
+  disconnectedAt: number | null;
+  iceTimer: ReturnType<typeof setTimeout> | null;
+  /** The encoding last applied per slot, so an unchanged policy costs nothing. */
+  applied: Partial<Record<MediaSlot, string>>;
+  /** A setParameters is in flight; `encodeAgain` re-runs it after. */
+  encoding: boolean;
+  encodeAgain: boolean;
 };
 
 /**
@@ -355,6 +393,9 @@ const STUCK_MS = 12_000;
  * an offer that is simply still in flight is not thrown away.
  */
 const UNANSWERED_OFFER_MS = 2_000;
+
+/** Floor on how often one host's `host-online` may make us re-dial them. */
+const HOST_ONLINE_FLOOR_MS = 2_000;
 
 /**
  * Floor on how often an untrusted stage message may make us re-announce.
@@ -427,6 +468,14 @@ export function useLiveSession({
   const [joinFailed, setJoinFailed] = useState<{ reason: JoinRefusal } | null>(
     null,
   );
+  const [room, setRoom] = useState<LiveRoomState | null>(null);
+  const roomRef = useRef<LiveRoomState | null>(null);
+  /** Take a server answer's room state; re-render only when it changed. */
+  const applyRoom = useCallback((next: LiveRoomState | null | undefined) => {
+    if (next === undefined || sameRoomState(roomRef.current, next)) return;
+    roomRef.current = next;
+    setRoom(next);
+  }, []);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const credsRef = useRef<LiveCredentials | null>(null);
@@ -480,6 +529,10 @@ export function useLiveSession({
   const runRef = useRef(0);
   const recheckRef = useRef<() => void>(() => {});
   const lastReannounce = useRef(0);
+  /** Last `host-online` acted on, per host (HOST_ONLINE_FLOOR_MS). */
+  const hostOnlineAt = useRef(new Map<string, number>());
+  /** What `remotes` last published, so an unchanged peer keeps its object. */
+  const shownRef = useRef<RemotePeer[]>([]);
   const localRef = useRef<MediaStream | null>(localStream);
   const screenRef = useRef<MediaStream | null>(screenStream);
   const wantRef = useRef({ cameraOn, micOn });
@@ -534,7 +587,21 @@ export function useLiveSession({
         streams: {},
       });
     }
-    setRemotes(shown);
+    // Structural sharing: a peer whose every field is unchanged keeps its
+    // object, and an unchanged list is not re-published — so a heartbeat
+    // that changed nothing re-renders nothing downstream.
+    const prev = new Map(shownRef.current.map((r) => [r.peerId, r]));
+    const next = shown.map((r) => {
+      const old = prev.get(r.peerId);
+      return old && sameRemote(old, r) ? old : r;
+    });
+    const same =
+      next.length === shownRef.current.length &&
+      next.every((r, i) => r === shownRef.current[i]);
+    if (!same) {
+      shownRef.current = next;
+      setRemotes(next);
+    }
     setAudienceCount(
       isBroadcaster && kind === "event"
         ? countLiveAudience(
@@ -545,27 +612,13 @@ export function useLiveSession({
   }, [isBroadcaster, kind]);
 
   const recomputeOverall = useCallback(() => {
-    const all = [...connections.current.values()];
-    if (kind === "call") {
-      // A 1:1 is live only while the other person is actually connected. A
-      // lone party — the other side not here yet, or gone — is waiting, not
-      // "live", whatever the connection map happens to hold.
-      if (all.some((c) => c.state === "live")) setState("live");
-      else if (all.some((c) => c.state === "reconnecting"))
-        setState("reconnecting");
-      else setState("connecting");
-      return;
-    }
-    if (all.length === 0) {
-      // A host alone is live — they are broadcasting, there is simply nobody
-      // here yet. A viewer alone is still waiting for the host to start.
-      setState(isBroadcaster ? "live" : "connecting");
-      return;
-    }
-    if (all.some((c) => c.state === "live")) setState("live");
-    else if (all.some((c) => c.state === "reconnecting")) setState("reconnecting");
-    else if (all.every((c) => c.state === "failed")) setState("failed");
-    else setState("connecting");
+    setState(
+      overallState({
+        kind,
+        broadcaster: isBroadcaster,
+        links: [...connections.current.values()].map((c) => c.state),
+      }),
+    );
   }, [isBroadcaster, kind]);
 
   // --- signalling transport -----------------------------------------------
@@ -629,26 +682,127 @@ export function useLiveSession({
   );
 
   // --- local media ---------------------------------------------------------
+  const isBroadcasterRef = useRef(isBroadcaster);
+  isBroadcasterRef.current = isBroadcaster;
+
+  /** The tracks each slot should carry right now. */
+  const wantedTracks = useCallback((): Record<
+    MediaSlot,
+    MediaStreamTrack | null
+  > => {
+    const { cameraOn: wantCam, micOn: wantMic } = wantRef.current;
+    const screen = screenRef.current?.getVideoTracks()[0] ?? null;
+    // Anything in the screen slot is presentation content (a display capture
+    // or a slide canvas). Said explicitly so the encoder favours sharp text
+    // over motion; a caller's own hint ("text", "motion") wins.
+    if (screen && !screen.contentHint) screen.contentHint = "detail";
+    return {
+      camera: wantCam ? (localRef.current?.getVideoTracks()[0] ?? null) : null,
+      screen,
+      audio: wantMic ? (localRef.current?.getAudioTracks()[0] ?? null) : null,
+    };
+  }, []);
+
+  /** Our slots as a `media` message / offer / answer carries them. */
+  const currentSlots = useCallback((): Record<MediaSlot, boolean> => {
+    const want = wantedTracks();
+    return {
+      camera: !!want.camera,
+      screen: !!want.screen,
+      audio: !!want.audio,
+    };
+  }, [wantedTracks]);
+
   /**
-   * Tell one peer which of our slots are live.
-   *
-   * Best-effort and unacknowledged, like every other signal here: a lost
-   * message costs a stale label until the next toggle or reconnect, never
-   * the media itself. Skipped entirely before the connection has a topic.
+   * Tell one peer which of our slots are live. Best-effort and
+   * unacknowledged: it is repeated on connect and on every heartbeat, so a
+   * lost one costs at most a heartbeat.
    */
   const announceMedia = useCallback(
-    (conn: PeerConnection, slots: Record<MediaSlot, boolean>) => {
+    (conn: PeerConnection) => {
       const creds = credsRef.current;
-      if (!creds || !conn.topic) return;
-      void sendOn(conn.topic, { t: "media", from: creds.peerId, slots }).catch(
-        () => {},
-      );
+      if (!creds || !conn.topic || !isBroadcasterRef.current) return;
+      void sendOn(conn.topic, {
+        t: "media",
+        from: creds.peerId,
+        slots: currentSlots(),
+      }).catch(() => {});
     },
-    [sendOn],
+    [currentSlots, sendOn],
   );
 
   /**
-   * Put the current camera/mic/screen tracks onto a connection's senders.
+   * Cap each video sender on one connection (encodingFor). Runs after
+   * negotiation — before it a sender has no encodings to set — and again
+   * whenever the source, presenting state or link count changes; a policy
+   * that has not changed since it was applied costs nothing. One
+   * setParameters at a time per connection, since a second one in flight
+   * would be rejected as stale.
+   */
+  const applyEncodings = useCallback(async (conn: PeerConnection) => {
+    if (!isBroadcasterRef.current) return;
+    if (conn.encoding) {
+      conn.encodeAgain = true;
+      return;
+    }
+    conn.encoding = true;
+    try {
+      do {
+        conn.encodeAgain = false;
+        const screen = screenRef.current?.getVideoTracks()[0] ?? null;
+        const links = connections.current.size;
+        for (const slot of MEDIA_SLOTS) {
+          const sender = conn.senders[slot];
+          const policy = encodingFor({
+            slot,
+            contentHint: slot === "screen" ? (screen?.contentHint ?? "") : "",
+            presenting: !!screen,
+            links,
+          });
+          if (!sender || !policy) continue;
+          const sig = JSON.stringify(policy);
+          if (conn.applied[slot] === sig) continue;
+          // With degradationPreference first; some browsers reject it, and
+          // the caps matter more, so a second try goes without.
+          for (const withPreference of [true, false]) {
+            if (!withPreference && !policy.degradationPreference) break;
+            try {
+              const params = sender.getParameters() as RTCRtpSendParameters & {
+                degradationPreference?: string;
+              };
+              // Not negotiated yet: retried on connect.
+              if (!params.encodings || params.encodings.length === 0) break;
+              for (const e of params.encodings) {
+                e.maxBitrate = policy.maxBitrate;
+                e.maxFramerate = policy.maxFramerate;
+                e.scaleResolutionDownBy = policy.scaleResolutionDownBy;
+              }
+              if (withPreference && policy.degradationPreference) {
+                params.degradationPreference = policy.degradationPreference;
+              } else {
+                delete params.degradationPreference;
+              }
+              await sender.setParameters(params);
+              conn.applied[slot] = sig;
+              break;
+            } catch {
+              /* a closed connection, or no encoder yet — retried next time */
+            }
+          }
+        }
+      } while (conn.encodeAgain);
+    } finally {
+      conn.encoding = false;
+    }
+  }, []);
+
+  const applyAllEncodings = useCallback(() => {
+    for (const conn of connections.current.values()) void applyEncodings(conn);
+  }, [applyEncodings]);
+
+  /**
+   * Put the current camera/mic/screen tracks onto a connection's senders,
+   * then re-cap them and say what we are sending.
    *
    * A slot the host has turned off is detached (`replaceTrack(null)`) rather
    * than left attached-but-disabled. Both stop the picture, but only
@@ -658,39 +812,25 @@ export function useLiveSession({
   const attachLocalTracks = useCallback(
     (conn: PeerConnection) => {
       if (!isBroadcasterRef.current) return;
-      const { cameraOn: wantCam, micOn: wantMic } = wantRef.current;
-      const want: Record<MediaSlot, MediaStreamTrack | null> = {
-        camera: wantCam ? (localRef.current?.getVideoTracks()[0] ?? null) : null,
-        screen: screenRef.current?.getVideoTracks()[0] ?? null,
-        audio: wantMic ? (localRef.current?.getAudioTracks()[0] ?? null) : null,
-      };
+      const want = wantedTracks();
+      const pending: Promise<unknown>[] = [];
       for (const slot of MEDIA_SLOTS) {
         const sender = conn.senders[slot];
         if (!sender || sender.track === want[slot]) continue;
         // Rejected only in states where the connection is going away anyway.
-        sender.replaceTrack(want[slot]).catch(() => {});
+        pending.push(sender.replaceTrack(want[slot]).catch(() => {}));
       }
-      // And say what we just did. Detaching a sender stops the packets
-      // without reliably muting the remote track, so without this the other
-      // end has no way to tell "camera off" from "frozen", and no way to
-      // tell a screen slot that has never carried anything from one that
-      // has gone quiet. Sent on every call rather than only on a change:
-      // this also runs when a connection is built, which is exactly when a
-      // newly arrived viewer needs the current state.
-      announceMedia(conn, {
-        camera: !!want.camera,
-        screen: !!want.screen,
-        audio: !!want.audio,
-      });
+      void Promise.all(pending).then(() => applyEncodings(conn));
+      announceMedia(conn);
     },
-    [announceMedia],
+    [announceMedia, applyEncodings, wantedTracks],
   );
-  const isBroadcasterRef = useRef(isBroadcaster);
-  isBroadcasterRef.current = isBroadcaster;
 
   const refreshTracks = useCallback(() => {
     for (const conn of connections.current.values()) attachLocalTracks(conn);
-  }, [attachLocalTracks]);
+    // The presenting state changes every camera's cap, not just this link's.
+    applyAllEncodings();
+  }, [applyAllEncodings, attachLocalTracks]);
 
   useEffect(() => {
     refreshTracks();
@@ -709,6 +849,7 @@ export function useLiveSession({
       if (!conn) return;
       connections.current.delete(peerId);
       if (conn.flushTimer) clearTimeout(conn.flushTimer);
+      if (conn.iceTimer) clearTimeout(conn.iceTimer);
       const creds = credsRef.current;
       if (bye && creds) {
         // Addressed: on a viewer's inbox every connected host is listening,
@@ -730,11 +871,79 @@ export function useLiveSession({
       }
       publish();
       recomputeOverall();
+      // One link fewer: the others may now have a larger share of the uplink.
+      applyAllEncodings();
     },
-    [publish, recomputeOverall, sendOn],
+    [applyAllEncodings, publish, recomputeOverall, sendOn],
   );
   const disconnectFromRef = useRef(disconnectFrom);
   disconnectFromRef.current = disconnectFrom;
+  const connectToRef = useRef<(peer: LivePeer, opts?: { force?: boolean }) => Promise<void>>(
+    async () => {},
+  );
+
+  /**
+   * Restart ICE on a link we offered: a fresh offer with new ICE credentials
+   * on the SAME connection, marked `restart` so the far side applies it there
+   * rather than building a new one. Recovers a dropped network path in
+   * seconds without tearing the link (or its tile) down.
+   */
+  const restartIce = useCallback(
+    async (conn: PeerConnection) => {
+      const creds = credsRef.current;
+      if (!creds || connections.current.get(conn.peer.peerId) !== conn) return;
+      if (conn.pc.signalingState !== "stable") return;
+      conn.restarts += 1;
+      // Recovering, not dead: a link that never came up must not be pruned
+      // as "failed" while its restart is in flight (the stuck watchdog still
+      // rebuilds it if this goes nowhere).
+      if (conn.state === "failed") {
+        conn.state = "connecting";
+        conn.progressAt = Date.now();
+        publish();
+        recomputeOverall();
+      }
+      try {
+        conn.pc.restartIce?.();
+        const offer = await conn.pc.createOffer({ iceRestart: true });
+        if (connections.current.get(conn.peer.peerId) !== conn) return;
+        await conn.pc.setLocalDescription(offer);
+        await sendOn(conn.topic, {
+          t: "offer",
+          from: creds.peerId,
+          name: creds.name,
+          sdp: offer.sdp ?? "",
+          slots: currentSlots(),
+          restart: true,
+        });
+      } catch {
+        // Closed under us, or the browser refused: the next failure (or the
+        // heartbeat's wedged check) rebuilds it instead.
+      }
+    },
+    [currentSlots, publish, recomputeOverall, sendOn],
+  );
+
+  /** Act on a link that is down — see iceRecovery in lib/live-signal. */
+  const recoverLink = useCallback(
+    (conn: PeerConnection) => {
+      if (connections.current.get(conn.peer.peerId) !== conn) return;
+      const action = iceRecovery({
+        connectionState: conn.pc.connectionState,
+        disconnectedForMs:
+          conn.disconnectedAt === null ? 0 : Date.now() - conn.disconnectedAt,
+        offerer: conn.offerer,
+        restarts: conn.restarts,
+      });
+      if (action === "restart") void restartIce(conn);
+      else if (action === "rebuild") {
+        const peer = conn.peer;
+        disconnectFromRef.current(peer.peerId, "rebuild");
+        void connectToRef.current(peer);
+      }
+    },
+    [restartIce],
+  );
 
   /**
    * Build the connection to one peer.
@@ -777,10 +986,19 @@ export function useLiveSession({
         peerInbox: peer.inbox,
       });
 
-      const pc = new RTCPeerConnection({
-        iceServers: creds.iceServers as RTCIceServer[],
-        iceCandidatePoolSize: 1,
-      });
+      let pc: RTCPeerConnection;
+      try {
+        pc = new RTCPeerConnection({
+          iceServers: creds.iceServers as RTCIceServer[],
+          iceCandidatePoolSize: 1,
+        });
+      } catch (err) {
+        // A malformed ICE config (the server validates TURN, but a browser
+        // may still refuse it) used to be an unhandled rejection that left
+        // every link absent and nothing on screen.
+        setError(`Couldn't start a connection: ${readableError(err)}`);
+        return;
+      }
 
       const now = Date.now();
       const conn: PeerConnection = {
@@ -801,6 +1019,13 @@ export function useLiveSession({
         progressAt: now,
         createdAt: now,
         lastLiveAt: null,
+        offerer: shouldOffer(creds.peerId, role, peer),
+        restarts: 0,
+        disconnectedAt: null,
+        iceTimer: null,
+        applied: {},
+        encoding: false,
+        encodeAgain: false,
       };
       connections.current.set(peer.peerId, conn);
       publish();
@@ -887,19 +1112,38 @@ export function useLiveSession({
         conn.progressAt = at;
         if (conn.state === "live") conn.lastLiveAt = at;
         const before = conn.state;
+        if (conn.iceTimer) {
+          clearTimeout(conn.iceTimer);
+          conn.iceTimer = null;
+        }
+        if (s !== "disconnected") conn.disconnectedAt = null;
         if (s === "connected") {
           conn.state = "live";
           conn.wasLive = true;
           conn.lastLiveAt = at;
+          conn.restarts = 0;
           everLive.current.add(peer.peerId);
           // Connected to them again, so whatever "left" we remembered is over.
           departed.current.delete(peer.peerId);
+          // A working link clears whatever went wrong on the way here.
+          setError(null);
+          // The receiver may have missed what we are sending (it reads the
+          // offer's `slots`, but an older tab does not), and the encoder now
+          // has parameters to cap.
+          announceMedia(conn);
+          applyAllEncodings();
         } else if (s === "disconnected") {
-          // Not fatal on its own — ICE routinely dips through "disconnected"
-          // on a network change and recovers by itself.
+          // Often recovers by itself on a network change; if it has not within
+          // the grace period, the offerer restarts ICE.
           conn.state = "reconnecting";
+          conn.disconnectedAt ??= at;
+          conn.iceTimer = setTimeout(() => {
+            conn.iceTimer = null;
+            if (!stale()) recoverLink(conn);
+          }, ICE_DISCONNECT_GRACE_MS);
         } else if (s === "failed" || s === "closed") {
           conn.state = conn.wasLive ? "reconnecting" : "failed";
+          if (s === "failed") recoverLink(conn);
         }
         if (before === "live" && conn.state !== "live") conn.downSince = Date.now();
         publish();
@@ -953,6 +1197,10 @@ export function useLiveSession({
             from: creds.peerId,
             name: creds.name,
             sdp: offer.sdp ?? "",
+            // What we are sending, carried by the offer itself: a viewer has
+            // no connection to file a separate `media` message under until
+            // this arrives.
+            slots: currentSlots(),
           });
         } catch (err) {
           // Torn down under us is not an error anyone needs to read.
@@ -965,8 +1213,20 @@ export function useLiveSession({
         }
       }
     },
-    [attachLocalTracks, ensureChannel, publish, recomputeOverall, role, sendOn],
+    [
+      announceMedia,
+      applyAllEncodings,
+      attachLocalTracks,
+      currentSlots,
+      ensureChannel,
+      publish,
+      recomputeOverall,
+      recoverLink,
+      role,
+      sendOn,
+    ],
   );
+  connectToRef.current = connectTo;
 
   /** A peer we know how to reach, from any of the places we might know them. */
   const knownPeer = useCallback((peerId: string): LivePeer | null => {
@@ -977,6 +1237,27 @@ export function useLiveSession({
       null
     );
   }, []);
+
+  /** File what a peer said it is sending (media, offer or answer `slots`). */
+  const seedAnnounced = useCallback(
+    (conn: PeerConnection, raw: unknown) => {
+      const slots = readSlots(raw);
+      let changed = false;
+      for (const slot of MEDIA_SLOTS) {
+        const announced = slots[slot];
+        if (announced === undefined) continue;
+        conn.announced[slot] = announced;
+        conn.active[slot] = slotIsActive({
+          slot,
+          announced,
+          trackLive: conn.trackLive[slot] ?? false,
+        });
+        changed = true;
+      }
+      if (changed) publish();
+    },
+    [publish],
+  );
 
   const onSignal = useCallback(
     async (msg: SignalMessage, expectFrom?: string) => {
@@ -992,6 +1273,20 @@ export function useLiveSession({
       // viewer's answer, candidates and byes for the OTHER one too. See `to`
       // on SignalMessage; a message with no `to` (an older tab) still counts.
       if (!isAddressedTo(msg, creds.peerId)) return;
+      // Only a broadcaster offers. An offer on a viewer's (pinned) inbox, or
+      // from someone we know as a viewer, is a forgery — it used to put a
+      // phantom "host" tile, named by the viewer, on every host's screen.
+      const known = knownPeer(msg.from);
+      if (
+        msg.t === "offer" &&
+        offerDisposition({
+          pinned: !!expectFrom,
+          selfRole: role,
+          knownRole: known?.role ?? null,
+        }) === "drop"
+      ) {
+        return;
+      }
 
       // Negotiation from them is them, on the page, right now. Published at
       // once: the link may take seconds more to come up, and the recorder
@@ -1010,9 +1305,8 @@ export function useLiveSession({
       if (msg.t === "bye") {
         // `leave` is a person going; anything else (`rebuild`, or an older
         // tab that does not say) is only this connection being replaced.
-        if (msg.reason === "leave") {
-          const peer = knownPeer(msg.from);
-          if (peer && peer.role === "host") departed.current.set(msg.from, peer);
+        if (msg.reason === "leave" && known?.role === "host") {
+          departed.current.set(msg.from, known);
         }
         disconnectFrom(msg.from, false);
         // disconnectFrom publishes only when a connection existed; a
@@ -1024,19 +1318,27 @@ export function useLiveSession({
       if (msg.t === "offer") {
         // They are here: whatever "left" we remembered is over.
         departed.current.delete(msg.from);
-        // One offer per connection, ever (see the header). A second offer on
-        // a connection that has already applied one is the peer's NEW
+        // One offer per connection (see the header): a second offer on a
+        // connection that has already applied one is the peer's NEW
         // connection — they reloaded, or rebuilt and their `bye` was lost —
-        // and belongs on a fresh one of ours.
+        // and belongs on a fresh one of ours. The exception is an ICE
+        // restart, which is meant for the connection we have.
         const existing = connections.current.get(msg.from);
-        if (existing?.pc.remoteDescription) disconnectFrom(msg.from, false);
+        const restart =
+          !!msg.restart &&
+          !!existing?.pc.remoteDescription &&
+          existing.pc.signalingState === "stable";
+        if (!restart && existing?.pc.remoteDescription) {
+          disconnectFrom(msg.from, false);
+        }
         // An offer is also how a viewer first learns a host exists: the
-        // server never told it, so the peer is constructed from the message.
+        // server never told it, so the peer is constructed from the message —
+        // only ever as a host, and only from our own inbox (offerDisposition).
         // It answers on the topic the offer arrived on — for a viewer that is
         // its own inbox, so it never needs to know the host's.
         if (!connections.current.has(msg.from)) {
           await connectTo(
-            creds.peers.find((p) => p.peerId === msg.from) ?? {
+            known ?? {
               peerId: msg.from,
               name: msg.name,
               role: "host",
@@ -1046,6 +1348,9 @@ export function useLiveSession({
         }
         const conn = connections.current.get(msg.from);
         if (!conn) return;
+        // Before the remote description: `ontrack` fires inside it, and reads
+        // what the sender announced.
+        seedAnnounced(conn, msg.slots);
         try {
           await conn.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
           for (const c of conn.earlyCandidates.splice(0)) {
@@ -1080,6 +1385,7 @@ export function useLiveSession({
             // viewer's inbox a second host is listening, and it used to
             // apply this SDP to its own half-built connection.
             to: conn.peer.peerId,
+            ...(isBroadcasterRef.current ? { slots: currentSlots() } : {}),
           });
         } catch (err) {
           // Torn down or replaced mid-answer is not a failure to report.
@@ -1104,17 +1410,7 @@ export function useLiveSession({
         // switched off into "the host's camera is off" rather than a frozen
         // last frame, and what keeps the presenting layout away until
         // somebody is genuinely presenting.
-        for (const slot of MEDIA_SLOTS) {
-          const announced = msg.slots?.[slot];
-          if (typeof announced !== "boolean") continue;
-          conn.announced[slot] = announced;
-          conn.active[slot] = slotIsActive({
-            slot,
-            announced,
-            trackLive: conn.trackLive[slot] ?? false,
-          });
-        }
-        publish();
+        seedAnnounced(conn, msg.slots);
         return;
       }
 
@@ -1131,6 +1427,7 @@ export function useLiveSession({
           for (const c of conn.earlyCandidates.splice(0)) {
             await conn.pc.addIceCandidate(c).catch(() => {});
           }
+          seedAnnounced(conn, msg.slots);
         } catch {
           // A real refusal of our own offer's answer. Marked failed rather
           // than bannered: a host prunes a failed viewer link on its next
@@ -1163,10 +1460,13 @@ export function useLiveSession({
     [
       attachLocalTracks,
       connectTo,
+      currentSlots,
       disconnectFrom,
       knownPeer,
       publish,
       recomputeOverall,
+      role,
+      seedAnnounced,
       sendOn,
     ],
   );
@@ -1203,9 +1503,12 @@ export function useLiveSession({
     departed.current.clear();
     everLive.current.clear();
     heardFrom.current.clear();
+    hostOnlineAt.current.clear();
     setClosed(null);
     setJoinFailed(null);
     setServerRole(null);
+    roomRef.current = null;
+    setRoom(null);
     // Including a call's staff list, which is re-heard from this run's own
     // first answer (the room uses the list it rendered with until then).
     // Cleared only when there is something to clear, so a webinar's run
@@ -1247,6 +1550,7 @@ export function useLiveSession({
       // message, a lobby arrival, an offer — can find credentials to act on.
       credsRef.current = null;
       supabaseRef.current = null;
+      shownRef.current = [];
       setRemotes([]);
       setAudienceCount(null);
       setJoined(false);
@@ -1317,6 +1621,7 @@ export function useLiveSession({
       if (cancelled || !held) return;
       const res = await announce(held.role).catch(() => null);
       onStatus(res);
+      if (!cancelled && res?.status === "ok") applyRoom(res.room);
       // A call's answer carries its roster (a webinar's never does), and only
       // on an 'ok'. The session may have been torn down while the announce
       // was out; onRoster sees that through `cancelled`.
@@ -1418,6 +1723,7 @@ export function useLiveSession({
         const creds = result.creds;
         credsRef.current = creds;
         setServerRole(result.role);
+        applyRoom(result.room);
         // Published to the UI so the text panels can subscribe. Set before any
         // channel work below, so a panel mounting alongside the room does not
         // have to wait out the whole media handshake to start listening.
@@ -1450,13 +1756,18 @@ export function useLiveSession({
             recheck();
             return;
           }
-          if (msg.t !== "host-online" || msg.hostId === creds.peerId) return;
-          if (isBroadcasterRef.current) {
+          if (msg.t !== "host-online" || typeof msg.hostId !== "string") return;
+          if (msg.hostId === creds.peerId) return;
+          const heardAt = Date.now();
+          const last = hostOnlineAt.current.get(msg.hostId) ?? 0;
+          if (isBroadcasterRef.current && heardAt - last >= HOST_ONLINE_FLOOR_MS) {
+            hostOnlineAt.current.set(msg.hostId, heardAt);
             // Another broadcaster came up. Only a host is ever given a host's
-            // inbox, so only a host can dial one directly.
+            // inbox, so only a host can dial one directly — and only one it
+            // already knows of: the message itself is never trusted.
             const known = knownPeer(msg.hostId);
-            if (known) {
-              departed.current.delete(msg.hostId);
+            if (known?.role === "host") {
+              const wasDeparted = departed.current.delete(msg.hostId);
               const existing = connections.current.get(msg.hostId);
               // Our offer to them has been sitting unanswered — they were not
               // listening yet when we sent it — so rebuild it NOW rather than
@@ -1467,9 +1778,9 @@ export function useLiveSession({
                 existing.state !== "live" &&
                 (existing.state === "failed" ||
                   (existing.pc.signalingState === "have-local-offer" &&
-                    Date.now() - existing.createdAt > UNANSWERED_OFFER_MS));
+                    heardAt - existing.createdAt > UNANSWERED_OFFER_MS));
               void connectTo(known, { force: stalled });
-              publish();
+              if (wasDeparted) publish();
             }
           }
           const now = Date.now();
@@ -1515,8 +1826,10 @@ export function useLiveSession({
           if (cancelled) return;
         }
 
-        // Say I'm hosting, so anyone already waiting re-announces at once.
-        if (isBroadcasterRef.current && creds.stageProof) {
+        // Say I'm here, so anyone already waiting re-announces (and any
+        // broadcaster whose offer to us went unheard re-sends it) at once.
+        // Every party to a 1:1 broadcasts, with no proof to attach.
+        if (isBroadcasterRef.current && (creds.stageProof || kind === "call")) {
           await supabaseStage.send({
             type: "broadcast",
             event: SIGNAL_EVENT,
@@ -1524,7 +1837,7 @@ export function useLiveSession({
               t: "host-online",
               hostId: creds.peerId,
               name: creds.name,
-              proof: creds.stageProof,
+              proof: creds.stageProof ?? "",
             } satisfies StageMessage,
           });
         }
@@ -1560,6 +1873,12 @@ export function useLiveSession({
           setInterval(() => {
             if (cancelled) return;
             void runAnnounce();
+            // Repeat what we are sending (a lost `media` message is repaired
+            // within a heartbeat) and re-cap anything whose policy moved.
+            if (isBroadcasterRef.current) {
+              for (const c of connections.current.values()) announceMedia(c);
+              applyAllEncodings();
+            }
             const held = credsRef.current;
             if (held) {
               const dial = new Map<string, LivePeer>();
@@ -1691,6 +2010,7 @@ export function useLiveSession({
       closed,
       joinFailed,
       recheck,
+      room,
     }),
     [
       state,
@@ -1705,6 +2025,7 @@ export function useLiveSession({
       closed,
       joinFailed,
       recheck,
+      room,
     ],
   );
 }
@@ -1729,6 +2050,22 @@ function shouldOffer(
   if (selfRole !== "host") return false;
   if (peer.role === "viewer") return true;
   return selfId < peer.peerId;
+}
+
+/** Every field a tile reads is the same — streams by identity, per slot. */
+function sameRemote(a: RemotePeer, b: RemotePeer): boolean {
+  if (
+    a.peerId !== b.peerId ||
+    a.name !== b.name ||
+    a.role !== b.role ||
+    a.state !== b.state ||
+    a.seenLive !== b.seenLive ||
+    a.heard !== b.heard ||
+    a.downSince !== b.downSince
+  ) {
+    return false;
+  }
+  return MEDIA_SLOTS.every((slot) => a.streams[slot] === b.streams[slot]);
 }
 
 /**

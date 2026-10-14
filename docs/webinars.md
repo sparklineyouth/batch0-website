@@ -328,10 +328,8 @@ the questions, the polls, the attendance record, and the host answering at the
 end. A premiere is a talk that was rehearsed instead of improvised.
 
 There is deliberately **no** support for fabricated audience activity — no
-scripted student messages, no synthetic reactions. `display_viewer_count`
-(migration 0071) remains the one announced figure an admin can set, and it is
-display-only and gates nothing. If you want the room to look busier than it is,
-that field is the honest place to say so.
+scripted student messages, no synthetic reactions, and no announced
+headcount (the old `display_viewer_count` override was removed).
 
 ---
 

@@ -19,7 +19,6 @@ import {
   roomAccess,
   roomIsOpen,
   roomWindow,
-  normalizeDisplayViewers,
   webinarHasBegun,
   type LiveEvent,
 } from "@/lib/live";
@@ -141,7 +140,6 @@ export function WebinarsManager({
     visibility: string;
     cohortId: string | null;
     notify: boolean;
-    displayViewerCount: number | null;
   }) {
     setError(undefined);
     const startsAt = localDateTime(draft.sunday, draft.time);
@@ -178,7 +176,6 @@ export function WebinarsManager({
             zoom_url: null,
             recording_url: null,
             visibility: draft.visibility as any,
-            display_viewer_count: draft.displayViewerCount,
             // The point of this page: hosting is on, not a toggle to remember.
             live_mode: "hosted",
           },
@@ -311,12 +308,10 @@ function Row({
   const at = new Date(now);
   const status = eventLiveStatus(w, at);
   const hosted = isHostedOnBatch0(w.liveMode);
-  // "Host room" follows the HOST window (an hour before the start to three
-  // hours after the end — roomAccess with isHost), not the audience's
-  // fifteen minutes. Checking the camera and loading the deck is why an admin
-  // arrives early, and the button used to be hidden until fifteen minutes
-  // out. It stays after End too: a staff host entering an ended room lands on
-  // the ended screen, which is where Reopen lives.
+  // "Host room" follows the HOST window (any time until three hours after the
+  // end — roomAccess with isHost), not the audience's fifteen minutes. It
+  // stays after End too: a staff host entering an ended room lands on the
+  // ended screen, which is where Reopen lives.
   const hostWindowOpen = roomIsOpen(
     roomAccess({
       startsAt: w.startsAt,
@@ -359,11 +354,6 @@ function Row({
             {needsProviderRoom && hosted && !w.roomName && (
               <span className="text-amber-600 dark:text-amber-400">
                 no room yet — re-save to create one
-              </span>
-            )}
-            {w.displayViewerCount !== null && (
-              <span title="Shown to everyone watching, in place of the real headcount">
-                shows {w.displayViewerCount.toLocaleString()} watching
               </span>
             )}
             {w.recordingUrl && (
@@ -574,7 +564,6 @@ function ScheduleForm({
     visibility: string;
     cohortId: string | null;
     notify: boolean;
-    displayViewerCount: number | null;
   }) => void;
   onCancel: () => void;
   pending: boolean;
@@ -592,11 +581,6 @@ function ScheduleForm({
   const [visibility, setVisibility] = useState("staff");
   const [cohortId, setCohortId] = useState<string>(cohorts[0]?.id ?? "");
   const [notify, setNotify] = useState(false);
-  // Optional "shown attendees". Blank means the room hides turnout as usual;
-  // a number is announced to everyone in place of the hidden roster. Kept as
-  // the raw string so the field can be emptied, and normalized on submit.
-  const [shownAttendees, setShownAttendees] = useState("");
-  const displayViewerCount = normalizeDisplayViewers(shownAttendees);
 
   // The name follows the Sunday — "Week 3 Webinar" — until the admin types
   // one of their own, after which the pick stops touching it. A title the
@@ -714,23 +698,6 @@ function ScheduleForm({
         </div>
       </div>
 
-      <div>
-        <Label>Shown attendees (optional)</Label>
-        <Input
-          type="number"
-          min={0}
-          inputMode="numeric"
-          value={shownAttendees}
-          onChange={(e) => setShownAttendees(e.target.value)}
-          placeholder="Leave blank to hide the count"
-        />
-        <p className="mt-1.5 text-xs text-ink-faint">
-          {displayViewerCount !== null
-            ? `Everyone watching sees “${displayViewerCount.toLocaleString()} watching,” whoever's actually here. Leave blank to keep turnout hidden.`
-            : "Leave blank and the audience never sees a count. Set a number to announce that many — e.g. 43 — to everyone watching, in place of the hidden headcount."}
-        </p>
-      </div>
-
       <label className="flex items-start gap-2.5 rounded-md border border-line bg-wash px-3 py-2.5">
         <input
           type="checkbox"
@@ -759,15 +726,8 @@ function ScheduleForm({
         ends when a host presses End for everyone.
       */}
       <p className="rounded-md border border-line bg-wash px-3 py-2.5 text-xs text-ink-soft">
-        Students can come in from 15 minutes before the start; hosts from an
-        hour before. It runs until a host presses End for everyone — or, if
-        nobody does, closes 30 minutes after the end once no host is left.
-        Admins and staff with Manage events, plus any guest speakers you add,
-        can broadcast — students watch, ask questions beside the video, and
-        can&rsquo;t see each other
-        {displayViewerCount !== null
-          ? ". They see the shown-attendees count above, not the real one."
-          : " or how many are here."}
+        Students can come in from 15 minutes before the start, or as soon as a
+        host goes live. It runs until a host presses End for everyone.
       </p>
 
       {error && <FieldError>{error}</FieldError>}
@@ -785,7 +745,6 @@ function ScheduleForm({
               visibility,
               cohortId: cohortId || null,
               notify: visibility === "staff" ? false : notify,
-              displayViewerCount,
             })
           }
         >

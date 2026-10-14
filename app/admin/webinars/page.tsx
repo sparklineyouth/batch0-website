@@ -46,7 +46,7 @@ export default async function AdminWebinarsPage() {
     admin
       .from("events")
       .select(
-        "id, title, description, type, starts_at, ends_at, location, visibility, live_mode, zoom_url, live_started_at, live_ended_at, daily_room_name, daily_room_url, recording_url, display_viewer_count",
+        "id, title, description, type, starts_at, ends_at, location, visibility, live_mode, zoom_url, live_started_at, live_ended_at, daily_room_name, daily_room_url, recording_url",
       )
       // What counts as a webinar, and why this is an OR rather than a rename.
       //
@@ -71,14 +71,14 @@ export default async function AdminWebinarsPage() {
       .order("starts_on", { ascending: false, nullsFirst: false }),
   ]);
 
-  // `live_mode` arrives with migration 0058, `display_viewer_count` with 0071,
-  // `live_started_at` / `live_ended_at` with 0084. Until each is applied the
+  // `live_mode` arrives with migration 0058, `live_started_at` /
+  // `live_ended_at` with 0084. Until each is applied the
   // query above fails, and a 500 here would read as "webinars are broken"
   // rather than "one SQL file hasn't been run". Say which.
   const missingColumn =
     error &&
     (error.code === "42703" ||
-      /live_mode|display_viewer_count|live_started_at|live_ended_at/.test(
+      /live_mode|live_started_at|live_ended_at/.test(
         error.message ?? "",
       ));
 
@@ -103,9 +103,7 @@ export default async function AdminWebinarsPage() {
               </p>
               <p className="mt-2 text-xs text-ink-faint">
                 Q&amp;A also needs <code>0060_webinar_questions.sql</code>, and
-                the shown-attendees count needs{" "}
-                <code>0071_event_display_viewer_count.sql</code>, and live
-                status (End / Reopen) needs <code>0084_webinars.sql</code>.
+                live status (End / Reopen) needs <code>0084_webinars.sql</code>.
               </p>
             </div>
           </div>
@@ -147,7 +145,6 @@ export default async function AdminWebinarsPage() {
     externalUrl: e.live_mode === "external" ? (e.zoom_url ?? null) : null,
     recordingUrl: e.recording_url,
     hostName: null,
-    displayViewerCount: e.display_viewer_count ?? null,
     roomName: e.daily_room_name,
     roomUrl: e.daily_room_url,
     liveEndedAt: e.live_ended_at ?? null,

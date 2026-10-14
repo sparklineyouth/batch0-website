@@ -1,12 +1,6 @@
 /**
  * Shared vocabulary for live video — webinars and 1:1 calls.
  *
- * Deliberately provider-agnostic. Nothing here knows about Daily (or LiveKit,
- * or whatever we land on): a room is a name and a URL, and a participant is
- * either allowed to broadcast or not. When the provider gets wired up, it
- * fills `roomName`/`roomUrl` in and mints a token off `LiveRole` — none of
- * these types change.
- *
  * Pure module, no imports, no `next/headers`. Safe from server components,
  * client components, and tests alike.
  */
@@ -15,8 +9,8 @@
  * What a person may do inside a room.
  *
  * `host` gets camera, mic, and screen share. `viewer` watches and uses chat.
- * For a webinar that split is the whole feature (it maps to Daily's
- * `owner_only_broadcast`); for a 1:1 everyone on it is a host.
+ * For a webinar that split is the whole feature; for a 1:1 everyone on it is
+ * a host.
  */
 export type LiveRole = "host" | "viewer";
 
@@ -61,99 +55,11 @@ export type LiveRoom = {
  *
  * Hosts yes, viewers never. This is a product requirement, not a layout
  * preference: a student watching a webinar must not be able to tell whether
- * they are one of three people or one of thirty. Turnout is the host's
- * business, and a visibly empty room changes how students behave in one.
- *
- * Kept here as a function of the role alone — no override parameter, no prop —
- * so there is exactly one place to read and no call site can opt out of it by
- * passing the wrong flag. `CallStage` derives every roster-shaped affordance
- * (the header count, the participants button, the people panel) from this.
- *
- * Two things this does NOT do on its own, both of which live at the provider
- * layer and are written up in docs/live-video.md:
- *
- *  1. The server must not send a viewer the roster in the first place. Hiding
- *     a list the client already holds is a CSS-deep guarantee.
- *  2. The video provider has its own participant APIs. With Daily that means
- *     minting viewer tokens with `hasPresence: false` so viewers are absent
- *     from every other client's participant list.
+ * they are one of three people or one of thirty. The server enforces the same
+ * rule at the source — a viewer is never sent the roster (lib/live-rooms.ts).
  */
 export function canSeeRoster(role: LiveRole): boolean {
   return role === "host";
-}
-
-// ---------------------------------------------------------------------------
-// Announced attendance
-// ---------------------------------------------------------------------------
-
-/**
- * Largest "shown attendees" figure an admin may set (mirrored by the DB CHECK
- * in migration 0071). Big enough for any real webinar, small enough that a
- * fat-fingered extra digit can't render a ten-character number into the header.
- */
-export const MAX_DISPLAY_VIEWERS = 100_000;
-
-/**
- * Sanitize an admin-entered "shown attendees" value into what we store and show.
- *
- * A webinar can carry an *announced* headcount — a number the admin chooses to
- * show the audience ("43 watching") instead of the true, hidden roster. It is a
- * deliberate exception to `canSeeRoster`: turnout is normally the host's
- * business, but a host may still want to project a figure. Empty, non-numeric,
- * or negative input means "don't announce anything" and becomes null — the room
- * then falls back to the private default (a viewer sees no count, a host sees
- * the real one). Anything larger than the cap is clamped, not rejected.
- *
- * Pure and shared so the form (to validate as it's typed), the server action
- * (the actual gate), and the room (which re-sanitizes on the way out, in case a
- * value was written straight into the row) all agree on what a valid figure is.
- */
-export function normalizeDisplayViewers(
-  input: number | string | null | undefined,
-): number | null {
-  if (input === null || input === undefined) return null;
-  const trimmed = typeof input === "string" ? input.trim() : input;
-  if (trimmed === "") return null;
-  const n = Math.floor(Number(trimmed));
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.min(n, MAX_DISPLAY_VIEWERS);
-}
-
-/**
- * The headcount to show in a live room's header, and whether it is the
- * announced figure or the true roster.
- *
- * Precedence, and why:
- *  - An announced count (events.display_viewer_count), when set, wins for
- *    *everyone*. That is the whole point of the field — the audience sees the
- *    chosen number, and a host previewing the room sees exactly what the
- *    audience sees. A host still has the real roster elsewhere (the
- *    participants panel, the tiles they can actually see), and the caller can
- *    surface it alongside via the returned `announced` flag.
- *  - With no announced count, the privacy default holds: a host sees the real
- *    roster size, a viewer sees nothing.
- *
- * Returns null when there is nothing to show — a viewer in a room with no
- * announced count — so the caller renders no chip at all rather than a bare "0".
- * `realCount` may be null for backends that don't expose a client-side roster
- * (a Daily room manages its own participant list); such a room shows the
- * announced figure or nothing.
- */
-export function headcountLabel({
-  role,
-  displayCount,
-  realCount,
-}: {
-  role: LiveRole;
-  displayCount: number | null;
-  realCount: number | null;
-}): { count: number; announced: boolean } | null {
-  const announced = normalizeDisplayViewers(displayCount);
-  if (announced !== null) return { count: announced, announced: true };
-  if (canSeeRoster(role) && realCount !== null && realCount >= 0) {
-    return { count: realCount, announced: false };
-  }
-  return null;
 }
 
 export type LiveEvent = {
@@ -170,11 +76,6 @@ export type LiveEvent = {
   externalUrl: string | null;
   recordingUrl: string | null;
   hostName: string | null;
-  /**
-   * Announced attendance shown in the live room in place of the hidden roster.
-   * Null = the private default (see `headcountLabel`). Display only.
-   */
-  displayViewerCount: number | null;
   /**
    * When a host pressed End for everyone (`events.live_ended_at`), or null.
    *
@@ -234,12 +135,8 @@ export type CallInvite = {
  * A question a viewer asked during a hosted webinar (`webinar_questions`,
  * migration 0060).
  *
- * Questions live in our database, not in the video room's chat. A hidden
- * viewer (`hasPresence: false`) can read Daily's Prebuilt chat but not send to
- * it, so letting students ask through the room would mean un-hiding the
- * audience — the exact thing webinar mode exists to prevent. Routing questions
- * through here keeps the audience hidden and the questions ours: persisted,
- * moderatable, and scoped so a viewer only ever sees their own.
+ * Questions live in our database: persisted, moderatable, and scoped so a
+ * viewer only ever sees what their room's audience mode allows.
  */
 export type QuestionStatus = "open" | "answered" | "dismissed";
 
@@ -280,9 +177,7 @@ export function normalizeQuestion(input: string): string | null {
 
 /**
  * How early the AUDIENCE may enter the room, and how long it stays open past
- * the end. The late window covers calls that run over. Hosts have their own,
- * wider window (HOST_JOIN_OPENS_MINUTES_BEFORE / ROOM_HARD_CLOSE_MINUTES_AFTER
- * below) — see `roomAccess`.
+ * the end. Hosts have a wider window — see `roomAccess` and `callRoomAccess`.
  */
 export const JOIN_OPENS_MINUTES_BEFORE = 15;
 export const JOIN_CLOSES_MINUTES_AFTER = 30;
@@ -448,33 +343,19 @@ export function staffNames(
 // Room access — who may be in a room right now, by role
 // ---------------------------------------------------------------------------
 //
-// `joinState` above is the AUDIENCE's window, and for a long time it was
-// applied to everybody: the page, the join action, the chat gate and the admin
-// list all asked it, so an admin could not open the room more than fifteen
-// minutes early to set up, and a webinar that ran past end+30 lost its host's
-// End button mid-sentence (endLive threw Forbidden, the client swallowed it,
-// and the webinar was never ended). `roomAccess` is the per-role answer every
-// server gate now shares, so the page and the actions cannot disagree about
-// whether someone is allowed in.
+// `joinState` above is the AUDIENCE's window and what cards draw. `roomAccess`
+// (webinars) and `callRoomAccess` (1:1s) are the per-role answers every server
+// gate shares, so the page and the actions cannot disagree about who is in.
 
 /**
- * How early a HOST (staff or guest speaker) may open the room.
- *
- * An hour, not the audience's fifteen minutes: checking the camera, loading
- * the deck and rehearsing a handover is the whole reason to arrive early, and
- * nobody is watching yet for a host to disturb.
- */
-export const HOST_JOIN_OPENS_MINUTES_BEFORE = 60;
-
-/**
- * The hard stop for any room, measured from the scheduled end.
- *
- * Hosts may stay (and End, and Reopen) until here, and a viewer's window is
- * extended up to here while a host is still genuinely present. Past it the
- * room is closed for everybody: a webinar still "running" three hours after
+ * The hard stop for any room, measured from the scheduled end. Past it the
+ * room is closed for everybody: a session still "running" three hours after
  * its scheduled end is a tab someone forgot, not a talk.
  */
 export const ROOM_HARD_CLOSE_MINUTES_AFTER = 180;
+
+/** How early the staff side of a 1:1 may open its room (the student: 15). */
+export const CALL_STAFF_OPENS_MINUTES_BEFORE = 60;
 
 /**
  * Where a person stands with respect to a room.
@@ -496,16 +377,15 @@ export type RoomAccess = "early" | "open" | "live" | "ended" | "closed";
  *   ended      The webinar was ended for everyone, or the 1:1 was completed.
  *              Terminal: tear down, show "ended".
  *   cancelled  The 1:1 was cancelled. Terminal.
- *   closed     The window has closed (the last host left and the grace ran
- *              out). The client acts on the SECOND consecutive answer, so one
- *              read at the boundary does not end anybody's session.
- *   revoked    The caller no longer has access (unenrolled, speaker row
- *              removed). Also acted on only when repeated.
+ *   closed     The window has closed. The client acts on the SECOND
+ *              consecutive answer, so one read at the boundary does not end
+ *              anybody's session.
+ *   revoked    The caller no longer has access. Also acted on only when
+ *              repeated.
  *   error      The server could not tell — a query failed. Never terminal: a
  *              database blip must not look like a revocation.
  *
- * Mirrored structurally by `nextStatusAction` in lib/live-signal.ts, which
- * decides what the client does with each answer.
+ * Mirrored structurally by `nextStatusAction` in lib/live-signal.ts.
  */
 export type RoomStatus =
   | "ok"
@@ -516,11 +396,9 @@ export type RoomStatus =
   | "error";
 
 /**
- * The instants that bound one room, in epoch milliseconds.
- *
- * `ends_at` is nullable and defaults to DEFAULT_EVENT_MINUTES past the start,
- * the same rule `joinState` applies — computed here once so the page, the
- * gates and the tests all read the same numbers.
+ * The instants that bound one room, in epoch milliseconds. `ends_at` is
+ * nullable and defaults to DEFAULT_EVENT_MINUTES past the start, the same rule
+ * `joinState` applies.
  */
 export function roomWindow(
   startsAt: string | Date,
@@ -528,7 +406,6 @@ export function roomWindow(
 ): {
   start: number;
   end: number;
-  hostOpensAt: number;
   viewerOpensAt: number;
   viewerClosesAt: number;
   hardCloseAt: number;
@@ -540,7 +417,6 @@ export function roomWindow(
   return {
     start,
     end,
-    hostOpensAt: start - HOST_JOIN_OPENS_MINUTES_BEFORE * MINUTE,
     viewerOpensAt: start - JOIN_OPENS_MINUTES_BEFORE * MINUTE,
     viewerClosesAt: end + JOIN_CLOSES_MINUTES_AFTER * MINUTE,
     hardCloseAt: end + ROOM_HARD_CLOSE_MINUTES_AFTER * MINUTE,
@@ -548,17 +424,9 @@ export function roomWindow(
 }
 
 /**
- * Has this webinar's run begun? Its scheduled start has passed, or a host
- * handed a premiere over early ("Go live now" stamps `live_started_at`).
- *
- * End for everyone exists only from here on — `canEnd` in the room's actions,
- * which is what hides the room's End controls and what `endLive` enforces, and
- * the admin list's LiveControls. Before it the room is open to hosts for an
- * hour of setup, and an End pressed there (a camera check, then "End for
- * everyone" from the last-host prompt) ended the REAL webinar before it began:
- * every student arriving at the start was shown "This webinar has ended", the
- * event moved to Past, and a guest speaker who pressed it could not undo it.
- * Leave is the way out of a rehearsal.
+ * Has this webinar's run begun? A host went live (`live_started_at` — joining
+ * as a host stamps it), or the scheduled start has passed. End for everyone
+ * exists only from here on.
  */
 export function webinarHasBegun(
   startsAt: string | Date,
@@ -570,32 +438,26 @@ export function webinarHasBegun(
 }
 
 /**
- * May this person be in this room right now?
+ * May this person be in this webinar's room right now?
  *
- * Two windows, because hosts and viewers need different things:
- *
- *   host    [start-60m, end+3h], whatever `liveEndedAt` says. A staff host has
- *           to be able to reach the ended screen to Reopen, and an overrunning
- *           webinar must never lose its End button.
- *   viewer  [start-15m, end+30m] as always, with two changes:
- *             - 'ended' as soon as `liveEndedAt` is set. An ended webinar hands
- *               out no more credentials and records no more attendance.
- *             - past end+30m the room stays open while a host is still
- *               genuinely present (`hostPresent`: a fresh host heartbeat) and
- *               nobody has ended it, up to the hard stop at end+3h. That is
- *               what lets a talk run over without its audience being cut off,
- *               while "the last host left and never pressed End" still closes
- *               on its own — there is deliberately no silent auto-stamp of
+ *   host    any time up to the hard stop (end+3h), whatever `liveEndedAt`
+ *           says: staff set up whenever they like, reach the ended screen to
+ *           Reopen, and an overrunning webinar never loses its End button.
+ *   viewer  'ended' once `liveEndedAt` is set. Otherwise start-15m to end+30m,
+ *           with two widenings:
+ *             - a host went live early (`liveStartedAt`): in now, however
+ *               early — the audience follows the host in;
+ *             - past end+30m while a host is still present (`hostPresent`),
+ *               up to the hard stop. There is no silent auto-stamp of
  *               `live_ended_at`, so a wifi drop can never end a webinar.
  *
  * `hostPresent` is only consulted past end+30m, so a caller may pass `false`
- * first and look presence up only when the answer comes back 'closed' — which
- * is exactly what lib/live-access.ts does, keeping the common case to zero
- * extra queries.
+ * first and look presence up only when the answer comes back 'closed'.
  */
 export function roomAccess({
   startsAt,
   endsAt,
+  liveStartedAt = null,
   liveEndedAt,
   isHost,
   hostPresent,
@@ -603,6 +465,7 @@ export function roomAccess({
 }: {
   startsAt: string | Date;
   endsAt: string | Date | null | undefined;
+  liveStartedAt?: string | Date | null;
   liveEndedAt: string | Date | null | undefined;
   isHost: boolean;
   hostPresent: boolean;
@@ -610,18 +473,177 @@ export function roomAccess({
 }): RoomAccess {
   const w = roomWindow(startsAt, endsAt);
   const t = now.getTime();
-
-  if (isHost) {
-    if (t < w.hostOpensAt) return "early";
-    if (t > w.hardCloseAt) return "closed";
-    return t < w.start ? "open" : "live";
-  }
-
+  if (t > w.hardCloseAt) return "closed";
+  if (isHost) return t < w.start ? "open" : "live";
   if (liveEndedAt) return "ended";
-  if (t < w.viewerOpensAt) return "early";
-  if (t <= w.viewerClosesAt) return t < w.start ? "open" : "live";
-  if (hostPresent && t <= w.hardCloseAt) return "live";
+  if (!liveStartedAt && t < w.viewerOpensAt) return "early";
+  if (t <= w.viewerClosesAt || hostPresent) return t < w.start ? "open" : "live";
   return "closed";
+}
+
+/**
+ * May the caller End this webinar for everyone right now?
+ *
+ * Only once it has begun (webinarHasBegun), before the hard stop, and not
+ * after it already ended. Staff always; a guest speaker only while no staff
+ * host is present; a viewer never.
+ */
+export function mayEndWebinar({
+  isStaff,
+  isSpeaker,
+  staffPresent,
+  startsAt,
+  endsAt,
+  liveStartedAt,
+  liveEndedAt,
+  now = new Date(),
+}: {
+  isStaff: boolean;
+  isSpeaker: boolean;
+  staffPresent: boolean;
+  startsAt: string | Date;
+  endsAt: string | Date | null | undefined;
+  liveStartedAt: string | Date | null | undefined;
+  liveEndedAt: string | Date | null | undefined;
+  now?: Date;
+}): boolean {
+  if (liveEndedAt) return false;
+  if (now.getTime() > roomWindow(startsAt, endsAt).hardCloseAt) return false;
+  if (!webinarHasBegun(startsAt, liveStartedAt, now.getTime())) return false;
+  if (isStaff) return true;
+  return isSpeaker && !staffPresent;
+}
+
+/**
+ * Should a host who is joining (or heartbeating) take the primary seat — the
+ * stage everyone sees when nobody is presenting?
+ *
+ * Yes when nobody holds it, or the holder is not present any more (left, or
+ * no heartbeat for PEER_TIMEOUT_MS). Never when presence cannot be read
+ * (`present` null): a guess would steal the stage from a host who is there.
+ */
+export function shouldClaimPrimary({
+  current,
+  selfId,
+  present,
+}: {
+  current: string | null;
+  selfId: string;
+  present: readonly string[] | null;
+}): boolean {
+  if (!current) return true;
+  if (current === selfId || present === null) return false;
+  return !present.includes(current);
+}
+
+/**
+ * Where a person stands with respect to a 1:1's room.
+ *
+ * An invite nobody has answered yet is joinable exactly like an accepted one
+ * (the student can still Decline beforehand); declined, cancelled and
+ * completed are not. The staff side may enter an hour early, the student 15
+ * minutes early. The room then stays open until End call, a cancel, or the
+ * hard stop (end+3h) — a call that runs long is never cut off mid-sentence.
+ */
+export type CallRoomAccess =
+  | "early"
+  | "open"
+  | "live"
+  | "closed"
+  | "completed"
+  | "cancelled"
+  | "declined";
+
+export function callRoomAccess({
+  status,
+  startsAt,
+  durationMinutes,
+  isStaff,
+  now = new Date(),
+}: {
+  status: string;
+  startsAt: string | Date;
+  durationMinutes: number;
+  isStaff: boolean;
+  now?: Date;
+}): CallRoomAccess {
+  if (status === "completed" || status === "cancelled" || status === "declined") {
+    return status;
+  }
+  // An unknown status is never a door to open.
+  if (status !== "invited" && status !== "accepted") return "cancelled";
+  const start = new Date(startsAt).getTime();
+  const end = start + durationMinutes * MINUTE;
+  const opens =
+    start -
+    (isStaff ? CALL_STAFF_OPENS_MINUTES_BEFORE : JOIN_OPENS_MINUTES_BEFORE) *
+      MINUTE;
+  const t = now.getTime();
+  if (t < opens) return "early";
+  if (t > end + ROOM_HARD_CLOSE_MINUTES_AFTER * MINUTE) return "closed";
+  return t < start ? "open" : "live";
+}
+
+/** May someone on this 1:1 End call now? From the start, while it is open. */
+export function mayEndCall({
+  status,
+  startsAt,
+  now = new Date(),
+}: {
+  status: string;
+  startsAt: string | Date;
+  now?: Date;
+}): boolean {
+  if (status !== "invited" && status !== "accepted") return false;
+  return now.getTime() >= new Date(startsAt).getTime();
+}
+
+// ---------------------------------------------------------------------------
+// Server truth about a room, carried on every join and heartbeat answer
+// ---------------------------------------------------------------------------
+
+/** The recording running in a room right now (recording_sessions, 0095). */
+export type RoomRecording = {
+  sessionId: string;
+  byUserId: string;
+  byName: string;
+  startedAt: string;
+};
+
+export type LiveRoomState = {
+  /** Webinar primary host (pinned for everyone); null for calls / unknown. */
+  primaryId: string | null;
+  /** Webinar: when a host first went live. Null for calls. */
+  liveStartedAt: string | null;
+  /** Webinar: End for everyone. Null for calls. */
+  liveEndedAt: string | null;
+  /** May THIS user End for everyone / End call right now? */
+  canEnd: boolean;
+  recording: RoomRecording | null;
+};
+
+/** Same server truth? Lets the engine skip a re-render on an unchanged heartbeat. */
+export function sameRoomState(
+  a: LiveRoomState | null,
+  b: LiveRoomState | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ra = a.recording;
+  const rb = b.recording;
+  return (
+    a.primaryId === b.primaryId &&
+    a.liveStartedAt === b.liveStartedAt &&
+    a.liveEndedAt === b.liveEndedAt &&
+    a.canEnd === b.canEnd &&
+    (ra === rb ||
+      (!!ra &&
+        !!rb &&
+        ra.sessionId === rb.sessionId &&
+        ra.byUserId === rb.byUserId &&
+        ra.byName === rb.byName &&
+        ra.startedAt === rb.startedAt))
+  );
 }
 
 /** Is this access answer one that lets someone into the room? */
