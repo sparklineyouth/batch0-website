@@ -1,10 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser, getProfile } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { EventCard, type StudentEvent } from "@/components/live/event-card";
 import { studentEventStatus } from "@/lib/event-form";
+import { recordedEventIds } from "@/lib/event-recordings";
+import { isHostedOnBatch0 } from "@/lib/webinars";
 
 export const metadata = { title: "Events · batch0" };
 
@@ -82,6 +85,16 @@ export default async function StudentEventsPage() {
     ...withStatus.filter((x) => x.s === "ended" || x.s === "past").reverse(),
     ...(older ?? []).map((e: any) => ({ e, s: "past" as const })),
   ];
+  // A hosted webinar's own recording plays on its room page once the
+  // follow-up (or an admin) shared it. The ids are rows this reader can see.
+  const recorded = await recordedEventIds(
+    createAdminClient(),
+    endedPast
+      .filter(({ e }) => isHostedOnBatch0(e.live_mode) && e.assets_shared_at && !e.recording_url)
+      .map(({ e }) => e.id as string),
+  );
+  const recordingHref = (e: any) =>
+    recorded.has(e.id) ? `/dashboard/events/${encodeURIComponent(e.id)}/live` : null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -127,7 +140,13 @@ export default async function StudentEventsPage() {
           </h2>
           <div className="space-y-3">
             {endedPast.map(({ e, s }) => (
-              <EventCard key={e.id} event={toStudentEvent(e)} upcoming={false} initialStatus={s} />
+              <EventCard
+                key={e.id}
+                event={toStudentEvent(e)}
+                upcoming={false}
+                initialStatus={s}
+                recordingHref={recordingHref(e)}
+              />
             ))}
           </div>
         </section>

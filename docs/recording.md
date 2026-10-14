@@ -95,7 +95,9 @@ revalidates the live route.
   URLs (`GET /download`) — straight to disk where the browser has a save
   dialog, else one Blob.
 - **Who may watch**: webinar — staff (`events.manage`), and anyone who can see
-  the event once the follow-up shared it (`assets_shared_at`); call — the
+  the event once it is shared (`assets_shared_at`: the follow-up, or **Share
+  with students** on the admin event page when the email is off; the students'
+  events lists then link "Watch recording" to the room page); call — the
   people on it and admins. **Delete** (audited): `events.manage` for a
   webinar's, admins for a call's.
 - UI: `components/live/recording-player.tsx` — `EventRecordings`,

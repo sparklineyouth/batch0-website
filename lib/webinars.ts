@@ -346,6 +346,13 @@ export function isHostedOnBatch0(liveMode: string | null | undefined): boolean {
   return liveMode === "hosted" || liveMode === "premiere";
 }
 
+/** The follow-up's bell and preheader: what is up, and only that. */
+export function followUpLine(hasRecording: boolean, hasDeck: boolean): string {
+  if (hasRecording && hasDeck) return "The recording and the slides are up.";
+  if (hasRecording) return "The recording is up.";
+  return "The slides are up.";
+}
+
 // ---------------------------------------------------------------------------
 // Questions (as the room panel receives them)
 // ---------------------------------------------------------------------------

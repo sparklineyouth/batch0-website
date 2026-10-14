@@ -13,6 +13,7 @@ import {
   type AudienceMode,
 } from "@/lib/webinars";
 import {
+  adminGroup,
   audienceFor,
   DEFAULT_DURATION_MINUTES,
   DEFAULT_LIVE_TITLE,
@@ -356,6 +357,54 @@ export async function startWebinarNow(input: {
   });
   if (!result.ok || !target) return result;
   redirect(target);
+}
+
+/**
+ * Share a past webinar's recording and slides with everyone who can see the
+ * event, with no email: for one whose "Email the recording and slides
+ * afterwards" is off. Stamps `assets_shared_at`, what the room page and the
+ * recordings API check (the follow-up cron only takes unshared events, so
+ * nothing is mailed later either). Staff-only events are never shared.
+ */
+export async function shareEventFiles(id: string): Promise<ActionResult> {
+  return runAction({ name: "shareEventFiles" }, async () => {
+    await assertPermission("events.manage");
+    if (!isUuid(id)) throw new Error("That event no longer exists.");
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("events")
+      .select("id, title, visibility, starts_at, ends_at, live_started_at, live_ended_at, assets_shared_at")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("That event no longer exists.");
+    const ev = data as Record<string, string | null>;
+    if (ev.visibility === "staff") throw new Error("Staff-only events aren't shared.");
+    if (ev.assets_shared_at) return;
+    const timing = {
+      startsAt: ev.starts_at!,
+      endsAt: ev.ends_at,
+      liveStartedAt: ev.live_started_at,
+      liveEndedAt: ev.live_ended_at,
+    };
+    if (adminGroup(timing, new Date(), false) !== "past") {
+      throw new Error("Share it once the webinar is over.");
+    }
+    const { error: updateError } = await admin
+      .from("events")
+      .update({ assets_shared_at: new Date().toISOString() })
+      .eq("id", id)
+      .is("assets_shared_at", null);
+    if (updateError) throw new Error(updateError.message);
+    await logAudit({
+      action: "event.shared",
+      targetType: "event",
+      targetId: id,
+      payload: { title: ev.title },
+    });
+    revalidateEventViews();
+    revalidatePath(`/admin/events/${id}`);
+  });
 }
 
 /** Delete an event, its rows (cascade), its uploaded files and its recordings. */

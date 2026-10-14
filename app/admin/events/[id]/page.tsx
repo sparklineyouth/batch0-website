@@ -14,6 +14,7 @@ import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import { joinNames } from "@/lib/live";
 import { adminGroup, EVENT_TYPE_LABEL, isEventType, isUuid, roomActionLabel } from "@/lib/event-form";
 import { LiveControls } from "../live-controls";
+import { ShareFiles } from "../share-files";
 import { FileDown, Pencil, Video } from "lucide-react";
 
 export const metadata = {
@@ -33,7 +34,7 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
   const { data: event } = await admin
     .from("events")
     .select(
-      "id, title, type, cohort_id, starts_at, ends_at, visibility, live_mode, recording_url, live_started_at, live_ended_at, cohort:cohorts(name)",
+      "id, title, type, cohort_id, starts_at, ends_at, visibility, live_mode, recording_url, live_started_at, live_ended_at, auto_share, assets_shared_at, cohort:cohorts(name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -155,6 +156,17 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
               Recording link →
             </a>
           )}
+          {hosted && ev.visibility !== "staff" && group === "past" ? (
+            ev.assets_shared_at ? (
+              <p className="mt-3 text-xs text-ink-faint" data-testid="files-shared">
+                Shared with students <LocalTime value={ev.assets_shared_at} mode="datetime-short" />
+              </p>
+            ) : ev.auto_share ? (
+              <p className="mt-3 text-xs text-ink-faint">Shared with students by the follow-up email.</p>
+            ) : (
+              <ShareFiles eventId={ev.id} />
+            )
+          ) : null}
         </Section>
       )}
 

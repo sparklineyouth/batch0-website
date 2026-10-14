@@ -339,7 +339,14 @@ starts. A run that dies halfway costs one webinar's follow-up rather than
 mailing the whole cohort twice on the next run.
 
 It goes to everyone enrolled, not only to attendees. The people who most need a
-recording are the ones who missed it.
+recording are the ones who missed it. The bell and the email name only what
+is there (`followUpLine`: the recording, the slides, or both).
+
+With the email off, nothing is shared on its own: the admin event page offers
+**Share with students** once the webinar is over, which stamps
+`assets_shared_at` and sends nothing. Shared recordings show as "Watch
+recording" on the students' events lists (`/dashboard/events`, `/app/events`),
+linking to the room page's player.
 
 ---
 
