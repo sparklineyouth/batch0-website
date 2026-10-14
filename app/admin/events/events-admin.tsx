@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { LocalTime } from "@/components/ui/local-time";
-import { LiveDot } from "@/components/live/call-stage";
+import { LiveDot } from "@/components/live/live-dot";
 import { getActionError } from "@/lib/action-error";
 import { EVENT_TYPE_LABEL, whoFromRow } from "@/lib/event-form";
 import { joinNames } from "@/lib/live";

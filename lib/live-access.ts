@@ -89,7 +89,7 @@ export type LiveRoomKind = "event" | "call";
 /** The columns every live surface needs. Names no column a student may not see. */
 const EVENT_COLUMNS =
   "id, title, description, type, starts_at, ends_at, live_mode, audience_mode, " +
-  "auto_record, premiere_seconds, qa_opens_at, " +
+  "auto_record, " +
   "live_started_at, live_ended_at, visibility, cohort_id, recording_url";
 
 /**
@@ -122,8 +122,6 @@ export type LiveAccessEvent = {
   liveMode: string;
   audienceMode: AudienceMode;
   autoRecord: boolean;
-  premiereSeconds: number | null;
-  qaOpensAt: string | null;
   liveStartedAt: string | null;
   liveEndedAt: string | null;
   visibility: string;
@@ -788,8 +786,6 @@ function toAccessEvent(row: any): LiveAccessEvent {
     liveMode: row.live_mode,
     audienceMode: normalizeAudienceMode(row.audience_mode),
     autoRecord: !!row.auto_record,
-    premiereSeconds: row.premiere_seconds ?? null,
-    qaOpensAt: row.qa_opens_at ?? null,
     liveStartedAt: row.live_started_at ?? null,
     liveEndedAt: row.live_ended_at ?? null,
     visibility: row.visibility,

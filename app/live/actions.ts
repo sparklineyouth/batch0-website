@@ -86,9 +86,9 @@ import {
  *              announcePresence refuse the room with status 'ended' — for
  *              everyone, hosts included, until staff Reopen it. A 1:1's is
  *              `endCall` in app/calls/actions.ts, which marks the invite
- *              completed; each side's room notices on its status poll, and
- *              this heartbeat answers 'ended' too. A completed call never
- *              reopens.
+ *              completed and sends `room-changed` (notifyCallChanged); each
+ *              side's room re-asks, and this heartbeat answers 'ended'. A
+ *              completed call never reopens.
  */
 
 export type RoomKind = LiveRoomKind;

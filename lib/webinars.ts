@@ -321,55 +321,6 @@ export function canEndForEveryone({
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Premieres (retired)
-// ---------------------------------------------------------------------------
-//
-// A legacy premiere row now runs as an ordinary hosted room. These remain only
-// for the premiere UI still compiled into components/live/broadcast-room.tsx
-// and premiere-player.tsx, which the live page never reaches (it passes
-// `premiere={null}`); they go with that room.
-
-/**
- * Where a premiere is right now.
- *
- *   waiting  Before the start. The room shows a countdown.
- *   playing  The recording is running. Every viewer is positioned at the same
- *            offset, computed from the wall clock, so someone arriving twenty
- *            minutes late joins twenty minutes in — which is what makes it
- *            read as live rather than as a video that started when they
- *            pressed play.
- *   live     A host is genuinely on camera. Either the recording has finished
- *            and the Q&A has opened, or a host went live early. Also the
- *            answer for any event with nothing to play (a hosted webinar),
- *            from before its start onwards.
- *   ended    A host pressed End for everyone, or the window has closed.
- */
-export type PremierePhase = "waiting" | "playing" | "live" | "ended";
-
-export type PremiereState = {
-  phase: PremierePhase;
-  /**
-   * Where to seek the player, in seconds from the top of the recording. Only
-   * meaningful while `phase === "playing"`.
-   */
-  offsetSeconds: number;
-  /** Seconds until the next transition, for a countdown. Null when there is none. */
-  secondsUntilNext: number | null;
-};
-
-/**
- * How far the player may drift from where the clock says it should be before
- * it is corrected, in seconds.
- *
- * Some drift is unavoidable and re-seeking on every tick is worse than the
- * drift: a `<video>` that seeks constantly stutters, drops audio, and on
- * Safari can re-buffer for a second each time. Two seconds is under the
- * threshold where a viewer would notice the difference against anyone else's
- * screen, and well above the jitter of a normally-playing element.
- */
-export const PREMIERE_DRIFT_TOLERANCE_SECONDS = 2;
-
 /**
  * Does this event have a batch0-hosted room? A legacy premiere row counts: it
  * runs as a hosted room.

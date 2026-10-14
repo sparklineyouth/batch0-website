@@ -3,16 +3,12 @@
  *
  *   npm run webinar-doctor
  *
- * Checks batch0 Live (the only provider; Daily was retired) and the data every
- * webinar depends on.
+ * Checks batch0 Live and the data every webinar depends on.
  *
  * WHAT THIS CANNOT DO, AND WHY IT SAYS SO
  * ---------------------------------------
- * No amount of configuration checking proves a webinar works. `daily-doctor`
- * passed every one of its checks for months while hosted webinars were
- * completely broken, because it exercised the REST plane — create a room,
- * mint a token, decode the claims — and the failure was on the media plane:
- * the Daily account refuses every join with `account-missing-payment-method`.
+ * No amount of configuration checking proves a webinar works: a REST-plane
+ * check once passed for months while every join failed on the media plane.
  *
  * So this script ends by telling you to run `npm run webinar-e2e`, which
  * drives two real browsers into a real room and asserts on decoded frames.
@@ -173,7 +169,7 @@ async function checkBuiltin() {
 async function checkData() {
   console.log("\nscheduled webinars");
   const res = await rest(
-    "events?select=id,title,starts_at,daily_room_name&live_mode=in.(hosted,premiere)&order=starts_at.asc&limit=200",
+    "events?select=id,title,starts_at&live_mode=in.(hosted,premiere)&order=starts_at.asc&limit=200",
   );
   if (!res.ok) {
     check(false, `could not read events (HTTP ${res.status})`);
@@ -186,15 +182,9 @@ async function checkData() {
   const upcoming = events.filter((e: any) => +new Date(e.starts_at) > now);
   info(`${upcoming.length} still in the future`);
 
-  // batch0 Live has no provider-side room: the event id IS the room. So a
-  // hosted event is joinable the moment it is scheduled, and the stale-room
-  // class of bug simply does not exist here. Worth saying, because these
-  // columns are still populated on older rows.
-  const leftovers = events.filter((e: any) => e.daily_room_name).length;
+  // The event id is the room: a hosted event is joinable the moment it is
+  // scheduled, with nothing provider-side to expire.
   pass("no provider-side rooms to expire (the event id is the room)");
-  if (leftovers > 0) {
-    info(`${leftovers} row(s) still carry an old daily_room_name — harmless, ignored`);
-  }
 }
 
 /**
