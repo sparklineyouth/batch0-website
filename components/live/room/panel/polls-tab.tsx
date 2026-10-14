@@ -1,5 +1,4 @@
 "use client";
-import { useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,8 +12,15 @@ import {
 import type { PanelWrite } from "@/lib/webinar-panel";
 import { Chip, Empty, FIELD, RowAction } from "./ui";
 
-/** A poll being written. Held by the panel, so a tab switch keeps it. */
-export type PollDraft = { question: string; options: string[]; resultsVisible: boolean };
+/** A poll being written. Held by the panel, so a tab switch keeps it (and a save in flight). */
+export type PollDraft = {
+  question: string;
+  options: string[];
+  resultsVisible: boolean;
+  saving: boolean;
+};
+/** Null closes the form. */
+type DraftUpdate = (fn: (draft: PollDraft | null) => PollDraft | null) => void;
 export type PollInput = {
   question: string;
   options: string[];
@@ -22,7 +28,12 @@ export type PollInput = {
   open: boolean;
 };
 
-const EMPTY_POLL: PollDraft = { question: "", options: ["", ""], resultsVisible: true };
+const EMPTY_POLL: PollDraft = {
+  question: "",
+  options: ["", ""],
+  resultsVisible: true,
+  saving: false,
+};
 
 export function PollsTab({
   polls,
@@ -39,7 +50,7 @@ export function PollsTab({
   closed: boolean;
   /** Null while no poll is being written. */
   draft: PollDraft | null;
-  onDraftChange: (draft: PollDraft | null) => void;
+  onDraftChange: DraftUpdate;
   onVote: (pollId: string, choice: number) => void;
   onSetOpen: (pollId: string, open: boolean) => void;
   onCreate: (input: PollInput) => Promise<PanelWrite<string>>;
@@ -53,7 +64,7 @@ export function PollsTab({
         (draft ? (
           <PollForm draft={draft} onChange={onDraftChange} onCreate={onCreate} />
         ) : (
-          <Button size="sm" variant="secondary" className="mb-3" onClick={() => onDraftChange(EMPTY_POLL)}>
+          <Button size="sm" variant="secondary" className="mb-3" onClick={() => onDraftChange(() => EMPTY_POLL)}>
             <Plus className="h-3.5 w-3.5" />
             New poll
           </Button>
@@ -158,32 +169,27 @@ function PollForm({
   onCreate,
 }: {
   draft: PollDraft;
-  /** Null closes the form. */
-  onChange: (draft: PollDraft | null) => void;
+  onChange: DraftUpdate;
   onCreate: (input: PollInput) => Promise<PanelWrite<string>>;
 }) {
-  const { question, options, resultsVisible } = draft;
-  const [busy, setBusy] = useState(false);
+  const { question, options, resultsVisible, saving: busy } = draft;
   const checked = normalizePoll({ question, options });
   const touched = question.trim() !== "" || options.some((o) => o.trim() !== "");
-  // Functional updates against the latest draft, so quick typing never drops a key.
-  const latest = useRef(draft);
-  latest.current = draft;
-  const edit = (patch: Partial<PollDraft>) => onChange({ ...latest.current, ...patch });
+  const edit = (patch: Partial<PollDraft>) => onChange((d) => d && { ...d, ...patch });
   const setOptions = (fn: (prev: string[]) => string[]) =>
-    edit({ options: fn(latest.current.options) });
+    onChange((d) => d && { ...d, options: fn(d.options) });
 
   const save = async (open: boolean) => {
     if (!checked.ok || busy) return;
-    setBusy(true);
+    edit({ saving: true });
     const res = await onCreate({
       question: checked.question,
       options: checked.options,
       resultsVisible,
       open,
     });
-    setBusy(false);
-    if (res.ok) onChange(null);
+    if (res.ok) onChange(() => null);
+    else edit({ saving: false });
   };
 
   const field = `h-9 w-full rounded-md border px-2.5 text-base placeholder:text-ink-faint focus:border-phosphor focus:outline-none md:text-sm ${FIELD}`;
@@ -247,7 +253,7 @@ function PollForm({
         <Button size="sm" variant="secondary" onClick={() => void save(false)} disabled={!checked.ok || busy}>
           Save draft
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => onChange(null)}>
+        <Button size="sm" variant="ghost" onClick={() => onChange(() => null)}>
           Cancel
         </Button>
       </div>

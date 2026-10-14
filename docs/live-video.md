@@ -353,8 +353,9 @@ Room-level chat is now shaped by mode in `createRoom` (`lib/daily.ts`):
 meetings, where a hidden audience is not in play and Daily's own chat is fine.
 
 The privacy property from layers 1–3 is preserved end to end. A viewer's
-`fetchQuestions` returns only their *own* questions; the host (`events.manage`)
-sees all of them. That is the same asymmetry as the roster — a student learns
+`fetchQuestions` returns only their *own* questions; staff (`events.manage`)
+see all of them, and a guest speaker sees all of them with every student shown
+as "A student". That is the same asymmetry as the roster — a student learns
 nothing about who else is in the room, including who else is asking. RLS in
 `0060` backstops the server actions so the split is enforced at the database, not
 only in the action code.

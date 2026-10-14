@@ -16,9 +16,13 @@
  *     and answered; a poll is launched, voted on, closed — and stays on the
  *     students' screens with its result; a draft never reaches them;
  *   - unread badges, the autoscroll "N new" pill, a reaction;
+ *   - a guest speaker reads the panel with every student as "A student" and
+ *     the roster as a count; the write route refuses cross-site and malformed
+ *     requests and a student's moderation;
  *   - the room switched to `moderated`: a student's message is Pending for
  *     them, invisible to the other student, and appears for everyone on
- *     Approve.
+ *     Approve; then to `private`: no chat, and a question reaches only the
+ *     hosts.
  * Prints how long each removal took to land on every screen.
  *
  * Accounts are `e2e-panel-*@example.invalid` (a reserved TLD) with a random
@@ -101,7 +105,7 @@ async function rest(path: string, init?: RequestInit) {
   return text ? JSON.parse(text) : null;
 }
 
-async function createUser(email: string, role: string, name: string) {
+async function createUser(email: string, role: string, name: string): Promise<string> {
   const res = await fetch(`${url}/auth/v1/admin/users`, {
     method: "POST",
     headers: adm,
@@ -113,6 +117,19 @@ async function createUser(email: string, role: string, name: string) {
   await rest(`profiles?id=eq.${body.id}`, {
     method: "PATCH",
     body: JSON.stringify({ role, full_name: name }),
+  });
+  return body.id as string;
+}
+
+/** The panel route, called as `email` without a browser. */
+async function panelAs(email: string, init: { query?: string; body?: unknown; origin?: string }) {
+  const cookie = (await sessionCookies(email)).map((c) => `${c.name}=${c.value}`).join("; ");
+  const headers: Record<string, string> = { cookie, origin: init.origin ?? BASE };
+  if (init.body !== undefined) headers["content-type"] = "application/json";
+  return fetch(`${BASE}/api/live/panel${init.query ?? ""}`, {
+    method: init.body === undefined ? "GET" : "POST",
+    headers,
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
 }
 
@@ -209,6 +226,9 @@ async function openAs(browser: Browser, email: string, path: string, label: stri
   );
   const page = await ctx.newPage();
   page.on("pageerror", (e) => info(`[${label}] page error: ${e.message}`));
+  // A renderer killed under memory pressure reads as every later check
+  // timing out; say so instead.
+  page.on("crash", () => info(`[${label}] the browser tab crashed`));
   await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 180_000 });
   return { ctx, page };
 }
@@ -282,9 +302,11 @@ async function main() {
   const HOST = `e2e-panel-host-${stamp}@example.invalid`;
   const ADA = `e2e-panel-ada-${stamp}@example.invalid`;
   const BEN = `e2e-panel-ben-${stamp}@example.invalid`;
+  const SAM = `e2e-panel-sam-${stamp}@example.invalid`;
   await createUser(HOST, "admin", "Hana Host");
-  await createUser(ADA, "student", "Ada Student");
-  await createUser(BEN, "student", "Ben Student");
+  const adaId = await createUser(ADA, "student", "Ada Student");
+  const benId = await createUser(BEN, "student", "Ben Student");
+  const samId = await createUser(SAM, "student", "Sam Speaker");
   const now = Date.now();
   const [event] = await rest("events", {
     method: "POST",
@@ -300,6 +322,11 @@ async function main() {
   });
   eventId = event.id as string;
   info(`event ${eventId}`);
+  // A claimed guest speaker: moderates, never told who the students are.
+  await rest("event_speakers", {
+    method: "POST",
+    body: JSON.stringify({ event_id: eventId, user_id: samId, name: "Sam Speaker" }),
+  });
 
   let browser: Browser | null = null;
   const contexts: BrowserContext[] = [];
@@ -456,6 +483,45 @@ async function main() {
     await rowAction(q(host.page), "Answered");
     check(!!(await until("answered", async () => (await q(ada.page).innerText()).includes("Answered"))), "Answered reaches the asker");
 
+    // --- a guest speaker, and the route itself ---------------------------------
+    console.log("\nguest speaker · route");
+    const speakerRes = await panelAs(SAM, {
+      query: `?event=${eventId}&parts=chat,qa,people`,
+    });
+    const speakerRead = speakerRes.status === 200 ? await speakerRes.json() : null;
+    const wire = JSON.stringify(speakerRead ?? {});
+    check(
+      !!speakerRead?.chat?.messages?.length && !!speakerRead?.questions?.length,
+      "a guest speaker reads the chat and the question queue",
+    );
+    check(
+      !/Ada Student|Ben Student/.test(wire) && !wire.includes(adaId) && !wire.includes(benId),
+      "…with no student's name or id anywhere in the payload",
+    );
+    check(
+      speakerRead?.questions?.some((x: { askerName: string }) => x.askerName === "A student") &&
+        speakerRead?.chat?.messages?.some((m: { authorName: string }) => m.authorName === "A student"),
+      "…students shown as \"A student\"",
+    );
+    check(
+      speakerRead?.people?.viewers === null && speakerRead?.people?.watching >= 2,
+      "…and People gives the speaker a count, never names",
+    );
+    const adaPeople = await (await panelAs(ADA, { query: `?event=${eventId}&parts=people` })).json();
+    check(adaPeople.people === undefined, "a student is never sent the roster");
+    const forged = await panelAs(ADA, {
+      body: { event: eventId, op: "chat.send", id: crypto.randomUUID(), body: "from elsewhere" },
+      origin: "https://evil.example",
+    });
+    check(forged.status === 403, "a cross-site write is refused");
+    const bad = await panelAs(ADA, { body: { event: eventId, op: "chat.moderate", id: "x" } });
+    check(bad.status === 400, "a malformed write is refused");
+    const notMod = await panelAs(ADA, {
+      body: { event: eventId, op: "chat.moderate", id: crypto.randomUUID(), action: "remove" },
+    });
+    const notModBody = notMod.status === 200 ? await notMod.json() : null;
+    check(notModBody?.ok === false, "a student cannot moderate through the route");
+
     // --- polls ----------------------------------------------------------------
     console.log("\npolls");
     await tab(host.page, /^Polls/);
@@ -595,6 +661,31 @@ async function main() {
       )),
       "and it is no longer Pending for its author",
     );
+
+    // --- private ---------------------------------------------------------------
+    console.log("\nprivate");
+    await rest(`events?id=eq.${eventId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ audience_mode: "private" }),
+    });
+    info(`waiting for the panels' next read (${(ROOM_RESYNC_MS + 2_000) / 1000}s)…`);
+    await new Promise((r) => setTimeout(r, ROOM_RESYNC_MS + 2_000));
+    check(
+      !!(await until("no Chat tab", async () => (await ada.page.getByRole("tab", { name: /^Chat/ }).count()) === 0)),
+      "chat is gone for students",
+    );
+    await tab(ada.page, /^Q&A/);
+    const askPrivately = ada.page.getByRole("textbox", { name: "Your question" });
+    await askPrivately.fill("Can I ask this privately?");
+    await askPrivately.press("Enter");
+    await tab(host.page, /^Q&A/);
+    check(
+      !!(await until("host sees private q", async () => (await question(host.page, "privately").count()) > 0)),
+      "the host gets a private question",
+    );
+    await tab(ben.page, /^Q&A/);
+    await new Promise((r) => setTimeout(r, 1500));
+    check((await question(ben.page, "privately").count()) === 0, "other students never see it");
 
     if (headed) await new Promise((r) => setTimeout(r, 15_000));
   } finally {
