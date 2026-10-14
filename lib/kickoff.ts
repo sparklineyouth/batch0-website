@@ -112,7 +112,6 @@ export function kickoffPhase(
 
 export const DEFAULT_AGENDA: readonly KickoffAgendaItem[] = [
   { title: "The course", body: "Week one opens." },
-  { title: "Your cohort", body: "Announcements and events go live." },
   { title: "Events", body: "Live sessions and the road to Demo Day." },
   { title: "Assignments", body: "The first is due in week one." },
 ];
@@ -134,7 +133,7 @@ const DEFAULT_HEADLINE_UNDATED = "Kickoff is being scheduled";
 const DEFAULT_HEADLINE_CANCELLED = "This cohort was cancelled";
 
 const INTRO: Record<KickoffPhase, string> = {
-  upcoming: "Day one of the cohort. Until then: Discord, your team and the pre-cohort resources.",
+  upcoming: "Day one of the cohort. Until then: your team and the pre-cohort work.",
   today: "Today is day one.",
   past: "The record of day one.",
   undated: "The date isn't set yet. We'll email you.",
