@@ -40,9 +40,10 @@ export const env = {
   // writable and an open endpoint would be a denial-of-service vector.
   resendWebhookSecret: process.env.RESEND_WEBHOOK_SECRET,
 
-  // Daily (live video — webinars and 1:1 calls). Optional: every helper in
-  // lib/daily.ts no-ops when unset, so an environment without a key degrades
-  // to "hosting unavailable" and the rest of the site is unaffected.
+  // Daily, the retired live-video provider. Nothing in the app reads these any
+  // more: webinars and 1:1 calls run only on batch0 Live (below), and the
+  // live pages have no Daily branch. Only the unreferenced lib/daily.ts and
+  // scripts/daily-doctor.mts still read them; both are due for deletion.
   //
   // dailyApiKey is server-only and must NEVER gain a NEXT_PUBLIC_ prefix. It
   // can create rooms and mint owner tokens for ANY room on the domain, so in
@@ -72,21 +73,9 @@ export const env = {
   // batch0 Live — the built-in webinar provider (lib/live-rooms.ts).
   // ---------------------------------------------------------------------
   //
-  // Which provider hosted events and 1:1 calls actually run on.
-  //
-  // Defaults to "builtin", and that default is load-bearing rather than a
-  // preference: the Daily account this project was wired to cannot start a
-  // media session at all. Every join — including into a bare public room with
-  // no properties set — is refused with `account-missing-payment-method`,
-  // which is an account-level block no code here can clear. Daily's REST API
-  // still answers perfectly, which is exactly why it looked healthy for so
-  // long (see scripts/daily-doctor.mts, and scripts/webinar-e2e.mts for the
-  // check that catches it).
-  //
-  // Set LIVE_PROVIDER=daily to go back, once that account has a card on file.
-  // Nothing about the Daily path was removed.
-  liveProvider:
-    process.env.LIVE_PROVIDER === "daily" ? ("daily" as const) : ("builtin" as const),
+  // The only provider hosted events and 1:1 calls run on. There is no
+  // LIVE_PROVIDER switch any more: the live pages lost their Daily branch,
+  // so setting it would change nothing.
 
   // Secret that channel names and host proofs are derived from. Never sent to
   // a browser; only HMACs of it are, and only to the participant they belong

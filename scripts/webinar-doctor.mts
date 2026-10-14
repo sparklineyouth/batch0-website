@@ -3,9 +3,8 @@
  *
  *   npm run webinar-doctor
  *
- * Provider-aware. It checks whatever `LIVE_PROVIDER` selects — batch0 Live by
- * default, Daily when opted in — plus the data every webinar depends on
- * regardless of provider.
+ * Checks batch0 Live (the only provider; Daily was retired) and the data every
+ * webinar depends on.
  *
  * WHAT THIS CANNOT DO, AND WHY IT SAYS SO
  * ---------------------------------------
@@ -22,8 +21,6 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const API = "https://api.daily.co/v1";
-
 function need(name: string): string {
   const v = process.env[name];
   if (!v) {
@@ -36,7 +33,6 @@ function need(name: string): string {
 const SUPABASE_URL = need("NEXT_PUBLIC_SUPABASE_URL");
 const ANON = need("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 const SERVICE = need("SUPABASE_SERVICE_ROLE_KEY");
-const PROVIDER = process.env.LIVE_PROVIDER === "daily" ? "daily" : "builtin";
 
 let failures = 0;
 let warnings = 0;
@@ -172,44 +168,12 @@ async function checkBuiltin() {
 }
 
 // ---------------------------------------------------------------------------
-// Daily
-// ---------------------------------------------------------------------------
-async function checkDaily() {
-  console.log("\nDaily (LIVE_PROVIDER=daily)");
-  const key = process.env.DAILY_API_KEY;
-  const domain = process.env.NEXT_PUBLIC_DAILY_DOMAIN;
-  check(!!key, "DAILY_API_KEY is set");
-  check(!!domain, "NEXT_PUBLIC_DAILY_DOMAIN is set");
-  if (!key || !domain) return;
-
-  const me = await fetch(`${API}/`, {
-    headers: { Authorization: `Bearer ${key}` },
-  });
-  check(me.ok, `Daily REST authenticates (HTTP ${me.status})`);
-  if (!me.ok) return;
-  const body = await me.json();
-  const expected = domain.replace(/^https?:\/\//, "").split(".")[0];
-  check(
-    body.domain_name === expected,
-    `domain matches the key (${body.domain_name})`,
-  );
-  check(body.config?.account_suspended !== true, "account is not suspended");
-  check(body.config?.block_api_requests !== true, "API requests are not blocked");
-
-  info("");
-  info("NOTE: none of the above proves anyone can JOIN. The REST plane and the");
-  info("media plane fail independently — this account passed every REST check");
-  info("while refusing every session with account-missing-payment-method.");
-  info("Run `npm run webinar-e2e -- --provider=daily` to test the media plane.");
-}
-
-// ---------------------------------------------------------------------------
-// Data every provider depends on
+// Scheduled webinars
 // ---------------------------------------------------------------------------
 async function checkData() {
   console.log("\nscheduled webinars");
   const res = await rest(
-    "events?select=id,title,starts_at,ends_at,live_mode,daily_room_name&live_mode=eq.hosted&order=starts_at.asc&limit=200",
+    "events?select=id,title,starts_at,daily_room_name&live_mode=in.(hosted,premiere)&order=starts_at.asc&limit=200",
   );
   if (!res.ok) {
     check(false, `could not read events (HTTP ${res.status})`);
@@ -222,51 +186,14 @@ async function checkData() {
   const upcoming = events.filter((e: any) => +new Date(e.starts_at) > now);
   info(`${upcoming.length} still in the future`);
 
-  if (PROVIDER === "builtin") {
-    // The built-in provider has no provider-side room: the event id IS the
-    // room. So a hosted event is joinable the moment it is scheduled, and the
-    // stale-room class of bug simply does not exist here. Worth saying,
-    // because these columns are still populated on older rows.
-    const leftovers = events.filter((e: any) => e.daily_room_name).length;
-    pass("no provider-side rooms to expire (the event id is the room)");
-    if (leftovers > 0) {
-      info(`${leftovers} row(s) still carry an old daily_room_name — harmless, ignored`);
-    }
-    return;
-  }
-
-  // Daily: every stored room must outlive its own webinar. This is the check
-  // that catches the 0069 breakage, where moving every webinar to a Sunday
-  // left 17 of 18 pointing at a room that expired before the webinar started.
-  let dead = 0;
-  let expiring = 0;
-  for (const e of upcoming) {
-    if (!e.daily_room_name) {
-      warn(`no room: ${e.title.slice(0, 50)}`);
-      continue;
-    }
-    const r = await fetch(`${API}/rooms/${encodeURIComponent(e.daily_room_name)}`, {
-      headers: { Authorization: `Bearer ${process.env.DAILY_API_KEY}` },
-    });
-    if (r.status === 404) {
-      dead++;
-      console.log(`  FAIL  room already deleted: ${e.title.slice(0, 45)}`);
-      failures++;
-      continue;
-    }
-    const room = await r.json();
-    const exp = room?.config?.exp;
-    const end = e.ends_at ? +new Date(e.ends_at) : +new Date(e.starts_at) + 3600e3;
-    if (exp && exp * 1000 <= end) {
-      expiring++;
-      console.log(
-        `  FAIL  room expires before the webinar ends: ${e.title.slice(0, 40)}`,
-      );
-      failures++;
-    }
-  }
-  if (dead === 0 && expiring === 0 && upcoming.length > 0) {
-    pass("every upcoming webinar's room outlives it");
+  // batch0 Live has no provider-side room: the event id IS the room. So a
+  // hosted event is joinable the moment it is scheduled, and the stale-room
+  // class of bug simply does not exist here. Worth saying, because these
+  // columns are still populated on older rows.
+  const leftovers = events.filter((e: any) => e.daily_room_name).length;
+  pass("no provider-side rooms to expire (the event id is the room)");
+  if (leftovers > 0) {
+    info(`${leftovers} row(s) still carry an old daily_room_name — harmless, ignored`);
   }
 }
 
@@ -354,10 +281,9 @@ async function checkWebinars() {
 }
 
 async function main() {
-  console.log(`\nwebinar-doctor — active provider: ${PROVIDER}`);
+  console.log("\nwebinar-doctor");
 
-  if (PROVIDER === "builtin") await checkBuiltin();
-  else await checkDaily();
+  await checkBuiltin();
 
   await checkData();
   await checkWebinars();

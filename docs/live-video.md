@@ -4,8 +4,9 @@
 >
 > **Live video now runs on [batch0 Live](./batch0-live.md), a self-hosted
 > WebRTC provider built into this repo.** Read that document first — this one
-> is kept because its analysis of the problem is still accurate and because
-> the Daily path is still in the codebase behind `LIVE_PROVIDER=daily`.
+> is kept because its analysis of the problem is still accurate. The Daily
+> path described below is history: the live pages no longer have a Daily
+> branch, and `LIVE_PROVIDER` is no longer read.
 >
 > **Why the switch.** The Daily integration described below was correct and is
 > still correct. What is not correct is the Daily *account*: it cannot start a
@@ -22,9 +23,9 @@
 > and it is now closed by `npm run webinar-e2e`, which drives two real
 > browsers into a real room and asserts on decoded video frames.
 >
-> **To go back to Daily**: add a card to the Daily account, set
-> `LIVE_PROVIDER=daily`, and run `npm run webinar-e2e -- --provider=daily` to
-> confirm the media plane actually works before trusting it with an audience.
+> **There is no switch back to Daily** (see "Daily is gone" in
+> [batch0-live.md](./batch0-live.md)). `npm run daily-doctor` and
+> `lib/daily.ts` are unreferenced leftovers due for deletion.
 
 ## Status
 

@@ -4,7 +4,6 @@
  *   npm run dev          # in another terminal
  *   npm run webinar-e2e
  *   npm run webinar-e2e -- --headed    # watch it happen
- *   npm run webinar-e2e -- --provider=daily
  *
  * Why this exists
  * ---------------
@@ -56,8 +55,6 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const headed = process.argv.includes("--headed");
-const providerArg = process.argv.find((a) => a.startsWith("--provider="));
-const PROVIDER = providerArg ? providerArg.split("=")[1] : "builtin";
 
 function required(name: string): string {
   const v = process.env[name];
@@ -606,7 +603,7 @@ async function liveEndedAt(eventId: string): Promise<string | null> {
 
 // --- the test ---------------------------------------------------------------
 async function main() {
-  console.log(`\nwebinar-e2e — provider: ${PROVIDER}\n`);
+  console.log("\nwebinar-e2e\n");
 
   const health = await fetch(BASE).catch(() => null);
   if (!health?.ok) {

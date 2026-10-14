@@ -479,7 +479,7 @@ the side that offered (`iceRecovery`), and is rebuilt only after two restarts.
 **Comfortable to about 25 viewers** on decent home broadband. Past that the
 host's upstream, not the code, is the limit, and the right fix is an SFU
 (LiveKit, mediasoup) or a vendor with a payment method attached — at which
-point `LIVE_PROVIDER` is the switch and `lib/live-signal.ts` is the seam.
+point `lib/live-signal.ts` is the seam.
 
 Viewers are unaffected by audience size: each receives exactly one stream.
 
@@ -521,7 +521,6 @@ already has.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `LIVE_PROVIDER` | `builtin` | Set to `daily` to use Daily instead. |
 | `LIVE_ROOM_SECRET` | `SUPABASE_SERVICE_ROLE_KEY` | HMAC input for channel keys. Set it to rotate every room key without touching Supabase credentials. |
 | `LIVE_TURN_*` | unset | Optional relay, above. |
 
@@ -551,7 +550,7 @@ npm run webinar-e2e -- --headed    # watch it happen
 npm run call-mesh-e2e     # a 1:1 that gains a co-host mid-call: everyone decodes everyone
 ```
 
-`webinar-doctor` is provider-aware and checks what `LIVE_PROVIDER` selects.
+`webinar-doctor` checks batch0 Live only; there is no other provider.
 
 **`webinar-e2e` is the one that matters.** It creates a throwaway admin and
 two throwaway students, schedules a webinar that is live right now, signs them
@@ -596,14 +595,18 @@ has no room lifecycle at all.
 
 ---
 
-## Going back to Daily
+## Daily is gone
 
-Nothing was removed. `lib/daily.ts`, `daily-doctor`, and the `LiveRoom`
-component are all intact.
+There is no switch back to Daily. Both live pages
+(`app/dashboard/events/[id]/live` and `app/dashboard/calls/[id]/live`) lost
+their Daily branch in the revamp, no app code reads the `daily_room_*`
+columns (kept as history), and nothing reads `LIVE_PROVIDER`, so setting it
+changes nothing. `lib/daily.ts`, `daily-doctor` and the old Daily `LiveRoom`
+(`live-room.tsx`, with `qa-panel.tsx`) have no importers left and are due
+for deletion.
 
-1. Add a payment method to the Daily account.
-2. `LIVE_PROVIDER=daily`
-3. `npm run webinar-e2e -- --provider=daily` — confirm the **media plane**
-   works before trusting it with an audience. Do not rely on
-   `npm run daily-doctor` alone; that is exactly the mistake that let this go
-   unnoticed.
+Moving to a vendor again means wiring it into the room behind
+`lib/live-signal.ts`, then proving the **media plane** with `webinar-e2e`
+before trusting it with an audience. A REST check such as `daily-doctor` is
+not proof; that is exactly the mistake that let the Daily outage go
+unnoticed.
