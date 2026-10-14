@@ -18,6 +18,7 @@ import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
 import { recordingsReady } from "@/lib/pending-migrations-server";
 import { claimSpeakerSlot } from "@/app/admin/events/webinar-actions";
 import { BuiltinEventRoom } from "./builtin-room";
+import { RefreshUntilOpen } from "@/components/live/refresh-until-open";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { EventRecordings } from "@/components/live/recording-player";
@@ -153,10 +154,16 @@ export default async function EventLivePage(
     return (
       <Shell title={ev.title}>
         {where === "early" ? (
-          <p className="text-sm text-ink-soft">
-            {`This opens ${JOIN_OPENS_MINUTES_BEFORE} minutes before it starts`}{" "}
-            — <LocalTime value={ev.startsAt} />.
-          </p>
+          <>
+            <p className="text-sm text-ink-soft">
+              {`This opens ${JOIN_OPENS_MINUTES_BEFORE} minutes before it starts`}{" "}
+              — <LocalTime value={ev.startsAt} />.
+            </p>
+            {/* Lets them in when it opens, or as soon as a host goes live early. */}
+            <RefreshUntilOpen
+              opensAt={new Date(Date.parse(ev.startsAt) - JOIN_OPENS_MINUTES_BEFORE * 60_000).toISOString()}
+            />
+          </>
         ) : (
           <p className="text-sm text-ink-soft">This webinar is over.</p>
         )}

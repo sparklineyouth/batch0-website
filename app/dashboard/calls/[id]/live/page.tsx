@@ -17,6 +17,7 @@ import {
 import { hostCallsHref } from "@/lib/call-lifecycle";
 import { recordingsReady } from "@/lib/pending-migrations-server";
 import { BuiltinCallRoom } from "./builtin-room";
+import { RefreshUntilOpen } from "@/components/live/refresh-until-open";
 import { CallRecordings } from "@/components/live/recording-player";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
@@ -94,6 +95,9 @@ export default async function CallLivePage(
           This opens {opens} minutes before it starts —{" "}
           <LocalTime value={invite.startsAt} />.
         </p>
+        <RefreshUntilOpen
+          opensAt={new Date(Date.parse(invite.startsAt) - opens * 60_000).toISOString()}
+        />
         <BackLink href={backHref} />
       </Shell>
     );
