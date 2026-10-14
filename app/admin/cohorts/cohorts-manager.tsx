@@ -7,7 +7,7 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
-import { Pencil, Trash2, Plus, Activity, Flag, Megaphone } from "lucide-react";
+import { Pencil, Trash2, Plus, Flag, Megaphone } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
 import { activePromo, promoPriceCents, type PromoConfig } from "@/lib/promo";
 import { easternDateOf } from "@/lib/cohort-eligibility";
@@ -164,14 +164,6 @@ export function CohortsManager({
                   title="Landing page"
                 >
                   <Megaphone className="h-4 w-4" />
-                </Link>
-                <Link
-                  href={`/admin/cohorts/${c.id}/health`}
-                  className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
-                  aria-label={`View health for ${c.name}`}
-                  title="Cohort health"
-                >
-                  <Activity className="h-4 w-4" />
                 </Link>
                 <button
                   onClick={() => setEditing(c)}

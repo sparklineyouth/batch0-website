@@ -42,6 +42,6 @@ needed — no backfill, no migration.
 
 The first thing that made the admin inbox unreadable wasn't classification, it
 was volume: the at-risk cron sent `"<name> needs a mentor"` to **every** admin,
-once per unassigned student per week. That notification is gone — the
-`at_risk_interventions` row and `/admin/interventions` were always the real
-queue for it — and migration 0091 marks the existing backlog read.
+once per unassigned student per week. That notification is gone, and migration
+0091 marks the existing backlog read. (The at-risk crons and queue themselves
+went with check-ins in 0093; overdue work now shows on /admin/assignments.)

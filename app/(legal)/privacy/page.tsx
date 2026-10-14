@@ -44,7 +44,7 @@ export default function PrivacyPage() {
           handles all payment data.
         </li>
         <li>
-          <strong>Program usage:</strong> lesson progress, weekly check-ins,
+          <strong>Program usage:</strong> lesson progress, assignment submissions,
           team threads, comments, and files you upload to your drive.
         </li>
         <li>

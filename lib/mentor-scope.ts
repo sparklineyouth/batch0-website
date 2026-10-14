@@ -118,7 +118,7 @@ export async function mentorScope(
 
 /**
  * The scope as one PostgREST `or()` filter, for a table that carries both
- * `cohort_id` and `user_id` (enrollments, student_checkins). Both halves are
+ * `cohort_id` and `user_id` (e.g. enrollments). Both halves are
  * needed because an assignment may carry no cohort, and either half can be
  * empty — PostgREST rejects an empty `in.()`, so those are dropped.
  *

@@ -175,7 +175,7 @@ Vercel cron config (`vercel.json`) was reduced to a single weekly digest job; th
 
 ### 21. Student nav showed pre-enrollment dead ends
 
-**Fix:** `app/dashboard/layout.tsx` queries enrollments; passes `enrolled` to `StudentSidebar` + `MobileNav`. Both hide `course`, `team`, `checkin`, `office-hours`, `events`, `resources`, `files` until the student is enrolled (admins always see everything for preview).
+**Fix:** `app/dashboard/layout.tsx` queries enrollments; passes `enrolled` to `StudentSidebar` + `MobileNav`. Both hide `course`, `team`, `assignments`, `office-hours`, `events`, `resources`, `files` until the student is enrolled (admins always see everything for preview).
 
 ### 22. Lesson reply parent wasn't validated
 

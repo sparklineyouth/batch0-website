@@ -53,6 +53,11 @@ const nextConfig = {
         destination: to,
         permanent: true,
       },
+      // Check-ins became assignments (migration 0093). Old links, emails and
+      // installed-app shortcuts still point here.
+      { source: "/dashboard/checkin", destination: "/dashboard/assignments", permanent: true },
+      { source: "/mentor/checkins", destination: "/mentor/assignments", permanent: true },
+      { source: "/app/checkin", destination: "/app/assignments", permanent: true },
     ];
   },
   webpack: (config) => {

@@ -17,28 +17,8 @@
       "schedule": "0 14 * * 1"
     },
     {
-      "path": "/api/cron/cohort-digest",
-      "schedule": "30 14 * * 1"
-    },
-    {
-      "path": "/api/cron/at-risk-alerts",
-      "schedule": "0 15 * * 1"
-    },
-    {
-      "path": "/api/cron/at-risk-intervene",
-      "schedule": "15 15 * * 1"
-    },
-    {
-      "path": "/api/cron/founder-weekly-recap",
-      "schedule": "0 16 * * 1"
-    },
-    {
       "path": "/api/cron/card-expiring",
       "schedule": "0 15 * * *"
-    },
-    {
-      "path": "/api/cron/checkin-nudge",
-      "schedule": "0 23 * * 0"
     },
     {
       "path": "/api/cron/stripe-reconcile",
@@ -55,6 +35,10 @@
     {
       "path": "/api/cron/support-housekeeping",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/assignment-reminders",
+      "schedule": "0 * * * *"
     }
   ]
 }

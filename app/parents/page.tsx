@@ -58,7 +58,7 @@ export default async function ParentsPage({ searchParams }: { searchParams: Prom
             <h2 className="font-display text-4xl leading-tight md:col-span-4">Who teaches, and how to get help</h2>
             <div className="space-y-5 text-sm leading-relaxed text-ink-soft md:col-span-8">
               <p>Rishabh Dagli and Shresht Chopra run the program and the live sessions. They are student founders, and Fall 2026 is the founding cohort. We do not claim an alumni track record or university accreditation.</p>
-              <p>Live sessions are staff-led, with moderated written Q&A. Students use the course materials, check-ins and office hours to get help with their work. Batch0 is operated by Sparkline Youth LLC.</p>
+              <p>Live sessions are staff-led, with moderated written Q&A. Students use the course materials, assignments and office hours to get help with their work. Batch0 is operated by Sparkline Youth LLC.</p>
               <p>Students under 18 need a parent or guardian’s permission. Please review the <Link className="link-ink" href="/terms">terms</Link> and <Link className="link-ink" href="/privacy">privacy policy</Link> together. Questions about the experience or a concern about the community go to <a className="link-ink" href={`mailto:${settings.contactEmail}`}>{settings.contactEmail}</a>.</p>
               <p>You can inspect the teaching before applying: our <Link className="link-ink" href="/sample-lesson">sample customer-interview lesson</Link> includes an exercise and an illustrative feedback example. It is not a student testimonial.</p>
             </div>

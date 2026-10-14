@@ -178,7 +178,7 @@ export default async function EnrolledPage(
 
       {!started && (
         <p className="mt-8 text-sm text-ink-soft">
-          The rest of the program — course, check-ins, office hours, events —
+          The rest of the program — course, assignments, office hours, events —
           unlocks at kickoff{startLabel ? ` on ${startLabel}` : ""}.
         </p>
       )}

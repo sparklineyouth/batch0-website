@@ -24,10 +24,9 @@ import {
   MessageCircle,
   Star,
   Megaphone,
-  CheckCircle,
+  ClipboardList,
   FolderArchive,
   Rocket,
-  Activity,
   Mail,
   Send,
   Trophy,
@@ -89,7 +88,7 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard/course", label: "Course", icon: PlayCircle },
       { href: "/dashboard/team", label: "Team", icon: Rocket },
-      { href: "/dashboard/checkin", label: "Check-in", icon: CheckCircle },
+      { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardList },
       {
         href: "/dashboard/office-hours",
         label: "Office hours",
@@ -167,7 +166,7 @@ export const ENROLLED_ONLY_HREFS = new Set<string>([
   // an enrolled student does. RLS (migration 0068) returns nothing for an
   // applicant either way.
   "/dashboard/discussions",
-  "/dashboard/checkin",
+  "/dashboard/assignments",
   "/dashboard/office-hours",
   "/dashboard/events",
   "/dashboard/resources",
@@ -278,6 +277,12 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "Cohorts",
         icon: Calendar,
         perm: "cohorts.manage",
+      },
+      {
+        href: "/admin/assignments",
+        label: "Assignments",
+        icon: ClipboardList,
+        perm: "assignments.manage",
       },
       {
         href: "/admin/challenges",
@@ -397,18 +402,11 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
   {
     label: "Operations",
     items: [
-      { href: "/admin/pulse", label: "Pulse", icon: Activity, perm: "pulse.view" },
       {
         href: "/admin/progress",
         label: "Student progress",
         icon: LineChart,
         perm: "people.view",
-      },
-      {
-        href: "/admin/interventions",
-        label: "At-risk",
-        icon: ShieldCheck,
-        perm: "interventions.manage",
       },
       {
         href: "/admin/mentors/match",
@@ -560,7 +558,7 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
   {
     label: "Sessions",
     items: [
-      { href: "/mentor/checkins", label: "Check-ins", icon: CheckCircle },
+      { href: "/mentor/assignments", label: "Assignments", icon: ClipboardList },
       {
         href: "/mentor/office-hours",
         label: "Office hours",

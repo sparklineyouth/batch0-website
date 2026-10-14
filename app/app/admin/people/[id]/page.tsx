@@ -6,8 +6,9 @@ import { can } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { isoWeekStart, formatWeekRange } from "@/lib/week";
-import { AppHeader, AppBody, Section, Row, Empty } from "@/components/app/frame";
+import { loadStudentAssignments } from "@/lib/assignments-server";
+import { isDone } from "@/lib/assignments";
+import { AppHeader, AppBody, Section, Row } from "@/components/app/frame";
 
 export const metadata = { title: "Person · Admin" };
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
  *
  * The whole screen answers "should I be worried about this student, and how do I
  * reach them". So: where they are in the funnel, what they owe, who they build
- * with, and whether they've checked in lately — plus a mailto and their Discord
+ * with, and whether their assignments are in — plus a mailto and their Discord
  * handle, because the reason you looked them up is usually that you're about to
  * contact them.
  *
@@ -34,7 +35,6 @@ export default async function AdminAppPerson(
 ) {
   const params = await props.params;
   const admin = createAdminClient();
-  const weekStart = isoWeekStart();
 
   // One wave, not three. Every read here is keyed on params.id and on nothing
   // the permission check produces, so the guard and all six queries go out
@@ -62,7 +62,7 @@ export default async function AdminAppPerson(
     return (data ?? []) as PendingCharge[];
   });
 
-  const [viewer, personRes, appRes, enrollRes, memberRes, charges, checkinsRes] =
+  const [viewer, personRes, appRes, enrollRes, memberRes, charges, assignments] =
     await Promise.all([
       guard,
       admin
@@ -93,14 +93,7 @@ export default async function AdminAppPerson(
         .limit(1)
         .maybeSingle(),
       chargesPromise,
-    // The last three weeks is enough to see a pattern; more is a report, not a
-    // glance.
-      admin
-        .from("student_checkins")
-        .select("id, week_start, accomplished, blockers")
-        .eq("user_id", params.id)
-        .order("week_start", { ascending: false })
-        .limit(3),
+      loadStudentAssignments(admin, params.id),
     ]);
 
   const { caps } = viewer;
@@ -108,7 +101,6 @@ export default async function AdminAppPerson(
   const application = appRes.data;
   const enrollment = enrollRes.data;
   const membership = memberRes.data;
-  const checkins = checkinsRes.data;
 
   // The batch above fetches unconditionally, so the 404 check moved down here.
   // It still runs before anything is rendered.
@@ -119,9 +111,9 @@ export default async function AdminAppPerson(
     enrollment?.cohort,
   );
   const team = embed<{ id: string; name: string }>(membership?.team);
-  const checkedInThisWeek = (checkins ?? []).some(
-    (c) => c.week_start === weekStart,
-  );
+  const owed = assignments.items.filter((i) => i.status !== "upcoming");
+  const handedIn = owed.filter((i) => isDone(i.status)).length;
+  const missing = owed.filter((i) => i.status === "missing").length;
 
   return (
     <>
@@ -234,41 +226,16 @@ export default async function AdminAppPerson(
               }
             />
             <Row
-              label="This week's check-in"
-              value={checkedInThisWeek ? "Posted" : "Missing"}
-              meta={formatWeekRange(weekStart)}
-              muted={!checkedInThisWeek}
+              label="Assignments"
+              value={
+                owed.length
+                  ? `${handedIn} of ${owed.length} in${missing ? ` · ${missing} missing` : ""}`
+                  : "None yet"
+              }
+              muted={missing === 0}
+              href={owed.length && can(caps, "assignments.manage") ? "/admin/assignments" : undefined}
             />
           </div>
-        </Section>
-
-        <Section title="Recent check-ins">
-          {(checkins ?? []).length === 0 ? (
-            <Empty>Never posted a check-in.</Empty>
-          ) : (
-            <div className="space-y-2.5">
-              {(checkins ?? []).map((c) => (
-                <div
-                  key={c.id as string}
-                  className="rounded-2xl border border-line bg-wash px-5 py-4"
-                >
-                  <p className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-ink-faint">
-                    {formatWeekRange(c.week_start as string)}
-                  </p>
-                  {!!c.accomplished && (
-                    <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink">
-                      {c.accomplished as string}
-                    </p>
-                  )}
-                  {!!c.blockers && (
-                    <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-[13px] leading-relaxed text-amber-700 dark:text-amber-300">
-                      Blocked: {c.blockers as string}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </Section>
 
         <Link

@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
+import { recomputeCourseWeekDates } from "@/lib/assignments-server";
 
 async function ensureAdmin() {
   // Course content writes are open to admins AND mentors.
@@ -36,6 +37,8 @@ export async function saveModule(input: ModuleInput) {
   if (input.id) {
     const { error } = await admin.from("modules").update(payload).eq("id", input.id);
     if (error) throw new Error(error.message);
+    // Course-week assignments tied to this module's lessons follow its week.
+    await recomputeCourseWeekDates(admin, { moduleId: input.id });
   } else {
     const { error } = await admin.from("modules").insert(payload);
     if (error) throw new Error(error.message);

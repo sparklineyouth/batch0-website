@@ -6,8 +6,11 @@ import { canAccessAdmin } from "@/lib/permissions";
 import { assertMentorCanAccessStudent } from "@/lib/mentor-scope";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { ArrowLeft, BookOpen, CheckCircle, MessageSquare, Rocket, FolderOpen } from "lucide-react";
+import { ArrowLeft, BookOpen, ClipboardList, MessageSquare, Rocket, FolderOpen } from "lucide-react";
 import { FileFeedbackPanel } from "./file-feedback-panel";
+import { loadStudentAssignments } from "@/lib/assignments-server";
+import { formatEastern, isDone } from "@/lib/assignments";
+import { StatusChip } from "@/components/assignments/status-chip";
 
 export const metadata = { title: "Student · Mentor" };
 
@@ -28,7 +31,7 @@ export default async function StudentProgressPage(
   const caps = await getCapabilities();
 
   // Cohort isolation, and it has to come before the reads below — the student
-  // id arrives in the URL, so those reads (email, check-in prose, every
+  // id arrives in the URL, so those reads (email, assignment work, every
   // uploaded file) are the leak, and `mentor.panel` on its own says nothing
   // about whether this student is the viewer's. Admin-area viewers keep the
   // program-wide view they already have in /admin; everyone else must share a
@@ -53,14 +56,13 @@ export default async function StudentProgressPage(
   const admin = createAdminClient();
 
   // Each select names only what its card renders — several of these tables
-  // carry wide rows (profiles.ai_context, check-in prose) the page never
-  // reads.
+  // carry wide rows (profiles.ai_context) the page never reads.
   const [
     { data: profile },
     { data: enrollment },
     { data: progress },
     { count: lessonCount },
-    { data: checkins },
+    assignments,
     { data: aiConvos },
     { data: team },
     { data: files },
@@ -80,12 +82,7 @@ export default async function StudentProgressPage(
       .select("completed_at")
       .eq("user_id", studentId),
     admin.from("lessons").select("id", { count: "exact", head: true }),
-    admin
-      .from("student_checkins")
-      .select("id, week_start, accomplished, blockers")
-      .eq("user_id", studentId)
-      .order("week_start", { ascending: false })
-      .limit(8),
+    loadStudentAssignments(admin, studentId),
     admin
       .from("ai_conversations")
       .select("id, created_at, title")
@@ -112,8 +109,8 @@ export default async function StudentProgressPage(
   ).length;
   const totalLessons = lessonCount ?? 0;
 
-  const recentCheckins = (checkins ?? []) as any[];
-  const streak = recentCheckins.length;
+  const owed = assignments.items;
+  const handedIn = owed.filter((i) => isDone(i.status)).length;
   // Supabase types to-one embeds as arrays on the untyped client; the wire
   // shape is an object. Normalize like the team embed below.
   const enrollmentCohort = enrollment?.cohort
@@ -156,9 +153,9 @@ export default async function StudentProgressPage(
           value={`${(files ?? []).length}`}
         />
         <Stat
-          icon={CheckCircle}
-          label="Check-in streak"
-          value={`${streak} week${streak === 1 ? "" : "s"}`}
+          icon={ClipboardList}
+          label="Assignments in"
+          value={`${handedIn} / ${owed.length}`}
         />
       </div>
 
@@ -189,31 +186,23 @@ export default async function StudentProgressPage(
       </div>
 
       <Card className="mt-6">
-        <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Recent check-ins</h2>
-        {recentCheckins.length === 0 ? (
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Assignments</h2>
+          <Link href="/mentor/assignments" className="text-sm text-phosphor-ink hover:underline">
+            Review queue →
+          </Link>
+        </div>
+        {owed.length === 0 ? (
           <p className="mt-2 text-sm text-ink-faint">None yet.</p>
         ) : (
-          <ul className="mt-3 space-y-3">
-            {recentCheckins.slice(0, 4).map((c: any) => (
-              <li
-                key={c.id}
-                className="rounded-lg border border-line bg-paper p-3"
-              >
-                <div className="font-mono text-xs uppercase tracking-wider text-ink-faint">
-                  Week of {c.week_start}
-                </div>
-                {c.accomplished && (
-                  <p className="mt-1 line-clamp-3 text-sm text-ink-soft">
-                    <span className="text-ink-faint">Did:</span>{" "}
-                    {c.accomplished}
-                  </p>
-                )}
-                {c.blockers && (
-                  <p className="mt-1 line-clamp-2 text-sm text-amber-700 dark:text-amber-300">
-                    <span className="text-ink-faint">Blockers:</span>{" "}
-                    {c.blockers}
-                  </p>
-                )}
+          <ul className="mt-3 divide-y divide-line">
+            {[...owed].reverse().slice(0, 8).map(({ assignment: a, status }) => (
+              <li key={a.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <span className="min-w-0 truncate text-ink">
+                  {a.title}
+                  {a.due_at && <span className="text-ink-faint"> · Due {formatEastern(a.due_at)}</span>}
+                </span>
+                <StatusChip status={status} audience="staff" />
               </li>
             ))}
           </ul>

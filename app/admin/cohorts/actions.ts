@@ -7,6 +7,7 @@ import { stripe } from "@/lib/stripe";
 import { logAudit } from "@/lib/audit";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { easternEndOfDay } from "@/lib/cohort-eligibility";
+import { recomputeCourseWeekDates } from "@/lib/assignments-server";
 
 export type CohortInput = {
   id?: string;
@@ -230,6 +231,8 @@ export async function saveCohort(
           .eq("id", cohortId));
       }
       if (error) throw new Error(`Save failed: ${error.message}`);
+      // Course-week assignment dates follow the start date.
+      await recomputeCourseWeekDates(admin, { cohortId });
     } else {
       let { data: created, error } = await admin
         .from("cohorts")

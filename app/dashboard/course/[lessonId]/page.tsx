@@ -8,6 +8,9 @@ import { LessonPlayer } from "./lesson-player";
 import { Comments } from "./comments";
 import { ArrowLeft, FileText } from "lucide-react";
 import { renderLessonMarkdown } from "@/lib/lesson-content";
+import { loadStudentAssignments } from "@/lib/assignments-server";
+import { formatEastern } from "@/lib/assignments";
+import { StatusChip } from "@/components/assignments/status-chip";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +79,7 @@ export default async function LessonPage(
       .eq("id", params.lessonId)
       .maybeSingle(),
   );
-  const [{ data: lesson }, assets, { data: progress }, { data: commentRows }] =
+  const [{ data: lesson }, assets, { data: progress }, { data: commentRows }, attached] =
     await Promise.all([
       lessonPromise,
       lessonPromise.then(({ data: l }) =>
@@ -96,6 +99,8 @@ export default async function LessonPage(
         )
         .eq("lesson_id", params.lessonId)
         .order("created_at", { ascending: true }),
+      // Assignments anchored to this lesson that this student has been set.
+      loadStudentAssignments(supabase, user.id, { lessonId: params.lessonId }),
     ]);
 
   if (!lesson) notFound();
@@ -136,6 +141,20 @@ export default async function LessonPage(
           {lesson.title}
         </h1>
       </div>
+
+      {attached.items.map(({ assignment: a, status }) => (
+        <Link
+          key={a.id}
+          href={`/dashboard/assignments/${a.id}`}
+          className="mt-6 flex items-center gap-3 border-y border-line py-3 text-sm hover:bg-wash"
+        >
+          <span className="min-w-0 flex-1 truncate text-ink">
+            Assignment: {a.title}
+            {a.due_at && <span className="text-ink-faint"> · Due {formatEastern(a.due_at)}</span>}
+          </span>
+          <StatusChip status={status} />
+        </Link>
+      ))}
 
       {lessonHtml && (
         <article

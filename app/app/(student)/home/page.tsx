@@ -5,7 +5,9 @@ import { getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
-import { isoWeekStart, formatWeekRange } from "@/lib/week";
+import { loadStudentAssignments } from "@/lib/assignments-server";
+import { formatEastern, studentGroup } from "@/lib/assignments";
+import { StatusChip } from "@/components/assignments/status-chip";
 import { cohortWeek } from "@/lib/cohort-week";
 import { getActiveChallenge, prizeHeadline, visibleSubmissionStatus } from "@/lib/challenges";
 import { fmtDateOnly } from "@/lib/pre-cohort";
@@ -27,8 +29,8 @@ export const dynamic = "force-dynamic";
 /**
  * The student's phone home screen.
  *
- * It answers four questions in order of how often they're asked: is anything
- * blocking me, what's due, have I checked in, and what's next on the calendar.
+ * It answers three questions in order of how often they're asked: is anything
+ * blocking me, what's due, and what's next on the calendar.
  * Everything else the /dashboard home carries — the referral card, the founder
  * pass, the certificate, the intro pipeline — is a once-a-cohort read and lives
  * behind More.
@@ -47,8 +49,8 @@ export default async function StudentAppHome() {
   const user = await requireUser();
   const admin = createAdminClient();
   const userId = user.id;
-  const weekStart = isoWeekStart();
-  const nowIso = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
 
   // getStudentAccess needs a role, so it chains off the profile rather than
   // blocking the whole batch on it. Both are request-cached and were already
@@ -64,7 +66,7 @@ export default async function StudentAppHome() {
     access,
     { data: enrollment },
     { data: charges },
-    { data: checkin },
+    assignments,
     { count: unread },
     { data: allProgress },
     challenge,
@@ -92,12 +94,9 @@ export default async function StudentAppHome() {
       .eq("user_id", userId)
       .eq("status", "pending")
       .order("created_at", { ascending: true }),
-    admin
-      .from("student_checkins")
-      .select("id, accomplished")
-      .eq("user_id", userId)
-      .eq("week_start", weekStart)
-      .maybeSingle(),
+    // Explicit filters (enrolled cohort, published, released, audience), so the
+    // service-role client reads exactly what the student's own would.
+    loadStudentAssignments(admin, userId, { now }),
     admin
       .from("notifications")
       .select("id", { count: "exact", head: true })
@@ -115,12 +114,7 @@ export default async function StudentAppHome() {
       .select("lesson_id")
       .eq("user_id", userId)
       .not("completed_at", "is", null),
-    // The open challenge, if there is one. This is the only real per-student
-    // DEADLINE the schema still carries: `assignments` and
-    // `assignment_submissions` looked like the obvious source for "what's due",
-    // but migration 0013 dropped both tables, so querying them would have been
-    // a permanent PGRST205 rendering an empty list — a section that silently
-    // says "nothing due" forever is worse than no section.
+    // The open challenge, if there is one.
     getActiveChallenge(),
   ]);
 
@@ -191,6 +185,10 @@ export default async function StudentAppHome() {
   );
   const weekDone = weekLessonIds.filter((id) => doneLessonIds.has(id)).length;
   const weekModuleTitle = (weekLessons ?? [])[0]?.title as string | undefined;
+  // Due this week or overdue, soonest first — at most three on the home screen.
+  const dueItems = assignments.items
+    .filter((i) => studentGroup(i.status, i.assignment.due_at, now) === "due")
+    .slice(0, 3);
 
   const firstName = profile?.full_name?.split(" ")[0] || "there";
   const startLabel = fmtDateOnly(access.cohortStartsOn);
@@ -263,31 +261,27 @@ export default async function StudentAppHome() {
                 </ActionLink>
               }
             >
-              The course, your team page and check-ins unlock when the cohort
+              The course, your team page and assignments unlock when the cohort
               starts{startLabel ? ` on ${startLabel}` : ""}.
             </Alert>
           </Section>
         ) : (
           <>
-            <Section title="This week" action={{ href: "/app/course", label: "Course" }}>
+            <Section title="This week" action={{ href: "/app/assignments", label: "Assignments" }}>
+              {weekLessonIds.length === 0 && !challenge && dueItems.length === 0 ? (
+                <Empty>Nothing due this week.</Empty>
+              ) : (
               <div className="rounded-2xl border border-line">
                 <div className="px-4">
-                  <Row
-                    label={
-                      checkin
-                        ? "Check-in posted"
-                        : "Weekly check-in not posted yet"
-                    }
-                    value={formatWeekRange(weekStart)}
-                    href="/app/checkin"
-                    right={
-                      checkin ? (
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                      ) : (
-                        <Circle className="h-4 w-4 shrink-0 text-ink-faint" />
-                      )
-                    }
-                  />
+                  {dueItems.map((i) => (
+                    <Row
+                      key={i.assignment.id}
+                      label={i.assignment.title}
+                      value={i.assignment.due_at ? `Due ${formatEastern(i.assignment.due_at)}` : undefined}
+                      href={`/app/assignments/${i.assignment.id}`}
+                      right={<StatusChip status={i.status} />}
+                    />
+                  ))}
                   {weekLessonIds.length > 0 && (
                     <Row
                       label={weekModuleTitle ?? `Week ${week} lessons`}
@@ -347,10 +341,6 @@ export default async function StudentAppHome() {
                   )}
                 </div>
               </div>
-              {weekLessonIds.length === 0 && !challenge && (
-                <p className="mt-2 text-[12px] text-ink-faint">
-                  Nothing published for this week yet.
-                </p>
               )}
             </Section>
 

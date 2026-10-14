@@ -62,9 +62,9 @@ export async function GET() {
       // so unlike start_url they need no per-host branch.
       shortcuts: [
         {
-          name: "Weekly check-in",
-          short_name: "Check in",
-          url: "/app/checkin",
+          name: "Assignments",
+          short_name: "Assignments",
+          url: "/app/assignments",
         },
         {
           name: "Review applications",

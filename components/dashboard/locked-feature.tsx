@@ -12,7 +12,7 @@ export function LockedFeature({
   title,
   applicationStatus,
 }: {
-  /** Feature name, e.g. "Team", "Course", "Check-ins". */
+  /** Feature name, e.g. "Team", "Course", "Assignments". */
   title: string;
   applicationStatus: ApplicationStatus | null;
 }) {
@@ -49,7 +49,7 @@ export function LockedFeature({
       <div className="mt-10 flex items-start gap-3 rounded-xl border border-line bg-wash px-5 py-4 text-sm text-ink-soft">
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-ink-faint" />
         <p>
-          Cohort-only features (Team, Check-in, Course, Office hours, Events,
+          Cohort-only features (Team, Assignments, Course, Office hours, Events,
           Resources, Files, Announcements) unlock once you're enrolled. You'll
           see them in the sidebar then.
         </p>
@@ -64,7 +64,7 @@ function copyFor(status: ApplicationStatus | null) {
     case undefined:
       return {
         lede:
-          "Apply to claim a seat. Acceptance unlocks the team workspace, weekly check-ins, and live cohort events.",
+          "Apply to claim a seat. Acceptance unlocks the team workspace, assignments, and live cohort events.",
         cta: { href: "/apply", label: "Start application" },
       };
     case "draft":

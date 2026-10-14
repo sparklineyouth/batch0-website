@@ -15,10 +15,12 @@ import {
   MessageCircleQuestion,
   Flag,
   LifeBuoy,
+  ClipboardList,
 } from "lucide-react";
 import { countQuestionsNeedingReply } from "@/lib/discussions";
 import { countOpenReports } from "@/lib/dm";
 import { countTicketsNeedingReply } from "@/lib/support";
+import { countOverdueAssignments } from "@/lib/assignments-server";
 
 export const metadata = { title: "Admin · batch0" };
 
@@ -43,6 +45,10 @@ export default async function AdminOverview() {
   const seeSupport = can(caps, "support.view");
 
   const admin = createAdminClient();
+
+  // Overdue assignments (WS-G): started here so it runs alongside the batch below.
+  const seeAssignments = can(caps, "assignments.manage");
+  const overduePromise = seeAssignments ? countOverdueAssignments(admin) : Promise.resolve(0);
 
   const [
     { count: totalApps },
@@ -116,6 +122,7 @@ export default async function AdminOverview() {
   const ticketRevenueCents = revenueSummary((ticketData ?? []).map(auxiliaryRevenueRow)).netCents;
   const revenueCents = enrollmentRevenueCents + chargesRevenueCents + ticketRevenueCents;
 
+  const overdueAssignments = await overduePromise;
   const inboxItems = [
     ...(seeApplications
       ? [
@@ -158,6 +165,18 @@ export default async function AdminOverview() {
             count: openTickets,
             href: "/admin/support",
             tone: openTickets > 0 ? "phosphor" : "muted",
+          },
+        ]
+      : []),
+    // Student work past due with nothing handed in, across running cohorts.
+    ...(seeAssignments
+      ? [
+          {
+            icon: ClipboardList,
+            label: "Overdue assignments",
+            count: overdueAssignments,
+            href: "/admin/assignments",
+            tone: overdueAssignments > 0 ? "phosphor" : "muted",
           },
         ]
       : []),
