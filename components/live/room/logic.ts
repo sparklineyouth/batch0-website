@@ -14,9 +14,9 @@ export function levelFromRms(rms: number): number {
 }
 
 /** Above this RMS a voice counts as speaking (≈ -36 dBFS). */
-export const SPEAKING_ON_RMS = 0.016;
+const SPEAKING_ON_RMS = 0.016;
 /** Below this it counts as quiet (hysteresis, ≈ -40 dBFS). */
-export const SPEAKING_OFF_RMS = 0.01;
+const SPEAKING_OFF_RMS = 0.01;
 /** Quiet for this long before the ring goes off, so it doesn't flicker between words. */
 export const SPEAKING_HOLD_MS = 700;
 

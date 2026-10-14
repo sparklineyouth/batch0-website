@@ -16,8 +16,8 @@ import { fitRect, looksLikePdf, Lru, MAX_DECK_BYTES } from "../logic";
  * mid-slide needs a fresh keyframe, and a hidden tab's own timers are throttled.
  */
 
-export const DECK_WIDTH = 1920;
-export const DECK_HEIGHT = 1080;
+const DECK_WIDTH = 1920;
+const DECK_HEIGHT = 1080;
 const THUMB_WIDTH = 320;
 const THUMB_HEIGHT = 180;
 const SLIDE_CACHE = 5;
@@ -46,7 +46,7 @@ let pdfjsLoading: Promise<Pdfjs> | null = null;
  * Safari/iPad too. Its worker is a webpack worker chunk, so parsing never
  * blocks the call's main thread.
  */
-export function loadPdfjs(): Promise<Pdfjs> {
+function loadPdfjs(): Promise<Pdfjs> {
   if (!pdfjsLoading) {
     pdfjsLoading = import("pdfjs-dist/legacy/build/pdf.min.mjs")
       .then((mod) => {

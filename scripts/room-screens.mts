@@ -49,20 +49,27 @@ const CHECK = `(() => {
   return out;
 })()`;
 
-const browser = await chromium.launch({
-  args: [
-    "--use-fake-device-for-media-stream",
-    "--use-fake-ui-for-media-stream",
-    "--autoplay-policy=no-user-gesture-required",
-    "--disable-dev-shm-usage",
-  ],
-});
+const launch = () =>
+  chromium.launch({
+    args: [
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-dev-shm-usage",
+    ],
+  });
+/** Rejects after `ms`: a crashed renderer can leave a page call pending forever. */
+const within = <T,>(ms: number, p: Promise<T>) =>
+  Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms))]);
+
+let browser = await launch();
 let failed = 0;
 try {
   for (const [state, variants] of Object.entries(HARNESS_STATES)) {
     for (const w of variants) {
       if (ONLY.length && !ONLY.includes(state) && !ONLY.includes(`${state}:${w}`)) continue;
       for (const vp of VIEWPORTS) {
+        if (!browser.isConnected()) browser = await launch();
         const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
         const page = await ctx.newPage();
         const errors: string[] = [];
@@ -72,27 +79,32 @@ try {
         });
         let issues: string[] = [];
         try {
-          await page.goto(`${BASE}/dev/live?state=${state}&w=${w}`, { waitUntil: "domcontentloaded", timeout: 180_000 });
-          await page.waitForSelector('[data-testid="room-shell"]', { timeout: 60_000 });
-          await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
-          if (state === "presenting-deck" && w !== "viewer") {
-            await page.waitForSelector('[data-testid="deck-canvas"]', { timeout: 60_000 });
-          }
-          await page.waitForTimeout(2500);
-          issues = (await page.evaluate(CHECK)) as string[];
-          await page.screenshot({ path: `${OUT}/${state}-${w}-${vp.name}.png` });
+          await within(
+            240_000,
+            (async () => {
+              await page.goto(`${BASE}/dev/live?state=${state}&w=${w}`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+              await page.waitForSelector('[data-testid="room-shell"]', { timeout: 60_000 });
+              await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+              if (state === "presenting-deck" && w !== "viewer") {
+                await page.waitForSelector('[data-testid="deck-canvas"]', { timeout: 60_000 });
+              }
+              await page.waitForTimeout(2500);
+              issues = (await page.evaluate(CHECK)) as string[];
+              await page.screenshot({ path: `${OUT}/${state}-${w}-${vp.name}.png` });
+            })(),
+          );
         } catch (e) {
           issues.push(`did not render: ${String(e).slice(0, 160)}`);
         }
         const all = [...issues, ...errors];
         if (all.length) failed++;
         console.log(`${all.length ? "✗" : "✓"} ${state}:${w} ${vp.name}${all.length ? `  ${all.join(" | ")}` : ""}`);
-        await ctx.close();
+        await within(10_000, ctx.close()).catch(() => {});
       }
     }
   }
 } finally {
-  await browser.close();
+  await within(10_000, browser.close()).catch(() => {});
 }
 console.log(`\n${failed ? `${failed} with problems` : "all clean"} · screenshots in ${OUT}`);
 process.exit(failed ? 1 : 0);

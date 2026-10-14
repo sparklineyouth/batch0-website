@@ -65,7 +65,7 @@ function recorderMime(): string | undefined {
   return undefined;
 }
 
-export const MIC_TEST_SECONDS = 3;
+const MIC_TEST_SECONDS = 3;
 
 /** Record three seconds of the mic, then play it back through the chosen speaker. */
 export function useMicTest(stream: MediaStream | null, speakerId: string) {

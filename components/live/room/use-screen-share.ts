@@ -19,7 +19,7 @@ export const DISPLAY_MEDIA_OPTIONS = {
 } as const;
 
 /** getDisplayMedia exists (it doesn't on iOS/Android). Server render: false. */
-export function useScreenShareSupported(): boolean {
+function useScreenShareSupported(): boolean {
   return useSyncExternalStore(
     noopSubscribe,
     () => typeof navigator !== "undefined" && !!(navigator.mediaDevices as DisplayMedia | undefined)?.getDisplayMedia,
