@@ -26,8 +26,8 @@ export function AdminMyDiscordLinkCard({
             Your Discord link
           </h2>
           <p className="mt-1 text-xs text-ink-faint">
-            Link your own account so <code>/whois</code>, <code>/announce</code>,
-            and the admin role auto-sync work for you.
+            Link your own account so <code>/whois</code> and the admin role
+            auto-sync work for you.
           </p>
         </div>
         {linked ? (

@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser, getProfile } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { Card } from "@/components/ui/card";
@@ -11,7 +10,7 @@ export const metadata = { title: "Announcements · batch0" };
 export const dynamic = "force-dynamic";
 
 export default async function AnnouncementsPage() {
-  const user = await requireUser();
+  await requireUser();
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");
 
@@ -34,32 +33,13 @@ export default async function AnnouncementsPage() {
   // RLS already gates which announcements the user can read; this
   // query intentionally has no .eq("cohort_id", ...) so admin sees all
   // and a student sees their cohort's + global ones.
-  const { data: anns, error } = await supabase
+  const { data: anns } = await supabase
     .from("announcements")
     .select(
       "id, cohort_id, title, body, created_at, cohort:cohorts(name, cohort_number)",
     )
     .order("created_at", { ascending: false })
     .limit(50);
-
-  // Pre-0027 deployments: gracefully fall back to an empty state with a
-  // setup hint instead of crashing the dashboard.
-  if (error && /relation .*announcements.* does not exist/i.test(error.message)) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <h1 className="text-3xl font-bold tracking-tight">Announcements</h1>
-        <Card className="mt-6">
-          <p className="text-sm text-ink-soft">
-            Announcements aren't enabled yet — apply migration{" "}
-            <code className="font-mono text-phosphor-ink">
-              0027_announcements_and_reactions.sql
-            </code>
-            .
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -86,10 +66,7 @@ export default async function AnnouncementsPage() {
       {(anns?.length ?? 0) === 0 ? (
         <Card className="mt-6 text-center">
           <Megaphone className="mx-auto h-6 w-6 text-ink-faint" />
-          <p className="mt-3 text-sm text-ink-soft">
-            No announcements yet. When the team posts one, it'll show up
-            here.
-          </p>
+          <p className="mt-3 text-sm text-ink-soft">No announcements yet.</p>
         </Card>
       ) : (
         <ul className="mt-6 space-y-4">

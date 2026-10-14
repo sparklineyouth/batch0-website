@@ -4,7 +4,7 @@
  *
  *   npm run build && npx next start -p 3060   # (or npm run dev)
  *   E2E_BASE_URL=http://localhost:3060 npm run ui-audit -- --out=/tmp/ui-audit
- *   ... --only=/admin/challenges,/messages     # a subset of routes
+ *   ... --only=/admin/challenges,/notifications  # a subset of routes
  *
  * For each page it records:
  *   offscreen  an element pokes out past the left or right edge of the screen

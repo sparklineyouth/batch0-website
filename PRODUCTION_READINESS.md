@@ -263,7 +263,7 @@ These don't block launch but improve the experience over time.
 
 1. **Honeypot field on `/apply`.** Spam-tolerant but cheap to add.
 2. **Bulk-invite flow for teams** (paste a list of emails).
-3. **Notification preferences** — let students mute the team thread / disable email.
+3. **Notification preferences** — let students disable email.
 4. **Investor cap on simultaneous intro requests** to prevent one investor monopolizing the queue.
 5. **Per-student progress link from `/admin/students`** (currently only reachable from `/mentor/students`).
 6. **Sanitized Discord error logging.** Today `lib/discord.ts` logs full response bodies on error.

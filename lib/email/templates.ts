@@ -1615,11 +1615,8 @@ The link is private to you - anyone who has it can read and reply, so don't forw
   },
 
   /**
-   * The team answered. Mirrors Templates.discussionReply in shape, because to
-   * the person reading it these are the same event — someone at batch0 wrote
-   * back — and two different-looking emails for one experience is noise. A
-   * "Send & resolve" says so here rather than in a second email a minute
-   * later.
+   * The team answered. A "Send & resolve" says so here rather than in a second
+   * email a minute later.
    */
   supportTicketReplied: (e: SupportRepliedEmail) => ({
     subject: `Re: ${e.subject} (${e.reference})`,
