@@ -31,7 +31,7 @@ exists. A **1:1 call** is a small mesh: everyone sends to everyone.
 | `app/api/live/leave/route.ts` | The same leave, as a `sendBeacon` target for a closing tab. |
 | `app/dashboard/events/[id]/live/room-actions.ts` | A webinar's `endLive` / `reopenLive` / `fetchLiveState`. A 1:1's End call is `endCall` (`app/calls/actions.ts`). |
 | `components/live/use-live-session.ts` | The WebRTC engine (both shapes). Exposes `session.room`: primary, live stamps, `canEnd`, the running recording. |
-| `components/live/use-local-media.ts`, `use-mic-level.ts`, `audio-output.ts` | Camera/mic (per-device status), the level meter, the speaker choice. |
+| `components/live/use-local-media.ts`, `room/audio-levels.ts`, `audio-output.ts` | Camera/mic (per-device status), the level meters and speaking rings, the speaker choice. |
 | `components/live/room/controller.tsx` | **The room**: phase machine, devices, presentation, session, recording, every exit. Renders the kit. |
 | `components/live/room/**` | The room UI kit (`LiveRoom`: green room, stage, tiles, control bar, deck presenter, end screens). Presentational; `/dev/live` renders every state on fake data (localhost only). |
 | `components/live/room/panel/*` | The webinar side panel (Chat · Q&A · Polls · People) and reactions; reads/writes through `app/api/live/panel`. |

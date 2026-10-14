@@ -73,9 +73,9 @@ function request(
  * closing the app that held it — and a device that comes up on a retry (a
  * toggle, a pick, or `start` again) comes up on.
  *
- * The level meter lives in `useMicLevel` (components/live/use-mic-level.ts),
- * mounted only by the leaf that draws it: a meter here re-rendered the whole
- * room on every animation frame.
+ * Levels live in components/live/room/audio-levels.ts (`useAudioLevel`,
+ * `useSpeaking`), read only by the leaf that draws them: a meter here
+ * re-rendered the whole room on every animation frame.
  */
 
 export type { DeviceStatus, MediaStatus };
