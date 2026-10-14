@@ -248,7 +248,7 @@ intern or custom role with `events.manage` ticked. There are two kinds:
 | Sees audience **names** | yes | **never** — headcount and opaque ids only |
 | End for everyone | always | only when no staff host is present |
 | Reopen | yes | no |
-| Records | whichever host's browser the room elects (lowest user id present), the whole stage | same rule |
+| Records | Record / Stop; one take at a time under the server lease (docs/recording.md), the whole stage | same rule |
 
 Every host is on air. There is no backstage mode.
 

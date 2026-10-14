@@ -1904,11 +1904,8 @@ export function useLiveSession({
         // lobby and is not in `held.peers`; if they then vanish without a
         // goodbye (battery, crash, closed lid — no pagehide, so no bye and no
         // peer-offline), their connection sits in "reconnecting" forever with
-        // nothing to reconnect to. In a webinar that is a co-host the recorder
-        // election keeps counting as present — possibly the elected recorder,
-        // recording nothing while everyone else stands down for them. Retried
-        // here, a wedged connection is rebuilt to "connecting" like any other,
-        // which the election stops counting once settling is over.
+        // nothing to reconnect to, and a tile that never recovers. Retried
+        // here, a wedged connection is rebuilt to "connecting" like any other.
         addTimer(
           setInterval(() => {
             if (cancelled) return;

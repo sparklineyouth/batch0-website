@@ -6,6 +6,7 @@ import {
   VideoOff,
   MonitorUp,
   PhoneOff,
+  Circle,
   Settings2,
 } from "lucide-react";
 
@@ -24,6 +25,8 @@ export function CallControls({
   onLeave,
   onToggleScreen,
   screenSharing = false,
+  onToggleRecording,
+  recording = false,
   /** Viewers in a webinar have no camera or mic to control. */
   canBroadcast = true,
   onToggleDevices,
@@ -36,6 +39,10 @@ export function CallControls({
   onLeave: () => void;
   onToggleScreen?: () => void;
   screenSharing?: boolean;
+  /** Record / Stop (use-room-recording.ts); omitted, no button. */
+  onToggleRecording?: () => void;
+  /** This tab holds the room's recording. */
+  recording?: boolean;
   canBroadcast?: boolean;
   /** Opens the microphone / camera / speaker pickers (DeviceSettings). */
   onToggleDevices?: () => void;
@@ -84,6 +91,16 @@ export function CallControls({
               label={screenSharing ? "Stop sharing screen" : "Share screen"}
             >
               <MonitorUp className="h-4 w-4" />
+            </ControlButton>
+          )}
+
+          {onToggleRecording && (
+            <ControlButton
+              active={recording}
+              onClick={onToggleRecording}
+              label={recording ? "Stop recording" : "Start recording"}
+            >
+              <Circle className={`h-4 w-4 ${recording ? "fill-red-500 text-red-500" : ""}`} />
             </ControlButton>
           )}
 

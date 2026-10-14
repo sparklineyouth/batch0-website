@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listAssets, signedAssetUrl } from "@/lib/webinar-data";
-import { HOST_JOIN_OPENS_MINUTES_BEFORE } from "@/lib/live";
+import { CALL_STAFF_OPENS_MINUTES_BEFORE } from "@/lib/live";
 import {
   CALL_RECORDING_BUCKET,
   callRecordingFolder,
@@ -87,7 +87,7 @@ async function afterSegments(startsAt: string): Promise<boolean> {
     if (!Number.isFinite(t)) return false;
     oneTakeSince = t;
   }
-  const opens = Date.parse(startsAt) - HOST_JOIN_OPENS_MINUTES_BEFORE * 60_000;
+  const opens = Date.parse(startsAt) - CALL_STAFF_OPENS_MINUTES_BEFORE * 60_000;
   return Number.isFinite(opens) && opens > oneTakeSince;
 }
 

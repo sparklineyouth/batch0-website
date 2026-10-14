@@ -14,11 +14,11 @@
  * Pure; the one import is lib/live.ts by relative path, so `node --test`
  * runs it as is. Tested by lib/call-recording.test.ts.
  */
-import { HOST_JOIN_OPENS_MINUTES_BEFORE } from "./live.ts";
+import { CALL_STAFF_OPENS_MINUTES_BEFORE } from "./live.ts";
 
 /**
  * Could this call have a recording to show? Recording starts with the staff
- * side in the room, which opens HOST_JOIN_OPENS_MINUTES_BEFORE the start —
+ * side in the room, which opens CALL_STAFF_OPENS_MINUTES_BEFORE the start —
  * for an invite still unanswered just as for an accepted one. So: an
  * accepted, completed or never-answered call once its room has opened; a
  * cancelled or declined one only if that happened after it opened (or when
@@ -29,7 +29,7 @@ export function callMayHaveRecording(
   call: { status: string; startsAt: string; updatedAt?: string },
   now: Date,
 ): boolean {
-  const opens = Date.parse(call.startsAt) - HOST_JOIN_OPENS_MINUTES_BEFORE * 60_000;
+  const opens = Date.parse(call.startsAt) - CALL_STAFF_OPENS_MINUTES_BEFORE * 60_000;
   if (!Number.isFinite(opens) || opens > now.getTime()) return false;
   if (call.status === "accepted" || call.status === "completed" || call.status === "invited") return true;
   if (call.status !== "cancelled" && call.status !== "declined") return false;

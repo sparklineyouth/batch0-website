@@ -11,7 +11,7 @@ import { getInvite } from "@/lib/calls";
 import { canViewCallRecording } from "@/lib/call-lifecycle";
 import { resolveEventAccess } from "@/lib/live-access";
 import {
-  HOST_JOIN_OPENS_MINUTES_BEFORE,
+  CALL_STAFF_OPENS_MINUTES_BEFORE,
   inviteEndsAt,
   isOnCall,
   isStaffOnCall,
@@ -413,7 +413,7 @@ export async function recordAccess(
     return { ok: false, status: 409, message: "This call is over." };
   }
   const w = roomWindow(invite.startsAt, inviteEndsAt(invite));
-  if (t < w.start - HOST_JOIN_OPENS_MINUTES_BEFORE * 60_000 || t > w.hardCloseAt) {
+  if (t < w.start - CALL_STAFF_OPENS_MINUTES_BEFORE * 60_000 || t > w.hardCloseAt) {
     return { ok: false, status: 409, message: "This call isn't open." };
   }
   return {

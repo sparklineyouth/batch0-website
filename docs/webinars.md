@@ -150,10 +150,9 @@ A claimed speaker broadcasts and moderates (chat, questions, polls) exactly
 like a staff host. What separates them is in `docs/batch0-live.md` under
 *Who is a host*: a speaker never sees names, cannot Reopen, and can End for
 everyone only when no staff host is in the room — their normal exit is Leave.
-They record under the same election as staff: the recorder is whichever
-host's browser has the lowest user id among those present, guest speakers
-included, so a guest-only webinar with auto-record on is recorded from a
-guest's browser (see *Recording* below). That keeps a guest-only webinar closable without letting a
+They can record like staff (one take at a time under the server lease), so a
+guest-only webinar with auto-record on is recorded from a guest's browser (see
+*Recording* below). The End rule keeps a guest-only webinar closable without letting a
 founder who presses End "for their segment" end a room an admin is running.
 (If attendance can't be read, the rule fails open and the speaker may End:
 ending is reversible by staff, and failing closed would strand a guest-only

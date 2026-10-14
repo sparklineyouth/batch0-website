@@ -32,7 +32,7 @@ import {
   type Who,
 } from "@/lib/event-form";
 import { announceEvent, announceLive, type NotifyEvent } from "./notify";
-import { deleteEventRecordings } from "./recordings";
+import { deleteRoomRecordings } from "@/lib/recording-sessions";
 import {
   attachDeck,
   removeObjects,
@@ -377,14 +377,15 @@ export async function deleteEvent(id: string): Promise<ActionResult> {
       .eq("event_id", id);
     const { error } = await admin.from("events").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    // After the row: a failed delete must not leave an event whose files are gone.
+    // After the row: a failed delete must not leave an event whose files or
+    // recordings are gone. Both are best-effort and never throw.
     await removeObjects(
       admin,
       (assets ?? [])
         .map((a: any) => a.storage_path as string)
         .filter((p) => p.startsWith(`${id}/`)),
     );
-    await deleteEventRecordings(admin, id);
+    await deleteRoomRecordings("webinar", id);
 
     await logAudit({
       action: "event.deleted",

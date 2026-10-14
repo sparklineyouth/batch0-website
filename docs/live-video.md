@@ -472,8 +472,8 @@ student side is always exactly one person.
   lib/call-roster.ts), with `shouldOffer` still picking the side that offers,
   so glare stays impossible. The room reads the staff side from the same
   answer (`callStaffIds` on the session, falling back to the list the page
-  rendered), so a newcomer counts in the recorder election, as the student's
-  counterpart for End call, and in End call's confirm.
+  rendered), so a newcomer may record, counts as the student's counterpart
+  for End call, and is in End call's confirm.
 - **RLS.** Co-hosts can read and update their `call_invites` rows; the join
   table is readable by admins and anyone on the call, and has no write
   policies (service-role server actions write it). Both policies go through
