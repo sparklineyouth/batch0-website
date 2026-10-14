@@ -29,6 +29,8 @@
 --      No email goes out; the team replies from the ticket as usual. Each
 --      ticket records its source in context.carriedFrom, so a re-run adds
 --      nothing. The source rows are not changed.
+--   5. Lesson copy that points at Discussions, office hours or the check-in
+--      is rewritten to Discord, Support and 1:1 calls.
 --
 -- Idempotent, and safe on a database that never had one of these tables.
 
@@ -212,6 +214,77 @@ begin
       insert into public.support_ticket_replies (ticket_id, body, is_staff, is_internal, via)
       values (new_ticket_id, c.staff_note, true, true, 'system');
     end if;
+  end loop;
+end $$;
+
+-- 5. Lesson copy that still sends students to retired features (the Week 1
+--    field guide, 0073): peer discussion goes to Discord (/dashboard/community),
+--    a private question to Support, office hours to 1:1 calls (0097), and the
+--    check-in wording 0093 didn't reach (lessons that never linked
+--    /dashboard/checkin) becomes the weekly update. Exact sentences first;
+--    then any other link to a retired page is repointed, so a lesson an admin
+--    has edited still lands somewhere real. No replacement contains a phrase
+--    replaced after it, so a re-run changes nothing.
+
+do $$
+declare
+  r record;
+begin
+  if to_regclass('public.lessons') is null then return; end if;
+  for r in
+    select * from (values
+      (1, $t$Paste the message you're sending into a thread in [Discussions](/dashboard/discussions) and ask the cohort and the team to tear it apart. If you'd rather not post it publicly, send it to the team privately and we'll reply in the thread.$t$,
+           $t$Paste the message you're sending into your cohort channel on [Discord](/dashboard/community) and ask the cohort to tear it apart. If you'd rather not post it publicly, send it to the team privately through [Support](/dashboard/support/new?topic=program) and we'll reply there.$t$),
+      (2, $t$- [Office hours](/dashboard/office-hours): book an open slot with a mentor when you want a second brain on something specific.$t$,
+           $t$- [1:1 calls](/dashboard/calls): ask the team for a call when you want a second brain on something specific.$t$),
+      (3, $t$Ask the batch0 team privately in [Discussions](/dashboard/discussions/new?to=team); only you and the team see it, and we reply in the thread.$t$,
+           $t$Ask the batch0 team privately through [Support](/dashboard/support/new?topic=program); only you and the team see it, and we reply there.$t$),
+      (4, $t$Use the cohort in Discussions as your debrief partner;$t$,
+           $t$Use the cohort on Discord as your debrief partner;$t$),
+      (5, $t$- [Discussions](/dashboard/discussions): threads with your cohort, and a private line to the batch0 team.$t$,
+           $t$- [Discord](/dashboard/community): chat with your cohort. [Support](/dashboard/support/new?topic=program) is your private line to the batch0 team.$t$),
+      (6, $t$Interviews 1 to 4. Office hours if something is off.$t$,
+           $t$Interviews 1 to 4. Ask for a 1:1 call if something is off.$t$),
+      (7, $t$This is the most common thing founders bring to [office hours](/dashboard/office-hours) in Week 1, and it's a good use of a slot. Book an open one, bring your one-page summary and your three strongest quotes, and let the mentor read them cold. If no slot is open, post the summary privately to the team in [Discussions](/dashboard/discussions/new?to=team) and we'll give you a read in the thread.$t$,
+           $t$This is the most common thing founders bring to a [1:1 call](/dashboard/calls) in Week 1, and it's a good use of one. Ask for a call, bring your one-page summary and your three strongest quotes, and let the mentor read them cold. If you can't wait for a call, send the summary privately to the team through [Support](/dashboard/support/new?topic=program) and we'll give you a read there.$t$),
+      (8, $t$Paste your top three statements into a thread in [Discussions](/dashboard/discussions) with your scores.$t$,
+           $t$Paste your top three statements into your cohort channel on [Discord](/dashboard/community) with your scores.$t$),
+      (9, $t$The tell: a blank blockers box, and a Discussions page you've never opened. The fix: the twenty-minute rule. Stuck for twenty minutes means post it, privately to the team or openly to the cohort. Book an office-hours slot when one is open. The team reads every check-in and every private thread; nothing you're stuck on is too small or too early.$t$,
+           $t$The tell: a blank blockers line, and a cohort channel you've never posted in. The fix: the twenty-minute rule. Stuck for twenty minutes means post it, privately to the team through [Support](/dashboard/support/new?topic=program) or openly to the cohort on [Discord](/dashboard/community). Ask for a [1:1 call](/dashboard/calls) when you need one. The team reads every weekly update and every private question; nothing you're stuck on is too small or too early.$t$),
+      (10, $t$If any fix needs a second opinion, post it in [Discussions](/dashboard/discussions) today rather than after the check-in.$t$,
+           $t$If any fix needs a second opinion, post it on [Discord](/dashboard/community) today rather than after the weekly update.$t$),
+      (11, $t$Post a photo or a link to your canvas privately to the team in [Discussions](/dashboard/discussions/new?to=team), or bring it to an open [office hours](/dashboard/office-hours) slot.$t$,
+           $t$Send a photo or a link to your canvas privately to the team through [Support](/dashboard/support/new?topic=program), or bring it to a [1:1 call](/dashboard/calls).$t$),
+      (12, $t$Post it privately to the team in [Discussions](/dashboard/discussions/new?to=team) and we'll pick it up in the thread. The weekly update is the weekly record; Discussions is the fast lane.$t$,
+           $t$Send it privately to the team through [Support](/dashboard/support/new?topic=program) and we'll pick it up there. The weekly update is the weekly record; Support is the fast lane.$t$),
+      (13, $t$Every check-in gets read. Every private thread gets a reply.$t$,
+           $t$Every weekly update gets read. Every private question gets a reply.$t$),
+      (14, $t$tell us directly in [Discussions](/dashboard/discussions/new?to=team) or at hello@batch0.org.$t$,
+           $t$tell us directly through [Support](/dashboard/support/new?topic=program) or at hello@batch0.org.$t$),
+      (15, $t$Swap signal summaries with another team in [Discussions](/dashboard/discussions).$t$,
+           $t$Swap signal summaries with another team on [Discord](/dashboard/community).$t$),
+      (16, $t$| Weekly check-in |$t$,
+           $t$| Weekly update |$t$),
+      (17, $t$Post it privately to the team in [Discussions](/dashboard/discussions/new?to=team) with the problem statement$t$,
+           $t$Send it privately to the team through [Support](/dashboard/support/new?topic=program) with the problem statement$t$),
+      (18, $t$[Discussions](/dashboard/discussions/new?to=team)$t$,
+           $t$[Support](/dashboard/support/new?topic=program)$t$),
+      (19, $t$/dashboard/discussions/new?to=team$t$,
+           $t$/dashboard/support/new?topic=program$t$),
+      (20, $t$[Discussions](/dashboard/discussions)$t$,
+           $t$[Discord](/dashboard/community)$t$),
+      (21, $t$/dashboard/discussions$t$,
+           $t$/dashboard/community$t$),
+      (22, $t$[Office hours](/dashboard/office-hours)$t$,
+           $t$[1:1 calls](/dashboard/calls)$t$),
+      (23, $t$/dashboard/office-hours$t$,
+           $t$/dashboard/calls$t$)
+    ) as v(ord, old_text, new_text)
+    order by ord
+  loop
+    update public.lessons
+    set description = replace(description, r.old_text, r.new_text)
+    where strpos(description, r.old_text) > 0;
   end loop;
 end $$;
 

@@ -148,6 +148,8 @@ async function setup(
     create table public.lesson_comments (
       id uuid primary key default gen_random_uuid(),
       lesson_id uuid not null, user_id uuid not null, body text not null);
+    create table public.lessons (
+      id uuid primary key default gen_random_uuid(), title text not null, description text);
     create table public.dm_messages (
       id uuid primary key default gen_random_uuid(), body text not null,
       conversation_id uuid, sender_id uuid,
@@ -280,6 +282,41 @@ test("0099 takes dm_messages out of realtime; tables are kept", async () => {
     const r = await db.query<{ t: string | null }>(`select to_regclass('public.${table}')::text as t`);
     assert.equal(r.rows[0].t, table);
   }
+});
+
+test("0099 points lesson copy at Discord, Support and 1:1 calls, once", async () => {
+  const db = await setup();
+  // Two sentences as the Week 1 field guide (0073) wrote them, and a lesson an
+  // admin edited, whose links still go to the retired pages.
+  await db.query(
+    `insert into public.lessons (title, description) values
+      ('Wrap', $1), ('Edited', $2), ('Untouched', 'Nothing retired here.')`,
+    [
+      "Swap signal summaries with another team in [Discussions](/dashboard/discussions).\n\n" +
+        "| 10 | Weekly check-in | Submitted, with numbers and at least one real blocker |",
+      "Ask in [Discussions](/dashboard/discussions/new?to=team) or at [office hours](/dashboard/office-hours).",
+    ],
+  );
+  await db.exec(migration);
+  const once = await db.query<{ title: string; description: string }>(
+    `select title, description from public.lessons order by title`,
+  );
+  await db.exec(migration);
+  const twice = await db.query<{ title: string; description: string }>(
+    `select title, description from public.lessons order by title`,
+  );
+  assert.deepEqual(twice.rows, once.rows);
+  const by = Object.fromEntries(once.rows.map((r) => [r.title, r.description]));
+  assert.equal(
+    by.Wrap,
+    "Swap signal summaries with another team on [Discord](/dashboard/community).\n\n" +
+      "| 10 | Weekly update | Submitted, with numbers and at least one real blocker |",
+  );
+  assert.equal(
+    by.Edited,
+    "Ask in [Support](/dashboard/support/new?topic=program) or at [office hours](/dashboard/calls).",
+  );
+  assert.equal(by.Untouched, "Nothing retired here.");
 });
 
 test("0099 applies on a database without the publication or the retired tables", async () => {
