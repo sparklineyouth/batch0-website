@@ -62,14 +62,23 @@ const nextConfig = {
       { source: "/admin/pulse", destination: "/admin", permanent: true },
       { source: "/admin/interventions", destination: "/admin/assignments?filter=missing", permanent: true },
       { source: "/admin/cohorts/:id/health", destination: "/admin/assignments?cohort=:id", permanent: true },
+      // A private question to the team (lessons and old emails link
+      // /dashboard/discussions/new?to=team) is now a support request.
+      {
+        source: "/dashboard/discussions/new",
+        destination: "/dashboard/support/new?topic=program",
+        permanent: true,
+      },
       // Retired features (October 2026): community features Discord covers,
       // and admin pages cut as bulk. Old notification links and bookmarks land
-      // on the section they lived in instead of a 404.
+      // on the section they lived in instead of a 404. Open private questions
+      // and DM reports moved into Support (0099), so the staff queues' links
+      // go there too.
       ...[
         ["/messages/:path*", "/notifications"],
         ["/dashboard/discussions/:path*", "/dashboard/support"],
-        ["/admin/discussions/:path*", "/admin"],
-        ["/admin/messages/:path*", "/admin"],
+        ["/admin/discussions/:path*", "/admin/support"],
+        ["/admin/messages/:path*", "/admin/support"],
         ["/admin/ai-usage/:path*", "/admin"],
         ["/admin/mentors/match/:path*", "/admin/mentors"],
         ["/admin/course/analytics/:path*", "/admin/course"],

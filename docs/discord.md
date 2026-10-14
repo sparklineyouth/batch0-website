@@ -74,4 +74,7 @@ select id, conversation_id, reporter_id, reason, created_at from dm_reports
 
 Old `team_message`, `direct_message`, `discussion_*` and `dm_reported` bells
 stay in Notifications under "Everything else"
-(`RETIRED_NOTIFICATION_KINDS` in `lib/notification-importance.ts`).
+(`RETIRED_NOTIFICATION_KINDS` in `lib/notification-importance.ts`). Staff
+bells for the two queues (`/admin/discussions/…`, `/admin/messages/…`) open
+`/admin/support`; a student's `/dashboard/discussions/new` opens a new
+support request.
