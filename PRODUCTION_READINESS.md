@@ -24,7 +24,13 @@ All P0 / P1 / P2 work from the original audit is **landed and type-checks clean*
 
 ## Migrations
 
-Run these in the Supabase SQL editor in order. Each is idempotent.
+Run every file in `supabase/migrations/` in the Supabase SQL editor, in order,
+after the code deploys. Each is idempotent. The current release adds
+**0093–0100**: order, purpose and one verify query each are in
+`docs/migrations-2026-10.md`. The app runs without them, and `/admin` shows one
+line to `settings.manage` holders until they are in.
+
+The list below is the original audit's batch, kept as history.
 
 1. `0012_hardening.sql` — adds `notifications.dedupe_key` + partial unique index, splits Stripe webhook dedupe into claim/complete.
 2. `0013_drop_school_features.sql` — drops `assignments`, `assignment_submissions`, `quizzes`, `quiz_questions`, `quiz_attempts` and the `submissions` storage bucket (batch0 is an accelerator, not a school).
@@ -175,7 +181,7 @@ Crons are listed in `vercel.json`; the assignment-due cron was deleted with the 
 
 ### 21. Student nav showed pre-enrollment dead ends
 
-**Fix:** `app/dashboard/layout.tsx` queries enrollments; passes `enrolled` to `StudentSidebar` + `MobileNav`. Both hide every route in `ENROLLED_ONLY_HREFS` (`lib/nav-config.ts`) until the student is enrolled (admins always see everything for preview).
+**Fix:** `app/dashboard/layout.tsx` passes the student's lifecycle to `StudentSidebar` + `MobileNav`. Since October 2026 both, and the installed app's More screen, call one predicate, `isStudentHrefVisible` in `lib/student-nav.ts`: enrolled-only routes stay hidden until enrollment, pre-cohort students see only what middleware allows, and no student sees more than 12 links (`lib/student-nav.test.ts`).
 
 ### 22. Lesson reply parent wasn't validated
 
@@ -202,6 +208,8 @@ Crons are listed in `vercel.json`; the assignment-due cron was deleted with the 
 ## Product reshape (per new requirements)
 
 ### 27. School-style features removed
+
+(October 2026: weekly work came back as an assignment tracker on new tables, `course_assignments` and friends in `0093`; see `docs/assignments.md`. The list below is what 0013 removed.)
 
 batch0 is a startup accelerator — not a school. Removed:
 - `/dashboard/assignments`, `/mentor/assignments`, `/admin/course/quiz`
@@ -259,6 +267,24 @@ Full implementation. The current shape:
 
 ---
 
+## 2026-10 revamp
+
+Cut for focus: weekly check-ins (now assignments), in-app files and the team
+drive (now Google Drive links), discussions, DMs and the chat dock, the team
+thread, announcement reactions, lesson comments, office hours (now 1:1 calls),
+Pulse, at-risk and cohort health, email metrics, the pricing calculator, mentor
+matching, AI usage and the premiere webinar mode. Tables stay; client writes to
+the retired ones are closed by 0097 and 0099.
+
+Added: the assignment tracker, team Google Drive links, a built-in room for
+webinars and 1:1 calls (screen share as the main stage, slide presenter, A/V
+check, one primary host), one continuous recording per take, a one-form events
+admin, and a 12-link student nav with a "Needs you" home. Every page touching a
+new table or column renders an empty state until its migration runs
+(`lib/schema-ready.ts`).
+
+---
+
 ## Still open (P3 polish — post-launch)
 
 These don't block launch but improve the experience over time.
@@ -278,13 +304,14 @@ These don't block launch but improve the experience over time.
 
 Configuration tasks no code can do for you.
 
-1. **Apply migrations** `0011_phase2_features.sql` → `0015_ai_usage.sql` in the Supabase SQL editor.
-2. **Verify storage buckets** exist: `course-videos`, `course-materials`, `resources`, `student-files` and `team-drive` (private, read-only since 0094), `team-logos` (public). The submissions bucket should be gone after migration 0013.
+1. **Apply migrations**: every file in `supabase/migrations/` in order; for this release, `0093`–`0100` (`docs/migrations-2026-10.md`).
+2. **Verify storage buckets** exist: `course-videos`, `course-materials`, `resources`, `recordings` (private, 0095), `student-files` and `team-drive` (private, read-only since 0094), `team-logos` (public). The submissions bucket should be gone after migration 0013.
 3. **Enable Realtime** for the `notifications` table in Supabase Dashboard → Database → Publications → `supabase_realtime`. The bell falls back to a 60s poll if Realtime is off, so this isn't strictly required but the UX is noticeably worse without it.
 4. **Environment variables** present in production. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, `NEXT_PUBLIC_SITE_URL`. Optional: `NEXT_PUBLIC_SENTRY_DSN` (error reporting), `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PUBLIC_KEY` (Ed25519 key for slash-command verification), `DISCORD_ROLE_STUDENT`, `DISCORD_ANNOUNCEMENTS_WEBHOOK`, `RESEND_API_KEY` + `RESEND_FROM` (transactional email via Resend — without them, `sendEmail` no-ops in dev and logs `disabled` in prod).
 5. **Stripe webhook endpoint** points at `https://<domain>/api/stripe/webhook` with `checkout.session.completed`, `payment_intent.succeeded`, and `charge.refunded` subscribed.
 6. **Supabase Auth settings:** "Confirm email" is enabled (otherwise typo-emails silently succeed at signup).
-7. **Smoke test Demo Day** end-to-end before announcing: one test team submits a deck link + video link, an investor scores it, an investor requests an intro, an admin progresses the intro through the funnel.
+7. **Re-register Discord slash commands** after each deploy that changes them (`/admin/discord` → Register slash commands). October 2026 removed `/checkin` and `/announce`.
+8. **Smoke test Demo Day** end-to-end before announcing: one test team submits a deck link + video link, an investor scores it, an investor requests an intro, an admin progresses the intro through the funnel.
 
 ---
 
