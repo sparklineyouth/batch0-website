@@ -394,12 +394,15 @@ function MyApplicationRow({ card }: { card: ScholarshipCard }) {
 
       {mine.status === "declined" && (
         <p className="mt-3 text-xs text-ink-faint">
-          This doesn't change your place at batch0. If cost is what's standing
-          between you and the program,{" "}
-          <Link href="/dashboard/support/new" className="underline">
+          Your place at batch0 doesn't change. If cost is in the way,{" "}
+          <Link
+            href="/dashboard/support/new?topic=billing&source=scholarships"
+            prefetch={false}
+            className="underline"
+          >
             tell the team
-          </Link>{" "}
-          — we'd rather hear it.
+          </Link>
+          .
         </p>
       )}
     </Card>

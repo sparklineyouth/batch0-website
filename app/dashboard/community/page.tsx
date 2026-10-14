@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser, getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -88,6 +89,17 @@ export default async function CommunityPage() {
           </ButtonLink>
         </div>
       </Card>
+
+      <p className="mt-6 text-sm text-ink-soft">
+        Private question for the team?{" "}
+        <Link
+          href="/dashboard/support/new?topic=program&source=community"
+          prefetch={false}
+          className="link-ink"
+        >
+          Contact support
+        </Link>
+      </p>
     </div>
   );
 }

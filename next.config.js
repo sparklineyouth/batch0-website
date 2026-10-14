@@ -53,6 +53,14 @@ const nextConfig = {
         destination: to,
         permanent: true,
       },
+      // Retired community features (Discord covers them). Old notification
+      // links and bookmarks land somewhere useful instead of a 404.
+      ...[
+        ["/messages/:path*", "/notifications"],
+        ["/dashboard/discussions/:path*", "/dashboard/support"],
+        ["/admin/discussions/:path*", "/admin"],
+        ["/admin/messages/:path*", "/admin"],
+      ].map(([source, destination]) => ({ source, destination, permanent: true })),
     ];
   },
   webpack: (config) => {
