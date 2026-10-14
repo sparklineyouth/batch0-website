@@ -566,7 +566,11 @@ export async function mintPart(
   if (data !== "ok") return { ok: false, status: 409, message: "This recording has stopped." };
 
   const path = `${row.storage_prefix}/${partName(part.index, container)}`;
-  const signed = await admin.storage.from(RECORDING_BUCKET).createSignedUploadUrl(path, { upsert: true });
+  // Without upsert: once a part is stored, nothing can replace it — not a
+  // second upload during the take, and not this token after the take is
+  // finalized (it lives two hours). A same-part retry whose first upload did
+  // land is told "Duplicate", which the recorder counts as done.
+  const signed = await admin.storage.from(RECORDING_BUCKET).createSignedUploadUrl(path);
   if (signed.error || !signed.data) {
     console.error("[recordings] sign upload failed", signed.error?.message);
     return { ok: false, status: 503, message: "Couldn't prepare the upload. Retrying." };

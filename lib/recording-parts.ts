@@ -228,6 +228,25 @@ export function canMintPart(index: unknown, minted: number): index is number {
   );
 }
 
+/**
+ * Did a part's upload fail only because that part is already stored?
+ *
+ * Part tokens are minted without upsert, so a stored part can't be replaced:
+ * not by a second upload during the take, and not with a token kept after it
+ * (they live two hours). The one honest way to hit this is a retry of the
+ * same part after its first upload landed but the answer was lost, which
+ * re-sends the same bytes — so it counts as uploaded. Storage answers HTTP
+ * 400 with statusCode "409" / "Duplicate"; older servers sent a plain 409.
+ */
+export function isDuplicateUpload(
+  error: { status?: unknown; statusCode?: unknown; message?: unknown; error?: unknown } | null | undefined,
+): boolean {
+  if (!error) return false;
+  if (error.status === 409 || String(error.statusCode ?? "") === "409") return true;
+  const text = `${typeof error.error === "string" ? error.error : ""} ${typeof error.message === "string" ? error.message : ""}`;
+  return /\bduplicate\b|already exists/i.test(text);
+}
+
 export function isStale(heartbeatAt: string | number | Date, now: number = Date.now()): boolean {
   const t = new Date(heartbeatAt).getTime();
   return !Number.isFinite(t) || now - t > STALE_AFTER_MS;

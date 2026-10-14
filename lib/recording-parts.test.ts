@@ -7,6 +7,7 @@ import {
   contiguousParts,
   downloadName,
   formatDuration,
+  isDuplicateUpload,
   isStale,
   locateRaw,
   mapRange,
@@ -151,4 +152,18 @@ test("durations and download names", () => {
     "Week 3 Pricing GTM 2026-10-12.webm",
   );
   assert.equal(downloadName(null, "2026-10-12T20:00:00Z", "mp4"), "Recording 2026-10-12.mp4");
+});
+
+test("a part already stored counts as uploaded; other failures don't", () => {
+  // storage-api: HTTP 400 carrying statusCode "409" (what supabase-js surfaces).
+  assert.equal(
+    isDuplicateUpload({ status: 400, statusCode: "409", message: "The resource already exists" }),
+    true,
+  );
+  assert.equal(isDuplicateUpload({ status: 409, message: "x" }), true);
+  assert.equal(isDuplicateUpload({ error: "Duplicate", message: "" }), true);
+  assert.equal(isDuplicateUpload(null), false);
+  assert.equal(isDuplicateUpload({ status: 400, statusCode: "403", message: "new row violates row-level security policy" }), false);
+  assert.equal(isDuplicateUpload({ status: 413, statusCode: "413", message: "Payload too large" }), false);
+  assert.equal(isDuplicateUpload({ message: "Failed to fetch" }), false);
 });

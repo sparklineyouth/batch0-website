@@ -5,6 +5,7 @@ import { WebmScanner, type Cue } from "@/lib/recording-webm";
 import {
   containerFor,
   HEARTBEAT_MS,
+  isDuplicateUpload,
   PART_MAX_BYTES,
   PART_TARGET_MS,
   retryDelayMs,
@@ -629,9 +630,9 @@ class Take {
           .storage.from(minted.body.bucket)
           .uploadToSignedUrl(minted.body.path, minted.body.token, part.blob, {
             contentType: part.blob.type,
-            upsert: true,
           });
-        if (!up.error) return true;
+        // Already stored: an earlier try of this same part landed.
+        if (!up.error || isDuplicateUpload(up.error)) return true;
       } catch {
         // A network failure: try again.
       }
