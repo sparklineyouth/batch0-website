@@ -331,20 +331,25 @@ follow-up: the claim is cleared only when it predates the event's (new) host
 window, like the other live stamps. A webinar whose recording is still saving (a
 take recording or not yet finalized), or an auto-recorded one with no
 recording yet, is left for later runs (up to two hours).
-A **staff-only** event is never shared — it is a rehearsal — and the form shows
-"Email the recording and slides afterwards" off for one.
+A **staff-only** event is never shared — it is a rehearsal — and the form hides
+"Email the recording and slides afterwards" for one.
 
 `assets_shared_at` is the claim, and it is stamped **before** the sending
 starts. A run that dies halfway costs one webinar's follow-up rather than
 mailing the whole cohort twice on the next run.
 
-It goes to everyone enrolled, not only to attendees. The people who most need a
-recording are the ones who missed it. The bell and the email name only what
-is there (`followUpLine`: the recording, the slides, or both).
+It goes to everyone enrolled in the event's cohort, not only to attendees. The
+people who most need a recording are the ones who missed it. The bell and the
+email name only what is there (`followUpLine`: the recording, the slides, or
+both). An "everyone signed in" event with no cohort is shared with no email
+(`no-cohort`).
 
 With the email off, nothing is shared on its own: the admin event page offers
 **Share with students** once the webinar is over, which stamps
-`assets_shared_at` and sends nothing. Shared recordings show as "Watch
+`assets_shared_at` and sends nothing. It offers it too while a webinar with
+the email on is still waiting for its follow-up (the recording saving), and
+says so: sharing first lets students watch sooner, and the follow-up then
+sends no email. Shared recordings show as "Watch
 recording" on the students' events lists (`/dashboard/events`, `/app/events`),
 linking to the room page's player.
 

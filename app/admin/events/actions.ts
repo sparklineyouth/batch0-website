@@ -362,9 +362,10 @@ export async function startWebinarNow(input: {
 /**
  * Share a past webinar's recording and slides with everyone who can see the
  * event, with no email: for one whose "Email the recording and slides
- * afterwards" is off. Stamps `assets_shared_at`, what the room page and the
- * recordings API check (the follow-up cron only takes unshared events, so
- * nothing is mailed later either). Staff-only events are never shared.
+ * afterwards" is off, or one still waiting for its follow-up. Stamps
+ * `assets_shared_at`, what the room page and the recordings API check (the
+ * follow-up cron only takes unshared events, so nothing is mailed later
+ * either; the admin page says so). Staff-only events are never shared.
  */
 export async function shareEventFiles(id: string): Promise<ActionResult> {
   return runAction({ name: "shareEventFiles" }, async () => {

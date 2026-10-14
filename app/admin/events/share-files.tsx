@@ -5,8 +5,12 @@ import { Button } from "@/components/ui/button";
 import { getActionError } from "@/lib/action-error";
 import { shareEventFiles } from "./actions";
 
-/** "Share with students" for a past webinar that isn't emailed afterwards. */
-export function ShareFiles({ eventId }: { eventId: string }) {
+/**
+ * "Share with students" for a past webinar not shared yet: one whose email is
+ * off, or one still waiting for its follow-up (`note` says what sharing now
+ * changes).
+ */
+export function ShareFiles({ eventId, note }: { eventId: string; note?: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +39,9 @@ export function ShareFiles({ eventId }: { eventId: string }) {
       {error ? (
         <span className="text-xs text-red-700 dark:text-red-400">{error}</span>
       ) : (
-        <span className="text-xs text-ink-faint">Students can&rsquo;t watch it until it&rsquo;s shared. No email is sent.</span>
+        <span className="text-xs text-ink-faint">
+          {note ?? "Students can\u2019t watch it until it\u2019s shared. No email is sent."}
+        </span>
       )}
     </div>
   );
