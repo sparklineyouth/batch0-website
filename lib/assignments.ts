@@ -261,9 +261,19 @@ export function statusTone(status: DerivedStatus): StatusTone {
   }
 }
 
-/** Counts toward "done" in a completion figure. */
+/** Nothing left for the student to do (handed in, or excused). */
 export function isDone(status: DerivedStatus): boolean {
-  return status === "submitted" || status === "late" || status === "reviewed" || status === "excused";
+  return isHandedIn(status) || status === "excused";
+}
+
+/** Work is in and not sent back. The numerator of "N of M in". */
+export function isHandedIn(status: DerivedStatus): boolean {
+  return status === "submitted" || status === "late" || status === "reviewed";
+}
+
+/** Counts toward "M" in "N of M in": released and not excused. */
+export function isOwed(status: DerivedStatus): boolean {
+  return status !== "upcoming" && status !== "excused";
 }
 
 /** The student list: what needs doing soon, what's further out, what's done. */
@@ -355,7 +365,9 @@ export type MatrixRow = {
   /** null = this assignment isn't for this student. */
   cells: Record<string, DerivedStatus | null>;
   missing: number;
+  /** Handed in, of `due`. */
   done: number;
+  /** Released and not excused. */
   due: number;
 };
 
@@ -389,8 +401,8 @@ export function buildMatrix(args: {
       });
       cells[a.id] = status;
       if (status === "missing") missing++;
-      if (isDone(status)) done++;
-      if (status !== "upcoming" && status !== "excused") due++;
+      if (isHandedIn(status)) done++;
+      if (isOwed(status)) due++;
     }
     return { userId: student.userId, cells, missing, done, due };
   });

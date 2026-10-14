@@ -9,7 +9,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { ArrowLeft, BookOpen, ClipboardList, MessageSquare, Rocket, FolderOpen } from "lucide-react";
 import { FileFeedbackPanel } from "./file-feedback-panel";
 import { loadStudentAssignments } from "@/lib/assignments-server";
-import { formatEastern, isDone } from "@/lib/assignments";
+import { formatEastern, isHandedIn, isOwed } from "@/lib/assignments";
 import { StatusChip } from "@/components/assignments/status-chip";
 
 export const metadata = { title: "Student · Mentor" };
@@ -110,7 +110,8 @@ export default async function StudentProgressPage(
   const totalLessons = lessonCount ?? 0;
 
   const owed = assignments.items;
-  const handedIn = owed.filter((i) => isDone(i.status)).length;
+  const handedIn = owed.filter((i) => isHandedIn(i.status)).length;
+  const dueCount = owed.filter((i) => isOwed(i.status)).length;
   // Supabase types to-one embeds as arrays on the untyped client; the wire
   // shape is an object. Normalize like the team embed below.
   const enrollmentCohort = enrollment?.cohort
@@ -155,7 +156,7 @@ export default async function StudentProgressPage(
         <Stat
           icon={ClipboardList}
           label="Assignments in"
-          value={`${handedIn} / ${owed.length}`}
+          value={`${handedIn} / ${dueCount}`}
         />
       </div>
 

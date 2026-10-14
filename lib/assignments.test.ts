@@ -190,7 +190,10 @@ test("matrix: audience, excusal, missing counts", () => {
   assert.equal(ana.missing, 3);
   assert.deepEqual(ben.cells, { w3: "excused", w4: "late", w5: "open", solo: null });
   assert.equal(ben.missing, 0);
-  assert.equal(ben.done, 2);
+  assert.equal(ben.done, 1); // the late one; excused work isn't "in"
+  assert.equal(ben.due, 2);
+  assert.equal(ana.done, 0);
+  assert.equal(ana.due, 4);
   assert.equal(rows.filter((r) => r.missing >= 2).length, 1);
 });
 

@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { loadStudentAssignments } from "@/lib/assignments-server";
-import { isDone } from "@/lib/assignments";
+import { isHandedIn, isOwed } from "@/lib/assignments";
 import { AppHeader, AppBody, Section, Row } from "@/components/app/frame";
 
 export const metadata = { title: "Person · Admin" };
@@ -111,8 +111,8 @@ export default async function AdminAppPerson(
     enrollment?.cohort,
   );
   const team = embed<{ id: string; name: string }>(membership?.team);
-  const owed = assignments.items.filter((i) => i.status !== "upcoming");
-  const handedIn = owed.filter((i) => isDone(i.status)).length;
+  const owed = assignments.items.filter((i) => isOwed(i.status));
+  const handedIn = owed.filter((i) => isHandedIn(i.status)).length;
   const missing = owed.filter((i) => i.status === "missing").length;
 
   return (
