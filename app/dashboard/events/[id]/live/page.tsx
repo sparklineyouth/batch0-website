@@ -7,12 +7,12 @@ import {
   webinarHasBegun,
   type LiveRole,
 } from "@/lib/live";
-import { isHostedOnBatch0, type EventAsset } from "@/lib/webinars";
+import { isDeckFile, isHostedOnBatch0, type EventAsset } from "@/lib/webinars";
 import {
   listAssets,
-  listSpeakers,
   loadWebinarPanelInitial,
   signAssets,
+  signedAssetUrl,
 } from "@/lib/webinar-data";
 import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
 import { claimSpeakerSlot } from "@/app/admin/events/webinar-actions";
@@ -93,18 +93,9 @@ export default async function EventLivePage(
   const backHref = isStaffHost ? "/admin/events" : "/dashboard/events";
 
   // An external event has no room to join; send them to the list, which shows
-  // the Zoom link.
-  //
-  // Both modes batch0 hosts pass here: a legacy premiere row runs as an
-  // ordinary hosted room (premiere is retired).
-  //
-  // Note what is NOT required here any more: a `daily_room_name`. The
-  // built-in provider has no provider-side room to create — the event id is
-  // the room — so a hosted event is joinable the moment it is scheduled.
-  // That also retires a whole class of bug: 0069 moved every webinar to a
-  // Sunday and left 17 of 18 pointing at a Daily room that expired before the
-  // webinar started, which the join page then had to heal on the critical
-  // path with an audience already waiting.
+  // the Zoom link. A legacy premiere row runs as an ordinary hosted room. The
+  // event id is the room: a hosted event is joinable the moment it is
+  // scheduled, with nothing provider-side to create or expire.
   if (!isHostedOnBatch0(ev.liveMode)) {
     return (
       <Shell title={ev.title}>
@@ -184,17 +175,12 @@ export default async function EventLivePage(
     );
   }
 
-  const speakers = await listSpeakers(ev.id);
-
   // The credentials are issued by a server action once the browser is
-  // actually joining, so this page renders as fast as its own queries.
-  const audienceMode = ev.audienceMode;
-
-  // The deck, and the side panel's first state, shaped for this reader by
-  // the same loader the panel's own reads use. Premiere is retired: a legacy
-  // premiere row runs as an ordinary hosted room.
+  // actually joining, so this page renders as fast as its own queries. The
+  // side panel's first state is shaped for this reader by the same loader the
+  // panel's own reads use; hosts also get the event's PDF deck to present.
   const [deck, panel] = await Promise.all([
-    listAssets(ev.id, ["deck", "handout"]),
+    role === "host" ? presentableDeck(ev.id) : Promise.resolve(null),
     loadWebinarPanelInitial(ev.id, access),
   ]);
 
@@ -203,30 +189,41 @@ export default async function EventLivePage(
       eventId={ev.id}
       // Their peer id: a peer's id is its user id.
       selfUserId={access.userId}
-      selfName={profile?.full_name || "Host"}
+      selfName={profile?.full_name || (role === "host" ? "Host" : "Guest")}
       title={ev.title}
       startsAt={ev.startsAt}
       endsAt={ev.endsAt}
       role={role}
       isStaffHost={isStaffHost}
       // Staff from the start; a guest speaker's answer (it depends on who
-      // else is present) arrives with the room's live-state poll.
+      // else is present) arrives with the join.
       canEnd={isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt)}
       backHref={backHref}
-      audienceMode={audienceMode}
       autoRecord={ev.autoRecord}
-      premiere={null}
+      liveStartedAt={ev.liveStartedAt}
       liveEndedAt={ev.liveEndedAt}
-      speakers={speakers}
-      deck={deck.map((a) => ({
-        id: a.id,
-        filename: a.filename,
-        sizeBytes: a.sizeBytes,
-      }))}
+      deckUrl={deck?.url ?? null}
+      deckName={deck?.name ?? null}
       panel={panel}
     />
   );
 }
+
+/**
+ * The event's slide deck for the room's "Present slides": the first PDF
+ * uploaded as kind 'deck', signed for six hours (pdf.js reads it by range and
+ * fetches the rest in the background, so the URL must outlive a long
+ * session). Hosts only — the caller has already resolved the role.
+ */
+async function presentableDeck(eventId: string): Promise<{ url: string; name: string } | null> {
+  const decks = await listAssets(eventId, ["deck"]);
+  const pdf = decks.find((d) => isDeckFile(d.filename, d.mimeType));
+  if (!pdf) return null;
+  const url = await signedAssetUrl(pdf.storagePath, DECK_URL_SECONDS);
+  return url ? { url, name: pdf.filename } : null;
+}
+
+const DECK_URL_SECONDS = 6 * 60 * 60;
 
 type SignedFile = EventAsset & { url: string | null };
 

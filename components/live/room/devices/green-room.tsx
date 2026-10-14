@@ -1,5 +1,5 @@
 "use client";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, CircleDot, Headphones } from "lucide-react";
 import { greenRoomCta } from "../logic";
 import type { LocalMediaView, RoomKind } from "../types";
@@ -35,6 +35,9 @@ export function GreenRoom({
   onJoin: () => void;
 }) {
   const cta = greenRoomCta({ kind, broadcaster: !!media, hosting });
+  // A click before hydration would be lost: the button waits for it.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const waitingForPermission = media?.status === "requesting" || media?.status === "idle";
 
   const join = (
@@ -45,7 +48,7 @@ export function GreenRoom({
         className="w-full"
         onClick={onJoin}
         busy={joining}
-        disabled={joining}
+        disabled={joining || !hydrated}
         data-testid="green-room-join"
       >
         {joining ? "Connecting…" : cta.label}

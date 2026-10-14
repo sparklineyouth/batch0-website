@@ -37,6 +37,8 @@ export type RoomPeer = {
   state: "idle" | "connecting" | "live" | "reconnecting" | "failed" | "left";
   /** Connected at least once this session. */
   seenLive: boolean;
+  /** Signalled this session (on the page), even while the link is still coming up. */
+  heard?: boolean;
   /** Present only while carrying media. */
   streams: { camera?: MediaStream; screen?: MediaStream; audio?: MediaStream };
 };
@@ -151,7 +153,8 @@ export type RoomEnd = {
   reason?: "closed" | "revoked" | "cancelled";
 };
 
-export type RoomBusy = "joining" | "leaving" | "ending" | "reopening" | "rejoining" | null;
+/** `back`: Back from an end screen, waiting for the recording upload first. */
+export type RoomBusy = "joining" | "leaving" | "ending" | "reopening" | "rejoining" | "back" | null;
 
 export type RoomActions = {
   join: () => void;
@@ -164,6 +167,12 @@ export type RoomActions = {
   retry: () => void;
   /** Webinar staff: make this host primary for everyone. */
   pinForEveryone?: (peerId: string) => void;
+  /**
+   * Back from an end screen while this tab still uploads the recording
+   * (`recording.pendingUploads` > 0): wait for it, then go. Without it, Back
+   * is a plain link.
+   */
+  back?: () => void;
 };
 
 export type LiveRoomProps = {
@@ -201,6 +210,8 @@ export type LiveRoomProps = {
   actionError?: string | null;
   /** One short line in the Leave menu, e.g. "You're the only host on air." */
   leaveHint?: string | null;
+  /** One line at the top of the stage, e.g. a rehearsal before the room opens. */
+  notice?: ReactNode | null;
   actions: RoomActions;
   /**
    * The layout everyone sees (no local pin) — feed it to useRoomRecording's

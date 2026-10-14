@@ -270,14 +270,42 @@ function RoomBody(
   if (kind === "call" && model.why === "alone" && connection.joined) {
     const away = remotes.filter((r) => !onStage(r));
     const left = away.filter((r) => r.state === "left").map((r) => r.name);
-    const waiting = away.filter((r) => r.state !== "left").map((r) => r.name);
+    // On the page (signalling) but the link isn't up yet, vs not here at all.
+    const coming = away.filter((r) => r.state !== "left" && r.heard).map((r) => r.name);
+    const waiting = away.filter((r) => r.state !== "left" && !r.heard).map((r) => r.name);
     const text = left.length
-      ? `${joinNames(left)} left`
-      : waiting.length
-        ? `Waiting for ${joinNames(waiting)} to join`
-        : "Waiting for others to join";
+      ? `${joinNames(left)} left the call`
+      : coming.length
+        ? `Connecting to ${joinNames(coming)}…`
+        : waiting.length
+          ? `Waiting for ${joinNames(waiting)} to join`
+          : "Waiting for others to join";
     waitingChip = <Chip testId="chip-waiting">{text}</Chip>;
   }
+
+  // A call says who left, and until when they can come back.
+  const rejoinUntil = props.end?.rejoinUntil ?? null;
+  const leftIds = remotes
+    .filter((r) => r.state === "left")
+    .map((r) => r.peerId)
+    .sort()
+    .join(",");
+  const announcedLeft = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (kind !== "call" || phase !== "live") return;
+    const now = new Set(leftIds ? leftIds.split(",") : []);
+    for (const id of now) {
+      if (announcedLeft.current.has(id)) continue;
+      const who = remotes.find((r) => r.peerId === id)?.name || "Someone";
+      const until = rejoinUntil
+        ? ` They can rejoin until ${new Date(rejoinUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`
+        : "";
+      toast.push({ id: `left:${id}`, tone: "info", message: `${who} left the call.${until}` });
+    }
+    announcedLeft.current = now;
+    // `remotes` is read for names only; the ids decide when this runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, phase, leftIds, rejoinUntil, toast]);
 
   // A refused join is the "Couldn't join" notice; the same text isn't bannered too.
   const [hiddenError, setHiddenError] = useState<string | null>(null);
@@ -310,6 +338,7 @@ function RoomBody(
           <Spinner className="h-3.5 w-3.5" /> Reconnecting…
         </Chip>
       ) : null}
+      {props.notice ? <Chip testId="chip-notice">{props.notice}</Chip> : null}
       {waitingChip}
       {sheetOpen ? null : toasts}
     </>
@@ -349,12 +378,11 @@ function RoomBody(
   // ── Top bar ───────────────────────────────────────────────────────────────
   const firstLive = useRef<number | null>(null);
   if (connection.state === "live" && firstLive.current === null) firstLive.current = Date.now();
-  const anyOnAir = remotes.some(onStage);
+  // A webinar is live once the server says it started (a host rehearsing
+  // before the room opens is not); a call once its link is up.
   const live =
     phase === "live" &&
-    (kind === "webinar"
-      ? (!!room.liveStartedAt && !room.liveEndedAt) || anyOnAir || (selfOnStage && connection.joined)
-      : connection.state === "live");
+    (kind === "webinar" ? !!room.liveStartedAt && !room.liveEndedAt : connection.state === "live");
   // Everyone sees REC: the server's word, or this tab's own take / refused start.
   const recBy = recording?.mine ? null : (room.recording?.byName ?? recording?.by?.name ?? null);
   const recActive = phase === "live" && (!!room.recording || !!recording?.mine || !!recording?.by);
@@ -404,6 +432,7 @@ function RoomBody(
           pendingUploads={recording?.pendingUploads ?? 0}
           onRejoin={actions.rejoin}
           onReopen={actions.reopen}
+          onBack={actions.back}
         />
       </RoomShell>
     );

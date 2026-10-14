@@ -16,6 +16,7 @@ import {
 } from "@/lib/live";
 import { hostCallsHref } from "@/lib/call-lifecycle";
 import { BuiltinCallRoom } from "./builtin-room";
+import { CallRecordings } from "@/components/live/recording-player";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -74,6 +75,10 @@ export default async function CallLivePage(
     return (
       <Shell title={invite.topic || "1:1 call"}>
         <p className="text-sm text-ink-soft">{why[access]}</p>
+        {/* The take, for the people allowed to watch it (the player asks the server). */}
+        <div className="[&>div:not(:empty)]:mt-4">
+          <CallRecordings inviteId={invite.id} />
+        </div>
         <BackLink href={backHref} />
       </Shell>
     );
@@ -98,16 +103,10 @@ export default async function CallLivePage(
     invite.topic ||
     `1:1 with ${isStaff ? invite.inviteeName : joinNames(staffNames(invite))}`;
 
-  // batch0 Live. A 1:1 needs no room to exist in advance: everyone on it is
-  // known from the invite row, so each is handed everyone else's inbox and
-  // they connect directly.
-  //
   // What this render knows is the call as it stands NOW. Someone added while
-  // it runs (addCallCohosts) reaches the people already in the room through
-  // the heartbeat, which answers a call with its roster (announcePresence),
-  // and the room reads the team — who may record, under the server's lease
-  // (docs/recording.md) — from the server's staff list from then on;
-  // `recorderIds` here is only where it starts.
+  // it runs (addCallCohosts) reaches the room through the heartbeat's roster,
+  // and the room reads the team (who may record, who counts for End call)
+  // from the server's staff list from then on; `staffIds` is where it starts.
   const everyone = [
     { id: invite.inviteeId, name: invite.inviteeName },
     { id: invite.hostId, name: invite.hostName },
@@ -120,7 +119,7 @@ export default async function CallLivePage(
       startsAt={invite.startsAt}
       title={callTitle}
       selfUserId={profile.id}
-      recorderIds={callStaffIds(invite)}
+      staffIds={callStaffIds(invite)}
       selfName={self?.name || profile.full_name || "You"}
       otherName={joinNames(
         everyone.filter((p) => p.id !== profile.id).map((p) => p.name),

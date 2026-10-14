@@ -81,6 +81,8 @@ export function Stage({
       <Tile
         key={t.key}
         testId={`tile-${variant}`}
+        peerId={t.peerId}
+        kind={t.kind}
         name={t.isSelf ? (t.kind === "presentation" ? "Your presentation" : `${t.name} (you)`) : t.name}
         stream={v.stream}
         audio={t.kind === "camera" ? v.audio : null}

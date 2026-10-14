@@ -33,6 +33,8 @@ export function Tile({
   style,
   children,
   testId,
+  peerId,
+  kind,
 }: {
   name: string;
   stream: MediaStream | null;
@@ -59,6 +61,9 @@ export function Tile({
   style?: React.CSSProperties;
   children?: ReactNode;
   testId?: string;
+  /** Whose tile, and what it shows (data-peer / data-kind, for checks and tooling). */
+  peerId?: string;
+  kind?: "camera" | "presentation";
 }) {
   const box = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
@@ -79,6 +84,8 @@ export function Tile({
       ref={box}
       data-testid={testId}
       data-variant={variant}
+      data-peer={peerId}
+      data-kind={kind}
       style={style}
       className={`group isolate overflow-hidden rounded-md ${position} ${
         fit === "contain" ? "bg-[#000]" : "bg-[#1b1b1f]"
@@ -96,13 +103,21 @@ export function Tile({
 
       {!(showVideo && stream) && (
         <div className="absolute inset-0 grid place-items-center">
-          <div
-            className={`grid place-items-center rounded-full bg-[#34343a] font-medium text-[#f4f4f5] ${
-              small ? "h-10 w-10 text-sm" : variant === "grid" ? "h-16 w-16 text-xl" : "h-20 w-20 text-2xl sm:h-24 sm:w-24 sm:text-3xl"
-            }`}
-            aria-hidden
-          >
-            {initials(name)}
+          <div className="flex flex-col items-center">
+            <div
+              className={`grid place-items-center rounded-full bg-[#34343a] font-medium text-[#f4f4f5] ${
+                small ? "h-10 w-10 text-sm" : variant === "grid" ? "h-16 w-16 text-xl" : "h-20 w-20 text-2xl sm:h-24 sm:w-24 sm:text-3xl"
+              }`}
+              aria-hidden
+            >
+              {initials(name)}
+            </div>
+            {/* Said, so a viewer never mistakes it for a frozen picture. */}
+            {kind === "camera" && !small ? (
+              <span className="mt-2 text-xs text-[#a1a1aa]" data-testid="tile-camera-off">
+                Camera off
+              </span>
+            ) : null}
           </div>
         </div>
       )}
