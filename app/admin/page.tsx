@@ -5,7 +5,9 @@ import { requireAdminArea } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { countTicketsNeedingReply } from "@/lib/support";
 import { countOverdueAssignments } from "@/lib/assignments-server";
-import { ArrowRight, Inbox, CreditCard, LifeBuoy, ClipboardList } from "lucide-react";
+import { pendingMigrations } from "@/lib/pending-migrations-server";
+import { PENDING_MIGRATIONS_NOTICE } from "@/lib/pending-migrations";
+import { ArrowRight, Inbox, CreditCard, LifeBuoy, ClipboardList, TriangleAlert } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export const metadata = { title: "Admin · batch0" };
@@ -29,6 +31,8 @@ export default async function AdminOverview() {
   const seeRevenue = can(caps, "payments.view");
   const seeSupport = can(caps, "support.view");
   const seeAssignments = can(caps, "assignments.manage");
+  // Whoever can run migrations hears that some haven't been.
+  const seeMigrations = can(caps, "settings.manage");
 
   const admin = createAdminClient();
 
@@ -38,6 +42,7 @@ export default async function AdminOverview() {
     revenueCents,
     openTickets,
     overdueAssignments,
+    missingMigrations,
   ] = await Promise.all([
     seeApplications
       ? admin
@@ -56,6 +61,7 @@ export default async function AdminOverview() {
     seeSupport ? countTicketsNeedingReply() : Promise.resolve(0),
     // Student work past due with nothing handed in, across running cohorts.
     seeAssignments ? countOverdueAssignments(admin) : Promise.resolve(0),
+    seeMigrations ? pendingMigrations().catch(() => []) : Promise.resolve([]),
   ]);
 
   const inbox: InboxItem[] = [
@@ -102,6 +108,16 @@ export default async function AdminOverview() {
       <h1 className="font-display text-4xl font-bold tracking-[-0.02em] text-ink">
         Overview
       </h1>
+
+      {missingMigrations.length > 0 && (
+        <p
+          role="status"
+          className="mt-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
+        >
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          {PENDING_MIGRATIONS_NOTICE}
+        </p>
+      )}
 
       {inbox.length > 0 && (
         <section className="mt-8 grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(14rem,1fr))]">
