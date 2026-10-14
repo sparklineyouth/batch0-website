@@ -11,7 +11,9 @@
  *   - weeks-1–4 check-ins and their mentor feedback show, read-only, to the
  *     student, their mentor and an admin;
  *   - an office-hours session booked before the cut shows on both people's
- *     calls pages with its Zoom link;
+ *     calls pages with its Zoom link and the mentor's notes; a mentor-panel
+ *     role without calls.invite sees its own on /mentor, with a meeting
+ *     field that isn't a link shown as text;
  *   - the logo review queue sits on /admin/teams, open to a moderator without
  *     teams.manage, and founder-pass feedback requests sit on /admin/passes;
  *     the old URLs and the retired staff queues redirect;
@@ -105,9 +107,11 @@ async function get(cookie: string, path: string) {
 
 /** The <tr> of a table whose text mentions `needle`, or "". */
 function rowWith(html: string, needle: string): string {
-  // Cut at </tr>: after the last row comes the RSC payload, which repeats
-  // every row's data.
+  // Drop scripts first: the RSC payload repeats every row's data, and when a
+  // streamed page flushes it ahead of the table it lands in the chunk before
+  // the first <tr>, so that chunk would "mention" everyone. Then cut at </tr>.
   return html
+    .replace(/<script\b[\s\S]*?<\/script>/g, "")
     .split("<tr")
     .map((chunk) => chunk.split("</tr>")[0])
     .find((row) => row.includes(needle)) ?? "";
@@ -128,6 +132,11 @@ async function main() {
   roles.push(modSlug);
   await insert("app_roles", { slug: strandedSlug, label: "E2E stranded", permissions: ["pulse.view", "discussions.manage"], home_path: "/admin" });
   roles.push(strandedSlug);
+  // A mentor-panel role without calls.invite (the old office-hours page
+  // needed only the panel).
+  const panelSlug = `e2e-mpanel-${stamp}`.slice(0, 32);
+  await insert("app_roles", { slug: panelSlug, label: "E2E panel mentor", permissions: ["mentor.panel"], home_path: "/mentor" });
+  roles.push(panelSlug);
 
   const admin = await createUser("admin", "admin", "E2E Carry Admin");
   const mentor = await createUser("mentor", "mentor", "Mira Carryover");
@@ -135,6 +144,7 @@ async function main() {
   const sid = await createUser("sid", "student", "Sid Submitter");
   const mod = await createUser("mod", modSlug, "E2E Moderator");
   const stranded = await createUser("strand", strandedSlug, "E2E Stranded");
+  const panel = await createUser("panel", panelSlug, "Pat Panel");
 
   await rest("enrollments", {
     method: "POST",
@@ -177,8 +187,17 @@ async function main() {
     starts_at: new Date(Date.now() + 2 * DAY).toISOString(),
     ends_at: new Date(Date.now() + 2 * DAY + 30 * 60_000).toISOString(),
     zoom_url: `https://zoom.us/j/${stamp}`,
+    notes: `carry-note-${stamp}`,
   });
   await insert("mentor_bookings", { slot_id: slot.id, student_id: cara.id, topic: `carry-topic-${stamp}`, status: "booked" });
+  // One whose "link" was free text, as the old form allowed.
+  const textSlot = await insert("mentor_slots", {
+    mentor_id: panel.id,
+    starts_at: new Date(Date.now() + 3 * DAY).toISOString(),
+    ends_at: new Date(Date.now() + 3 * DAY + 30 * 60_000).toISOString(),
+    zoom_url: `Discord carry-room-${stamp}`,
+  });
+  await insert("mentor_bookings", { slot_id: textSlot.id, student_id: cara.id, topic: null, status: "booked" });
 
   // A team logo waiting for review, and a redeemed feedback credit.
   const team = await insert("teams", {
@@ -200,6 +219,7 @@ async function main() {
   const asCara = await cookieFor(cara.email);
   const asMod = await cookieFor(mod.email);
   const asStranded = await cookieFor(stranded.email);
+  const asPanel = await cookieFor(panel.email);
 
   console.log(`\nBase URL: ${BASE}\n\nprogress board\n`);
   const progress = await get(asAdmin, `/admin/progress?cohort=${cohortId}`);
@@ -242,8 +262,15 @@ async function main() {
       studentCalls.body.includes("Office hours already booked") &&
       studentCalls.body.includes(`carry-topic-${stamp}`) &&
       studentCalls.body.includes("Mira Carryover") &&
-      studentCalls.body.includes(`href="https://zoom.us/j/${stamp}"`),
+      studentCalls.body.includes(`href="https://zoom.us/j/${stamp}"`) &&
+      studentCalls.body.includes(`carry-note-${stamp}`),
     String(studentCalls.status),
+  );
+  check(
+    "…and a meeting field that isn't a link as text, never an href",
+    studentCalls.body.includes(`Discord carry-room-${stamp}`) &&
+      !studentCalls.body.includes(`href="Discord`) &&
+      studentCalls.body.includes("No join link; see the details"),
   );
   const mentorCalls = await get(asMentor, "/mentor/calls");
   check(
@@ -251,8 +278,28 @@ async function main() {
     mentorCalls.status === 200 &&
       mentorCalls.body.includes("Office hours already booked") &&
       mentorCalls.body.includes("Cara Carryover") &&
-      mentorCalls.body.includes(`href="https://zoom.us/j/${stamp}"`),
+      mentorCalls.body.includes(`href="https://zoom.us/j/${stamp}"`) &&
+      mentorCalls.body.includes(`carry-note-${stamp}`),
     String(mentorCalls.status),
+  );
+  const mentorHome = await get(asMentor, "/mentor");
+  check("…and not again on /mentor", mentorHome.status === 200 && !mentorHome.body.includes("Office hours already booked"));
+  const panelCalls = await get(asPanel, "/mentor/calls");
+  // app/mentor/loading.tsx streams the shell first, so the guard's redirect
+  // can arrive inside a 200 rather than as a 307.
+  check(
+    "a mentor-panel role without calls.invite can't open /mentor/calls",
+    panelCalls.to === "/mentor" || (panelCalls.status === 200 && /NEXT_REDIRECT;(replace|push);\/mentor;/.test(panelCalls.body)),
+    `${panelCalls.status} → ${panelCalls.to}`,
+  );
+  const panelHome = await get(asPanel, "/mentor");
+  check(
+    "…so its bookings are on /mentor",
+    panelHome.status === 200 &&
+      panelHome.body.includes("Office hours already booked") &&
+      panelHome.body.includes("Cara Carryover") &&
+      panelHome.body.includes(`Discord carry-room-${stamp}`),
+    String(panelHome.status),
   );
   const oldLink = await get(asCara, "/dashboard/office-hours");
   check("old office-hours link lands on calls", oldLink.to === "/dashboard/calls", `${oldLink.status} → ${oldLink.to}`);

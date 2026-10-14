@@ -33,14 +33,14 @@ export async function loadUpcomingOfficeHours(
       if (bookings.length === 0) return [];
       const { data: s } = await admin
         .from("mentor_slots")
-        .select("id, mentor_id, starts_at, ends_at, zoom_url")
+        .select("id, mentor_id, starts_at, ends_at, zoom_url, notes")
         .in("id", bookings.map((r) => r.slot_id))
         .gt("ends_at", nowIso);
       slots = (s ?? []) as OfficeHoursSlotRow[];
     } else {
       const { data: s } = await admin
         .from("mentor_slots")
-        .select("id, mentor_id, starts_at, ends_at, zoom_url")
+        .select("id, mentor_id, starts_at, ends_at, zoom_url, notes")
         .eq("mentor_id", userId)
         .gt("ends_at", nowIso);
       slots = (s ?? []) as OfficeHoursSlotRow[];
