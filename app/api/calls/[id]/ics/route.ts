@@ -34,10 +34,18 @@ function toIcsDate(iso: string) {
   );
 }
 
-function icsStatus(status: string): "CONFIRMED" | "TENTATIVE" | "CANCELLED" {
-  if (status === "accepted" || status === "completed") return "CONFIRMED";
-  if (status === "invited") return "TENTATIVE";
+/** A booked call is confirmed (there is no accept step); a called-off one greys out. */
+function icsStatus(status: string): "CONFIRMED" | "CANCELLED" {
+  if (status === "invited" || status === "accepted" || status === "completed") {
+    return "CONFIRMED";
+  }
   return "CANCELLED";
+}
+
+/** Seconds since the epoch of the row's last change: grows with every edit. */
+function icsSequence(updatedAt: string | undefined): number {
+  const ms = updatedAt ? Date.parse(updatedAt) : NaN;
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
 }
 
 function escapeIcs(s: string) {
@@ -77,15 +85,14 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
     "BEGIN:VEVENT",
     `UID:call-${invite.id}@batch0.org`,
     `DTSTAMP:${toIcsDate(new Date().toISOString())}`,
+    // Same UID, higher SEQUENCE: re-importing after a reschedule updates the
+    // entry instead of adding a second one.
+    `SEQUENCE:${icsSequence(invite.updatedAt)}`,
     `DTSTART:${toIcsDate(invite.startsAt)}`,
     `DTEND:${toIcsDate(inviteEndsAt(invite))}`,
     `SUMMARY:${escapeIcs(summary)}`,
     `DESCRIPTION:${escapeIcs(`Join at ${joinUrl}`)}`,
     `URL:${escapeIcs(joinUrl)}`,
-    // A cancelled or declined call should grey out in the calendar rather
-    // than sitting there looking live. A completed call HAPPENED — it stays
-    // confirmed in the history, rather than turning into a cancellation the
-    // moment it ends — and an unanswered invite is tentative, not called off.
     `STATUS:${icsStatus(invite.status)}`,
     "END:VEVENT",
     "END:VCALENDAR",

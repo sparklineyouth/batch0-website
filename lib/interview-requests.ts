@@ -1,18 +1,10 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAllRoles } from "@/lib/roles";
-import {
-  teamRequestKind,
-  type CallTiming,
-  type TeamRequestKind,
-} from "@/lib/call-lifecycle";
-import type { CallInviteStatus } from "@/lib/live";
 
 /**
- * Reads for student-initiated requests for a 1:1 with the team
- * (`interview_requests`, migration 0061). Any enrolled student can ask
- * whenever they want: before kickoff it is the getting-to-know-you interview
- * the table was named for, from kickoff on an ordinary 1:1 (see `kind`).
+ * Reads for "Request a 1:1" (`interview_requests`, migration 0061): an
+ * enrolled student asks the team for a call, whenever they want.
  *
  * Service-role reads with explicit filters, the same shape as lib/calls.ts:
  * RLS is the backstop, but every function here filters on the id it was given
@@ -38,24 +30,7 @@ export type InterviewRequest = {
   altAt: string | null;
   note: string | null;
   status: InterviewRequestStatus;
-  /**
-   * Getting-to-know-you interview (filed before the cohort started) or an
-   * ordinary 1:1 with the team (filed after). Derived, not stored: see
-   * teamRequestKind in lib/call-lifecycle.ts.
-   */
-  kind: TeamRequestKind;
   callInviteId: string | null;
-  /**
-   * The call this request booked, as lib/call-lifecycle.ts reads it — null
-   * until it is scheduled, or if the call was deleted.
-   *
-   * Carried on the request because the request's own status stops at
-   * `scheduled` forever: whether that call was then cancelled, declined, or
-   * has already happened is only knowable from the call, and a card that
-   * says "Interview booked" without looking is how a student ended up being
-   * told a cancelled interview was on the calendar.
-   */
-  call: CallTiming | null;
   createdAt: string;
 };
 
@@ -63,8 +38,7 @@ const SELECT = `
   id, student_id, cohort_id, preferred_at, alt_at, note, status,
   call_invite_id, created_at,
   student:profiles!interview_requests_student_id_fkey(full_name, email),
-  cohort:cohorts(name, starts_on),
-  call:call_invites!interview_requests_call_invite_id_fkey(status, starts_at, duration_minutes)
+  cohort:cohorts(name)
 `;
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -74,7 +48,6 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 function toRequest(row: any): InterviewRequest {
   const student = one<any>(row.student);
   const cohort = one<any>(row.cohort);
-  const call = one<any>(row.call);
   return {
     id: row.id,
     studentId: row.student_id,
@@ -85,32 +58,14 @@ function toRequest(row: any): InterviewRequest {
     altAt: row.alt_at,
     note: row.note,
     status: row.status as InterviewRequestStatus,
-    kind: teamRequestKind(row.created_at, cohort?.starts_on ?? null),
     callInviteId: row.call_invite_id,
-    call: call
-      ? {
-          status: call.status as CallInviteStatus,
-          startsAt: call.starts_at,
-          durationMinutes: call.duration_minutes,
-        }
-      : null,
     createdAt: row.created_at,
   };
 }
 
 /**
- * This student's current request, if any.
- *
- * Returns the newest row that is still "live" — requested (waiting on the
- * team) or scheduled (the team booked it). A declined or cancelled request is
- * history and doesn't block a fresh ask, so it isn't returned here; the card
- * falls back to the compose state, which is what a student who was turned down
- * should see.
- *
- * "Scheduled" is not the end of the story, though: the booked call may since
- * have been cancelled, declined, or already happened. Callers read that
- * through `interviewStage` (lib/call-lifecycle.ts) off the embedded `call`,
- * never off `status` alone.
+ * This student's request still waiting on the team, if any (the database
+ * allows one). Booked, declined and withdrawn ones are history.
  */
 export async function getInterviewRequestForStudent(
   studentId: string,
@@ -120,7 +75,7 @@ export async function getInterviewRequestForStudent(
     .from("interview_requests")
     .select(SELECT)
     .eq("student_id", studentId)
-    .in("status", ["requested", "scheduled"])
+    .eq("status", "requested")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

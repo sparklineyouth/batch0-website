@@ -69,7 +69,7 @@ test("splitByImportance keeps each side in the original order", () => {
     { id: "1", type: "payment_failed" },
     { id: "2", type: "charge_paid" },
     { id: "3", type: "team_invite" },
-    { id: "4", type: "office_hours_recap" },
+    { id: "4", type: "event_posted" },
   ];
   const { important, other } = splitByImportance(rows, {});
   assert.deepEqual(

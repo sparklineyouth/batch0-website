@@ -76,6 +76,9 @@ const nextConfig = {
         ["/admin/payments/acquisition/:path*", "/admin/payments"],
         ["/admin/email/phone-request/:path*", "/admin/email"],
       ].map(([source, destination]) => ({ source, destination, permanent: true })),
+      // Office hours were retired; old links land on 1:1 calls.
+      { source: "/dashboard/office-hours", destination: "/dashboard/calls", permanent: false },
+      { source: "/mentor/office-hours", destination: "/mentor/calls", permanent: false },
     ];
   },
   webpack: (config) => {

@@ -7,13 +7,6 @@ import { ButtonLink } from "@/components/ui/button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { fmtDateOnly } from "@/lib/pre-cohort";
-import { getInterviewRequestForStudent } from "@/lib/interview-requests";
-import { InterviewRequestCard } from "@/components/interview-request-card";
-import {
-  canRequestTeamCall,
-  interviewCardState,
-  interviewStage,
-} from "@/lib/call-lifecycle";
 import {
   ArrowRight,
   CalendarDays,
@@ -23,6 +16,7 @@ import {
   PlayCircle,
   Receipt,
   Rocket,
+  Video,
 } from "lucide-react";
 
 export const metadata = { title: "You're enrolled · batch0" };
@@ -75,19 +69,6 @@ export default async function EnrolledPage(
   const startLabel = fmtDateOnly(cohort?.starts_on ?? access.cohortStartsOn);
   const firstName = profile?.full_name?.split(" ")[0] ?? null;
   const started = !access.preCohort;
-
-  // The first thing a student sees after paying, so it is where they first
-  // learn they can ask the team for a 1:1 whenever they want: before kickoff
-  // as a getting-to-know-you interview, after it as an ordinary call. The
-  // action needs an enrollment row, so a payment still clearing gets no form
-  // yet. A request already in flight keeps showing, read through the call it
-  // booked (interviewStage).
-  const interviewRequest = await getInterviewRequestForStudent(user.id);
-  const interviewLastStage = interviewStage(interviewRequest);
-  const interviewState = interviewCardState(
-    interviewLastStage,
-    canRequestTeamCall(access),
-  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -159,26 +140,18 @@ export default async function EnrolledPage(
             title="Before One"
             body="The pre-cohort flows — the work you do before your company becomes real."
           />
+          <NextStep
+            href="/dashboard/calls"
+            icon={Video}
+            title="Meet the team"
+            body="Request a 1:1 video call with the batch0 team."
+          />
         </div>
       </section>
 
-      {interviewState !== "hidden" && (
-        <section className="mt-10">
-          <h2 className="mb-4 text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
-            Meet the team
-          </h2>
-          <InterviewRequestCard
-            request={interviewRequest}
-            state={interviewState}
-            composeKind={started ? "call" : "interview"}
-            lastStage={interviewLastStage}
-          />
-        </section>
-      )}
-
       {!started && (
         <p className="mt-8 text-sm text-ink-soft">
-          The rest of the program — course, assignments, office hours, events —
+          The rest of the program — course, assignments, events —
           unlocks at kickoff{startLabel ? ` on ${startLabel}` : ""}.
         </p>
       )}

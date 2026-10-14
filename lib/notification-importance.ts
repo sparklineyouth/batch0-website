@@ -248,34 +248,28 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "important",
   },
   {
-    type: "call_response",
-    label: "Someone answered a call invite",
+    type: "call_updated",
+    label: "A call moved or changed",
     group: "Schedule & calls",
-    default: "other",
+    default: "important",
+  },
+  {
+    type: "call_response",
+    label: "A student can't make a call",
+    group: "Schedule & calls",
+    default: "important",
   },
   {
     type: "interview_requested",
-    label: "Interview requested",
+    label: "A student asked for a 1:1",
     group: "Schedule & calls",
     default: "important",
   },
   {
     type: "interview_declined",
-    label: "Interview declined",
+    label: "Your 1:1 request couldn't be booked",
     group: "Schedule & calls",
     default: "important",
-  },
-  {
-    type: "office_hours_booked",
-    label: "Office hours booked",
-    group: "Schedule & calls",
-    default: "important",
-  },
-  {
-    type: "office_hours_recap",
-    label: "Office hours recap",
-    group: "Schedule & calls",
-    default: "other",
   },
   {
     type: "founder_pass_feedback_scheduled",
@@ -485,7 +479,7 @@ export function kindFor(type: string): NotificationKind | undefined {
   return BY_TYPE.get(type);
 }
 
-/** "office_hours_recap" → "Office hours recap", for types not in the list. */
+/** "some_old_type" → "Some old type", for types not in the list. */
 export function labelForType(type: string): string {
   const known = BY_TYPE.get(type);
   if (known) return known.label;

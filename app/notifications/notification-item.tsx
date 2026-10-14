@@ -51,6 +51,7 @@ const ICON_BY_TYPE: Record<string, any> = {
   call_invited: Video,
   call_response: Video,
   call_cancelled: Video,
+  call_updated: Video,
   interview_requested: Video,
   interview_declined: Video,
   // Support (lib/support.ts): the team's bells for a new request, a follow-up

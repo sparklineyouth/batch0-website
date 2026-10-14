@@ -116,7 +116,11 @@ export function BuiltinCallRoom({
     [inviteId],
   );
 
-  const onEndCall = useCallback(() => endCall(inviteId), [inviteId]);
+  const onEndCall = useCallback(async () => {
+    const result = await endCall(inviteId);
+    if (!result.ok) throw new Error(result.error);
+    return { completed: !!result.data?.completed };
+  }, [inviteId]);
   const fetchStatus = useCallback(() => getCallRoomStatus(inviteId), [inviteId]);
 
   // Joined into a string for the memo's deps, so a re-render that hands over

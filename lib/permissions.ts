@@ -376,7 +376,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: "calls.invite",
         label: "Invite students to 1:1 calls",
         description:
-          "Propose a private video call to any student, who can accept or decline. Held by mentors and investors.",
+          "Book or start a private video call with any student. Held by mentors and investors.",
         sensitive: true,
       },
       {

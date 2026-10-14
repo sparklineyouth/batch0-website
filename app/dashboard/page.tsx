@@ -10,13 +10,6 @@ import { FounderPassCard } from "./founder-pass-card";
 import { getPassForUser } from "@/lib/founder-pass";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { getStudentAccess, type StudentAccess } from "@/lib/access";
-import { getInterviewRequestForStudent } from "@/lib/interview-requests";
-import { InterviewRequestCard } from "@/components/interview-request-card";
-import {
-  canRequestTeamCall,
-  interviewCardState,
-  interviewStage,
-} from "@/lib/call-lifecycle";
 import { fmtDateOnly, PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
 import { ENROLLED_ONLY_HREFS } from "@/lib/nav-config";
 import type { Role } from "@/lib/types";
@@ -169,22 +162,6 @@ export default async function DashboardHome() {
   ).length;
 
   const greeting = profile?.full_name?.split(" ")[0] || "there";
-
-  // A 1:1 with the team: any enrolled student can ask whenever they want and
-  // the team confirms a time. Before kickoff it is the getting-to-know-you
-  // interview, after it an ordinary call. Fetched only for enrolled students,
-  // so nobody else pays for the query; staff previewing can't file one.
-  //
-  // Read through the call it booked: one whose call was cancelled, or has
-  // already happened, is a fresh ask rather than "Call booked".
-  const interviewEligible = canRequestTeamCall(access);
-  const interviewRequest = interviewEligible
-    ? await getInterviewRequestForStudent(user.id)
-    : null;
-  const interviewLastStage = interviewStage(interviewRequest);
-  const interviewState = interviewEligible
-    ? interviewCardState(interviewLastStage, true, { hideDone: true })
-    : "hidden";
 
   // Status copy + primary action are derived together so the hero feels
   // intentional — no double-card with redundant labels.
@@ -431,18 +408,6 @@ export default async function DashboardHome() {
           </ul>
         </aside>
       </section>
-
-      {interviewState !== "hidden" && (
-        <div className="mt-12">
-          <InterviewRequestCard
-            request={interviewRequest}
-            state={interviewState}
-            variant="compact"
-            composeKind={preCohort ? "interview" : "call"}
-            lastStage={interviewLastStage}
-          />
-        </div>
-      )}
 
       {founderPass && (
         <div className="mt-12">

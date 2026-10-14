@@ -5,32 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select, FieldError } from "@/components/ui/input";
 import { LocalTime } from "@/components/ui/local-time";
 import { getActionError } from "@/lib/action-error";
-import { CohostPicker, type InviteeOption } from "@/components/live/invite-form";
 import {
-  scheduleInterviewRequest,
-  declineInterviewRequest,
-} from "@/app/calls/interview-actions";
+  CohostPicker,
+  defaultStart,
+  toLocalInput,
+  type InviteeOption,
+} from "@/components/live/invite-form";
+import { scheduleInterviewRequest, declineInterviewRequest } from "@/app/calls/interview-actions";
 import type { InterviewRequest } from "@/lib/interview-requests";
-import {
-  bookingPrefill,
-  confirmsProposal,
-  proposalsAllPast,
-} from "@/lib/call-lifecycle";
-import { AlertTriangle, CalendarClock, Check, Info } from "lucide-react";
+import { bookingPrefill, proposalsAllPast } from "@/lib/call-lifecycle";
+import { AlertTriangle, CalendarClock, Check } from "lucide-react";
 
 const DURATIONS = [15, 20, 30, 45, 60];
 
 /**
- * The team's queue of 1:1s students asked for, on /admin/calls: a
- * getting-to-know-you interview before kickoff, an ordinary call after, or a
- * scholarship mentor call. Each row is confirmed, which writes a real
- * call_invites row, or declined.
- *
- * Confirming one of the student's own times books it outright, since they
- * already said it works. Any other time goes to them as an invite to accept.
- * The form says which, before the click. Whoever confirms hosts the call, and
- * can put others from the team on it — a scholarship mentor call is usually
- * booked by an admin for the mentor who will take it.
+ * The team's queue of "Request a 1:1" asks, on /admin/calls. Book writes a
+ * real call (joinable, no accept step); Decline lets the student ask again.
+ * Whoever books hosts, and can bring others from the team.
  */
 export function InterviewRequestsPanel({
   requests,
@@ -41,16 +32,15 @@ export function InterviewRequestsPanel({
   requests: InterviewRequest[];
   /** Who can be added as co-hosts — the team, without the viewer. */
   staff?: InviteeOption[];
-  /** The server's render time (ISO), so "have their times passed" is stable across hydration. */
+  /** The server's render time (ISO), stable across hydration. */
   now: string;
-  /** Requests that are learner's-scholarship calls rather than onboarding interviews. */
+  /** Requests funded by a learner's scholarship. */
   scholarshipIds?: string[];
 }) {
   if (requests.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-ink-faint">
-        No call requests waiting. Enrolled students ask for a 1:1 from their
-        dashboard whenever they want one.
+        No requests waiting.
       </p>
     );
   }
@@ -84,61 +74,24 @@ function RequestRow({
   const [scheduling, setScheduling] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
-
-  // Every time the student offered has gone by. Booking at one of them is
-  // refused (it's in the past), so the row says so up front instead of
-  // letting "Book it" fail — it needs a new time, or a decline.
   const stale = proposalsAllPast(request.preferredAt, request.altAt, new Date(now));
-
-  // Prefill the confirm form with the student's first choice that is still
-  // AHEAD, so the common case — "yes, that works" — is one click on the
-  // duration and Save. Never a time that has passed: the old prefill used
-  // `preferredAt` unconditionally, so on a stale request the form's most
-  // common click was a guaranteed "That time is in the past."
-  const [startsLocal, setStartsLocal] = useState(
-    () =>
-      toLocalInput(bookingPrefill(request.preferredAt, request.altAt, new Date(now))) ??
-      defaultStart(),
-  );
+  // The student's first time still ahead, so "yes, that works" is one click.
+  const [startsLocal, setStartsLocal] = useState(() => {
+    const prefill = bookingPrefill(request.preferredAt, request.altAt, new Date(now));
+    return prefill ? toLocalInput(prefill) : defaultStart();
+  });
   const [duration, setDuration] = useState(30);
   const [cohostIds, setCohostIds] = useState<string[]>([]);
-  // Does the time in the form match one the student offered? Then confirming
-  // books it outright; otherwise it goes to them to accept. Recomputed as the
-  // time is edited, so the button never promises the wrong thing.
-  const startsIso = (() => {
-    const d = new Date(startsLocal);
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
-  })();
-  const asProposed =
-    !!startsIso &&
-    confirmsProposal(startsIso, request.preferredAt, request.altAt);
 
-  function schedule() {
+  function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     setError(undefined);
     start(async () => {
       try {
-        const result = await scheduleInterviewRequest({
-          id: request.id,
-          startsAt: new Date(startsLocal).toISOString(),
-          durationMinutes: duration,
-          cohostIds,
-        });
+        const result = await action();
         if (!result.ok) {
           setError(result.error);
           return;
         }
-        router.refresh();
-      } catch (err: any) {
-        setError(getActionError(err));
-      }
-    });
-  }
-
-  function decline() {
-    setError(undefined);
-    start(async () => {
-      try {
-        await declineInterviewRequest(request.id);
         router.refresh();
       } catch (err: any) {
         setError(getActionError(err));
@@ -152,13 +105,11 @@ function RequestRow({
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
             {request.studentName}
-            <span className="rounded-full bg-phosphor/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-phosphor-ink">
-              {scholarship
-                ? "Scholarship call"
-                : request.kind === "interview"
-                  ? "Intro interview"
-                  : "1:1 call"}
-            </span>
+            {scholarship && (
+              <span className="rounded-full bg-phosphor/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-phosphor-ink">
+                Scholarship
+              </span>
+            )}
           </p>
           <p className="truncate text-xs text-ink-faint">
             {request.studentEmail}
@@ -168,13 +119,13 @@ function RequestRow({
         {!scheduling && (
           <div className="flex shrink-0 gap-2">
             <Button size="sm" onClick={() => setScheduling(true)}>
-              <CalendarClock className="h-4 w-4" /> Confirm
+              <CalendarClock className="h-4 w-4" /> Book
             </Button>
             <Button
               size="sm"
               variant="ghost"
-              onClick={decline}
               disabled={pending}
+              onClick={() => run(() => declineInterviewRequest(request.id))}
             >
               Decline
             </Button>
@@ -204,10 +155,9 @@ function RequestRow({
       </dl>
 
       {stale && (
-        <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
-          {request.altAt ? "Both times they offered have" : "The time they offered has"}{" "}
-          passed. Pick a new time, or decline so they can ask again.
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Their times have passed. Pick a new one or decline.
         </p>
       )}
 
@@ -215,7 +165,7 @@ function RequestRow({
         <div className="mt-4 space-y-3 border-t border-line pt-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>Confirm the time</Label>
+              <Label>When</Label>
               <Input
                 type="datetime-local"
                 value={startsLocal}
@@ -224,10 +174,7 @@ function RequestRow({
             </div>
             <div>
               <Label>How long</Label>
-              <Select
-                value={String(duration)}
-                onChange={(e) => setDuration(Number(e.target.value))}
-              >
+              <Select value={String(duration)} onChange={(e) => setDuration(Number(e.target.value))}>
                 {DURATIONS.map((d) => (
                   <option key={d} value={d}>
                     {d} minutes
@@ -237,23 +184,25 @@ function RequestRow({
             </div>
           </div>
           <CohostPicker staff={staff} value={cohostIds} onChange={setCohostIds} />
-          <p className="flex items-start gap-1.5 text-xs text-ink-faint">
-            <Info className="mt-px h-3.5 w-3.5 shrink-0" />
-            {asProposed
-              ? "One of the times they offered, so this books it straight away. They get a confirmation, with nothing to accept."
-              : "A different time from theirs, so they'll be asked to accept it."}
-          </p>
           {error && <FieldError>{error}</FieldError>}
           <div className="flex gap-2">
-            <Button disabled={pending || !startsLocal} onClick={schedule}>
-              <Check className="h-4 w-4" />
-              {pending ? "Booking…" : asProposed ? "Confirm" : "Send this time"}
-            </Button>
             <Button
-              variant="ghost"
-              onClick={() => setScheduling(false)}
-              disabled={pending}
+              disabled={pending || !startsLocal}
+              onClick={() =>
+                run(() =>
+                  scheduleInterviewRequest({
+                    id: request.id,
+                    startsAt: new Date(startsLocal).toISOString(),
+                    durationMinutes: duration,
+                    cohostIds,
+                  }),
+                )
+              }
             >
+              <Check className="h-4 w-4" />
+              {pending ? "Booking…" : "Book call"}
+            </Button>
+            <Button variant="ghost" onClick={() => setScheduling(false)} disabled={pending}>
               Cancel
             </Button>
           </div>
@@ -263,23 +212,4 @@ function RequestRow({
       {error && !scheduling && <FieldError>{error}</FieldError>}
     </li>
   );
-}
-
-/** An ISO timestamp → the `datetime-local` input value, in the viewer's TZ. */
-function toLocalInput(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** Tomorrow at the next round hour — a sane default that is never in the past. */
-function defaultStart(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setMinutes(0, 0, 0);
-  d.setHours(d.getHours() + 1);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

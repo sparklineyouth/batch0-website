@@ -120,12 +120,12 @@ const STUDENT = [
   "/dashboard", "/dashboard/accepted", "/dashboard/ai", "/dashboard/announcements", "/dashboard/application",
   "/dashboard/billing", "/dashboard/assignments", "/dashboard/calls", "/dashboard/community", "/dashboard/course",
   "/dashboard/enrolled", "/dashboard/events", "/dashboard/files", "/dashboard/intros",
-  "/dashboard/kickoff", "/dashboard/office-hours", "/dashboard/phone", "/dashboard/referrals", "/dashboard/resources",
+  "/dashboard/kickoff", "/dashboard/phone", "/dashboard/referrals", "/dashboard/resources",
   "/dashboard/scholarships", "/dashboard/settings", "/dashboard/team", "/notifications",
   "/app/home", "/app/events", "/app/course", "/app/assignments", "/app/announcements", "/app/more",
 ];
 const MENTOR = [
-  "/mentor", "/mentor/assignments", "/mentor/calls", "/mentor/course", "/mentor/office-hours", "/mentor/resources",
+  "/mentor", "/mentor/assignments", "/mentor/calls", "/mentor/course", "/mentor/resources",
   "/mentor/students", "/mentor/teams",
 ];
 const INVESTOR = ["/investor", "/investor/calls", "/investor/demo-day", "/investor/interests", "/investor/intros", "/investor/teams"];
