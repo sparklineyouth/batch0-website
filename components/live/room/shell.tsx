@@ -4,11 +4,13 @@ import Link from "next/link";
 import { ArrowLeft, Users, X } from "lucide-react";
 import { formatElapsed } from "./logic";
 import { FOCUS, Spinner } from "./ui";
+import { PANEL_COLUMN_QUERY, useMediaQuery } from "./use-size";
 
 /**
  * The full-viewport call surface: top bar, main region (stage + side panel),
  * pinned control bar. Fixed above the dashboard chrome (z-60) without changing
- * the URL. The side panel is a 360px column on desktop and a bottom sheet on
+ * the URL. The side panel is a column beside the stage on desktop (360px) and
+ * on a landscape phone or tablet (300px), and a bottom sheet on portrait
  * phones that stops above the control bar. Notices and toasts live inside the
  * stage (see Stage's `notices`), or, while the phone sheet is open, in
  * `sheetNotices` under the sheet's header, pushing the panel down instead of
@@ -32,6 +34,7 @@ export function RoomShell({
   /** Phones, sheet open: shown in flow at the top of the sheet. */
   sheetNotices?: ReactNode;
 }) {
+  const column = useMediaQuery(PANEL_COLUMN_QUERY);
   // No page scroll behind the room.
   useEffect(() => {
     const html = document.documentElement;
@@ -53,25 +56,29 @@ export function RoomShell({
         <div className="relative min-h-0 min-w-0 flex-1 px-2 pb-2 sm:px-3 sm:pb-3">{children}</div>
         {panel ? (
           <aside
-            className={`${
-              panelOpen ? "flex" : "hidden"
-            } absolute inset-x-0 bottom-0 top-[12%] z-20 flex-col overflow-hidden rounded-t-md border-t border-[#26262b] bg-[#141416] lg:static lg:inset-auto lg:z-auto lg:mb-3 lg:mr-3 lg:w-[360px] lg:shrink-0 lg:rounded-md lg:border lg:border-[#26262b]`}
+            className={`${panelOpen ? "flex" : "hidden"} flex-col overflow-hidden bg-[#141416] ${
+              column
+                ? "mb-3 mr-3 w-[300px] shrink-0 rounded-md border border-[#26262b] lg:w-[360px]"
+                : "absolute inset-x-0 bottom-0 top-[12%] z-20 rounded-t-md border-t border-[#26262b]"
+            }`}
             aria-label="Side panel"
             data-testid="side-panel"
           >
-            <div className="flex h-9 shrink-0 items-center justify-end border-b border-[#26262b] px-1.5 lg:hidden">
-              <button
-                type="button"
-                aria-label="Close panel"
-                onClick={onClosePanel}
-                className={`rounded p-1.5 text-[#a1a1aa] hover:bg-[#26262b] hover:text-[#fff] ${FOCUS}`}
-                data-testid="side-panel-close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            {sheetNotices ? (
-              <div className="shrink-0 border-b border-[#26262b] px-2 py-2 lg:hidden" data-testid="sheet-notices">
+            {column ? null : (
+              <div className="flex h-9 shrink-0 items-center justify-end border-b border-[#26262b] px-1.5">
+                <button
+                  type="button"
+                  aria-label="Close panel"
+                  onClick={onClosePanel}
+                  className={`rounded p-1.5 text-[#a1a1aa] hover:bg-[#26262b] hover:text-[#fff] ${FOCUS}`}
+                  data-testid="side-panel-close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            {sheetNotices && !column ? (
+              <div className="shrink-0 border-b border-[#26262b] px-2 py-2" data-testid="sheet-notices">
                 {sheetNotices}
               </div>
             ) : null}
