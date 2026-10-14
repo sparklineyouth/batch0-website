@@ -45,6 +45,7 @@ import {
   canMeet,
   EMAIL_PERMISSIONS,
   EMAIL_TAB_ROUTES,
+  TEAMS_PAGE_PERMISSIONS,
   type Capabilities,
   type Permission,
   type Requirement,
@@ -197,11 +198,13 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: Trophy,
         perm: "challenges.manage",
       },
+      // Pending team logos are reviewed at the top of this page.
       {
         href: "/admin/teams",
         label: "Teams",
         icon: Briefcase,
-        perm: "teams.manage",
+        perm: TEAMS_PAGE_PERMISSIONS,
+        keywords: ["logos", "moderation"],
       },
       {
         href: "/admin/demo-day",
@@ -321,23 +324,13 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: Star,
         perm: "referrals.view",
       },
+      // Redeemed feedback credits are worked at the top of this page.
       {
         href: "/admin/passes",
         label: "Founder passes",
         icon: Ticket,
         perm: "passes.manage",
-      },
-      {
-        href: "/admin/pass-requests",
-        label: "Pass requests",
-        icon: Inbox,
-        perm: "passes.manage",
-      },
-      {
-        href: "/admin/moderation",
-        label: "Moderation",
-        icon: ShieldCheck,
-        perm: "moderation.manage",
+        keywords: ["pass requests", "feedback requests"],
       },
       {
         href: "/admin/discord",

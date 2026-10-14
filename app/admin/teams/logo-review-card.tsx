@@ -4,10 +4,11 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, FieldError } from "@/components/ui/input";
-import { approveTeamLogo, rejectTeamLogo } from "./actions";
+import { approveTeamLogo, rejectTeamLogo } from "./logo-actions";
 import { getActionError } from "@/lib/action-error";
 
-export function ModerationRow({ team }: { team: any }) {
+/** One pending team logo on /admin/teams: approve, or reject with a reason. */
+export function LogoReviewCard({ team }: { team: any }) {
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [showReason, setShowReason] = useState(false);

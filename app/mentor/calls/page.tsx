@@ -3,6 +3,8 @@ import { can } from "@/lib/permissions";
 import { Card } from "@/components/ui/card";
 import { CallsPanel } from "@/components/live/calls-panel";
 import { listInvitesForHost, listInvitableStaff, listInvitableStudents } from "@/lib/calls";
+import { loadUpcomingOfficeHours } from "@/lib/office-hours-server";
+import { OfficeHoursSessions } from "@/components/calls/office-hours-sessions";
 
 export const metadata = { title: "1:1 calls · Mentor" };
 
@@ -10,10 +12,12 @@ export default async function MentorCallsPage() {
   const viewer = await requirePermission("calls.invite");
   // Emails only for hosts who may see people's details anyway.
   const withEmail = can(viewer.caps, "people.view");
-  const [invites, students, allStaff] = await Promise.all([
+  const [invites, students, allStaff, officeHours] = await Promise.all([
     listInvitesForHost(viewer.profile.id),
     listInvitableStudents({ withEmail }),
     listInvitableStaff({ withEmail }),
+    // Old office-hours links land here (next.config.js).
+    loadUpcomingOfficeHours("mentor", viewer.profile.id),
   ]);
 
   return (
@@ -28,6 +32,7 @@ export default async function MentorCallsPage() {
           now={new Date().toISOString()}
         />
       </Card>
+      <OfficeHoursSessions sessions={officeHours} className="mt-8" />
     </div>
   );
 }

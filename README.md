@@ -9,7 +9,7 @@ The program runs on: the course and an assignment tracker
 continuous recording (`docs/batch0-live.md`, `docs/recording.md`), and Discord
 for community (`docs/discord.md`). Check-ins, in-app files, discussions, DMs,
 the team thread and office hours were retired in October 2026; their tables
-stay, read-only.
+and rows stay, and the app no longer writes to them.
 
 ## Stack
 

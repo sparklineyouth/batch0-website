@@ -13,6 +13,8 @@ import { displayEmail } from "@/lib/placeholder-email";
 import { getSiteConfig } from "@/lib/site-config";
 import { Meter } from "@/components/admin/charts";
 import { getStudentProgress } from "@/lib/progress";
+import { loadCheckinHistory } from "@/lib/checkin-history-server";
+import { EarlierCheckins } from "@/components/assignments/earlier-checkins";
 import { listTicketsForStaff } from "@/lib/support";
 import { STAFF_STATUS_LABELS, supportScopeFor } from "@/lib/support-access";
 import type { Role } from "@/lib/types";
@@ -84,6 +86,7 @@ export default async function AdminStudentDetail(
     { data: cohorts },
     { data: charges },
     supportRequests,
+    checkins,
   ] = await Promise.all([
     getAllRoles(),
     getSiteConfig(),
@@ -116,6 +119,8 @@ export default async function AdminStudentDetail(
     supportScope.canView
       ? listTicketsForStaff({ view: "all", userId: params.id, pageSize: 10 }, supportScope)
       : Promise.resolve(null),
+    // Weekly check-ins from before assignments, with mentor feedback.
+    loadCheckinHistory(params.id),
   ]);
 
   const roleOptions = allRoles
@@ -238,8 +243,8 @@ export default async function AdminStudentDetail(
           </div>
         ) : (
           <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-faint">
-            No recorded activity yet — no lessons watched, flows started, or
-            resources opened.
+            No recorded activity yet — no lessons watched, flows started,
+            resources opened or work handed in.
           </p>
         )}
 
@@ -289,6 +294,8 @@ export default async function AdminStudentDetail(
           </ol>
         )}
       </Card>
+
+      <EarlierCheckins items={checkins} className="mt-6" />
 
       <Card className="mt-6">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">

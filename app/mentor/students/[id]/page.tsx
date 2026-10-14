@@ -10,6 +10,8 @@ import { ArrowLeft, BookOpen, ClipboardList, MessageSquare, Rocket } from "lucid
 import { loadStudentAssignments } from "@/lib/assignments-server";
 import { formatEastern, isHandedIn, isOwed } from "@/lib/assignments";
 import { StatusChip } from "@/components/assignments/status-chip";
+import { loadCheckinHistory } from "@/lib/checkin-history-server";
+import { EarlierCheckins } from "@/components/assignments/earlier-checkins";
 
 export const metadata = { title: "Student · Mentor" };
 
@@ -64,6 +66,7 @@ export default async function StudentProgressPage(
     assignments,
     { data: aiConvos },
     { data: team },
+    checkins,
   ] = await Promise.all([
     admin
       .from("profiles")
@@ -93,6 +96,8 @@ export default async function StudentProgressPage(
       .eq("user_id", studentId)
       .limit(1)
       .maybeSingle(),
+    // Weekly check-ins from before assignments, with mentor feedback.
+    loadCheckinHistory(studentId),
   ]);
 
   if (!profile) notFound();
@@ -190,6 +195,8 @@ export default async function StudentProgressPage(
           </ul>
         )}
       </Card>
+
+      <EarlierCheckins items={checkins} className="mt-6" />
 
       <Card className="mt-6">
         <h2 className="flex items-center gap-2 font-display text-base font-semibold tracking-[-0.02em] text-ink">

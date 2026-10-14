@@ -544,6 +544,9 @@ export const EMAIL_TAB_ROUTES = [
   ["/admin/email/settings", "email.settings"],
 ] as const satisfies ReadonlyArray<readonly [string, Permission]>;
 
+/** /admin/teams: the team list (teams.manage) and the logo queue (moderation.manage). */
+export const TEAMS_PAGE_PERMISSIONS: readonly Permission[] = ["teams.manage", "moderation.manage"];
+
 /** Every key that opens a tab of the Email section. */
 export const EMAIL_PERMISSIONS: readonly Permission[] = Array.from(
   new Set(EMAIL_TAB_ROUTES.map(([, perm]) => perm)),
@@ -661,7 +664,6 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/email", "email.view"],
   ["/admin/referrals", "referrals.view"],
   ["/admin/passes", "passes.manage"],
-  ["/admin/pass-requests", "passes.manage"],
   // Read-gated, not write-gated: the whole scholarship area opens on
   // `scholarships.view`, and every mutation inside it re-asserts
   // `scholarships.manage`. That split is what makes a read-only reviewer role
@@ -679,7 +681,6 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   // write, and it needs the write key.
   ["/admin/support/new", "support.manage"],
   ["/admin/support", "support.view"],
-  ["/admin/moderation", "moderation.manage"],
   ["/admin/discord", "discord.manage"],
   ["/admin/audit", "audit.view"],
   ["/admin/settings", "settings.manage"],
@@ -694,6 +695,10 @@ export const ADMIN_EXACT_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Requ
   // The sidebar's one Email row lands here and is forwarded to the first tab
   // the viewer holds, so it opens on any email key.
   ["/admin/email", EMAIL_PERMISSIONS],
+  // The team list carries the logo review queue on top, so a moderator
+  // without teams.manage opens it too (and sees only the queue). A team's
+  // own pages stay on teams.manage.
+  ["/admin/teams", TEAMS_PAGE_PERMISSIONS],
 ];
 
 const EXACT_RULES = new Map(ADMIN_EXACT_ROUTE_PERMISSIONS);
@@ -831,6 +836,22 @@ export function fallbackHomeFor(caps: Capabilities): string {
   if (can(caps, "mentor.panel")) return "/mentor";
   if (can(caps, "investor.panel")) return "/investor";
   return "/dashboard";
+}
+
+/**
+ * True when a role opens no section at all: no admin area, no student
+ * dashboard, no mentor or investor panel. Its members land on a bare
+ * /dashboard that says so. Usually a custom role whose only keys were retired
+ * (pulse.view, interventions.manage, discussions.manage, ai_usage.view); the
+ * roles list flags it so someone gives it a key.
+ */
+export function opensNoSection(caps: Capabilities): boolean {
+  return (
+    !canAccessAdmin(caps) &&
+    !can(caps, "student.dashboard") &&
+    !can(caps, "mentor.panel") &&
+    !can(caps, "investor.panel")
+  );
 }
 
 /** Can this role actually reach the home it's configured with? */

@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { requirePermission } from "@/lib/auth";
 import { getAllRoles, getRole, getRoleMemberCounts } from "@/lib/roles";
 import {
+  ADMIN_EXACT_ROUTE_PERMISSIONS,
   ADMIN_ROUTE_PERMISSIONS,
   ALL_PERMISSIONS,
   PERMISSION_BY_KEY,
@@ -12,6 +13,7 @@ import {
   capabilitiesFrom,
   covers,
   isSystemRole,
+  opensNoSection,
   roleColorClasses,
 } from "@/lib/permissions";
 import { RoleForm } from "../role-form";
@@ -61,10 +63,17 @@ export default async function RoleDetailPage(
     ? null
     : ALL_PERMISSIONS.filter((p) => caps.permissions.includes(p));
 
-  // Where this role can navigate, derived from the same table the guard uses.
-  const reachable = ADMIN_ROUTE_PERMISSIONS.filter(([, perm]) =>
-    roleCaps.superAdmin ? true : role.permissions.includes(perm),
-  ).map(([prefix]) => prefix);
+  // Where this role can navigate, derived from the same tables the guard
+  // uses (an exact rule may open on any of several keys).
+  const holds = (req: string | readonly string[]) =>
+    roleCaps.superAdmin ||
+    (typeof req === "string" ? [req] : req).some((p) => role.permissions.includes(p));
+  const reachable = [
+    ...new Set([
+      ...ADMIN_ROUTE_PERMISSIONS.filter(([, perm]) => holds(perm)).map(([prefix]) => prefix),
+      ...ADMIN_EXACT_ROUTE_PERMISSIONS.filter(([, req]) => holds(req)).map(([path]) => path),
+    ]),
+  ].sort();
 
   const deleteTargets = roles
     .filter((r) => r.slug !== role.slug)
@@ -100,6 +109,11 @@ export default async function RoleDetailPage(
           ? "can open the admin area"
           : "no admin access"}
       </p>
+      {opensNoSection(roleCaps) && (
+        <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
+          This role opens no page: give it a permission or a panel.
+        </p>
+      )}
 
       {roleCaps.superAdmin ? (
         <Card className="mt-8">

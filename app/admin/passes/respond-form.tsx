@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { Textarea, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getActionError } from "@/lib/action-error";
-import { fulfillFeedbackRequest } from "./actions";
+import { fulfillFeedbackRequest } from "./request-actions";
 
-/** Per-request fulfilment controls for the pass feedback inbox. */
+/** Per-request fulfilment controls for the feedback requests on /admin/passes. */
 export function RespondForm({ requestId }: { requestId: string }) {
   const router = useRouter();
   const [response, setResponse] = useState("");

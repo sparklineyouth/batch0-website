@@ -24,7 +24,20 @@ sidebar's single Email row opens `/admin/email`, which the middleware forwards
 to the first tab in `EMAIL_TAB_ROUTES` (`lib/permissions.ts`) the viewer holds;
 each tab keeps its own key. The landing's any-of rule lives in
 `ADMIN_EXACT_ROUTE_PERMISSIONS`, so it covers that one path; anything else
-under `/admin/email` needs `email.view` unless it has its own row.
+under `/admin/email` needs `email.view` unless it has its own row. Teams does
+the same: `/admin/teams` opens on `teams.manage` or `moderation.manage` and
+shows each holder its part (the team list, the logo review queue on top); a
+team's own pages stay on `teams.manage`.
+
+## Folded pages
+
+- **Pass requests** live at the top of `/admin/passes` ("Feedback requests",
+  shown only while one is open). `/admin/pass-requests` redirects there.
+- **Moderation** (team logos) lives at the top of `/admin/teams` ("Logos to
+  review"). `/admin/moderation` redirects there; new-logo bells link there.
+- **Student progress** (`/admin/progress`) counts handed-in assignments and
+  challenge entries as activity, like a student's own page, so nobody who
+  only submitted work is listed as never started.
 
 ## Retired (October 2026)
 
@@ -38,3 +51,21 @@ Migration `0100_admin_cleanup.sql` strips the retired `ai_usage.view` key from
 stored roles and deletes leftover self-check probe passes (negative serials).
 No schema change. Until it runs, a stale key only stops non-superadmins
 editing that role, and the passes ledger hides probe rows regardless.
+
+A custom role whose only admin keys were the retired ones (`pulse.view`,
+`interventions.manage`, `discussions.manage`, `ai_usage.view`) lost the admin
+area with the deploy, before any migration. `/admin/roles` marks such a role
+"opens no page", and its members see "Nothing to open yet" on `/dashboard`.
+Give it a current key at `/admin/roles/<slug>` (a role that answered student
+questions through `discussions.manage` wants `support.view` and
+`support.manage`). To find them in SQL, before or after 0093/0099/0100:
+
+```sql
+select r.slug, r.permissions, count(p.id) as members
+from app_roles r left join profiles p on p.role = r.slug
+where not r.permissions && array['*', 'student.dashboard', 'mentor.panel', 'investor.panel']
+group by r.slug, r.permissions;
+```
+
+Any row whose `permissions` are empty or only retired keys is one; one that
+also holds a current admin key is fine.
