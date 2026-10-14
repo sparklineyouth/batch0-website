@@ -3,7 +3,7 @@
 ## Overview (`/admin`)
 
 One screen: an inbox row (pending review, awaiting payment, support awaiting
-reply) and one revenue number — USD tuition, fees and Demo Day tickets net of
+reply, overdue assignments for `assignments.manage`) and one revenue number — USD tuition, fees and Demo Day tickets net of
 refunds (`netRevenueCents` in `lib/revenue-ledger.ts`, which the phone home at
 `/app/admin` shows too). Each block shows only to roles holding the permission
 of the page it links to.
