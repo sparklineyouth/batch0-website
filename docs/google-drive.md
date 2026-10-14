@@ -9,11 +9,18 @@ Google links; batch0 stores ids, never files.
   (embedded in place, grid/list, "Open in Drive"), pin Docs/Sheets/Slides/
   Forms/Drive files (preview in place, Open, rename, unpin; 25 max).
   `/dashboard/files` redirects here.
-- **Admins** (`teams.manage`) — same panel on `/admin/teams/[id]`, editable;
-  changes by non-members are audit-logged.
-- **Mentors** — same panel on `/mentor/teams/[id]`, read-only.
-- **Investors** — no team folder. They see the Demo Day deck and video links
-  (`pitch_submissions.deck_url` / `video_url`) on `/investor/teams/[id]`.
+- **Admins** (`teams.manage`) — same panel on `/admin/teams/[id]`, editable
+  (to fix a wrong folder link); changes by non-members are audit-logged. The
+  page also shows the team's Demo Day deck/video links, status and notes.
+- **Mentors** — same panel on `/mentor/teams/[id]`, read-only, plus the
+  submitted deck/video.
+- **Investors** — no team folder. Once a team submits, `/investor/teams/[id]`
+  shows its deck and video links (`pitch_submissions.deck_url` / `video_url`)
+  and notes; drafts stay private. An admin-set `teams.pitch_deck_url` /
+  `pitch_video_url` fills in when there's no submitted link.
+
+The team's own Demo Day tab keeps deck/video previews behind a Preview toggle
+so the form stays short.
 
 Embeds only render what the viewer's Google account can open. Folders and
 files should be shared as "Anyone with the link" (the panel says so).
@@ -45,7 +52,15 @@ buckets are frozen by 0094 (no API writes; reads kept). The Drive tab shows an
 "Older uploads" list only when a student or their team still has rows, with
 pitch decks/videos uploaded before links. Downloads go through
 `/dashboard/team/older-uploads/[source]/[id]`, which checks ownership or
-membership and the storage path prefix before signing a 10-minute URL.
+membership and the storage path prefix (`lib/legacy-upload-path.ts`) before
+signing a 10-minute URL. Rows failing the prefix check aren't listed; any
+other failure (object purged, signing error) comes back to the Drive tab with
+"That file isn't available any more."
+
+0094 also repairs old `pitch_submissions.video_url` values (http → https,
+spaces encoded) and moves any it can't repair into `notes`, so the https
+check is fully validated and no existing row is blocked from saving or
+submitting.
 
 Later cleanup (separate migration, after people have moved their files): drop
 `file_feedback`, `team_drive_files`, `student_files` and

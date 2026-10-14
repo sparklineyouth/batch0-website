@@ -10,7 +10,8 @@
 --      write goes through service-role server actions
 --      (app/dashboard/team/drive-link-actions.ts). Not on public.teams: public
 --      teams are readable by anyone and members can update any teams column.
---   2. pitch_submissions.deck_url: the Demo Day deck is a link now.
+--   2. pitch_submissions.deck_url: the Demo Day deck is a link now. Deck and
+--      video links are https-only (old video links repaired first).
 --   3. Freeze the legacy uploads (student_files, team_drive_files and their
 --      buckets). Rows and bytes stay readable so nobody loses work; nothing
 --      new can be written through the API.
@@ -102,17 +103,37 @@ alter table public.pitch_submissions
 
 -- Members can still write this table directly (policy "pitch_submissions
 -- member write"), so the https rule for the video link lives here too. Older
--- rows were saved under a looser http(s) rule: upgrade those, and add the
--- check NOT VALID so anything else already stored doesn't block the deploy.
-update public.pitch_submissions
-set video_url = regexp_replace(video_url, '^http://', 'https://', 'i')
-where video_url ~* '^http://';
+-- rows were saved under a looser rule (anything starting http(s)://). Repair
+-- them first so the check is fully validated: a NOT VALID check would still
+-- reject every later update of a bad row, Submit included. A link that can't
+-- be repaired moves into the notes, so nothing typed is lost.
+with bad as (
+  select team_id, video_url as raw,
+    regexp_replace(
+      regexp_replace(btrim(video_url, E' \t\r\n'), '^http://', 'https://', 'i'),
+      '[[:space:]]+', '%20', 'g'
+    ) as fixed
+  from public.pitch_submissions
+  where video_url is not null
+    and not (video_url ~* '^https://[^[:space:]]+$' and char_length(video_url) <= 2048)
+), checked as (
+  select team_id, raw, fixed,
+    (fixed ~* '^https://[^[:space:]]+$' and char_length(fixed) <= 2048) as ok
+  from bad
+)
+update public.pitch_submissions p
+set video_url = case when c.ok then c.fixed end,
+    notes = case
+      when c.ok or c.fixed = '' then p.notes
+      else concat_ws(E'\n\n', nullif(btrim(p.notes), ''), 'Video link: ' || btrim(c.raw))
+    end
+from checked c
+where p.team_id = c.team_id;
 alter table public.pitch_submissions
   drop constraint if exists pitch_submissions_video_url_https;
 alter table public.pitch_submissions
   add constraint pitch_submissions_video_url_https
-  check (video_url is null or (video_url ~* '^https://[^[:space:]]+$' and char_length(video_url) <= 2048))
-  not valid;
+  check (video_url is null or (video_url ~* '^https://[^[:space:]]+$' and char_length(video_url) <= 2048));
 
 -- ---------------------------------------------------------------------------
 -- 3. Freeze legacy uploads (read-only; drop in a later migration)

@@ -218,6 +218,7 @@ test("cleanTitle", () => {
 test("safeHttpsUrl", () => {
   assert.equal(safeHttpsUrl("https://pitch.com/deck"), "https://pitch.com/deck");
   assert.equal(safeHttpsUrl(" https://example.com "), "https://example.com/");
+  assert.equal(safeHttpsUrl("https://loom.com/share/a b"), "https://loom.com/share/a%20b");
   for (const bad of [
     "http://example.com",
     "javascript:alert(1)",
@@ -226,6 +227,8 @@ test("safeHttpsUrl", () => {
     "",
     null,
     `https://example.com/${"x".repeat(2100)}`,
+    // Under 2048 as typed, over it once the spaces are encoded.
+    `https://example.com/${" x".repeat(900)}`,
   ]) {
     assert.equal(safeHttpsUrl(bad as any), null, String(bad));
   }

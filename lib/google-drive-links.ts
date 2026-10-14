@@ -268,7 +268,8 @@ export function safeHttpsUrl(raw: unknown): string | null {
   } catch {
     return null;
   }
-  if (u.protocol !== "https:" || u.username || u.password || !u.hostname) {
+  // Normalizing can grow it (spaces → %20), and the DB caps links at 2048.
+  if (u.protocol !== "https:" || u.username || u.password || !u.hostname || u.href.length > MAX_INPUT) {
     return null;
   }
   return u.href;

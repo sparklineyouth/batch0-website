@@ -2,11 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { TeamForm } from "../team-form";
 import { MembersManager } from "./members-manager";
 import { TearSheetCard } from "./tear-sheet-button";
 import { CapTable } from "./cap-table";
 import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
+import { PitchLinkPreview } from "@/components/team/pitch-links";
 import { loadTeamDrive } from "@/lib/team-drive";
 import { getCapabilities } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -27,6 +29,7 @@ export default async function AdminTeamDetail(
     { data: members },
     { data: students },
     { data: capRows },
+    { data: pitch },
     drive,
     caps,
   ] = await Promise.all([
@@ -46,11 +49,16 @@ export default async function AdminTeamDetail(
       .select("*")
       .eq("team_id", params.id)
       .order("created_at", { ascending: true }),
+    // `*`: deck_url only exists once migration 0094 is applied.
+    admin.from("pitch_submissions").select("*").eq("team_id", params.id).maybeSingle(),
     loadTeamDrive(admin, params.id),
     getCapabilities(),
   ]);
 
   if (!team) notFound();
+  const p = pitch as
+    | { deck_url?: string | null; video_url: string | null; notes: string | null; submitted_at: string | null }
+    | null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -120,6 +128,24 @@ export default async function AdminTeamDetail(
           generatedAt={team.tear_sheet_generated_at ?? null}
         />
       </Card>
+
+      {p && (p.deck_url || p.video_url || p.submitted_at) && (
+        <Card className="mt-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
+            Demo Day submission
+          </h2>
+          {p.submitted_at ? (
+            <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+              Submitted on <LocalTime value={p.submitted_at} />
+            </div>
+          ) : (
+            <div className="mt-1 text-xs text-ink-faint">Draft</div>
+          )}
+          <PitchLinkPreview url={p.deck_url} title="Pitch deck" collapsed className="mt-3" />
+          <PitchLinkPreview url={p.video_url} title="Pitch video" collapsed className="mt-2" />
+          {p.notes && <p className="mt-3 whitespace-pre-wrap text-sm text-ink-soft">{p.notes}</p>}
+        </Card>
+      )}
 
       <GoogleDrivePanel
         className="mt-6"

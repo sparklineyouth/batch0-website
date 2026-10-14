@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { legacyPathOk } from "@/lib/legacy-upload-path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,15 +20,20 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  *
  * The stored path is checked against the owner's folder before signing. Rows
  * used to be insertable through the API with any path, so a row is not proof
- * the object belongs to its owner.
+ * the object belongs to its owner. Any failure lands back on the Drive tab
+ * with ?older=unavailable, which shows a one-line notice.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   props: { params: Promise<{ source: string; id: string }> },
 ) {
   const { source, id } = await props.params;
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://batch0.org";
-  const back = NextResponse.redirect(new URL("/dashboard/team?tab=drive", base), 303);
+  // Same origin as the request, so previews and local ports come back to themselves.
+  const base = req.url;
+  const back = NextResponse.redirect(
+    new URL("/dashboard/team?tab=drive&older=unavailable#older-uploads", base),
+    303,
+  );
 
   const supabase = await createClient();
   const {
@@ -54,7 +60,7 @@ export async function GET(
 
   let bucket: "student-files" | "team-drive";
   let path: string | null = null;
-  let prefix: string;
+  let owner: string;
   let name: string;
 
   if (source === "mine") {
@@ -66,7 +72,7 @@ export async function GET(
     if (!data || data.user_id !== user.id) return back;
     bucket = "student-files";
     path = data.path;
-    prefix = `${user.id}/`;
+    owner = user.id;
     name = data.name;
   } else if (source === "team") {
     const { data } = await admin
@@ -77,7 +83,7 @@ export async function GET(
     if (!data || !(await isMember(data.team_id))) return back;
     bucket = "team-drive";
     path = data.path;
-    prefix = `${data.team_id}/`;
+    owner = data.team_id;
     name = data.name;
   } else if (source === "pitch-deck" || source === "pitch-video") {
     if (!(await isMember(id))) return back;
@@ -88,21 +94,13 @@ export async function GET(
       .maybeSingle();
     path = (source === "pitch-deck" ? data?.deck_path : data?.video_path) ?? null;
     bucket = "team-drive";
-    prefix = `${id}/`;
+    owner = id;
     name = path?.split("/").pop() ?? "pitch";
   } else {
     return back;
   }
 
-  if (
-    !path ||
-    !path.startsWith(prefix) ||
-    path.includes("..") ||
-    path.includes("//") ||
-    path.includes("\\")
-  ) {
-    return back;
-  }
+  if (!legacyPathOk(path, owner)) return back;
 
   const { data: signed } = await admin.storage
     .from(bucket)

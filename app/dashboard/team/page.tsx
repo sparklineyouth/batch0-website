@@ -14,9 +14,11 @@ import { OlderUploads } from "@/components/team/older-uploads";
 export const metadata = { title: "Team · batch0" };
 
 export default async function TeamPage(props: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; older?: string }>;
 }) {
-  const { tab } = await props.searchParams;
+  const { tab, older } = await props.searchParams;
+  // Set by the older-uploads download route when a file can't be served.
+  const olderUnavailable = older === "unavailable";
   const user = await requireUser();
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");
@@ -83,7 +85,7 @@ export default async function TeamPage(props: {
         members={(members ?? []) as any[]}
         pendingInvites={(invites ?? []) as any[]}
         drive={drive}
-        olderUploads={olderUploads}
+        olderUploads={{ ...olderUploads, unavailable: olderUnavailable }}
         messages={(messages ?? []) as any[]}
         pitch={pitch as any}
         passHolderIds={[...passHolders]}
@@ -131,7 +133,7 @@ export default async function TeamPage(props: {
         </div>
       </Card>
 
-      <OlderUploads className="mt-8" team={olderUploads.team} mine={olderUploads.mine} />
+      <OlderUploads className="mt-8" {...olderUploads} unavailable={olderUnavailable} />
     </div>
   );
 }

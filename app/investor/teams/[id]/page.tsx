@@ -44,7 +44,7 @@ export default async function InvestorTeamDetailPage(
     admin
       .from("teams")
       .select(
-        "id, name, tagline, description, logo_url, logo_status, website_url, pitch_deck_url, raised_cents, post_money_cents, lead_investor, round_kind, round_closed_on, tear_sheet, tear_sheet_generated_at, cohort_id, cohort:cohorts(name)",
+        "id, name, tagline, description, logo_url, logo_status, website_url, pitch_deck_url, pitch_video_url, raised_cents, post_money_cents, lead_investor, round_kind, round_closed_on, tear_sheet, tear_sheet_generated_at, cohort_id, cohort:cohorts(name)",
       )
       .eq("id", params.id)
       .maybeSingle(),
@@ -105,6 +105,12 @@ export default async function InvestorTeamDetailPage(
   }
 
   const cohort = Array.isArray(team.cohort) ? team.cohort[0] : team.cohort;
+
+  // The team's links once they submit (drafts stay private, as their Demo Day
+  // tab says), else whatever deck/video link an admin set on the team.
+  const submittedAt: string | null = (pitch as any)?.submitted_at ?? null;
+  const deckUrl = (submittedAt && (pitch as any).deck_url) || (team as any).pitch_deck_url || null;
+  const videoUrl = (submittedAt && (pitch as any).video_url) || (team as any).pitch_video_url || null;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -197,24 +203,19 @@ export default async function InvestorTeamDetailPage(
         </ul>
       </Card>
 
-      {pitch && (
+      {(submittedAt || deckUrl || videoUrl) && (
         <Card className="mt-6">
           <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Pitch</h2>
-          {(pitch as any).submitted_at ? (
+          {submittedAt ? (
             <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
-              Submitted on <LocalTime value={(pitch as any).submitted_at} />
+              Submitted on <LocalTime value={submittedAt} />
             </div>
           ) : (
-            <div className="mt-1 text-xs text-ink-faint">In progress</div>
+            <div className="mt-1 text-xs text-ink-faint">Not submitted yet</div>
           )}
-          {/* The team's own deck link wins; the admin-set one is the fallback. */}
-          <PitchLinkPreview
-            url={(pitch as any).deck_url ?? (team as any).pitch_deck_url}
-            title="Pitch deck"
-            className="mt-3"
-          />
-          <PitchLinkPreview url={(pitch as any).video_url} title="Pitch video" className="mt-3" />
-          {(pitch as any).notes && (
+          <PitchLinkPreview url={deckUrl} title="Pitch deck" className="mt-3" />
+          <PitchLinkPreview url={videoUrl} title="Pitch video" className="mt-3" />
+          {submittedAt && (pitch as any).notes && (
             <p className="mt-3 whitespace-pre-wrap text-sm text-ink-soft">
               {(pitch as any).notes}
             </p>

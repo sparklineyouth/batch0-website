@@ -119,12 +119,13 @@ export async function submitPitch(input: { teamId: string }): Promise<ActionResu
           type: "pitch_submitted",
           title: `${team?.name ?? "A team"} submitted their pitch`,
           body: null,
-          link: "/admin/teams",
+          link: `/admin/teams/${input.teamId}`,
         });
       }
     } catch {}
 
     revalidatePath("/dashboard/team");
     revalidatePath("/admin/teams");
+    revalidatePath(`/admin/teams/${input.teamId}`);
   });
 }

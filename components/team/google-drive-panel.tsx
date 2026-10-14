@@ -102,20 +102,24 @@ export function GoogleDrivePanel({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [err, setErr] = useState<string | undefined>();
+  // One error at a time, shown next to whatever produced it (the folder form,
+  // the pin form, or one pinned row) rather than at the foot of the card.
+  const [err, setErr] = useState<{ spot: Spot; msg: string } | null>(null);
 
-  function run(fn: () => Promise<ActionResult>, after?: () => void) {
-    setErr(undefined);
+  const run: Run = (spot, fn, after) => {
+    setErr(null);
     start(async () => {
       const res = await fn();
       if (!res.ok) {
-        setErr(res.error);
+        setErr({ spot, msg: res.error });
         return;
       }
       after?.();
       router.refresh();
     });
-  }
+  };
+  const errAt = (spot: Spot) => (err?.spot === spot ? err.msg : undefined);
+  const clearErr = () => setErr(null);
 
   if (!drive.ready) {
     return (
@@ -134,6 +138,8 @@ export function GoogleDrivePanel({
         canEdit={canEdit}
         pending={pending}
         run={run}
+        errAt={errAt}
+        clearErr={clearErr}
       />
       <div className="mt-6 border-t border-line pt-5">
         <PinsSection
@@ -142,14 +148,25 @@ export function GoogleDrivePanel({
           canEdit={canEdit}
           pending={pending}
           run={run}
+          errAt={errAt}
+          clearErr={clearErr}
         />
       </div>
-      <FieldError>{err}</FieldError>
     </Card>
   );
 }
 
-type Run = (fn: () => Promise<ActionResult>, after?: () => void) => void;
+/** Where an error belongs: the folder controls, the pin form, or one pin. */
+type Spot = "folder" | "pin" | `row:${string}`;
+type Run = (spot: Spot, fn: () => Promise<ActionResult>, after?: () => void) => void;
+type SectionProps = {
+  teamId: string;
+  canEdit: boolean;
+  pending: boolean;
+  run: Run;
+  errAt: (spot: Spot) => string | undefined;
+  clearErr: () => void;
+};
 
 function FolderSection({
   teamId,
@@ -157,14 +174,11 @@ function FolderSection({
   canEdit,
   pending,
   run,
-}: {
-  teamId: string;
-  row: DriveLinkRow | null;
-  canEdit: boolean;
-  pending: boolean;
-  run: Run;
-}) {
+  errAt,
+  clearErr,
+}: SectionProps & { row: DriveLinkRow | null }) {
   const folder = row ? linkFromRow(row) : null;
+  const folderErr = errAt("folder");
   // List by default: titles and dates read better than thumbnails, and it
   // works on a phone.
   const [view, setView] = useState<"grid" | "list">("list");
@@ -208,6 +222,7 @@ function FolderSection({
           onSubmit={(e) => {
             e.preventDefault();
             run(
+              "folder",
               () => setTeamFolder({ teamId, url }),
               () => {
                 setUrl("");
@@ -217,7 +232,9 @@ function FolderSection({
           }}
         >
           <Input
+            id="drive-folder-url"
             aria-label="Google Drive folder link"
+            error={folderErr}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://drive.google.com/drive/folders/…"
@@ -230,13 +247,21 @@ function FolderSection({
               {folder ? "Replace" : "Link folder"}
             </Button>
             {replacing && (
-              <Button variant="ghost" onClick={() => setReplacing(false)} disabled={pending}>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setReplacing(false);
+                  clearErr();
+                }}
+                disabled={pending}
+              >
                 Cancel
               </Button>
             )}
           </div>
         </form>
       )}
+      {showForm && <FieldError id="drive-folder-url-error">{folderErr}</FieldError>}
       {!folder && (
         <p className="mt-2 text-xs text-ink-faint">
           {canEdit
@@ -266,13 +291,14 @@ function FolderSection({
                   variant="ghost"
                   size="sm"
                   disabled={pending}
-                  onClick={() => run(() => clearTeamFolder({ teamId }))}
+                  onClick={() => run("folder", () => clearTeamFolder({ teamId }))}
                 >
                   Unlink
                 </Button>
               </div>
             )}
           </div>
+          {!showForm && <FieldError>{folderErr}</FieldError>}
         </>
       )}
     </section>
@@ -285,13 +311,10 @@ function PinsSection({
   canEdit,
   pending,
   run,
-}: {
-  teamId: string;
-  pins: DriveLinkRow[];
-  canEdit: boolean;
-  pending: boolean;
-  run: Run;
-}) {
+  errAt,
+  clearErr,
+}: SectionProps & { pins: DriveLinkRow[] }) {
+  const pinErr = errAt("pin");
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -327,6 +350,7 @@ function PinsSection({
                       onSubmit={(e) => {
                         e.preventDefault();
                         run(
+                          `row:${row.id}`,
                           () => renameTeamPin({ id: row.id, title: draft }),
                           () => setRenamingId(null),
                         );
@@ -343,7 +367,14 @@ function PinsSection({
                       <Button type="submit" size="sm" disabled={pending}>
                         Save
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setRenamingId(null)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setRenamingId(null);
+                          clearErr();
+                        }}
+                      >
                         Cancel
                       </Button>
                     </form>
@@ -383,7 +414,7 @@ function PinsSection({
                             size="sm"
                             aria-label={`Unpin ${row.title}`}
                             disabled={pending}
-                            onClick={() => run(() => removeTeamPin({ id: row.id }))}
+                            onClick={() => run(`row:${row.id}`, () => removeTeamPin({ id: row.id }))}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -392,6 +423,7 @@ function PinsSection({
                     </div>
                   )}
                 </div>
+                <FieldError>{errAt(`row:${row.id}`)}</FieldError>
                 {previewing && (
                   <GoogleFrame
                     src={embedUrl(link, "list")}
@@ -411,6 +443,7 @@ function PinsSection({
           onSubmit={(e) => {
             e.preventDefault();
             run(
+              "pin",
               () => addTeamPin({ teamId, url, title }),
               () => {
                 setUrl("");
@@ -420,7 +453,9 @@ function PinsSection({
           }}
         >
           <Input
+            id="drive-pin-url"
             aria-label="Google Docs, Sheets, Slides, Forms or Drive link"
+            error={pinErr}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Paste a Docs, Sheets, Slides, Forms or Drive link"
@@ -440,6 +475,7 @@ function PinsSection({
           </Button>
         </form>
       )}
+      {canEdit && <FieldError id="drive-pin-url-error">{pinErr}</FieldError>}
     </section>
   );
 }

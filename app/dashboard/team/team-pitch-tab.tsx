@@ -101,7 +101,7 @@ export function TeamPitchTab({
             <p className="mt-1 text-xs text-ink-faint">
               Share it as “Anyone with the link”.
             </p>
-            <PitchLinkPreview url={pitch?.deck_url ?? null} title="Pitch deck" className="mt-3" />
+            <PitchLinkPreview url={pitch?.deck_url ?? null} title="Pitch deck" collapsed className="mt-2" />
           </div>
           <div>
             <Label htmlFor="pitch-video-url">Pitch video link</Label>
@@ -113,7 +113,7 @@ export function TeamPitchTab({
               onChange={(e) => setVideoUrl(e.target.value)}
               placeholder="YouTube, Loom or Google Drive"
             />
-            <PitchLinkPreview url={pitch?.video_url ?? null} title="Pitch video" className="mt-3" />
+            <PitchLinkPreview url={pitch?.video_url ?? null} title="Pitch video" collapsed className="mt-2" />
           </div>
           <div>
             <Label htmlFor="pitch-notes">Notes for judges (optional)</Label>

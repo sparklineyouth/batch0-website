@@ -10,9 +10,10 @@ import { PGlite } from "@electric-sql/pglite";
  * What it proves: the new team_drive_links table is readable by the team,
  * mentors and team managers only (not investors, not other teams, not
  * anon), and writable by nobody signed in; the legacy upload tables and
- * buckets are frozen for writes but still readable; the deck link only takes
- * https; and the lesson/notification links into /dashboard/files are
- * repointed.
+ * buckets are frozen for writes but still readable; deck and video links only
+ * take https, old video links are repaired (or moved into the notes) so every
+ * row can still be saved and submitted; and the lesson/notification links
+ * into /dashboard/files are repointed.
  */
 
 const migration = await readFile(
@@ -28,6 +29,9 @@ const INVESTOR = "55555555-5555-4555-8555-555555555555";
 const ADMIN = "66666666-6666-4666-8666-666666666666";
 const TEAM = "aaaaaaaa-0000-4000-8000-000000000001";
 const OTHER_TEAM = "aaaaaaaa-0000-4000-8000-000000000002";
+const THIRD_TEAM = "aaaaaaaa-0000-4000-8000-000000000003";
+const FOURTH_TEAM = "aaaaaaaa-0000-4000-8000-000000000004";
+const FIFTH_TEAM = "aaaaaaaa-0000-4000-8000-000000000005";
 const FOLDER = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345";
 const DOC = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms";
 
@@ -170,12 +174,20 @@ async function setup() {
     insert into public.profiles (id, role) values
       ('${MEMBER}', 'student'), ('${OUTSIDER}', 'student'), ('${MENTOR}', 'mentor'),
       ('${MANAGER}', 'team-manager'), ('${INVESTOR}', 'investor'), ('${ADMIN}', 'admin');
-    insert into public.teams values ('${TEAM}', 'Alpha'), ('${OTHER_TEAM}', 'Beta');
+    insert into public.teams values
+      ('${TEAM}', 'Alpha'), ('${OTHER_TEAM}', 'Beta'), ('${THIRD_TEAM}', 'Gamma'), ('${FOURTH_TEAM}', 'Delta'),
+      ('${FIFTH_TEAM}', 'Epsilon');
     insert into public.team_members (team_id, user_id) values
       ('${TEAM}', '${MEMBER}'), ('${OTHER_TEAM}', '${OUTSIDER}');
 
-    insert into public.pitch_submissions (team_id, video_url) values
-      ('${TEAM}', 'HTTP://www.loom.com/share/abc'), ('${OTHER_TEAM}', 'not a url');
+    -- Video links saved under the old "starts with http(s)://" rule, or
+    -- written directly by a member.
+    insert into public.pitch_submissions (team_id, video_url, notes) values
+      ('${TEAM}', 'HTTP://www.loom.com/share/abc', null),
+      ('${OTHER_TEAM}', 'not a url', null),
+      ('${THIRD_TEAM}', '  https://www.loom.com/share/a b' || chr(10), null),
+      ('${FOURTH_TEAM}', 'ftp://files.example.com/pitch.mp4', 'Our ask: $500k'),
+      ('${FIFTH_TEAM}', '   ', 'Kept as is');
     insert into public.student_files (user_id, name, path) values ('${MEMBER}', 'a.pdf', '${MEMBER}/drive/a.pdf');
     insert into public.team_drive_files (team_id, name, path) values ('${TEAM}', 'b.pdf', '${TEAM}/drive/b.pdf');
     insert into storage.objects (bucket_id, name) values
@@ -213,6 +225,9 @@ async function seedLinks(db: PGlite) {
 
 test("0094 applies, and re-applies", async () => {
   const db = await setup();
+  const pitches = async () =>
+    (await db.query<any>(`select team_id, video_url, notes from public.pitch_submissions order by team_id`)).rows;
+  const once = await pitches();
   await db.exec(migration);
   await db.exec(migration);
   const { rows } = await db.query<any>(
@@ -220,6 +235,8 @@ test("0094 applies, and re-applies", async () => {
      where table_schema = 'public' and table_name = 'pitch_submissions' and column_name = 'deck_url'`,
   );
   assert.equal(rows[0].n, 1);
+  // The video-link repair is a no-op the second time (notes aren't appended twice).
+  assert.deepEqual(await pitches(), once);
 });
 
 test("team_drive_links: the team, mentors and team managers read; nobody else", async () => {
@@ -296,12 +313,39 @@ test("team_drive_links go with their team", async () => {
   assert.equal(rows[0].n, 0);
 });
 
-test("pitch links: https only; old http video links upgraded", async () => {
+test("pitch links: https only; old video links repaired, nothing lost", async () => {
   const db = await setup();
-  const { rows } = await db.query<any>(`select team_id, video_url from public.pitch_submissions order by team_id`);
-  assert.equal(rows[0].video_url, "https://www.loom.com/share/abc");
-  // NOT VALID: a junk row from before the migration is left as it was.
-  assert.equal(rows[1].video_url, "not a url");
+  const { rows } = await db.query<any>(
+    `select team_id, video_url, notes from public.pitch_submissions order by team_id`,
+  );
+  assert.deepEqual(
+    rows.map((r: any) => [r.video_url, r.notes]),
+    [
+      ["https://www.loom.com/share/abc", null], // http → https
+      [null, "Video link: not a url"], // unusable → notes
+      ["https://www.loom.com/share/a%20b", null], // trimmed, inner space encoded
+      [null, "Our ask: $500k\n\nVideo link: ftp://files.example.com/pitch.mp4"], // appended to notes
+      [null, "Kept as is"], // blank → null
+    ],
+  );
+
+  // The check is fully validated, so no stored row can trip it later…
+  const { rows: con } = await db.query<any>(
+    `select conname, convalidated from pg_constraint
+     where conname in ('pitch_submissions_deck_url_https', 'pitch_submissions_video_url_https') order by conname`,
+  );
+  assert.deepEqual(
+    con.map((r: any) => [r.conname, r.convalidated]),
+    [
+      ["pitch_submissions_deck_url_https", true],
+      ["pitch_submissions_video_url_https", true],
+    ],
+  );
+  // …and every team, including the ones whose links were repaired, can still submit.
+  const submitted = await db.query<any>(
+    `update public.pitch_submissions set submitted_at = now() returning team_id`,
+  );
+  assert.equal(submitted.rows.length, 5);
 
   // CHECK constraints bind every writer, the service role included.
   await db.query(`update public.pitch_submissions set deck_url = 'https://docs.google.com/presentation/d/x/edit' where team_id = $1`, [TEAM]);

@@ -15,7 +15,7 @@ import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
 import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
 import { OlderUploads } from "@/components/team/older-uploads";
-import type { OlderUpload, TeamDriveState } from "@/lib/team-drive";
+import type { OlderUploadsState, TeamDriveState } from "@/lib/team-drive";
 import { TeamThreadTab } from "./team-thread-tab";
 import { TeamPitchTab } from "./team-pitch-tab";
 
@@ -55,7 +55,7 @@ export function TeamHome({
   members: any[];
   pendingInvites: any[];
   drive: TeamDriveState;
-  olderUploads: { team: OlderUpload[]; mine: OlderUpload[] };
+  olderUploads: OlderUploadsState;
   messages: any[];
   pitch: any;
   passHolderIds?: string[];
@@ -178,7 +178,7 @@ export function TeamHome({
         {tab === "drive" && (
           <div className="space-y-6">
             <GoogleDrivePanel teamId={team.id} drive={drive} canEdit />
-            <OlderUploads team={olderUploads.team} mine={olderUploads.mine} />
+            <OlderUploads {...olderUploads} />
           </div>
         )}
         {tab === "pitch" && (
