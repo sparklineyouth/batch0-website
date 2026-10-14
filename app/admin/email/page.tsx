@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import { requireAdminPath } from "@/lib/auth";
-import { canMeet } from "@/lib/permissions";
-import { EMAIL_TABS } from "@/lib/nav-config";
+import { emailLandingFor } from "@/lib/permissions";
 
-/** The sidebar's Email row lands here: forward to the first tab the viewer holds. */
+/**
+ * The sidebar's Email row. The middleware forwards it to the first tab the
+ * viewer holds; this is the backstop for a request that skipped middleware.
+ */
 export default async function EmailLanding() {
   const { caps } = await requireAdminPath("/admin/email");
-  const first = EMAIL_TABS.find((t) => canMeet(caps, t.perm));
-  redirect(first?.href ?? "/admin");
+  redirect(emailLandingFor(caps) ?? "/admin");
 }

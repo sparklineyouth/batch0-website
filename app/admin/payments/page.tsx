@@ -172,7 +172,12 @@ export default async function AdminPaymentsPage(
         />
       </div>
 
-      <p className="mt-4 text-xs text-ink-faint">Checkout attempts are not unique customers or card declines. {summary.unknownPaidDates} captured payments have no verified payment date; run Stripe reconciliation to recover dates still in Stripe’s event history. {summary.otherCurrencyCount > 0 ? `${summary.otherCurrencyCount} non-USD records excluded from USD totals.` : ""}</p>
+      {(summary.unknownPaidDates > 0 || summary.otherCurrencyCount > 0) && (
+        <p className="mt-4 text-xs text-ink-faint">
+          {summary.unknownPaidDates > 0 && `${summary.unknownPaidDates} payments missing a date — Sync from Stripe. `}
+          {summary.otherCurrencyCount > 0 && `${summary.otherCurrencyCount} non-USD records excluded.`}
+        </p>
+      )}
       {/* Cohort breakdown */}
       <Card className="mt-8">
         <div className="mb-4 flex items-baseline justify-between">

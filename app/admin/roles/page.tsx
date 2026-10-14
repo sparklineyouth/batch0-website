@@ -110,10 +110,7 @@ export default async function AdminRolesPage() {
             Give someone a role
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Roles aren&apos;t applied for. The person signs up at{" "}
-            <code className="font-mono text-xs">/signup</code> like anyone else,
-            then you assign their role here — no application, cohort, or payment
-            in the way.
+            They sign up, then you assign.
           </p>
           <GrantRoleForm
             roles={assignable.map((r) => ({ slug: r.slug, label: r.label }))}

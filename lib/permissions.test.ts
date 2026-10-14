@@ -10,6 +10,7 @@ import {
   capabilitiesFrom,
   can,
   canMeet,
+  emailLandingFor,
   isKnownPermission,
   rolesHolding,
 } from "./permissions.ts";
@@ -166,6 +167,21 @@ test("the Email landing opens on any email key; each tab keeps its own", () => {
   // No email key, no landing.
   const ops = capabilitiesFrom("ops", ["payments.view"]);
   assert.equal(canViewAdminPath(ops, "/admin/email"), false);
+});
+
+test("the Email landing forwards to the first tab the viewer holds", () => {
+  assert.equal(emailLandingFor(capabilitiesFrom("admin", ["*"])), "/admin/email/templates");
+  assert.equal(emailLandingFor(capabilitiesFrom("w", ["email.templates"])), "/admin/email/templates");
+  assert.equal(emailLandingFor(capabilitiesFrom("s", ["email.send"])), "/admin/email/blast");
+  assert.equal(emailLandingFor(capabilitiesFrom("v", ["email.view", "email.settings"])), "/admin/email/outbox");
+  assert.equal(emailLandingFor(capabilitiesFrom("o", ["payments.view"])), null);
+  assert.equal(emailLandingFor(null), null);
+  // Every tab the landing can pick is a page the viewer may open.
+  for (const key of ["email.view", "email.send", "email.templates", "email.automate", "email.settings"] as const) {
+    const caps = capabilitiesFrom("one", [key]);
+    const landing = emailLandingFor(caps);
+    assert.ok(landing && canViewAdminPath(caps, landing), `${key} → ${landing}`);
+  }
 });
 
 test("canMeet: one key, or any of a list", () => {

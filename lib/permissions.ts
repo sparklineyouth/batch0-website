@@ -522,14 +522,29 @@ export function canMeet(caps: Capabilities | null, req: Requirement): boolean {
   return typeof req === "string" ? can(caps, req) : canAny(caps, req);
 }
 
+/**
+ * The Email section's tabs, in order, with the key each needs. The sidebar
+ * has one Email row; /admin/email forwards to the first tab the viewer holds
+ * (in the middleware, so it's a real redirect, not a streamed one).
+ */
+export const EMAIL_TAB_ROUTES = [
+  ["/admin/email/templates", "email.templates"],
+  ["/admin/email/automations", "email.automate"],
+  ["/admin/email/blast", "email.send"],
+  ["/admin/email/compose", "email.send"],
+  ["/admin/email/outbox", "email.view"],
+  ["/admin/email/settings", "email.settings"],
+] as const satisfies ReadonlyArray<readonly [string, Permission]>;
+
 /** Every key that opens a tab of the Email section. */
-export const EMAIL_PERMISSIONS = [
-  "email.view",
-  "email.send",
-  "email.templates",
-  "email.automate",
-  "email.settings",
-] as const satisfies readonly Permission[];
+export const EMAIL_PERMISSIONS: readonly Permission[] = Array.from(
+  new Set(EMAIL_TAB_ROUTES.map(([, perm]) => perm)),
+);
+
+/** Where /admin/email sends this viewer, or null when no tab is theirs. */
+export function emailLandingFor(caps: Capabilities | null): string | null {
+  return EMAIL_TAB_ROUTES.find(([, perm]) => can(caps, perm))?.[0] ?? null;
+}
 
 /**
  * Which of `permissions` the viewer is missing.

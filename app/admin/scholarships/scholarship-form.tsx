@@ -361,9 +361,7 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
           id="s-seats-help"
           className="self-end text-xs text-ink-faint sm:col-span-2"
         >
-          Each student&apos;s window follows their cohort: accepted students
-          until its enrollment deadline, enrolled students until it ends.
-          Seats count separately in each cohort.
+          Seats count per cohort.
         </p>
       </div>
 

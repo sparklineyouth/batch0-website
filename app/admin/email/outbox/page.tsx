@@ -89,11 +89,7 @@ export default async function EmailOutboxPage() {
         {list.length === 0 ? (
           <div className="p-10 text-center">
             <Inbox className="mx-auto h-8 w-8 text-ink-faint" />
-            <p className="mt-3 text-sm text-ink-soft">
-              Nothing in the queue. Transactional email that sends immediately
-              doesn't wait here — this fills up when an automation has a delay,
-              or you schedule something for later.
-            </p>
+            <p className="mt-3 text-sm text-ink-soft">Nothing queued.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

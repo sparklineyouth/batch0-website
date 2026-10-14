@@ -66,11 +66,6 @@ export default async function AdminBlogPage() {
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
             Blog
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Write and publish posts to the public blog. New posts are authored
-            here and go live instantly. Built-in posts ship with the code and
-            are edited in the repo.
-          </p>
         </div>
         <Link
           href="/admin/blog/new"

@@ -483,10 +483,7 @@ export default async function AdminSupportTicketPage(props: {
           )}
           {can(caps, "payments.manage") && (
             <p className="mt-1.5 text-xs text-ink-faint">
-              Refunds live there, not here: a full refund also tears down the
-              enrolment and rolls the application back, and that belongs on the
-              page where it&rsquo;s the point. Quote {ticket.reference} in the
-              reason.
+              Quote {ticket.reference} in the reason.
             </p>
           )}
         </Card>

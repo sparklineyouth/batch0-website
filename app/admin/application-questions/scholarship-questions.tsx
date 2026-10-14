@@ -134,9 +134,8 @@ export function ScholarshipQuestionsEditor({
         </p>
       ) : current ? (
         <p className="rounded-lg border border-line bg-wash px-3 py-2 text-xs text-ink-soft">
-          Shown only to students applying for{" "}
-          <strong className="text-ink">{current.name}</strong>, after they've
-          been accepted. This is where merit questions go.{" "}
+          Shown only to applicants for{" "}
+          <strong className="text-ink">{current.name}</strong>.{" "}
           <a
             className="underline hover:no-underline"
             href={`/admin/scholarships/${current.id}`}

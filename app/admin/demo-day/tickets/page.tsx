@@ -68,9 +68,7 @@ export default async function AdminDemoDayTicketsPage(props: {
             Demo Day tickets
           </h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Send someone a paid link to Demo Day only — no cohort enrollment.
-            Set any price; they get an email with a pay link and don&rsquo;t
-            need a batch0 account.
+            Paid Demo Day-only link. No account needed.
           </p>
         </div>
         <ButtonLink href="/admin/demo-day" variant="secondary" size="sm">

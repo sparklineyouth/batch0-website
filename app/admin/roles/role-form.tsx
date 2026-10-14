@@ -235,11 +235,6 @@ export function RoleForm({
             {count} permission{count === 1 ? "" : "s"} selected
           </p>
         </div>
-        <p className="mt-2 text-sm text-ink-soft">
-          Each tick adds the matching section to their sidebar and authorises the
-          actions on it. Untick and the page disappears — and stays blocked even
-          if they type the URL.
-        </p>
 
         <div className="mt-5 space-y-6">
           {PERMISSION_GROUPS.map((group) => {

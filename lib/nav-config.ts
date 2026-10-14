@@ -47,7 +47,9 @@ import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
 import {
   canMeet,
   EMAIL_PERMISSIONS,
+  EMAIL_TAB_ROUTES,
   type Capabilities,
+  type Permission,
   type Requirement,
 } from "@/lib/permissions";
 
@@ -480,17 +482,20 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
 export const ADMIN_NAV: NavItem[] = ADMIN_NAV_GROUPS.flatMap((g) => g.items);
 
 /**
- * The Email section's tabs, in order. /admin/email forwards to the first one
- * the viewer holds, so the tab bar and the landing can't disagree.
+ * The Email section's tab bar: EMAIL_TAB_ROUTES (lib/permissions.ts, which
+ * the /admin/email landing also reads) dressed with labels and icons.
  */
-export const EMAIL_TABS: (NavItem & { perm: Requirement })[] = [
-  { href: "/admin/email/templates", label: "Templates", icon: FileText, perm: "email.templates" },
-  { href: "/admin/email/automations", label: "Automations", icon: Workflow, perm: "email.automate" },
-  { href: "/admin/email/blast", label: "Blast", icon: Send, perm: "email.send" },
-  { href: "/admin/email/compose", label: "Compose", icon: Mail, perm: "email.send" },
-  { href: "/admin/email/outbox", label: "Outbox", icon: Inbox, perm: "email.view" },
-  { href: "/admin/email/settings", label: "Settings", icon: Settings, perm: "email.settings" },
-];
+const EMAIL_TAB_LOOK: Record<(typeof EMAIL_TAB_ROUTES)[number][0], Pick<NavItem, "label" | "icon">> = {
+  "/admin/email/templates": { label: "Templates", icon: FileText },
+  "/admin/email/automations": { label: "Automations", icon: Workflow },
+  "/admin/email/blast": { label: "Blast", icon: Send },
+  "/admin/email/compose": { label: "Compose", icon: Mail },
+  "/admin/email/outbox": { label: "Outbox", icon: Inbox },
+  "/admin/email/settings": { label: "Settings", icon: Settings },
+};
+export const EMAIL_TABS: (NavItem & { perm: Permission })[] = EMAIL_TAB_ROUTES.map(
+  ([href, perm]) => ({ href, perm, ...EMAIL_TAB_LOOK[href] }),
+);
 
 /**
  * The one visibility predicate for admin nav items. Both the desktop sidebar

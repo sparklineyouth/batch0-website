@@ -444,13 +444,7 @@ export function AutomationEditor({
                   ))}
                 </p>
               ) : null}
-              <p className="mt-1.5 text-xs text-ink-faint">
-                The queue is checked every five minutes, so a schedule fires
-                within a few minutes of its time. It never fires twice or gets
-                skipped. Use{" "}
-                <strong className="text-ink-soft">Run now</strong> if you need it
-                to go immediately.
-              </p>
+              <p className="mt-1.5 text-xs text-ink-faint">Fires within ~5 min.</p>
             </div>
           )}
         </Card>

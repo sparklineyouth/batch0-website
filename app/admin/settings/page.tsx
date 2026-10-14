@@ -84,10 +84,6 @@ export default async function AdminSettingsPage() {
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Appearance
         </h2>
-        <p className="mb-4 text-sm text-ink-soft">
-          Switch the admin shell between light and dark mode. Applies across
-          your account on every device you sign in to.
-        </p>
         <ThemeToggle initial={theme} />
       </Card>
 

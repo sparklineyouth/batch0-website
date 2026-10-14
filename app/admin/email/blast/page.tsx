@@ -33,12 +33,7 @@ export default async function AdminEmailBlastPage() {
     <div className="mx-auto max-w-6xl">
       <div>
         <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Email blast</h1>
-        <p className="mt-1 text-sm text-ink-soft">
-          Compose a branded email and send it to any set of students — or to
-          their parents. Pick the group with the filters, then choose whether
-          it reaches the student, the parent / guardian on their application,
-          or both.
-        </p>
+        <p className="mt-1 text-sm text-ink-soft">Email students and/or parents.</p>
       </div>
       <BlastForm cohortNames={cohortNames} siteUrl={env.siteUrl} />
     </div>

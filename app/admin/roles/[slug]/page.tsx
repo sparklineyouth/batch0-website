@@ -108,10 +108,7 @@ export default async function RoleDetailPage(
             Full access
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            {role.label} holds the wildcard grant: every permission that exists
-            today and every one added later. It can&apos;t be narrowed here —
-            doing so would lock every admin, including you, out of the site. To
-            give someone less, make a new role and assign it to them.
+            Every permission, now and later. Can&apos;t be narrowed.
           </p>
           <Link
             href="/admin/roles/new"
