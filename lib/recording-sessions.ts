@@ -10,6 +10,7 @@ import { isMissingSchemaError } from "@/lib/schema-ready";
 import { getInvite } from "@/lib/calls";
 import { canViewCallRecording } from "@/lib/call-lifecycle";
 import { resolveEventAccess } from "@/lib/live-access";
+import { notifyStage } from "@/lib/live-rooms";
 import {
   CALL_STAFF_OPENS_MINUTES_BEFORE,
   inviteEndsAt,
@@ -490,7 +491,10 @@ export async function startRecording(args: {
       storage_prefix: storagePrefix(args.kind, args.roomId, id),
       title: args.title.slice(0, 200),
     });
-    if (!error) return { ok: true, sessionId: id };
+    if (!error) {
+      await announceRecordingChange(args.kind, args.roomId);
+      return { ok: true, sessionId: id };
+    }
     if (isMissingSchemaError(error)) return { ok: false, reason: "unavailable" };
     if ((error as { code?: string }).code !== "23505") {
       logError("start failed", error);
@@ -578,6 +582,16 @@ export async function mintPart(
   return { ok: true, path, token: signed.data.token };
 }
 
+/**
+ * Tell everyone in the room that its recording changed — a take started, or
+ * its lease closed or went stale — so each client re-asks the server at once
+ * (`room-changed`) and the REC badge follows within a second, not on the next
+ * 12 s heartbeat. Content-free; never throws (broadcast logs its own failure).
+ */
+async function announceRecordingChange(kind: RecordingKind, roomId: string): Promise<void> {
+  await notifyStage(`${kind === "webinar" ? "event" : "call"}:${roomId}`, { t: "room-changed" });
+}
+
 /** Renew the lease without a part — the uploader is behind, not gone. */
 export async function heartbeat(row: RecordingRow, userId: string): Promise<boolean> {
   if (row.status !== "recording" || row.started_by !== userId) return false;
@@ -618,7 +632,7 @@ export async function finishRecording(
   if (row.started_by !== userId) return null;
   if (row.status === "recording") {
     const admin = createAdminClient();
-    await admin
+    const { data: closed } = await admin
       .from("recording_sessions")
       .update({
         status: reason === "unload" ? "interrupted" : "finished",
@@ -626,7 +640,10 @@ export async function finishRecording(
         end_reason: reason,
       })
       .eq("id", row.id)
-      .eq("status", "recording");
+      .eq("status", "recording")
+      .select("id");
+    // Before the finalize below (seconds): the badge goes when the take does.
+    if (closed?.length) await announceRecordingChange(row.room_kind, row.room_id);
   }
   const fresh = await getRecording(row.id, { cues: true });
   if (!fresh) return null;
@@ -652,11 +669,16 @@ export async function sweepStaleRecordings(scope?: {
     .eq("status", "recording")
     .lt("heartbeat_at", cutoff);
   if (scope) stale = stale.eq("room_kind", scope.kind).eq("room_id", scope.roomId);
-  const swept = await stale.select("id");
+  const swept = await stale.select("id, room_kind, room_id");
   if (swept.error) {
     logError("sweep failed", swept.error);
     return { interrupted: 0, finalized: 0 };
   }
+  const sweptRooms = new Map<string, { kind: RecordingKind; roomId: string }>();
+  for (const r of (swept.data ?? []) as { room_kind: RecordingKind; room_id: string }[]) {
+    sweptRooms.set(`${r.room_kind}:${r.room_id}`, { kind: r.room_kind, roomId: r.room_id });
+  }
+  await Promise.all([...sweptRooms.values()].map((r) => announceRecordingChange(r.kind, r.roomId)));
   let pending = admin
     .from("recording_sessions")
     .select(COLUMNS_WITH_CUES)
