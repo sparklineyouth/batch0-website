@@ -6,8 +6,7 @@ import { canAccessAdmin } from "@/lib/permissions";
 import { assertMentorCanAccessStudent } from "@/lib/mentor-scope";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { ArrowLeft, BookOpen, CheckCircle, MessageSquare, Rocket, FolderOpen } from "lucide-react";
-import { FileFeedbackPanel } from "./file-feedback-panel";
+import { ArrowLeft, BookOpen, CheckCircle, MessageSquare, Rocket } from "lucide-react";
 
 export const metadata = { title: "Student · Mentor" };
 
@@ -28,8 +27,8 @@ export default async function StudentProgressPage(
   const caps = await getCapabilities();
 
   // Cohort isolation, and it has to come before the reads below — the student
-  // id arrives in the URL, so those reads (email, check-in prose, every
-  // uploaded file) are the leak, and `mentor.panel` on its own says nothing
+  // id arrives in the URL, so those reads (email, check-in prose) are the
+  // leak, and `mentor.panel` on its own says nothing
   // about whether this student is the viewer's. Admin-area viewers keep the
   // program-wide view they already have in /admin; everyone else must share a
   // cohort with the student. Out of scope reads as a 404 rather than a 403 so
@@ -63,7 +62,6 @@ export default async function StudentProgressPage(
     { data: checkins },
     { data: aiConvos },
     { data: team },
-    { data: files },
   ] = await Promise.all([
     admin
       .from("profiles")
@@ -98,11 +96,6 @@ export default async function StudentProgressPage(
       .eq("user_id", studentId)
       .limit(1)
       .maybeSingle(),
-    admin
-      .from("student_files")
-      .select("id, name, size_bytes, mime_type, created_at")
-      .eq("user_id", studentId)
-      .order("created_at", { ascending: false }),
   ]);
 
   if (!profile) notFound();
@@ -143,17 +136,12 @@ export default async function StudentProgressPage(
         {enrollmentCohort?.name && <> · {enrollmentCohort.name}</>}
       </p>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <Stat
           icon={BookOpen}
           label="Lessons complete"
           value={`${completedLessons}${totalLessons ? ` / ${totalLessons}` : ""}`}
           accent={pct(completedLessons, totalLessons)}
-        />
-        <Stat
-          icon={FolderOpen}
-          label="Files uploaded"
-          value={`${(files ?? []).length}`}
         />
         <Stat
           icon={CheckCircle}
@@ -180,13 +168,6 @@ export default async function StudentProgressPage(
           </div>
         </Card>
       )}
-
-      <div className="mt-6">
-        <FileFeedbackPanel
-          studentId={studentId}
-          files={(files ?? []) as any[]}
-        />
-      </div>
 
       <Card className="mt-6">
         <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Recent check-ins</h2>

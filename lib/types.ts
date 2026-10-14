@@ -248,17 +248,6 @@ export type TeamInvite = {
   responded_at: string | null;
 };
 
-export type TeamDriveFile = {
-  id: string;
-  team_id: string;
-  uploader_id: string | null;
-  name: string;
-  path: string;
-  size_bytes: number | null;
-  mime_type: string | null;
-  created_at: string;
-};
-
 export type TeamMessageKind = "member" | "mentor" | "investor" | "admin";
 
 export type TeamMessage = {
@@ -273,6 +262,9 @@ export type TeamMessage = {
 export type PitchSubmission = {
   team_id: string;
   cohort_id: string | null;
+  /** Added by 0094; absent until that migration is applied. */
+  deck_url?: string | null;
+  /** Retired uploads (team-drive bucket), read-only. */
   deck_path: string | null;
   video_path: string | null;
   video_url: string | null;
@@ -462,16 +454,6 @@ export type Lesson = {
   duration_seconds: number | null;
   materials: { title: string; path: string }[];
   position: number;
-  created_at: string;
-};
-
-export type StudentFile = {
-  id: string;
-  user_id: string;
-  name: string;
-  path: string;
-  size_bytes: number | null;
-  mime_type: string | null;
   created_at: string;
 };
 

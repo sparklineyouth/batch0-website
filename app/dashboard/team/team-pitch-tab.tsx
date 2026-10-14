@@ -5,18 +5,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
 import { LocalTime } from "@/components/ui/local-time";
-import { Upload, CheckCircle2 } from "lucide-react";
-import {
-  getTeamDriveUploadToken,
-} from "./actions";
-import { getActionError } from "@/lib/action-error";
-import {
-  upsertPitchSubmission,
-  submitPitch,
-} from "./pitch-actions";
+import { CheckCircle2 } from "lucide-react";
+import { PitchLinkPreview } from "@/components/team/pitch-links";
+import { upsertPitchSubmission, submitPitch } from "./pitch-actions";
 
 type Pitch = {
   team_id: string;
+  /** Absent until migration 0094 adds the column. */
+  deck_url?: string | null;
   deck_path: string | null;
   video_path: string | null;
   video_url: string | null;
@@ -32,82 +28,49 @@ export function TeamPitchTab({
   pitch: Pitch | null;
 }) {
   const router = useRouter();
+  const [deckUrl, setDeckUrl] = useState(pitch?.deck_url ?? "");
   const [videoUrl, setVideoUrl] = useState(pitch?.video_url ?? "");
   const [notes, setNotes] = useState(pitch?.notes ?? "");
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | undefined>();
-  const [uploadingKind, setUploadingKind] = useState<"deck" | "video" | null>(
-    null,
-  );
 
-  async function uploadAsset(kind: "deck" | "video", file: File) {
-    setErr(undefined);
-    setUploadingKind(kind);
-    try {
-      const { path, token } = await getTeamDriveUploadToken({
-        teamId,
-        filename: `pitch-${kind}-${file.name}`,
-      });
-      // Deferred import keeps supabase-js out of the route's first-load JS;
-      // it's only needed here, at the moment an upload starts.
-      const { createClient } = await import("@/lib/supabase/client");
-      const supabase = createClient();
-      const up = await supabase.storage
-        .from("team-drive")
-        .uploadToSignedUrl(path, token, file);
-      if (up.error) throw up.error;
-      await upsertPitchSubmission({
-        teamId,
-        [kind === "deck" ? "deck_path" : "video_path"]: path,
-      } as any);
-      router.refresh();
-    } catch (e: any) {
-      setErr(e.message ?? String(e));
-    } finally {
-      setUploadingKind(null);
-    }
-  }
-
-  function saveMeta() {
+  function save() {
     setErr(undefined);
     start(async () => {
-      try {
-        await upsertPitchSubmission({
-          teamId,
-          video_url: videoUrl,
-          notes,
-        });
-        router.refresh();
-      } catch (e: any) {
-        setErr(getActionError(e));
-      }
+      const res = await upsertPitchSubmission({
+        teamId,
+        deck_url: deckUrl,
+        video_url: videoUrl,
+        notes,
+      });
+      if (!res.ok) setErr(res.error);
+      else router.refresh();
     });
   }
 
   function submit() {
     setErr(undefined);
     start(async () => {
-      try {
-        await submitPitch({ teamId });
-        router.refresh();
-      } catch (e: any) {
-        setErr(getActionError(e));
-      }
+      const res = await submitPitch({ teamId });
+      if (!res.ok) setErr(res.error);
+      else router.refresh();
     });
   }
 
   const submitted = !!pitch?.submitted_at;
-  const ready =
-    !!(pitch?.deck_path || pitch?.video_path || pitch?.video_url);
+  const ready = !!(pitch?.deck_url || pitch?.video_url);
+  // Decks/videos uploaded before links replaced uploads were never visible to
+  // judges. Point the team at them so they can re-share as a link.
+  const orphanedUpload =
+    (!!pitch?.deck_path && !pitch?.deck_url) ||
+    (!!pitch?.video_path && !pitch?.video_url);
 
   return (
     <div className="space-y-6">
       <Card>
         <h3 className="text-base font-semibold">Demo Day submission</h3>
         <p className="mt-1 text-xs text-ink-faint">
-          Upload your pitch deck (PDF) and a 3-min recorded pitch (or paste a
-          link), add any notes for judges, then submit. You can keep editing
-          before you submit.
+          Add your deck and pitch video links, then submit.
         </p>
 
         {submitted && (
@@ -117,32 +80,40 @@ export function TeamPitchTab({
             judges can now see it.
           </div>
         )}
+        {orphanedUpload && (
+          <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            Judges can't see uploaded files. Download yours from Drive → Older
+            uploads, put it in Google Drive and paste the link here.
+          </p>
+        )}
 
         <div className="mt-5 space-y-5">
-          <UploadRow
-            label="Pitch deck (PDF)"
-            badge={pitch?.deck_path ? "Uploaded" : "Not uploaded"}
-            accept="application/pdf,.pdf"
-            uploading={uploadingKind === "deck"}
-            onPick={(f) => uploadAsset("deck", f)}
-          />
-          <UploadRow
-            label="Pitch video (MP4/MOV)"
-            badge={pitch?.video_path ? "Uploaded" : "Not uploaded"}
-            accept="video/*"
-            uploading={uploadingKind === "video"}
-            onPick={(f) => uploadAsset("video", f)}
-          />
-
           <div>
-            <Label htmlFor="pitch-video-url">…or paste a video URL</Label>
+            <Label htmlFor="pitch-deck-url">Pitch deck link</Label>
+            <Input
+              id="pitch-deck-url"
+              type="url"
+              inputMode="url"
+              value={deckUrl}
+              onChange={(e) => setDeckUrl(e.target.value)}
+              placeholder="https://docs.google.com/presentation/d/…"
+            />
+            <p className="mt-1 text-xs text-ink-faint">
+              Share it as “Anyone with the link”.
+            </p>
+            <PitchLinkPreview url={pitch?.deck_url ?? null} title="Pitch deck" className="mt-3" />
+          </div>
+          <div>
+            <Label htmlFor="pitch-video-url">Pitch video link</Label>
             <Input
               id="pitch-video-url"
               type="url"
+              inputMode="url"
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
-              placeholder="https://www.loom.com/share/..."
+              placeholder="YouTube, Loom or Google Drive"
             />
+            <PitchLinkPreview url={pitch?.video_url ?? null} title="Pitch video" className="mt-3" />
           </div>
           <div>
             <Label htmlFor="pitch-notes">Notes for judges (optional)</Label>
@@ -156,11 +127,7 @@ export function TeamPitchTab({
             />
           </div>
           <div className="flex items-center justify-between border-t border-line pt-4">
-            <Button
-              variant="secondary"
-              onClick={saveMeta}
-              disabled={pending}
-            >
+            <Button variant="secondary" onClick={save} disabled={pending}>
               {pending ? "Saving…" : "Save draft"}
             </Button>
             <Button onClick={submit} disabled={pending || !ready || submitted}>
@@ -174,44 +141,6 @@ export function TeamPitchTab({
           <FieldError>{err}</FieldError>
         </div>
       </Card>
-    </div>
-  );
-}
-
-function UploadRow({
-  label,
-  badge,
-  accept,
-  uploading,
-  onPick,
-}: {
-  label: string;
-  badge: string;
-  accept: string;
-  uploading: boolean;
-  onPick: (f: File) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-wash px-3 py-3">
-      <div>
-        <div className="text-sm font-medium">{label}</div>
-        <div className="text-xs text-ink-faint">{badge}</div>
-      </div>
-      <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper px-3 text-xs font-medium text-ink hover:border-ink/30 hover:bg-wash">
-        <Upload className="h-3.5 w-3.5" />
-        {uploading ? "Uploading…" : "Choose file"}
-        <input
-          type="file"
-          accept={accept}
-          className="hidden"
-          disabled={uploading}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) onPick(f);
-            e.target.value = "";
-          }}
-        />
-      </label>
     </div>
   );
 }

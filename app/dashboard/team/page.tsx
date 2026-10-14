@@ -8,10 +8,15 @@ import { TeamHome } from "./team-home";
 import { InvitesInbox } from "./invites-inbox";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
+import { loadOlderUploads, loadTeamDrive } from "@/lib/team-drive";
+import { OlderUploads } from "@/components/team/older-uploads";
 
 export const metadata = { title: "Team · batch0" };
 
-export default async function TeamPage() {
+export default async function TeamPage(props: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await props.searchParams;
   const user = await requireUser();
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");
@@ -31,7 +36,6 @@ export default async function TeamPage() {
     const [
       { data: members },
       { data: invites },
-      { data: files },
       { data: messages },
       { data: pitch },
       passHolders,
@@ -50,13 +54,6 @@ export default async function TeamPage() {
         .eq("status", "pending")
         .order("created_at", { ascending: false }),
       admin
-        .from("team_drive_files")
-        .select(
-          "id, name, size_bytes, mime_type, created_at, uploader_id, uploader:profiles(full_name, email)",
-        )
-        .eq("team_id", team.id)
-        .order("created_at", { ascending: false }),
-      admin
         .from("team_messages")
         .select(
           "id, body, kind, created_at, author_id, author:profiles(full_name, email, role)",
@@ -71,14 +68,23 @@ export default async function TeamPage() {
         .maybeSingle(),
       passHolderUserIds(admin),
     ]);
+    const [drive, olderUploads] = await Promise.all([
+      loadTeamDrive(admin, team.id),
+      loadOlderUploads(admin, { userId: user.id, teamId: team.id }),
+    ]);
 
     return (
       <TeamHome
+        // Keyed on ?tab= so a link to another tab (e.g. /dashboard/files →
+        // ?tab=drive) switches tabs even when the page is already open.
+        key={tab ?? ""}
+        initialTab={tab}
         currentUserId={user.id}
         team={team}
         members={(members ?? []) as any[]}
         pendingInvites={(invites ?? []) as any[]}
-        files={(files ?? []) as any[]}
+        drive={drive}
+        olderUploads={olderUploads}
         messages={(messages ?? []) as any[]}
         pitch={pitch as any}
         passHolderIds={[...passHolders]}
@@ -87,6 +93,7 @@ export default async function TeamPage() {
   }
 
   // No team yet — show inbox of invites + a "create a team" form.
+  const olderUploads = await loadOlderUploads(admin, { userId: user.id, teamId: null });
   const { data: pendingForMe } = await admin
     .from("team_invites")
     .select(
@@ -124,6 +131,8 @@ export default async function TeamPage() {
           <CreateTeamForm />
         </div>
       </Card>
+
+      <OlderUploads className="mt-8" team={olderUploads.team} mine={olderUploads.mine} />
     </div>
   );
 }

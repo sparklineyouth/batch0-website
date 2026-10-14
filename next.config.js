@@ -53,6 +53,25 @@ const nextConfig = {
         destination: to,
         permanent: true,
       },
+      // Personal Files was replaced by the team's Google Drive (0094).
+      {
+        source: "/dashboard/files/:path*",
+        destination: "/dashboard/team?tab=drive",
+        permanent: false,
+      },
+    ];
+  },
+  // Nobody else may frame batch0 (clickjacking). This governs who frames us,
+  // not what we frame: Google Drive, Daily and YouTube embeds are unaffected.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
     ];
   },
   webpack: (config) => {

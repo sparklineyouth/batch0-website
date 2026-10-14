@@ -6,7 +6,10 @@ import { TeamForm } from "../team-form";
 import { MembersManager } from "./members-manager";
 import { TearSheetCard } from "./tear-sheet-button";
 import { CapTable } from "./cap-table";
-import { TeamDrive } from "@/components/team/team-drive";
+import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
+import { loadTeamDrive } from "@/lib/team-drive";
+import { getCapabilities } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { RecapButton } from "@/app/admin/demo-day/recap-button";
 
 export const metadata = { title: "Edit team · Admin" };
@@ -24,7 +27,8 @@ export default async function AdminTeamDetail(
     { data: members },
     { data: students },
     { data: capRows },
-    { data: files },
+    drive,
+    caps,
   ] = await Promise.all([
     admin.from("teams").select("*").eq("id", params.id).maybeSingle(),
     admin.from("cohorts").select("id, name").order("starts_on"),
@@ -42,13 +46,8 @@ export default async function AdminTeamDetail(
       .select("*")
       .eq("team_id", params.id)
       .order("created_at", { ascending: true }),
-    admin
-      .from("team_drive_files")
-      .select(
-        "id, name, size_bytes, mime_type, created_at, uploader:profiles(full_name, email)",
-      )
-      .eq("team_id", params.id)
-      .order("created_at", { ascending: false }),
+    loadTeamDrive(admin, params.id),
+    getCapabilities(),
   ]);
 
   if (!team) notFound();
@@ -122,12 +121,11 @@ export default async function AdminTeamDetail(
         />
       </Card>
 
-      <TeamDrive
+      <GoogleDrivePanel
         className="mt-6"
         teamId={team.id}
-        files={(files ?? []) as any[]}
-        title={`Drive (${(files ?? []).length})`}
-        subtitle="Files the team uploaded. Preview in place, or download."
+        drive={drive}
+        canEdit={can(caps, "teams.manage")}
       />
 
       <Card className="mt-6">

@@ -7,7 +7,7 @@ import { requireInvestor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { TeamThread } from "@/components/team-thread";
-import { TeamDrive } from "@/components/team/team-drive";
+import { PitchLinkPreview } from "@/components/team/pitch-links";
 import { ScoreCard } from "./score-card";
 import { RubricScoreCard } from "./rubric-score-card";
 import { IntroRequestButton } from "./intro-request-button";
@@ -34,7 +34,6 @@ export default async function InvestorTeamDetailPage(
     { data: members },
     { data: messages },
     { data: pitch },
-    { data: files },
     { data: myScore },
     { data: myIntro },
     { data: rubric },
@@ -45,7 +44,7 @@ export default async function InvestorTeamDetailPage(
     admin
       .from("teams")
       .select(
-        "id, name, tagline, description, logo_url, logo_status, website_url, raised_cents, post_money_cents, lead_investor, round_kind, round_closed_on, tear_sheet, tear_sheet_generated_at, cohort_id, cohort:cohorts(name)",
+        "id, name, tagline, description, logo_url, logo_status, website_url, pitch_deck_url, raised_cents, post_money_cents, lead_investor, round_kind, round_closed_on, tear_sheet, tear_sheet_generated_at, cohort_id, cohort:cohorts(name)",
       )
       .eq("id", params.id)
       .maybeSingle(),
@@ -66,13 +65,6 @@ export default async function InvestorTeamDetailPage(
       .select("*")
       .eq("team_id", params.id)
       .maybeSingle(),
-    admin
-      .from("team_drive_files")
-      .select(
-        "id, name, size_bytes, mime_type, created_at, uploader:profiles(full_name, email)",
-      )
-      .eq("team_id", params.id)
-      .order("created_at", { ascending: false }),
     admin
       .from("pitch_scores")
       .select("*")
@@ -215,26 +207,13 @@ export default async function InvestorTeamDetailPage(
           ) : (
             <div className="mt-1 text-xs text-ink-faint">In progress</div>
           )}
-          <div className="mt-3 flex flex-wrap gap-3 text-sm">
-            {(pitch as any).video_url && (
-              <a
-                href={(pitch as any).video_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-phosphor-ink hover:underline"
-              >
-                Watch video →
-              </a>
-            )}
-            {(pitch as any).deck_path && (
-              <span className="text-ink-soft">
-                Deck uploaded — see the drive below
-              </span>
-            )}
-            {(pitch as any).video_path && !(pitch as any).video_url && (
-              <span className="text-ink-soft">Video uploaded</span>
-            )}
-          </div>
+          {/* The team's own deck link wins; the admin-set one is the fallback. */}
+          <PitchLinkPreview
+            url={(pitch as any).deck_url ?? (team as any).pitch_deck_url}
+            title="Pitch deck"
+            className="mt-3"
+          />
+          <PitchLinkPreview url={(pitch as any).video_url} title="Pitch video" className="mt-3" />
           {(pitch as any).notes && (
             <p className="mt-3 whitespace-pre-wrap text-sm text-ink-soft">
               {(pitch as any).notes}
@@ -242,14 +221,6 @@ export default async function InvestorTeamDetailPage(
           )}
         </Card>
       )}
-
-      <TeamDrive
-        className="mt-6"
-        teamId={params.id}
-        files={(files ?? []) as any[]}
-        title={`Drive (${(files ?? []).length})`}
-        subtitle="Decks, demos, and anything else the team shared. Preview in place, or download."
-      />
 
       <Card className="mt-6">
         <h2 className="font-display text-base font-semibold tracking-[-0.02em] text-ink">Audience reactions</h2>

@@ -119,7 +119,7 @@ const PUBLIC = [
 const STUDENT = [
   "/dashboard", "/dashboard/accepted", "/dashboard/ai", "/dashboard/announcements", "/dashboard/application",
   "/dashboard/billing", "/dashboard/calls", "/dashboard/checkin", "/dashboard/community", "/dashboard/course",
-  "/dashboard/discussions", "/dashboard/enrolled", "/dashboard/events", "/dashboard/files", "/dashboard/intros",
+  "/dashboard/discussions", "/dashboard/enrolled", "/dashboard/events", "/dashboard/intros",
   "/dashboard/kickoff", "/dashboard/office-hours", "/dashboard/phone", "/dashboard/referrals", "/dashboard/resources",
   "/dashboard/scholarships", "/dashboard/settings", "/dashboard/team", "/messages", "/notifications",
   "/app/home", "/app/events", "/app/course", "/app/checkin", "/app/announcements", "/app/more",

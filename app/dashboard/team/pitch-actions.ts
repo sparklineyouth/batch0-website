@@ -3,6 +3,9 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertSelf } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
+import { runAction, type ActionResult } from "@/lib/action-result";
+import { isMissingSchemaError } from "@/lib/schema-ready";
+import { safeHttpsUrl } from "@/lib/google-drive-links";
 
 async function assertTeamMember(userId: string, teamId: string) {
   const admin = createAdminClient();
@@ -17,91 +20,111 @@ async function assertTeamMember(userId: string, teamId: string) {
 
 export type PitchPatch = {
   teamId: string;
-  deck_path?: string | null;
-  video_path?: string | null;
+  deck_url?: string | null;
   video_url?: string | null;
   notes?: string | null;
 };
 
-export async function upsertPitchSubmission(patch: PitchPatch) {
-  const { userId } = await assertSelf();
-  await assertTeamMember(userId, patch.teamId);
-  const admin = createAdminClient();
-
-  const { data: team } = await admin
-    .from("teams")
-    .select("cohort_id")
-    .eq("id", patch.teamId)
-    .maybeSingle();
-
-  const row: Record<string, any> = {
-    team_id: patch.teamId,
-    cohort_id: team?.cohort_id ?? null,
-  };
-  if (patch.deck_path !== undefined) row.deck_path = patch.deck_path;
-  if (patch.video_path !== undefined) row.video_path = patch.video_path;
-  if (patch.video_url !== undefined) {
-    const u = (patch.video_url ?? "").trim();
-    if (u && !/^https?:\/\//i.test(u)) {
-      throw new Error("Video URL must start with http(s)://");
-    }
-    row.video_url = u || null;
-  }
-  if (patch.notes !== undefined) {
-    row.notes = (patch.notes ?? "").trim().slice(0, 2000) || null;
-  }
-
-  const { error } = await admin
-    .from("pitch_submissions")
-    .upsert(row, { onConflict: "team_id" });
-  if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/team");
+/** "" → null; anything else must be an https link (a bare host gets https://). */
+function linkField(raw: string | null | undefined, label: string): string | null {
+  const s = (raw ?? "").trim();
+  if (!s) return null;
+  const url = safeHttpsUrl(/^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`);
+  if (!url) throw new Error(`${label} must be an https:// link.`);
+  return url;
 }
 
-export async function submitPitch(input: { teamId: string }) {
-  const { userId } = await assertSelf();
-  await assertTeamMember(userId, input.teamId);
-  const admin = createAdminClient();
+export async function upsertPitchSubmission(patch: PitchPatch): Promise<ActionResult> {
+  return runAction({ name: "upsertPitchSubmission" }, async () => {
+    const { userId } = await assertSelf();
+    await assertTeamMember(userId, patch.teamId);
+    const admin = createAdminClient();
 
-  const { data: existing } = await admin
-    .from("pitch_submissions")
-    .select("deck_path, video_path, video_url, submitted_at")
-    .eq("team_id", input.teamId)
-    .maybeSingle();
-  if (!existing) throw new Error("Upload at least one asset before submitting.");
-  const ready =
-    !!existing.deck_path || !!existing.video_path || !!existing.video_url;
-  if (!ready) throw new Error("Upload a deck or video first.");
-  if (existing.submitted_at) return;
-
-  const { error } = await admin
-    .from("pitch_submissions")
-    .update({ submitted_at: new Date().toISOString() })
-    .eq("team_id", input.teamId);
-  if (error) throw new Error(error.message);
-
-  // Notify admins so they can do a final review.
-  try {
     const { data: team } = await admin
       .from("teams")
-      .select("name")
-      .eq("id", input.teamId)
+      .select("cohort_id")
+      .eq("id", patch.teamId)
       .maybeSingle();
-    const { data: admins } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("role", "admin");
-    for (const a of admins ?? []) {
-      await notify({
-        userId: a.id,
-        type: "pitch_submitted",
-        title: `${team?.name ?? "A team"} submitted their pitch`,
-        body: null,
-        link: "/admin/teams",
-      });
-    }
-  } catch {}
 
-  revalidatePath("/dashboard/team");
-  revalidatePath("/admin/teams");
+    const row: Record<string, any> = {
+      team_id: patch.teamId,
+      cohort_id: team?.cohort_id ?? null,
+    };
+    if (patch.deck_url !== undefined) row.deck_url = linkField(patch.deck_url, "Deck link");
+    if (patch.video_url !== undefined) row.video_url = linkField(patch.video_url, "Video link");
+    if (patch.notes !== undefined) {
+      row.notes = (patch.notes ?? "").trim().slice(0, 2000) || null;
+    }
+
+    let { error } = await admin
+      .from("pitch_submissions")
+      .upsert(row, { onConflict: "team_id" });
+    // Before migration 0094 there is no deck_url column. An empty deck field
+    // shouldn't block saving the rest.
+    if (error && isMissingSchemaError(error) && "deck_url" in row) {
+      if (row.deck_url) {
+        throw new Error("Deck links aren't available yet. Save the video link for now.");
+      }
+      delete row.deck_url;
+      ({ error } = await admin.from("pitch_submissions").upsert(row, { onConflict: "team_id" }));
+    }
+    if (error) {
+      console.error("[pitch] save failed", error);
+      throw new Error("Couldn't save. Try again.");
+    }
+    revalidatePath("/dashboard/team");
+  });
+}
+
+export async function submitPitch(input: { teamId: string }): Promise<ActionResult> {
+  return runAction({ name: "submitPitch" }, async () => {
+    const { userId } = await assertSelf();
+    await assertTeamMember(userId, input.teamId);
+    const admin = createAdminClient();
+
+    // `*`, not a column list: deck_url only exists once 0094 is applied.
+    const { data: existing } = await admin
+      .from("pitch_submissions")
+      .select("*")
+      .eq("team_id", input.teamId)
+      .maybeSingle();
+    if (!existing?.deck_url && !existing?.video_url) {
+      throw new Error("Add a deck or video link first.");
+    }
+    if (existing.submitted_at) return;
+
+    const { error } = await admin
+      .from("pitch_submissions")
+      .update({ submitted_at: new Date().toISOString() })
+      .eq("team_id", input.teamId);
+    if (error) {
+      console.error("[pitch] submit failed", error);
+      throw new Error("Couldn't submit. Try again.");
+    }
+
+    // Notify admins so they can do a final review.
+    try {
+      const { data: team } = await admin
+        .from("teams")
+        .select("name")
+        .eq("id", input.teamId)
+        .maybeSingle();
+      const { data: admins } = await admin
+        .from("profiles")
+        .select("id")
+        .eq("role", "admin");
+      for (const a of admins ?? []) {
+        await notify({
+          userId: a.id,
+          type: "pitch_submitted",
+          title: `${team?.name ?? "A team"} submitted their pitch`,
+          body: null,
+          link: "/admin/teams",
+        });
+      }
+    } catch {}
+
+    revalidatePath("/dashboard/team");
+    revalidatePath("/admin/teams");
+  });
 }

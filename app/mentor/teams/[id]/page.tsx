@@ -6,7 +6,9 @@ import { requireMentor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { TeamThread } from "@/components/team-thread";
-import { TeamDrive } from "@/components/team/team-drive";
+import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
+import { PitchLinkPreview } from "@/components/team/pitch-links";
+import { loadTeamDrive } from "@/lib/team-drive";
 import { FounderPassBadge } from "@/components/founder-pass-badge";
 import { ArrowLeft } from "lucide-react";
 
@@ -33,7 +35,7 @@ export default async function MentorTeamDetailPage(
   const [
     { data: members },
     { data: messages },
-    { data: files },
+    drive,
     { data: pitch },
     passHolders,
   ] = await Promise.all([
@@ -49,13 +51,7 @@ export default async function MentorTeamDetailPage(
       .eq("team_id", params.id)
       .order("created_at", { ascending: true })
       .limit(200),
-    admin
-      .from("team_drive_files")
-      .select(
-        "id, name, size_bytes, mime_type, created_at, uploader:profiles(full_name, email)",
-      )
-      .eq("team_id", params.id)
-      .order("created_at", { ascending: false }),
+    loadTeamDrive(admin, params.id),
     admin
       .from("pitch_submissions")
       .select("*")
@@ -129,26 +125,12 @@ export default async function MentorTeamDetailPage(
           <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
             Submitted on <LocalTime value={(pitch as any).submitted_at} />
           </div>
-          {(pitch as any).video_url && (
-            <a
-              href={(pitch as any).video_url}
-              className="mt-3 inline-block text-sm text-phosphor-ink hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Watch pitch video →
-            </a>
-          )}
+          <PitchLinkPreview url={(pitch as any).deck_url} title="Pitch deck" className="mt-3" />
+          <PitchLinkPreview url={(pitch as any).video_url} title="Pitch video" className="mt-3" />
         </Card>
       )}
 
-      <TeamDrive
-        className="mt-6"
-        teamId={params.id}
-        files={(files ?? []) as any[]}
-        title={`Drive (${(files ?? []).length})`}
-        subtitle="Everything this team has shared. Preview in place, or download."
-      />
+      <GoogleDrivePanel className="mt-6" teamId={params.id} drive={drive} canEdit={false} />
 
       <div className="mt-6">
         <TeamThread

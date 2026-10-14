@@ -305,12 +305,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
-    type: "file_feedback",
-    label: "Feedback on a file you uploaded",
-    group: "Check-ins & feedback",
-    default: "other",
-  },
-  {
     type: "checkin_submitted",
     label: "A student submitted a check-in",
     group: "Check-ins & feedback",
