@@ -469,6 +469,11 @@ export const RETIRED_NOTIFICATION_KINDS: NotificationKind[] = [
   { type: "discussion_question", label: "Question for the team", group: "Conversations", default: "other" },
   { type: "discussion_reply", label: "Discussion reply", group: "Conversations", default: "other" },
   { type: "dm_reported", label: "Reported conversation", group: "Staff queues", default: "other" },
+  // Assignments replaced weekly check-ins (migration 0093).
+  { type: "checkin_nudge", label: "Check-in reminder", group: "Assignments & feedback", default: "other" },
+  { type: "intervention", label: "Missed check-ins", group: "Assignments & feedback", default: "other" },
+  { type: "checkin_feedback", label: "Check-in feedback", group: "Assignments & feedback", default: "other" },
+  { type: "checkin_submitted", label: "Check-in submitted", group: "Assignments & feedback", default: "other" },
 ];
 
 const BY_TYPE = new Map(

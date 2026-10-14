@@ -1828,8 +1828,7 @@ async function ensureCanonicalLayout(
     name: "wins",
     type: CHANNEL_TYPE_TEXT,
     parent_id: studentsCat.id,
-    topic:
-      "Milestones get celebrated here. Mark a check-in as a milestone to broadcast.",
+    topic: "Milestones get celebrated here.",
     permission_overwrites: staffWriteOnly(),
   });
   await ensureChannel({
