@@ -68,7 +68,6 @@ export function MobileNav({
   kind,
   role,
   caps,
-  aiAccess,
   discordEnabled,
   enrolled = true,
   referralsEnabled = true,
@@ -79,7 +78,6 @@ export function MobileNav({
   role?: Role;
   /** Viewer permissions. Drives admin nav filtering and the cross-panel links. */
   caps?: Capabilities | null;
-  aiAccess?: boolean;
   discordEnabled?: boolean;
   enrolled?: boolean;
   referralsEnabled?: boolean;
@@ -157,7 +155,6 @@ export function MobileNav({
               // mean "not restricted" for the optional props.
               if (
                 !filterStudentNavItem(it, {
-                  aiAccess: aiAccess !== false,
                   discordEnabled: discordEnabled !== false,
                   referralsEnabled: referralsEnabled !== false,
                   enrolled,
@@ -186,7 +183,6 @@ export function MobileNav({
     rawGroups,
     kind,
     caps,
-    aiAccess,
     discordEnabled,
     enrolled,
     referralsEnabled,

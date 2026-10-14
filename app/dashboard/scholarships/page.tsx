@@ -38,8 +38,8 @@ export const revalidate = 0;
  *
  * Deliberately reachable before enrolment — scholarships open at the ACCEPTED
  * stage, which is exactly the window where someone is deciding whether they
- * can afford the program at all. See the note beside this route in
- * lib/nav-config.ts ENROLLED_ONLY_HREFS.
+ * can afford the program at all. The nav shows it until the cohort starts
+ * (lib/student-nav.ts); Billing links it after that.
  *
  * Reads through the service-role client rather than the session: the RLS read
  * policy on scholarship_applications would otherwise make "no award" and "RLS

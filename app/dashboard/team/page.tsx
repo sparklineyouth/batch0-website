@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireUser, getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { passHolderUserIds } from "@/lib/founder-pass";
@@ -6,7 +7,7 @@ import { getMyTeam } from "@/lib/team";
 import { CreateTeamForm } from "./create-team-form";
 import { TeamHome } from "./team-home";
 import { InvitesInbox } from "./invites-inbox";
-import { getStudentAccess } from "@/lib/access";
+import { getStudentAccess, aiAccessFrom } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { isDiscordEnabled } from "@/lib/discord";
 import { discordChannelUrl } from "@/lib/discord-links";
@@ -34,6 +35,8 @@ export default async function TeamPage(props: {
     );
   }
   const admin = createAdminClient();
+  // The AI co-founder lives here, with the other startup tools.
+  const showAi = aiAccessFrom(access) && !!env.anthropicApiKey;
 
   const team = await getMyTeam(user.id);
 
@@ -89,6 +92,7 @@ export default async function TeamPage(props: {
             ? discordChannelUrl(env.discordGuildId, team.discord_text_channel_id)
             : null
         }
+        showAi={showAi}
       />
     );
   }
@@ -109,6 +113,14 @@ export default async function TeamPage(props: {
       <h1 className="text-3xl font-bold tracking-tight">Team</h1>
       <p className="mt-1 text-sm text-ink-soft">
         Up to 4 teammates from your cohort.
+        {showAi && (
+          <>
+            {" "}
+            <Link href="/dashboard/ai" className="link-ink">
+              AI co-founder →
+            </Link>
+          </>
+        )}
       </p>
 
       {(pendingForMe?.length ?? 0) > 0 && (

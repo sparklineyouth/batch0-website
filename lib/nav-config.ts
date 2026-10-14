@@ -4,7 +4,6 @@ import {
   Percent,
   PlayCircle,
   CalendarDays,
-  Sparkles,
   CreditCard,
   Settings,
   ShieldCheck,
@@ -36,7 +35,12 @@ import {
   LifeBuoy,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
+import {
+  STUDENT_NAV_LAYOUT,
+  isStudentHrefVisible,
+  type StudentNavContext,
+  type StudentNavHref,
+} from "@/lib/student-nav";
 import {
   canMeet,
   EMAIL_PERMISSIONS,
@@ -82,134 +86,52 @@ export type NavGroup = {
 };
 
 // ---------------------------------------------------------------------------
-// Student
+// Student — the links and who sees them live in lib/student-nav.ts; this adds
+// the icons.
 // ---------------------------------------------------------------------------
 
-export const STUDENT_NAV_GROUPS: NavGroup[] = [
-  {
-    label: "",
-    items: [
-      { href: "/dashboard", label: "Home", icon: Home, exact: true },
-      { href: "/dashboard/application", label: "Application", icon: FileText },
-      { href: "/dashboard/kickoff", label: "Kickoff", icon: Flag },
-    ],
-  },
-  {
-    label: "Program",
-    items: [
-      { href: "/dashboard/course", label: "Course", icon: PlayCircle },
-      { href: "/dashboard/team", label: "Team", icon: Rocket },
-      { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardList },
-      { href: "/dashboard/calls", label: "1:1 calls", icon: Video },
-      { href: "/dashboard/events", label: "Events", icon: CalendarDays },
-      { href: "/dashboard/resources", label: "Resources", icon: FolderArchive },
-    ],
-  },
-  {
-    label: "Workspace",
-    items: [
-      { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
-      { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
-      { href: "/dashboard/ai", label: "AI co-founder", icon: Sparkles },
-      { href: "/dashboard/intros", label: "Investor intros", icon: Handshake },
-    ],
-  },
-  {
-    label: "Account",
-    items: [
-      { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
-      // Deliberately NOT in ENROLLED_ONLY_HREFS: scholarships open at the
-      // ACCEPTED stage, which is exactly the window where someone decides
-      // whether they can afford to enroll at all. Hiding the tab until after
-      // they've paid would hide it from the people it exists for.
-      {
-        href: "/dashboard/scholarships",
-        label: "Scholarships",
-        icon: GraduationCap,
-      },
-      { href: "/dashboard/referrals", label: "Refer friends", icon: Star },
-      // In Account rather than Workspace, and deliberately not gated behind
-      // enrolment: the requests people file here are about billing, account
-      // access, and data rights, which are exactly the things someone needs
-      // when the rest of the dashboard is NOT working for them.
-      { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
-      { href: "/dashboard/settings", label: "Settings", icon: Settings },
-    ],
-  },
-];
-
-// Legacy flat list — kept so older importers still resolve. New code should
-// use STUDENT_NAV_GROUPS.
-export const STUDENT_NAV: NavItem[] = STUDENT_NAV_GROUPS.flatMap(
-  (g) => g.items,
-);
-
-// Routes that only resolve once a student is enrolled in a cohort. Used by
-// the desktop sidebar, the mobile drawer, and the dashboard quick links to
-// hide dead-end links before enrollment — keep this list as the single
-// source of truth. (Community is deliberately absent: Discord is open to
-// every signed-in student.)
-export const ENROLLED_ONLY_HREFS = new Set<string>([
-  "/dashboard/course",
-  "/dashboard/team",
-  // Matches the RLS policy exactly (migration 0027): every read path on
-  // `announcements` requires a row in `enrollments`, so an applicant who
-  // isn't enrolled can only ever be shown an empty page. The tab was
-  // visible to them anyway, which read as "the team has said nothing"
-  // rather than "this unlocks when you enroll".
-  "/dashboard/announcements",
-  "/dashboard/assignments",
-  "/dashboard/events",
-  "/dashboard/resources",
-  "/dashboard/intros",
-]);
-
-export type StudentNavContext = {
-  aiAccess: boolean;
-  discordEnabled: boolean;
-  referralsEnabled: boolean;
-  enrolled: boolean;
-  preCohort: boolean;
-  /**
-   * Holds a paid Demo Day ticket (lib/access.ts). Opens the Events link for
-   * someone who isn't enrolled — the one enrolled-only page a ticket buys.
-   * Optional so older callers keep their exact behaviour.
-   */
-  demoDayTicket?: boolean;
+const STUDENT_ICONS: Record<StudentNavHref, LucideIcon> = {
+  "/dashboard": Home,
+  "/dashboard/application": FileText,
+  "/dashboard/kickoff": Flag,
+  "/dashboard/course": PlayCircle,
+  "/dashboard/assignments": ClipboardList,
+  "/dashboard/team": Rocket,
+  "/dashboard/events": CalendarDays,
+  "/dashboard/calls": Video,
+  "/dashboard/resources": FolderArchive,
+  "/dashboard/announcements": Megaphone,
+  "/dashboard/community": MessagesSquare,
+  "/dashboard/billing": CreditCard,
+  "/dashboard/scholarships": GraduationCap,
+  "/dashboard/referrals": Star,
+  "/dashboard/support": LifeBuoy,
+  "/dashboard/settings": Settings,
 };
 
-/**
- * The one visibility predicate for student nav items — desktop sidebar and
- * mobile drawer both call this so the two can never drift. Pre-cohort
- * lockdown wins first (only the personal pages + Community and Team
- * survive); then per-feature flags; then the hiding of enrolled-only
- * routes — which applies inside the pre-cohort window too, so an
- * accepted-but-unpaid student sees no Kickoff, Resources, or Team.
- */
+/** Words the nav search also matches: pages reached from inside another one. */
+const STUDENT_KEYWORDS: Partial<Record<StudentNavHref, readonly string[]>> = {
+  "/dashboard/team": ["investor intros", "ai co-founder", "pitch", "drive"],
+  "/dashboard/billing": ["receipts", "scholarships", "fees"],
+};
+
+export const STUDENT_NAV_GROUPS: NavGroup[] = STUDENT_NAV_LAYOUT.map((g) => ({
+  label: g.label,
+  items: g.items.map((it) => ({
+    href: it.href,
+    label: it.label,
+    icon: STUDENT_ICONS[it.href],
+    ...(it.href === "/dashboard" ? { exact: true } : {}),
+    ...(STUDENT_KEYWORDS[it.href] ? { keywords: STUDENT_KEYWORDS[it.href] } : {}),
+  })),
+}));
+
+/** Desktop sidebar and mobile drawer: one predicate, so they can't drift. */
 export function filterStudentNavItem(
   item: NavItem,
   ctx: StudentNavContext,
 ): boolean {
-  if (ctx.preCohort && !PRE_COHORT_ALLOWED_HREFS.has(item.href)) return false;
-  // Kickoff belongs to an enrolled student for the whole life of the cohort:
-  // a countdown before day one, the record of day one afterwards. It used to
-  // vanish the moment the cohort started, which turned every bookmark and
-  // every link in a welcome email into a silent redirect home. Staff resolve
-  // as enrolled (lib/access.ts) so they can preview the page they edit.
-  if (item.href === "/dashboard/kickoff") {
-    return ctx.enrolled;
-  }
-  if (item.href === "/dashboard/ai") return ctx.aiAccess;
-  if (item.href === "/dashboard/community") return ctx.discordEnabled;
-  if (item.href === "/dashboard/referrals") return ctx.referralsEnabled;
-  // A paid Demo Day ticket opens Events and nothing else. Checked before the
-  // enrolled-only hiding so a ticket holder who never enrolled can find the
-  // one page their ticket is for.
-  if (item.href === "/dashboard/events" && ctx.demoDayTicket) return true;
-  if (!ctx.enrolled && ENROLLED_ONLY_HREFS.has(item.href)) {
-    return false;
-  }
-  return true;
+  return isStudentHrefVisible(item.href, ctx);
 }
 
 // ---------------------------------------------------------------------------

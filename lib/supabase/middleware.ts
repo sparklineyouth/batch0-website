@@ -575,10 +575,9 @@ export async function updateSession(request: NextRequest) {
       }
 
       // Pre-cohort lockdown: an accepted (or already-enrolled) student whose
-      // cohort hasn't started yet can only load the personal pages — home,
-      // application, resources, billing, referrals, settings (+ pay-fine).
-      // Every other /dashboard route bounces home. The sidebar hides the
-      // links too; this is the hard server-side gate, so a typed URL, a
+      // cohort hasn't started yet can only load the pages listed in
+      // lib/pre-cohort.ts. Every other /dashboard route bounces home. The nav
+      // hides the links too (lib/student-nav.ts); this is the hard gate, so a typed URL, a
       // stale link, or a prefetch can't reach past the designated pages.
       // Staff previewing the student view are exempt. Both live rooms are on
       // the allowed list (lib/pre-cohort.ts): a 1:1 room is under

@@ -52,12 +52,9 @@ type Perk = {
   body: string;
 };
 
-// Only list perks the product actually delivers. The referral card next door
-// (app/dashboard/referral-card.tsx) is a standing reminder of the cost of doing
-// otherwise: it promised "a credit toward a 1:1 mentor session" that had no
-// schema, no mentors, and no chance of being honoured. Every line below is
-// backed by code — migration 0039/0040 for the card itself, 0041 for the
-// profile, feedback credit, rebuild, and structured feedback.
+// Only list perks the product actually delivers. Every line below is backed by
+// code — migration 0039/0040 for the card itself, 0041 for the profile,
+// feedback credit, rebuild, and structured feedback.
 //
 // Deliberately absent: build clinics and guest invitations. Those are real
 // intentions but pure scheduling/ops with nothing to back them yet — so they

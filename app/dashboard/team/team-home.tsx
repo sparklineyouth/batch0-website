@@ -10,6 +10,8 @@ import {
   FileSignature,
   Sparkles,
   MessageSquare,
+  Handshake,
+  Bot,
 } from "lucide-react";
 import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
@@ -35,6 +37,9 @@ type Team = {
 
 type Tab = "overview" | "members" | "drive" | "pitch";
 
+const CHIP =
+  "inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink";
+
 export function TeamHome({
   initialTab,
   currentUserId,
@@ -46,6 +51,7 @@ export function TeamHome({
   pitch,
   passHolderIds = [],
   discordChannelUrl = null,
+  showAi = false,
 }: {
   /** From ?tab=, so links can open a tab directly. */
   initialTab?: string;
@@ -59,6 +65,8 @@ export function TeamHome({
   passHolderIds?: string[];
   /** The team's private Discord text channel, when Discord is on and it exists. */
   discordChannelUrl?: string | null;
+  /** The AI co-founder is open to this student (and configured). */
+  showAi?: boolean;
 }) {
   const [picked, setTab] = useState<string | undefined>(initialTab);
 
@@ -125,21 +133,25 @@ export function TeamHome({
             href={discordChannelUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink"
+            className={CHIP}
           >
             <MessageSquare className="h-3.5 w-3.5" /> Team chat on Discord
           </a>
         )}
-        <Link href="/dashboard/team/offers">
-          <button className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink">
-            <FileSignature className="h-3.5 w-3.5" /> SAFE offers
-          </button>
+        <Link href="/dashboard/intros" className={CHIP}>
+          <Handshake className="h-3.5 w-3.5" /> Investor intros
         </Link>
-        <Link href="/dashboard/team/pitch-coach">
-          <button className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink">
-            <Sparkles className="h-3.5 w-3.5" /> Pitch coach
-          </button>
+        <Link href="/dashboard/team/offers" className={CHIP}>
+          <FileSignature className="h-3.5 w-3.5" /> SAFE offers
         </Link>
+        <Link href="/dashboard/team/pitch-coach" className={CHIP}>
+          <Sparkles className="h-3.5 w-3.5" /> Pitch coach
+        </Link>
+        {showAi && (
+          <Link href="/dashboard/ai" className={CHIP}>
+            <Bot className="h-3.5 w-3.5" /> AI co-founder
+          </Link>
+        )}
       </div>
 
       <nav className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-line bg-wash p-1">

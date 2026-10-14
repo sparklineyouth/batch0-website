@@ -8,7 +8,7 @@ import { ChargePayButton } from "@/components/charge-pay-button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { ChargeHelp, HELP_LINK, billingSupportHref, inRefundWindow } from "./charge-help";
-import { LifeBuoy, Receipt } from "lucide-react";
+import { GraduationCap, LifeBuoy, Receipt } from "lucide-react";
 
 export const metadata = { title: "Billing · batch0" };
 
@@ -91,6 +91,13 @@ export default async function BillingPage(
           >
             <LifeBuoy className="h-3.5 w-3.5" />
             Billing help
+          </Link>
+          <Link
+            href="/dashboard/scholarships"
+            className="inline-flex items-center gap-1.5 px-1 text-xs text-ink-soft hover:text-ink"
+          >
+            <GraduationCap className="h-3.5 w-3.5" />
+            Scholarships
           </Link>
           <Link
             href="/dashboard/billing/receipts"

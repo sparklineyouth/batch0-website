@@ -6,8 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { canAccessAdmin } from "@/lib/permissions";
 import { isDiscordEnabled } from "@/lib/discord";
 import { getSiteConfig } from "@/lib/site-config";
-import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
-import { ENROLLED_ONLY_HREFS } from "@/lib/nav-config";
+import { isStudentHrefVisible } from "@/lib/student-nav";
 import { InstallHint } from "@/components/app/install-hint";
 import { AppHeader, AppBody, Section, Row } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
@@ -26,75 +25,22 @@ type LinkDef = {
 };
 
 /**
- * Everything the four tabs deliberately left out.
- *
- * The gating here reuses the same two sources of truth as the sidebar and the
- * middleware — ENROLLED_ONLY_HREFS and PRE_COHORT_ALLOWED_HREFS — rather than
- * re-deciding what a pre-cohort student may see. That matters because the
- * middleware gate is real: a link this page shows but middleware bounces is a
- * dead end that looks like a bug in the app, and the two lists are the only
- * thing keeping the three surfaces agreeing.
+ * Everything the four tabs leave out, gated by the same predicate as the
+ * dashboard sidebar (lib/student-nav.ts) so the two never disagree.
  */
 const LINKS: LinkDef[] = [
-  {
-    href: "/app/announcements",
-    label: "Announcements",
-    hint: "Everything the team has posted",
-    gate: "/dashboard/announcements",
-  },
-  {
-    href: "/app/events",
-    label: "Events",
-    hint: "Office hours, workshops, demo day",
-    gate: "/dashboard/events",
-  },
-  {
-    href: "/dashboard/team",
-    label: "Your team",
-    hint: "Members, offers, cap table",
-    external: true,
-  },
-  {
-    href: "/dashboard/kickoff",
-    label: "Kickoff",
-    hint: "Day one details",
-    external: true,
-  },
-  {
-    href: "/dashboard/resources",
-    label: "Resources",
-    hint: "Templates, guides, perks",
-    external: true,
-  },
-  {
-    href: "/dashboard/community",
-    label: "Discord",
-    hint: "The cohort chat",
-    external: true,
-  },
-  {
-    href: "/dashboard/billing",
-    label: "Billing",
-    hint: "Receipts and payment method",
-    external: true,
-  },
-  {
-    href: "/dashboard/referrals",
-    label: "Refer a friend",
-    external: true,
-  },
-  {
-    href: "/dashboard/support",
-    label: "Support",
-    hint: "Refunds, billing, account problems",
-    external: true,
-  },
-  {
-    href: "/dashboard/settings",
-    label: "Settings",
-    hint: "Profile, theme, account",
-    external: true,
-  },
+  { href: "/app/announcements", label: "Announcements", gate: "/dashboard/announcements" },
+  { href: "/app/events", label: "Events", hint: "Live sessions, Demo Day", gate: "/dashboard/events" },
+  { href: "/dashboard/calls", label: "1:1 calls", external: true },
+  { href: "/dashboard/team", label: "Your team", hint: "Members, Drive, Demo Day", external: true },
+  { href: "/dashboard/kickoff", label: "Kickoff", hint: "Day one details", external: true },
+  { href: "/dashboard/resources", label: "Resources", hint: "Templates and guides", external: true },
+  { href: "/dashboard/community", label: "Discord", external: true },
+  { href: "/dashboard/billing", label: "Billing", hint: "Receipts and payment method", external: true },
+  { href: "/dashboard/scholarships", label: "Scholarships", external: true },
+  { href: "/dashboard/referrals", label: "Refer a friend", external: true },
+  { href: "/dashboard/support", label: "Support", hint: "Refunds, billing, account problems", external: true },
+  { href: "/dashboard/settings", label: "Settings", hint: "Profile, theme, account", external: true },
 ];
 
 export default async function StudentAppMore() {
@@ -106,17 +52,21 @@ export default async function StudentAppMore() {
     loadTeam(profile.id),
   ]);
 
-  const visible = LINKS.filter((l) => {
-    // The route the gates actually apply to: for in-app screens that stand in
-    // for a /dashboard page, that's the page they mirror.
-    const gate = l.gate ?? l.href;
-    if (gate === "/dashboard/community") return discordEnabled;
-    if (gate === "/dashboard/referrals") return siteConfig.settings.referralsEnabled;
-    if (gate === "/dashboard/kickoff") return access.enrolled;
-    if (!access.enrolled && ENROLLED_ONLY_HREFS.has(gate)) return false;
-    if (access.preCohort && !PRE_COHORT_ALLOWED_HREFS.has(gate)) return false;
-    return true;
-  });
+  const ctx = {
+    discordEnabled,
+    referralsEnabled: siteConfig.settings.referralsEnabled,
+    enrolled: access.enrolled,
+    preCohort: access.preCohort,
+    demoDayTicket: access.demoDayTicket,
+  };
+  // In-app screens are gated as the /dashboard page they stand in for. The
+  // in-app Events screen is cohort-only, so a Demo Day ticket holder gets the
+  // dashboard page, where RLS shows them their one event.
+  const visible = LINKS.filter((l) => isStudentHrefVisible(l.gate ?? l.href, ctx)).map((l) =>
+    l.gate === "/dashboard/events" && !access.enrolled
+      ? { ...l, href: "/dashboard/events", external: true }
+      : l,
+  );
 
   return (
     <>

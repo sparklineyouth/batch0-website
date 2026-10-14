@@ -1,0 +1,90 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  STUDENT_NAV_LAYOUT,
+  STUDENT_NAV_MAX,
+  isStudentHrefVisible,
+  type StudentNavContext,
+} from "./student-nav.ts";
+import { PRE_COHORT_ALLOWED_HREFS } from "./pre-cohort.ts";
+
+const HREFS = STUDENT_NAV_LAYOUT.flatMap((g) => g.items.map((i) => i.href));
+
+function visible(ctx: StudentNavContext): string[] {
+  return HREFS.filter((h) => isStudentHrefVisible(h, ctx));
+}
+
+function* everyContext(): Generator<StudentNavContext> {
+  for (let bits = 0; bits < 32; bits++) {
+    yield {
+      enrolled: !!(bits & 1),
+      preCohort: !!(bits & 2),
+      discordEnabled: !!(bits & 4),
+      referralsEnabled: !!(bits & 8),
+      demoDayTicket: !!(bits & 16),
+    };
+  }
+}
+
+test(`no student sees more than ${STUDENT_NAV_MAX} links`, () => {
+  for (const ctx of everyContext()) {
+    const v = visible(ctx);
+    assert.ok(v.length <= STUDENT_NAV_MAX, `${JSON.stringify(ctx)} → ${v.length}: ${v.join(", ")}`);
+  }
+});
+
+test("every link is unique and Home is always there", () => {
+  assert.equal(new Set(HREFS).size, HREFS.length);
+  for (const ctx of everyContext()) assert.ok(visible(ctx).includes("/dashboard"));
+});
+
+test("pre-cohort shows only what middleware lets through", () => {
+  for (const ctx of everyContext()) {
+    if (!ctx.preCohort) continue;
+    for (const h of visible(ctx)) assert.ok(PRE_COHORT_ALLOWED_HREFS.has(h), h);
+  }
+});
+
+const ALL_ON = { discordEnabled: true, referralsEnabled: true, demoDayTicket: false };
+
+test("enrolled, cohort running: the program, not the lifecycle", () => {
+  assert.deepEqual(visible({ ...ALL_ON, enrolled: true, preCohort: false }), [
+    "/dashboard",
+    "/dashboard/course",
+    "/dashboard/assignments",
+    "/dashboard/team",
+    "/dashboard/events",
+    "/dashboard/calls",
+    "/dashboard/resources",
+    "/dashboard/announcements",
+    "/dashboard/community",
+    "/dashboard/billing",
+    "/dashboard/support",
+    "/dashboard/settings",
+  ]);
+});
+
+test("enrolled, counting down: kickoff, team, scholarships; no course yet", () => {
+  const v = visible({ ...ALL_ON, enrolled: true, preCohort: true });
+  for (const h of ["/dashboard/kickoff", "/dashboard/team", "/dashboard/scholarships", "/dashboard/referrals"]) {
+    assert.ok(v.includes(h), h);
+  }
+  for (const h of ["/dashboard/course", "/dashboard/assignments", "/dashboard/events", "/dashboard/application"]) {
+    assert.ok(!v.includes(h), h);
+  }
+});
+
+test("applicant: application and account pages; Events only with a ticket", () => {
+  const v = visible({ ...ALL_ON, enrolled: false, preCohort: false });
+  assert.ok(v.includes("/dashboard/application"));
+  assert.ok(v.includes("/dashboard/calls"));
+  assert.ok(!v.includes("/dashboard/kickoff"));
+  assert.ok(!v.includes("/dashboard/events"));
+  assert.ok(visible({ ...ALL_ON, enrolled: false, preCohort: false, demoDayTicket: true }).includes("/dashboard/events"));
+});
+
+test("flags hide Community and Refer friends", () => {
+  const v = visible({ enrolled: false, preCohort: false, discordEnabled: false, referralsEnabled: false });
+  assert.ok(!v.includes("/dashboard/community"));
+  assert.ok(!v.includes("/dashboard/referrals"));
+});

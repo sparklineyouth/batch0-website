@@ -26,7 +26,7 @@ export default async function StudentAppAnnouncements() {
   // the cohort-scoped and the global branch) never applies. This check is the
   // enforcement, not a convenience.
   //
-  // lib/nav-config.ts already lists /dashboard/announcements in
+  // lib/student-nav.ts already lists /dashboard/announcements in
   // ENROLLED_ONLY_HREFS for exactly this reason, and
   // /dashboard/announcements renders <LockedFeature> here.
   if (!access.enrolled) {
