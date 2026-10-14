@@ -347,6 +347,8 @@ class Take {
   private nextIndex = 0;
   private queue: Part[] = [];
   private pumping = false;
+  /** The finish request is out: the server closing the lease is expected now. */
+  private finishing = false;
   private lastContact = Date.now();
   private readonly heartbeat: ReturnType<typeof setInterval>;
   private resolveFinished!: () => void;
@@ -494,13 +496,15 @@ class Take {
   }
 
   private async beat() {
-    if (this.phase === "done" || Date.now() - this.lastContact < HEARTBEAT_MS) return;
+    if (this.phase === "done" || this.finishing || Date.now() - this.lastContact < HEARTBEAT_MS) return;
     const res = await post(`/api/recordings/${this.sessionId}/part`, { heartbeat: true });
     if (res.ok) this.lastContact = Date.now();
-    else if (res.status === 409 || res.status === 404) this.die();
+    // A beat that crossed the finish request sees the take already closed.
+    else if ((res.status === 409 || res.status === 404) && !this.finishing) this.die();
   }
 
   private async finish() {
+    this.finishing = true;
     for (let attempt = 0; attempt < 5; attempt++) {
       if (attempt > 0) await sleep(retryDelayMs(attempt - 1));
       const res = await post(`/api/recordings/${this.sessionId}/finish`, {});

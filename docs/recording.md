@@ -26,7 +26,11 @@ one seekable file.
   `AudioContext` (`components/live/use-recorder.ts`). One `MediaRecorder` runs
   for the whole take; device switches, people arriving, presenting and
   cameras turning off never restart it. Frames are driven by a Worker timer so
-  a hidden tab keeps compositing.
+  a hidden tab keeps compositing. A slow machine gets fewer frames, never a
+  backlog: the Worker sends a tick only after the last one ran, and a frame
+  is skipped while drawing would take more than about half the main thread
+  (otherwise a starved tab composites queued ticks nonstop, the room freezes,
+  uploads stall and memory climbs).
 
 ## Upload
 

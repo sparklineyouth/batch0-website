@@ -112,19 +112,28 @@ async function serve(req: Request, id: string, headOnly: boolean): Promise<Respo
     });
   }
   const chunks = streamPieces(pieces, paths, first);
+  // Players hang up mid-response all the time (every seek does).
+  let cancelled = false;
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
+      let next: IteratorResult<Uint8Array>;
       try {
-        const next = await chunks.next();
-        if (next.done) controller.close();
-        else controller.enqueue(next.value);
+        next = await chunks.next();
       } catch (err) {
+        if (cancelled) return;
         console.error("[recordings] media stream failed", id, err);
         controller.error(err);
+        return;
       }
+      if (cancelled) return;
+      if (next.done) controller.close();
+      else controller.enqueue(next.value);
     },
-    async cancel() {
-      await chunks.return(undefined);
+    cancel() {
+      cancelled = true;
+      // Not awaited: it runs once the read in flight settles, and closes
+      // that piece's Storage response.
+      void chunks.return(undefined).catch(() => {});
     },
   });
   return new Response(body, { status, headers });
@@ -149,18 +158,28 @@ async function* streamPieces(
     // A 200 is the whole object: skip to `from` ourselves.
     let skip = res.status === 206 ? 0 : p.from;
     let left = p.to - p.from + 1;
-    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-      let c = chunk;
-      if (skip > 0) {
-        const drop = Math.min(skip, c.length);
-        c = c.subarray(drop);
-        skip -= drop;
+    const reader = res.body.getReader();
+    try {
+      while (left > 0) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        let c = value;
+        if (skip > 0) {
+          const drop = Math.min(skip, c.length);
+          c = c.subarray(drop);
+          skip -= drop;
+        }
+        if (c.length === 0) continue;
+        if (c.length > left) c = c.subarray(0, left);
+        left -= c.length;
+        yield c;
       }
-      if (c.length === 0) continue;
-      if (c.length > left) c = c.subarray(0, left);
-      left -= c.length;
-      yield c;
-      if (left === 0) break;
+    } finally {
+      // Never awaited: Next's patched fetch tees response bodies, and
+      // cancelling one branch of a tee settles only once the other branch is
+      // cancelled too — which happens when it is garbage-collected. Awaiting
+      // it (as breaking out of `for await` does) hangs the stream for good.
+      reader.cancel().catch(() => {});
     }
     if (left > 0) throw new Error(`short read of ${paths[i]}`);
   }

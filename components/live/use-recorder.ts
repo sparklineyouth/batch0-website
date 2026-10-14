@@ -71,6 +71,8 @@ const TAG_FILL = "rgba(0, 0, 0, 0.6)";
 const FONT_STACK = "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif";
 /** Longest end() waits for the recorder's last chunk. */
 const STOP_TIMEOUT_MS = 3_000;
+/** The longest a busy main thread goes without a recorded frame (plus one frame's draw). */
+const MAX_FRAME_GAP_MS = 250;
 
 type Handlers = {
   mime: string;
@@ -361,22 +363,53 @@ function stopped(recorder: MediaRecorder): Promise<void> {
 }
 
 /**
- * Call `tick` RECORDING_FPS times a second from a dedicated Worker's timer —
- * which, unlike rAF and main-thread timers, keeps its rate in a hidden tab —
- * falling back to setInterval where a Worker can't be made.
+ * Call `tick` up to RECORDING_FPS times a second from a dedicated Worker's
+ * timer — which, unlike rAF and main-thread timers, keeps its rate in a hidden
+ * tab — falling back to setInterval where a Worker can't be made.
+ *
+ * A slow or busy main thread gets fewer frames, never a backlog: the Worker
+ * sends its next tick only once the last one has run, and a tick is skipped
+ * while composing would take more than about half the thread (the time since
+ * the last frame is shorter than frames take to draw — never longer than
+ * MAX_FRAME_GAP_MS). Without this, a starved tab spends all its time
+ * compositing queued ticks, and the room and the part uploads stall behind
+ * them.
  */
 function startTicks(tick: () => void): () => void {
   const ms = Math.round(1000 / RECORDING_FPS);
+  let lastEnd = -Infinity;
+  // Smoothed draw time: one frame stretched by a GC pause or the OS
+  // descheduling the tab shouldn't freeze the picture for as long again.
+  let cost = 0;
+  const run = () => {
+    const start = performance.now();
+    if (start - lastEnd < Math.min(cost, MAX_FRAME_GAP_MS)) return;
+    try {
+      tick();
+    } finally {
+      lastEnd = performance.now();
+      cost = cost * 0.7 + (lastEnd - start) * 0.3;
+    }
+  };
   try {
-    const src = `let t=null;onmessage=(e)=>{clearInterval(t);if(e.data>0)t=setInterval(()=>postMessage(0),e.data)}`;
+    const src =
+      `let t=null,busy=false;onmessage=(e)=>{if(e.data==="ack"){busy=false;return}` +
+      `clearInterval(t);if(e.data>0)t=setInterval(()=>{if(!busy){busy=true;postMessage(0)}},e.data)}`;
     const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
     const worker = new Worker(url);
     URL.revokeObjectURL(url);
-    worker.onmessage = () => tick();
+    worker.onmessage = () => {
+      try {
+        run();
+      } finally {
+        worker.postMessage("ack");
+      }
+    };
     worker.postMessage(ms);
     return () => worker.terminate();
   } catch {
-    const t = setInterval(tick, ms);
+    // Timers don't queue up behind a busy thread; they fire late instead.
+    const t = setInterval(run, ms);
     return () => clearInterval(t);
   }
 }
