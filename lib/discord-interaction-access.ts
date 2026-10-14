@@ -1,4 +1,4 @@
-/** Scope commands to the configured server while retaining onboarding DMs. */
+/** Scope commands to the configured server while retaining onboarding DM buttons. */
 export function allowedDiscordInteraction(
   type: number,
   guildId: unknown,
@@ -8,7 +8,7 @@ export function allowedDiscordInteraction(
   if (type === 1) return true;
   if (!configuredGuildId) return false;
   if (guildId != null) return guildId === configuredGuildId;
-  // Existing onboarding DMs contain buttons and can open a modal. Slash and
-  // context-menu commands must come from the official guild.
-  return type === 3 || type === 5;
+  // Onboarding DMs contain buttons. Slash and context-menu commands must come
+  // from the official guild.
+  return type === 3;
 }

@@ -89,12 +89,6 @@ export function DiscordConfigForm({
           onChange={(v) => set("teamsCategoryId", v)}
         />
         <Row
-          label="#wins channel ID"
-          hint="Milestone check-ins cross-post here."
-          value={values.winsChannelId}
-          onChange={(v) => set("winsChannelId", v)}
-        />
-        <Row
           label="#help channel ID"
           hint="The 'Mentors on-call now' pin lives here."
           value={values.helpChannelId}

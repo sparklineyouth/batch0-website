@@ -247,7 +247,7 @@ Beyond the usage billing in P1 #12:
 ### 32. Team system (from earlier turn)
 
 Full implementation. The current shape:
-- Student-facing `/dashboard/team` with tabs (Profile, Members, Thread, Drive, Demo Day).
+- Student-facing `/dashboard/team` with tabs (Profile, Members, Drive, Demo Day).
 - Logo upload runs an Anthropic vision safety check + lands in admin moderation queue (`/admin/moderation`).
 - Team drive uploads land in `team-drive/<team_id>/drive/`.
 - Members invite teammates by name/email; invitees see a queued invite at `/dashboard/team`.
@@ -263,7 +263,7 @@ These don't block launch but improve the experience over time.
 
 1. **Honeypot field on `/apply`.** Spam-tolerant but cheap to add.
 2. **Bulk-invite flow for teams** (paste a list of emails).
-3. **Notification preferences** — let students mute the team thread / disable email.
+3. **Notification preferences** — let students disable email.
 4. **Investor cap on simultaneous intro requests** to prevent one investor monopolizing the queue.
 5. **Per-student progress link from `/admin/students`** (currently only reachable from `/mentor/students`).
 6. **Sanitized Discord error logging.** Today `lib/discord.ts` logs full response bodies on error.

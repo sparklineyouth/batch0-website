@@ -327,7 +327,7 @@ export function ApplicationsBulkList({ apps }: { apps: AppRow[] }) {
           rows are selected. Positioned outside the table grid so the
           column layout doesn't grow when it appears. */}
       {someSelected && (
-        <div data-bottom-bar className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-3">
             <div className="text-sm">
               <span className="font-semibold text-ink tabular-nums">{selected.size}</span>

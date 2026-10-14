@@ -4,6 +4,7 @@ import {
   DEFAULT_FOR_UNKNOWN,
   IMPORTANCE_GROUPS,
   NOTIFICATION_KINDS,
+  RETIRED_NOTIFICATION_KINDS,
   defaultImportance,
   importanceOf,
   isImportanceValue,
@@ -19,7 +20,7 @@ import {
 
 test("the catalog has no duplicate types", () => {
   const seen = new Set<string>();
-  for (const k of NOTIFICATION_KINDS) {
+  for (const k of [...NOTIFICATION_KINDS, ...RETIRED_NOTIFICATION_KINDS]) {
     assert.equal(seen.has(k.type), false, `duplicate entry for ${k.type}`);
     seen.add(k.type);
   }
@@ -110,4 +111,22 @@ test("isImportanceValue guards the server action's input", () => {
   assert.equal(isImportanceValue(""), false);
   assert.equal(isImportanceValue(null), false);
   assert.equal(isImportanceValue(undefined), false);
+});
+
+test("retired types are quiet, labelled, and not offered in settings", () => {
+  const offered = new Set(NOTIFICATION_KINDS.map((k) => k.type));
+  for (const type of [
+    "team_message",
+    "direct_message",
+    "discussion_question",
+    "discussion_reply",
+    "dm_reported",
+  ]) {
+    assert.equal(defaultImportance(type), "other", type);
+    assert.notEqual(kindFor(type), undefined, `${type} must not fall to DEFAULT_FOR_UNKNOWN`);
+    assert.notEqual(labelForType(type), type, `${type} keeps a written label`);
+    assert.equal(offered.has(type), false, `${type} must not be a settings row`);
+  }
+  // A person's explicit choice still wins for the rows they already have.
+  assert.equal(importanceOf("direct_message", { direct_message: "important" }), "important");
 });

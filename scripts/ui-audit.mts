@@ -4,7 +4,7 @@
  *
  *   npm run build && npx next start -p 3060   # (or npm run dev)
  *   E2E_BASE_URL=http://localhost:3060 npm run ui-audit -- --out=/tmp/ui-audit
- *   ... --only=/admin/challenges,/messages     # a subset of routes
+ *   ... --only=/admin/challenges,/notifications  # a subset of routes
  *
  * For each page it records:
  *   offscreen  an element pokes out past the left or right edge of the screen
@@ -119,31 +119,31 @@ const PUBLIC = [
 const STUDENT = [
   "/dashboard", "/dashboard/accepted", "/dashboard/ai", "/dashboard/announcements", "/dashboard/application",
   "/dashboard/billing", "/dashboard/assignments", "/dashboard/calls", "/dashboard/community", "/dashboard/course",
-  "/dashboard/discussions", "/dashboard/enrolled", "/dashboard/events", "/dashboard/files", "/dashboard/intros",
+  "/dashboard/enrolled", "/dashboard/events", "/dashboard/files", "/dashboard/intros",
   "/dashboard/kickoff", "/dashboard/office-hours", "/dashboard/phone", "/dashboard/referrals", "/dashboard/resources",
-  "/dashboard/scholarships", "/dashboard/settings", "/dashboard/team", "/messages", "/notifications",
+  "/dashboard/scholarships", "/dashboard/settings", "/dashboard/team", "/notifications",
   "/app/home", "/app/events", "/app/course", "/app/assignments", "/app/announcements", "/app/more",
 ];
 const MENTOR = [
   "/mentor", "/mentor/assignments", "/mentor/calls", "/mentor/course", "/mentor/office-hours", "/mentor/resources",
-  "/mentor/students", "/mentor/teams", "/messages",
+  "/mentor/students", "/mentor/teams",
 ];
-const INVESTOR = ["/investor", "/investor/calls", "/investor/demo-day", "/investor/interests", "/investor/intros", "/investor/teams", "/messages"];
+const INVESTOR = ["/investor", "/investor/calls", "/investor/demo-day", "/investor/interests", "/investor/intros", "/investor/teams"];
 const ADMIN = [
   "/admin", "/admin/ai-usage", "/admin/announcements", "/admin/application-questions", "/admin/applications", "/admin/assignments",
   "/admin/audit", "/admin/blog", "/admin/blog/new", "/admin/calls", "/admin/challenges", "/admin/challenges/new",
   "/admin/charges", "/admin/cohorts", "/admin/course", "/admin/course/analytics", "/admin/demo-day",
-  "/admin/demo-day/rubric", "/admin/demo-day/tickets", "/admin/discord", "/admin/discussions", "/admin/email",
+  "/admin/demo-day/rubric", "/admin/demo-day/tickets", "/admin/discord", "/admin/email",
   "/admin/email/automations", "/admin/email/automations/new", "/admin/email/blast", "/admin/email/compose",
   "/admin/email/outbox", "/admin/email/phone-request", "/admin/email/settings", "/admin/email/templates",
   "/admin/email/templates/new", "/admin/events", "/admin/flows", "/admin/flows/new",
-  "/admin/intros", "/admin/mentors", "/admin/mentors/match", "/admin/messages", "/admin/moderation",
+  "/admin/intros", "/admin/mentors", "/admin/mentors/match", "/admin/moderation",
   "/admin/pass-requests", "/admin/passes", "/admin/payments", "/admin/payments/acquisition", "/admin/pricing",
   "/admin/progress", "/admin/recovery", "/admin/referrals", "/admin/resources",
   "/admin/resources/new", "/admin/roles", "/admin/roles/new", "/admin/scholarships", "/admin/scholarships/new",
   "/admin/scholarships/applications", "/admin/settings", "/admin/students", "/admin/students/new", "/admin/teams",
   "/admin/teams/new", "/app/admin", "/app/admin/people", "/app/admin/review", "/app/admin/more",
-  "/messages", "/notifications",
+  "/notifications",
   "/dev/live", "/dev/live/room", "/dev/live/room?role=viewer",
   "/dev/challenge?view=event&state=signedout", "/dev/challenge?view=event&state=registered",
   "/dev/challenge?view=event&state=winner", "/dev/challenge?view=event&state=closed",
@@ -333,7 +333,6 @@ async function main() {
   await reapOrphans();
   const results: PageResult[] = [];
   let browser: Browser | null = null;
-  const conversationIds: string[] = [];
   try {
     const users: Partial<Record<Role, { id: string; session: any } | null>> = {};
     for (const r of ["student", "mentor", "investor", "admin"] as const) users[r] = await createUser(r);
@@ -366,46 +365,12 @@ async function main() {
       ["/admin/resources/", "resources", "id"],
       ["/admin/email/templates/", "email_templates", "id"],
       ["/admin/scholarships/", "scholarships", "id"],
-      ["/admin/discussions/", "discussions", "id"],
     ] as const) {
       const id = await firstId(table, col);
       if (id) extraAdmin.push(`${route}${id}`);
     }
     const cohort = await firstId("cohorts");
     if (cohort) extraAdmin.push(`/admin/cohorts/${cohort}/kickoff`);
-
-    // A conversation with the content that breaks layouts: a long message, an
-    // unbroken URL, and a long name. Only if the DM tables exist.
-    if (users.student && users.mentor) {
-      const [a, b] = [users.student.id, users.mentor.id].sort();
-      const res = await fetch(`${url}/rest/v1/dm_conversations`, {
-        method: "POST",
-        headers: { ...adm, Prefer: "return=representation" },
-        body: JSON.stringify({ user_a: a, user_b: b }),
-      });
-      if (res.ok) {
-        const [c] = await res.json();
-        conversationIds.push(c.id);
-        const bodies = [
-          "Hey! Quick question about the challenge.",
-          "Here is my repo https://github.com/someone/an-extremely-long-repository-name-that-never-breaks/blob/main/src/components/very/deep/path/file.tsx",
-          "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(12),
-          "Averylongwordwithoutanyspacesthatshouldwrapinsidethebubbleandnotpushthelayoutsideways",
-        ];
-        for (const [i, body] of bodies.entries()) {
-          await fetch(`${url}/rest/v1/dm_messages`, {
-            method: "POST",
-            headers: adm,
-            body: JSON.stringify({ conversation_id: c.id, sender_id: i % 2 ? users.mentor.id : users.student.id, body }),
-          });
-        }
-        for (const r of ["student", "mentor"] as const) {
-          (r === "student" ? extraStudent : MENTOR).push(`/messages?c=${c.id}`);
-        }
-      } else {
-        console.log("  (no dm tables yet — skipping the conversation fixture)");
-      }
-    }
 
     const plan: { role: Role; route: string }[] = [
       ...[...PUBLIC, ...extraPublic].map((route) => ({ role: "anon" as Role, route })),

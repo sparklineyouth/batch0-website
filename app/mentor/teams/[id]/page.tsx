@@ -5,7 +5,6 @@ import { passHolderUserIds } from "@/lib/founder-pass";
 import { requireMentor } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { TeamThread } from "@/components/team-thread";
 import { TeamDrive } from "@/components/team/team-drive";
 import { FounderPassBadge } from "@/components/founder-pass-badge";
 import { ArrowLeft } from "lucide-react";
@@ -32,7 +31,6 @@ export default async function MentorTeamDetailPage(
 
   const [
     { data: members },
-    { data: messages },
     { data: files },
     { data: pitch },
     passHolders,
@@ -41,14 +39,6 @@ export default async function MentorTeamDetailPage(
       .from("team_members")
       .select("user_id, role, profile:profiles(full_name, email)")
       .eq("team_id", params.id),
-    admin
-      .from("team_messages")
-      .select(
-        "id, body, kind, created_at, author_id, author:profiles(full_name, email)",
-      )
-      .eq("team_id", params.id)
-      .order("created_at", { ascending: true })
-      .limit(200),
     admin
       .from("team_drive_files")
       .select(
@@ -150,13 +140,6 @@ export default async function MentorTeamDetailPage(
         subtitle="Everything this team has shared. Preview in place, or download."
       />
 
-      <div className="mt-6">
-        <TeamThread
-          teamId={params.id}
-          messages={(messages ?? []) as any[]}
-          passHolderIds={[...passHolders]}
-        />
-      </div>
     </div>
   );
 }

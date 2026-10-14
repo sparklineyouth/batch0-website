@@ -93,13 +93,6 @@ export type StudentRetrieval = {
     due: string | null;
     status: string;
   }> | null;
-  // Recent peer/mentor messages on the team's thread — gives the AI
-  // context for what teammates are debating without re-asking.
-  team_messages?: Array<{
-    author: string | null;
-    body: string;
-    created_at: string;
-  }> | null;
 };
 
 function renderRetrieval(r: StudentRetrieval | null | undefined): string {
@@ -146,15 +139,6 @@ function renderRetrieval(r: StudentRetrieval | null | undefined): string {
       );
     }
     parts.push("</assignments>");
-  }
-  if (r.team_messages && r.team_messages.length > 0) {
-    parts.push("<recent_team_messages>");
-    for (const m of r.team_messages) {
-      parts.push(
-        `  <msg author="${escapeXml(m.author ?? "anonymous")}">${truncate(m.body, 200)}</msg>`,
-      );
-    }
-    parts.push("</recent_team_messages>");
   }
   return parts.filter(Boolean).join("\n") + "\n";
 }

@@ -4,7 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { assertSelf } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
-import { checkRateLimit } from "@/lib/rate-limit";
 import { reserveTeamSlug, slugify } from "@/lib/team";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
 import {
@@ -884,74 +883,3 @@ export async function getTeamDriveDownloadUrl(input: {
   return data.signedUrl;
 }
 
-// ---------------------------------------------------------------------------
-// Messages — members + mentors + investors + admins can post
-// ---------------------------------------------------------------------------
-
-export async function postTeamMessage(input: {
-  teamId: string;
-  body: string;
-}) {
-  const { userId } = await assertSelf();
-  const body = input.body.trim();
-  if (!body) throw new Error("Empty message.");
-  if (body.length > 4000) throw new Error("Message too long.");
-
-  // Throttle: a spammy poster shouldn't be able to flood a team thread.
-  // 10 messages / minute / user across all teams; enough for normal
-  // back-and-forth, way below abuse territory.
-  const rl = await checkRateLimit({
-    kind: "team-message",
-    identifier: userId,
-    limit: 10,
-    windowSeconds: 60,
-  });
-  if (!rl.ok) {
-    throw new Error("Slow down — too many messages in a row.");
-  }
-
-  const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", userId)
-    .maybeSingle();
-
-  let kind: "member" | "mentor" | "investor" | "admin" = "member";
-  if (profile?.role === "admin") kind = "admin";
-  else if (profile?.role === "mentor") kind = "mentor";
-  else if (profile?.role === "investor") kind = "investor";
-  else {
-    await assertTeamMember(userId, input.teamId);
-  }
-
-  const { error } = await admin.from("team_messages").insert({
-    team_id: input.teamId,
-    author_id: userId,
-    body,
-    kind,
-  });
-  if (error) throw new Error(error.message);
-
-  // Notify team members when a non-member (mentor/investor/admin) posts.
-  if (kind !== "member") {
-    const { data: members } = await admin
-      .from("team_members")
-      .select("user_id")
-      .eq("team_id", input.teamId);
-    const who = profile?.full_name ?? `Your ${kind}`;
-    for (const m of members ?? []) {
-      await notify({
-        userId: m.user_id,
-        type: "team_message",
-        title: `${who} posted to your team`,
-        body: body.slice(0, 200),
-        link: "/dashboard/team",
-      });
-    }
-  }
-
-  revalidatePath("/dashboard/team");
-  revalidatePath(`/mentor/teams/${input.teamId}`);
-  revalidatePath(`/investor/teams/${input.teamId}`);
-}

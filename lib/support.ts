@@ -74,7 +74,7 @@ import {
  * Reads and writes for support tickets (migration 0090).
  *
  * Service-role throughout, with explicit filters on every read — the same
- * shape as lib/discussions.ts and lib/interview-requests.ts. RLS is the
+ * shape as lib/interview-requests.ts. RLS is the
  * backstop and never the thing that saves us, and here it *can't* be: the
  * requester's emailed thread page authorizes on a bearer token, so there is no
  * auth.uid() for a policy to key off at all. Every function below takes the
@@ -1538,7 +1538,6 @@ export async function linkTicketPayment(args: {
  * Derived from the role table rather than a hard-coded `role = 'admin'` list,
  * because roles are rows (migration 0048) and a custom "support" role granted
  * the key at /admin/roles must start receiving these without a deploy.
- * Mirrors listModeratorIds() in lib/dm.ts.
  */
 async function supportRoleSlugs(opts: { sensitive: boolean }): Promise<{
   slugs: string[];

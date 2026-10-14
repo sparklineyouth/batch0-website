@@ -6,15 +6,14 @@ import {
   Users,
   Settings,
   FolderOpen,
-  MessageSquare,
   Rocket,
   FileSignature,
   Sparkles,
+  MessageSquare,
 } from "lucide-react";
 import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
 import { TeamDrive } from "@/components/team/team-drive";
-import { TeamThreadTab } from "./team-thread-tab";
 import { TeamPitchTab } from "./team-pitch-tab";
 
 type Team = {
@@ -32,7 +31,7 @@ type Team = {
   my_role: string;
 };
 
-type Tab = "overview" | "members" | "drive" | "thread" | "pitch";
+type Tab = "overview" | "members" | "drive" | "pitch";
 
 export function TeamHome({
   currentUserId,
@@ -40,25 +39,25 @@ export function TeamHome({
   members,
   pendingInvites,
   files,
-  messages,
   pitch,
   passHolderIds = [],
+  discordChannelUrl = null,
 }: {
   currentUserId: string;
   team: Team;
   members: any[];
   pendingInvites: any[];
   files: any[];
-  messages: any[];
   pitch: any;
   passHolderIds?: string[];
+  /** The team's private Discord text channel, when Discord is on and it exists. */
+  discordChannelUrl?: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
 
   const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: "overview", label: "Profile", icon: Settings },
     { id: "members", label: `Members (${members.length})`, icon: Users },
-    { id: "thread", label: "Thread", icon: MessageSquare },
     { id: "drive", label: `Drive (${files.length})`, icon: FolderOpen },
     { id: "pitch", label: "Demo Day", icon: Rocket },
   ];
@@ -114,6 +113,16 @@ export function TeamHome({
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
+        {discordChannelUrl && (
+          <a
+            href={discordChannelUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink"
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Team chat on Discord
+          </a>
+        )}
         <Link href="/dashboard/team/offers">
           <button className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink">
             <FileSignature className="h-3.5 w-3.5" /> SAFE offers
@@ -157,13 +166,6 @@ export function TeamHome({
             team={team}
             members={members}
             pendingInvites={pendingInvites}
-            passHolderIds={passHolderIds}
-          />
-        )}
-        {tab === "thread" && (
-          <TeamThreadTab
-            teamId={team.id}
-            messages={messages}
             passHolderIds={passHolderIds}
           />
         )}

@@ -50,8 +50,8 @@ export function EnableToggle({ initial }: { initial: boolean }) {
             </h2>
             <p className="mt-1 max-w-xl text-xs text-ink-soft">
               {enabled
-                ? "Everything is live: role sync, account linking, slash commands, embeds. Toggle off to pause without uninstalling — students stop seeing the Community link and link button, and no Discord side effects fire."
-                : "All Discord traffic is paused. The slash-command endpoint still answers Discord's PING, but commands reply with a 'paused' message. Account linking is disabled. Re-enable any time."}
+                ? "Pausing hides the Community page and stops every Discord side effect."
+                : "Paused: no posts, no role sync, no linking. Commands reply \"paused\"."}
             </p>
           </div>
         </div>

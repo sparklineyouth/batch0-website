@@ -4,7 +4,6 @@ import { requireAdminArea } from "@/lib/auth";
 import { canViewAdminPath } from "@/lib/permissions";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
-import { ChatDock } from "@/components/messages/chat-dock";
 
 export default async function AdminLayout({
   children,
@@ -42,7 +41,6 @@ export default async function AdminLayout({
           {children}
         </main>
       </div>
-      <ChatDock />
     </div>
   );
 }

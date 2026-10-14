@@ -2,10 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireUser, getProfile } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LessonPlayer } from "./lesson-player";
-import { Comments } from "./comments";
 import { ArrowLeft, FileText } from "lucide-react";
 import { renderLessonMarkdown } from "@/lib/lesson-content";
 import { loadStudentAssignments } from "@/lib/assignments-server";
@@ -21,7 +20,6 @@ export default async function LessonPage(
 ) {
   const params = await props.params;
   const user = await requireUser();
-  const profile = await getProfile();
   const supabase = await createClient();
 
   // Signed URLs for lesson assets are short-lived (10 min) and minted
@@ -67,8 +65,8 @@ export default async function LessonPage(
     return { videoUrl, materials };
   };
 
-  // Progress and comments filter only on the route param + user, so they
-  // ride one batch with the lesson; the signed URLs chain off the lesson
+  // Progress filters only on the route param + user, so it
+  // rides one batch with the lesson; the signed URLs chain off the lesson
   // row inside the same batch instead of adding serial stages.
   // Promise.resolve materializes the builder — a raw PostgREST builder
   // re-runs its fetch on every .then(), and this one is consumed twice.
@@ -79,7 +77,7 @@ export default async function LessonPage(
       .eq("id", params.lessonId)
       .maybeSingle(),
   );
-  const [{ data: lesson }, assets, { data: progress }, { data: commentRows }, attached] =
+  const [{ data: lesson }, assets, { data: progress }, attached] =
     await Promise.all([
       lessonPromise,
       lessonPromise.then(({ data: l }) =>
@@ -91,14 +89,6 @@ export default async function LessonPage(
         .eq("user_id", user.id)
         .eq("lesson_id", params.lessonId)
         .maybeSingle(),
-      // Comments + author profile in a single embedded select.
-      supabase
-        .from("lesson_comments")
-        .select(
-          "id, user_id, parent_id, body, created_at, author:profiles(full_name, email, role)",
-        )
-        .eq("lesson_id", params.lessonId)
-        .order("created_at", { ascending: true }),
       // Assignments anchored to this lesson that this student has been set.
       loadStudentAssignments(supabase, user.id, { lessonId: params.lessonId }),
     ]);
@@ -117,13 +107,6 @@ export default async function LessonPage(
   const lessonIndex = sequence.findIndex((l: any) => l.id === lesson.id);
   const nextLesson = lessonIndex >= 0 ? sequence[lessonIndex + 1] : null;
   const { videoUrl, materials } = assets;
-  const comments = (commentRows ?? []).map((c: any) => ({
-    ...c,
-    author: Array.isArray(c.author) ? c.author[0] : c.author,
-  }));
-
-  const isStaff =
-    profile?.role === "admin" || profile?.role === "mentor";
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -200,15 +183,6 @@ export default async function LessonPage(
           <span className="mt-1 block font-medium text-phosphor-ink">{nextLesson.title} →</span>
         </Link>
       )}
-
-      <Card className="mt-8">
-        <Comments
-          lessonId={lesson.id}
-          initial={comments as any}
-          currentUserId={user.id}
-          isStaff={isStaff}
-        />
-      </Card>
     </div>
   );
 }

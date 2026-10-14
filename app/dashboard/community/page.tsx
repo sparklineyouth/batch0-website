@@ -1,34 +1,27 @@
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser, getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { LocalTime } from "@/components/ui/local-time";
 import { discordAvatarUrl, isDiscordEnabled } from "@/lib/discord";
 
 export const metadata = { title: "Community · batch0" };
 
 export default async function CommunityPage() {
-  const user = await requireUser();
+  await requireUser();
   if (!(await isDiscordEnabled())) redirect("/dashboard");
   const supabase = await createClient();
   // Profile comes from the request-cached getProfile() the layout already
   // resolved — it carries the discord_* columns this page reads.
-  const [profile, { data: settings }, { data: announcements }] =
+  const [profile, { data: settings }] =
     await Promise.all([
       getProfile(),
       supabase
         .from("site_settings")
         .select("key, value")
         .eq("key", "discord_url"),
-      supabase
-        .from("notifications")
-        .select("id, title, body, link, created_at")
-        .eq("user_id", user.id)
-        .eq("type", "announcement")
-        .order("created_at", { ascending: false })
-        .limit(10),
     ]);
 
   const inviteUrl =
@@ -44,9 +37,8 @@ export default async function CommunityPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Community</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        The batch0 Discord server is where every cohort lives: workshops,
-        peer reviews, demo-day prep, post-grad alumni. Link your account once
-        and we keep your role in sync forever.
+        Every cohort lives on the batch0 Discord. Link once; your role stays
+        in sync.
       </p>
 
       <Card className="mt-8 overflow-hidden border-[#5865F2]/20">
@@ -98,57 +90,16 @@ export default async function CommunityPage() {
         </div>
       </Card>
 
-      <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-          Slash commands
-        </h2>
-        <p className="mt-2 text-sm text-ink-soft">
-          Anyone in the server can run these. Replies are private — only you
-          see them.
-        </p>
-        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-          <Cmd cmd="/me" desc="Your application + cohort + open charges." />
-          <Cmd cmd="/cohort" desc="Cohort summary." />
-          <Cmd cmd="/link" desc="DM yourself the account-link URL." />
-          <Cmd cmd="/announce" desc="Admins only — broadcast." />
-        </ul>
-      </Card>
-
-      <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-          Recent announcements
-        </h2>
-        {(announcements?.length ?? 0) === 0 ? (
-          <p className="mt-3 text-sm text-ink-soft">
-            Nothing yet. Announcements posted by admins (here or from Discord
-            with <code className="text-phosphor-ink">/announce</code>) will show up
-            here.
-          </p>
-        ) : (
-          <ul className="mt-3 divide-y divide-line">
-            {(announcements ?? []).map((n: any) => (
-              <li key={n.id} className="py-3">
-                <p className="text-sm font-medium text-ink">{n.title}</p>
-                {n.body && (
-                  <p className="mt-0.5 text-sm text-ink-soft">{n.body}</p>
-                )}
-                <p className="mt-1 text-xs text-ink-faint">
-                  <LocalTime value={n.created_at} />
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      <p className="mt-6 text-sm text-ink-soft">
+        Private question for the team?{" "}
+        <Link
+          href="/dashboard/support/new?topic=program&source=community"
+          prefetch={false}
+          className="link-ink"
+        >
+          Contact support
+        </Link>
+      </p>
     </div>
-  );
-}
-
-function Cmd({ cmd, desc }: { cmd: string; desc: string }) {
-  return (
-    <li className="rounded-xl border border-line bg-paper p-3">
-      <code className="text-sm font-semibold text-phosphor-ink">{cmd}</code>
-      <p className="mt-1 text-xs text-ink-soft">{desc}</p>
-    </li>
   );
 }

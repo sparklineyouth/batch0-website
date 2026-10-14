@@ -356,12 +356,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
-    type: "team_message",
-    label: "Message in your team",
-    group: "Your team",
-    default: "other",
-  },
-  {
     type: "team_logo_rejected",
     label: "Team logo rejected",
     group: "Your team",
@@ -387,24 +381,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   },
 
   // ── Conversations ─────────────────────────────────────────────────────
-  {
-    type: "direct_message",
-    label: "Direct messages",
-    group: "Conversations",
-    default: "important",
-  },
-  {
-    type: "discussion_question",
-    label: "A question for the team",
-    group: "Conversations",
-    default: "other",
-  },
-  {
-    type: "discussion_reply",
-    label: "Reply in a discussion",
-    group: "Conversations",
-    default: "other",
-  },
   {
     type: "intro_request",
     label: "Intro requested",
@@ -473,13 +449,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
-    type: "dm_reported",
-    label: "A conversation was reported",
-    hint: "Opens a private DM to moderators — worth seeing promptly.",
-    group: "Staff queues",
-    default: "important",
-  },
-  {
     type: "discord_blocker",
     label: "Blocker posted in Discord",
     group: "Staff queues",
@@ -487,8 +456,26 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   },
 ];
 
-const BY_TYPE = new Map(NOTIFICATION_KINDS.map((k) => [k.type, k]));
+/**
+ * Types from features that were removed. Old rows still exist, so they keep a
+ * label and an "other" default (rather than falling to DEFAULT_FOR_UNKNOWN),
+ * but they are not in NOTIFICATION_KINDS: the settings panel only offers the
+ * kinds a person can still receive.
+ */
+export const RETIRED_NOTIFICATION_KINDS: NotificationKind[] = [
+  // Discord replaced these in October 2026 (docs/discord.md).
+  { type: "team_message", label: "Team thread message", group: "Your team", default: "other" },
+  { type: "direct_message", label: "Direct message", group: "Conversations", default: "other" },
+  { type: "discussion_question", label: "Question for the team", group: "Conversations", default: "other" },
+  { type: "discussion_reply", label: "Discussion reply", group: "Conversations", default: "other" },
+  { type: "dm_reported", label: "Reported conversation", group: "Staff queues", default: "other" },
+];
 
+const BY_TYPE = new Map(
+  [...NOTIFICATION_KINDS, ...RETIRED_NOTIFICATION_KINDS].map((k) => [k.type, k]),
+);
+
+/** Any known type, current or retired. */
 export function kindFor(type: string): NotificationKind | undefined {
   return BY_TYPE.get(type);
 }

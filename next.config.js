@@ -62,6 +62,14 @@ const nextConfig = {
       { source: "/admin/pulse", destination: "/admin", permanent: true },
       { source: "/admin/interventions", destination: "/admin/assignments?filter=missing", permanent: true },
       { source: "/admin/cohorts/:id/health", destination: "/admin/assignments?cohort=:id", permanent: true },
+      // Retired community features (Discord covers them). Old notification
+      // links and bookmarks land somewhere useful instead of a 404.
+      ...[
+        ["/messages/:path*", "/notifications"],
+        ["/dashboard/discussions/:path*", "/dashboard/support"],
+        ["/admin/discussions/:path*", "/admin"],
+        ["/admin/messages/:path*", "/admin"],
+      ].map(([source, destination]) => ({ source, destination, permanent: true })),
     ];
   },
   webpack: (config) => {
