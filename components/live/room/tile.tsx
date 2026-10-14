@@ -28,7 +28,7 @@ export function Tile({
   pinned = false,
   onPin,
   onPinForEveryone,
-  fullscreen = false,
+  fullscreen = null,
   className = "",
   style,
   children,
@@ -50,8 +50,11 @@ export function Tile({
   pinned?: boolean;
   onPin?: () => void;
   onPinForEveryone?: () => void;
-  /** Offer a fullscreen button (main stage). */
-  fullscreen?: boolean;
+  /**
+   * Offer a fullscreen button (main stage). The element that goes full
+   * screen: the stage area, so the view survives the main tile changing.
+   */
+  fullscreen?: React.RefObject<HTMLElement | null> | null;
   className?: string;
   style?: React.CSSProperties;
   children?: ReactNode;
@@ -59,7 +62,7 @@ export function Tile({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
-  const fs = useFullscreen(box, video);
+  const fs = useFullscreen(fullscreen ?? box, video);
   const small = variant === "film" || variant === "pip";
   // Callers that place the tile themselves pass `absolute`; otherwise it is a normal box.
   const position = /\b(absolute|fixed)\b/.test(className) ? "" : "relative";
@@ -204,7 +207,7 @@ const fsSubscribe = (l: () => void) => {
 
 /** Element fullscreen; iOS falls back to the video element's native fullscreen. */
 function useFullscreen(
-  box: React.RefObject<HTMLDivElement | null>,
+  target: React.RefObject<HTMLElement | null>,
   video: React.RefObject<HTMLVideoElement | null>,
 ) {
   const element = useSyncExternalStore(
@@ -217,19 +220,19 @@ function useFullscreen(
     const v = video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
     setSupported(!!document.fullscreenEnabled || typeof v?.webkitEnterFullscreen === "function");
   }, [video]);
-  const active = !!element && element === box.current;
+  const active = !!element && element === target.current;
   const toggle = useCallback(() => {
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {});
       return;
     }
-    const el = box.current;
+    const el = target.current;
     if (el && document.fullscreenEnabled) {
       void el.requestFullscreen().catch(() => {});
       return;
     }
     const v = video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
     v?.webkitEnterFullscreen?.();
-  }, [box, video]);
+  }, [target, video]);
   return { supported, active, toggle };
 }

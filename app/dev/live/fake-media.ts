@@ -138,8 +138,9 @@ function voiceStream(freq: number, offset: number): { stream: MediaStream; stop:
   am.start();
   const cycle = 5000;
   const timer = setInterval(() => {
-    const phase = (Date.now() + offset) % cycle;
-    gain.gain.setTargetAtTime(phase < 2000 ? 0.06 : 0, a.currentTime, 0.05);
+    const talking = (Date.now() + offset) % cycle < 2000;
+    gain.gain.setTargetAtTime(talking ? 0.06 : 0, a.currentTime, 0.05);
+    amGain.gain.setTargetAtTime(talking ? 0.03 : 0, a.currentTime, 0.05);
   }, 100);
   return {
     stream: dest.stream,

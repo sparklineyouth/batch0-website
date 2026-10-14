@@ -120,6 +120,13 @@ export function Popover({
     };
   }, [open, place]);
 
+  // The latest onClose, so the effect below runs once per opening (re-running
+  // it would pull focus back to the first item on every parent render).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   // Focus the first item; Esc and outside presses close.
   useEffect(() => {
     if (!open) return;
@@ -132,14 +139,31 @@ export function Popover({
       if (e.key === "Escape") {
         e.stopPropagation();
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         anchor.current?.focus({ preventScroll: true });
+        return;
+      }
+      // Arrow keys move between menu items.
+      if (role === "menu" && ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+        const items = [...(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [])];
+        if (!items.length) return;
+        e.preventDefault();
+        const i = items.indexOf(document.activeElement as HTMLElement);
+        const next =
+          e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? items.length - 1
+              : e.key === "ArrowDown"
+                ? (i + 1) % items.length
+                : (i - 1 + items.length) % items.length;
+        items[next].focus();
       }
     };
     const onDown = (e: PointerEvent) => {
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchor.current?.contains(t)) return;
-      onClose();
+      onCloseRef.current();
     };
     document.addEventListener("keydown", onKey, true);
     document.addEventListener("pointerdown", onDown, true);
@@ -147,7 +171,7 @@ export function Popover({
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("pointerdown", onDown, true);
     };
-  }, [open, onClose, anchor]);
+  }, [open, anchor, role]);
 
   if (!open || typeof document === "undefined") return null;
   return createPortal(

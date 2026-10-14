@@ -77,13 +77,13 @@ export function DeviceControls({ media }: { media: LocalMediaView | null }) {
   const mic = useMicTest(media?.stream ?? null, speakerId);
   const [pickable, setPickable] = useState(false);
   useEffect(() => setPickable(canPickSpeaker()), []);
-  const mounted = useRef(true);
-  useEffect(
-    () => () => {
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const testSound = () => {
     setSounding(true);

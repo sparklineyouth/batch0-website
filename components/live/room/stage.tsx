@@ -53,14 +53,17 @@ export function Stage({
   pipNotice?: ReactNode;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
   const size = useSize(root);
   const hasFilm = model.filmstrip.length > 0;
   const column = size.w >= 720 && size.w / Math.max(1, size.h) >= 1.15;
   const filmW = Math.round(Math.min(240, Math.max(150, size.w * 0.17)));
   const filmH = size.w < 480 ? 72 : 96;
 
-  const mainW = column && hasFilm ? size.w - filmW - FILM_GAP : size.w;
-  const mainH = !column && hasFilm ? size.h - filmH - FILM_GAP : size.h;
+  // The main area is measured itself, so a full-screen stage lays out for the screen.
+  const mainSize = useSize(mainRef);
+  const mainW = mainSize.w;
+  const mainH = mainSize.h;
 
   const tileFor = (t: StageTile, variant: TileVariant, extra?: { className?: string; style?: React.CSSProperties }) => {
     if (t.kind === "presentation" && t.isSelf && variant !== "main") {
@@ -90,7 +93,7 @@ export function Stage({
             ? () => pinForEveryone(t.peerId)
             : undefined
         }
-        fullscreen={variant === "main"}
+        fullscreen={variant === "main" ? mainRef : null}
         className={extra?.className}
         style={extra?.style}
       />
@@ -141,9 +144,9 @@ export function Stage({
       data-layout={model.layout}
       data-why={model.why}
     >
-      <div className="relative min-h-0 min-w-0 flex-1" data-testid="stage-main">
-        {size.w > 0 ? main : null}
-        {model.pip && size.w > 0 ? (
+      <div ref={mainRef} className="relative min-h-0 min-w-0 flex-1 bg-[#0c0c0e]" data-testid="stage-main">
+        {mainW > 0 ? main : null}
+        {model.pip && mainW > 0 ? (
           <div
             className="absolute z-10 overflow-hidden rounded-md shadow-[0_4px_16px_rgba(0,0,0,0.5)] ring-1 ring-[#34343a]"
             style={{
