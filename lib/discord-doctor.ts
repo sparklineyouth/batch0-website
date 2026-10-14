@@ -17,7 +17,6 @@ import {
   fetchDiscordAppInfo,
   expectedOauthRedirectUris,
   SLASH_COMMANDS,
-  type DiscordSettings,
 } from "@/lib/discord";
 import type { Role } from "@/lib/types";
 

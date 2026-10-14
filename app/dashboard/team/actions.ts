@@ -4,7 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { assertSelf } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
-import { checkRateLimit } from "@/lib/rate-limit";
 import { reserveTeamSlug, slugify } from "@/lib/team";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
 import {

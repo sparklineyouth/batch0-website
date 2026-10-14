@@ -30,7 +30,7 @@ export default async function AdminOverview() {
   // Every admin-area role lands here, so each block is gated by the same
   // permission as the page it summarises — an intern without `payments.view`
   // must not learn total revenue from the overview.
-  const { caps, profile } = await requireAdminArea();
+  const { caps } = await requireAdminArea();
   const seeApplications = can(caps, "applications.view");
   const seePeople = can(caps, "people.view");
   const seeRevenue = can(caps, "payments.view");

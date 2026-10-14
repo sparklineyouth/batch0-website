@@ -47,13 +47,6 @@ function ephemeral(content: string) {
   });
 }
 
-function publicReply(content: string, embeds?: Record<string, any>[]) {
-  return NextResponse.json({
-    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    data: { content, embeds, allowed_mentions: { parse: [] } },
-  });
-}
-
 function deferEphemeral() {
   // ACK Discord within 3s — we'll edit the response with the real
   // payload via the followup endpoint.
