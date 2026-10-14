@@ -23,12 +23,13 @@ Migrations `0071_scholarships.sql`, `0072_scholarship_award_percent.sql` and
 the Supabase SQL editor or `supabase db push` from the repo root. They're
 idempotent — a double-paste is harmless.
 
-Then click **Restore built-in templates** at `/admin/email/templates` to make
+Then click **Add built-in templates** at `/admin/email/templates` to make
 the scholarship emails editable. Until you do, they still send: every one
-falls back to a compiled version in `lib/email/templates.ts`. If you restored
-them before 0074, restore again: the money award gained `{{perks_line}}`, the
-old "mentor calls" award now covers every perks-only award, and there is a new
-`demo_day.guest_ticket`.
+falls back to a compiled version in `lib/email/templates.ts`. The button adds
+only the templates you don't have yet. If you added them before 0074, press it
+again for the new `demo_day.guest_ticket`, and edit the two award emails you
+already have: both gained `{{perks_line}}`, and the old "mentor calls" award
+now covers every perks-only award.
 
 ## Setting one up
 

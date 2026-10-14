@@ -211,7 +211,7 @@ does not).
 ## Checking it
 
 ```bash
-npm run webinar-doctor     # configuration, signalling, scheduled webinars
+npm run webinar-doctor     # configuration, signalling, 0095/0096, scheduled webinars
 npm run webinar-e2e        # real browsers, real accounts, decoded frames
 npm run call-mesh-e2e      # a 1:1 that gains a co-host mid-call
 npm run webinar-panel-e2e  # chat, Q&A, polls, reactions across three people
