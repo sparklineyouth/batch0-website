@@ -833,6 +833,22 @@ export function fallbackHomeFor(caps: Capabilities): string {
   return "/dashboard";
 }
 
+/**
+ * True when a role opens no section at all: no admin area, no student
+ * dashboard, no mentor or investor panel. Its members land on a bare
+ * /dashboard that says so. Usually a custom role whose only keys were retired
+ * (pulse.view, interventions.manage, discussions.manage, ai_usage.view); the
+ * roles list flags it so someone gives it a key.
+ */
+export function opensNoSection(caps: Capabilities): boolean {
+  return (
+    !canAccessAdmin(caps) &&
+    !can(caps, "student.dashboard") &&
+    !can(caps, "mentor.panel") &&
+    !can(caps, "investor.panel")
+  );
+}
+
 /** Can this role actually reach the home it's configured with? */
 export function canReachHome(caps: Capabilities, home: string): boolean {
   if (home.startsWith("/admin")) return canAccessAdmin(caps);

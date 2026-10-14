@@ -9,6 +9,9 @@ import {
   canAccessAdmin,
   capabilitiesFrom,
   covers,
+  isKnownPermission,
+  opensNoSection,
+  resolveHome,
   roleColorClasses,
 } from "@/lib/permissions";
 import { GrantRoleForm } from "./grant-form";
@@ -50,9 +53,12 @@ export default async function AdminRolesPage() {
         {roles.map((role) => {
           const roleCaps = capabilitiesFrom(role.slug, role.permissions);
           const members = counts[role.slug] ?? 0;
+          // Retired keys stay stored until 0093/0099/0100 strip them, but
+          // grant nothing, so they don't count.
           const permCount = roleCaps.superAdmin
             ? ALL_PERMISSIONS.length
-            : role.permissions.length;
+            : role.permissions.filter(isKnownPermission).length;
+          const stranded = opensNoSection(roleCaps);
           return (
             <Link
               key={role.slug}
@@ -79,6 +85,11 @@ export default async function AdminRolesPage() {
                         full access
                       </span>
                     )}
+                    {stranded && members > 0 && (
+                      <span className="rounded-full border border-amber-500/40 px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                        opens no page
+                      </span>
+                    )}
                   </div>
                   {role.description && (
                     <p className="mt-1.5 max-w-2xl text-sm text-ink-soft">
@@ -88,7 +99,7 @@ export default async function AdminRolesPage() {
                   <p className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-ink-faint">
                     {permCount} permission{permCount === 1 ? "" : "s"} ·{" "}
                     {canAccessAdmin(roleCaps) ? "admin area" : "no admin area"} ·
-                    lands on {role.home_path}
+                    lands on {resolveHome(roleCaps, role.home_path)}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

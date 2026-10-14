@@ -38,3 +38,21 @@ Migration `0100_admin_cleanup.sql` strips the retired `ai_usage.view` key from
 stored roles and deletes leftover self-check probe passes (negative serials).
 No schema change. Until it runs, a stale key only stops non-superadmins
 editing that role, and the passes ledger hides probe rows regardless.
+
+A custom role whose only admin keys were the retired ones (`pulse.view`,
+`interventions.manage`, `discussions.manage`, `ai_usage.view`) lost the admin
+area with the deploy, before any migration. `/admin/roles` marks such a role
+"opens no page", and its members see "Nothing to open yet" on `/dashboard`.
+Give it a current key at `/admin/roles/<slug>` (a role that answered student
+questions through `discussions.manage` wants `support.view` and
+`support.manage`). To find them in SQL, before or after 0093/0099/0100:
+
+```sql
+select r.slug, r.permissions, count(p.id) as members
+from app_roles r left join profiles p on p.role = r.slug
+where not r.permissions && array['*', 'student.dashboard', 'mentor.panel', 'investor.panel']
+group by r.slug, r.permissions;
+```
+
+Any row whose `permissions` are empty or only retired keys is one; one that
+also holds a current admin key is fine.

@@ -12,6 +12,8 @@ import {
   canMeet,
   emailLandingFor,
   isKnownPermission,
+  opensNoSection,
+  resolveHome,
   PERMISSION_NEEDS,
   rolesHolding,
   unmetPermissionNeed,
@@ -250,4 +252,24 @@ test("rolesHolding picks roles by what they may do, not by their name", () => {
   ];
   assert.deepEqual(rolesHolding(roles, "calls.invite"), ["admin", "mentor", "partner"]);
   assert.deepEqual(rolesHolding([], "calls.invite"), []);
+});
+
+test("a role holding only retired keys opens no section and lands on /dashboard", () => {
+  // pulse.view, interventions.manage, discussions.manage and ai_usage.view
+  // left the catalog in October 2026. A custom role built only from them
+  // still stores them, but they open nothing.
+  const ops = capabilitiesFrom("ops", ["pulse.view", "interventions.manage", "discussions.manage"]);
+  assert.equal(canAccessAdmin(ops), false);
+  assert.equal(opensNoSection(ops), true);
+  assert.equal(resolveHome(ops, "/admin"), "/dashboard");
+  assert.equal(opensNoSection(capabilitiesFrom("calls-only", ["calls.invite"])), true);
+  assert.equal(opensNoSection(capabilitiesFrom("none", [])), true);
+});
+
+test("every built-in kind of role opens a section", () => {
+  for (const perms of [["*"], ["student.dashboard"], ["mentor.panel"], ["investor.panel"], ["support.view"]]) {
+    assert.equal(opensNoSection(capabilitiesFrom("r", perms)), false, perms.join());
+  }
+  // A retired key next to a live one doesn't matter.
+  assert.equal(opensNoSection(capabilitiesFrom("intern", ["pulse.view", "people.view"])), false);
 });
