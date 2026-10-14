@@ -317,6 +317,7 @@ export async function readCohostIds(
 export type InviteeOption = {
   id: string;
   name: string;
+  /** Empty unless the viewer may see people's emails (people.view). */
   email: string;
   teamName?: string | null;
 };
@@ -325,21 +326,36 @@ export type InviteeOption = {
  * Who can be invited: every student, deliberately (a product decision). The
  * audit log and the admins' view of every call cover the edge that an
  * investor can reach a student they don't know; tighten here if ever needed.
+ *
+ * The list goes to the host's browser whole, so emails only travel to hosts
+ * who may see them anyway (`withEmail`: people.view). Mentors and investors
+ * pick by name, told apart by team.
  */
-export async function listInvitableStudents(): Promise<InviteeOption[]> {
+export async function listInvitableStudents(
+  opts: { withEmail?: boolean } = {},
+): Promise<InviteeOption[]> {
+  const withEmail = opts.withEmail === true;
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("id, full_name, email, role")
-    .eq("role", "student")
-    .order("full_name", { ascending: true })
-    .limit(500);
+  const [{ data }, { data: memberships }] = await Promise.all([
+    admin
+      .from("profiles")
+      .select(withEmail ? "id, full_name, email" : "id, full_name")
+      .eq("role", "student")
+      .order("full_name", { ascending: true })
+      .limit(500),
+    admin.from("team_members").select("user_id, team:teams(name)").limit(5000),
+  ]);
+  const teamOf = new Map<string, string>();
+  for (const m of (memberships ?? []) as any[]) {
+    const name = one<any>(m.team)?.name;
+    if (name && !teamOf.has(m.user_id)) teamOf.set(m.user_id, name);
+  }
 
-  return (data ?? []).map((p: any) => ({
+  return ((data ?? []) as any[]).map((p) => ({
     id: p.id,
-    name: p.full_name || p.email || "Unnamed student",
-    email: p.email ?? "",
-    teamName: null,
+    name: p.full_name || (withEmail ? p.email : "") || "Unnamed student",
+    email: withEmail ? (p.email ?? "") : "",
+    teamName: teamOf.get(p.id) ?? null,
   }));
 }
 
@@ -348,23 +364,26 @@ export async function listInvitableStudents(): Promise<InviteeOption[]> {
  * (callStaffRoleSlugs) — admins, and mentors and investors while their roles
  * hold calls.invite. The page drops the viewer (already the host), so one
  * list serves every host. `teamName` carries the role, so the picker reads
- * "mentor" where a student's team would be.
+ * "mentor" where a student's team would be. Emails as for students.
  */
-export async function listInvitableStaff(): Promise<InviteeOption[]> {
+export async function listInvitableStaff(
+  opts: { withEmail?: boolean } = {},
+): Promise<InviteeOption[]> {
+  const withEmail = opts.withEmail === true;
   const roles = await callStaffRoleSlugs();
   if (roles.length === 0) return [];
   const admin = createAdminClient();
   const { data } = await admin
     .from("profiles")
-    .select("id, full_name, email, role")
+    .select(withEmail ? "id, full_name, email, role" : "id, full_name, role")
     .in("role", roles)
     .order("full_name", { ascending: true })
     .limit(500);
 
-  return (data ?? []).map((p: any) => ({
+  return ((data ?? []) as any[]).map((p) => ({
     id: p.id,
-    name: p.full_name || p.email || "Unnamed",
-    email: p.email ?? "",
+    name: p.full_name || (withEmail ? p.email : "") || "Unnamed",
+    email: withEmail ? (p.email ?? "") : "",
     teamName: p.role,
   }));
 }

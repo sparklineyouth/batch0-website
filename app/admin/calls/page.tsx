@@ -18,11 +18,12 @@ export const metadata = { title: "1:1 calls · Admin" };
 
 export default async function AdminCallsPage() {
   const viewer = await requirePermission("calls.invite");
+  const withEmail = can(viewer.caps, "people.view");
   const [mine, all, students, allStaff, requests] = await Promise.all([
     listInvitesForHost(viewer.profile.id),
     listAllInvites(),
-    listInvitableStudents(),
-    listInvitableStaff(),
+    listInvitableStudents({ withEmail }),
+    listInvitableStaff({ withEmail }),
     listOpenInterviewRequests(),
   ]);
   const staff = allStaff.filter((s) => s.id !== viewer.profile.id);

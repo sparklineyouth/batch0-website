@@ -11,9 +11,23 @@ import { MAX_CALL_COHOSTS, type CallInvite } from "@/lib/live";
 export type InviteeOption = {
   id: string;
   name: string;
+  /** Empty for hosts who may not see emails (lib/calls.ts listInvitableStudents). */
   email: string;
   teamName?: string | null;
 };
+
+/** The line under a name: email and team, whichever the host was given. */
+function detailOf(s: InviteeOption): string {
+  return [s.email, s.teamName].filter(Boolean).join(" · ");
+}
+
+function matchesQuery(s: InviteeOption, q: string): boolean {
+  return (
+    s.name.toLowerCase().includes(q) ||
+    s.email.toLowerCase().includes(q) ||
+    (s.teamName ?? "").toLowerCase().includes(q)
+  );
+}
 
 export type InviteDraft = {
   inviteeId: string;
@@ -61,11 +75,7 @@ export function InviteForm({
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? students.filter(
-          (s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q),
-        )
-      : students;
+    const list = q ? students.filter((s) => matchesQuery(s, q)) : students;
     return list.slice(0, 8);
   }, [students, query]);
 
@@ -80,7 +90,9 @@ export function InviteForm({
           <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-wash px-3 py-2.5">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-ink">{selected.name}</p>
-              <p className="truncate text-xs text-ink-faint">{selected.email}</p>
+              {detailOf(selected) ? (
+                <p className="truncate text-xs text-ink-faint">{detailOf(selected)}</p>
+              ) : null}
             </div>
             <button
               type="button"
@@ -120,7 +132,9 @@ export function InviteForm({
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm text-ink">{s.name}</span>
-                      <span className="block truncate text-xs text-ink-faint">{s.email}</span>
+                      {detailOf(s) ? (
+                        <span className="block truncate text-xs text-ink-faint">{detailOf(s)}</span>
+                      ) : null}
                     </span>
                     <Check className="h-4 w-4 shrink-0 text-ink-faint opacity-0" />
                   </button>
@@ -314,12 +328,7 @@ export function CohostPicker({
     if (!q || full) return [];
     return staff
       .filter((s) => !value.includes(s.id))
-      .filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.email.toLowerCase().includes(q) ||
-          (s.teamName ?? "").toLowerCase().includes(q),
-      )
+      .filter((s) => matchesQuery(s, q))
       .slice(0, 6);
   }, [staff, query, value, full]);
   const chosen = value
@@ -387,10 +396,9 @@ export function CohostPicker({
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm text-ink">{s.name}</span>
-                  <span className="block truncate text-xs text-ink-faint">
-                    {s.email}
-                    {s.teamName ? ` · ${s.teamName}` : ""}
-                  </span>
+                  {detailOf(s) ? (
+                    <span className="block truncate text-xs text-ink-faint">{detailOf(s)}</span>
+                  ) : null}
                 </span>
               </button>
             </li>

@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { Card } from "@/components/ui/card";
 import { CallsPanel } from "@/components/live/calls-panel";
 import { listInvitesForHost, listInvitableStaff, listInvitableStudents } from "@/lib/calls";
@@ -7,10 +8,12 @@ export const metadata = { title: "1:1 calls · Mentor" };
 
 export default async function MentorCallsPage() {
   const viewer = await requirePermission("calls.invite");
+  // Emails only for hosts who may see people's details anyway.
+  const withEmail = can(viewer.caps, "people.view");
   const [invites, students, allStaff] = await Promise.all([
     listInvitesForHost(viewer.profile.id),
-    listInvitableStudents(),
-    listInvitableStaff(),
+    listInvitableStudents({ withEmail }),
+    listInvitableStaff({ withEmail }),
   ]);
 
   return (
