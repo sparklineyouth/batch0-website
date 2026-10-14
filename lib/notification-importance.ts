@@ -310,12 +310,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
-    type: "file_feedback",
-    label: "Feedback on a file you uploaded",
-    group: "Assignments & feedback",
-    default: "other",
-  },
-  {
     type: "assignment_submitted",
     label: "A student you mentor submitted an assignment",
     group: "Assignments & feedback",
@@ -471,6 +465,8 @@ export const RETIRED_NOTIFICATION_KINDS: NotificationKind[] = [
   // Office hours were retired in favour of 1:1 calls (migration 0097).
   { type: "office_hours_booked", label: "Office hours booked", group: "Schedule & calls", default: "other" },
   { type: "office_hours_recap", label: "Office hours recap", group: "Schedule & calls", default: "other" },
+  // Google Drive replaced in-app files and their mentor feedback (migration 0094).
+  { type: "file_feedback", label: "Feedback on a file", group: "Assignments & feedback", default: "other" },
 ];
 
 const BY_TYPE = new Map(

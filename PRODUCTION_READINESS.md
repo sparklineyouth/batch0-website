@@ -28,7 +28,7 @@ Run these in the Supabase SQL editor in order. Each is idempotent.
 
 1. `0012_hardening.sql` — adds `notifications.dedupe_key` + partial unique index, splits Stripe webhook dedupe into claim/complete.
 2. `0013_drop_school_features.sql` — drops `assignments`, `assignment_submissions`, `quizzes`, `quiz_questions`, `quiz_attempts` and the `submissions` storage bucket (batch0 is an accelerator, not a school).
-3. `0014_file_feedback.sql` — adds `file_feedback` so mentors can leave threaded feedback on student or team file uploads.
+3. `0014_file_feedback.sql` — adds `file_feedback` so mentors can leave threaded feedback on student or team file uploads. (Retired with in-app files by `0094_google_drive.sql`; the table is kept, read-only.)
 4. `0015_ai_usage.sql` — adds `ai_usage` rollup table + `ai_messages` token columns + `ai_conversations.team_id` for per-team AI scoping.
 5. `0030_drop_mfa.sql` — drops `mfa_verifications` and its policies. Two-factor auth has been removed from the product.
 
@@ -50,7 +50,7 @@ Crons are listed in `vercel.json`; the assignment-due cron was deleted with the 
 
 **Problem:** `gradeSubmission` / `reopenSubmission` only checked `assertStaff()`. Any mentor could grade or view any submission system-wide.
 
-**Fix:** New helper `lib/mentor-scope.ts::assertMentorCanAccessStudent` checks either a direct `mentor_assignments` row OR a shared cohort. Wired into `gradeSubmission`, `reopenSubmission`, the personal-drive download flow, and the new file-feedback action. Admins always bypass.
+**Fix:** New helper `lib/mentor-scope.ts::assertMentorCanAccessStudent` checks either a direct `mentor_assignments` row OR a shared cohort. Wired into `gradeSubmission`, `reopenSubmission`, and (until 0094 retired in-app files) the personal-drive download flow and the file-feedback action. Admins always bypass.
 
 **Goal:** A mentor only sees students in their cohort. Even with role escalation paths, file access is cohort-scoped.
 
@@ -215,7 +215,9 @@ batch0 is a startup accelerator — not a school. Removed:
 
 ### 28. Mentor file feedback flow
 
-Replaces the deleted grading flow. New `/mentor/students/[id]` page composition:
+**Retired** with in-app files (Google Drive replaced them, migration `0094`; see `docs/google-drive.md`). Kept here as history.
+
+Replaced the deleted grading flow. New `/mentor/students/[id]` page composition:
 - "Files + feedback" panel listing the student's personal uploads.
 - Pick a file → see prior mentor feedback + leave new feedback.
 - Cohort-scoped via `assertMentorCanAccessStudent`.
@@ -247,12 +249,12 @@ Beyond the usage billing in P1 #12:
 ### 32. Team system (from earlier turn)
 
 Full implementation. The current shape:
-- Student-facing `/dashboard/team` with tabs (Profile, Members, Drive, Demo Day).
+- Student-facing `/dashboard/team` with tabs (Profile, Members, Drive, Demo Day). `?tab=drive` opens a tab directly.
 - Logo upload runs an Anthropic vision safety check + lands in admin moderation queue (`/admin/moderation`).
-- Team drive uploads land in `team-drive/<team_id>/drive/`.
+- Drive is the team's Google Drive folder + pinned Google links (`team_drive_links`, `docs/google-drive.md`). Older uploads in `team-drive/` and `student-files/` are download-only.
 - Members invite teammates by name/email; invitees see a queued invite at `/dashboard/team`.
 - Mentor/investor team views at `/mentor/teams/[id]` + `/investor/teams/[id]`.
-- Demo Day pitch submission tab (deck PDF + 3-min video URL or upload).
+- Demo Day pitch submission tab (deck link + video link).
 - Investor scorecard (problem / traction / team / ask, 1–5) + intro-request workflow tracked at `/admin/intros`.
 
 ---
@@ -277,12 +279,12 @@ These don't block launch but improve the experience over time.
 Configuration tasks no code can do for you.
 
 1. **Apply migrations** `0011_phase2_features.sql` → `0015_ai_usage.sql` in the Supabase SQL editor.
-2. **Verify storage buckets** exist: `course-videos`, `course-materials`, `resources`, `student-files`, `team-drive` (private), `team-logos` (public). The submissions bucket should be gone after migration 0013.
+2. **Verify storage buckets** exist: `course-videos`, `course-materials`, `resources`, `student-files` and `team-drive` (private, read-only since 0094), `team-logos` (public). The submissions bucket should be gone after migration 0013.
 3. **Enable Realtime** for the `notifications` table in Supabase Dashboard → Database → Publications → `supabase_realtime`. The bell falls back to a 60s poll if Realtime is off, so this isn't strictly required but the UX is noticeably worse without it.
 4. **Environment variables** present in production. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, `NEXT_PUBLIC_SITE_URL`. Optional: `NEXT_PUBLIC_SENTRY_DSN` (error reporting), `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PUBLIC_KEY` (Ed25519 key for slash-command verification), `DISCORD_ROLE_STUDENT`, `DISCORD_ANNOUNCEMENTS_WEBHOOK`, `RESEND_API_KEY` + `RESEND_FROM` (transactional email via Resend — without them, `sendEmail` no-ops in dev and logs `disabled` in prod).
 5. **Stripe webhook endpoint** points at `https://<domain>/api/stripe/webhook` with `checkout.session.completed`, `payment_intent.succeeded`, and `charge.refunded` subscribed.
 6. **Supabase Auth settings:** "Confirm email" is enabled (otherwise typo-emails silently succeed at signup).
-7. **Smoke test Demo Day** end-to-end before announcing: one test team submits a deck + video, an investor scores it, an investor requests an intro, an admin progresses the intro through the funnel.
+7. **Smoke test Demo Day** end-to-end before announcing: one test team submits a deck link + video link, an investor scores it, an investor requests an intro, an admin progresses the intro through the funnel.
 
 ---
 

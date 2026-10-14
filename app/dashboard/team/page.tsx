@@ -11,10 +11,17 @@ import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { isDiscordEnabled } from "@/lib/discord";
 import { discordChannelUrl } from "@/lib/discord-links";
 import { env } from "@/lib/env";
+import { loadOlderUploads, loadTeamDrive } from "@/lib/team-drive";
+import { OlderUploads } from "@/components/team/older-uploads";
 
 export const metadata = { title: "Team · batch0" };
 
-export default async function TeamPage() {
+export default async function TeamPage(props: {
+  searchParams: Promise<{ tab?: string; older?: string }>;
+}) {
+  const { tab, older } = await props.searchParams;
+  // Set by the older-uploads download route when a file can't be served.
+  const olderUnavailable = older === "unavailable";
   const user = await requireUser();
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");
@@ -31,10 +38,11 @@ export default async function TeamPage() {
   const team = await getMyTeam(user.id);
 
   if (team) {
+    const drivePromise = loadTeamDrive(admin, team.id);
+    const olderUploadsPromise = loadOlderUploads(admin, { userId: user.id, teamId: team.id });
     const [
       { data: members },
       { data: invites },
-      { data: files },
       { data: pitch },
       passHolders,
       discordEnabled,
@@ -53,13 +61,6 @@ export default async function TeamPage() {
         .eq("status", "pending")
         .order("created_at", { ascending: false }),
       admin
-        .from("team_drive_files")
-        .select(
-          "id, name, size_bytes, mime_type, created_at, uploader_id, uploader:profiles(full_name, email)",
-        )
-        .eq("team_id", team.id)
-        .order("created_at", { ascending: false }),
-      admin
         .from("pitch_submissions")
         .select("*")
         .eq("team_id", team.id)
@@ -67,14 +68,20 @@ export default async function TeamPage() {
       passHolderUserIds(admin),
       isDiscordEnabled(),
     ]);
+    const [drive, olderUploads] = await Promise.all([drivePromise, olderUploadsPromise]);
 
     return (
       <TeamHome
+        // Keyed on ?tab= so a link to another tab (e.g. /dashboard/files →
+        // ?tab=drive) switches tabs even when the page is already open.
+        key={tab ?? ""}
+        initialTab={tab}
         currentUserId={user.id}
         team={team}
         members={(members ?? []) as any[]}
         pendingInvites={(invites ?? []) as any[]}
-        files={(files ?? []) as any[]}
+        drive={drive}
+        olderUploads={{ ...olderUploads, unavailable: olderUnavailable }}
         pitch={pitch as any}
         passHolderIds={[...passHolders]}
         discordChannelUrl={
@@ -87,6 +94,7 @@ export default async function TeamPage() {
   }
 
   // No team yet — show inbox of invites + a "create a team" form.
+  const olderUploads = await loadOlderUploads(admin, { userId: user.id, teamId: null });
   const { data: pendingForMe } = await admin
     .from("team_invites")
     .select(
@@ -124,6 +132,8 @@ export default async function TeamPage() {
           <CreateTeamForm />
         </div>
       </Card>
+
+      <OlderUploads className="mt-8" {...olderUploads} unavailable={olderUnavailable} />
     </div>
   );
 }

@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
-import { TeamDrive } from "@/components/team/team-drive";
+import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
+import { OlderUploads } from "@/components/team/older-uploads";
+import type { OlderUploadsState, TeamDriveState } from "@/lib/team-drive";
 import { TeamPitchTab } from "./team-pitch-tab";
 
 type Team = {
@@ -34,33 +36,39 @@ type Team = {
 type Tab = "overview" | "members" | "drive" | "pitch";
 
 export function TeamHome({
+  initialTab,
   currentUserId,
   team,
   members,
   pendingInvites,
-  files,
+  drive,
+  olderUploads,
   pitch,
   passHolderIds = [],
   discordChannelUrl = null,
 }: {
+  /** From ?tab=, so links can open a tab directly. */
+  initialTab?: string;
   currentUserId: string;
   team: Team;
   members: any[];
   pendingInvites: any[];
-  files: any[];
+  drive: TeamDriveState;
+  olderUploads: OlderUploadsState;
   pitch: any;
   passHolderIds?: string[];
   /** The team's private Discord text channel, when Discord is on and it exists. */
   discordChannelUrl?: string | null;
 }) {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [picked, setTab] = useState<string | undefined>(initialTab);
 
   const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: "overview", label: "Profile", icon: Settings },
     { id: "members", label: `Members (${members.length})`, icon: Users },
-    { id: "drive", label: `Drive (${files.length})`, icon: FolderOpen },
+    { id: "drive", label: "Drive", icon: FolderOpen },
     { id: "pitch", label: "Demo Day", icon: Rocket },
   ];
+  const tab: Tab = tabs.some((t) => t.id === picked) ? (picked as Tab) : "overview";
 
   const showApprovedLogo =
     team.logo_status === "approved" && team.logo_url;
@@ -170,7 +178,10 @@ export function TeamHome({
           />
         )}
         {tab === "drive" && (
-          <TeamDrive teamId={team.id} files={files} canUpload />
+          <div className="space-y-6">
+            <GoogleDrivePanel teamId={team.id} drive={drive} canEdit />
+            <OlderUploads {...olderUploads} />
+          </div>
         )}
         {tab === "pitch" && (
           <TeamPitchTab teamId={team.id} pitch={pitch} />

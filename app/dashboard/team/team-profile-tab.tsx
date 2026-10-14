@@ -219,8 +219,8 @@ export function TeamProfileTab({ team }: { team: Team }) {
       <Card>
         <h3 className="text-base font-semibold text-red-700 dark:text-red-300">Danger zone</h3>
         <p className="mt-1 text-xs text-ink-faint">
-          Leaving is permanent. If you're the last member the team will be
-          deleted (and all drive files lost).
+          Leaving is permanent. If you're the last member the team is
+          deleted. Files in Google Drive stay where they are.
         </p>
         <div className="mt-4">
           <Button
@@ -236,7 +236,7 @@ export function TeamProfileTab({ team }: { team: Team }) {
       <ConfirmDialog
         open={confirmLeave}
         title="Leave this team?"
-        description="You'll lose access to the drive and pitch submission."
+        description="You'll lose access to the Drive links and pitch submission."
         confirmLabel="Leave"
         destructive
         pending={pending}

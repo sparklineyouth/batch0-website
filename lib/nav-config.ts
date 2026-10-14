@@ -5,7 +5,6 @@ import {
   PlayCircle,
   CalendarDays,
   Sparkles,
-  FolderOpen,
   CreditCard,
   Settings,
   ShieldCheck,
@@ -112,7 +111,6 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
       { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
       { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
       { href: "/dashboard/ai", label: "AI co-founder", icon: Sparkles },
-      { href: "/dashboard/files", label: "Files", icon: FolderOpen },
       { href: "/dashboard/intros", label: "Investor intros", icon: Handshake },
     ],
   },
@@ -163,7 +161,6 @@ export const ENROLLED_ONLY_HREFS = new Set<string>([
   "/dashboard/assignments",
   "/dashboard/events",
   "/dashboard/resources",
-  "/dashboard/files",
   "/dashboard/intros",
 ]);
 

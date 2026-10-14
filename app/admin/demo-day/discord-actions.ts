@@ -47,7 +47,7 @@ export async function postDemoDayPitchThreads(
       .order("name"),
     admin
       .from("pitch_submissions")
-      .select("team_id, deck_path, video_url, video_path, submitted_at")
+      .select("team_id, video_url, submitted_at")
       .not("submitted_at", "is", null),
   ]);
   const pitchByTeam = new Map<string, any>(
@@ -64,9 +64,8 @@ export async function postDemoDayPitchThreads(
     const lines: string[] = [];
     if (t.tagline) lines.push(`_${t.tagline}_`);
     if (p.video_url) lines.push(`▶ [Pitch video](${p.video_url})`);
-    // Deck + uploaded-video files live in private storage — we don't
-    // share them here to avoid leaking signed URLs into a public
-    // channel. Audience members can watch the full pitch on the site.
+    // No deck link: it can point at a team's private Google Drive, and
+    // this is a public channel. The site shows the full pitch.
     lines.push(`\nReact below — your taps land on the leaderboard.`);
 
     const messageId = await postChannelMessageWithId(

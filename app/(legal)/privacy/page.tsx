@@ -45,7 +45,7 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Program usage:</strong> lesson progress, assignment submissions,
-          team threads, comments, and files you upload to your drive.
+          team threads, comments, and links to your team's Google Drive files.
         </li>
         <li>
           <strong>Support requests:</strong> the messages and files you send

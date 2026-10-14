@@ -50,8 +50,8 @@ export function LockedFeature({
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-ink-faint" />
         <p>
           Cohort-only features (Team, Assignments, Course, Events, Resources,
-          Files, Announcements) unlock once you're enrolled. You'll see them
-          in the sidebar then.
+          Announcements) unlock once you're enrolled. You'll see them in the
+          sidebar then.
         </p>
       </div>
     </div>
