@@ -14,25 +14,27 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * recent thing a student touched, named in words. Everything else on the
  * shape is the supporting detail for a per-student view.
  *
- * Pure-ish and dependency-light on purpose — the counting and ranking is
- * separated from the queries (see `summarise`) so the ordering rules can be
- * reasoned about without a database.
+ * The event shapes and the ranking live in lib/progress-events.ts, apart
+ * from the queries, so both views build them the same way and the rules are
+ * tested without a database.
  */
 
-export type ProgressArea = "course" | "flow" | "resource" | "challenge" | "assignment";
+import {
+  assignmentEvent,
+  challengeEvent,
+  formatWatched,
+  pickStoppedAt,
+  sortRecent,
+  type ProgressEvent,
+} from "./progress-events";
 
-/** One thing the student did, normalised across the five source tables. */
-export type ProgressEvent = {
-  area: ProgressArea;
-  /** What they were on — a lesson title, a flow step, a resource name. */
-  label: string;
-  /** Extra qualifier: "3m watched", "step 2 of 5", "submitted". */
-  detail?: string;
-  at: string;
-  /** True when this represents finishing something rather than pausing in it. */
-  complete: boolean;
-  href?: string;
-};
+export {
+  formatWatched,
+  pickStoppedAt,
+  sortRecent,
+  type ProgressArea,
+  type ProgressEvent,
+} from "./progress-events";
 
 export type AreaProgress = {
   done: number;
@@ -63,39 +65,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / DAY_MS);
-}
-
-/**
- * Rank events into a single "here's where they are" answer.
- *
- * Most-recent-first, with one deliberate tie-break: an *incomplete* event
- * beats a complete one at the same timestamp. If a student finished lesson 3
- * and started lesson 4 in the same minute, "started lesson 4" is the useful
- * answer to where they stopped — "finished lesson 3" describes where they
- * were a moment earlier.
- */
-export function pickStoppedAt(events: ProgressEvent[]): ProgressEvent | null {
-  if (events.length === 0) return null;
-  return [...events].sort((a, b) => {
-    const d = new Date(b.at).getTime() - new Date(a.at).getTime();
-    if (d !== 0) return d;
-    if (a.complete !== b.complete) return a.complete ? 1 : -1;
-    return 0;
-  })[0];
-}
-
-export function sortRecent(events: ProgressEvent[], limit = 12): ProgressEvent[] {
-  return [...events]
-    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, limit);
-}
-
-/** "4m 12s watched" — reads better than a raw second count on a roster. */
-export function formatWatched(seconds: number): string {
-  if (seconds < 60) return `${seconds}s watched`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return s === 0 ? `${m}m watched` : `${m}m ${s}s watched`;
 }
 
 /**
@@ -220,30 +189,14 @@ export async function getStudentProgress(
 
   // ---- Submissions --------------------------------------------------------
   const challengeRows = (challengesRes.data ?? []) as any[];
-  for (const r of challengeRows) {
-    const c = Array.isArray(r.challenge) ? r.challenge[0] : r.challenge;
-    events.push({
-      area: "challenge",
-      label: c?.title ?? "a weekly challenge",
-      detail: "submitted",
-      // created_at is when the first draft autosaved, possibly days earlier.
-      at: r.submitted_at ?? r.created_at,
-      complete: true,
-      href: "/admin/challenges",
-    });
-  }
+  for (const r of challengeRows) events.push(challengeEvent(r));
 
-  const assignmentRows = (assignmentsRes.data ?? []) as any[];
-  for (const r of assignmentRows) {
-    const a = Array.isArray(r.assignment) ? r.assignment[0] : r.assignment;
-    events.push({
-      area: "assignment",
-      label: a?.title ?? "an assignment",
-      detail: r.status === "submitted" ? "submitted" : r.status === "returned" ? "returned for changes" : "reviewed",
-      at: r.submitted_at ?? r.updated_at,
-      complete: true,
-      href: "/admin/assignments",
-    });
+  let assignments = 0;
+  for (const r of (assignmentsRes.data ?? []) as any[]) {
+    const e = assignmentEvent(r);
+    if (!e) continue;
+    assignments++;
+    events.push(e);
   }
 
   const stoppedAt = pickStoppedAt(events);
@@ -267,7 +220,7 @@ export async function getStudentProgress(
       inProgress: 0,
     },
     challenges: challengeRows.length,
-    assignments: assignmentRows.length,
+    assignments,
     stoppedAt,
     recent: sortRecent(events),
     idleDays: stoppedAt ? daysSince(stoppedAt.at) : null,
@@ -287,6 +240,8 @@ export type RosterProgress = {
   lessonsDone: number;
   flowsDone: number;
   resourcesOpened: number;
+  /** Assignments handed in (excused ones don't count). */
+  assignmentsDone: number;
 };
 
 /**
@@ -295,6 +250,9 @@ export type RosterProgress = {
  * Deliberately NOT `getStudentProgress` in a loop — that's eight queries per
  * student, so a 40-person cohort would be 320 round trips to render one table.
  * Each source table is read once for the whole roster and grouped in memory.
+ * It reads the same sources as the per-student view, so a student who only
+ * handed in assignments isn't listed as never started. A failed read (before
+ * 0093, course_assignment_submissions doesn't exist) counts as no activity.
  */
 export async function getRosterProgress(
   userIds: string[],
@@ -302,8 +260,17 @@ export async function getRosterProgress(
   if (userIds.length === 0) return [];
   const admin = createAdminClient();
 
-  const [profiles, lessons, lessonProgress, flows, flowProgress, resources, views] =
-    await Promise.all([
+  const [
+    profiles,
+    lessons,
+    lessonProgress,
+    flows,
+    flowProgress,
+    resources,
+    views,
+    challengeSubs,
+    assignmentSubs,
+  ] = await Promise.all([
       admin.from("profiles").select("id, full_name, email").in("id", userIds),
       admin.from("lessons").select("id, title"),
       admin
@@ -320,6 +287,16 @@ export async function getRosterProgress(
         .from("resource_views")
         .select("user_id, resource_id, last_viewed_at, view_count")
         .in("user_id", userIds),
+      admin
+        .from("challenge_submissions")
+        .select("user_id, created_at, submitted_at, challenge:challenges(title)")
+        .in("user_id", userIds)
+        .neq("status", "draft"),
+      admin
+        .from("course_assignment_submissions")
+        .select("user_id, status, submitted_at, updated_at, assignment:course_assignments(title)")
+        .in("user_id", userIds)
+        .neq("status", "excused"),
     ]);
 
   const lessonTitle = new Map(
@@ -373,6 +350,17 @@ export async function getRosterProgress(
     });
   }
 
+  for (const r of (challengeSubs.data ?? []) as any[]) {
+    push(r.user_id, challengeEvent(r));
+  }
+  const assignmentsDone = new Map<string, number>();
+  for (const r of (assignmentSubs.data ?? []) as any[]) {
+    const e = assignmentEvent(r);
+    if (!e) continue;
+    push(r.user_id, e);
+    assignmentsDone.set(r.user_id, (assignmentsDone.get(r.user_id) ?? 0) + 1);
+  }
+
   const lessonsDone = new Map<string, number>();
   for (const r of (lessonProgress.data ?? []) as any[]) {
     if (r.completed_at) {
@@ -401,6 +389,7 @@ export async function getRosterProgress(
       lessonsDone: lessonsDone.get(p.id) ?? 0,
       flowsDone: flowsDone.get(p.id) ?? 0,
       resourcesOpened: opened.get(p.id) ?? 0,
+      assignmentsDone: assignmentsDone.get(p.id) ?? 0,
     };
   });
 }

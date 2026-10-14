@@ -238,8 +238,8 @@ export default async function AdminStudentDetail(
           </div>
         ) : (
           <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-faint">
-            No recorded activity yet — no lessons watched, flows started, or
-            resources opened.
+            No recorded activity yet — no lessons watched, flows started,
+            resources opened or work handed in.
           </p>
         )}
 
