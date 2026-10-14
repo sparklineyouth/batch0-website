@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { LocalTime } from "@/components/ui/local-time";
 import { useAudioSinks, AudioSinks } from "./audio-sinks";
 import { ControlBar } from "./controls";
 import { DeckPresenter } from "./deck/deck-presenter";
@@ -266,25 +267,38 @@ function RoomBody(
     now: Date.now(),
   });
 
+  // A call says who left, and until when they can come back.
+  const rejoinUntil = props.end?.rejoinUntil ?? null;
+  const alone = kind === "call" && model.why === "alone";
   let waitingChip: ReactNode = null;
-  if (kind === "call" && model.why === "alone" && connection.joined) {
+  if (alone && connection.joined) {
     const away = remotes.filter((r) => !onStage(r));
     const left = away.filter((r) => r.state === "left").map((r) => r.name);
     // On the page (signalling) but the link isn't up yet, vs not here at all.
     const coming = away.filter((r) => r.state !== "left" && r.heard).map((r) => r.name);
     const waiting = away.filter((r) => r.state !== "left" && !r.heard).map((r) => r.name);
-    const text = left.length
-      ? `${joinNames(left)} left the call`
-      : coming.length
+    const text: ReactNode = left.length ? (
+      <>
+        <span>{joinNames(left)} left the call.</span>
+        {rejoinUntil ? (
+          <span className="text-[#a1a1aa]">
+            They can rejoin until <LocalTime value={rejoinUntil} mode="time" />.
+          </span>
+        ) : null}
+      </>
+    ) : coming.length
         ? `Connecting to ${joinNames(coming)}…`
         : waiting.length
           ? `Waiting for ${joinNames(waiting)} to join`
           : "Waiting for others to join";
-    waitingChip = <Chip testId="chip-waiting">{text}</Chip>;
+    waitingChip = (
+      <Chip testId="chip-waiting" wrap={left.length > 0}>
+        {text}
+      </Chip>
+    );
   }
 
-  // A call says who left, and until when they can come back.
-  const rejoinUntil = props.end?.rejoinUntil ?? null;
+  // With others still on the stage (no chip), a toast says it instead.
   const leftIds = remotes
     .filter((r) => r.state === "left")
     .map((r) => r.peerId)
@@ -295,7 +309,7 @@ function RoomBody(
     if (kind !== "call" || phase !== "live") return;
     const now = new Set(leftIds ? leftIds.split(",") : []);
     for (const id of now) {
-      if (announcedLeft.current.has(id)) continue;
+      if (announcedLeft.current.has(id) || alone) continue;
       const who = remotes.find((r) => r.peerId === id)?.name || "Someone";
       const until = rejoinUntil
         ? ` They can rejoin until ${new Date(rejoinUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`
@@ -305,7 +319,7 @@ function RoomBody(
     announcedLeft.current = now;
     // `remotes` is read for names only; the ids decide when this runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, phase, leftIds, rejoinUntil, toast]);
+  }, [kind, phase, leftIds, rejoinUntil, alone, toast]);
 
   // A refused join is the "Couldn't join" notice; the same text isn't bannered too.
   const [hiddenError, setHiddenError] = useState<string | null>(null);
@@ -509,10 +523,12 @@ function RoomBody(
   );
 }
 
-function Chip({ children, testId }: { children: ReactNode; testId?: string }) {
+function Chip({ children, testId, wrap = false }: { children: ReactNode; testId?: string; wrap?: boolean }) {
   return (
     <span
-      className="inline-flex max-w-full items-center gap-2 truncate rounded-md bg-[rgba(20,20,22,0.85)] px-3 py-1.5 text-sm text-[#f4f4f5] ring-1 ring-[#34343a]"
+      className={`inline-flex max-w-full items-center rounded-md bg-[rgba(20,20,22,0.85)] px-3 py-1.5 text-sm text-[#f4f4f5] ring-1 ring-[#34343a] ${
+        wrap ? "flex-wrap justify-center gap-x-2 text-center" : "gap-2 truncate"
+      }`}
       data-testid={testId}
     >
       {children}
