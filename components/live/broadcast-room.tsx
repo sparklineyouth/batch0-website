@@ -5,8 +5,12 @@ import { PreJoin } from "@/components/live/pre-join";
 import { LiveDot } from "@/components/live/call-stage";
 import { VideoTile } from "@/components/live/video-tile";
 import { CallControls } from "@/components/live/call-controls";
-import { QAPanel } from "@/components/live/qa-panel";
-import { RoomPanel } from "@/components/live/room-panel";
+// WS-C: the webinar side panel, mounted here until the new room shell lands.
+import { WebinarPanel } from "@/components/live/room/panel/webinar-panel";
+import {
+  ReactionsButton,
+  ReactionsOverlay,
+} from "@/components/live/room/panel/reactions";
 import { PremierePlayer } from "@/components/live/premiere-player";
 import { useLocalMedia } from "@/components/live/use-local-media";
 import { DeviceSettings } from "@/components/live/device-settings";
@@ -30,7 +34,6 @@ import {
   JOIN_CLOSES_MINUTES_AFTER,
   roomWindow,
   type LiveRole,
-  type WebinarQuestion,
 } from "@/lib/live";
 import type { LivePeer } from "@/lib/live-rooms";
 import type { SignalRole } from "@/lib/live-signal";
@@ -47,7 +50,7 @@ import {
   type EventSpeaker,
   type PremiereState,
 } from "@/lib/webinars";
-import type { RoomState } from "@/app/dashboard/events/[id]/live/room-actions";
+import type { PanelTab, WebinarPanelInitial } from "@/lib/webinar-panel";
 import type { JoinResult, PresenceResult } from "@/app/live/actions";
 import { AlertTriangle, Users, Loader2, CircleDot, PhoneOff } from "lucide-react";
 
@@ -170,8 +173,8 @@ export type WebinarRoom = {
   canEnd: boolean;
   speakers: EventSpeaker[];
   deck: { id: string; filename: string; sizeBytes: number | null }[];
-  initialQuestions: WebinarQuestion[];
-  initialRoomState: RoomState | null;
+  /** The side panel's server-rendered state (loadWebinarPanelInitial). */
+  panel: WebinarPanelInitial;
   /**
    * File one recording segment. `run` is the recording run it belongs to —
    * when this room (and so its recorder) mounted. `useRecorder` numbers
@@ -188,7 +191,6 @@ export type WebinarRoom = {
     seconds: number,
     run: number,
   ) => Promise<SegmentOutcome>;
-  onGoLive: () => Promise<string | null>;
   /** End for everyone. Resolves with the STORED `live_ended_at`. */
   onEndLive: () => Promise<string>;
   onReopenLive: () => Promise<void>;
@@ -296,8 +298,6 @@ type RoomProps = {
    * real count, a viewer sees nothing.
    */
   displayViewerCount?: number | null;
-  /** Present for webinars, absent for 1:1 calls. */
-  qa?: { eventId: string; initialQuestions: WebinarQuestion[] };
   /**
    * Everything that makes this room a WEBINAR rather than a 1:1.
    *
@@ -407,7 +407,6 @@ function BroadcastSession({
   role,
   backHref,
   displayViewerCount = null,
-  qa,
   webinar,
   call,
   join,
@@ -442,6 +441,7 @@ function BroadcastSession({
   );
   const [endedAt, setEndedAt] = useState<string | null>(initialEndedAt);
   const [canEnd, setCanEnd] = useState(!!webinar?.canEnd);
+  const [panelTab, setPanelTab] = useState<PanelTab>("chat");
   // A viewer who arrives on an ended webinar (only ever via a stale page — the
   // server renders the ended shell for them) goes straight to the ended screen.
   const [phase, setPhase] = useState<Phase>(
@@ -1400,17 +1400,6 @@ function BroadcastSession({
     };
   }, [fetchCallStatus, phase]);
 
-  /** Hand a premiere over to the live room, now. Hosts only. */
-  const goLiveNow = useCallback(async () => {
-    if (!webinar) return;
-    try {
-      await webinar.onGoLive();
-      setPremierePhase("live");
-    } catch (err) {
-      setEndError(getActionError(err, "Couldn't go live — try again."));
-    }
-  }, [webinar]);
-
   // Reopen from the green room ("Ended at 19:40 — Reopen and go live"): an
   // explicit choice, never a side effect of pressing Start.
   const [joinBusy, setJoinBusy] = useState(false);
@@ -1458,14 +1447,6 @@ function BroadcastSession({
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [guardUnload]);
-
-  // The panel heard `stage-change` (go-live, End, Reopen): re-ask the server
-  // now instead of waiting out the poll.
-  const recheck = session.recheck;
-  const onStageChange = useCallback(() => {
-    recheck();
-    pollNow.current();
-  }, [recheck]);
 
   const rejoinUntil = call
     ? new Date(
@@ -1652,7 +1633,7 @@ function BroadcastSession({
           isStaffHost,
           inPremiere,
           otherName: call?.otherName ?? null,
-          isWebinar: !!(webinar || qa),
+          isWebinar: !!webinar,
         })}
         notice={
           call ? (
@@ -1693,7 +1674,7 @@ function BroadcastSession({
   // for. Never after End: a recording that kept playing under "Ended" was a bug.
   const premiereShowing =
     !!webinar?.premiere && premierePhase === "playing" && !isHost && !endedAt;
-  const panel = webinar ?? qa;
+  const panel = webinar;
 
   // What a host sees of the other broadcasters. In a 1:1 everyone else is
   // always accounted for — waiting, here, reconnecting or left — so there is
@@ -1841,7 +1822,7 @@ function BroadcastSession({
       )}
 
       <div className="flex flex-col gap-3 lg:flex-row">
-        <div className="min-w-0 flex-1 space-y-3">
+        <div className="relative min-w-0 flex-1 space-y-3">
           {isHost && session.joinFailed ? (
             <JoinFailedCard
               message={session.error}
@@ -1929,45 +1910,28 @@ function BroadcastSession({
           {webinar && webinar.speakers.length > 0 && (
             <SpeakerStrip speakers={webinar.speakers} compact />
           )}
+          {/* WS-C temporary mount: reactions float over the stage. */}
+          {webinar && <ReactionsOverlay roomTopic={session.roomTopic} />}
         </div>
 
-        {(webinar || qa) && (
-          <div className="h-[50vh] min-h-[320px] w-full shrink-0 lg:h-[70vh] lg:w-80">
-            {webinar && webinar.initialRoomState ? (
-              // The rich panel: chat, the question queue with upvotes, polls
-              // and reactions, all over Realtime rather than the 5-second poll
-              // QAPanel was built around. The ended state is OURS, passed in;
-              // the panel reports what the server tells it and never keeps a
-              // second copy (two copies is how a Reopen used to leave an
-              // "ended" banner up in one half of the room).
-              <RoomPanel
-                eventId={webinar.eventId}
-                isModerator={isHost}
-                audienceMode={webinar.audienceMode}
-                initial={webinar.initialRoomState}
-                roomTopic={session.roomTopic}
-                moderationTopic={session.moderationTopic}
-                liveEndedAt={endedAt}
-                onServerState={(s) => {
-                  if (s.liveEndedAt) setEndedAt(s.liveEndedAt);
-                  setCanEnd(s.canEnd);
-                }}
-                onStageChange={onStageChange}
-              />
-            ) : (
-              // The fallback, and it is a real one rather than dead code: a
-              // deploy that lands before migration 0084 is applied by hand gets
-              // a null room state, and a webinar that degrades to the question
-              // queue it has always had is very much better than one that
-              // renders an error where the panel should be.
-              <QAPanel
-                eventId={webinar?.eventId ?? qa!.eventId}
-                role={role}
-                initialQuestions={
-                  webinar?.initialQuestions ?? qa!.initialQuestions
-                }
-              />
-            )}
+        {/* WS-C temporary mount: the webinar side panel. */}
+        {webinar && (
+          <div className="h-[50vh] min-h-[320px] w-full shrink-0 overflow-hidden rounded-xl border border-line lg:h-[70vh] lg:w-80">
+            <WebinarPanel
+              eventId={webinar.eventId}
+              role={isStaffHost ? "staff" : isHost ? "speaker" : "viewer"}
+              selfId={webinar.selfUserId}
+              selfName={webinar.selfName}
+              roomTopic={session.roomTopic}
+              moderationTopic={session.moderationTopic}
+              live={session.joined}
+              ended={!!endedAt}
+              tab={panelTab}
+              onTabChange={setPanelTab}
+              audienceCount={session.audienceCount}
+              initial={webinar.panel}
+              tone="page"
+            />
           </div>
         )}
       </div>
@@ -2000,11 +1964,9 @@ function BroadcastSession({
           onLeave={hangUp}
           canBroadcast={isHost && !inPremiere}
         />
-
-        {isHost && webinar && inPremiere && !endedAt && (
-          <Button onClick={goLiveNow} disabled={ending}>
-            Go live now
-          </Button>
+        {/* WS-C temporary mount. */}
+        {webinar && (
+          <ReactionsButton eventId={webinar.eventId} roomTopic={session.roomTopic} tone="page" />
         )}
 
         {/* The one End for everyone. Staff only in the bar (a guest speaker
@@ -2122,7 +2084,7 @@ function prejoinCopy({
     return `A private 1:1 with ${otherName ?? "them"}. Your camera and mic will be on.`;
   }
   if (isHost && inPremiere) {
-    return "This is a premiere: the recording plays first. You go on air when it hands over — or when you press Go live now — and your camera stays off until then.";
+    return "This is a premiere: the recording plays first. You go on air when it hands over, and your camera stays off until then.";
   }
   if (isHost) {
     return isStaffHost
@@ -2500,7 +2462,7 @@ const ENDED_POLL_JITTER_MS = 3_000;
  * cannot place a viewer in the room — after a Reopen past end+30m, until a
  * host is back on air — and that is exactly the Reopen this is waiting for.
  * So a null only slows the poll down (60s); a failed read (the server throws
- * rather than answering null when it could not tell — see fetchPremiereState)
+ * rather than answering null when it could not tell — see fetchLiveState)
  * is retried on the next tick like any other.
  */
 function useReopenWatch(

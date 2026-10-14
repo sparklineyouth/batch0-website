@@ -32,9 +32,7 @@
  * setting an admin chooses, defaulting to exactly what happens today.
  *
  *   private    A viewer sees only their own questions, and there is no chat.
- *              Nothing on the wire tells one student that another exists. This
- *              is the default, and it is what every event created before
- *              migration 0084 does.
+ *              Nothing on the wire tells one student that another exists.
  *
  *   moderated  Viewers write; a host decides what the room sees. An unapproved
  *              message reaches the hosts and nobody else — enforced in RLS, not
@@ -85,15 +83,27 @@ export function messagesNeedApproval(mode: AudienceMode): boolean {
   return mode === "moderated";
 }
 
-/** Coerce whatever is in the column into a mode. Unknown values fail closed. */
+/**
+ * What a NEW event gets when nobody picked a mode: chat on. Existing rows keep
+ * whatever they store (the column is NOT NULL), so this only reaches events
+ * created without a value.
+ */
+export const DEFAULT_AUDIENCE_MODE: AudienceMode = "open";
+
+/**
+ * Coerce a stored or submitted value into a mode.
+ *
+ * Absent (undefined / null / "") means "nobody chose" and gets the default.
+ * Anything present but unrecognised — a typo, a mode a newer build wrote —
+ * fails closed to `private`.
+ */
 export function normalizeAudienceMode(value: unknown): AudienceMode {
-  return value === "moderated" || value === "open"
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_AUDIENCE_MODE;
+  }
+  return value === "private" || value === "moderated" || value === "open"
     ? value
-    : // Anything unrecognised — null from a row written before 0084, a typo, a
-      // future mode this build does not know about — becomes the private
-      // default. Failing closed here means a deploy that is behind the database
-      // shows a webinar with no chat, rather than one with unmoderated chat.
-      "private";
+    : "private";
 }
 
 // ---------------------------------------------------------------------------
@@ -138,20 +148,30 @@ export function normalizeChatMessage(input: string): string | null {
   return cleaned.slice(0, MAX_CHAT_LENGTH);
 }
 
+/**
+ * One chat message as a reader receives it. Carries no user ids: `mine` is
+ * all a client needs, and an id is one more thing a student could collect
+ * about another.
+ */
 export type ChatMessage = {
   id: string;
-  eventId: string;
-  authorId: string;
   /** Resolved server-side. "You" for the reader's own messages. */
   authorName: string;
+  mine: boolean;
   body: string;
   /** Was the author staff or a guest speaker when they sent it? */
   isHost: boolean;
   /** Null while waiting on a host in `moderated` mode. */
   approvedAt: string | null;
+  /** Set once removed (by a host or its author). Such a row is never drawn. */
+  removedAt: string | null;
   pinned: boolean;
   createdAt: string;
 };
+
+/** Author self-deletes: a spam ceiling, not a participation limit. */
+export const CHAT_DELETE_LIMIT = 10;
+export const CHAT_DELETE_WINDOW_SECONDS = 60;
 
 /**
  * Is this message visible to the audience right now?
@@ -945,6 +965,42 @@ export function isHostedOnBatch0(liveMode: string | null | undefined): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Questions (as the room panel receives them)
+// ---------------------------------------------------------------------------
+
+export type RoomQuestion = {
+  id: string;
+  /** "You" for the reader's own; "A student" where names are withheld. */
+  askerName: string;
+  mine: boolean;
+  body: string;
+  status: "open" | "answered" | "dismissed";
+  voteCount: number;
+  /** Has the READER upvoted it. */
+  voted: boolean;
+  spotlighted: boolean;
+  /** Null until a host lets it through (or it was asked in an open room). */
+  approvedAt: string | null;
+  createdAt: string;
+};
+
+/**
+ * Queue order: the spotlight first, then open questions by votes (ties in the
+ * order asked), then answered / dismissed at the bottom.
+ */
+export function sortQuestions<T extends Pick<RoomQuestion, "status" | "voteCount" | "spotlighted" | "createdAt">>(
+  questions: readonly T[],
+): T[] {
+  const rank = (q: T) => (q.spotlighted ? 0 : q.status === "open" ? 1 : 2);
+  return [...questions].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (rank(a) === 1 ? b.voteCount - a.voteCount : 0) ||
+      a.createdAt.localeCompare(b.createdAt),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Polls
 // ---------------------------------------------------------------------------
 
@@ -1002,6 +1058,17 @@ export function normalizePoll(input: {
     return { ok: false, error: "Two options say the same thing." };
   }
   return { ok: true, question, options };
+}
+
+/**
+ * May the audience see this poll? While it is open, and after it closes if
+ * anyone voted (its result). A draft — never opened, so never voted on — stays
+ * the host's private preparation.
+ */
+export function pollVisibleToAudience(
+  poll: Pick<WebinarPoll, "open" | "tally">,
+): boolean {
+  return poll.open || poll.tally.some((n) => n > 0);
 }
 
 /** Percentages for a tally, rounded so they still add to 100. */

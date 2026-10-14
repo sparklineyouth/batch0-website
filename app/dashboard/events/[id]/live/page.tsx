@@ -29,12 +29,12 @@ import {
 import {
   listAssets,
   listSpeakers,
+  loadWebinarPanelInitial,
   signAssets,
   signedAssetUrl,
 } from "@/lib/webinar-data";
 import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
 import { claimSpeakerSlot } from "@/app/admin/events/webinar-actions";
-import { fetchRoomState } from "./room-actions";
 import { LiveRoom } from "./live-room";
 import { BuiltinEventRoom } from "./builtin-room";
 import { env } from "@/lib/env";
@@ -221,24 +221,6 @@ export default async function EventLivePage(
 
   const end = new Date(roomWindow(ev.startsAt, ev.endsAt).end);
 
-  // Seeding the Q&A panel is a query against our own database and needs
-  // nothing from Daily, so it is kicked off first and awaited last: the room
-  // check and the token mint below are HTTP calls to Daily, and this takes
-  // the slower side off the critical path instead of adding to it.
-  //
-  // The Q&A seed keeps the audience-privacy split from the first paint: the
-  // host gets the whole queue, a viewer only ever gets their own questions —
-  // the same rule the panel's polling enforces, so nothing is briefly visible
-  // that then disappears.
-  const questionsPromise =
-    role === "host"
-      ? listQuestionsForEvent(ev.id)
-      : listQuestionsForAsker(ev.id, access.userId);
-  // It is awaited below, where a failure still fails the page. This just
-  // keeps a rejection that lands while a provider round trip is in flight
-  // from being "unhandled" in the meantime.
-  questionsPromise.catch(() => {});
-
   // ---- batch0 Live (the default) ------------------------------------------
   //
   // Nothing to mint and no provider to call: the credentials are issued by a
@@ -275,16 +257,11 @@ export default async function EventLivePage(
     // The recording and the deck, signed only for the people entitled to them
     // right now. Read together because both are one query against our own
     // database and neither is on the critical path of "the host pressed Start".
-    // `fetchRoomState` is a server action, and calling one from a server
-    // component is just calling an async function — so the chat, the question
-    // queue and the polls are seeded here rather than fetched on mount. That
-    // is not only a saved round trip: the panel's privacy shaping (what a
-    // viewer may see in each audience mode) lives inside that one function, and
-    // re-deriving a seed here would be a second copy of the rule that decides
-    // whether one student's words reach another.
-    const [assets, initialRoomState] = await Promise.all([
+    // The side panel's first state comes with the page, shaped for this
+    // reader by the same loader the panel's own reads use.
+    const [assets, panel] = await Promise.all([
       listAssets(ev.id, ["premiere", "deck", "handout"]),
-      fetchRoomState(ev.id),
+      loadWebinarPanelInitial(ev.id, access),
     ]);
     const speakerCards = speakers;
 
@@ -319,14 +296,9 @@ export default async function EventLivePage(
         endsAt={ev.endsAt}
         role={role}
         isStaffHost={isStaffHost}
-        // From the start only; then staff always, and a guest speaker only
-        // while no staff host is present. The room-state read computes it
-        // with the server's presence data; without that read (0084 not
-        // applied) only staff can end, and still not before the start.
-        canEnd={
-          initialRoomState?.canEnd ??
-          (isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt))
-        }
+        // Staff from the start; a guest speaker's answer (it depends on who
+        // else is present) arrives with the room's live-state poll.
+        canEnd={isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt)}
         backHref={backHref}
         audienceMode={audienceMode}
         displayViewerCount={displayViewerCount}
@@ -347,8 +319,7 @@ export default async function EventLivePage(
           filename: a.filename,
           sizeBytes: a.sizeBytes,
         }))}
-        initialQuestions={await questionsPromise}
-        initialRoomState={initialRoomState}
+        panel={panel}
       />
     );
   }
@@ -413,7 +384,9 @@ export default async function EventLivePage(
       // Slightly past the end so the call can overrun, but not open-ended.
       expiresAt: new Date(end.getTime() + 60 * 60 * 1000),
     }),
-    questionsPromise,
+    role === "host"
+      ? listQuestionsForEvent(ev.id)
+      : listQuestionsForAsker(ev.id, access.userId),
   ]);
 
   return (

@@ -57,14 +57,13 @@ guarantee the rest of the system is built on, it became a setting:
 
 | Mode | What a student sees | Use it for |
 |---|---|---|
-| `private` | Their own questions. No chat. No evidence anyone else exists. | **The default.** Public intake webinars. Anything with strangers in the room. |
+| `private` | Their own questions. No chat. No evidence anyone else exists. | Public intake webinars. Anything with strangers in the room. |
 | `moderated` | Approved messages and questions, plus their own pending ones. | A public webinar where you want a live channel but nothing unreviewed reaching the room. |
-| `open` | Every message, with names. | A cohort call, where the students already know each other. |
+| `open` | Every message, with names. | **The default for new events.** A cohort call, where the students already know each other. |
 
-`private` is the default in the database, in `normalizeAudienceMode()`, and in
-the admin form. Every event that existed before 0084 has it. A deploy that is
-ahead of the database shows a webinar with no chat rather than one with
-unmoderated chat, because the normaliser fails closed on an unrecognised value.
+New events get `open` (`DEFAULT_AUDIENCE_MODE`): `normalizeAudienceMode()` maps
+an absent value to it. Existing rows keep the mode they store, and an
+unrecognised value still fails closed to `private`.
 
 **Switching modes is not retroactive.** A question's visibility is gated on
 `approved_at`, and a question asked while the room was `private` is never
@@ -82,8 +81,10 @@ Not in the UI. In four places, in this order of authority:
    `audience_mode in ('moderated','open')` check on the event. The anon-key
    browser client carries the student's JWT and can query the table directly;
    this is the copy that binds.
-3. **The server actions.** `fetchRoomState` shapes its result from
-   `audienceMode` and `isModerator`, which it derives itself.
+3. **The server reads.** `loadPanelState()` (lib/webinar-data.ts, behind
+   `GET /api/live/panel` and the page's `loadWebinarPanelInitial()`) shapes
+   every read from the gate's `audienceMode`, `isModerator` and
+   `discloseNames` — a guest speaker sees students as "A student".
 4. **The components**, which draw what they were given.
 
 ---
@@ -352,8 +353,27 @@ already read. The worst a student in devtools achieves is making the room
 re-fetch.
 
 Realtime broadcasts are not replayed, so the feed also re-syncs every
-`ROOM_RESYNC_MS` regardless of bumps. A dropped bump is a blip for one person
-rather than a message that never appears for exactly one person.
+`ROOM_RESYNC_MS` regardless of bumps (every 10s for a viewer with no room
+topic). A dropped bump is a blip for one person rather than a message that
+never appears for exactly one person.
+
+How the panel stays fluid (`components/live/room/panel/*`, rules in
+`lib/webinar-panel.ts`):
+
+- **Reads are a GET route** (`/api/live/panel`), not a server action: Next runs
+  a page's actions one at a time, so reads on every bump would queue sends.
+  A full read returns the newest 200 messages; an incremental one rows since
+  the cursor (with a 5s overlap). The cursor never moves backwards.
+- **Removed rows are never returned**, to anyone. A removal (host Remove or
+  an author's Delete, both audited) publishes `{t:"bump", what:"chat",
+  removed:<id>}` — an id, no content — so every client drops it at once; the
+  full read it triggers confirms it, or restores the row if the hint was
+  forged.
+- **Writes are optimistic.** The client keeps the server's last answer plus
+  overrides; a read drops an override only once it started after the write
+  settled, so nothing snaps back mid-flight. Sends go through an outbox with a
+  client-minted row id (retries are idempotent) and backoff; the composer
+  never locks.
 
 ---
 
@@ -410,7 +430,8 @@ The email and the bell link to `/dashboard/events`. They used to link to
 | Admin actions | `app/admin/events/webinar-actions.ts` |
 | Admin pages | `app/admin/webinars/*` (live status, Host room, End / Reopen), `app/admin/events/[id]/page.tsx` |
 | Follow-up job | `app/api/cron/webinar-followups/route.ts` |
-| Room | `components/live/broadcast-room.tsx`, `room-panel.tsx`, `use-recorder.ts`, `premiere-player.tsx`, `speaker-strip.tsx` |
+| Room | `components/live/broadcast-room.tsx`, `use-recorder.ts`, `premiere-player.tsx`, `speaker-strip.tsx` |
+| Side panel | `components/live/room/panel/*`, `lib/webinar-panel.ts` (+ test), `app/api/live/panel/route.ts`, `lib/webinar-gate.ts` |
 | Admin form | `app/admin/events/webinar-fields.tsx` |
 
 ---
