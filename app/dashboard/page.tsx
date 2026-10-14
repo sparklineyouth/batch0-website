@@ -184,12 +184,10 @@ export default async function DashboardHome() {
     });
   }
   // Not open yet: whichever starts first leads.
-  const later = [
-    eventRow && !event?.join ? { row: eventRow, at: event!.startsAt } : null,
-    callRow && !call?.joinable ? { row: callRow, at: call!.invite.startsAt } : null,
-  ]
-    .filter((x): x is { row: NeedsRow; at: string } => x !== null)
-    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const later: { row: NeedsRow; at: string }[] = [];
+  if (eventRow && event && !event.join) later.push({ row: eventRow, at: event.startsAt });
+  if (callRow && call && !call.joinable) later.push({ row: callRow, at: call.invite.startsAt });
+  later.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   for (const { row } of later) rows.push(row);
   if (!event && access.demoDayTicket && !access.enrolled) {
     rows.push({
