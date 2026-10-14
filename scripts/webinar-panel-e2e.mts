@@ -21,8 +21,9 @@
  *     Approve.
  * Prints how long each removal took to land on every screen.
  *
- * Accounts use the `e2e-webinar-*@example.invalid` shape webinar-e2e reaps;
- * everything this creates is removed in a finally block.
+ * Accounts are `e2e-panel-*@example.invalid` (a reserved TLD) with a random
+ * password; everything this creates is removed in a finally block, and a run
+ * reaps accounts an interrupted run left behind.
  */
 
 import { randomBytes } from "node:crypto";
@@ -67,6 +68,19 @@ function check(cond: boolean, m: string) {
 }
 
 const createdUsers: string[] = [];
+
+/** Accounts an interrupted run left behind — only this script's exact shape. */
+async function reapOrphans(): Promise<void> {
+  const rows: { id: string; email: string }[] = await rest(
+    "profiles?select=id,email&email=like.e2e-panel-*@example.invalid",
+  ).catch(() => []);
+  for (const r of rows) {
+    if (!/^e2e-panel-[a-z]+-\d+@example\.invalid$/.test(r.email ?? "")) continue;
+    await fetch(`${url}/auth/v1/admin/users/${r.id}`, { method: "DELETE", headers: adm }).catch(
+      () => {},
+    );
+  }
+}
 let eventId: string | null = null;
 
 async function rest(path: string, init?: RequestInit) {
@@ -250,10 +264,11 @@ async function main() {
     process.exit(1);
   }
 
+  await reapOrphans();
   console.log("fixtures");
-  const HOST = `e2e-webinar-panel-host-${stamp}@example.invalid`;
-  const ADA = `e2e-webinar-panel-ada-${stamp}@example.invalid`;
-  const BEN = `e2e-webinar-panel-ben-${stamp}@example.invalid`;
+  const HOST = `e2e-panel-host-${stamp}@example.invalid`;
+  const ADA = `e2e-panel-ada-${stamp}@example.invalid`;
+  const BEN = `e2e-panel-ben-${stamp}@example.invalid`;
   await createUser(HOST, "admin", "Hana Host");
   await createUser(ADA, "student", "Ada Student");
   await createUser(BEN, "student", "Ben Student");

@@ -5,7 +5,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { normalizeQuestion, MAX_QUESTION_LENGTH } from "@/lib/live";
 import type { RoomQuestion } from "@/lib/webinars";
 import type { OutboxItem } from "./use-outbox";
-import { Chip, Closed, Composer, Empty, RowAction, ROW_ACTIONS } from "./ui";
+import { Chip, Closed, Composer, Empty, RowAction } from "./ui";
 
 export function QaTab({
   questions,
@@ -89,37 +89,39 @@ export function QaTab({
                     {q.status === "answered" && <Chip>Answered</Chip>}
                     {q.status === "dismissed" && <Chip>Dismissed</Chip>}
                     {needsApproval && !q.approvedAt && q.status === "open" && <Chip>Pending</Chip>}
-                    {isHost && (
-                      <div className={`ml-auto ${ROW_ACTIONS}`}>
-                        {needsApproval && !q.approvedAt && q.status === "open" && (
-                          <RowAction label="Approve" onClick={() => onApprove(q.id)}>
-                            <Check className="h-3.5 w-3.5" />
-                          </RowAction>
-                        )}
-                        <RowAction
-                          label={q.spotlighted ? "Unspotlight" : "Spotlight"}
-                          onClick={() => onSpotlight(q.id, !q.spotlighted)}
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                        </RowAction>
-                        {q.status === "open" ? (
-                          <>
-                            <RowAction label="Answered" onClick={() => onStatus(q.id, "answered")}>
-                              <Check className="h-3.5 w-3.5" />
-                            </RowAction>
-                            <RowAction label="Dismiss" onClick={() => onStatus(q.id, "dismissed")}>
-                              <X className="h-3.5 w-3.5" />
-                            </RowAction>
-                          </>
-                        ) : (
-                          <RowAction label="Back to the queue" onClick={() => onStatus(q.id, "open")}>
-                            <RotateCcw className="h-3.5 w-3.5" />
-                          </RowAction>
-                        )}
-                      </div>
-                    )}
                   </div>
                   <p className="whitespace-pre-wrap break-words text-sm text-ink">{q.body}</p>
+                  {isHost && (
+                    // Hosts work this queue: their actions get their own row,
+                    // always visible, so the asker's name is never squeezed.
+                    <div className="-ml-1.5 mt-1 flex items-center">
+                      {needsApproval && !q.approvedAt && q.status === "open" && (
+                        <RowAction label="Approve" onClick={() => onApprove(q.id)}>
+                          <Check className="h-3.5 w-3.5" />
+                        </RowAction>
+                      )}
+                      <RowAction
+                        label={q.spotlighted ? "Unspotlight" : "Spotlight"}
+                        onClick={() => onSpotlight(q.id, !q.spotlighted)}
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                      </RowAction>
+                      {q.status === "open" ? (
+                        <>
+                          <RowAction label="Answered" onClick={() => onStatus(q.id, "answered")}>
+                            <Check className="h-3.5 w-3.5" />
+                          </RowAction>
+                          <RowAction label="Dismiss" onClick={() => onStatus(q.id, "dismissed")}>
+                            <X className="h-3.5 w-3.5" />
+                          </RowAction>
+                        </>
+                      ) : (
+                        <RowAction label="Back to the queue" onClick={() => onStatus(q.id, "open")}>
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </RowAction>
+                      )}
+                    </div>
+                  )}
                 </div>
               </li>
             ))}

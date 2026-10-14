@@ -11,7 +11,7 @@ import {
   type WebinarPoll,
 } from "@/lib/webinars";
 import type { PanelWrite } from "@/lib/webinar-panel";
-import { Chip, Empty, RowAction } from "./ui";
+import { Chip, Empty, FIELD, RowAction } from "./ui";
 
 export function PollsTab({
   polls,
@@ -174,8 +174,7 @@ function PollForm({
     if (res.ok) onDone();
   };
 
-  const field =
-    "h-9 w-full rounded-md border border-line bg-paper px-2.5 text-base text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none md:text-sm";
+  const field = `h-9 w-full rounded-md border px-2.5 text-base placeholder:text-ink-faint focus:border-phosphor focus:outline-none md:text-sm ${FIELD}`;
 
   return (
     <div className="mb-3 space-y-2 rounded-md border border-line bg-paper p-3">

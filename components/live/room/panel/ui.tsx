@@ -2,6 +2,14 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { SendHorizontal } from "lucide-react";
 
+/**
+ * Field colours. The `dark:` copies outrank the app's `.theme-light input`
+ * compatibility rule, which would otherwise paint fields white on the dark
+ * call surface.
+ */
+export const FIELD =
+  "border-line bg-paper text-ink dark:border-line dark:bg-paper dark:text-ink";
+
 /** A small icon action on a row: always labelled, visible on hover, focus and touch. */
 export function RowAction({
   label,
@@ -98,7 +106,7 @@ export function Composer({
         rows={1}
         placeholder={placeholder}
         aria-label={label}
-        className="max-h-24 min-h-9 flex-1 resize-none rounded-md border border-line bg-paper px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-phosphor focus:outline-none md:text-sm"
+        className={`max-h-24 min-h-9 flex-1 resize-none rounded-md border px-3 py-2 text-base placeholder:text-ink-faint focus:border-phosphor focus:outline-none md:text-sm ${FIELD}`}
       />
       <button
         type="submit"
