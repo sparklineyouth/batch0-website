@@ -333,11 +333,27 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted?: () => void })
     return () => clearTimeout(t);
   }, [armed]);
 
+  const note = error && (
+    <span className="text-amber-600 dark:text-amber-400" role="status">
+      {error}
+    </span>
+  );
   if (!armed) {
     return (
-      <Button size="sm" variant="ghost" onClick={() => setArmed(true)} aria-label="Delete recording">
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      <>
+        {note}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setError(null);
+            setArmed(true);
+          }}
+          aria-label="Delete recording"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </>
     );
   }
   return (
@@ -351,16 +367,19 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted?: () => void })
           setError(null);
           const res = await fetch(`/api/recordings/${id}`, { method: "DELETE" }).catch(() => null);
           setBusy(false);
-          if (res?.ok) onDeleted?.();
-          else {
-            setArmed(false);
-            setError("Couldn't delete it.");
+          if (res?.ok) {
+            onDeleted?.();
+            return;
           }
+          // 409 and 503 say why ("Stop the recording first."); anything else doesn't.
+          const body = res && (res.status === 409 || res.status === 503) ? await res.json().catch(() => ({})) : {};
+          setArmed(false);
+          setError(typeof body.error === "string" ? body.error : "Couldn't delete it. Try again.");
         }}
       >
         {busy ? "Deleting…" : "Delete for good"}
       </Button>
-      {error && <span className="text-amber-600 dark:text-amber-400">{error}</span>}
+      {note}
     </>
   );
 }

@@ -31,10 +31,16 @@ import {
  *           that, bounded. A tab with a take still recording or uploading
  *           prompts before it closes, and the upload outlives the component.
  *
- * Calls auto-start when the first staff member is live; webinars when the
- * event records automatically. Auto-start fires once per mount, and only
- * takes the lease if nobody holds it — a host who joins while a co-host is
- * recording sees "Recording by <name>", and after that recording is manual.
+ * Auto-start (calls; webinars that record automatically): as soon as this tab
+ * may record and is live, if nobody is recording — and again whenever the
+ * room's lease comes free while it is still live, so a call goes on being
+ * recorded when the person recording it leaves while others carry on. Not
+ * after a deliberate Stop: this tab never restarts on its own once its person
+ * pressed Stop, and the server refuses an automatic start in a room whose last
+ * take was stopped on purpose (until someone records it again by hand).
+ * Pressing Record always works. A take of this user's in another tab or
+ * device is theirs to keep: this tab shows it and doesn't take it over —
+ * except the take this very tab was making before a reload.
  */
 
 export type ServerRecording = {
@@ -58,6 +64,13 @@ export type RoomRecordingState =
   | "error"
   | "unavailable";
 
+/**
+ * Why a take stops. "stop": its person pressed Stop (the room then stays
+ * unrecorded until someone presses Record). "leave": they are leaving, or the
+ * room ended — someone else still in the room picks the recording up.
+ */
+export type StopReason = "stop" | "leave";
+
 export type RoomRecording = {
   state: RoomRecordingState;
   /** This tab is the recorder. */
@@ -71,7 +84,13 @@ export type RoomRecording = {
   readonly elapsedMs: number;
   error: string | null;
   start: () => Promise<void>;
-  stop: () => Promise<void>;
+  /**
+   * Resolves once the recorder's last chunk is captured. The Record/Stop
+   * button calls `stop()`; a Leave/End path that flushes the recording before
+   * stopping the devices calls `stop("leave")`. (Leaving — `live` going false —
+   * and unmounting stop with "leave" by themselves.)
+   */
+  stop: (reason?: StopReason) => Promise<void>;
   /** Resolve once every captured part is uploaded and the take finalized (bounded, 90 s). */
   drain: () => Promise<void>;
   /** Parts not yet uploaded (+1 while the take is being finished). Keep the unload guard armed while > 0. */
@@ -79,6 +98,31 @@ export type RoomRecording = {
 };
 
 const DRAIN_TIMEOUT_MS = 90_000;
+/** A refused start's "who is recording" is trusted this long without the server confirming it. */
+const CONFLICT_TTL_MS = 30_000;
+/** Waits before retrying an automatic start that failed; after the last, only Record starts one. */
+const AUTO_RETRY_MS = [5_000, 15_000, 30_000, 60_000];
+
+type Holder = { sessionId: string | null; id: string; name: string; startedAt: string };
+type StartOutcome = "started" | "busy" | "stopped" | "unavailable" | "error" | "skipped";
+
+/** The take this tab is making, by room — what a reload of the same tab replaces. */
+const storageKey = (roomKey: string) => `batch0:recording:${roomKey}`;
+function readStored(roomKey: string): string | null {
+  try {
+    return window.sessionStorage.getItem(storageKey(roomKey));
+  } catch {
+    return null;
+  }
+}
+function writeStored(roomKey: string, sessionId: string | null) {
+  try {
+    if (sessionId) window.sessionStorage.setItem(storageKey(roomKey), sessionId);
+    else window.sessionStorage.removeItem(storageKey(roomKey));
+  } catch {
+    // Private mode: a reload then waits for the old lease to go stale.
+  }
+}
 
 export function useRoomRecording(opts: {
   kind: "webinar" | "call";
@@ -140,7 +184,7 @@ export function useRoomRecording(opts: {
   const [state, setState] = useState<RoomRecordingState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
-  const [conflict, setConflict] = useState<{ id: string; name: string; startedAt: string } | null>(null);
+  const [conflict, setConflict] = useState<Holder | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const takeRef = useRef<Take | null>(null);
   const startingRef = useRef(false);
@@ -148,121 +192,211 @@ export function useRoomRecording(opts: {
   const cancelRef = useRef(false);
   const mountedRef = useRef(true);
   const roomKey = `${kind}:${roomId}`;
+  /** The take this tab was making when it was reloaded, if one may still hold the lease. */
+  const reloadedFrom = useRef<string | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
+    reloadedFrom.current = readStored(roomKey);
     return () => {
       mountedRef.current = false;
     };
-  }, []);
+  }, [roomKey]);
 
-  // A fresh server answer supersedes what a refused start told us.
+  // A fresh server answer supersedes what a refused start told us; and what
+  // it told us is only trusted for a while without one.
   useEffect(() => setConflict(null), [serverRecording?.sessionId]);
+  useEffect(() => {
+    if (!conflict) return;
+    const t = setTimeout(() => setConflict(null), CONFLICT_TTL_MS);
+    return () => clearTimeout(t);
+  }, [conflict]);
 
   const [supported, setSupported] = useState(true);
   useEffect(() => setSupported(recorderMime() !== null), []);
 
-  const stop = useCallback(async () => {
+  // Auto-start bookkeeping (see the header).
+  const userStopped = useRef(false);
+  const autoBlocked = useRef(false);
+  const autoTried = useRef(false);
+  const autoFailures = useRef(0);
+  const [autoNonce, setAutoNonce] = useState(0);
+
+  const stop = useCallback(async (reason: StopReason = "stop") => {
+    if (reason === "stop") userStopped.current = true;
     if (startingRef.current) cancelRef.current = true;
     const take = takeRef.current;
     if (!take || !take.capturing) return;
     if (mountedRef.current) setState("stopping");
-    await take.stop();
+    await take.stop(reason);
   }, []);
 
-  const start = useCallback(async () => {
-    if (!canRecord || takeRef.current || startingRef.current) return;
-    const mime = recorderMime();
-    if (!mime) {
-      setState("unavailable");
-      return;
-    }
-    startingRef.current = true;
-    cancelRef.current = false;
-    setState("starting");
-    setError(null);
-    try {
-      // A take of this room still uploading in this tab (a remount) goes first.
-      await activeTakes.get(roomKey)?.finished;
-      const res = await fetch("/api/recordings", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind, roomId, mime }),
-      }).catch(() => null);
-      const body = res ? await res.json().catch(() => ({})) : {};
-      if (!res || !res.ok) {
-        if (!mountedRef.current) return;
-        if (res?.status === 409 && body.by) {
-          setConflict({ id: body.by.id, name: body.by.name, startedAt: body.startedAt });
-          setState("idle");
-        } else if (res?.status === 503 && body.unavailable) {
-          setState("unavailable");
-        } else {
+  const startTake = useCallback(
+    async (auto: boolean): Promise<StartOutcome> => {
+      if (!canRecord || takeRef.current || startingRef.current) return "skipped";
+      const mime = recorderMime();
+      if (!mime) {
+        setState("unavailable");
+        return "unavailable";
+      }
+      startingRef.current = true;
+      cancelRef.current = false;
+      setState("starting");
+      setError(null);
+      try {
+        // A take of this room still uploading in this tab (a remount) goes first.
+        await activeTakes.get(roomKey)?.finished;
+        const res = await fetch("/api/recordings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind, roomId, mime, auto, replaces: reloadedFrom.current }),
+        }).catch(() => null);
+        const body = res ? await res.json().catch(() => ({})) : {};
+        if (!res || !res.ok) {
+          if (!mountedRef.current) return "skipped";
+          if (res?.status === 409 && body.by) {
+            setConflict({
+              sessionId: typeof body.sessionId === "string" ? body.sessionId : null,
+              id: body.by.id,
+              name: body.by.name,
+              startedAt: body.startedAt,
+            });
+            setState("idle");
+            return "busy";
+          }
+          if (res?.status === 409 && body.stopped) {
+            setState("idle");
+            return "stopped";
+          }
+          if (res?.status === 503 && body.unavailable) {
+            setState("unavailable");
+            return "unavailable";
+          }
+          autoFailures.current += 1;
           setState("error");
           setError(body.error || "Couldn't start recording. Try again.");
+          return "error";
         }
-        return;
-      }
 
-      const take: Take = new Take(body.sessionId, mime, {
-        endRecorder: () => recorder.end(),
-        onPending: (n) => {
-          if (mountedRef.current) setPending(n);
-        },
-        onFatal: (message) => {
-          if (!mountedRef.current) return;
-          setState("error");
-          setError(message);
-        },
-        onDone: () => {
-          if (takeRef.current === take) takeRef.current = null;
-          if (activeTakes.get(roomKey) === take) activeTakes.delete(roomKey);
-          if (!mountedRef.current) return;
-          setStartedAt(null);
-          setState((s) => (s === "error" ? s : "idle"));
-        },
-      });
-      takeRef.current = take;
-      activeTakes.set(roomKey, take);
-      if (cancelRef.current || !mountedRef.current) {
-        // Left before the lease came back: close the empty take.
-        void take.stop();
-        return;
-      }
-      try {
-        recorder.begin({
-          mime,
-          onChunk: (chunk) => take.push(chunk),
-          onError: (message) => take.fail(message),
+        reloadedFrom.current = null;
+        ownTakes.add(body.sessionId);
+        writeStored(roomKey, body.sessionId);
+        const take: Take = new Take(body.sessionId, mime, {
+          endRecorder: () => recorder.end(),
+          onPending: (n) => {
+            if (mountedRef.current) setPending(n);
+          },
+          // Failures count until a take gets a part through: a take that dies
+          // as soon as it starts must not be restarted forever.
+          onUploaded: () => {
+            autoFailures.current = 0;
+          },
+          onFatal: (message) => {
+            autoFailures.current += 1;
+            if (!mountedRef.current) return;
+            setState("error");
+            setError(message);
+          },
+          onDone: () => {
+            if (takeRef.current === take) takeRef.current = null;
+            if (activeTakes.get(roomKey) === take) activeTakes.delete(roomKey);
+            if (readStored(roomKey) === take.sessionId) writeStored(roomKey, null);
+            if (!mountedRef.current) return;
+            setStartedAt(null);
+            setState((s) => (s === "error" ? s : "idle"));
+            setAutoNonce((n) => n + 1);
+          },
         });
-      } catch (err) {
-        take.fail(err instanceof Error ? err.message : "Couldn't start recording.");
-        return;
+        takeRef.current = take;
+        activeTakes.set(roomKey, take);
+        if (cancelRef.current || !mountedRef.current) {
+          // Left (or stopped) before the lease came back: close the empty take.
+          void take.stop(userStopped.current ? "stop" : "leave");
+          return "started";
+        }
+        try {
+          recorder.begin({
+            mime,
+            onChunk: (chunk) => take.push(chunk),
+            onError: (message) => take.fail(message),
+          });
+        } catch (err) {
+          take.fail(err instanceof Error ? err.message : "Couldn't start recording.");
+          return "error";
+        }
+        setStartedAt(Date.now());
+        setState("recording");
+        return "started";
+      } finally {
+        startingRef.current = false;
       }
-      setStartedAt(Date.now());
-      setState("recording");
-    } finally {
-      startingRef.current = false;
-    }
-  }, [canRecord, kind, roomId, roomKey, recorder]);
+    },
+    [canRecord, kind, roomId, roomKey, recorder],
+  );
 
-  // Auto-start: once per mount, as soon as this tab may record and is live,
-  // and only if nobody else is recording.
-  const autoTried = useRef(false);
+  /** Record, pressed. */
+  const start = useCallback(async () => {
+    userStopped.current = false;
+    autoFailures.current = 0;
+    await startTake(false);
+  }, [startTake]);
+
+  const mine = state === "recording";
+  // The server may still name a take of this tab's (it is saving, or the
+  // answer predates its finish): that is never someone else recording.
+  const serverOther =
+    serverRecording && !ownTakes.has(serverRecording.sessionId)
+      ? {
+          sessionId: serverRecording.sessionId,
+          id: serverRecording.byUserId,
+          name: serverRecording.byName,
+          startedAt: serverRecording.startedAt,
+        }
+      : null;
+  const holder: Holder | null = serverOther ?? conflict;
+  const holderKey = holder ? (holder.sessionId ?? `?${holder.id}`) : null;
+  // This tab's own take from before a reload: the lease it may take back.
+  const holderIsMyReload =
+    !!holder && holder.id === selfId && !!holder.sessionId && holder.sessionId === reloadedFrom.current;
+
+  // Someone recording again re-opens what a deliberate Stop closed.
   useEffect(() => {
-    if (!autoStart || !canRecord || !live || !supported || autoTried.current) return;
-    autoTried.current = true;
-    if (serverRecording && serverRecording.byUserId !== selfId) return;
-    void start();
-  }, [autoStart, canRecord, live, supported, serverRecording, selfId, start]);
+    if (holderKey && !holderIsMyReload) autoBlocked.current = false;
+  }, [holderKey, holderIsMyReload]);
+
+  // Auto-start: whenever this tab may record, is live, and the lease is free.
+  useEffect(() => {
+    if (!autoStart || !canRecord || !live || !supported) return;
+    if (userStopped.current || autoBlocked.current) return;
+    if (state !== "idle" && state !== "error") return;
+    if (takeRef.current || startingRef.current) return;
+    if (holderKey && !holderIsMyReload) return;
+    if (autoFailures.current > AUTO_RETRY_MS.length) return;
+    const delay = !autoTried.current
+      ? 0
+      : autoFailures.current > 0
+        ? AUTO_RETRY_MS[autoFailures.current - 1]
+        : // The lease just came free: several tabs may want it. The server
+          // settles who gets it; the spread keeps them from all asking at once.
+          500 + Math.random() * 3000;
+    const t = setTimeout(() => {
+      autoTried.current = true;
+      void startTake(true).then((outcome) => {
+        if (outcome === "stopped") autoBlocked.current = true;
+        if (outcome === "busy") autoFailures.current = 0;
+        if (mountedRef.current) setAutoNonce((n) => n + 1);
+      });
+    }, delay);
+    return () => clearTimeout(t);
+  }, [autoStart, canRecord, live, supported, state, holderKey, holderIsMyReload, autoNonce, startTake]);
 
   // Leaving the room (or losing the right to record) stops the take.
   useEffect(() => {
-    if (!live || !canRecord) void stop();
+    if (!live || !canRecord) void stop("leave");
   }, [live, canRecord, stop]);
 
   // So does unmounting; the take's upload carries on without the component.
-  useEffect(() => () => void stop(), [stop]);
+  useEffect(() => () => void stop("leave"), [stop]);
 
   const drain = useCallback(async () => {
     const take = takeRef.current ?? activeTakes.get(roomKey);
@@ -277,13 +411,12 @@ export function useRoomRecording(opts: {
     clearTimeout(timer);
   }, [roomKey]);
 
-  const mine = state === "recording";
-  const others =
-    serverRecording && serverRecording.sessionId !== takeRef.current?.sessionId
-      ? { id: serverRecording.byUserId, name: serverRecording.byName, startedAt: serverRecording.startedAt }
-      : conflict;
-  const by = mine ? { id: selfId, name: selfName || "You" } : others ? { id: others.id, name: others.name } : null;
-  const since = mine ? startedAt : others ? Date.parse(others.startedAt) : null;
+  const by = mine
+    ? { id: selfId, name: selfName || "You" }
+    : holder
+      ? { id: holder.id, name: holder.id === selfId ? "you, in another tab" : holder.name }
+      : null;
+  const since = mine ? startedAt : holder ? Date.parse(holder.startedAt) : null;
 
   return {
     state: !supported && canRecord ? "unavailable" : state,
@@ -309,6 +442,8 @@ export function useRoomRecording(opts: {
 
 /** Takes still recording or uploading in this tab, by room. */
 const activeTakes = new Map<string, Take>();
+/** Every take this tab has started (ids only). */
+const ownTakes = new Set<string>();
 /** Takes with work left: the tab asks before closing while any exist. */
 const unsettled = new Set<Take>();
 
@@ -351,6 +486,7 @@ class Take {
   private pumping = false;
   /** The finish request is out: the server closing the lease is expected now. */
   private finishing = false;
+  private reason: StopReason = "leave";
   private beating = false;
   private lastContact = Date.now();
   private readonly heartbeat: ReturnType<typeof setInterval>;
@@ -362,6 +498,8 @@ class Take {
     private readonly hooks: {
       endRecorder: () => Promise<void>;
       onPending: (n: number) => void;
+      /** A part landed. */
+      onUploaded: () => void;
       onFatal: (message: string) => void;
       onDone: () => void;
     },
@@ -405,9 +543,10 @@ class Take {
   }
 
   /** Stop capturing: wait for the recorder's last chunk, seal it, upload the rest, finish. */
-  async stop() {
+  async stop(reason: StopReason) {
     if (this.phase !== "capturing") return;
     this.phase = "closing";
+    this.reason = reason;
     this.hooks.onPending(this.pendingCount());
     await this.hooks.endRecorder();
     await this.chain;
@@ -418,11 +557,11 @@ class Take {
     void this.pump();
   }
 
-  /** The recorder failed for good: keep what was captured. */
+  /** The recorder failed for good: keep what was captured. Not a decision to stop — others may pick it up. */
   fail(message: string) {
     if (this.phase === "done") return;
     this.hooks.onFatal(message);
-    void this.stop();
+    void this.stop("leave");
   }
 
   private unsentBytes(): number {
@@ -458,6 +597,7 @@ class Take {
       while (this.queue.length > 0) {
         if (!(await this.upload(this.queue[0]))) return;
         this.queue.shift();
+        this.hooks.onUploaded();
         this.hooks.onPending(this.pendingCount());
       }
       if (this.phase === "draining") await this.finish();
@@ -519,7 +659,7 @@ class Take {
     this.finishing = true;
     for (let attempt = 0; attempt < 5; attempt++) {
       if (attempt > 0) await sleep(retryDelayMs(attempt - 1));
-      const res = await post(`/api/recordings/${this.sessionId}/finish`, {});
+      const res = await post(`/api/recordings/${this.sessionId}/finish`, { reason: this.reason });
       // A 503 is the server's finalize failing; its sweep retries. The take is closed.
       if (res.ok || res.status === 503 || res.status === 404) break;
     }

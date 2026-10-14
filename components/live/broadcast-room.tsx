@@ -619,12 +619,16 @@ function BroadcastSession({
     });
   const selfUserId = webinar?.selfUserId ?? call?.selfUserId ?? "";
   const recordingKind = isCall ? "call" : "webinar";
-  // The tab doing the recording knows the room's state; the others ask.
+  // The tab doing the recording knows the room's state; the others ask —
+  // a webinar's audience less often (it only lights their REC badge; hosts
+  // also need it to pick the recording up when a recorder leaves).
+  // Interim: the new room reads this from the session's heartbeat instead.
   const [recordingHere, setRecordingHere] = useState(false);
   const status = useRecordingStatus(
     recordingKind,
     roomId,
     (phase === "prejoin" || phase === "live") && !recordingHere,
+    isCall || isHost ? RECORDING_STATUS_POLL_MS : RECORDING_STATUS_AUDIENCE_POLL_MS,
   );
   // Who else goes into the recording: every broadcaster whose link is live.
   const otherName = call?.otherName;
@@ -701,7 +705,7 @@ function BroadcastSession({
   const finish = useCallback(
     async (next: Exclude<Phase, "prejoin" | "live">) => {
       try {
-        await stopRecording();
+        await stopRecording("leave");
       } catch (err) {
         console.error("[live] recording flush failed", err);
       }
@@ -1087,7 +1091,7 @@ function BroadcastSession({
             )
           : null;
       try {
-        await stopRecording();
+        await stopRecording("leave");
       } catch (err) {
         console.error("[live] recording flush failed", err);
       }
@@ -2046,15 +2050,17 @@ function RecClock({ recording }: { recording: RoomRecording }) {
 
 /**
  * Whether the room is being recorded, from the server (GET
- * /api/recordings/active): every 15 s while `active` (the green room or live,
- * in a tab that isn't the recorder) and visible, and at once on `refresh()`.
- * What every participant's REC badge reads. One request at a time — the next
- * is scheduled when the last answers, so a slow server isn't stacked up.
+ * /api/recordings/active): every `pollMs` while `active` (the green room or
+ * live, in a tab that isn't the recorder) and visible, and at once on
+ * `refresh()`. What every participant's REC badge reads. One request at a
+ * time — the next is scheduled when the last answers, so a slow server isn't
+ * stacked up.
  */
 function useRecordingStatus(
   kind: "webinar" | "call",
   roomId: string,
   active: boolean,
+  pollMs: number,
 ): { recording: ServerRecording; refresh: () => void } {
   const [recording, setRecording] = useState<ServerRecording>(null);
   const [nonce, setNonce] = useState(0);
@@ -2077,18 +2083,20 @@ function useRecordingStatus(
           // A missed poll is one interval of staleness.
         }
       }
-      if (!stopped) timer = setTimeout(tick, RECORDING_STATUS_POLL_MS);
+      // Spread out, so an audience that joined together doesn't poll together.
+      if (!stopped) timer = setTimeout(tick, pollMs * (0.85 + Math.random() * 0.3));
     };
     void tick();
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [kind, roomId, active, nonce]);
+  }, [kind, roomId, active, nonce, pollMs]);
   return { recording, refresh };
 }
 
 const RECORDING_STATUS_POLL_MS = 15_000;
+const RECORDING_STATUS_AUDIENCE_POLL_MS = 45_000;
 
 /** "Saving the recording…" with a spinner — an exit waiting on the uploads. */
 function SavingLabel() {

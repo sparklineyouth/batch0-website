@@ -1,6 +1,7 @@
 /**
- * Legacy 1:1 recordings — the segment files calls were recorded as before
- * one-take recording (migration 0095), named and ordered. No I/O.
+ * 1:1 recordings: which calls can have one, and the legacy segment files
+ * calls were recorded as before one-take recording (migration 0095), named
+ * and ordered. No I/O.
  *
  * A call's recording used to be self-contained two-minute files in the
  * private `call-recordings` bucket, with no table: the file name carried
@@ -10,8 +11,31 @@
  * Nothing writes them any more; the legacy player (lib/recording-legacy.ts)
  * plays them back to back in the order below.
  *
- * Pure and import-free; tested by lib/call-recording.test.ts.
+ * Pure; the one import is lib/live.ts by relative path, so `node --test`
+ * runs it as is. Tested by lib/call-recording.test.ts.
  */
+import { HOST_JOIN_OPENS_MINUTES_BEFORE } from "./live.ts";
+
+/**
+ * Could this call have a recording to show? Recording starts with the staff
+ * side in the room, which opens HOST_JOIN_OPENS_MINUTES_BEFORE the start —
+ * for an invite still unanswered just as for an accepted one. So: an
+ * accepted, completed or never-answered call once its room has opened; a
+ * cancelled or declined one only if that happened after it opened (or when
+ * isn't known). Saying yes too often costs one empty list request; saying no
+ * wrongly hides a recording from everyone.
+ */
+export function callMayHaveRecording(
+  call: { status: string; startsAt: string; updatedAt?: string },
+  now: Date,
+): boolean {
+  const opens = Date.parse(call.startsAt) - HOST_JOIN_OPENS_MINUTES_BEFORE * 60_000;
+  if (!Number.isFinite(opens) || opens > now.getTime()) return false;
+  if (call.status === "accepted" || call.status === "completed" || call.status === "invited") return true;
+  if (call.status !== "cancelled" && call.status !== "declined") return false;
+  const at = call.updatedAt ? Date.parse(call.updatedAt) : NaN;
+  return !Number.isFinite(at) || at >= opens;
+}
 
 export const CALL_RECORDING_BUCKET = "call-recordings";
 

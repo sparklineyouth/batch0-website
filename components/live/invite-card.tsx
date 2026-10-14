@@ -17,11 +17,12 @@ import {
   callPhase,
   canAddCallCohosts,
   canCancelCall,
-  mayHaveCallRecording,
+  isPastPhase,
   splitCalls,
   type CallPhase,
 } from "@/lib/call-lifecycle";
 import { CallRecordings } from "@/components/live/recording-player";
+import { callMayHaveRecording } from "@/lib/call-recording";
 import {
   CalendarPlus,
   ChevronRight,
@@ -277,10 +278,14 @@ export function InviteCard({
             </p>
           )}
 
+          {/* Any past call whose room opened — an invite nobody answered
+              included: its room opened all the same, and may have been
+              recorded. The list itself decides who may watch. */}
           {(participant || showRecordings) &&
             now &&
-            (phase === "ended" || phase === "completed" || phase === "cancelled") &&
-            mayHaveCallRecording(invite, now) && <CallRecordings inviteId={invite.id} />}
+            phase &&
+            isPastPhase(phase) &&
+            callMayHaveRecording(invite, now) && <CallRecordings inviteId={invite.id} />}
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
