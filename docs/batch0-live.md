@@ -291,7 +291,7 @@ Leaving is never window-gated (it authorizes by identity alone), and End /
 Reopen are bounded only by the hard stop at end + 3 h, so an overrunning
 webinar never loses its End button.
 
-Lists — the student events page, `/admin/webinars`, the cards — use
+Lists — the student events page, `/admin/events`, the cards — use
 `eventLiveStatus`, which reads `live_ended_at` **before** the clock: an ended
 webinar shows **Ended**, with no Join, from the moment it ends.
 
@@ -304,7 +304,7 @@ actions do the authorizing instead, so a mentor or investor who booked a call,
 an intern with `events.manage`, and a mentor invited as a guest speaker can all
 reach a room they host. The pre-cohort lockdown is unchanged: a 1:1 room is on
 its allowed list (under `/dashboard/calls`), a webinar room is not. Back links
-are role-aware: a staff webinar host goes back to `/admin/webinars`, a call's
+are role-aware: a staff webinar host goes back to `/admin/events`, a call's
 host to their own calls page (`hostCallsHref` in `lib/call-lifecycle.ts`:
 `/admin/calls`, `/mentor/calls` or `/investor/calls`), a student to
 `/dashboard/events` or `/dashboard/calls`.
@@ -333,9 +333,9 @@ for a Reopen until the hard stop, so a reopen is noticed even when the first
 answers come back empty because no host is on air yet.
 
 **End for everyone** is one control, in the room's control bar, with a
-two-step confirm (admins also have it on `/admin/webinars` and
+two-step confirm (admins also have it on `/admin/events` and
 `/admin/events/[id]`, without going on air). It exists only once the webinar
-has begun — its scheduled start, or an early "Go live now" on a premiere
+has begun — its scheduled start, or a host going live early
 (`webinarHasBegun` in `lib/live.ts`): `endLive` refuses before that, and the
 room's `canEnd` (which the control bar and the last-host prompt read) says so.
 The host window opens an hour early for setup, and an End there used to end
@@ -522,8 +522,7 @@ means the repair ran on the critical path, with an audience waiting.
 batch0 Live deletes the entire class of bug. There is no provider-side room to
 expire: **the event id is the room**, credentials are minted per join, and a
 webinar is joinable the moment it is scheduled. `app/admin/events/actions.ts`
-skips the room lifecycle entirely, and the "no room yet — re-save to create
-one" warning is gone from `/admin/webinars`.
+has no room lifecycle at all.
 
 ---
 

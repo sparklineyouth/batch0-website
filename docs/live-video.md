@@ -221,12 +221,8 @@ Also set `exp` on both room and token (end time + a grace window) with
 `eject_at_token_exp`, so links die on their own instead of becoming permanent
 open doors.
 
-**Webinars are on Sundays.** One a week, on the Sunday that closes each cohort
-week, named `Week N Webinar` (lib/webinar-schedule.ts). The scheduler at
-`/admin/webinars` offers a list of upcoming Sundays rather than a free date
-picker, and pre-fills the name from the pick; the full editor at `/admin/events`
-is the escape hatch for anything else. Migration `0069` moved the existing
-webinars onto that cadence.
+**Scheduling.** Any day, any time: `/admin/events` → New event (title + time),
+or "Start a webinar now". See docs/webinars.md.
 
 ### 4b. Webinars
 

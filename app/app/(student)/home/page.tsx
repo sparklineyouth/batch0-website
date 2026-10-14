@@ -22,6 +22,9 @@ import {
   ActionLink,
 } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
+import { getCohortEvents } from "@/lib/app-cache";
+import { studentEventStatus } from "@/lib/event-form";
+import { isHostedOnBatch0 } from "@/lib/webinars";
 
 export const metadata = { title: "Home · batch0" };
 export const dynamic = "force-dynamic";
@@ -134,21 +137,16 @@ export default async function StudentAppHome() {
   // These four genuinely cannot start earlier — each needs the cohort id or the
   // week number that wave 1 produced. Nothing after this awaits anything else.
   const [
-    { data: events },
+    cohortEvents,
     { data: announcement },
     { data: weekLessons },
     { data: challengeEntry },
   ] = await Promise.all([
+    // The same cached calendar /app/events reads (visibility as the
+    // `events read` policy draws it).
     cohortId && access.enrolled
-      ? admin
-          .from("events")
-          .select("id, title, type, starts_at, location, zoom_url")
-          .in("visibility", ["enrolled", "public"])
-          .or(`cohort_id.is.null,cohort_id.eq.${cohortId}`)
-          .gte("starts_at", nowIso)
-          .order("starts_at", { ascending: true })
-          .limit(2)
-      : Promise.resolve({ data: null }),
+      ? getCohortEvents({ cohortId }, nowIso)
+      : Promise.resolve(null),
     cohortId && access.enrolled
       ? admin
           .from("announcements")
@@ -174,6 +172,24 @@ export default async function StudentAppHome() {
           .maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+
+  // Next two on the calendar, a running one first; hosted ones get Join.
+  const events = (cohortEvents?.upcoming ?? [])
+    .map((e) => ({
+      ...e,
+      status: studentEventStatus(
+        {
+          startsAt: e.starts_at,
+          endsAt: e.ends_at,
+          liveStartedAt: e.live_started_at,
+          liveEndedAt: e.live_ended_at,
+        },
+        new Date(nowIso),
+      ),
+    }))
+    .filter((e) => e.status === "live" || e.status === "open" || e.status === "upcoming")
+    .sort((a, b) => Number(b.status === "live") - Number(a.status === "live"))
+    .slice(0, 2);
 
   // "3 of 5 done" for the current week, intersected in memory against the full
   // progress set fetched in wave 1 — no third round trip.
@@ -349,19 +365,29 @@ export default async function StudentAppHome() {
                 <Empty>Nothing on the calendar yet.</Empty>
               ) : (
                 <div className="rounded-2xl border border-line px-4 sm:px-5">
-                  {(events ?? []).map((e) => (
-                    <Row
-                      key={e.id}
-                      label={e.title}
-                      value={e.location || e.type.replace(/_/g, " ")}
-                      href="/app/events"
-                      right={
-                        <span className="shrink-0 text-right font-mono text-[11px] leading-tight tabular-nums text-ink-faint">
-                          <LocalTime value={e.starts_at} mode="datetime-short" />
-                        </span>
-                      }
-                    />
-                  ))}
+                  {(events ?? []).map((e) => {
+                    const join =
+                      isHostedOnBatch0(e.live_mode) && (e.status === "live" || e.status === "open");
+                    return (
+                      <Row
+                        key={e.id}
+                        label={e.title}
+                        value={e.location || e.type.replace(/_/g, " ")}
+                        href={join ? `/dashboard/events/${e.id}/live` : "/app/events"}
+                        right={
+                          join ? (
+                            <span className="shrink-0 rounded-md bg-phosphor px-2.5 py-1 text-[12px] font-semibold text-on-phosphor">
+                              Join
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-right font-mono text-[11px] leading-tight tabular-nums text-ink-faint">
+                              <LocalTime value={e.starts_at} mode="datetime-short" />
+                            </span>
+                          )
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
             </Section>

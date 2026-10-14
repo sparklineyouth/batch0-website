@@ -1,6 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission, requireActor } from "@/lib/server-guards";
 import { can } from "@/lib/permissions";
@@ -10,7 +10,6 @@ import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { resolveEventAccess } from "@/lib/live-access";
 import {
-  isDeckFile,
   MAX_UPLOAD_BYTES,
   RECORDER_LEASE_MS,
   recordingFiledAt,
@@ -23,44 +22,17 @@ import {
 } from "@/lib/webinars";
 import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import { listAssets, listSpeakers } from "@/lib/webinar-data";
+import { runAction, type ActionResult } from "@/lib/action-result";
+import { isUuid, parseHttpUrl } from "@/lib/event-form";
+import { isDeckPathFor, mintDeckUpload, removeObjects } from "./deck";
 
 /**
- * Server actions for a webinar's files and its guest speakers.
- *
- * Two jobs that look unrelated and share one gate, which is why they live
- * together: both are "things an admin attaches to a webinar", both are written
- * from the same form, and both are also written from INSIDE the live room — a
- * recording segment uploads itself every two minutes while the webinar runs,
- * and a guest speaker claims their slot on the way in.
- *
- * ---------------------------------------------------------------------------
- * Why this file exists at all, rather than reusing getUploadToken
- * ---------------------------------------------------------------------------
- *
- * app/admin/course/upload-actions.ts already mints signed upload URLs, and the
- * obvious move was to add `webinar-media` to its STAFF_BUCKETS set. That would
- * have been wrong in a way that is easy to miss: `getUploadToken` gates EVERY
- * staff bucket on `assertPermission("course.manage")`. Adding a bucket there
- * grants webinar uploads to whoever manages the course and denies them to
- * whoever manages events — precisely backwards — and it has no way at all to
- * express the third case this feature needs, which is a guest speaker who
- * holds no global permission and may upload exactly one deck to exactly one
- * event.
- *
- * ---------------------------------------------------------------------------
- * The upload path, and why the bytes never touch a Vercel function
- * ---------------------------------------------------------------------------
- *
- * Next's server-action body limit is 1 MB by default and this repo does not
- * raise it, so a recording segment cannot be POSTed to an action — the same
- * reasoning app/challenges/[slug]/actions.ts already writes down. So the
- * established three-step dance: this mints a signed upload URL, the browser
- * PUTs straight to Supabase Storage, and a second action records the path.
- *
- * `registerWebinarAsset` VERIFIES the object is really there before inserting
- * the row. Without that check a tampered client could register a path it never
- * uploaded — and for this feature that is not merely a broken download link, it
- * is a row the follow-up email will cheerfully send to the whole cohort.
+ * Server actions for a webinar's files and its guest speakers: slides (staff,
+ * from the event form), recording segments (from inside the room, any host),
+ * and guest speakers (staff edit the list; a guest claims a slot on the way
+ * in). Uploads never pass through a function: an action mints a signed URL,
+ * the browser PUTs to Storage, and a second step registers the path after
+ * checking the object is really there under this event's prefix.
  */
 
 const BUCKET = "webinar-media";
@@ -111,23 +83,42 @@ async function gateWrite(
 // ---------------------------------------------------------------------------
 
 /**
- * A signed URL the browser can PUT one file to.
- *
- * The path is built HERE, from the event id and the kind, and never taken from
- * the client. A client-chosen path is a client-chosen bucket prefix, and the
- * only thing standing between that and one webinar's deck overwriting
- * another's is a string comparison somebody has to remember to write.
+ * A signed URL for one PDF deck. Staff only. `eventId` null means a new event
+ * that doesn't exist yet: its id is minted here and the form saves the event
+ * under it, so slides can be picked before the first Save.
  */
-export async function getWebinarUploadToken(
-  eventId: string,
-  kind: AssetKind,
+export async function getDeckUploadToken(
+  eventId: string | null,
   filename: string,
-): Promise<{ path: string; token: string; signedUrl: string }> {
-  // A recording is uploaded from inside the room, by whoever is hosting it —
-  // which may be a guest speaker. Everything else is an admin attaching a file
-  // to an event, which is staff work.
-  await gateWrite(eventId, kind === "recording" ? "moderator" : "staff");
-  return mintUploadToken(eventId, kind, filename);
+): Promise<
+  ActionResult<{ eventId: string; path: string; token: string; signedUrl: string }>
+> {
+  return runAction({ name: "getDeckUploadToken" }, async () => {
+    await assertPermission("events.manage");
+    if (eventId !== null && !isUuid(eventId)) throw new Error("Open the form again.");
+    const id = eventId ?? randomUUID();
+    return { eventId: id, ...(await mintDeckUpload(id, filename)) };
+  });
+}
+
+/** Throw away slides picked in the form but never saved. Staff only. */
+export async function discardDeckUpload(
+  eventId: string,
+  storagePath: string,
+): Promise<ActionResult> {
+  return runAction({ name: "discardDeckUpload" }, async () => {
+    await assertPermission("events.manage");
+    if (!isUuid(eventId) || !isDeckPathFor(eventId, storagePath)) return;
+    const admin = createAdminClient();
+    // Never delete bytes a saved row points at.
+    const { data, error } = await admin
+      .from("event_assets")
+      .select("id")
+      .eq("storage_path", storagePath)
+      .limit(1);
+    if (error || (data ?? []).length > 0) return;
+    await removeObjects(admin, [storagePath]);
+  });
 }
 
 /** Build the path for one upload and sign it. Callers gate first. */
@@ -165,96 +156,6 @@ export type RegisterAssetInput = {
   /** Segment index for a recording. Ignored for everything else. */
   sortOrder?: number;
 };
-
-/**
- * Record an uploaded file against the event.
- *
- * Three checks before the insert (`verifyUpload`), each of which has a
- * specific thing it stops:
- *
- *  1. The path must live under this event's prefix. Otherwise a moderator of
- *     webinar A could attach webinar B's private recording to their own event
- *     and have the follow-up job email it out.
- *  2. The object must actually exist in the bucket. Otherwise a tampered client
- *     registers a path it never uploaded — a row that 404s on download and, for
- *     `auto_share`, an email promising a recording that was never made.
- *  3. The size must be inside the cap. The bucket enforces this too and that is
- *     the copy that binds; this one is what turns a refusal into a sentence.
- *
- * The live room files its recording segments through
- * `registerWebinarRecordingSegment` below, which answers a refusal with a
- * value the recorder can act on. A recording registered HERE gets the same
- * one-recorder check and throws on refusal, because this is still an entry
- * point anyone holding the action id can call.
- */
-export async function registerWebinarAsset(
-  eventId: string,
-  input: RegisterAssetInput,
-): Promise<EventAsset> {
-  const { userId } = await gateWrite(
-    eventId,
-    input.kind === "recording" ? "moderator" : "staff",
-  );
-  const admin = createAdminClient();
-  await verifyUpload(admin, eventId, input);
-
-  const row = assetRow(eventId, input, userId);
-
-  let data: any;
-  if (input.kind === "recording") {
-    // No segment start: this entry point is not the live room's, and has no
-    // segment to date — any registration inside the lease counts.
-    const filed = await fileRecordingSegment(admin, eventId, userId, row);
-    if (!filed.ok) {
-      throw new Error("Another host's browser is recording this webinar.");
-    }
-    data = filed.data;
-  } else {
-    const res = await admin
-      .from("event_assets")
-      .insert(row)
-      .select(ASSET_COLUMNS)
-      .single();
-    if (res.error) throw new Error(res.error.message);
-    data = res.data;
-  }
-
-  // A premiere's length is what positions every viewer's player, so it is
-  // mirrored onto the event row where the join page can read it without a
-  // second query. Only for a premiere — a deck has no duration and a recording
-  // segment's is one segment's worth, not the webinar's.
-  if (input.kind === "premiere" && input.durationSeconds) {
-    await admin
-      .from("events")
-      .update({ premiere_seconds: Math.round(input.durationSeconds) })
-      .eq("id", eventId);
-  }
-
-  // Deliberately NOT audited per recording segment: an hour-long webinar writes
-  // thirty of them, and thirty near-identical audit rows per event would bury
-  // the entries a human actually reads. The admin-facing uploads are audited.
-  //
-  // Nor REVALIDATED per segment, and that one is not about noise. Next re-renders
-  // the CURRENT route whenever an action revalidates anything at all (the path
-  // argument is not checked — "TODO: only revalidate if the path matches" in
-  // Next's revalidate.ts), and a recording segment is registered from inside
-  // the live room. Every segment therefore re-ran /dashboard/events/<id>/live,
-  // and once a webinar has overrun its join window that page renders "This
-  // event has ended" — so the next segment swapped the host's live room for
-  // that shell mid-sentence, tearing down every viewer's connection. Nothing
-  // on /admin/events needs to know about a segment the moment it lands.
-  if (input.kind !== "recording") {
-    await logAudit({
-      action: "event.asset_added",
-      targetType: "event",
-      targetId: eventId,
-      payload: { kind: input.kind, filename: row.filename },
-    });
-    revalidatePath("/admin/events");
-  }
-
-  return toAsset(data);
-}
 
 /**
  * A signed URL for one recording segment — or a refusal, because another
@@ -295,7 +196,8 @@ export async function getWebinarRecordingUploadToken(
  * Checked again here, not only when the upload was signed: two hosts can both
  * be signed in the same instant, and a whole upload sits between the two
  * checks — during which the other host's segment may have landed. No audit
- * and no revalidate, for the reasons in `registerWebinarAsset`.
+ * and no revalidate: a segment registers from inside the live room, and a
+ * revalidate there would re-render the room mid-webinar.
  *
  * A refused segment's bytes are deleted, since nothing will ever point at
  * them — but ONLY once the database confirms nothing already does. The path
@@ -341,7 +243,10 @@ export async function registerWebinarRecordingSegment(
   return { ok: true };
 }
 
-/** The three checks `registerWebinarAsset` documents. Throws a sentence. */
+/**
+ * Before registering an uploaded file: it is under this event's prefix for its
+ * kind, inside the size cap, and really in the bucket. Throws a sentence.
+ */
 async function verifyUpload(
   admin: ReturnType<typeof createAdminClient>,
   eventId: string,
@@ -353,9 +258,6 @@ async function verifyUpload(
   }
   if (input.sizeBytes != null && input.sizeBytes > MAX_UPLOAD_BYTES) {
     throw new Error("Files are capped at 2 GB.");
-  }
-  if (input.kind === "deck" && !isDeckFile(input.filename, input.mimeType)) {
-    throw new Error("A deck has to be a PDF or a PowerPoint file.");
   }
 
   const segments = input.storagePath.split("/");
@@ -383,20 +285,6 @@ function assetRow(eventId: string, input: RegisterAssetInput, userId: string) {
   };
 }
 
-function toAsset(r: any): EventAsset {
-  return {
-    id: r.id,
-    eventId: r.event_id,
-    kind: r.kind,
-    storagePath: r.storage_path,
-    filename: r.filename,
-    mimeType: r.mime_type ?? null,
-    sizeBytes: r.size_bytes ?? null,
-    durationSeconds: r.duration_seconds ?? null,
-    sortOrder: r.sort_order ?? 0,
-    createdAt: r.created_at,
-  };
-}
 
 /**
  * Is somebody else this event's recorder, such that `userId`'s segment must be
@@ -595,79 +483,54 @@ async function registerRecordingSegment(
 export async function removeWebinarAsset(
   eventId: string,
   assetId: string,
-): Promise<void> {
-  await gateWrite(eventId, "staff");
-  const admin = createAdminClient();
-  const { data: existing } = await admin
-    .from("event_assets")
-    .select("storage_path, kind, filename")
-    .eq("id", assetId)
-    .eq("event_id", eventId)
-    .maybeSingle();
-  if (!existing) return;
+): Promise<ActionResult> {
+  return runAction({ name: "removeWebinarAsset" }, async () => {
+    await gateWrite(eventId, "staff");
+    const admin = createAdminClient();
+    const { data: existing } = await admin
+      .from("event_assets")
+      .select("storage_path, kind, filename")
+      .eq("id", assetId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+    if (!existing) return;
 
-  // Bytes first, row second. The row is the only record of the path, so the
-  // other order leaks an orphaned object nothing will ever point at again.
-  // Best-effort on the storage side: a file we fail to delete costs storage,
-  // whereas a row that refuses to delete is a stuck admin.
-  try {
-    await admin.storage.from(BUCKET).remove([(existing as any).storage_path]);
-  } catch (err) {
-    console.error("[webinars] asset delete failed", err);
-  }
-  const { error } = await admin
-    .from("event_assets")
-    .delete()
-    .eq("id", assetId)
-    .eq("event_id", eventId);
-  if (error) throw new Error(error.message);
+    // Bytes first: the row is the only record of the path.
+    await removeObjects(admin, [(existing as any).storage_path]);
+    const { error } = await admin
+      .from("event_assets")
+      .delete()
+      .eq("id", assetId)
+      .eq("event_id", eventId);
+    if (error) throw new Error(error.message);
 
-  if ((existing as any).kind === "premiere") {
-    await admin
-      .from("events")
-      .update({ premiere_seconds: null })
-      .eq("id", eventId);
-  }
-
-  await logAudit({
-    action: "event.asset_removed",
-    targetType: "event",
-    targetId: eventId,
-    payload: { filename: (existing as any).filename },
+    await logAudit({
+      action: "event.asset_removed",
+      targetType: "event",
+      targetId: eventId,
+      payload: { filename: (existing as any).filename },
+    });
+    revalidatePath("/admin/events");
   });
-  revalidatePath("/admin/events");
-}
-
-/** Everything attached to an event. Staff read — includes unshared files. */
-export async function fetchWebinarAssets(
-  eventId: string,
-): Promise<EventAsset[]> {
-  await assertPermission("events.manage");
-  return listAssets(eventId);
 }
 
 /**
- * The speakers and files an existing event already has, for the edit form.
- *
- * Read on demand rather than carried by the admin list query, which would
- * otherwise haul every speaker biography and every file row for every event on
- * the calendar in order to populate one form.
- *
- * It matters more than a normal seed, because `saveSpeakers` replaces the whole
- * list: a form that opened with an empty speaker array and was then saved would
- * DELETE the speakers the event already had. The caller must not enable saving
- * until this has landed.
+ * An existing event's speakers and slides, for the edit form. Read on demand,
+ * not with the list. The form must not save speakers until this has landed:
+ * `saveSpeakers` replaces the whole list.
  */
-export async function fetchWebinarExtras(eventId: string): Promise<{
-  speakers: EventSpeaker[];
-  assets: EventAsset[];
-}> {
-  await assertPermission("events.manage");
-  const [speakers, assets] = await Promise.all([
-    listSpeakers(eventId, true),
-    listAssets(eventId),
-  ]);
-  return { speakers, assets };
+export async function fetchWebinarExtras(eventId: string): Promise<
+  ActionResult<{ speakers: EventSpeaker[]; deck: EventAsset | null }>
+> {
+  return runAction({ name: "fetchWebinarExtras" }, async () => {
+    await assertPermission("events.manage");
+    const [speakers, assets] = await Promise.all([
+      listSpeakers(eventId, true),
+      listAssets(eventId),
+    ]);
+    const decks = assets.filter((a) => a.kind === "deck");
+    return { speakers, deck: decks[decks.length - 1] ?? null };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -700,60 +563,68 @@ export type SpeakerInput = {
 export async function saveSpeakers(
   eventId: string,
   speakers: SpeakerInput[],
-): Promise<EventSpeaker[]> {
-  await gateWrite(eventId, "staff");
-  const admin = createAdminClient();
+): Promise<ActionResult<EventSpeaker[]>> {
+  return runAction({ name: "saveSpeakers" }, async () => {
+    await gateWrite(eventId, "staff");
+    const admin = createAdminClient();
 
-  const clean = speakers
-    .map((s, i) => ({ ...s, sortOrder: i }))
-    .filter((s) => s.name.trim().length > 0)
-    .slice(0, 20);
-
-  const keep = clean.map((s) => s.id).filter(Boolean) as string[];
-  let del = admin.from("event_speakers").delete().eq("event_id", eventId);
-  if (keep.length > 0) del = del.not("id", "in", `(${keep.join(",")})`);
-  const { error: delError } = await del;
-  if (delError) throw new Error(delError.message);
-
-  for (const s of clean) {
-    const payload = {
-      event_id: eventId,
-      name: s.name.trim().slice(0, 120),
-      title: s.title?.trim().slice(0, 160) || null,
-      bio: s.bio?.trim().slice(0, 1000) || null,
-      email: s.email?.trim().toLowerCase() || null,
-      photo_url: s.photoUrl?.trim() || null,
-      link_url: s.linkUrl?.trim() || null,
-      sort_order: s.sortOrder,
-    };
-    if (s.id) {
-      const { error } = await admin
-        .from("event_speakers")
-        .update(payload)
-        .eq("id", s.id)
-        .eq("event_id", eventId);
-      if (error) throw new Error(error.message);
-    } else {
-      const { error } = await admin.from("event_speakers").insert({
-        ...payload,
-        // Minted on creation so the invite link exists the moment the row does.
-        // 32 bytes of base64url — this is the only credential in the feature
-        // that is guessable in principle, so it is sized to make that
-        // impossible in practice rather than merely unlikely.
-        claim_token: randomBytes(32).toString("base64url"),
-      });
-      if (error) throw new Error(error.message);
+    const clean = speakers
+      .map((s, i) => ({ ...s, sortOrder: i }))
+      .filter((s) => s.name.trim().length > 0)
+      .slice(0, 20);
+    for (const s of clean) {
+      if (s.id && !isUuid(s.id)) throw new Error("Reload and try again.");
+      if (!parseHttpUrl(s.linkUrl).ok) {
+        throw new Error(`${s.name.trim()}: use a full https:// link.`);
+      }
     }
-  }
 
-  await logAudit({
-    action: "event.speakers_updated",
-    targetType: "event",
-    targetId: eventId,
-    payload: { count: clean.length },
+    const keep = clean.map((s) => s.id).filter(Boolean) as string[];
+    let del = admin.from("event_speakers").delete().eq("event_id", eventId);
+    if (keep.length > 0) del = del.not("id", "in", `(${keep.join(",")})`);
+    const { error: delError } = await del;
+    if (delError) throw new Error(delError.message);
+
+    for (const s of clean) {
+      const payload = {
+        event_id: eventId,
+        name: s.name.trim().slice(0, 120),
+        title: s.title?.trim().slice(0, 160) || null,
+        bio: s.bio?.trim().slice(0, 1000) || null,
+        email: s.email?.trim().toLowerCase() || null,
+        photo_url: s.photoUrl?.trim() || null,
+        link_url: (parseHttpUrl(s.linkUrl) as { url: string | null }).url,
+        sort_order: s.sortOrder,
+      };
+      if (s.id) {
+        const { error } = await admin
+          .from("event_speakers")
+          .update(payload)
+          .eq("id", s.id)
+          .eq("event_id", eventId);
+        if (error) throw new Error(error.message);
+      } else {
+        const { error } = await admin.from("event_speakers").insert({
+          ...payload,
+          // Minted on creation so the invite link exists the moment the row does.
+          // 32 bytes of base64url — this is the only credential in the feature
+          // that is guessable in principle, so it is sized to make that
+          // impossible in practice rather than merely unlikely.
+          claim_token: randomBytes(32).toString("base64url"),
+        });
+        if (error) throw new Error(error.message);
+      }
+    }
+
+    await logAudit({
+      action: "event.speakers_updated",
+      targetType: "event",
+      targetId: eventId,
+      payload: { count: clean.length },
+    });
+    revalidatePath("/admin/events");
+    return listSpeakers(eventId, true);
   });
-  revalidatePath("/admin/events");
-  return listSpeakers(eventId, true);
 }
 
 /**
@@ -768,18 +639,20 @@ export async function saveSpeakers(
 export async function speakerInviteLink(
   eventId: string,
   speakerId: string,
-): Promise<string> {
-  await gateWrite(eventId, "staff");
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("event_speakers")
-    .select("claim_token")
-    .eq("id", speakerId)
-    .eq("event_id", eventId)
-    .maybeSingle();
-  const token = (data as any)?.claim_token;
-  if (!token) throw new Error("That speaker has already claimed their slot.");
-  return inviteUrlFor(eventId, token);
+): Promise<ActionResult<string>> {
+  return runAction({ name: "speakerInviteLink" }, async () => {
+    await gateWrite(eventId, "staff");
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("event_speakers")
+      .select("claim_token")
+      .eq("id", speakerId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+    const token = (data as any)?.claim_token;
+    if (!token) throw new Error("That speaker has already claimed their slot.");
+    return inviteUrlFor(eventId, token);
+  });
 }
 function inviteUrlFor(eventId: string, token: string): string {
   return `${env.siteUrl}/dashboard/events/${eventId}/live?speaker=${token}`;
@@ -798,47 +671,48 @@ function inviteUrlFor(eventId: string, token: string): string {
 export async function sendSpeakerInvite(
   eventId: string,
   speakerId: string,
-): Promise<void> {
-  const { userId } = await gateWrite(eventId, "staff");
-  const admin = createAdminClient();
-  const [{ data: speaker }, { data: event }, { data: me }] = await Promise.all([
-    admin
-      .from("event_speakers")
-      .select("id, name, email, claim_token, user_id")
-      .eq("id", speakerId)
-      .eq("event_id", eventId)
-      .maybeSingle(),
-    admin
-      .from("events")
-      .select("title, starts_at")
-      .eq("id", eventId)
-      .maybeSingle(),
-    admin.from("profiles").select("full_name").eq("id", userId).maybeSingle(),
-  ]);
-  const sp = speaker as any;
-  if (!sp) throw new Error("That speaker isn't on this event.");
-  if (sp.user_id || !sp.claim_token) {
-    throw new Error("That speaker has already claimed their slot.");
-  }
-  if (!sp.email) throw new Error("Add an email for this speaker first.");
-  if (!event) throw new Error("That event no longer exists.");
+): Promise<ActionResult> {
+  return runAction({ name: "sendSpeakerInvite" }, async () => {
+    const { userId } = await gateWrite(eventId, "staff");
+    const admin = createAdminClient();
+    const [{ data: speaker }, { data: event }, { data: me }] = await Promise.all([
+      admin
+        .from("event_speakers")
+        .select("id, name, email, claim_token, user_id")
+        .eq("id", speakerId)
+        .eq("event_id", eventId)
+        .maybeSingle(),
+      admin
+        .from("events")
+        .select("title, starts_at")
+        .eq("id", eventId)
+        .maybeSingle(),
+      admin.from("profiles").select("full_name").eq("id", userId).maybeSingle(),
+    ]);
+    const sp = speaker as any;
+    if (!sp) throw new Error("That speaker isn't on this event.");
+    if (sp.user_id || !sp.claim_token) {
+      throw new Error("That speaker has already claimed their slot.");
+    }
+    if (!sp.email) throw new Error("Add an email for this speaker first.");
+    if (!event) throw new Error("That event no longer exists.");
 
-  const t = Templates.speakerInvite({
-    eventTitle: (event as any).title,
-    startsAt: (event as any).starts_at,
-    inviteUrl: inviteUrlFor(eventId, sp.claim_token),
-    hostName: (me as any)?.full_name || "The batch0 team",
-  });
-  await sendEmail({ to: sp.email, subject: t.subject, html: t.html });
+    const t = Templates.speakerInvite({
+      eventTitle: (event as any).title,
+      startsAt: (event as any).starts_at,
+      inviteUrl: inviteUrlFor(eventId, sp.claim_token),
+      hostName: (me as any)?.full_name || "The batch0 team",
+    });
+    await sendEmail({ to: sp.email, subject: t.subject, html: t.html });
 
-  await logAudit({
-    action: "event.speaker_invited",
-    targetType: "event",
-    targetId: eventId,
-    payload: { speakerId },
+    await logAudit({
+      action: "event.speaker_invited",
+      targetType: "event",
+      targetId: eventId,
+      payload: { speakerId },
+    });
   });
 }
-
 
 /**
  * Claim a speaker slot.

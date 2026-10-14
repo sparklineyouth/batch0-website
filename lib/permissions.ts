@@ -598,6 +598,7 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/calls", "calls.invite"],
   ["/admin/blog", "blog.manage"],
   ["/admin/course", "course.manage"],
+  // A redirect to /admin/events now; mapped so old links still resolve.
   ["/admin/webinars", "events.manage"],
   ["/admin/events", "events.manage"],
   ["/admin/resources", "resources.manage"],

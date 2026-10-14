@@ -289,7 +289,7 @@ async function checkWebinars() {
 
   const tables: [string, string][] = [
     ["event_speakers", "guest speakers"],
-    ["event_assets", "decks, premieres and recordings"],
+    ["event_assets", "decks and older recordings"],
     ["webinar_messages", "live chat"],
     ["webinar_question_votes", "question upvotes"],
     ["webinar_polls", "polls"],
@@ -319,41 +319,19 @@ async function checkWebinars() {
   );
   check(cols.ok, "events carries the webinar columns");
 
-  // The audience-mode census. This is the one number in this script worth
-  // reading every time: `private` is the default and the safe answer, and a
-  // webinar in `open` is one where students see each other's names. Nobody
-  // should discover that from a student.
+  // Chat settings at a glance. `open` (chat on, hosts remove messages) is the
+  // default for new events since 0098; `private` is chat off. Counts only:
+  // every mode is a valid choice.
   const modes = await rest(
-    "events?select=id,title,audience_mode,live_mode,starts_at&or=(type.eq.webinar,live_mode.eq.hosted,live_mode.eq.premiere)&limit=200",
+    "events?select=id,audience_mode&or=(type.eq.webinar,live_mode.eq.hosted,live_mode.eq.premiere)&limit=1000",
   );
   if (modes.ok) {
     const rows = await modes.json();
-    const open = rows.filter((e: any) => e.audience_mode === "open");
-    const moderated = rows.filter((e: any) => e.audience_mode === "moderated");
+    const count = (m: string) => rows.filter((e: any) => e.audience_mode === m).length;
     info(
-      `${rows.length} webinar(s): ${rows.length - open.length - moderated.length} private, ` +
-        `${moderated.length} moderated, ${open.length} open`,
+      `${rows.length} webinar(s): ${count("open")} chat open, ` +
+        `${count("moderated")} moderated, ${count("private")} chat off`,
     );
-    for (const e of open) {
-      warn(
-        `open chat — students see each other by name: ${String(e.title).slice(0, 45)}`,
-      );
-    }
-
-    // A premiere with no video is an event nobody can watch: the page falls
-    // back to the live room and the audience waits for a host who was never
-    // going to appear.
-    const premieres = rows.filter((e: any) => e.live_mode === "premiere");
-    for (const e of premieres) {
-      const a = await rest(
-        `event_assets?select=id&event_id=eq.${e.id}&kind=eq.premiere&limit=1`,
-      );
-      const has = a.ok && (await a.json()).length > 0;
-      check(
-        has,
-        `premiere has a video to play: ${String(e.title).slice(0, 40)}`,
-      );
-    }
   }
 
   // The storage bucket the whole feature writes to.

@@ -230,6 +230,12 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
+    type: "event_live",
+    label: "A webinar started now",
+    group: "Schedule & calls",
+    default: "important",
+  },
+  {
     type: "call_invited",
     label: "You're invited to a call",
     group: "Schedule & calls",

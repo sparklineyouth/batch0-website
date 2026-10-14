@@ -35,7 +35,6 @@ import {
   Flag,
   KeyRound,
   Calendar as CalendarIcon,
-  Radio,
   Video,
   Workflow,
   LineChart,
@@ -324,12 +323,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         href: "/admin/events",
         label: "Events",
         icon: CalendarDays,
-        perm: "events.manage",
-      },
-      {
-        href: "/admin/webinars",
-        label: "Webinars",
-        icon: Radio,
         perm: "events.manage",
       },
       {

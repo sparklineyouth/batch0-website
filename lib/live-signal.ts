@@ -5,7 +5,7 @@
  * mints the channel names and the browser subscribes to them, so both sides
  * have to agree on every string in here. Keeping it import-free also means it
  * carries a test that runs under `npm test` with no transpile step, the same
- * way lib/live.ts and lib/webinar-schedule.ts do.
+ * way lib/live.ts does.
  *
  * ---------------------------------------------------------------------------
  * The topology, and why the audience really is hidden

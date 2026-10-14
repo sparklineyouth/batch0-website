@@ -1,12 +1,54 @@
 # Webinars
 
-A webinar is now a first-class event type with a deck, a recording, guest
-speakers, a live audience channel, and — optionally — a pre-recorded talk played
-on the schedule with a genuinely live Q&A at the end.
+A webinar is an event (`type = 'webinar'`, `live_mode = 'hosted'`) with
+slides, a recording, guest speakers and a live audience channel.
 
 Everything here sits on top of batch0 Live (`docs/batch0-live.md`), which is
 unchanged: the media path, the star topology and the signalling protocol are
 exactly as they were. What is new is everything around the video.
+
+---
+
+## Running events (admin)
+
+One page: `/admin/events` (`/admin/webinars` redirects there), grouped
+**Live now / Upcoming / Past**.
+
+- **Start a webinar now** — title (optional), who, "tell them it's live". Creates
+  a hosted webinar starting this minute for the running (else next) cohort,
+  chat open, recording on, already live; notifies the cohort (bell + one
+  batched email) and drops you in the room as host. If one is already live
+  for the same people, the dialog leads with Join and starting a second room
+  takes "Start another" (the server checks too).
+- **New event** — only a title and a time are required. Length (30–120 min)
+  sets the end. Where: batch0 video room or an external http(s) link. Who: a
+  cohort, everyone signed in, or staff only (a rehearsal: never notified,
+  never emailed afterwards). "Notify now" is on for new events. More options:
+  description, type (Demo Day stays a type — its ticket rules depend on it),
+  location, chat (open / moderated / off), record automatically, email the
+  recording and slides afterwards, slides (PDF only — that is what the room
+  presents; pick it before the first save if you like), guest speakers, and a
+  recording link for external events.
+- **Rows** — Join (a host is on air: "Ana hosting"), Start (live or within 15
+  minutes, nobody hosting), Open room (earlier, once `lib/live.ts` lets hosts
+  in), End / Reopen, Edit, Delete (also removes slides and recordings). Past
+  rows link to the recording when there is one. The title opens the record
+  page (`/admin/events/[id]`): status, attendance, questions, recording,
+  slides, speakers.
+- **Who hears about it** — the cohort's students (every unfinished cohort for
+  "everyone signed in"). A student whose cohort hasn't started can't open
+  `/dashboard/events` yet, so they are told only about hosted events, linked
+  to the room (`eventNoticeLink`).
+
+Writes go through `app/admin/events/actions.ts` (`saveEvent`,
+`startWebinarNow`, `deleteEvent`), all `events.manage` and validated on the
+server (title, time, length, http(s) links, cohort). Saving or deleting
+revalidates the student pages, the app's cached events and the public
+timetable. Form rules live in `lib/event-form.ts` (tested).
+
+Premiere mode is retired: existing `live_mode = 'premiere'` rows run as
+ordinary hosted rooms, and the form only offers hosted or external. The Sunday
+scheduler, the shown-attendees figure and the Discord cross-post are gone.
 
 ---
 
@@ -26,9 +68,14 @@ at runtime, live, in front of an audience.
    gap between the drop and the create, joins and question submissions fail
    closed.
 2. Apply `supabase/migrations/0084_webinars.sql` in the SQL editor.
-3. Run `npm run webinar-doctor`. It now checks every table, column and bucket
-   0084 adds, and prints an audience-mode census.
+3. Run `npm run webinar-doctor`. It checks every table, column and bucket
+   0084 adds, and counts webinars per chat setting.
 4. Deploy the code.
+5. Apply `0098_events.sql` (any time; the code does not depend on it): event
+   writes over PostgREST need `events.manage` instead of `mentor.panel`, an
+   "everyone signed in" event needs a signed-in reader (the anon key used to
+   list them, join links included), and new rows default to chat open and
+   recording on.
 
 **Never run `npm run webinar-e2e` against production.** It creates a real admin
 account, two student accounts, and a `visibility: 'public'` event that starts
@@ -57,14 +104,13 @@ guarantee the rest of the system is built on, it became a setting:
 
 | Mode | What a student sees | Use it for |
 |---|---|---|
-| `private` | Their own questions. No chat. No evidence anyone else exists. | **The default.** Public intake webinars. Anything with strangers in the room. |
+| `private` ("Chat: Off") | Their own questions. No chat. No evidence anyone else exists. | Public intake webinars. Anything with strangers in the room. |
 | `moderated` | Approved messages and questions, plus their own pending ones. | A public webinar where you want a live channel but nothing unreviewed reaching the room. |
-| `open` | Every message, with names. | A cohort call, where the students already know each other. |
+| `open` | Every message, with names. Hosts remove anything. | **The default for new events** (form, `startWebinarNow`, and the column default since 0098). A cohort call. |
 
-`private` is the default in the database, in `normalizeAudienceMode()`, and in
-the admin form. Every event that existed before 0084 has it. A deploy that is
-ahead of the database shows a webinar with no chat rather than one with
-unmoderated chat, because the normaliser fails closed on an unrecognised value.
+`normalizeAudienceMode()` still fails closed: an unrecognised or missing value
+reads as `private`, so a deploy ahead of the database shows no chat rather than
+unmoderated chat. Existing events keep whatever mode they have.
 
 **Switching modes is not retroactive.** A question's visibility is gated on
 `approved_at`, and a question asked while the room was `private` is never
@@ -239,14 +285,14 @@ header.
 ### The End button (and Leave)
 
 There is **one** End for everyone, in the room's control bar, with a two-step
-confirm. Staff hosts always see it (during a premiere too); a guest speaker sees
+confirm. Staff hosts always see it; a guest speaker sees
 it only in the last-host Leave prompt, and only when no staff host is present.
-Admins also have End for everyone and Reopen on `/admin/webinars` and
+Admins also have End and Reopen on `/admin/events` and
 `/admin/events/[id]`, so a webinar a host walked away from can be closed
 without going on air.
 
-Nobody can End a webinar that has not begun — its scheduled start, or an early
-"Go live now" on a premiere (`webinarHasBegun`, enforced by `endLive` through
+Nobody can End a webinar that has not begun — its scheduled start, or a host
+going live early (`webinarHasBegun`, enforced by `endLive` through
 the room's `canEnd`). Hosts can open the room an hour early to set up, and an
 End there used to end the real webinar before it started: the audience got
 "This webinar has ended" at the start, and a guest speaker who pressed it could
@@ -294,44 +340,6 @@ or the ordinary Start) when it comes.
 After End, viewers see "This webinar has ended" with no media and no Rejoin;
 chat, questions and polls close for the audience (moderators can still read
 and tidy them); the webinar shows **Ended** on every list.
-
----
-
-## Premieres (pre-recorded, played as live)
-
-`live_mode = 'premiere'`. A recording plays on the schedule and hands over to a
-genuinely live room for the Q&A.
-
-Every viewer is positioned at `(serverNow - starts_at)`. A viewer arriving
-twenty minutes late joins twenty minutes in — which is the difference between a
-premiere and a video, and it makes the position self-healing across a reload
-with no per-viewer signalling.
-
-**The offset is server-computed and must stay that way.** A viewer whose laptop
-clock is four minutes fast would otherwise sit four minutes ahead of the room —
-visibly, in chat, reacting to something nobody has seen yet — and one whose
-clock is out by an hour would watch a black screen and conclude the webinar
-never started.
-
-`live_ended_at` beats everything: End for everyone stops a playing premiere
-too, rather than leaving the recording running under an "Ended" badge.
-
-`live_started_at` beats the schedule absolutely. A host who presses "Go live
-now" thirty minutes into a forty-minute recording has made a decision about the
-room; the alternative is an audience watching a recording of someone who is, at
-that moment, live on the other side of the same page.
-
-### What is and is not pretended
-
-The talk is pre-recorded. Everything else is real and happening now: the chat,
-the questions, the polls, the attendance record, and the host answering at the
-end. A premiere is a talk that was rehearsed instead of improvised.
-
-There is deliberately **no** support for fabricated audience activity — no
-scripted student messages, no synthetic reactions. `display_viewer_count`
-(migration 0071) remains the one announced figure an admin can set, and it is
-display-only and gates nothing. If you want the room to look busier than it is,
-that field is the honest place to say so.
 
 ---
 
@@ -408,10 +416,10 @@ The email and the bell link to `/dashboard/events`. They used to link to
 | Room actions | `app/dashboard/events/[id]/live/room-actions.ts` |
 | Who is a host | `lib/live-access.ts` |
 | Admin actions | `app/admin/events/webinar-actions.ts` |
-| Admin pages | `app/admin/webinars/*` (live status, Host room, End / Reopen), `app/admin/events/[id]/page.tsx` |
+| Admin pages | `app/admin/events/*` (list, form, Start now, End / Reopen, record page) |
 | Follow-up job | `app/api/cron/webinar-followups/route.ts` |
 | Room | `components/live/broadcast-room.tsx`, `room-panel.tsx`, `use-recorder.ts`, `premiere-player.tsx`, `speaker-strip.tsx` |
-| Admin form | `app/admin/events/webinar-fields.tsx` |
+| Admin form rules | `lib/event-form.ts`, `lib/event-form.test.ts`, `supabase/migrations/0098_events.sql` |
 
 ---
 
@@ -439,6 +447,6 @@ The email and the bell link to `/dashboard/events`. They used to link to
 - **No PDF/PPTX rendering.** A deck is a download, not an in-page viewer — there
   is no renderer in the repo and adding one would be a new dependency.
 - **Existing webinars are not backfilled** to `type = 'webinar'`. They are still
-  `type = 'workshop'` with `live_mode = 'hosted'`, and `/admin/webinars` accepts
-  both. A backfill would break `scripts/prepare-course-schedule.mts`, which
-  hard-asserts the counts of each type in the seeded schedule.
+  `type = 'workshop'` with `live_mode = 'hosted'`; `/admin/events` lists every
+  event regardless. A backfill would break `scripts/prepare-course-schedule.mts`,
+  which hard-asserts the counts of each type in the seeded schedule.
