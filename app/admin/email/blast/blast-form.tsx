@@ -402,7 +402,6 @@ export function BlastForm({
             {missingParent} {missingParent === 1 ? "person" : "people"} in this
             filter {missingParent === 1 ? "has" : "have"} no parent email on
             their application and {missingParent === 1 ? "is" : "are"} hidden.
-            The question is optional, so this is normal.
           </p>
         )}
 

@@ -27,8 +27,7 @@ export default async function AdminDemoDayRubricPage() {
       </Link>
       <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">Rubric</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Per-criterion weights drive the leaderboard. Judges see hints next to
-        each criterion while scoring.
+        Weights drive the leaderboard.
       </p>
       <Card className="mt-6">
         <RubricEditor

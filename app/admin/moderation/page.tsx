@@ -17,8 +17,7 @@ export default async function ModerationPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Moderation</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Team logos awaiting review. Reject anything that wouldn't be safe in a
-        high-school setting.
+        Team logos awaiting review.
       </p>
 
       {(pending?.length ?? 0) === 0 ? (

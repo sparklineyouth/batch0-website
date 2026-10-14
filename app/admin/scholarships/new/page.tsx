@@ -23,7 +23,7 @@ export default async function NewScholarshipPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold tracking-tight">New scholarship</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Its extra questions are added after it exists — save this first.
+        Save first, then add questions.
       </p>
       <Card className="mt-6">
         <ScholarshipForm initial={emptyScholarshipForm()} />

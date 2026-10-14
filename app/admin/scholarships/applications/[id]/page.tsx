@@ -193,10 +193,10 @@ export default async function ScholarshipApplicationPage(props: {
         </dl>
         <p className="mt-3 text-xs text-ink-faint">
           {scholarship && !hasMoney(scholarship.terms)
-            ? "No money on this one — awarding grants the perks straight to their account, and each one is redeemed from their scholarship page."
+            ? "Perks only. Awarding grants them."
             : hasPaid
-              ? "They've already paid, so a money award is issued as a partial refund against that charge — a separate, deliberate step after awarding. Their enrollment is unaffected."
-              : "They haven't paid yet, so a money award comes off their checkout automatically. Nothing to issue by hand."}
+              ? "Already paid: refund the award as a separate step."
+              : "Not paid yet: the award comes off checkout."}
         </p>
       </Card>
 
@@ -208,9 +208,8 @@ export default async function ScholarshipApplicationPage(props: {
             {otherLive.some((a) => a.status === "awarded") && (
               <>
                 {" "}
-                — <strong>including one already awarded</strong>. Students hold
-                one at a time until that award&apos;s cohort is over, so
-                awarding this will be refused until that one is revoked.
+                — <strong>including one already awarded</strong>. Revoke it
+                before awarding this one.
               </>
             )}
             .

@@ -137,8 +137,7 @@ export default async function RegistrationsPage(props: { params: Promise<{ id: s
         </Card>
       )}
       <p className="mt-3 text-xs text-ink-faint">
-        Referral counts include friends who registered here or applied to a cohort through the entrant&apos;s
-        link since this challenge was created. <Link href="/admin/referrals" className="underline">All referrals →</Link>
+        Counts friends who joined via their link. <Link href="/admin/referrals" className="underline">All referrals →</Link>
       </p>
     </div>
   );

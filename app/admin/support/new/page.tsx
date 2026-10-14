@@ -71,7 +71,7 @@ export default async function LogSupportRequestPage(props: {
 
       <h1 className="mt-4 font-display text-3xl text-ink">Log a request</h1>
       <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-        An emailed or phoned-in request. Use the time it arrived.
+        An emailed or phoned-in request.
       </p>
 
       <Card className="mt-6">

@@ -534,8 +534,7 @@ export default async function AdminSupportPage(props: {
       )}
       {!canManage && (
         <p className="mt-3 text-xs text-ink-faint">
-          You have read access to this queue. Answering a request needs the
-          &ldquo;Answer support requests&rdquo; permission.
+          Read-only. Answering needs &ldquo;Answer support requests&rdquo;.
         </p>
       )}
     </div>

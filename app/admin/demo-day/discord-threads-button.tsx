@@ -59,8 +59,7 @@ export function DemoDayDiscordThreadsButton({
             Discord pitch threads
           </label>
           <p className="mt-1 text-xs text-ink-soft">
-            Spawn a thread per pitch in #events with audience-reaction
-            buttons (🔥 💡 🚀). Clicks land on the leaderboard.
+            One #events thread per pitch. Reactions feed the leaderboard.
           </p>
         </div>
         <select

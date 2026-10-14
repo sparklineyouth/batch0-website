@@ -365,8 +365,7 @@ export function QuestionListEditor({
                   + Add option
                 </Button>
                 <p className="mt-2 text-xs text-ink-faint">
-                  The code on the left is what gets stored. It stays put when you
-                  rename an option, so existing answers keep their meaning.
+                  The code is stored; renaming keeps it.
                 </p>
               </div>
             )}

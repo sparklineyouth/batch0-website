@@ -118,9 +118,7 @@ export function AnnouncementForm({
             ))}
           </Select>
           <p className="mt-1.5 text-xs text-ink-faint">
-            Use @everyone sparingly — it notifies everyone in the server,
-            including unrelated members. Role pings only configure if the
-            role ID is set under Admin → Discord.
+            Role pings need the role ID in Admin → Discord.
           </p>
         </div>
       )}

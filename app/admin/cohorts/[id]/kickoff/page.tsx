@@ -112,19 +112,16 @@ function PhaseNote({
 }) {
   const date = fmtDateOnly(startsOn);
   if (phase === "cancelled") {
-    return <>This cohort is cancelled, so students see a short notice instead of the agenda.</>;
+    return <>Cancelled: students see a short notice.</>;
   }
   if (phase === "undated") {
     return (
-      <>
-        This cohort has no start date yet, so the page says kickoff is being
-        scheduled. Set a date on the cohort to show a countdown.
-      </>
+      <>No start date yet. Set one on the cohort to show a countdown.</>
     );
   }
   if (phase === "today") return <>Kickoff is today.</>;
   if (phase === "past") {
-    return <>This cohort started {date}, so the page reads as the record of day one.</>;
+    return <>Started {date}.</>;
   }
   return <>Kicks off {date} — students see a countdown until then.</>;
 }

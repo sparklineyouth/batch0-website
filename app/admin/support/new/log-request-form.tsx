@@ -563,8 +563,7 @@ export function LogRequestForm({
         <FieldError id="log-body-error">{fieldErrors.body}</FieldError>
         <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-xs text-ink-faint">
           <p>
-            It opens their thread, so they&rsquo;ll see it as their own first
-            message. Keep notes for the team for an internal note afterwards.
+            They see this as their first message.
           </p>
           {bodyLength >= BODY_COUNTER_FROM && (
             <span

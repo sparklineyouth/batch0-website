@@ -203,8 +203,7 @@ export function QueuedEmailEditor({
                 className="max-w-[260px]"
               />
               <p className="mt-1 text-xs text-ink-faint">
-                Your local time. It goes out on the first queue run after that
-                moment — the queue is checked every five minutes.
+                Your local time. Sends within ~5 min of it.
               </p>
             </div>
           </Card>
@@ -215,18 +214,14 @@ export function QueuedEmailEditor({
                 <div className="flex items-start gap-2 rounded-lg border border-line bg-paper px-3 py-2.5 text-xs text-ink-soft">
                   <FileText className="mt-0.5 h-4 w-4 shrink-0 text-ink-faint" />
                   <span>
-                    The wording comes from the{" "}
+                    Uses the{" "}
                     <Link
                       href={`/admin/email/templates/${templateId}`}
                       className="font-medium text-phosphor-ink underline"
                     >
                       {row.templateName ?? "template"}
                     </Link>{" "}
-                    template and is rendered when this sends — so editing that
-                    template updates this email too, along with every other one
-                    queued against it. To change the words for{" "}
-                    <strong className="text-ink">this recipient only</strong>,
-                    detach it first.
+                    template. Detach to edit this one only.
                   </span>
                 </div>
                 <div>
@@ -332,8 +327,7 @@ export function QueuedEmailEditor({
             </div>
           </Card>
           <p className="mt-2 text-xs text-ink-faint">
-            Rendered by the server through the same path a real send uses. Save
-            first — the preview reflects what's stored, not what's typed.
+            Shows the saved version.
           </p>
         </div>
       </div>
@@ -350,7 +344,7 @@ export function QueuedEmailEditor({
           );
         }}
         title="Detach this email from its template?"
-        description={`It keeps the wording the "${row.templateName ?? "template"}" template produces today, as its own copy. Later edits to that template will no longer reach this one — and this is not reversible from here.`}
+        description={`It keeps today's wording as its own copy. Later edits to "${row.templateName ?? "template"}" won't reach it. Can't be undone.`}
         confirmLabel="Detach it"
         pending={pending}
       />
@@ -364,7 +358,7 @@ export function QueuedEmailEditor({
           );
         }}
         title="Cancel this email?"
-        description="It stays in the outbox as a cancelled row so there's a record, but it won't be sent. You can put it back with Retry."
+        description="It won't send. Retry puts it back."
         confirmLabel="Cancel it"
         pending={pending}
         destructive

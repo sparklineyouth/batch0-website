@@ -41,8 +41,7 @@ export default async function AdminAnnouncementsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Announcements</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Broadcast to enrolled students. Optionally cross-post to your
-        Discord announcements channel.
+        Broadcast to enrolled students.
       </p>
       <Card className="mt-6">
         <AnnouncementForm

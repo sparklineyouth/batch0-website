@@ -51,7 +51,7 @@ export default async function EmailOutboxPage() {
             Outbox
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Queued and sent email. Pending sends can be cancelled.
+            Queued and sent email.
           </p>
         </div>
         <OutboxControls pendingCount={pendingCount} />

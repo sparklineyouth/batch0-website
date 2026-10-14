@@ -20,7 +20,7 @@ export default async function AdminIntrosPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Investor intros</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Funnel from intro request → meeting → committed → wired.
+        Request → meeting → committed → wired.
       </p>
 
       <div className="mt-6 space-y-3">

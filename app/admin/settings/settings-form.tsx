@@ -82,7 +82,7 @@ export function SettingsForm({
       <Section title="Applications">
         <Toggle
           label="Applications open"
-          description="Master switch. When off, the application form is closed and the message below is shown."
+          description="Off closes the form and shows the message below."
           checked={values.applications_open}
           onChange={(v) => set("applications_open", v)}
         />
@@ -101,8 +101,7 @@ export function SettingsForm({
             ))}
           </Select>
           <Hint>
-            New applications get attached to this cohort. Leave blank to use
-            the next upcoming cohort.
+            Blank = the next upcoming cohort.
           </Hint>
         </Field>
         <Field label="Closed-message text">
@@ -132,13 +131,13 @@ export function SettingsForm({
       <Section title="Site">
         <Toggle
           label="Maintenance mode"
-          description="When on, public marketing pages can show a maintenance banner. Auth and dashboards stay reachable."
+          description="Shows a banner on marketing pages."
           checked={values.maintenance_mode}
           onChange={(v) => set("maintenance_mode", v)}
         />
         <Toggle
           label="Referrals"
-          description="When off, hides the referral link on the student dashboard and ignores ?ref= codes on signup/apply. Existing application records keep their stored codes."
+          description="Off hides referral links and ignores ?ref= codes."
           checked={values.referrals_enabled}
           onChange={(v) => set("referrals_enabled", v)}
         />

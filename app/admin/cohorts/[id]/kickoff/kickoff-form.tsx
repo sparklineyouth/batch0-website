@@ -109,8 +109,7 @@ export function KickoffForm({
             placeholder="https://…"
           />
           <p className="mt-1 text-xs text-ink-faint">
-            Shown as a button. Must be a full https:// URL. Leave empty until
-            you have the real link — no button appears without one.
+            https:// only. No link, no button.
           </p>
         </div>
       </section>
@@ -156,7 +155,7 @@ export function KickoffForm({
 
       <RowSection
         title="Before kickoff"
-        hint="The checklist in the sidebar. Links can be in-app paths (/dashboard/team) or full https:// URLs."
+        hint="Sidebar checklist. In-app paths or https:// URLs."
         count={checklist.length}
         onAdd={() =>
           set("checklist", [...checklist, { label: "", href: "" }])

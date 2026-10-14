@@ -253,8 +253,7 @@ export function TemplateEditor({
         <Card className="mt-5">
           <p className="text-sm text-ink-soft">
             Used by {usedByAutomations} automation step
-            {usedByAutomations === 1 ? "" : "s"}. Edits apply to mail that hasn't
-            gone out yet, including anything already queued.{" "}
+            {usedByAutomations === 1 ? "" : "s"}. Edits reach queued mail too.{" "}
             <Link href="/admin/email/automations" className="text-phosphor-ink underline">
               See automations
             </Link>
@@ -494,8 +493,7 @@ export function TemplateEditor({
               </Button>
             </div>
             <p className="text-xs text-ink-faint">
-              A real send through the live transport, with sample values filled
-              in. The only way to see what a client actually does with it.
+              A real send, with sample values.
             </p>
           </Card>
 
@@ -574,8 +572,7 @@ function VariablesCard({
         <div>
           <Label>Variables</Label>
           <p className="text-xs text-ink-faint">
-            Merge tags this template expects. Declaring one adds it to the
-            insert menu and gives it a sample value in the preview.
+            Merge tags this template expects.
           </p>
         </div>
         <Button
@@ -662,9 +659,7 @@ function VariablesCard({
             </div>
           ))}
           <p className="text-xs text-ink-faint">
-            A required variable with no value blocks the send and falls back to
-            the built-in copy — better a plain email than one with a gap in the
-            middle of a sentence.
+            Missing a required value? The built-in copy sends instead.
           </p>
         </div>
       )}

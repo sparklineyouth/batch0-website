@@ -229,9 +229,7 @@ export function StudentsBulkList({
         onConfirm={() => confirmRole && runBulk(confirmRole)}
         description={
           <p className="text-sm text-ink-soft">
-            Each user&apos;s role is updated and any linked Discord
-            membership is re-synced. Your own account is skipped — nobody
-            re-roles themselves.
+            Discord roles re-sync. Your own account is skipped.
           </p>
         }
       />

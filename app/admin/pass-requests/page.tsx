@@ -46,16 +46,14 @@ export default async function AdminPassRequestsPage() {
       <div className="mb-8">
         <h1 className="font-display text-3xl text-ink">Pass requests</h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Founder-pass holders who redeemed their feedback credit. Deliver
-          feedback here and it lands on their pass and in their inbox.
+          Redeemed feedback credits. Replies reach their inbox.
         </p>
       </div>
 
       {requests.length === 0 ? (
         <Card>
           <p className="text-sm text-ink-faint">
-            No open feedback requests. When a holder redeems their credit,
-            it&apos;ll appear here.
+            No open requests.
           </p>
         </Card>
       ) : (

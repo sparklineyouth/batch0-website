@@ -41,7 +41,7 @@ export default async function EmailTemplatesPage() {
             Email templates
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Every email the site sends. Edits apply on the next send.
+            Every email the site sends.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
