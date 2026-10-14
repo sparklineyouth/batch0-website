@@ -6,6 +6,8 @@ import { json, sameOrigin } from "../http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// A long take is hundreds of objects to remove.
+export const maxDuration = 60;
 
 /**
  * DELETE /api/recordings/<id> — remove a take for good: its bytes, then its

@@ -109,6 +109,8 @@ export function useRecorder({
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const rigRef = useRef<Rig | null>(null);
+  /** A recorder torn down mid-take (an unmount) whose last chunk is still coming. */
+  const flushingRef = useRef<Promise<void> | null>(null);
 
   /** Point each person's off-screen <video> elements at their current streams. */
   const syncSources = useCallback(() => {
@@ -217,28 +219,34 @@ export function useRecorder({
     if (!rig) return;
     rigRef.current = null;
     rig.stopTicks();
-    if (rig.recorder.state !== "inactive") {
-      try {
-        rig.recorder.stop();
-      } catch {
-        /* already stopped */
+    const release = () => {
+      rig.track.stop();
+      for (const e of rig.els.values()) {
+        attach(e.cam, null);
+        attach(e.screen, null);
       }
-    }
-    rig.track.stop();
-    for (const e of rig.els.values()) {
-      attach(e.cam, null);
-      attach(e.screen, null);
-    }
-    for (const { node } of rig.nodes.values()) {
-      try {
-        node.disconnect();
-      } catch {
-        /* already disconnected */
+      for (const { node } of rig.nodes.values()) {
+        try {
+          node.disconnect();
+        } catch {
+          /* already disconnected */
+        }
       }
+      // Closing releases the audio graph; left open, Chrome keeps the tab's
+      // microphone indicator lit after the call.
+      void rig.audio.close().catch(() => {});
+    };
+    if (rig.recorder.state === "inactive") {
+      release();
+      return;
     }
-    // Closing releases the audio graph; left open, Chrome keeps the tab's
-    // microphone indicator lit after the call.
-    void rig.audio.close().catch(() => {});
+    // The sources stay up until the recorder has flushed its last chunk.
+    flushingRef.current = stopped(rig.recorder).then(release);
+    try {
+      rig.recorder.stop();
+    } catch {
+      /* already stopped */
+    }
   }, []);
 
   const begin = useCallback(
@@ -321,31 +329,13 @@ export function useRecorder({
 
   const end = useCallback(async () => {
     const rig = rigRef.current;
-    if (!rig) return;
-    const { recorder } = rig;
-    if (recorder.state === "inactive") {
-      teardown();
+    if (!rig) {
+      await flushingRef.current;
       return;
     }
-    await new Promise<void>((resolve) => {
-      const guard = setTimeout(resolve, STOP_TIMEOUT_MS);
-      // The final dataavailable fires before stop.
-      recorder.addEventListener(
-        "stop",
-        () => {
-          clearTimeout(guard);
-          resolve();
-        },
-        { once: true },
-      );
-      try {
-        recorder.stop();
-      } catch {
-        clearTimeout(guard);
-        resolve();
-      }
-    });
+    // teardown() stops the recorder; its last chunk arrives before "stop".
     teardown();
+    await flushingRef.current;
   }, [teardown]);
 
   // An unmount mid-take stops the recorder; its last chunk still reaches
@@ -353,6 +343,21 @@ export function useRecorder({
   useEffect(() => teardown, [teardown]);
 
   return useMemo(() => ({ begin, end }), [begin, end]);
+}
+
+/** Resolves when `recorder` fires "stop" (its last dataavailable comes first), bounded. */
+function stopped(recorder: MediaRecorder): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const guard = setTimeout(resolve, STOP_TIMEOUT_MS);
+    recorder.addEventListener(
+      "stop",
+      () => {
+        clearTimeout(guard);
+        resolve();
+      },
+      { once: true },
+    );
+  });
 }
 
 /**

@@ -25,6 +25,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Finalizing a take (head rewrite, storage reads) can take a few seconds.
+export const maxDuration = 60;
 
 /**
  * GET|HEAD /api/recordings/<id>/media — one take as ONE file.

@@ -4,6 +4,8 @@ import { json, readBody, sameOrigin } from "../../http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Finalizing a take (head rewrite, storage reads) can take a few seconds.
+export const maxDuration = 60;
 
 /**
  * POST /api/recordings/<id>/finish  { interrupted?: true }

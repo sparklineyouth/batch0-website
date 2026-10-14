@@ -12,6 +12,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The recordings sweep finalizes up to 20 takes.
+export const maxDuration = 120;
 
 /**
  * Mark 1:1 calls `completed` once they are over.
