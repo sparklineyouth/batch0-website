@@ -99,7 +99,7 @@ export default async function EventLivePage(
   const isStaffHost = access.isStaff;
   // Staff came from the admin list and go back there; guest speakers and
   // students go back to the events they can see.
-  const backHref = isStaffHost ? "/admin/webinars" : "/dashboard/events";
+  const backHref = isStaffHost ? "/admin/events" : "/dashboard/events";
 
   // An external event has no room to join; send them to the list, which shows
   // the Zoom link.

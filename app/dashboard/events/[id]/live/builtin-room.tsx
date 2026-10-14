@@ -106,7 +106,7 @@ export function BuiltinEventRoom({
   canEnd: boolean;
   /**
    * Back / after-leave destination, decided by the page from the role: staff
-   * go back to /admin/webinars, speakers and students to /dashboard/events.
+   * go back to /admin/events, speakers and students to /dashboard/events.
    */
   backHref: string;
   audienceMode: AudienceMode;
