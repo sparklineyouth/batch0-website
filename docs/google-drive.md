@@ -29,9 +29,12 @@ so the form stays short.
 Embeds only render what the viewer's Google account can open, and only where
 the browser lets Google's sign-in work inside a frame (Safari, Firefox and
 private windows block it by default). Share the folder with people's Google
-accounts, not "Anyone with the link": it holds students' working files. When
-the embed is blank, "Open in Drive" and each pin's "Open" still work, and the
-panel says so.
+accounts, not "Anyone with the link": it holds students' working files. The
+team's mentor and admins see the same embed, so it has to be shared with them
+too; the panel's empty state asks teams to add their mentor. When the embed is
+blank, "Open in Drive" and each pin's "Open" still work, and the panel says
+so, along with what a Drive "request access" page means (the folder isn't
+shared with that viewer's Google account).
 
 ## How it works
 

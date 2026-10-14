@@ -544,10 +544,10 @@ export const EMAIL_TAB_ROUTES = [
   ["/admin/email/settings", "email.settings"],
 ] as const satisfies ReadonlyArray<readonly [string, Permission]>;
 
-/** Every key that opens a tab of the Email section. */
 /** /admin/teams: the team list (teams.manage) and the logo queue (moderation.manage). */
 export const TEAMS_PAGE_PERMISSIONS: readonly Permission[] = ["teams.manage", "moderation.manage"];
 
+/** Every key that opens a tab of the Email section. */
 export const EMAIL_PERMISSIONS: readonly Permission[] = Array.from(
   new Set(EMAIL_TAB_ROUTES.map(([, perm]) => perm)),
 );

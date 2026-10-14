@@ -276,11 +276,22 @@ Cut for focus: weekly check-ins (now assignments), in-app files and the team
 drive (now Google Drive links), discussions, DMs and the chat dock, the team
 thread, announcement reactions, lesson comments, office hours (now 1:1 calls),
 Pulse, at-risk and cohort health, email metrics, the pricing calculator, mentor
-matching, AI usage and the premiere webinar mode. Tables stay, and the app no
-longer writes to them. 0093, 0094, 0097 and 0099 drop the client write
-policies on most of them; three are left: staff write on `file_feedback`, an
-owner's delete on their own `student_files` row, and the self policy on
-`event_rsvps`.
+matching, AI usage and the premiere webinar mode. Tables stay.
+
+The app no longer writes to the tables of the retired check-in, file,
+community (discussions, DMs, team thread, reactions, lesson comments) and
+office-hours features, nor to `at_risk_interventions` or `event_rsvps`. A few
+are still read for display: older uploads as downloads, weeks 1-4 check-ins
+with their feedback, and office hours booked before the cut. Two cut features
+only lost their admin views, and their tables are still written by the
+service role: `ai_usage` on every AI chat and pitch-coach call (the billing
+rollup, `lib/ai/usage.ts`), and `email_events` by the Resend webhook
+(`app/api/resend/webhook/route.ts`).
+
+0093, 0094, 0097 and 0099 drop the client write policies on most retired
+tables. Four are left: staff write on `file_feedback`, admin write on
+`at_risk_interventions`, an owner's delete on their own `student_files` row,
+and the self policy on `event_rsvps`.
 
 Added: the assignment tracker, team Google Drive links, a built-in room for
 webinars and 1:1 calls (screen share as the main stage, slide presenter, A/V
