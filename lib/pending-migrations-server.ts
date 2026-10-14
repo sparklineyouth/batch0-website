@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkPendingMigrations, isFresh } from "@/lib/pending-migrations";
+import { isMissingSchemaError } from "@/lib/schema-ready";
 
 // Per server instance; a complete answer is reused for PROBE_TTL_MS.
 let cached: { at: number; missing: string[] } | null = null;
@@ -20,4 +21,29 @@ export async function pendingMigrations(): Promise<string[]> {
   });
   if (result.complete) cached = { at: now, missing: result.missing };
   return result.missing;
+}
+
+// Migration 0095 (recording takes), for the live rooms. Once seen it stays
+// seen; "missing" is re-asked after a minute, so the rooms notice the
+// migration soon after it runs.
+let recordingsSeen = false;
+let recordingsMissingAt = 0;
+const RECORDINGS_RECHECK_MS = 60_000;
+
+/**
+ * Can rooms record yet (migration 0095)? Until then every take is refused,
+ * so the green room must not tell anyone "this call is recorded". An error
+ * other than "does not exist" answers yes: the recorder still reports its
+ * own failure, and the room stays as it was.
+ */
+export async function recordingsReady(): Promise<boolean> {
+  if (recordingsSeen) return true;
+  if (Date.now() - recordingsMissingAt < RECORDINGS_RECHECK_MS) return false;
+  const { error } = await createAdminClient().from("recording_sessions").select("id").limit(0);
+  if (error && isMissingSchemaError(error)) {
+    recordingsMissingAt = Date.now();
+    return false;
+  }
+  if (!error) recordingsSeen = true;
+  return true;
 }

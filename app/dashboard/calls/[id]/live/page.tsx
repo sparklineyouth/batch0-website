@@ -15,6 +15,7 @@ import {
   staffNames,
 } from "@/lib/live";
 import { hostCallsHref } from "@/lib/call-lifecycle";
+import { recordingsReady } from "@/lib/pending-migrations-server";
 import { BuiltinCallRoom } from "./builtin-room";
 import { CallRecordings } from "@/components/live/recording-player";
 import { Card } from "@/components/ui/card";
@@ -126,6 +127,7 @@ export default async function CallLivePage(
       )}
       endsAt={endsAt}
       backHref={backHref}
+      recordingReady={await recordingsReady()}
     />
   );
 }

@@ -25,6 +25,7 @@ export function BuiltinCallRoom({
   selfName,
   otherName,
   backHref,
+  recordingReady = true,
 }: {
   inviteId: string;
   /** End call is offered from the scheduled start. */
@@ -41,6 +42,8 @@ export function BuiltinCallRoom({
   otherName: string;
   /** This person's calls list: a host's panel, or /dashboard/calls. */
   backHref: string;
+  /** False before migration 0095 (recordingsReady). */
+  recordingReady?: boolean;
 }) {
   const transport = useMemo(
     () => ({
@@ -81,6 +84,7 @@ export function BuiltinCallRoom({
       backHref={backHref}
       transport={transport}
       call={call}
+      recordingReady={recordingReady}
     />
   );
 }

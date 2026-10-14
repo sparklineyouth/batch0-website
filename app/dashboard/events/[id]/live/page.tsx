@@ -15,6 +15,7 @@ import {
   signedAssetUrl,
 } from "@/lib/webinar-data";
 import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
+import { recordingsReady } from "@/lib/pending-migrations-server";
 import { claimSpeakerSlot } from "@/app/admin/events/webinar-actions";
 import { BuiltinEventRoom } from "./builtin-room";
 import { Card } from "@/components/ui/card";
@@ -179,9 +180,10 @@ export default async function EventLivePage(
   // actually joining, so this page renders as fast as its own queries. The
   // side panel's first state is shaped for this reader by the same loader the
   // panel's own reads use; hosts also get the event's PDF deck to present.
-  const [deck, panel] = await Promise.all([
+  const [deck, panel, recordingReady] = await Promise.all([
     role === "host" ? presentableDeck(ev.id) : Promise.resolve(null),
     loadWebinarPanelInitial(ev.id, access),
+    recordingsReady(),
   ]);
 
   return (
@@ -205,6 +207,7 @@ export default async function EventLivePage(
       deckUrl={deck?.url ?? null}
       deckName={deck?.name ?? null}
       panel={panel}
+      recordingReady={recordingReady}
     />
   );
 }

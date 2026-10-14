@@ -270,7 +270,9 @@ export function useRoomRecording(opts: {
             return "stopped";
           }
           if (res?.status === 503 && body.unavailable) {
+            // Before migration 0095. Record goes away; say why, once.
             setState("unavailable");
+            setError("Recording isn't set up yet, so this isn't being recorded. It turns on after a pending site update.");
             return "unavailable";
           }
           autoFailures.current += 1;

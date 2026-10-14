@@ -40,6 +40,7 @@ export function BuiltinEventRoom({
   deckUrl,
   deckName,
   panel,
+  recordingReady = true,
 }: {
   eventId: string;
   /** Their peer id: a peer's id is its user id. */
@@ -61,6 +62,8 @@ export function BuiltinEventRoom({
   deckUrl: string | null;
   deckName: string | null;
   panel: WebinarPanelInitial;
+  /** False before migration 0095 (recordingsReady). */
+  recordingReady?: boolean;
 }) {
   const transport = useMemo(
     () => ({
@@ -129,6 +132,7 @@ export function BuiltinEventRoom({
       backHref={backHref}
       transport={transport}
       webinar={webinar}
+      recordingReady={recordingReady}
     />
   );
 }

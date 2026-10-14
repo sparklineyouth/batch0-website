@@ -126,6 +126,11 @@ export type RoomControllerProps = {
   transport: RoomTransport;
   webinar?: WebinarBinding;
   call?: CallBinding;
+  /**
+   * False before migration 0095: no take can start, so nobody is told the
+   * room is recorded, and the people who would record are told it is off.
+   */
+  recordingReady?: boolean;
 };
 
 type RejoinOptions = { endedAt?: string | null; role?: LiveRole };
@@ -228,6 +233,7 @@ function RoomSession({
   rejoin,
   peerSeenCarried,
   onPeerSeen,
+  recordingReady = true,
 }: RoomControllerProps & {
   initialEndedAt: string | null;
   rejoin: (opts?: RejoinOptions) => void;
@@ -852,7 +858,15 @@ function RoomSession({
     recording: canRecord && (recordedHere || recording.error) ? { saved: recordedHere, error: recording.error } : null,
   };
 
-  const recordingNotice = call ? (
+  const recordingNotice = !recordingReady ? (
+    // Said only to the people who would record; nobody else is told anything.
+    canRecord && (call || autoRecord) ? (
+      <>
+        <p className="font-medium">This {call ? "call" : "webinar"} isn&rsquo;t recorded</p>
+        <p className="mt-0.5 text-[#e8b4b5]">Recording turns on after a pending site update.</p>
+      </>
+    ) : null
+  ) : call ? (
     <CallRecordingNotice staff={isCallStaff} people={staffIds.length + 1} otherName={call.otherName} />
   ) : webinar && (autoRecord || recordingNow) ? (
     <>
