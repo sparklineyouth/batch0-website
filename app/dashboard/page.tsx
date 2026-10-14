@@ -163,7 +163,8 @@ export default async function DashboardHome() {
   };
   if (callRow && call?.joinable) rows.push(callRow);
   if (eventRow && event?.join) rows.push(eventRow);
-  for (const { assignment: a, status } of dueSoon(assignments.items, now)) {
+  const owed = dueSoon(assignments.items, now);
+  for (const { assignment: a, status } of owed.items) {
     rows.push({
       key: `assignment-${a.id}`,
       icon: ClipboardList,
@@ -173,8 +174,23 @@ export default async function DashboardHome() {
       right: <StatusChip status={status} />,
     });
   }
-  if (eventRow && !event?.join) rows.push(eventRow);
-  if (callRow && !call?.joinable) rows.push(callRow);
+  if (owed.more > 0) {
+    rows.push({
+      key: "assignments-more",
+      icon: ClipboardList,
+      title: `${owed.more} more assignment${owed.more === 1 ? "" : "s"} due`,
+      meta: "All assignments",
+      href: "/dashboard/assignments",
+    });
+  }
+  // Not open yet: whichever starts first leads.
+  const later = [
+    eventRow && !event?.join ? { row: eventRow, at: event!.startsAt } : null,
+    callRow && !call?.joinable ? { row: callRow, at: call!.invite.startsAt } : null,
+  ]
+    .filter((x): x is { row: NeedsRow; at: string } => x !== null)
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  for (const { row } of later) rows.push(row);
   if (!event && access.demoDayTicket && !access.enrolled) {
     rows.push({
       key: "demo-day-ticket",

@@ -76,22 +76,43 @@ test("next call: nothing when every call is over", () => {
   assert.equal(pickNextCall([call("old", -24 * 60)], NOW), null);
 });
 
-test("due soon: owed work within a week, at most the limit", () => {
-  const item = (id: string, status: any, dueMin: number | null) => ({
-    id,
-    status,
-    assignment: { due_at: dueMin === null ? null : at(dueMin) },
-  });
+const item = (id: string, status: any, dueMin: number | null) => ({
+  id,
+  status,
+  assignment: { due_at: dueMin === null ? null : at(dueMin) },
+});
+
+test("due soon: owed work within a week, ranked, at most the limit", () => {
   const items = [
     item("late", "missing", -60),
     item("week", "open", 3 * 24 * 60),
     item("far", "open", 20 * 24 * 60),
     item("done", "submitted", 60),
     item("back", "returned", 9 * 24 * 60),
+    item("today", "due_today", 120),
   ];
+  const got = dueSoon(items, NOW);
   assert.deepEqual(
-    dueSoon(items, NOW).map((i) => i.id),
-    ["late", "week", "back"],
+    got.items.map((i) => i.id),
+    ["back", "today", "week"],
   );
-  assert.equal(dueSoon(items, NOW, 1).length, 1);
+  assert.equal(got.more, 1);
+  assert.deepEqual(dueSoon(items, NOW, 1).items.map((i) => i.id), ["back"]);
+  assert.equal(dueSoon(items, NOW, 10).more, 0);
+});
+
+test("due soon: stale late work doesn't hide what is due tomorrow", () => {
+  const items = [
+    item("wk1", "missing", -5 * 7 * 24 * 60),
+    item("wk2", "missing", -4 * 7 * 24 * 60),
+    item("wk3", "missing", -3 * 7 * 24 * 60),
+    item("wk4", "missing", -2 * 7 * 24 * 60),
+    item("tomorrow", "open", 24 * 60),
+  ];
+  const got = dueSoon(items, NOW);
+  assert.deepEqual(
+    got.items.map((i) => i.id),
+    ["tomorrow", "wk4", "wk3"],
+  );
+  assert.equal(got.more, 2);
 });

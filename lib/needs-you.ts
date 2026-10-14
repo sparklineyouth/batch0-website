@@ -114,11 +114,42 @@ export function pickNextCall<T extends CallTiming & { id: string }>(
   return first ? { invite: first.invite, joinable: isRoomOpenPhase(first.phase) } : null;
 }
 
-/** Work the student owes soon (late, sent back, due today, or due within 7 days). */
+/**
+ * Where an owed item ranks on the home: sent back first, then due today, then
+ * the rest of the week in due order, and late work last (newest first). A
+ * student with a few weeks of missed work still sees what is due tomorrow.
+ */
+function dueRank(status: DerivedStatus): number {
+  if (status === "returned") return 0;
+  if (status === "due_today") return 1;
+  if (status === "missing") return 3;
+  return 2;
+}
+
+function dueTime(dueAt: string | null): number {
+  const t = dueAt ? Date.parse(dueAt) : NaN;
+  return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Work the student owes soon (late, sent back, due today, or due within 7
+ * days), ranked by dueRank, at most `limit`. `more` counts what was cut, so
+ * the home can link the rest.
+ */
 export function dueSoon<T extends { status: DerivedStatus; assignment: { due_at: string | null } }>(
   items: readonly T[],
   now: Date,
   limit = 3,
-): T[] {
-  return items.filter((i) => studentGroup(i.status, i.assignment.due_at, now) === "due").slice(0, limit);
+): { items: T[]; more: number } {
+  const due = items
+    .filter((i) => studentGroup(i.status, i.assignment.due_at, now) === "due")
+    .map((i, index) => ({ i, index, rank: dueRank(i.status), at: dueTime(i.assignment.due_at) }))
+    .sort(
+      (a, b) =>
+        a.rank - b.rank ||
+        (a.rank === 3 ? b.at - a.at : a.at - b.at) ||
+        a.index - b.index,
+    )
+    .map((x) => x.i);
+  return { items: due.slice(0, limit), more: Math.max(0, due.length - limit) };
 }
