@@ -4,6 +4,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  ADMIN_EXACT_ROUTE_PERMISSIONS,
   ADMIN_ROUTE_PERMISSIONS,
   isKnownPermission,
   permissionForAdminPath,
@@ -69,4 +70,20 @@ test("every route rule points at a page that exists", () => {
     (prefix) => !PAGES.some((p) => p === prefix || p.startsWith(prefix + "/")),
   );
   assert.deepEqual(stale, [], "remove these rows from ADMIN_ROUTE_PERMISSIONS");
+  const staleExact = ADMIN_EXACT_ROUTE_PERMISSIONS.map(([path]) => path).filter(
+    (path) => !PAGES.includes(path),
+  );
+  assert.deepEqual(staleExact, [], "remove these rows from ADMIN_EXACT_ROUTE_PERMISSIONS");
+});
+
+test("an any-of requirement covers only its exact landing page", () => {
+  // A landing that opens on any of several keys must not leak that to pages
+  // nested under it: an unmapped /admin/email/x needs email.view, not any
+  // email key.
+  const exact = new Set(ADMIN_EXACT_ROUTE_PERMISSIONS.map(([path]) => path));
+  const loose = PAGES.filter(
+    (path) => !exact.has(path) && Array.isArray(permissionForAdminPath(path)),
+  );
+  assert.deepEqual(loose, []);
+  assert.equal(permissionForAdminPath("/admin/email/not-a-page"), "email.view");
 });

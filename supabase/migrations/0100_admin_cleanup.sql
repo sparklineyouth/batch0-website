@@ -14,7 +14,8 @@
 -- ran it. Nothing clears them any more, so do it here. Real passes are always
 -- positive serials and are only ever revoked, never deleted.
 --
--- No schema change; the app does not depend on this having run.
+-- No schema change, and no code waits on it: the passes ledger already skips
+-- negative serials.
 --
 -- Run in Supabase SQL Editor. Idempotent / safe to re-run.
 -- Assumes 0039 (founder_passes) and 0048 (app_roles) are applied.

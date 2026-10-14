@@ -435,6 +435,27 @@ export function isKnownPermission(key: string): key is Permission {
 }
 
 /**
+ * Keys that only work alongside another. "Add a person" (people.manage) is a
+ * button on the People directory (people.view), so a role holding the first
+ * alone could never navigate to it. The role editor ticks the companion and
+ * refuses a save without it.
+ */
+export const PERMISSION_NEEDS: Partial<Record<Permission, Permission>> = {
+  "people.manage": "people.view",
+};
+
+/** The first [key, needs] pair in `permissions` granted without its companion. */
+export function unmetPermissionNeed(
+  permissions: readonly string[],
+): readonly [Permission, Permission] | null {
+  for (const key of permissions) {
+    const needs = isKnownPermission(key) ? PERMISSION_NEEDS[key] : undefined;
+    if (needs && !permissions.includes(needs)) return [key as Permission, needs];
+  }
+  return null;
+}
+
+/**
  * Permissions that are about the *other* panels rather than /admin. A role
  * holding only these should land on /mentor or /dashboard, not the admin area.
  */
@@ -611,9 +632,10 @@ export function canAccessAdmin(caps: Capabilities | null): boolean {
  *
  * `/admin` itself is absent on purpose — the overview is reachable by anyone
  * with admin-area access, and it hides the tiles they can't see. Every other
- * page must resolve here (lib/admin-routes.test.ts walks app/admin to check).
+ * page must resolve here or in ADMIN_EXACT_ROUTE_PERMISSIONS
+ * (lib/admin-routes.test.ts walks app/admin to check).
  */
-export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Requirement]> = [
+export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ["/admin/applications", "applications.view"],
   ["/admin/recovery", "applications.review"],
   ["/admin/application-questions", "applications.form"],
@@ -647,10 +669,9 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Requiremen
   ["/admin/email/compose", "email.send"],
   ["/admin/email/outbox", "email.view"],
   ["/admin/email/settings", "email.settings"],
-  // The sidebar's one Email row lands here and is forwarded to the first tab
-  // the viewer holds, so the landing opens on any email key. Each tab above
-  // keeps its own.
-  ["/admin/email", EMAIL_PERMISSIONS],
+  // Any other page under /admin/email. The landing itself is in
+  // ADMIN_EXACT_ROUTE_PERMISSIONS below.
+  ["/admin/email", "email.view"],
   ["/admin/referrals", "referrals.view"],
   ["/admin/passes", "passes.manage"],
   ["/admin/pass-requests", "passes.manage"],
@@ -680,6 +701,18 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Requiremen
   ["/admin/roles", "roles.manage"],
 ];
 
+/**
+ * Pages whose requirement differs from the prefix rule covering them, matched
+ * on the exact path only so nothing nested under them inherits it.
+ */
+export const ADMIN_EXACT_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Requirement]> = [
+  // The sidebar's one Email row lands here and is forwarded to the first tab
+  // the viewer holds, so it opens on any email key.
+  ["/admin/email", EMAIL_PERMISSIONS],
+];
+
+const EXACT_RULES = new Map(ADMIN_EXACT_ROUTE_PERMISSIONS);
+
 // Precomputed longest-first so the lookup is a straight scan.
 const ROUTE_RULES = [...ADMIN_ROUTE_PERMISSIONS].sort(
   (a, b) => b[0].length - a[0].length,
@@ -695,6 +728,8 @@ function underPrefix(path: string, prefix: string): boolean {
  * has no specific requirement (the overview, and anything not yet mapped).
  */
 export function permissionForAdminPath(path: string): Requirement | null {
+  const exact = EXACT_RULES.get(path);
+  if (exact) return exact;
   for (const [prefix, perm] of ROUTE_RULES) {
     if (underPrefix(path, prefix)) return perm;
   }

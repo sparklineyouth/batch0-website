@@ -4,8 +4,9 @@
 
 One screen: an inbox row (pending review, awaiting payment, support awaiting
 reply) and one revenue number — USD tuition, fees and Demo Day tickets net of
-refunds (`revenueSummary` in `lib/revenue-ledger.ts`). Each block shows only to
-roles holding the permission of the page it links to.
+refunds (`netRevenueCents` in `lib/revenue-ledger.ts`, which the phone home at
+`/app/admin` shows too). Each block shows only to roles holding the permission
+of the page it links to.
 
 ## Adding a page
 
@@ -19,7 +20,9 @@ roles holding the permission of the page it links to.
 A row's `perm` can be a list, meaning any one of them. Email uses this: the
 sidebar's single Email row opens `/admin/email`, which the middleware forwards
 to the first tab in `EMAIL_TAB_ROUTES` (`lib/permissions.ts`) the viewer holds;
-each tab keeps its own key.
+each tab keeps its own key. The landing's any-of rule lives in
+`ADMIN_EXACT_ROUTE_PERMISSIONS`, so it covers that one path; anything else
+under `/admin/email` needs `email.view` unless it has its own row.
 
 ## Retired (October 2026)
 
@@ -31,4 +34,5 @@ campaign results are in the `campaign_attribution_report` view.
 
 Migration `0100_admin_cleanup.sql` strips the retired `ai_usage.view` key from
 stored roles and deletes leftover self-check probe passes (negative serials).
-The app runs the same before and after it.
+No schema change. Until it runs, a stale key only stops non-superadmins
+editing that role, and the passes ledger hides probe rows regardless.

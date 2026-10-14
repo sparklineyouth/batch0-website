@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Search, X } from "lucide-react";
-import type { NavGroup, NavItem } from "@/lib/nav-config";
+import { navItemMatches, type NavGroup, type NavItem } from "@/lib/nav-config";
 
 type Props = {
   /** Stable key used to namespace the per-group collapse state in
@@ -142,9 +142,7 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
       .map((g) => {
         const items = g.items
           .filter((it) => (filterItem ? filterItem(it) : true))
-          .filter((it) =>
-            q ? it.label.toLowerCase().includes(q) : true,
-          );
+          .filter((it) => navItemMatches(it, q));
         return { ...g, items };
       })
       .filter((g) => g.items.length > 0);

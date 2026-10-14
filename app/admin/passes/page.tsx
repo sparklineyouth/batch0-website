@@ -28,9 +28,13 @@ export default async function AdminPassesPage() {
   // explicitly would turn that gap into a 500 on the whole passes admin; with
   // a star select the columns are simply absent and the mapping below defaults
   // them, exactly the way lib/founder-pass.ts tolerates 0041.
+  //
+  // Real serials are positive. A negative one is a probe row left by the
+  // retired self-check (0100 deletes them), so it is never listed.
   const { data } = await admin
     .from("founder_passes")
     .select("*")
+    .gt("serial", 0)
     .order("serial", { ascending: true });
 
   const raw = ((data ?? []) as Array<{

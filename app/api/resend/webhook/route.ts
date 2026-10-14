@@ -14,19 +14,16 @@ export const dynamic = "force-dynamic";
  * Svix message id so retries are naturally idempotent (the duplicate
  * insert returns a 23505 we swallow).
  *
- * The aggregate admin page at /admin/email reads this table to compute
- * delivered/opened/clicked rates per template (grouped by subject
- * prefix, since the existing transactional sends don't tag).
+ * The table is a raw delivery record. Nothing in the app reads it; query
+ * it in the Supabase SQL editor (e.g. to trace a bounce).
  *
  * To configure: in the Resend dashboard create a webhook pointing at
  * `<site>/api/resend/webhook`, copy the signing secret into the
  * `RESEND_WEBHOOK_SECRET` env var, and subscribe to email.sent,
  * email.delivered, email.bounced, email.complained, email.opened,
  * email.clicked, email.failed, email.delivery_delayed and
- * email.suppressed. The last three are newer than the original six and are
- * usually left unticked; without them a message that never left Resend at all
- * is invisible here, which reads on the dashboard as "sent and never opened"
- * rather than "never sent". /admin/email lists the subscription gaps it finds.
+ * email.suppressed. Without the last three, a message that never left
+ * Resend leaves no row at all.
  */
 export async function POST(req: Request) {
   const secret = env.resendWebhookSecret;
@@ -108,13 +105,11 @@ export async function POST(req: Request) {
       : null;
 
   // Everything worth querying, lifted out of the payload into columns. The
-  // payload is still stored whole — these are a fast path for the aggregates on
-  // /admin/email, not a replacement for the forensic copy.
+  // payload is still stored whole; these just make SQL queries easy.
   const detail = {
     broadcast_id: str(data.broadcast_id),
-    // Set by lib/email/send.ts on every send it makes, which is what turns the
-    // per-template table from "group by subject prefix and hope" into exact
-    // attribution.
+    // Set by lib/email/send.ts on every send it makes, so each event maps to
+    // its template exactly.
     template_key: str(tags?.template) ?? str(tags?.template_key),
     bounce_type: str(bounce.type),
     bounce_subtype: str(bounce.subType),

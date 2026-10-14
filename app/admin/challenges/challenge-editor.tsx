@@ -360,7 +360,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
               <div className="min-w-0 max-w-md">
                 <p className="text-sm font-medium text-ink">Required referrals to submit</p>
                 <p className="mt-1 text-xs text-ink-soft">
-                  Friends who must sign up through their link and register or apply before they can submit. 0 = off.
+                  Friends who must sign up via the entrant&apos;s link (after this challenge was created) and register or apply before the entrant can submit. 0 = off.
                 </p>
               </div>
               <div className="flex items-center gap-1">

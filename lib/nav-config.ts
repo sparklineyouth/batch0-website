@@ -66,7 +66,17 @@ export type NavItem = {
    * any one of them (a section landing such as Email).
    */
   perm?: Requirement;
+  /** Extra words the nav search matches, e.g. the tabs a row opens. */
+  keywords?: readonly string[];
 };
+
+/** The nav search: label or keyword contains the (lowercased) query. */
+export function navItemMatches(item: NavItem, q: string): boolean {
+  if (!q) return true;
+  return [item.label, ...(item.keywords ?? [])].some((w) =>
+    w.toLowerCase().includes(q),
+  );
+}
 
 // A NavGroup is a labeled subset of nav items rendered as a collapsible
 // section in the sidebar. The first group is always expanded; the rest
@@ -262,6 +272,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "People",
         icon: Users,
         perm: "people.view",
+        keywords: ["add a person", "students"],
       },
       {
         href: "/admin/mentors",
@@ -386,6 +397,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "Scholarships",
         icon: GraduationCap,
         perm: "scholarships.view",
+        keywords: ["scholarship queue"],
       },
     ],
   },
@@ -411,6 +423,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "Email",
         icon: Mail,
         perm: EMAIL_PERMISSIONS,
+        keywords: ["templates", "automations", "blast", "compose", "outbox"],
       },
       // One row, not two. The queue is the only page in the section anyone
       // navigates to directly — a request's detail page is always reached by

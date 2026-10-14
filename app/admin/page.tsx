@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { revenueSummary, auxiliaryRevenueRow } from "@/lib/revenue-ledger";
+import { netRevenueCents } from "@/lib/revenue-ledger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminArea } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -29,14 +29,11 @@ export default async function AdminOverview() {
   const seeSupport = can(caps, "support.view");
 
   const admin = createAdminClient();
-  const noRows = { data: null, error: null };
 
   const [
     { count: pendingApps },
     { count: acceptedApps },
-    payments,
-    charges,
-    tickets,
+    revenueCents,
     openTickets,
   ] = await Promise.all([
     seeApplications
@@ -51,29 +48,8 @@ export default async function AdminOverview() {
           .select("id", { count: "exact", head: true })
           .eq("status", "accepted")
       : { count: null },
-    // Revenue sums rows in JS, capped explicitly — past ~10k rows this needs
-    // a SQL aggregate instead.
-    seeRevenue
-      ? admin
-          .from("payments")
-          .select("amount_cents, amount_refunded_cents, currency, user_id, paid_at, status")
-          .in("status", ["succeeded", "refunded"])
-          .limit(10000)
-      : noRows,
-    seeRevenue
-      ? admin
-          .from("user_charges")
-          .select("amount_cents, captured_amount_cents, captured_currency, amount_refunded_cents, status")
-          .in("status", ["paid", "refunded"])
-          .limit(10000)
-      : noRows,
-    seeRevenue
-      ? admin
-          .from("demo_day_tickets")
-          .select("amount_cents, captured_amount_cents, captured_currency, amount_refunded_cents, status")
-          .in("status", ["paid", "refunded"])
-          .limit(10000)
-      : noRows,
+    // USD tuition + fees + Demo Day tickets, net of refunds; null = unavailable.
+    seeRevenue ? netRevenueCents(admin) : Promise.resolve(null),
     seeSupport ? countTicketsNeedingReply() : Promise.resolve(0),
   ]);
 
@@ -105,15 +81,6 @@ export default async function AdminOverview() {
         ]
       : []),
   ];
-
-  // One number: USD tuition + fees + Demo Day tickets, net of refunds
-  // (lib/revenue-ledger). A failed read shows as unavailable, never as $0.
-  const revenueError = payments.error || charges.error || tickets.error;
-  const revenueCents = revenueError
-    ? null
-    : revenueSummary(payments.data ?? []).netCents +
-      revenueSummary((charges.data ?? []).map(auxiliaryRevenueRow)).netCents +
-      revenueSummary((tickets.data ?? []).map(auxiliaryRevenueRow)).netCents;
 
   return (
     <div className="mx-auto max-w-6xl">

@@ -12,7 +12,9 @@ import {
   canMeet,
   emailLandingFor,
   isKnownPermission,
+  PERMISSION_NEEDS,
   rolesHolding,
+  unmetPermissionNeed,
 } from "./permissions.ts";
 
 // Run with `npm test`.
@@ -192,6 +194,22 @@ test("canMeet: one key, or any of a list", () => {
   assert.equal(canMeet(caps, ["email.view"]), false);
   assert.equal(canMeet(capabilitiesFrom("admin", ["*"]), ["email.view"]), true);
   assert.equal(canMeet(null, ["email.send"]), false);
+});
+
+test("a key that needs a companion is refused without it", () => {
+  // "Add a person" is a button on the People directory, so people.manage
+  // alone opens /admin/students/new with no way to navigate there.
+  assert.deepEqual(unmetPermissionNeed(["people.manage"]), ["people.manage", "people.view"]);
+  assert.equal(unmetPermissionNeed(["people.manage", "people.view"]), null);
+  assert.equal(unmetPermissionNeed(["people.view"]), null);
+  assert.equal(unmetPermissionNeed(["*", "not.a.key"]), null);
+  // Every pair names real keys.
+  for (const [key, needs] of Object.entries(PERMISSION_NEEDS)) {
+    assert.ok(isKnownPermission(key) && isKnownPermission(needs!), `${key} → ${needs}`);
+  }
+  const manager = capabilitiesFrom("m", ["people.manage", "people.view"]);
+  assert.equal(canViewAdminPath(manager, "/admin/students"), true);
+  assert.equal(canViewAdminPath(manager, "/admin/students/new"), true);
 });
 
 test("retired keys are gone from the catalog", () => {

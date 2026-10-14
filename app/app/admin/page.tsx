@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { isoWeekStart, formatWeekRange } from "@/lib/week";
 import { InstallHint } from "@/components/app/install-hint";
+import { netRevenueCents } from "@/lib/revenue-ledger";
 import {
   AppHeader,
   AppBody,
@@ -57,8 +58,7 @@ export default async function AdminAppToday() {
     { count: enrolled },
     { count: checkedIn },
     { count: atRisk },
-    { data: payments },
-    { data: charges },
+    revenueCents,
     { data: recent },
   ] = await Promise.all([
     seeApplications
@@ -96,22 +96,8 @@ export default async function AdminAppToday() {
           .select("id", { count: "exact", head: true })
           .is("resolved_at", null)
       : { count: null },
-    // Same row-by-row sum and explicit cap as the desktop overview. Past ~10k
-    // rows this needs to become a SQL aggregate in both places at once.
-    seeRevenue
-      ? admin
-          .from("payments")
-          .select("amount_cents")
-          .eq("status", "succeeded")
-          .limit(10000)
-      : { data: null },
-    seeRevenue
-      ? admin
-          .from("user_charges")
-          .select("amount_cents")
-          .eq("status", "paid")
-          .limit(10000)
-      : { data: null },
+    // The same number as the desktop overview (net of refunds).
+    seeRevenue ? netRevenueCents(admin) : Promise.resolve(null),
     seeApplications
       ? admin
           .from("applications")
@@ -120,10 +106,6 @@ export default async function AdminAppToday() {
           .limit(6)
       : { data: null },
   ]);
-
-  const revenueCents =
-    (payments ?? []).reduce((s, p) => s + (p.amount_cents ?? 0), 0) +
-    (charges ?? []).reduce((s, c) => s + (c.amount_cents ?? 0), 0);
 
   const firstName = profile.full_name?.split(" ")[0] || "there";
   const checkinRate =
@@ -207,9 +189,9 @@ export default async function AdminAppToday() {
               {seeRevenue && (
                 <Stat
                   label="Revenue"
-                  value={money(revenueCents)}
+                  value={revenueCents === null ? "Unavailable" : money(revenueCents)}
                   href="/admin/payments"
-                  hint="Every payment"
+                  hint="After refunds"
                 />
               )}
             </div>

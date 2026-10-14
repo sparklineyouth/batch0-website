@@ -31,14 +31,7 @@ export default async function AdminResourcesPage() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Resources</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Shared decks, templates, guides — visible to enrolled students in
-            the chosen cohort (or everyone, if left global). Mark a resource
-            pre-cohort to show it to accepted students before kickoff. For
-            interactive, personalized experiences, build a{" "}
-            <Link href="/admin/flows" className="underline">
-              pre-cohort flow
-            </Link>
-            .
+            Decks, templates and guides for one cohort or everyone.
           </p>
         </div>
         <Link

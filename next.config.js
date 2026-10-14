@@ -53,6 +53,15 @@ const nextConfig = {
         destination: to,
         permanent: true,
       },
+      // Retired admin pages (October 2026). Bookmarks and old links land on
+      // the section they lived in instead of a 404.
+      ...[
+        ["/admin/ai-usage/:path*", "/admin"],
+        ["/admin/mentors/match/:path*", "/admin/mentors"],
+        ["/admin/course/analytics/:path*", "/admin/course"],
+        ["/admin/payments/acquisition/:path*", "/admin/payments"],
+        ["/admin/email/phone-request/:path*", "/admin/email"],
+      ].map(([source, destination]) => ({ source, destination, permanent: true })),
     ];
   },
   webpack: (config) => {
