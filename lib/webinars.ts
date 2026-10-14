@@ -32,7 +32,9 @@
  * setting an admin chooses, defaulting to exactly what happens today.
  *
  *   private    A viewer sees only their own questions, and there is no chat.
- *              Nothing on the wire tells one student that another exists.
+ *              Nothing on the wire tells one student that another exists. This
+ *              is the default, and it is what every event created before
+ *              migration 0084 does.
  *
  *   moderated  Viewers write; a host decides what the room sees. An unapproved
  *              message reaches the hosts and nobody else — enforced in RLS, not
@@ -83,27 +85,15 @@ export function messagesNeedApproval(mode: AudienceMode): boolean {
   return mode === "moderated";
 }
 
-/**
- * What a NEW event gets when nobody picked a mode: chat on. Existing rows keep
- * whatever they store (the column is NOT NULL), so this only reaches events
- * created without a value.
- */
-export const DEFAULT_AUDIENCE_MODE: AudienceMode = "open";
-
-/**
- * Coerce a stored or submitted value into a mode.
- *
- * Absent (undefined / null / "") means "nobody chose" and gets the default.
- * Anything present but unrecognised — a typo, a mode a newer build wrote —
- * fails closed to `private`.
- */
+/** Coerce whatever is in the column into a mode. Unknown values fail closed. */
 export function normalizeAudienceMode(value: unknown): AudienceMode {
-  if (value === undefined || value === null || value === "") {
-    return DEFAULT_AUDIENCE_MODE;
-  }
-  return value === "private" || value === "moderated" || value === "open"
+  return value === "moderated" || value === "open"
     ? value
-    : "private";
+    : // Anything unrecognised — null from a row written before 0084, a typo, a
+      // future mode this build does not know about — becomes the private
+      // default. Failing closed here means a deploy that is behind the database
+      // shows a webinar with no chat, rather than one with unmoderated chat.
+      "private";
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +162,10 @@ export type ChatMessage = {
 /** Author self-deletes: a spam ceiling, not a participation limit. */
 export const CHAT_DELETE_LIMIT = 10;
 export const CHAT_DELETE_WINDOW_SECONDS = 60;
+
+/** Upvotes and poll votes: each one makes the whole room re-read, so toggling is capped. */
+export const VOTE_LIMIT = 20;
+export const VOTE_WINDOW_SECONDS = 10;
 
 /**
  * Is this message visible to the audience right now?

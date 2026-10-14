@@ -9,10 +9,13 @@ import {
   type AudienceMode,
   type ChatMessage,
 } from "@/lib/webinars";
+import { arrivals } from "@/lib/webinar-panel";
 import type { OutboxItem } from "./use-outbox";
 import { Chip, Closed, Composer, Empty, RowAction, ROW_ACTIONS } from "./ui";
 
 const NEAR_BOTTOM_PX = 48;
+/** Ids remembered as drawn; well past what the feed holds (CHAT_KEEP). */
+const SHOWN_CAP = 1_000;
 
 export function ChatTab({
   messages,
@@ -21,6 +24,8 @@ export function ChatTab({
   audienceMode,
   isHost,
   closed,
+  draft,
+  onDraftChange,
   onSend,
   onRetry,
   onDiscard,
@@ -35,6 +40,9 @@ export function ChatTab({
   isHost: boolean;
   /** Ended, for the audience: read-only. */
   closed: boolean;
+  /** Held by the panel, so a tab switch keeps it. */
+  draft: string;
+  onDraftChange: (draft: string) => void;
   onSend: (body: string) => void;
   onRetry: (id: string) => void;
   onDiscard: (id: string) => void;
@@ -42,15 +50,16 @@ export function ChatTab({
   onApprove: (id: string) => void;
   onPin: (id: string, on: boolean) => void;
 }) {
-  const [draft, setDraft] = useState("");
   const sent = new Set(messages.map((m) => m.id));
   const pending = outbox.filter((o) => !sent.has(o.id));
 
   // Follow the conversation only when the reader is at the bottom; otherwise
   // count what arrived and offer a jump. Your own sends always follow.
+  // "Arrived" means an id never drawn here before: a removal, or a row a
+  // forged hint hid and the next read restored, is not news.
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
-  const lastSeenId = useRef<string | null>(null);
+  const shown = useRef<Set<string> | null>(null);
   const outboxCount = useRef(0);
   const [fresh, setFresh] = useState(0);
 
@@ -62,15 +71,21 @@ export function ChatTab({
   }, []);
 
   useLayoutEffect(() => {
-    const last = messages.at(-1)?.id ?? null;
-    const prev = lastSeenId.current;
-    lastSeenId.current = last;
+    const first = shown.current === null;
+    const seen = (shown.current ??= new Set());
+    const added = arrivals(messages, seen);
+    for (const m of added) seen.add(m.id);
+    if (seen.size > SHOWN_CAP) {
+      // Oldest first (insertion order); the feed itself holds far fewer.
+      for (const id of seen) {
+        if (seen.size <= SHOWN_CAP) break;
+        seen.delete(id);
+      }
+    }
     const grewOutbox = pending.length > outboxCount.current;
     outboxCount.current = pending.length;
-    if (prev === null || grewOutbox) return toBottom();
-    if (last === prev) return;
-    const from = messages.findIndex((m) => m.id === prev);
-    const added = from === -1 ? messages.slice(-1) : messages.slice(from + 1);
+    if (first || grewOutbox) return toBottom();
+    if (added.length === 0) return;
     if (atBottom.current || added.some((m) => m.mine)) toBottom();
     else setFresh((n) => n + added.filter((m) => !m.mine).length);
   }, [messages, pending.length, toBottom]);
@@ -85,7 +100,7 @@ export function ChatTab({
   const submit = () => {
     if (!normalizeChatMessage(draft)) return;
     onSend(draft);
-    setDraft("");
+    onDraftChange("");
   };
 
   return (
@@ -176,7 +191,7 @@ export function ChatTab({
       ) : (
         <Composer
           value={draft}
-          onChange={setDraft}
+          onChange={onDraftChange}
           onSubmit={submit}
           canSubmit={!!normalizeChatMessage(draft)}
           placeholder="Send a message"

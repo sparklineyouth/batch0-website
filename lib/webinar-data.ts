@@ -2,6 +2,9 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import type { EventAccess } from "@/lib/live-access";
+import type { WebinarQuestion } from "@/lib/live";
+import { liveParticipants } from "@/lib/live-rooms";
+import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import {
   audienceCanSeeEachOther,
   pollVisibleToAudience,
@@ -18,8 +21,9 @@ import {
   readFrom,
   CHAT_PAGE,
   PANEL_PARTS,
-  type PanelPart,
+  type PanelPeople,
   type PanelRead,
+  type PanelReadPart,
   type WebinarPanelInitial,
 } from "@/lib/webinar-panel";
 import {
@@ -429,14 +433,14 @@ export type PanelReader = {
  */
 export async function loadPanelState(
   reader: PanelReader,
-  opts: { parts: readonly PanelPart[]; since: string | null },
+  opts: { parts: readonly PanelReadPart[]; since: string | null },
 ): Promise<PanelRead> {
   const { eventId, userId, isModerator } = reader;
   const chatOn = audienceCanSeeEachOther(reader.audienceMode);
   const withholdNames = !reader.discloseNames;
   const want = new Set(opts.parts);
 
-  const [chat, pinned, questions, polls] = await Promise.all([
+  const [chat, pinned, questions, polls, people] = await Promise.all([
     want.has("chat") && chatOn
       ? listChat({
           eventId,
@@ -453,6 +457,7 @@ export async function loadPanelState(
     want.has("poll")
       ? listPolls({ eventId, readerId: userId, forModerator: isModerator })
       : null,
+    want.has("people") && isModerator ? readPeople(reader) : null,
   ]);
 
   const read: PanelRead = { audienceMode: reader.audienceMode };
@@ -466,7 +471,30 @@ export async function loadPanelState(
   }
   if (questions) read.questions = questions;
   if (polls) read.polls = polls;
+  if (people) read.people = people;
   return read;
+}
+
+/**
+ * Who is here, for a host: the same attendance-backed roster the engine
+ * reconciles against (liveParticipants), names only, the reader left out. A
+ * guest speaker gets the count and never the viewers' names.
+ */
+async function readPeople(reader: PanelReader): Promise<PanelPeople> {
+  const peers = (
+    await liveParticipants(
+      reader.eventId,
+      `event:${reader.eventId}`,
+      PEER_TIMEOUT_MS,
+      reader.discloseNames,
+    )
+  ).filter((p) => p.peerId !== reader.userId);
+  const viewers = peers.filter((p) => p.role !== "host");
+  return {
+    hosts: peers.filter((p) => p.role === "host").map((p) => p.name || "Host"),
+    viewers: reader.discloseNames ? viewers.map((p) => p.name || "Student") : null,
+    watching: viewers.length,
+  };
 }
 
 async function readQuestions(
@@ -530,6 +558,31 @@ export async function loadWebinarPanelInitial(
     questions: read.questions ?? [],
     polls: read.polls ?? [],
   };
+}
+
+/**
+ * The legacy question list (the Daily room's QAPanel): the whole queue for a
+ * host, only their own for anyone else. A guest speaker sees students as "A
+ * student", and no asker id but the reader's own leaves the server.
+ */
+export async function listLegacyQuestions(
+  access: EventAccess,
+): Promise<WebinarQuestion[]> {
+  const rows = access.isHost
+    ? await listQuestionsForEvent(access.event.id)
+    : await listQuestionsForAsker(access.event.id, access.userId);
+  return rows.map((q) => {
+    const mine = q.askerId === access.userId;
+    return {
+      id: q.id,
+      eventId: q.eventId,
+      askerId: mine ? access.userId : "",
+      askerName: mine || access.discloseNames ? q.askerName : WITHHELD_NAME,
+      body: q.body,
+      status: q.status,
+      createdAt: q.createdAt,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

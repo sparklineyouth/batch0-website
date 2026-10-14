@@ -19,24 +19,12 @@ import {
   type PanelTab,
   type WebinarPanelInitial,
 } from "@/lib/webinar-panel";
-import {
-  askQuestion,
-  approveQuestion,
-  createPoll,
-  deleteChatMessage,
-  moderateChatMessage,
-  sendChatMessage,
-  setPollOpen,
-  setQuestionStatus,
-  spotlightQuestion,
-  voteOnPoll,
-  voteOnQuestion,
-} from "@/app/dashboard/events/[id]/live/room-actions";
+import { panelWrite } from "./panel-api";
 import { usePanelFeed } from "./use-panel-feed";
 import { useOutbox } from "./use-outbox";
 import { ChatTab } from "./chat-tab";
 import { QaTab } from "./qa-tab";
-import { PollsTab } from "./polls-tab";
+import { PollsTab, type PollDraft, type PollInput } from "./polls-tab";
 import { PeopleTab } from "./people-tab";
 
 export type { WebinarPanelInitial } from "@/lib/webinar-panel";
@@ -61,7 +49,6 @@ const TAB_LABEL: Record<PanelTab, string> = {
 export function WebinarPanel({
   eventId,
   role,
-  selfId,
   selfName,
   roomTopic,
   moderationTopic,
@@ -76,6 +63,7 @@ export function WebinarPanel({
 }: {
   eventId: string;
   role: PanelRole;
+  /** Part of the room contract; the server already leaves the reader out of every list. */
   selfId: string;
   selfName: string;
   roomTopic: string | null;
@@ -109,18 +97,28 @@ export function WebinarPanel({
   const { write, setChatO, setQaO, setPollO, insertChat, insertQuestion } = feed;
 
   const chatOutbox = useOutbox<ChatMessage>({
-    send: (id, body) => sendChatMessage(eventId, { id, body }),
+    send: (id, body) => panelWrite(eventId, { op: "chat.send", id, body }),
     onSent: insertChat,
   });
   const askOutbox = useOutbox<RoomQuestion>({
-    send: (id, body) => askQuestion(eventId, { id, body }),
+    send: (id, body) => panelWrite(eventId, { op: "qa.ask", id, body }),
     onSent: insertQuestion,
   });
+
+  // Unsent text lives here, not in the tabs: switching tabs keeps it.
+  const [chatDraft, setChatDraft] = useState("");
+  const [qaDraft, setQaDraft] = useState("");
+  const [pollDraft, setPollDraft] = useState<PollDraft | null>(null);
 
   const removeMessage = useCallback(
     (m: ChatMessage) =>
       void write(setChatO, [[m.id, hideRow]], () =>
-        m.mine ? deleteChatMessage(eventId, m.id) : moderateChatMessage(eventId, m.id, "remove"),
+        panelWrite(
+          eventId,
+          m.mine
+            ? { op: "chat.delete", id: m.id }
+            : { op: "chat.moderate", id: m.id, action: "remove" },
+        ),
       ),
     [eventId, write, setChatO],
   );
@@ -129,7 +127,7 @@ export function WebinarPanel({
       void write(
         setChatO,
         [[id, (m: ChatMessage) => ({ ...m, approvedAt: m.approvedAt ?? new Date().toISOString() })]],
-        () => moderateChatMessage(eventId, id, "approve"),
+        () => panelWrite(eventId, { op: "chat.moderate", id, action: "approve" }),
       ),
     [eventId, write, setChatO],
   );
@@ -151,7 +149,7 @@ export function WebinarPanel({
         patches.push([pinnedId, (m) => ({ ...m, pinned: false })]);
       }
       void write(setChatO, patches, () =>
-        moderateChatMessage(eventId, id, on ? "pin" : "unpin"),
+        panelWrite(eventId, { op: "chat.moderate", id, action: on ? "pin" : "unpin" }),
       );
     },
     [eventId, write, setChatO, pinnedId],
@@ -161,7 +159,9 @@ export function WebinarPanel({
   const qa = useMemo(
     () => ({
       vote: (id: string, on: boolean) =>
-        void write(setQaO, [[id, voteOn(on)]], () => voteOnQuestion(eventId, id, on)),
+        void write(setQaO, [[id, voteOn(on)]], () =>
+          panelWrite(eventId, { op: "qa.vote", id, on }),
+        ),
       spotlight: (id: string, on: boolean) => {
         const patches: [string, (q: RoomQuestion) => RoomQuestion][] = [
           [
@@ -176,19 +176,19 @@ export function WebinarPanel({
         if (on && spotlightId && spotlightId !== id) {
           patches.push([spotlightId, (q) => ({ ...q, spotlighted: false })]);
         }
-        void write(setQaO, patches, () => spotlightQuestion(eventId, id, on));
+        void write(setQaO, patches, () => panelWrite(eventId, { op: "qa.spotlight", id, on }));
       },
       approve: (id: string) =>
         void write(
           setQaO,
           [[id, (q: RoomQuestion) => ({ ...q, approvedAt: q.approvedAt ?? new Date().toISOString() })]],
-          () => approveQuestion(eventId, id),
+          () => panelWrite(eventId, { op: "qa.approve", id }),
         ),
       status: (id: string, status: RoomQuestion["status"]) =>
         void write(
           setQaO,
           [[id, (q: RoomQuestion) => ({ ...q, status, spotlighted: status === "open" && q.spotlighted })]],
-          () => setQuestionStatus(eventId, id, status),
+          () => panelWrite(eventId, { op: "qa.status", id, status }),
         ),
     }),
     [eventId, write, setQaO, spotlightId],
@@ -198,16 +198,15 @@ export function WebinarPanel({
   const polls = useMemo(
     () => ({
       vote: (id: string, choice: number) =>
-        void write(setPollO, [[id, chooseOption(choice)]], () => voteOnPoll(eventId, id, choice)),
+        void write(setPollO, [[id, chooseOption(choice)]], () =>
+          panelWrite(eventId, { op: "poll.vote", id, choice }),
+        ),
       setOpen: (id: string, open: boolean) =>
         void write(setPollO, [[id, (p: WebinarPoll) => ({ ...p, open })]], () =>
-          setPollOpen(eventId, id, open),
+          panelWrite(eventId, { op: "poll.open", id, open }),
         ),
-      create: async (input: Parameters<typeof createPoll>[1]) => {
-        const res = await createPoll(eventId, input).catch(() => ({
-          ok: false as const,
-          error: "Couldn't reach the server.",
-        }));
+      create: async (input: PollInput) => {
+        const res = await panelWrite(eventId, { op: "poll.create", ...input });
         if (res.ok) refreshPolls();
         else showError(res.error);
         return res;
@@ -304,6 +303,8 @@ export function WebinarPanel({
           audienceMode={feed.audienceMode}
           isHost={isHost}
           closed={closed}
+          draft={chatDraft}
+          onDraftChange={setChatDraft}
           onSend={chatOutbox.enqueue}
           onRetry={chatOutbox.retry}
           onDiscard={chatOutbox.discard}
@@ -320,6 +321,8 @@ export function WebinarPanel({
           canUpvote={chatOn}
           needsApproval={needsApproval}
           closed={ended}
+          draft={qaDraft}
+          onDraftChange={setQaDraft}
           onAsk={askOutbox.enqueue}
           onRetry={askOutbox.retry}
           onDiscard={askOutbox.discard}
@@ -334,6 +337,8 @@ export function WebinarPanel({
           polls={feed.polls}
           isHost={isHost}
           closed={closed}
+          draft={pollDraft}
+          onDraftChange={setPollDraft}
           onVote={polls.vote}
           onSetOpen={polls.setOpen}
           onCreate={polls.create}
@@ -342,9 +347,7 @@ export function WebinarPanel({
       {active === "people" && (
         <PeopleTab
           eventId={eventId}
-          selfId={selfId}
           selfName={selfName}
-          showNames={role === "staff"}
           live={live}
           audienceCount={audienceCount}
         />

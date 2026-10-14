@@ -16,18 +16,10 @@ import {
   webinarHasBegun,
   type LiveRole,
 } from "@/lib/live";
-import {
-  listQuestionsForEvent,
-  listQuestionsForAsker,
-} from "@/lib/webinar-questions";
-import {
-  isHostedOnBatch0,
-  isPremiere,
-  premiereState,
-  type EventAsset,
-} from "@/lib/webinars";
+import { isHostedOnBatch0, type EventAsset } from "@/lib/webinars";
 import {
   listAssets,
+  listLegacyQuestions,
   listSpeakers,
   loadWebinarPanelInitial,
   signAssets,
@@ -232,57 +224,13 @@ export default async function EventLivePage(
   if (env.liveProvider === "builtin") {
     const audienceMode = ev.audienceMode;
 
-    // ---- Premiere -------------------------------------------------------
-    //
-    // Resolved on the SERVER, from the server's clock. This is the one number
-    // in the feature that must not come from the browser: a viewer whose
-    // laptop is four minutes fast would sit four minutes ahead of the room —
-    // visibly, in chat, reacting to something nobody else has seen yet — and
-    // one whose clock is out by an hour would watch a black screen and
-    // conclude the webinar never started.
-    //
-    // `liveEndedAt` goes in too: an ended premiere is ended, not still
-    // playing to the audience under an "Ended" badge.
-    const premiere = isPremiere(ev.liveMode)
-      ? premiereState({
-          startsAt: ev.startsAt,
-          premiereSeconds: ev.premiereSeconds,
-          qaOpensAt: ev.qaOpensAt,
-          liveStartedAt: ev.liveStartedAt,
-          liveEndedAt: ev.liveEndedAt,
-          endsAt: ev.endsAt,
-        })
-      : null;
-
-    // The recording and the deck, signed only for the people entitled to them
-    // right now. Read together because both are one query against our own
-    // database and neither is on the critical path of "the host pressed Start".
-    // The side panel's first state comes with the page, shaped for this
-    // reader by the same loader the panel's own reads use.
-    const [assets, panel] = await Promise.all([
-      listAssets(ev.id, ["premiere", "deck", "handout"]),
+    // The deck, and the side panel's first state, shaped for this reader by
+    // the same loader the panel's own reads use. Premiere is retired: a legacy
+    // premiere row runs as an ordinary hosted room.
+    const [deck, panel] = await Promise.all([
+      listAssets(ev.id, ["deck", "handout"]),
       loadWebinarPanelInitial(ev.id, access),
     ]);
-    const speakerCards = speakers;
-
-    const premiereAsset = assets.find((a) => a.kind === "premiere") ?? null;
-    // Signed for two hours rather than the usual ten minutes, and this is the
-    // one place in the repo that deviates. A premiere is a single continuous
-    // playback that can run the length of a talk; a ten-minute URL would expire
-    // under a viewer mid-sentence, and although the player re-mints on error,
-    // doing that eight times an hour for every viewer is a lot of machinery to
-    // avoid one number. Two hours covers the longest premiere the CHECK allows
-    // to start, and the URL is useless to anyone who cannot already see the
-    // event.
-    const premiereUrl = premiereAsset
-      ? await signedAssetUrl(premiereAsset.storagePath, 60 * 120)
-      : null;
-
-    // Decks are offered in the room only when the admin meant them to be. The
-    // default is that the follow-up email carries them AFTER the webinar —
-    // handing out the slides at minute one is how an audience reads ahead
-    // instead of listening.
-    const deck = assets.filter((a) => a.kind !== "premiere");
 
     return (
       <BuiltinEventRoom
@@ -303,17 +251,9 @@ export default async function EventLivePage(
         audienceMode={audienceMode}
         displayViewerCount={displayViewerCount}
         autoRecord={ev.autoRecord}
-        premiere={
-          premiere && premiereUrl && ev.premiereSeconds
-            ? {
-                ...premiere,
-                url: premiereUrl,
-                durationSeconds: ev.premiereSeconds,
-              }
-            : null
-        }
+        premiere={null}
         liveEndedAt={ev.liveEndedAt}
-        speakers={speakerCards}
+        speakers={speakers}
         deck={deck.map((a) => ({
           id: a.id,
           filename: a.filename,
@@ -384,9 +324,7 @@ export default async function EventLivePage(
       // Slightly past the end so the call can overrun, but not open-ended.
       expiresAt: new Date(end.getTime() + 60 * 60 * 1000),
     }),
-    role === "host"
-      ? listQuestionsForEvent(ev.id)
-      : listQuestionsForAsker(ev.id, access.userId),
+    listLegacyQuestions(access),
   ]);
 
   return (

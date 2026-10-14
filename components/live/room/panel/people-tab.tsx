@@ -1,40 +1,35 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
-import { listAudience } from "@/app/live/actions";
-import type { LivePeer } from "@/lib/live-rooms";
+import { PEOPLE_POLL_MS, type PanelPeople } from "@/lib/webinar-panel";
+import { readPeople } from "./panel-api";
 import { Chip, Empty } from "./ui";
-
-const PEOPLE_POLL_MS = 10_000;
 
 /**
  * Who is here — hosts only. Staff see the audience by name; a guest speaker
- * is told how many (listAudience withholds viewer names from them, server
- * side). Read only while this tab is open.
+ * is told how many (the server withholds viewer names from them). Read from
+ * GET /api/live/panel only while this tab is open, so it never queues a send.
  */
 export function PeopleTab({
   eventId,
-  selfId,
   selfName,
-  showNames,
   live,
   audienceCount,
 }: {
   eventId: string;
-  selfId: string;
   selfName: string;
-  showNames: boolean;
   live: boolean;
   audienceCount: number | null;
 }) {
-  const [peers, setPeers] = useState<LivePeer[] | null>(null);
+  const [people, setPeople] = useState<PanelPeople | null>(null);
 
   useEffect(() => {
     if (!live) return;
     let cancelled = false;
     const load = async () => {
+      if (document.hidden) return;
       try {
-        const next = await listAudience("event", eventId);
-        if (!cancelled) setPeers(next);
+        const next = await readPeople(eventId);
+        if (!cancelled && next) setPeople(next);
       } catch {
         // Keep the last answer; the next tick retries.
       }
@@ -47,30 +42,27 @@ export function PeopleTab({
     };
   }, [eventId, live]);
 
-  const others = (peers ?? []).filter((p) => p.peerId !== selfId);
-  const hosts = others.filter((p) => p.role === "host");
-  const viewers = others.filter((p) => p.role !== "host");
-  const watching = audienceCount ?? viewers.length;
+  const watching = audienceCount ?? people?.watching ?? 0;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto py-2 text-sm">
       <Section title="Hosts">
         <ul>
           <Person name={selfName} note="You" />
-          {hosts.map((h) => (
-            <Person key={h.peerId} name={h.name || "Host"} />
+          {(people?.hosts ?? []).map((name, i) => (
+            <Person key={`${i}:${name}`} name={name} />
           ))}
         </ul>
       </Section>
       <Section title={`Watching · ${watching}`}>
-        {peers === null ? (
+        {people === null ? (
           <Empty>{live ? "Loading…" : "Join to see who's here."}</Empty>
-        ) : !showNames ? null : viewers.length === 0 ? (
+        ) : people.viewers === null ? null : people.viewers.length === 0 ? (
           <Empty>Nobody yet.</Empty>
         ) : (
           <ul>
-            {viewers.map((v) => (
-              <Person key={v.peerId} name={v.name || "Student"} />
+            {people.viewers.map((name, i) => (
+              <Person key={`${i}:${name}`} name={name} />
             ))}
           </ul>
         )}

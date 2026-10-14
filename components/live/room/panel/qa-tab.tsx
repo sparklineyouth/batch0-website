@@ -1,5 +1,4 @@
 "use client";
-import { useState } from "react";
 import { ArrowBigUp, Check, RotateCcw, Sparkles, X } from "lucide-react";
 import { LocalTime } from "@/components/ui/local-time";
 import { normalizeQuestion, MAX_QUESTION_LENGTH } from "@/lib/live";
@@ -14,6 +13,8 @@ export function QaTab({
   canUpvote,
   needsApproval,
   closed,
+  draft,
+  onDraftChange,
   onAsk,
   onRetry,
   onDiscard,
@@ -31,6 +32,9 @@ export function QaTab({
   /** Moderated room: a question waits for a host before the room sees it. */
   needsApproval: boolean;
   closed: boolean;
+  /** Held by the panel, so a tab switch keeps it. */
+  draft: string;
+  onDraftChange: (draft: string) => void;
   onAsk: (body: string) => void;
   onRetry: (id: string) => void;
   onDiscard: (id: string) => void;
@@ -39,14 +43,13 @@ export function QaTab({
   onApprove: (id: string) => void;
   onStatus: (id: string, status: RoomQuestion["status"]) => void;
 }) {
-  const [draft, setDraft] = useState("");
   const stored = new Set(questions.map((q) => q.id));
   const pending = outbox.filter((o) => !stored.has(o.id));
 
   const submit = () => {
     if (!normalizeQuestion(draft)) return;
     onAsk(draft);
-    setDraft("");
+    onDraftChange("");
   };
 
   return (
@@ -155,7 +158,7 @@ export function QaTab({
       ) : (
         <Composer
           value={draft}
-          onChange={setDraft}
+          onChange={onDraftChange}
           onSubmit={submit}
           canSubmit={!!normalizeQuestion(draft)}
           placeholder="Ask a question"

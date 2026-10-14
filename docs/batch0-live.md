@@ -59,8 +59,8 @@ and ICE candidates that lets two browsers find each other — and that rides
 | `lib/live-rooms.ts` | Server-only. Derives channel keys, issues credentials, records attendance, publishes the server's hints. Holds the room secret. |
 | `app/live/actions.ts` | The server actions: `joinRoom`, `announcePresence`, `leaveRoom`, `listAudience`. The access-control surface for media. (A 1:1's End call and status poll are `endCall` / `getCallRoomStatus` in `app/calls/actions.ts`.) |
 | `app/api/live/leave/route.ts` | The same leave as `leaveRoom`, as a `sendBeacon` target for a closing tab. |
-| `app/dashboard/events/[id]/live/room-actions.ts` | Everything in a webinar that isn't video — chat, Q&A, polls (writes) — plus `endLive` / `reopenLive` / `fetchLiveState`. |
-| `app/api/live/panel/route.ts` | The webinar side panel's reads (GET), off the serial server-action queue. Same gate (`lib/webinar-gate.ts`). |
+| `app/dashboard/events/[id]/live/room-actions.ts` | A webinar's live state: `endLive` / `reopenLive` / `fetchLiveState`. |
+| `app/api/live/panel/route.ts` | The webinar side panel — chat, Q&A, polls, People — read (GET) and written (POST, `lib/webinar-panel-writes.ts`) off the serial server-action queue. Same gate (`lib/webinar-gate.ts`). |
 | `components/live/room/panel/*` | The webinar side panel (`WebinarPanel`: Chat · Q&A · Polls · People) and reactions. Rules in `lib/webinar-panel.ts`. |
 | `components/live/use-live-session.ts` | The WebRTC engine. Runs both webinars and 1:1s. |
 | `components/live/broadcast-room.tsx` | The room UI. Reuses `PreJoin`, `VideoTile`, `CallControls`, `WebinarPanel`. |
@@ -337,7 +337,7 @@ answers come back empty because no host is on air yet.
 **End for everyone** is one control, in the room's control bar, with a
 two-step confirm (admins also have it on `/admin/webinars` and
 `/admin/events/[id]`, without going on air). It exists only once the webinar
-has begun — its scheduled start, or an early "Go live now" on a premiere
+has begun — its scheduled start, or a host going live early
 (`webinarHasBegun` in `lib/live.ts`): `endLive` refuses before that, and the
 room's `canEnd` (which the control bar and the last-host prompt read) says so.
 The host window opens an hour early for setup, and an End there used to end

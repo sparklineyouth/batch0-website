@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,10 +13,23 @@ import {
 import type { PanelWrite } from "@/lib/webinar-panel";
 import { Chip, Empty, FIELD, RowAction } from "./ui";
 
+/** A poll being written. Held by the panel, so a tab switch keeps it. */
+export type PollDraft = { question: string; options: string[]; resultsVisible: boolean };
+export type PollInput = {
+  question: string;
+  options: string[];
+  resultsVisible: boolean;
+  open: boolean;
+};
+
+const EMPTY_POLL: PollDraft = { question: "", options: ["", ""], resultsVisible: true };
+
 export function PollsTab({
   polls,
   isHost,
   closed,
+  draft,
+  onDraftChange,
   onVote,
   onSetOpen,
   onCreate,
@@ -24,26 +37,23 @@ export function PollsTab({
   polls: WebinarPoll[];
   isHost: boolean;
   closed: boolean;
+  /** Null while no poll is being written. */
+  draft: PollDraft | null;
+  onDraftChange: (draft: PollDraft | null) => void;
   onVote: (pollId: string, choice: number) => void;
   onSetOpen: (pollId: string, open: boolean) => void;
-  onCreate: (input: {
-    question: string;
-    options: string[];
-    resultsVisible: boolean;
-    open: boolean;
-  }) => Promise<PanelWrite<string>>;
+  onCreate: (input: PollInput) => Promise<PanelWrite<string>>;
 }) {
-  const [drafting, setDrafting] = useState(false);
   // Newest first: the poll that just opened is the one people are looking for.
   const ordered = [...polls].reverse();
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
       {isHost &&
-        (drafting ? (
-          <PollForm onCreate={onCreate} onDone={() => setDrafting(false)} />
+        (draft ? (
+          <PollForm draft={draft} onChange={onDraftChange} onCreate={onCreate} />
         ) : (
-          <Button size="sm" variant="secondary" className="mb-3" onClick={() => setDrafting(true)}>
+          <Button size="sm" variant="secondary" className="mb-3" onClick={() => onDraftChange(EMPTY_POLL)}>
             <Plus className="h-3.5 w-3.5" />
             New poll
           </Button>
@@ -143,23 +153,25 @@ function PollCard({
 }
 
 function PollForm({
+  draft,
+  onChange,
   onCreate,
-  onDone,
 }: {
-  onCreate: (input: {
-    question: string;
-    options: string[];
-    resultsVisible: boolean;
-    open: boolean;
-  }) => Promise<PanelWrite<string>>;
-  onDone: () => void;
+  draft: PollDraft;
+  /** Null closes the form. */
+  onChange: (draft: PollDraft | null) => void;
+  onCreate: (input: PollInput) => Promise<PanelWrite<string>>;
 }) {
-  const [question, setQuestion] = useState("");
-  const [options, setOptions] = useState(["", ""]);
-  const [resultsVisible, setResultsVisible] = useState(true);
+  const { question, options, resultsVisible } = draft;
   const [busy, setBusy] = useState(false);
   const checked = normalizePoll({ question, options });
   const touched = question.trim() !== "" || options.some((o) => o.trim() !== "");
+  // Functional updates against the latest draft, so quick typing never drops a key.
+  const latest = useRef(draft);
+  latest.current = draft;
+  const edit = (patch: Partial<PollDraft>) => onChange({ ...latest.current, ...patch });
+  const setOptions = (fn: (prev: string[]) => string[]) =>
+    edit({ options: fn(latest.current.options) });
 
   const save = async (open: boolean) => {
     if (!checked.ok || busy) return;
@@ -171,7 +183,7 @@ function PollForm({
       open,
     });
     setBusy(false);
-    if (res.ok) onDone();
+    if (res.ok) onChange(null);
   };
 
   const field = `h-9 w-full rounded-md border px-2.5 text-base placeholder:text-ink-faint focus:border-phosphor focus:outline-none md:text-sm ${FIELD}`;
@@ -180,7 +192,7 @@ function PollForm({
     <div className="mb-3 space-y-2 rounded-md border border-line bg-paper p-3">
       <input
         value={question}
-        onChange={(e) => setQuestion(e.target.value.slice(0, MAX_POLL_QUESTION_LENGTH))}
+        onChange={(e) => edit({ question: e.target.value.slice(0, MAX_POLL_QUESTION_LENGTH) })}
         placeholder="Question"
         aria-label="Poll question"
         className={field}
@@ -222,7 +234,7 @@ function PollForm({
         <input
           type="checkbox"
           checked={resultsVisible}
-          onChange={(e) => setResultsVisible(e.target.checked)}
+          onChange={(e) => edit({ resultsVisible: e.target.checked })}
           className="h-3.5 w-3.5 accent-phosphor"
         />
         Show results to everyone
@@ -235,7 +247,7 @@ function PollForm({
         <Button size="sm" variant="secondary" onClick={() => void save(false)} disabled={!checked.ok || busy}>
           Save draft
         </Button>
-        <Button size="sm" variant="ghost" onClick={onDone}>
+        <Button size="sm" variant="ghost" onClick={() => onChange(null)}>
           Cancel
         </Button>
       </div>

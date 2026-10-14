@@ -18,6 +18,7 @@ import {
   type RoomQuestion,
   type WebinarPoll,
 } from "./webinars.ts";
+import type { RoomMessage } from "./live-signal.ts";
 
 /** Newest messages a full read returns. */
 export const CHAT_PAGE = 200;
@@ -31,9 +32,15 @@ export const CHAT_KEEP = 300;
 export const CHAT_CURSOR_OVERLAP_MS = 5_000;
 /** Backstop re-read for a reader who holds no room topic (private-mode viewers). */
 export const PANEL_POLL_NO_TOPIC_MS = 10_000;
+/** How often an open People tab re-reads who is here. */
+export const PEOPLE_POLL_MS = 10_000;
 
+/** The feeds a hint names and a full read covers. */
 export type PanelPart = "chat" | "qa" | "poll";
 export const PANEL_PARTS: readonly PanelPart[] = ["chat", "qa", "poll"];
+/** What a read may ask for: the feeds, plus the hosts' roster (People tab only). */
+export type PanelReadPart = PanelPart | "people";
+export const PANEL_READ_PARTS: readonly PanelReadPart[] = [...PANEL_PARTS, "people"];
 
 export type PanelRole = "staff" | "speaker" | "viewer";
 export type PanelTab = "chat" | "qa" | "polls" | "people";
@@ -52,6 +59,18 @@ export type PanelRead = {
   };
   questions?: RoomQuestion[];
   polls?: WebinarPoll[];
+  /** Hosts only, and only when asked for. */
+  people?: PanelPeople;
+};
+
+/**
+ * Who is in the room, for a host. Names only — no ids. Excludes the reader.
+ * `viewers` is null for a guest speaker, who is told how many, never who.
+ */
+export type PanelPeople = {
+  hosts: string[];
+  viewers: string[] | null;
+  watching: number;
 };
 
 /** The server-rendered first read: every part, chat in full. */
@@ -65,6 +84,109 @@ export type WebinarPanelInitial = PanelRead & {
 export type PanelWrite<T = null> =
   | { ok: true; data: T }
   | { ok: false; error: string; retryInMs?: number };
+
+// ---------------------------------------------------------------------------
+// Writes: POST /api/live/panel
+// ---------------------------------------------------------------------------
+
+export type ChatModeration = "approve" | "remove" | "pin" | "unpin";
+const CHAT_MODERATIONS: readonly ChatModeration[] = ["approve", "remove", "pin", "unpin"];
+export const QUESTION_STATUSES = ["open", "answered", "dismissed"] as const;
+export type QuestionState = (typeof QUESTION_STATUSES)[number];
+
+/**
+ * One panel write. Writes are a route rather than server actions for the
+ * same reason reads are: Next runs a page's actions one at a time, so a send
+ * would wait behind the engine's heartbeat.
+ */
+export type PanelOp =
+  | { op: "chat.send"; id: string; body: string }
+  | { op: "chat.delete"; id: string }
+  | { op: "chat.moderate"; id: string; action: ChatModeration }
+  | { op: "qa.ask"; id: string; body: string }
+  | { op: "qa.vote"; id: string; on: boolean }
+  | { op: "qa.spotlight"; id: string; on: boolean }
+  | { op: "qa.status"; id: string; status: QuestionState }
+  | { op: "qa.approve"; id: string }
+  | {
+      op: "poll.create";
+      question: string;
+      options: string[];
+      resultsVisible: boolean;
+      open: boolean;
+    }
+  | { op: "poll.open"; id: string; open: boolean }
+  | { op: "poll.vote"; id: string; choice: number };
+
+/** What each write answers with. */
+export type PanelOpResult<K extends PanelOp["op"]> = K extends "chat.send"
+  ? ChatMessage
+  : K extends "qa.ask"
+    ? RoomQuestion
+    : K extends "poll.create"
+      ? string
+      : null;
+
+/** Longest text field a write body may carry; the normalisers cut tighter. */
+const MAX_FIELD = 4_000;
+const MAX_OPTIONS = 20;
+
+/**
+ * Read a write request's body. Shape only: every value is re-checked by the
+ * write itself against the room (ids, lengths, options, the gate).
+ */
+export function parsePanelOp(body: unknown): PanelOp | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as Record<string, unknown>;
+  const id = isUuid(b.id) ? b.id : null;
+  const text = (v: unknown) => (typeof v === "string" && v.length <= MAX_FIELD ? v : null);
+  const flag = (v: unknown) => (typeof v === "boolean" ? v : null);
+  switch (b.op) {
+    case "chat.send":
+    case "qa.ask": {
+      const t = text(b.body);
+      return id && t !== null ? { op: b.op, id, body: t } : null;
+    }
+    case "chat.delete":
+    case "qa.approve":
+      return id ? { op: b.op, id } : null;
+    case "chat.moderate":
+      return id && CHAT_MODERATIONS.includes(b.action as ChatModeration)
+        ? { op: b.op, id, action: b.action as ChatModeration }
+        : null;
+    case "qa.vote":
+    case "qa.spotlight": {
+      const on = flag(b.on);
+      return id && on !== null ? { op: b.op, id, on } : null;
+    }
+    case "qa.status":
+      return id && (QUESTION_STATUSES as readonly unknown[]).includes(b.status)
+        ? { op: b.op, id, status: b.status as QuestionState }
+        : null;
+    case "poll.create": {
+      const question = text(b.question);
+      const options =
+        Array.isArray(b.options) && b.options.length <= MAX_OPTIONS
+          ? b.options.map(text)
+          : null;
+      const resultsVisible = flag(b.resultsVisible);
+      const open = flag(b.open);
+      if (question === null || !options || options.some((o) => o === null)) return null;
+      if (resultsVisible === null || open === null) return null;
+      return { op: b.op, question, options: options as string[], resultsVisible, open };
+    }
+    case "poll.open": {
+      const open = flag(b.open);
+      return id && open !== null ? { op: b.op, id, open } : null;
+    }
+    case "poll.vote":
+      return id && Number.isInteger(b.choice) && (b.choice as number) >= 0
+        ? { op: b.op, id, choice: b.choice as number }
+        : null;
+    default:
+      return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Ids and timestamps
@@ -351,8 +473,8 @@ export function parseRoomHint(payload: unknown): RoomHint | null {
 }
 
 /** The hint a removal publishes: an id, never content. */
-export function chatRemovedHint(messageId: string) {
-  return { t: "bump" as const, what: "chat" as const, removed: messageId };
+export function chatRemovedHint(messageId: string): Extract<RoomMessage, { t: "bump" }> {
+  return { t: "bump", what: "chat", removed: messageId };
 }
 
 /** What a debounced burst of hints asks the next read for. */
@@ -398,6 +520,17 @@ export const OUTBOX_MAX_ATTEMPTS = 8;
 export function retryDelayMs(attempt: number, hintMs?: number): number {
   if (hintMs && hintMs > 0) return Math.min(hintMs, 15_000);
   return Math.min(1000 * 2 ** Math.max(0, attempt - 1), 8000);
+}
+
+/**
+ * Rows not drawn before, by id. A removal (the newest row going away) or a
+ * row a forged hint hid and a read restored is never an arrival.
+ */
+export function arrivals<T extends { id: string }>(
+  rows: readonly T[],
+  shown: ReadonlySet<string>,
+): T[] {
+  return rows.filter((r) => !shown.has(r.id));
 }
 
 /** Items from other people that the reader has not seen yet. */

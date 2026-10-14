@@ -57,13 +57,14 @@ guarantee the rest of the system is built on, it became a setting:
 
 | Mode | What a student sees | Use it for |
 |---|---|---|
-| `private` | Their own questions. No chat. No evidence anyone else exists. | Public intake webinars. Anything with strangers in the room. |
+| `private` | Their own questions. No chat. No evidence anyone else exists. | **The default.** Public intake webinars. Anything with strangers in the room. |
 | `moderated` | Approved messages and questions, plus their own pending ones. | A public webinar where you want a live channel but nothing unreviewed reaching the room. |
-| `open` | Every message, with names. | **The default for new events.** A cohort call, where the students already know each other. |
+| `open` | Every message, with names. | A cohort call, where the students already know each other. |
 
-New events get `open` (`DEFAULT_AUDIENCE_MODE`): `normalizeAudienceMode()` maps
-an absent value to it. Existing rows keep the mode they store, and an
-unrecognised value still fails closed to `private`.
+`private` is the default in the database, in `normalizeAudienceMode()`, and in
+the admin form. Every event that existed before 0084 has it. A deploy that is
+ahead of the database shows a webinar with no chat rather than one with
+unmoderated chat, because the normaliser fails closed on an unrecognised value.
 
 **Switching modes is not retroactive.** A question's visibility is gated on
 `approved_at`, and a question asked while the room was `private` is never
@@ -240,14 +241,14 @@ header.
 ### The End button (and Leave)
 
 There is **one** End for everyone, in the room's control bar, with a two-step
-confirm. Staff hosts always see it (during a premiere too); a guest speaker sees
+confirm. Staff hosts always see it; a guest speaker sees
 it only in the last-host Leave prompt, and only when no staff host is present.
 Admins also have End for everyone and Reopen on `/admin/webinars` and
 `/admin/events/[id]`, so a webinar a host walked away from can be closed
 without going on air.
 
-Nobody can End a webinar that has not begun — its scheduled start, or an early
-"Go live now" on a premiere (`webinarHasBegun`, enforced by `endLive` through
+Nobody can End a webinar that has not begun — its scheduled start, or a host
+going live early (`webinarHasBegun`, enforced by `endLive` through
 the room's `canEnd`). Hosts can open the room an hour early to set up, and an
 End there used to end the real webinar before it started: the audience got
 "This webinar has ended" at the start, and a guest speaker who pressed it could
@@ -298,44 +299,6 @@ and tidy them); the webinar shows **Ended** on every list.
 
 ---
 
-## Premieres (pre-recorded, played as live)
-
-`live_mode = 'premiere'`. A recording plays on the schedule and hands over to a
-genuinely live room for the Q&A.
-
-Every viewer is positioned at `(serverNow - starts_at)`. A viewer arriving
-twenty minutes late joins twenty minutes in — which is the difference between a
-premiere and a video, and it makes the position self-healing across a reload
-with no per-viewer signalling.
-
-**The offset is server-computed and must stay that way.** A viewer whose laptop
-clock is four minutes fast would otherwise sit four minutes ahead of the room —
-visibly, in chat, reacting to something nobody has seen yet — and one whose
-clock is out by an hour would watch a black screen and conclude the webinar
-never started.
-
-`live_ended_at` beats everything: End for everyone stops a playing premiere
-too, rather than leaving the recording running under an "Ended" badge.
-
-`live_started_at` beats the schedule absolutely. A host who presses "Go live
-now" thirty minutes into a forty-minute recording has made a decision about the
-room; the alternative is an audience watching a recording of someone who is, at
-that moment, live on the other side of the same page.
-
-### What is and is not pretended
-
-The talk is pre-recorded. Everything else is real and happening now: the chat,
-the questions, the polls, the attendance record, and the host answering at the
-end. A premiere is a talk that was rehearsed instead of improvised.
-
-There is deliberately **no** support for fabricated audience activity — no
-scripted student messages, no synthetic reactions. `display_viewer_count`
-(migration 0071) remains the one announced figure an admin can set, and it is
-display-only and gates nothing. If you want the room to look busier than it is,
-that field is the honest place to say so.
-
----
-
 ## Chat transport: why it is not a poll
 
 The old Q&A panel polled every 5s (host) / 15s (viewer). Fifty students at 5s is
@@ -360,10 +323,14 @@ never appears for exactly one person.
 How the panel stays fluid (`components/live/room/panel/*`, rules in
 `lib/webinar-panel.ts`):
 
-- **Reads are a GET route** (`/api/live/panel`), not a server action: Next runs
-  a page's actions one at a time, so reads on every bump would queue sends.
-  A full read returns the newest 200 messages; an incremental one rows since
-  the cursor (with a 5s overlap). The cursor never moves backwards.
+- **Reads and writes are one route** (`GET`/`POST /api/live/panel`), not
+  server actions: Next runs a page's actions one at a time, so a send would
+  wait behind the engine's heartbeat and every read. Writes
+  (`lib/webinar-panel-writes.ts`) re-run the room gate, check Origin, and
+  answer with the reason and whether to retry. A full read returns the newest
+  200 messages; an incremental one rows since the cursor (with a 5s overlap).
+  The cursor never moves backwards. The People tab reads the roster from the
+  same route (`parts=people`, hosts only, names withheld from guest speakers).
 - **Removed rows are never returned**, to anyone. A removal (host Remove or
   an author's Delete, both audited) publishes `{t:"bump", what:"chat",
   removed:<id>}` — an id, no content — so every client drops it at once; the
@@ -373,7 +340,7 @@ How the panel stays fluid (`components/live/room/panel/*`, rules in
   overrides; a read drops an override only once it started after the write
   settled, so nothing snaps back mid-flight. Sends go through an outbox with a
   client-minted row id (retries are idempotent) and backoff; the composer
-  never locks.
+  never locks, and unsent text survives a tab switch.
 
 ---
 
@@ -431,7 +398,7 @@ The email and the bell link to `/dashboard/events`. They used to link to
 | Admin pages | `app/admin/webinars/*` (live status, Host room, End / Reopen), `app/admin/events/[id]/page.tsx` |
 | Follow-up job | `app/api/cron/webinar-followups/route.ts` |
 | Room | `components/live/broadcast-room.tsx`, `use-recorder.ts`, `premiere-player.tsx`, `speaker-strip.tsx` |
-| Side panel | `components/live/room/panel/*`, `lib/webinar-panel.ts` (+ test), `app/api/live/panel/route.ts`, `lib/webinar-gate.ts` |
+| Side panel | `components/live/room/panel/*`, `lib/webinar-panel.ts` (+ test), `app/api/live/panel/route.ts`, `lib/webinar-panel-writes.ts`, `lib/webinar-gate.ts` |
 | Admin form | `app/admin/events/webinar-fields.tsx` |
 
 ---

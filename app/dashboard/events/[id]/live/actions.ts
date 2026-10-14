@@ -1,21 +1,18 @@
 "use server";
 import { requireActor } from "@/lib/server-guards";
 import type { QuestionStatus, WebinarQuestion } from "@/lib/live";
-import {
-  listQuestionsForEvent,
-  listQuestionsForAsker,
-} from "@/lib/webinar-questions";
 import { resolveEventAccess } from "@/lib/live-access";
+import { listLegacyQuestions } from "@/lib/webinar-data";
 import { newRowId } from "@/lib/webinar-panel";
 import {
   askQuestion as askRoomQuestion,
   setQuestionStatus as setRoomQuestionStatus,
-} from "./room-actions";
+} from "@/lib/webinar-panel-writes";
 
 /**
  * The legacy question-only panel's actions (components/live/qa-panel.tsx,
- * used by the Daily room). Thin adapters over ./room-actions.ts, which owns
- * the rules; this file goes when qa-panel.tsx does.
+ * used by the Daily room). Thin adapters over lib/webinar-panel-writes.ts,
+ * which owns the rules; this file goes when qa-panel.tsx does.
  */
 
 export async function askQuestion(
@@ -36,15 +33,16 @@ export async function askQuestion(
   };
 }
 
-/** The whole queue for a host (staff or speaker); only their own for anyone else. */
+/**
+ * The whole queue for a host (staff or speaker); only their own for anyone
+ * else. A guest speaker sees students as "A student" (listLegacyQuestions).
+ */
 export async function fetchQuestions(
   eventId: string,
 ): Promise<WebinarQuestion[]> {
   const access = await resolveEventAccess(eventId);
   if (!access.ok) return [];
-  return access.isHost
-    ? listQuestionsForEvent(eventId)
-    : listQuestionsForAsker(eventId, access.userId);
+  return listLegacyQuestions(access);
 }
 
 export async function setQuestionStatus(

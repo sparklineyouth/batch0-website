@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyRead,
+  arrivals,
   baseFrom,
   chatRemovedHint,
   chooseOption,
@@ -14,6 +15,7 @@ import {
   mergeReadRequests,
   newRowId,
   panelTabs,
+  parsePanelOp,
   parseRoomHint,
   pruneOverrides,
   readFrom,
@@ -411,4 +413,81 @@ test("chat is a tab only where the audience may see itself; People is hosts-only
   assert.deepEqual(panelTabs("viewer", false), ["qa", "polls"]);
   assert.deepEqual(panelTabs("speaker", false), ["qa", "polls", "people"]);
   assert.deepEqual(panelTabs("staff", true), ["chat", "qa", "polls", "people"]);
+});
+
+test("the '1 new' pill counts rows never drawn, not a removal or a restore", () => {
+  const shown = new Set([ID(1), ID(2), ID(3)]);
+  // The newest is removed: the last row is now an older, seen one.
+  assert.deepEqual(arrivals([msg(1), msg(2)], shown), []);
+  // A forged hint hid ID(3) and the next read brought it back.
+  assert.deepEqual(arrivals([msg(1), msg(2), msg(3)], shown), []);
+  // A real arrival, and one that committed late (older than the newest).
+  assert.deepEqual(
+    arrivals([msg(1), msg(2), msg(3), msg(4)], shown).map((m) => m.id),
+    [ID(4)],
+  );
+  assert.deepEqual(
+    arrivals([msg(0), msg(1), msg(2), msg(3)], shown).map((m) => m.id),
+    [ID(0)],
+  );
+});
+
+test("a write body is parsed to one known op, or refused", () => {
+  const id = ID(7);
+  assert.deepEqual(parsePanelOp({ event: ID(1), op: "chat.send", id, body: "hi" }), {
+    op: "chat.send",
+    id,
+    body: "hi",
+  });
+  assert.deepEqual(parsePanelOp({ op: "chat.moderate", id, action: "remove" }), {
+    op: "chat.moderate",
+    id,
+    action: "remove",
+  });
+  assert.deepEqual(parsePanelOp({ op: "qa.status", id, status: "answered" }), {
+    op: "qa.status",
+    id,
+    status: "answered",
+  });
+  assert.deepEqual(parsePanelOp({ op: "poll.vote", id, choice: 1 }), {
+    op: "poll.vote",
+    id,
+    choice: 1,
+  });
+  assert.deepEqual(
+    parsePanelOp({
+      op: "poll.create",
+      question: "Ship it?",
+      options: ["Yes", "No"],
+      resultsVisible: true,
+      open: false,
+      extra: "ignored",
+    }),
+    { op: "poll.create", question: "Ship it?", options: ["Yes", "No"], resultsVisible: true, open: false },
+  );
+  // Nothing the caller adds rides along: who is asking is the session's.
+  const sent = parsePanelOp({ op: "chat.delete", id, authorId: ID(9) });
+  assert.deepEqual(sent, { op: "chat.delete", id });
+
+  for (const bad of [
+    null,
+    "chat.send",
+    {},
+    { op: "chat.send", id: "not-a-uuid", body: "hi" },
+    { op: "chat.send", id, body: 7 },
+    { op: "chat.send", id, body: "x".repeat(4001) },
+    { op: "chat.moderate", id, action: "delete" },
+    { op: "qa.vote", id, on: "yes" },
+    { op: "qa.status", id, status: "closed" },
+    { op: "poll.vote", id, choice: 1.5 },
+    { op: "poll.vote", id, choice: -1 },
+    { op: "poll.create", question: "Q", options: "A,B", resultsVisible: true, open: true },
+    { op: "poll.create", question: "Q", options: ["A", 2], resultsVisible: true, open: true },
+    { op: "poll.create", question: "Q", options: Array(21).fill("A"), resultsVisible: true, open: true },
+    { op: "poll.create", question: "Q", options: ["A", "B"], open: true },
+    { op: "poll.open", id },
+    { op: "drop.tables", id },
+  ]) {
+    assert.equal(parsePanelOp(bad), null, JSON.stringify(bad));
+  }
 });

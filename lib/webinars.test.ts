@@ -17,7 +17,6 @@ import {
   pollPercentages,
   pollVisibleToAudience,
   sortQuestions,
-  DEFAULT_AUDIENCE_MODE,
   premiereState,
   recordingSegmentSlot,
   CALL_RECORDER_LISTEN_MS,
@@ -83,23 +82,19 @@ test("only moderated holds messages for approval", () => {
   );
 });
 
-test("a new event with no mode chosen gets chat on; garbage fails closed", () => {
-  // Absent means nobody picked: new events default to open chat. Existing
-  // rows always carry a value (the column is NOT NULL) and keep it.
-  assert.equal(DEFAULT_AUDIENCE_MODE, "open");
-  for (const absent of [null, undefined, ""]) {
-    assert.equal(normalizeAudienceMode(absent), DEFAULT_AUDIENCE_MODE);
-  }
-  // Present but unrecognised — a typo, a mode from a newer build — must show
-  // no chat rather than unmoderated chat.
-  for (const bad of ["public", "OPEN", 0, {}, [], "private "]) {
+test("an unrecognised audience mode becomes private, never open", () => {
+  // The rows that matter here are real: every event written before migration
+  // 0084 has NULL in this column. A deploy that is ahead of the database must
+  // show a webinar with no chat, not one with unmoderated chat.
+  for (const bad of [null, undefined, "", "public", "OPEN", 0, {}, []]) {
     assert.equal(
       normalizeAudienceMode(bad),
       "private",
       `${JSON.stringify(bad)} must fail closed`,
     );
   }
-  for (const mode of AUDIENCE_MODES) assert.equal(normalizeAudienceMode(mode), mode);
+  assert.equal(normalizeAudienceMode("moderated"), "moderated");
+  assert.equal(normalizeAudienceMode("open"), "open");
 });
 
 test("a pending message is never live, and nothing is live in a private room", () => {

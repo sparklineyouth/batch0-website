@@ -28,6 +28,7 @@
 
 import { randomBytes } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { ROOM_RESYNC_MS } from "../lib/live-signal.ts";
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const headed = process.argv.includes("--headed");
@@ -54,8 +55,15 @@ const adm = {
 const PASSWORD = `e2e-${randomBytes(18).toString("base64url")}`;
 const stamp = String(process.pid);
 
-/** How long another screen may take to reflect a change (E2E_SPREAD_MS on a slow box). */
-const SPREAD_MS = Number(process.env.E2E_SPREAD_MS) || 8_000;
+/**
+ * How long another screen may take to reflect a change: a hint normally lands
+ * in about a second, and every step must also survive a dropped hint, which
+ * the resync repairs — so the bound is the resync interval plus slack
+ * (E2E_SPREAD_MS overrides). Anything slower than SLOW_MS is printed with its
+ * time, so a run that passed on the fallback says so.
+ */
+const SPREAD_MS = Number(process.env.E2E_SPREAD_MS) || ROOM_RESYNC_MS + 5_000;
+const SLOW_MS = 3_000;
 
 let failures = 0;
 const info = (m: string) => console.log(`        ${m}`);
@@ -157,11 +165,16 @@ async function until<T>(
   fn: () => Promise<T | null | undefined | false>,
   timeoutMs = SPREAD_MS,
 ): Promise<T | null> {
-  const deadline = Date.now() + timeoutMs;
+  const t0 = Date.now();
+  const deadline = t0 + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const v = await fn();
-      if (v) return v as T;
+      if (v) {
+        const took = Date.now() - t0;
+        if (took > SLOW_MS) info(`slow: ${label} took ${(took / 1000).toFixed(1)}s`);
+        return v as T;
+      }
     } catch {
       /* mid-render; try again */
     }
@@ -380,8 +393,8 @@ async function main() {
     check(remAda !== null, `gone for its author (${remAda}ms)`);
     check(remBen !== null, `gone for Ben (${remBen}ms)`);
 
-    info("waiting out a full resync (22s)…");
-    await new Promise((r) => setTimeout(r, 22_000));
+    info(`waiting out a full resync (${(ROOM_RESYNC_MS + 2_000) / 1000}s)…`);
+    await new Promise((r) => setTimeout(r, ROOM_RESYNC_MS + 2_000));
     for (const [page, who] of [
       [host.page, "host"],
       [ada.page, "Ada"],
@@ -516,10 +529,44 @@ async function main() {
     check(!!(await until("pill", async () => (await pill.count()) > 0)), "a reader scrolled up gets a '1 new' pill");
     if ((await pill.count()) > 0) await pill.click();
     check(await nearBottom(), "the pill jumps to the newest");
+    // Removing the newest message is not news for a reader scrolled up.
+    await log.evaluate((el) => (el.scrollTop = 0));
+    await new Promise((r) => setTimeout(r, 300));
+    await rowAction(message(host.page, "while you scrolled up"), "Remove");
+    await until("removed on Ben", async () => !(await hasMessage(ben.page, "while you scrolled up")));
+    await new Promise((r) => setTimeout(r, 1500));
+    check(
+      (await ben.page.getByRole("button", { name: /\d+ new/ }).count()) === 0,
+      "removing the newest message shows no '1 new' pill",
+    );
+
+    // An unsent message survives a look at another tab.
+    const draftBox = ada.page.getByRole("textbox", { name: "Chat message" });
+    await draftBox.fill("half-typed thought");
+    await tab(ada.page, /^Q&A/);
+    await tab(ada.page, /^Chat/);
+    check(
+      (await ada.page.getByRole("textbox", { name: "Chat message" }).inputValue()) === "half-typed thought",
+      "a half-typed message survives a tab switch",
+    );
+    await ada.page.getByRole("textbox", { name: "Chat message" }).fill("");
+
+    await tab(host.page, /^People/);
+    check(
+      !!(await until("people", async () => {
+        const watching = host.page
+          .locator("section")
+          .filter({ has: host.page.getByRole("heading", { name: /^Watching/ }) });
+        const text = await watching.innerText();
+        return text.includes("Ada Student") && text.includes("Ben Student");
+      })),
+      "the host's People tab lists who is watching",
+    );
+    await tab(host.page, /^Chat/);
 
     await ada.page.getByRole("button", { name: "Reactions" }).click();
     await ada.page.getByRole("button", { name: "React 👏" }).click();
-    check(!!(await until("clap on Ben", async () => (await ben.page.getByText("👏").count()) > 0, 4000)), "a reaction floats on another screen");
+    check(!!(await until("clap on Ben", async () => (await ben.page.getByText("👏").count()) > 0, 8_000)), "a reaction floats on another screen");
 
     // --- moderated -------------------------------------------------------------
     console.log("\nmoderated");
@@ -527,8 +574,8 @@ async function main() {
       method: "PATCH",
       body: JSON.stringify({ audience_mode: "moderated" }),
     });
-    info("waiting for the panels' next read (22s)…");
-    await new Promise((r) => setTimeout(r, 22_000));
+    info(`waiting for the panels' next read (${(ROOM_RESYNC_MS + 2_000) / 1000}s)…`);
+    await new Promise((r) => setTimeout(r, ROOM_RESYNC_MS + 2_000));
     await say(ada.page, "needs a look");
     check(
       !!(await until("pending for Ada", async () =>
