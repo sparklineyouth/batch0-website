@@ -34,9 +34,10 @@ one seekable file.
   is skipped while drawing would take more than about a third of the main
   thread — the room comes first (otherwise a starved tab composites queued
   ticks nonstop, the room freezes, uploads stall and memory climbs). On a
-  CPU-starved test box this meant 3–11 recorded fps and a video track ending
-  a few seconds before the audio (frames still in the encoder at Stop are
-  dropped); a normal machine composites with the GPU and never hits it.
+  CPU-starved test box this meant 2–11 recorded fps and, in some takes, a
+  video track ending a few seconds before the audio (frames still queued in
+  the encoder at Stop are dropped); a normal machine composites with the GPU
+  and never hits it.
 
 ## Upload
 
