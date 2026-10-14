@@ -114,7 +114,8 @@ const roomOf = (eventId: string) => `event:${eventId}`;
 const UNIQUE_VIOLATION = "23505";
 
 async function requireRoom(eventId: string): Promise<RoomGate> {
-  const gate = isUuid(eventId) ? await gateRoom(eventId) : null;
+  // A failed access read throws (retryable), rather than reading as "not yours".
+  const gate = isUuid(eventId) ? await gateRoom(eventId, { throwOnError: true }) : null;
   if (!gate) throw new Refusal("This room isn't open to you right now.");
   return gate;
 }
