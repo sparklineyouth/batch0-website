@@ -2,14 +2,11 @@ import { after, NextResponse } from "next/server";
 import {
   verifyInteractionSignature,
   postChannelMessage,
-  announcementEmbed,
   eventEmbed,
   getDiscordSettings,
   isDiscordEnabled,
   syncMemberRoles,
   SLASH_COMMANDS,
-  modalResponse,
-  buttonRow,
   sendInteractionFollowup,
   sendDirectMessage,
   startThreadFromMessage,
@@ -21,8 +18,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { allowedDiscordInteraction } from "@/lib/discord-interaction-access";
 import { env } from "@/lib/env";
-import { isoWeekStart } from "@/lib/week";
 import { notifyMany } from "@/lib/notifications";
+import { studentEventsOrFilter } from "@/lib/student-event-filter";
 import {
   sendOnboardingDM,
   currentOncall,
@@ -37,11 +34,9 @@ export const maxDuration = 60;
 //   1 = PING                    (Discord pings the endpoint on save)
 //   2 = APPLICATION_COMMAND     (slash or message context menu)
 //   3 = MESSAGE_COMPONENT       (button click / select menu)
-//   5 = MODAL_SUBMIT            (user submitted a modal we showed)
 const INTERACTION_PING = 1;
 const INTERACTION_APPLICATION_COMMAND = 2;
 const INTERACTION_MESSAGE_COMPONENT = 3;
-const INTERACTION_MODAL_SUBMIT = 5;
 
 const ephemeralFlag = MessageFlag.EPHEMERAL;
 
@@ -188,8 +183,6 @@ export async function POST(req: Request) {
         return await handleWhois(admin, discordUserId, body);
       case "help":
         return handleHelp();
-      case "checkin":
-        return handleCheckinModalOpen();
       case "team":
         return await handleTeam(admin, discordUserId);
       case "ask":
@@ -208,8 +201,9 @@ export async function POST(req: Request) {
   // ── Button clicks ────────────────────────────────────────────────────────
   if (body.type === INTERACTION_MESSAGE_COMPONENT) {
     const customId: string = body.data?.custom_id ?? "";
+    // RSVP buttons on old #events posts. RSVPs are gone; point at the list.
     if (customId.startsWith("rsvp:")) {
-      return await handleRsvpClick(admin, discordUserId, body, customId);
+      return ephemeral(`Upcoming events: ${env.siteUrl}/dashboard/events`);
     }
     if (customId.startsWith("ddreact:")) {
       return await handleDemoDayReact(admin, discordUserId, body, customId);
@@ -218,15 +212,6 @@ export async function POST(req: Request) {
       return await handleOnboardingClick(admin, discordUserId, body, customId);
     }
     return ack();
-  }
-
-  // ── Modal submissions ────────────────────────────────────────────────────
-  if (body.type === INTERACTION_MODAL_SUBMIT) {
-    const customId: string = body.data?.custom_id ?? "";
-    if (customId === "checkin-modal") {
-      return await handleCheckinModalSubmit(admin, discordUserId, body);
-    }
-    return ephemeral("Form submitted, but I don't know what to do with it.");
   }
 
   return ephemeral("Unsupported interaction type.");
@@ -274,35 +259,22 @@ async function handleEvents(
   admin: ReturnType<typeof createAdminClient>,
   discordUserId: string,
 ) {
-  let cohortId: string | null = null;
+  let cohortIds: string[] = [];
   if (discordUserId) {
     const { data: profile } = await admin
       .from("profiles")
       .select("id")
       .eq("discord_user_id", discordUserId)
       .maybeSingle();
-    if (profile) {
-      const { data: enrollment } = await admin
-        .from("enrollments")
-        .select("cohort_id")
-        .eq("user_id", profile.id)
-        .maybeSingle();
-      cohortId = (enrollment as any)?.cohort_id ?? null;
-    }
+    if (profile) cohortIds = await enrolledCohortIds(admin, profile.id);
   }
-  const nowIso = new Date().toISOString();
-  let q = admin
+  const { data: events } = await admin
     .from("events")
-    .select("title, type, starts_at, ends_at, location, zoom_url, description, visibility, cohort:cohorts(name)")
-    .gte("starts_at", nowIso)
+    .select("title, type, starts_at, ends_at, location, zoom_url, description, cohort:cohorts(name)")
+    .or(studentEventsOrFilter(cohortIds))
+    .gte("starts_at", new Date().toISOString())
     .order("starts_at", { ascending: true })
     .limit(5);
-  if (cohortId) {
-    q = q.or(`cohort_id.eq.${cohortId},cohort_id.is.null`);
-  } else {
-    q = q.eq("visibility", "public");
-  }
-  const { data: events } = await q;
   if (!events || events.length === 0) {
     return ephemeral("No upcoming events on the calendar.");
   }
@@ -323,6 +295,19 @@ async function handleEvents(
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: { embeds, flags: ephemeralFlag },
   });
+}
+
+// The service role skips RLS, so event reads here filter the way the `events
+// read` policy would for this person (lib/student-event-filter.ts).
+async function enrolledCohortIds(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+): Promise<string[]> {
+  const { data } = await admin
+    .from("enrollments")
+    .select("cohort_id")
+    .eq("user_id", userId);
+  return (data ?? []).map((e: any) => e.cohort_id);
 }
 
 async function handleWhois(
@@ -461,147 +446,6 @@ async function handleCohort(admin: ReturnType<typeof createAdminClient>, discord
 }
 
 // ===========================================================================
-// /checkin — open a modal, then write the result into student_checkins
-// ===========================================================================
-
-function handleCheckinModalOpen() {
-  return NextResponse.json(
-    modalResponse({
-      customId: "checkin-modal",
-      title: "Weekly check-in",
-      components: [
-        {
-          customId: "accomplished",
-          label: "What did you ship this week?",
-          placeholder: "Most important wins or progress.",
-          required: true,
-          maxLength: 4000,
-        },
-        {
-          customId: "next_up",
-          label: "What's next?",
-          placeholder: "Top priorities for the coming week.",
-          required: false,
-          maxLength: 4000,
-        },
-        {
-          customId: "blockers",
-          label: "Any blockers?",
-          placeholder: "Stuck on anything? Who can help?",
-          required: false,
-          maxLength: 4000,
-        },
-        {
-          customId: "milestone",
-          label: "Major milestone? (yes/no)",
-          placeholder: "Type 'yes' if this is a big-deal moment.",
-          required: false,
-          maxLength: 5,
-          style: 1, // short
-        },
-      ],
-    }),
-  );
-}
-
-async function handleCheckinModalSubmit(
-  admin: ReturnType<typeof createAdminClient>,
-  discordUserId: string,
-  body: any,
-) {
-  if (!discordUserId) return ephemeral("Couldn't identify you.");
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("discord_user_id", discordUserId)
-    .maybeSingle();
-  if (!profile) {
-    return ephemeral(`Link your account first: ${env.siteUrl}/dashboard/settings`);
-  }
-  // enrollment is required for check-ins
-  const { data: enrollment } = await admin
-    .from("enrollments")
-    .select("cohort_id")
-    .eq("user_id", profile.id)
-    .maybeSingle();
-  if (!enrollment) {
-    return ephemeral("You need to be enrolled in a cohort to post a check-in.");
-  }
-
-  const valuesById = new Map<string, string>();
-  for (const row of body.data?.components ?? []) {
-    for (const comp of row.components ?? []) {
-      if (typeof comp.value === "string") {
-        valuesById.set(comp.custom_id, comp.value);
-      }
-    }
-  }
-  const accomplished = (valuesById.get("accomplished") ?? "").trim().slice(0, 4000);
-  const next_up = (valuesById.get("next_up") ?? "").trim().slice(0, 4000);
-  const blockers = (valuesById.get("blockers") ?? "").trim().slice(0, 4000);
-  const milestoneRaw = (valuesById.get("milestone") ?? "").trim().toLowerCase();
-  const is_milestone = /^(y|yes|true|1)$/.test(milestoneRaw);
-
-  if (!accomplished && !next_up && !blockers) {
-    return ephemeral("Add at least one section before submitting.");
-  }
-
-  const week_start = isoWeekStart();
-  const payload = {
-    user_id: profile.id,
-    cohort_id: enrollment.cohort_id ?? null,
-    week_start,
-    accomplished: accomplished || null,
-    next_up: next_up || null,
-    blockers: blockers || null,
-    is_milestone,
-  };
-  const { error } = await admin
-    .from("student_checkins")
-    .upsert(payload, { onConflict: "user_id,week_start" });
-  if (error) {
-    console.error("[discord] checkin upsert failed", error);
-    return ephemeral("Couldn't save your check-in. Try the website instead.");
-  }
-
-  // Best-effort: ping staff in-app, like the website flow does.
-  try {
-    const { data: staff } = await admin
-      .from("profiles")
-      .select("id")
-      .in("role", ["mentor", "admin"]);
-    const { data: prof2 } = await admin
-      .from("profiles")
-      .select("full_name, email")
-      .eq("id", profile.id)
-      .maybeSingle();
-    const name = prof2?.full_name ?? prof2?.email ?? "A student";
-    await notifyMany(
-      (staff ?? [])
-        .filter((s: any) => s.id !== profile.id)
-        .map((s: any) => ({
-          userId: s.id,
-          type: "checkin_submitted",
-          title: `${name} posted this week's check-in`,
-          body: accomplished ? accomplished.slice(0, 160) : null,
-          link: `/mentor/checkins?week=${week_start}`,
-        })),
-    );
-  } catch {}
-
-  // If marked milestone, cross-post to #wins (best-effort).
-  if (is_milestone) {
-    await crosspostMilestone(admin, profile.id, accomplished, next_up);
-  }
-
-  return ephemeral(
-    is_milestone
-      ? "✅ Check-in saved. Tagged as a milestone — I'll celebrate it in #wins."
-      : "✅ Check-in saved.",
-  );
-}
-
-// ===========================================================================
 // /team — quick snapshot of the caller's team
 // ===========================================================================
 
@@ -626,45 +470,26 @@ async function handleTeam(
     return ephemeral(`You aren't on a team yet. Start or join one at ${env.siteUrl}/dashboard/team`);
   }
 
-  const [{ data: team }, { data: members }] = await Promise.all([
+  const [{ data: team }, { data: members }, cohortIds] = await Promise.all([
     admin
       .from("teams")
-      .select("name, slug, tagline, cohort_id, cohort:cohorts(name)")
+      .select("name, slug, tagline, cohort:cohorts(name)")
       .eq("id", membership.team_id)
       .maybeSingle(),
     admin
       .from("team_members")
-      .select("user_id, role, profile:profiles(full_name, email)")
+      .select("user_id, role, profile:profiles(full_name)")
       .eq("team_id", membership.team_id),
+    enrolledCohortIds(admin, profile.id),
   ]);
-
-  const memberIds = (members ?? []).map((m: any) => m.user_id);
-  // Recent check-ins and next event depend on the queries above, so fetch
-  // them after we have the cohort + member set.
-  const [recentCheckinsRes, nextEventRes] = await Promise.all([
-    memberIds.length > 0
-      ? admin
-          .from("student_checkins")
-          .select("week_start, accomplished, profile:profiles(full_name)")
-          .in("user_id", memberIds)
-          .order("week_start", { ascending: false })
-          .limit(3)
-      : Promise.resolve({ data: [] as any[] } as any),
-    (team as any)?.cohort_id
-      ? admin
-          .from("events")
-          .select("title, starts_at")
-          .or(
-            `cohort_id.eq.${(team as any).cohort_id},cohort_id.is.null`,
-          )
-          .gte("starts_at", new Date().toISOString())
-          .order("starts_at", { ascending: true })
-          .limit(1)
-          .maybeSingle()
-      : Promise.resolve({ data: null } as any),
-  ]);
-  const recentCheckins = (recentCheckinsRes as any).data ?? [];
-  const nextEvent = (nextEventRes as any).data ?? null;
+  const { data: nextEvent } = await admin
+    .from("events")
+    .select("title, starts_at")
+    .or(studentEventsOrFilter(cohortIds))
+    .gte("starts_at", new Date().toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
   const cohort = team
     ? Array.isArray((team as any).cohort)
@@ -674,14 +499,7 @@ async function handleTeam(
 
   const memberLines = (members ?? []).map((m: any) => {
     const prof = Array.isArray(m.profile) ? m.profile[0] : m.profile;
-    return `• ${prof?.full_name ?? prof?.email ?? "Member"} (${m.role})`;
-  });
-
-  const checkinLines = recentCheckins.map((c: any) => {
-    const prof = Array.isArray(c.profile) ? c.profile[0] : c.profile;
-    return `• **${prof?.full_name ?? "Member"}** (week of ${c.week_start}): ${(
-      c.accomplished ?? ""
-    ).slice(0, 120) || "—"}`;
+    return `• ${prof?.full_name ?? "Member"} (${m.role})`;
   });
 
   const evt = nextEvent
@@ -698,9 +516,6 @@ async function handleTeam(
     "",
     "**Members**",
     ...(memberLines.length ? memberLines : ["• (no members)"]),
-    "",
-    "**Recent check-ins**",
-    ...(checkinLines.length ? checkinLines : ["• No check-ins yet this cohort"]),
     "",
     evt ? `**Next event:** ${evt}` : "",
     `Open team: ${env.siteUrl}/dashboard/team`,
@@ -856,14 +671,6 @@ async function handleOnboardingClick(
       .eq("id", profile.id);
     return ephemeral("Marked step 2 done. Welcome aboard 🎉");
   }
-  if (customId === "onb:rsvp-info") {
-    const settings = await getDiscordSettings();
-    return ephemeral(
-      settings.eventsChannelId
-        ? `Find upcoming events in <#${settings.eventsChannelId}> and tap "Going". I'll mark step 3 done automatically.`
-        : `Run \`/events\` to see what's coming up. RSVP to any event to finish step 3.`,
-    );
-  }
   return ack();
 }
 
@@ -992,7 +799,7 @@ async function handleQueue(
     // DM the student so they don't miss the call.
     if (u?.discord_user_id) {
       await sendDirectMessage(u.discord_user_id, {
-        content: `Hey — **${profile.full_name ?? "a mentor"}** is ready to talk through your check-in / blocker.${voiceLine}`,
+        content: `Hey — **${profile.full_name ?? "a mentor"}** is ready for you.${voiceLine}`,
       });
     }
     return ephemeral(
@@ -1172,57 +979,6 @@ async function handleFlagBlocker(
 }
 
 // ===========================================================================
-// Event RSVP buttons
-// ===========================================================================
-
-async function handleRsvpClick(
-  admin: ReturnType<typeof createAdminClient>,
-  discordUserId: string,
-  body: any,
-  customId: string,
-) {
-  // Format: rsvp:<status>:<eventId>
-  const [, status, eventId] = customId.split(":");
-  if (!status || !eventId || !["going", "maybe", "declined"].includes(status)) {
-    return ephemeral("Unrecognized RSVP button.");
-  }
-  if (!discordUserId) return ephemeral("Couldn't identify you.");
-
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("discord_user_id", discordUserId)
-    .maybeSingle();
-  if (!profile) {
-    return ephemeral(`Link your account first: ${env.siteUrl}/dashboard/settings`);
-  }
-
-  const { error } = await admin.from("event_rsvps").upsert(
-    {
-      event_id: eventId,
-      user_id: profile.id,
-      status,
-      source: "discord",
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "event_id,user_id" },
-  );
-  if (error) {
-    console.error("[discord] rsvp upsert failed", error);
-    return ephemeral("Couldn't save your RSVP. Try the dashboard.");
-  }
-
-  // Mark step 3 of the onboarding wizard done (first RSVP).
-  await admin
-    .from("profiles")
-    .update({ discord_first_rsvp_at: new Date().toISOString() })
-    .eq("id", profile.id)
-    .is("discord_first_rsvp_at", null);
-
-  return ephemeral(`RSVP saved: **${status}**.`);
-}
-
-// ===========================================================================
 // Demo Day pitch reaction buttons (🔥 💡 🚀)
 // ===========================================================================
 
@@ -1256,36 +1012,4 @@ async function handleDemoDayReact(
     return ephemeral("Couldn't record your reaction.");
   }
   return ephemeral(`${emoji} added.`);
-}
-
-// ===========================================================================
-// Milestone cross-post helper
-// ===========================================================================
-
-async function crosspostMilestone(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
-  accomplished: string,
-  next_up: string,
-): Promise<void> {
-  try {
-    const settings = await getDiscordSettings();
-    if (!settings.winsChannelId) return;
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("full_name, discord_user_id")
-      .eq("id", userId)
-      .maybeSingle();
-    const who = profile?.discord_user_id
-      ? `<@${profile.discord_user_id}>`
-      : profile?.full_name ?? "A student";
-    const body =
-      (accomplished || next_up || "Big milestone hit.").slice(0, 1500);
-    await postChannelMessage(settings.winsChannelId, {
-      content: `🎉 **${who}** just hit a milestone:\n${body}`,
-      allowedMentions: { parse: [] },
-    });
-  } catch (err) {
-    console.error("[discord] milestone crosspost failed", err);
-  }
 }

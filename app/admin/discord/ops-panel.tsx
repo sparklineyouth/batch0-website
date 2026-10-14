@@ -13,15 +13,10 @@ import { getActionError } from "@/lib/action-error";
 
 type Status = { kind: "ok" | "error"; text: string } | null;
 
-export function OpsPanel({
-  registeredNames,
-}: {
-  registeredNames: string[] | null;
-}) {
+export function OpsPanel() {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [status, setStatus] = useState<Status>(null);
-  const [names, setNames] = useState<string[] | null>(registeredNames);
 
   function run(label: string, fn: () => Promise<string>) {
     setStatus(null);
@@ -46,8 +41,7 @@ export function OpsPanel({
           onClick={() =>
             run("register", async () => {
               const { names } = await registerCommands();
-              setNames(names);
-              return `Registered ${names.length} command${names.length === 1 ? "" : "s"}.`;
+              return `Registered ${names.length} command${names.length === 1 ? "" : "s"}: /${names.join(", /")}.`;
             })
           }
         >
@@ -124,13 +118,7 @@ export function OpsPanel({
         </Button>
       </div>
       <p className="text-xs text-ink-faint">
-        <strong>Repair server layout</strong> recreates any canonical
-        channel or role that's missing and re-points the config at what's
-        actually in the guild. It never deletes anything — unlike Bootstrap
-        below.{" "}
-        <strong>Point interactions endpoint here</strong> tells Discord to
-        deliver slash commands to this deployment; run it after a domain
-        change or slash commands will silently do nothing.
+        Repair recreates missing channels and roles; it never deletes.
       </p>
 
       {status && (
@@ -144,32 +132,6 @@ export function OpsPanel({
           {status.text}
         </p>
       )}
-
-      <div>
-        <p className="text-xs uppercase tracking-wider text-ink-faint">
-          Currently registered with Discord
-        </p>
-        {names === null ? (
-          <p className="mt-2 text-xs text-ink-faint">
-            Couldn't reach Discord — check the bot token.
-          </p>
-        ) : names.length === 0 ? (
-          <p className="mt-2 text-xs text-amber-700 dark:text-amber-200">
-            No commands registered yet. Click <strong>Register slash commands</strong> above.
-          </p>
-        ) : (
-          <ul className="mt-2 flex flex-wrap gap-1.5">
-            {names.map((n) => (
-              <li
-                key={n}
-                className="rounded-full border border-line bg-wash px-2 py-0.5 text-[11px] text-phosphor-ink"
-              >
-                /{n}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }

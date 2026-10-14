@@ -9,8 +9,8 @@ import { getActionError } from "@/lib/action-error";
  *
  * It calls the same `submitCheckin` server action as /dashboard/checkin — not a
  * mobile copy of it. That action carries the enrollment check, the pre-cohort
- * gate, the 4000-character cap, the #wins cross-post and the staff fan-out; a
- * parallel implementation would drift from all six, and the failure would be
+ * gate, the 4000-character cap and the staff fan-out; a
+ * parallel implementation would drift from all of them, and the failure would be
  * silent (check-ins that never notify a mentor read exactly like check-ins
  * nobody replied to).
  *
@@ -103,9 +103,6 @@ export function CheckinForm({
         <span className="min-w-0 flex-1">
           <span className="block text-[14px] leading-tight text-ink">
             This was a milestone
-          </span>
-          <span className="mt-1 block text-[12px] leading-snug text-ink-soft">
-            Cross-posts to #wins in Discord for the whole cohort to see.
           </span>
         </span>
         <span

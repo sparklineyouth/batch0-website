@@ -16,6 +16,7 @@ import {
   type RepairResult,
   type CanonicalLayoutIds,
 } from "@/lib/discord";
+import { runDiscordDoctor, type DoctorReport } from "@/lib/discord-doctor";
 import type { Role } from "@/lib/types";
 
 /**
@@ -51,8 +52,8 @@ export type DiscordConfigInput = {
   eventsChannelId: string;
   adminFeedChannelId: string;
   // 0033 feature-pack channels — all optional. When empty, the
-  // associated feature silently no-ops (e.g. milestone check-ins won't
-  // cross-post if winsChannelId is unset).
+  // associated feature silently no-ops (e.g. no team channels without
+  // teamsCategoryId).
   teamsCategoryId: string;
   winsChannelId: string;
   helpChannelId: string;
@@ -117,6 +118,47 @@ export async function saveDiscordConfig(input: DiscordConfigInput) {
     ),
   });
   revalidatePath("/admin/discord");
+}
+
+export type DiscordCheckResult = {
+  /** Null when the check itself crashed (see server logs). */
+  report: DoctorReport | null;
+  linked: number;
+  enrolled: number;
+  enrolledLinked: number;
+  byRole: Partial<Record<Role, number>>;
+};
+
+/**
+ * The live health check + link stats. Runs only on demand ("Run check") so
+ * the page itself never waits on Discord or spends its rate limit.
+ */
+export async function runDiscordCheck(): Promise<DiscordCheckResult> {
+  await assertPermission("discord.manage");
+  const admin = createAdminClient();
+  const [report, { data: linkedRows }, { data: enrollments }] =
+    await Promise.all([
+      runDiscordDoctor().catch((err) => {
+        console.error("[discord] doctor failed", err);
+        return null;
+      }),
+      admin.from("profiles").select("id, role").not("discord_user_id", "is", null),
+      admin.from("enrollments").select("user_id"),
+    ]);
+  const byRole: Partial<Record<Role, number>> = {};
+  for (const r of linkedRows ?? []) {
+    const role = ((r as any).role as Role) ?? "student";
+    byRole[role] = (byRole[role] ?? 0) + 1;
+  }
+  const linkedIds = new Set((linkedRows ?? []).map((r: any) => r.id));
+  const enrolledIds = new Set((enrollments ?? []).map((e: any) => e.user_id));
+  return {
+    report,
+    linked: linkedIds.size,
+    enrolled: enrolledIds.size,
+    enrolledLinked: [...enrolledIds].filter((id) => linkedIds.has(id)).length,
+    byRole,
+  };
 }
 
 /**

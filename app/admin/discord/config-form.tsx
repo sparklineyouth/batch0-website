@@ -90,7 +90,6 @@ export function DiscordConfigForm({
         />
         <Row
           label="#wins channel ID"
-          hint="Milestone check-ins cross-post here."
           value={values.winsChannelId}
           onChange={(v) => set("winsChannelId", v)}
         />

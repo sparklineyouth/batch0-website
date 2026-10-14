@@ -1,22 +1,21 @@
 /**
- * Live end-to-end health check for the Discord integration.
+ * Live end-to-end health check for the Discord integration, run from the
+ * "Run check" button on /admin/discord.
  *
- * The "Connection status" card on /admin/discord tells you whether the env
- * vars are *present*. That is not the same as the integration *working* —
- * a valid-looking token can be revoked, a configured channel can be
- * deleted, and role sync fails silently forever if the bot's own role sits
- * below the roles it is trying to assign. Those are the failures that look
- * fine on the config page and produce nothing in Discord.
- *
- * This module answers the harder question by actually calling Discord and
- * comparing the live guild against what site_settings claims. Every request
- * here is a GET — the doctor never mutates the guild.
+ * Env vars being *present* is not the integration *working* — a valid-looking
+ * token can be revoked, a configured channel can be deleted, and role sync
+ * fails silently forever if the bot's own role sits below the roles it is
+ * trying to assign. This calls Discord and compares the live guild against
+ * what site_settings claims. Every request here is a GET — the doctor never
+ * mutates the guild.
  */
 import { env } from "@/lib/env";
 import {
   getDiscordSettings,
   isDiscordEnabled,
   listRegisteredCommands,
+  fetchDiscordAppInfo,
+  expectedOauthRedirectUris,
   SLASH_COMMANDS,
   type DiscordSettings,
 } from "@/lib/discord";
@@ -204,6 +203,46 @@ export async function runDiscordDoctor(): Promise<DoctorReport> {
       label: "OAuth client id matches the bot",
       status: "ok",
       detail: "Application id and bot token belong to the same Discord app.",
+    });
+  }
+
+  // --- 3b. OAuth redirect URIs ---------------------------------------------
+  // Discord rejects an unregistered redirect on its own domain, before the
+  // browser returns, so /auth/discord/callback never sees the failure. Both
+  // apex and www must be listed: /auth/discord/start uses the request origin.
+  if (!env.discordClientSecret) {
+    add({
+      id: "oauth-redirects",
+      label: "OAuth account linking",
+      status: "fail",
+      detail: "DISCORD_CLIENT_SECRET is unset — account linking cannot finish.",
+      remedy: "Copy the Client Secret (OAuth2) into DISCORD_CLIENT_SECRET and redeploy.",
+    });
+  } else {
+    const expected = expectedOauthRedirectUris(env.siteUrl);
+    const registered = (await fetchDiscordAppInfo())?.redirectUris ?? null;
+    const missing = expected.filter((u) => !registered?.includes(u));
+    add({
+      id: "oauth-redirects",
+      label: "OAuth redirect URIs registered",
+      status:
+        expected.length === 0 || registered === null
+          ? "warn"
+          : missing.length > 0
+            ? "fail"
+            : "ok",
+      detail:
+        expected.length === 0
+          ? "NEXT_PUBLIC_SITE_URL is malformed, so the callback URL can't be derived."
+          : registered === null
+            ? "Couldn't read the application's redirect list."
+            : missing.length > 0
+              ? `Missing: ${missing.join(", ")}. Linking fails with "Invalid OAuth2 redirect_uri".`
+              : `All ${expected.length} registered.`,
+      remedy:
+        missing.length > 0 && expected.length > 0
+          ? `Add ${missing.join(", ")} under OAuth2 → Redirects at https://discord.com/developers/applications/${env.discordClientId ?? botUserId}/oauth2 and save.`
+          : undefined,
     });
   }
 
@@ -426,7 +465,7 @@ export async function runDiscordDoctor(): Promise<DoctorReport> {
         { label: "Events", id: settings.eventsChannelId, expect: CHANNEL_TYPE_TEXT, why: "event posts" },
         { label: "Admin feed", id: settings.adminFeedChannelId, expect: CHANNEL_TYPE_TEXT, why: "staff notifications" },
         { label: "Teams category", id: settings.teamsCategoryId, expect: CHANNEL_TYPE_CATEGORY, why: "per-team channels" },
-        { label: "Wins", id: settings.winsChannelId, expect: CHANNEL_TYPE_TEXT, why: "milestone check-ins" },
+        { label: "Wins", id: settings.winsChannelId, expect: CHANNEL_TYPE_TEXT, why: "the server layout" },
         { label: "Help", id: settings.helpChannelId, expect: CHANNEL_TYPE_TEXT, why: "the mentors-on-call pin" },
         { label: "Office-hours voice", id: settings.ohVoiceChannelId, expect: CHANNEL_TYPE_VOICE, why: "the office-hours queue" },
         { label: "Introductions", id: settings.introductionsChannelId, expect: CHANNEL_TYPE_TEXT, why: "onboarding pings" },

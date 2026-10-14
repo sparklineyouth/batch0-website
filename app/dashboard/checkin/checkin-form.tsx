@@ -33,11 +33,7 @@ export function CheckinForm({
     start(async () => {
       try {
         await submitCheckin(values);
-        setOkMsg(
-          values.is_milestone
-            ? "Check-in saved. Tagged as a milestone — we'll celebrate in #wins."
-            : "Check-in saved. Your mentor will be notified.",
-        );
+        setOkMsg("Check-in saved. Your mentor will be notified.");
         router.refresh();
       } catch (e: any) {
         setError(getActionError(e));
@@ -70,7 +66,7 @@ export function CheckinForm({
       />
       <Toggle
         label="Mark as a milestone 🎉"
-        description="First paying customer, first hire, fundraise, demo shipped, etc. Tagged milestones get celebrated in the cohort's #wins channel."
+        description="First paying customer, first hire, fundraise, demo shipped, etc."
         checked={values.is_milestone}
         onChange={(v) => set("is_milestone", v)}
       />

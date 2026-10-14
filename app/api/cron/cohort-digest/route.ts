@@ -4,6 +4,7 @@ import { sendEmailBatch, type BatchItem } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { env } from "@/lib/env";
 import { formatWeekRange, isoWeekStart, mondayOf } from "@/lib/week";
+import { STUDENT_EVENT_VISIBILITIES } from "@/lib/student-event-filter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,10 +84,12 @@ export async function GET(req: Request) {
         )
         .eq("cohort_id", c.id)
         .eq("week_start", previousMonday),
+      // Goes to every student: never list staff-only events.
       admin
         .from("events")
         .select("title, starts_at")
         .eq("cohort_id", c.id)
+        .in("visibility", [...STUDENT_EVENT_VISIBILITIES])
         .gte("starts_at", new Date().toISOString())
         .order("starts_at", { ascending: true })
         .limit(5),

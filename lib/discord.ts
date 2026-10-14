@@ -97,7 +97,7 @@ export type DiscordSettings = {
   eventsChannelId: string;
   adminFeedChannelId: string;
   // Added in 0033 to support the feature pack: auto-team channels live
-  // under teamsCategoryId, milestone check-ins go to winsChannelId,
+  // under teamsCategoryId, #wins is winsChannelId,
   // mentor-on-call status pins under helpChannelId, the OH queue
   // routes callers into ohVoiceChannelId, onboarding pings reference
   // introductionsChannelId, and the persistent "Mentors on now" pin
@@ -343,27 +343,6 @@ export async function fetchGuildMember(discordUserId: string) {
       nick: string | null;
       user?: { id: string; username: string; global_name: string | null; avatar: string | null };
     };
-  } catch {
-    return null;
-  }
-}
-
-export async function fetchGuildMemberCount(): Promise<number | null> {
-  if (!(await isDiscordEnabled())) return null;
-  if (!env.discordBotToken || !env.discordGuildId) return null;
-  try {
-    // `?with_counts=true` returns approximate_member_count without
-    // paginating /guilds/:id/members. Cheap enough to do on each admin
-    // page load.
-    const res = await fetch(
-      `${API}/guilds/${env.discordGuildId}?with_counts=true`,
-      { headers: { Authorization: `Bot ${env.discordBotToken}` } },
-    );
-    if (!res.ok) return null;
-    const json = (await res.json()) as { approximate_member_count?: number };
-    return typeof json.approximate_member_count === "number"
-      ? json.approximate_member_count
-      : null;
   } catch {
     return null;
   }
@@ -1158,44 +1137,9 @@ export const MessageFlag = {
 } as const;
 
 /**
- * Build a "Show modal" response payload. The handler returns this from
- * the slash command POST; Discord opens the dialog client-side. We use
- * this for `/checkin` so the student can type a multi-line response
- * without flooding the channel.
- */
-export function modalResponse(args: {
-  customId: string;
-  title: string;
-  components: { customId: string; label: string; placeholder?: string; required?: boolean; style?: 1 | 2; maxLength?: number; value?: string }[];
-}) {
-  return {
-    type: InteractionResponseType.MODAL,
-    data: {
-      custom_id: args.customId,
-      title: args.title.slice(0, 45),
-      components: args.components.map((c) => ({
-        type: 1, // ACTION_ROW
-        components: [
-          {
-            type: 4, // TEXT_INPUT
-            custom_id: c.customId,
-            label: c.label.slice(0, 45),
-            style: c.style ?? 2, // 1 = short, 2 = paragraph
-            placeholder: c.placeholder?.slice(0, 100),
-            required: c.required ?? false,
-            max_length: c.maxLength ?? 4000,
-            value: c.value,
-          },
-        ],
-      })),
-    },
-  };
-}
-
-/**
  * Helper that builds a row of buttons. Each button's `custom_id` flows
  * back to the interactions handler when clicked; we encode the action +
- * any IDs (e.g. `rsvp:going:<eventId>`) so the handler can route
+ * any IDs (e.g. `ddreact:<emoji>:<teamId>`) so the handler can route
  * without consulting Discord again.
  */
 export function buttonRow(
@@ -1313,12 +1257,8 @@ export const SLASH_COMMANDS = [
   },
   // --- 0033 feature pack ---------------------------------------------------
   {
-    name: "checkin",
-    description: "Post this week's check-in without leaving Discord.",
-  },
-  {
     name: "team",
-    description: "Show your team's quick stats: members, mentor, next event.",
+    description: "Show your team's members and next event.",
   },
   {
     name: "ask",
@@ -1334,7 +1274,7 @@ export const SLASH_COMMANDS = [
   },
   {
     name: "start",
-    description: "(Re)run the 3-step onboarding wizard via DM.",
+    description: "(Re)run the onboarding wizard via DM.",
   },
   {
     name: "queue",

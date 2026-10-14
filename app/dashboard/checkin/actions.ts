@@ -8,7 +8,6 @@ import { assertMentorCanAccessStudent } from "@/lib/mentor-scope";
 import { notify } from "@/lib/notifications";
 import { isoWeekStart } from "@/lib/week";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
-import { getDiscordSettings, postChannelMessage } from "@/lib/discord";
 
 export type CheckinInput = {
   accomplished: string;
@@ -52,7 +51,7 @@ export async function submitCheckin(input: CheckinInput) {
     );
   }
   // Pre-cohort lockdown holds for direct server-action calls too — no
-  // check-ins (or #wins cross-posts) before the cohort kicks off.
+  // check-ins before the cohort kicks off.
   const enrolledCohort = Array.isArray(enrollment.cohort)
     ? enrollment.cohort[0]
     : enrollment.cohort;
@@ -76,30 +75,6 @@ export async function submitCheckin(input: CheckinInput) {
     .from("student_checkins")
     .upsert(payload, { onConflict: "user_id,week_start" });
   if (error) throw new Error(error.message);
-
-  // Milestone? Cross-post to #wins. Best-effort.
-  if (is_milestone) {
-    try {
-      const settings = await getDiscordSettings();
-      if (settings.winsChannelId) {
-        const admin = createAdminClient();
-        const { data: profile } = await admin
-          .from("profiles")
-          .select("full_name, discord_user_id")
-          .eq("id", user.id)
-          .maybeSingle();
-        const who = profile?.discord_user_id
-          ? `<@${profile.discord_user_id}>`
-          : profile?.full_name ?? "A student";
-        await postChannelMessage(settings.winsChannelId, {
-          content: `🎉 **${who}** just hit a milestone:\n${(accomplished || next_up || "Big moment.").slice(0, 1500)}`,
-          allowedMentions: { parse: [] },
-        });
-      }
-    } catch (err) {
-      console.error("[checkin] milestone crosspost failed", err);
-    }
-  }
 
   // Best-effort: ping every mentor + admin so they know there's
   // something new to read.
