@@ -295,7 +295,10 @@ set enabled = false, description = 'Retired with weekly check-ins (0093). Assign
 where key = 'cohort.checkin_reminder' and (enabled or coalesce(description, '') not like 'Retired%');
 
 -- ----------------------------------------------------------------------------
--- Fall 2026 (running, week 5 of 9). Fixed ids, so a re-run inserts nothing.
+-- Fall 2026 (running, week 5 of 9). Seeded by the first complete run only:
+-- the table comment at the end of this file is that run's last step, and
+-- while it is set a re-run seeds nothing. Fixed ids alone would bring back a
+-- seeded assignment an admin has since deleted (and bell the cohort about it).
 -- Dates follow the cohort's start date in New York time: Sunday 23:59, or the
 -- cohort's last day when that comes first (week 9 ends Friday, Demo Day), the
 -- same rule as lib/assignments.ts courseWeekWindow.
@@ -331,6 +334,7 @@ cross join lateral (
 ) wk
 where c.id = '6350c6ac-70f0-4f53-93d5-c99e397185a9'
   and c.starts_on is not null
+  and obj_description('public.course_assignments'::regclass, 'pg_class') is null
 on conflict (id) do nothing;
 
 -- Check-ins already posted for one of those weeks carry over as that week's
@@ -390,6 +394,7 @@ select
   'published'
 from public.cohorts c
 where c.id = '6350c6ac-70f0-4f53-93d5-c99e397185a9'
+  and obj_description('public.course_assignments'::regclass, 'pg_class') is null
 on conflict (id) do nothing;
 
 update public.events
@@ -400,6 +405,7 @@ where cohort_id = '6350c6ac-70f0-4f53-93d5-c99e397185a9'
   and type = 'demo_day'
   and description like '%Submit through Files and include the links in your Check-in by%';
 
+-- Last: marks the Fall seed above as done (see there).
 comment on table public.course_assignments is
   'Assignment tracker (0093). Writes via service-role server actions only.';
 

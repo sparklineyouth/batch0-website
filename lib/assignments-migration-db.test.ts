@@ -247,6 +247,25 @@ test("Fall seed: weekly update weeks 5–9 (DST-correct) and Demo Day, once", as
   assert.equal(demo.due, "2026-11-12T01:00");
 });
 
+test("a re-run after the app is in use leaves deleted seeded assignments deleted", async () => {
+  const db = await setup();
+  const WEEK8 = "a0930000-0000-4000-8000-000000000008";
+  const DEMO = "a0930000-0000-4000-8000-0000000000dd";
+  await db.query(`delete from public.course_assignments where id in ($1, $2)`, [WEEK8, DEMO]);
+  await db.exec(migration);
+  await db.exec(migration);
+  const { rows } = await db.query<any>(
+    `select id from public.course_assignments where id in ($1, $2)`,
+    [WEEK8, DEMO],
+  );
+  assert.deepEqual(rows, []);
+  const left = await db.query<any>(
+    `select count(*)::int as n from public.course_assignments where cohort_id = $1`,
+    [FALL],
+  );
+  assert.equal(left.rows[0].n, 4);
+});
+
 test("check-ins already posted for a seeded week carry over as that week's update", async () => {
   const db = await setup();
   const WEEK5 = "a0930000-0000-4000-8000-000000000005";
