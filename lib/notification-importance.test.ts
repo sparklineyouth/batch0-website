@@ -121,6 +121,10 @@ test("retired types are quiet, labelled, and not offered in settings", () => {
     "discussion_question",
     "discussion_reply",
     "dm_reported",
+    "checkin_nudge",
+    "intervention",
+    "checkin_feedback",
+    "checkin_submitted",
   ]) {
     assert.equal(defaultImportance(type), "other", type);
     assert.notEqual(kindFor(type), undefined, `${type} must not fall to DEFAULT_FOR_UNKNOWN`);
