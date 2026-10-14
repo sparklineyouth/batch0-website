@@ -11,10 +11,12 @@ paste the whole file and run it.
   feature shows an empty state, nothing returns a 500.
 - **Nothing is dropped.** Retired features keep their tables and rows; only
   policies, grants and defaults change.
-- Until they run, people with `settings.manage` see one line on `/admin`:
-  *Database update needed: run migrations 0093–0100*. It probes the new tables
-  and columns of 0093–0096 (`lib/pending-migrations.ts`, cached 5 minutes).
-  0097–0100 add no table or column, so check those with the queries below.
+- People with `settings.manage` see one line on `/admin`, *Database update
+  needed: run migrations 0093–0100*, while a probe finds one missing
+  (`lib/pending-migrations.ts`, cached 5 minutes). It checks the new tables and
+  columns of 0093–0096, and the retired permission keys 0099 and 0100 strip
+  from roles. The policy changes in 0097–0099 are invisible to it: the line
+  going away does not prove those ran, so run the verify queries below.
 
 | # | File | What it does |
 |---|------|--------------|

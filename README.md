@@ -61,7 +61,7 @@ npm start
 `npm test` runs every `lib/*.test.ts`, including the PGlite migration tests;
 the `test:*-db` commands use their own in-memory PGlite databases. CI
 (`.github/workflows/ci.yml`) runs all of the above except the build. On
-2026-10-14 that was 1,202 unit tests and 69 database tests, all passing. The
+2026-10-14 that was 1,205 unit tests and 69 database tests, all passing. The
 production build compiles and type-checks the app, then checks that the
 expected blog and marketing routes remain prerendered.
 
@@ -80,8 +80,10 @@ redirects and webhook endpoints. See `.env.local.example` for available settings
 
 Migrations are run by hand in the Supabase SQL editor after the code deploys.
 The October 2026 release adds 0093–0100: see `docs/migrations-2026-10.md` for
-the order and a verify query per file. The app runs without them, and `/admin`
-shows one line to `settings.manage` holders until they're in.
+the order and a verify query per file. The app runs without them. `/admin`
+shows `settings.manage` holders one line while it detects one missing (the
+tables and columns of 0093–0096, leftovers of 0099–0100); the policy changes
+in 0097–0099 are confirmed only by the doc's verify queries.
 
 The checkout can live anywhere. Dependencies and `.next` are rebuilt locally;
 private course source under `content/course-launch/` is intentionally excluded

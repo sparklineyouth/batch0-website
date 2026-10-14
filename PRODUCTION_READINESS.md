@@ -27,8 +27,10 @@ All P0 / P1 / P2 work from the original audit is **landed and type-checks clean*
 Run every file in `supabase/migrations/` in the Supabase SQL editor, in order,
 after the code deploys. Each is idempotent. The current release adds
 **0093–0100**: order, purpose and one verify query each are in
-`docs/migrations-2026-10.md`. The app runs without them, and `/admin` shows one
-line to `settings.manage` holders until they are in.
+`docs/migrations-2026-10.md`. The app runs without them. `/admin` shows
+`settings.manage` holders one line while it detects one missing (0093–0096 by
+table and column, 0099–0100 by leftover permission keys); confirm 0097–0099's
+policy changes with the doc's verify queries.
 
 The list below is the original audit's batch, kept as history.
 
