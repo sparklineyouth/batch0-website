@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
-import { LiveDot } from "@/components/live/call-stage";
+import { LiveDot } from "@/components/live/live-dot";
 import { relativeTime, type LiveEvent } from "@/lib/live";
 import { studentEventStatus } from "@/lib/event-form";
 import { isHostedOnBatch0 } from "@/lib/webinars";

@@ -48,7 +48,7 @@ when paid), that account gets exactly one extra door:
 - the dashboard home shows a "You're confirmed for Demo Day" card, and
   `/dashboard/billing` lists the ticket in payment history.
 
-A hosted (Daily) Demo Day is joined from `/dashboard/events/<id>/live`, which
+A hosted (batch0 Live) Demo Day is joined from `/dashboard/events/<id>/live`, which
 requires a signed-in account — so a holder with no account can only be
 admitted to an **external** (Zoom etc.) event via the link, or by the team
 sending joining details by hand. The confirmation copy says as much.

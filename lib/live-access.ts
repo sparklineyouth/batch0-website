@@ -89,7 +89,7 @@ export type LiveRoomKind = "event" | "call";
 /** The columns every live surface needs. Names no column a student may not see. */
 const EVENT_COLUMNS =
   "id, title, description, type, starts_at, ends_at, live_mode, audience_mode, " +
-  "auto_record, premiere_seconds, qa_opens_at, " +
+  "auto_record, " +
   "live_started_at, live_ended_at, visibility, cohort_id, recording_url";
 
 /**
@@ -122,8 +122,6 @@ export type LiveAccessEvent = {
   liveMode: string;
   audienceMode: AudienceMode;
   autoRecord: boolean;
-  premiereSeconds: number | null;
-  qaOpensAt: string | null;
   liveStartedAt: string | null;
   liveEndedAt: string | null;
   visibility: string;
@@ -663,12 +661,17 @@ export function callRefusal(access: CallRoomAccess): CallRefusal | null {
   return access;
 }
 
-/** The heartbeat's answer for a call the caller stands here with. */
+/**
+ * The heartbeat's answer for a call the caller stands here with. A decline
+ * reads like a cancel: the call isn't happening, for either side, and the
+ * room closes at once ("This call was cancelled") rather than telling staff
+ * waiting in it that they lost access. 'revoked' stays for a person taken
+ * off the call (resolveCallAccess no longer places them).
+ */
 export function callRoomStatus(access: CallRoomAccess): RoomStatus {
   if (access === "open" || access === "live") return "ok";
   if (access === "completed") return "ended";
-  if (access === "cancelled") return "cancelled";
-  if (access === "declined") return "revoked";
+  if (access === "cancelled" || access === "declined") return "cancelled";
   return "closed";
 }
 
@@ -788,8 +791,6 @@ function toAccessEvent(row: any): LiveAccessEvent {
     liveMode: row.live_mode,
     audienceMode: normalizeAudienceMode(row.audience_mode),
     autoRecord: !!row.auto_record,
-    premiereSeconds: row.premiere_seconds ?? null,
-    qaOpensAt: row.qa_opens_at ?? null,
     liveStartedAt: row.live_started_at ?? null,
     liveEndedAt: row.live_ended_at ?? null,
     visibility: row.visibility,

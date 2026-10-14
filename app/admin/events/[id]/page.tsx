@@ -4,7 +4,7 @@ import { requirePermission } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ButtonLink } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
-import { LiveDot } from "@/components/live/call-stage";
+import { LiveDot } from "@/components/live/live-dot";
 import { EventRecordings } from "@/components/live/recording-player";
 import { listAssets, listAttendance, listSpeakers, signAssets } from "@/lib/webinar-data";
 import { listQuestionsForEvent } from "@/lib/webinar-questions";

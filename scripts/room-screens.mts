@@ -2,9 +2,10 @@
  * Screenshot every live-room harness state (/dev/live) at desktop, phone and
  * narrow-phone (320px) sizes and check the layout: control bar on screen with
  * every control inside it, nothing over it but its own menus, notices and
- * toasts stacked (never on each other, the filmstrip or the side panel), the
- * side panel's own controls uncovered, no sideways scroll, presentations
- * never cropped, no page errors.
+ * toasts stacked (never on each other, the filmstrip, the side panel or the
+ * main tile's Pin / Full screen buttons when they show), the side panel's own
+ * controls uncovered, no sideways scroll, presentations never cropped, no
+ * page errors. Phone sizes are touch screens (tile actions always shown).
  *
  *   npx next dev -p 3102
  *   E2E_BASE_URL=http://localhost:3102 npm run room-screens -- --out=/tmp/room-screens
@@ -23,10 +24,10 @@ const ONLY = (arg("only") ?? "").split(",").filter(Boolean);
 mkdirSync(OUT, { recursive: true });
 
 const VIEWPORTS = [
-  { name: "desktop", width: 1440, height: 900 },
-  { name: "phone", width: 390, height: 844 },
+  { name: "desktop", width: 1440, height: 900, touch: false },
+  { name: "phone", width: 390, height: 844, touch: true },
   // Android "display size" set large: 320 CSS pixels.
-  { name: "narrow", width: 320, height: 700 },
+  { name: "narrow", width: 320, height: 700, touch: true },
 ];
 
 // Runs in the page.
@@ -68,6 +69,11 @@ const CHECK = `(() => {
   for (let i = 0; i < floating.length; i++)
     for (let j = i + 1; j < floating.length; j++)
       if (hit(box(floating[i]), box(floating[j]))) out.push(label(floating[i]) + ' on ' + label(floating[j]));
+  // Nor on the main tile's actions while they show (always, on touch screens).
+  for (const a of document.querySelectorAll('[data-testid="tile-main"] [data-testid^="tile-pin"], [data-testid="tile-main"] [data-testid="tile-fullscreen"]')) {
+    if (Number(getComputedStyle(a.parentElement).opacity) < 0.5) continue;
+    for (const el of floating) if (hit(box(el), box(a))) out.push(label(el) + ' over ' + a.getAttribute('data-testid'));
+  }
   // The side panel's own fields and buttons are reachable (nothing drawn on
   // them), unless a modal dialog is meant to cover the room.
   if (pr && !document.querySelector('[aria-modal="true"]')) {
@@ -111,7 +117,11 @@ try {
       if (ONLY.length && !ONLY.includes(state) && !ONLY.includes(`${state}:${w}`)) continue;
       for (const vp of VIEWPORTS) {
         if (!browser.isConnected()) browser = await launch();
-        const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+        const ctx = await browser.newContext({
+          viewport: { width: vp.width, height: vp.height },
+          hasTouch: vp.touch,
+          isMobile: vp.touch,
+        });
         const page = await ctx.newPage();
         const errors: string[] = [];
         page.on("pageerror", (e) => errors.push(`page error: ${e.message}`));
@@ -127,7 +137,9 @@ try {
               await page.waitForSelector('[data-testid="room-shell"]', { timeout: 60_000 });
               await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
               if (state === "presenting-deck" && w !== "viewer") {
-                await page.waitForSelector('[data-testid="deck-canvas"]', { timeout: 60_000 });
+                // "behind": another host's screen holds the stage; our slides are a filmstrip card.
+                const ready = w === "behind" ? '[data-testid="deck-thumb"]' : '[data-testid="deck-canvas"]';
+                await page.waitForSelector(ready, { timeout: 60_000 });
               }
               await page.waitForTimeout(2500);
               issues = (await page.evaluate(CHECK)) as string[];

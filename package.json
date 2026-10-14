@@ -23,7 +23,6 @@
     "verify-roles": "node --env-file=.env.local scripts/verify-roles.mjs",
     "e2e-roles": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/e2e-roles.mts",
     "test-blast-addressing": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-blast-addressing.mts",
-    "daily-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/daily-doctor.mts",
     "webinar-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-e2e.mts",
     "assignments-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/assignments-e2e.mts",
     "call-mesh-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/call-mesh-e2e.mts",
@@ -34,7 +33,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
-    "@daily-co/daily-js": "^0.92.2",
     "@next/third-parties": "15.5.25",
     "@sentry/nextjs": "^10.52.0",
     "@supabase/ssr": "^0.5.2",

@@ -62,18 +62,23 @@ export type GreenRoomCta = {
 
 /**
  * The green room's main button. Webinar hosts start the webinar when nobody is
- * live, otherwise join as a co-host; `hosting` null means "not known yet" and is
+ * live (before the go-live window they only enter the room: a rehearsal),
+ * otherwise join as a co-host; `hosting` null means "not known yet" and is
  * treated as nobody live (the server still decides who is primary).
  */
 export function greenRoomCta(opts: {
   kind: "webinar" | "call";
   broadcaster: boolean;
   hosting: readonly string[] | null | undefined;
+  /** Before the go-live window: going in is a rehearsal, not a start. */
+  rehearsal?: boolean;
 }): GreenRoomCta {
   if (opts.kind === "call") return { label: "Join call", detail: null, cohost: false };
   if (!opts.broadcaster) return { label: "Join", detail: null, cohost: false };
   const names = (opts.hosting ?? []).filter((n) => n.trim());
-  if (names.length === 0) return { label: "Start webinar", detail: null, cohost: false };
+  if (names.length === 0) {
+    return { label: opts.rehearsal ? "Enter room" : "Start webinar", detail: null, cohost: false };
+  }
   return {
     label: "Join as co-host",
     detail: `${joinNames(names)} ${names.length === 1 ? "is" : "are"} hosting`,

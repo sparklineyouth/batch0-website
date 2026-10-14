@@ -1,10 +1,18 @@
 "use client";
 import { useRef, type ReactNode } from "react";
-import { MonitorUp } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, MonitorUp } from "lucide-react";
+import type { DeckEngine } from "./deck/deck-engine";
 import { fitRect } from "./logic";
 import { gridShape, type StageModel, type StageTile } from "./stage-model";
 import { Tile, type TileVariant } from "./tile";
-import { useSize } from "./use-size";
+import { FOCUS } from "./ui";
+import { useDeckSnapshot } from "./use-presentation";
+import { useMediaQuery, useSize } from "./use-size";
+
+/** Touch screens: tile actions (pin, full screen) are always shown, not on hover. */
+const TOUCH_QUERY = "(hover: none)";
+/** Below the tile's action row (top-1.5 + h-7) with a little air. */
+const BELOW_ACTIONS = 42;
 
 /** How one tile is drawn: the room resolves streams and state for the stage. */
 export type TileView = {
@@ -69,6 +77,7 @@ export function Stage({
   const mainSize = useSize(mainRef);
   const mainW = mainSize.w;
   const mainH = mainSize.h;
+  const touch = useMediaQuery(TOUCH_QUERY);
 
   const tileFor = (t: StageTile, variant: TileVariant, extra?: { className?: string; style?: React.CSSProperties }) => {
     if (t.kind === "presentation" && t.isSelf && variant !== "main") {
@@ -81,6 +90,8 @@ export function Stage({
       <Tile
         key={t.key}
         testId={`tile-${variant}`}
+        peerId={t.peerId}
+        kind={t.kind}
         name={t.isSelf ? (t.kind === "presentation" ? "Your presentation" : `${t.name} (you)`) : t.name}
         stream={v.stream}
         audio={t.kind === "camera" ? v.audio : null}
@@ -108,10 +119,14 @@ export function Stage({
   let main: ReactNode;
   // The main tile's box inside the main area (the PiP sits in its corner).
   let box = { x: 0, y: 0, w: mainW, h: mainH };
+  // Where tiles with action buttons start (top), when any are on the main area.
+  let tilesTop: number | null = null;
   if (model.layout === "empty") {
     main = <div className="absolute inset-0 grid place-items-center">{empty}</div>;
   } else if (model.layout === "grid") {
     const shape = gridShape(model.grid.length, mainW, mainH, 8);
+    const gridH = shape.rows * shape.tileHeight + (shape.rows - 1) * 8;
+    tilesTop = Math.max(0, (mainH - gridH) / 2);
     main = (
       <div className="absolute inset-0 flex flex-wrap content-center items-center justify-center gap-2" data-testid="stage-grid">
         {model.grid.map((t) =>
@@ -135,7 +150,12 @@ export function Stage({
         style: { left: r.x, top: r.y, width: r.w, height: r.h },
       });
     }
+    tilesTop = box.y;
   }
+  // On touch screens the main tile's actions are always on screen: notices
+  // start below them, so a tap meant for Pin or Full screen isn't hidden
+  // under a chip (the notices column lets taps through).
+  const noticesTop = touch && tilesTop !== null ? Math.round(tilesTop + BELOW_ACTIONS) : 8;
 
   const pipW = Math.round(Math.min(260, Math.max(112, box.w * 0.22)));
   const pipH = Math.round((pipW * 9) / 16);
@@ -168,7 +188,8 @@ export function Stage({
         {overlay}
         {notices ? (
           <div
-            className="pointer-events-none absolute inset-x-0 top-2 z-[15] flex flex-col items-center gap-2 px-3"
+            className="pointer-events-none absolute inset-x-0 z-[15] flex flex-col items-center gap-2 px-3"
+            style={{ top: noticesTop }}
             data-testid="stage-notices"
           >
             {notices}
@@ -217,6 +238,60 @@ export function PresentingThumb({ onStop }: { onStop?: () => void }) {
             Stop
           </button>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Self slides in the filmstrip, while another presentation holds the main
+ * stage: where they are (n / N), previous / next and Stop, so the deck can
+ * still be driven.
+ */
+export function PresentingDeckThumb({ deck, onStop }: { deck: DeckEngine; onStop: () => void }) {
+  const snap = useDeckSnapshot(deck);
+  const btn = `grid h-6 w-6 place-items-center rounded bg-[#26262b] text-[#f4f4f5] hover:bg-[#323238] disabled:opacity-40 ${FOCUS}`;
+  return (
+    <div
+      className="flex h-full w-full flex-col justify-between rounded-md border border-[#34343a] bg-[#1b1b1f] p-1.5 text-[11px] leading-tight text-[#f4f4f5]"
+      data-testid="deck-thumb"
+    >
+      <p className="flex min-w-0 items-center gap-1">
+        <FileText className="h-3.5 w-3.5 shrink-0 text-[#FFBB00]" aria-hidden />
+        <span className="truncate">Your slides</span>
+        <span className="ml-auto shrink-0 tabular-nums text-[#a1a1aa]" data-testid="deck-thumb-counter">
+          {snap.page}/{snap.count}
+        </span>
+      </p>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className={btn}
+          aria-label="Previous slide"
+          onClick={deck.prev}
+          disabled={snap.page <= 1}
+          data-testid="deck-thumb-prev"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          className={btn}
+          aria-label="Next slide"
+          onClick={deck.next}
+          disabled={snap.page >= snap.count}
+          data-testid="deck-thumb-next"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onStop}
+          className={`ml-auto rounded px-1 py-0.5 text-[11px] text-[#ff8a8d] underline-offset-2 hover:underline ${FOCUS}`}
+          data-testid="deck-thumb-stop"
+        >
+          Stop
+        </button>
       </div>
     </div>
   );

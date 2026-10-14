@@ -3,13 +3,13 @@
  * Import-free: scripts/room-screens.mts reads it under plain node.
  */
 export const HARNESS_STATES: Record<string, readonly string[]> = {
-  prejoin: ["host", "cohost", "viewer", "call", "denied", "busycam"],
+  prejoin: ["host", "cohost", "viewer", "call", "denied", "busycam", "rehearsal"],
   connecting: ["viewer", "host"],
-  "live-host": ["default", "solo", "panel", "toast", "leave", "devices", "rec", "rec-other", "reconnecting", "error", "failed"],
+  "live-host": ["default", "solo", "panel", "toast", "leave", "devices", "rec", "rec-other", "reconnecting", "error", "failed", "rehearsal", "rehearsal-chat"],
   "live-viewer": ["default", "panel", "joining", "waiting", "starts", "away", "reconnecting", "failed"],
   "presenting-screen": ["self", "viewer", "portrait", "call"],
-  "presenting-deck": ["file", "event", "viewer"],
-  "call-2": ["default", "waiting", "left", "pin-self", "present"],
+  "presenting-deck": ["file", "event", "viewer", "behind"],
+  "call-2": ["default", "waiting", "left", "pin-self", "present", "recorded"],
   "call-4": ["default", "present", "reconnecting"],
-  ended: ["viewer", "host", "byme", "reopened", "left", "left-call", "call", "cancelled", "closed", "revoked", "uploading"],
+  ended: ["viewer", "host", "byme", "reopened", "left", "left-call", "call", "cancelled", "closed", "revoked", "uploading", "saved", "rec-error"],
 };

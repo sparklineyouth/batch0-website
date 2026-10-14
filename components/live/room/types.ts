@@ -37,6 +37,8 @@ export type RoomPeer = {
   state: "idle" | "connecting" | "live" | "reconnecting" | "failed" | "left";
   /** Connected at least once this session. */
   seenLive: boolean;
+  /** Signalled this session (on the page), even while the link is still coming up. */
+  heard?: boolean;
   /** Present only while carrying media. */
   streams: { camera?: MediaStream; screen?: MediaStream; audio?: MediaStream };
 };
@@ -149,9 +151,16 @@ export type RoomEnd = {
   rejoinUntil?: string | null;
   /** closed: why. */
   reason?: "closed" | "revoked" | "cancelled";
+  /**
+   * People who may record: how this tab's recording went, said once its
+   * upload is done. `saved` — this tab recorded this session; `error` — what
+   * went wrong (a take that lost its lease while draining, a start refused).
+   */
+  recording?: { saved: boolean; error: string | null } | null;
 };
 
-export type RoomBusy = "joining" | "leaving" | "ending" | "reopening" | "rejoining" | null;
+/** `back`: Back from an end screen, waiting for the recording upload first. */
+export type RoomBusy = "joining" | "leaving" | "ending" | "reopening" | "rejoining" | "back" | null;
 
 export type RoomActions = {
   join: () => void;
@@ -162,8 +171,17 @@ export type RoomActions = {
   reopen?: () => void;
   /** Retry a failed join. */
   retry: () => void;
-  /** Webinar staff: make this host primary for everyone. */
-  pinForEveryone?: (peerId: string) => void;
+  /**
+   * Webinar staff: make this host primary for everyone. Resolves with the
+   * outcome, which the room says in a toast (void: nothing to say).
+   */
+  pinForEveryone?: (peerId: string) => Promise<{ ok: true } | { ok: false; error: string }> | void;
+  /**
+   * Back from an end screen while this tab still uploads the recording
+   * (`recording.pendingUploads` > 0): wait for it, then go. Without it, Back
+   * is a plain link.
+   */
+  back?: () => void;
 };
 
 export type LiveRoomProps = {
@@ -197,10 +215,26 @@ export type LiveRoomProps = {
   reactions?: RoomReactionsSlot | null;
   end?: RoomEnd;
   busy?: RoomBusy;
-  /** The last action's error (join / end / reopen), shown where it happened. */
+  /** The last action's error (join / reopen), shown where it happened. */
   actionError?: string | null;
+  /** End for everyone / End call failed: shown in the End confirm. */
+  endError?: string | null;
   /** One short line in the Leave menu, e.g. "You're the only host on air." */
   leaveHint?: string | null;
+  /** One line at the top of the stage, e.g. a rehearsal before the room opens. */
+  notice?: ReactNode | null;
+  /**
+   * One quiet line under the top bar for the whole call, e.g. a recorded 1:1's
+   * "Only you, Sam and batch0 admins can watch it back."
+   */
+  subline?: ReactNode | null;
+  /**
+   * Webinar hosts before the go-live window (ISO): the green room says "Enter
+   * room" and when students can join.
+   */
+  rehearsalUntil?: string | null;
+  /** A one-off message for a toast; a new object shows it (e.g. "You're live"). */
+  flash?: { id: string; message: string } | null;
   actions: RoomActions;
   /**
    * The layout everyone sees (no local pin) — feed it to useRoomRecording's

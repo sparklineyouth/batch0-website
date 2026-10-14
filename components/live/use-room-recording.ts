@@ -424,7 +424,7 @@ export function useRoomRecording(opts: {
     by,
     // Read when rendered — no per-second state here, which would re-render
     // the whole room every second of a take. A running clock re-renders
-    // itself (broadcast-room's RecBadge).
+    // itself (the room kit's RecClock).
     get elapsedMs() {
       return since !== null && Number.isFinite(since) ? Math.max(0, Date.now() - since) : 0;
     },

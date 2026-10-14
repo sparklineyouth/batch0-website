@@ -33,6 +33,8 @@ export function Tile({
   style,
   children,
   testId,
+  peerId,
+  kind,
 }: {
   name: string;
   stream: MediaStream | null;
@@ -59,6 +61,9 @@ export function Tile({
   style?: React.CSSProperties;
   children?: ReactNode;
   testId?: string;
+  /** Whose tile, and what it shows (data-peer / data-kind, for checks and tooling). */
+  peerId?: string;
+  kind?: "camera" | "presentation";
 }) {
   const box = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
@@ -79,6 +84,8 @@ export function Tile({
       ref={box}
       data-testid={testId}
       data-variant={variant}
+      data-peer={peerId}
+      data-kind={kind}
       style={style}
       className={`group isolate overflow-hidden rounded-md ${position} ${
         fit === "contain" ? "bg-[#000]" : "bg-[#1b1b1f]"
@@ -96,13 +103,21 @@ export function Tile({
 
       {!(showVideo && stream) && (
         <div className="absolute inset-0 grid place-items-center">
-          <div
-            className={`grid place-items-center rounded-full bg-[#34343a] font-medium text-[#f4f4f5] ${
-              small ? "h-10 w-10 text-sm" : variant === "grid" ? "h-16 w-16 text-xl" : "h-20 w-20 text-2xl sm:h-24 sm:w-24 sm:text-3xl"
-            }`}
-            aria-hidden
-          >
-            {initials(name)}
+          <div className="flex flex-col items-center">
+            <div
+              className={`grid place-items-center rounded-full bg-[#34343a] font-medium text-[#f4f4f5] ${
+                small ? "h-10 w-10 text-sm" : variant === "grid" ? "h-16 w-16 text-xl" : "h-20 w-20 text-2xl sm:h-24 sm:w-24 sm:text-3xl"
+              }`}
+              aria-hidden
+            >
+              {initials(name)}
+            </div>
+            {/* Said, so a viewer never mistakes it for a frozen picture. */}
+            {kind === "camera" && !small ? (
+              <span className="mt-2 text-xs text-[#a1a1aa]" data-testid="tile-camera-off">
+                Camera off
+              </span>
+            ) : null}
           </div>
         </div>
       )}
@@ -136,7 +151,15 @@ export function Tile({
       {(onPin || onPinForEveryone || (fullscreen && fs.supported)) && (
         <div className="absolute right-1.5 top-1.5 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
           {onPinForEveryone ? (
-            <TileAction label="Pin for everyone" onClick={onPinForEveryone} testId="tile-pin-everyone" text={!small}>
+            // Small tiles: an icon on hover screens (the tooltip names it); touch
+            // screens have no tooltip, so it says "Everyone" next to the local Pin.
+            <TileAction
+              label="Pin for everyone"
+              onClick={onPinForEveryone}
+              testId="tile-pin-everyone"
+              text={small ? "touch" : true}
+              shortText="Everyone"
+            >
               <Users className="h-3.5 w-3.5" />
             </TileAction>
           ) : null}
@@ -162,12 +185,15 @@ function TileAction({
   children,
   testId,
   text = false,
+  shortText,
 }: {
   label: string;
   onClick: () => void;
   children: ReactNode;
   testId?: string;
-  text?: boolean;
+  /** Show a label: always, or only on touch screens (`shortText`, as there is no tooltip). */
+  text?: boolean | "touch";
+  shortText?: string;
 }) {
   return (
     <button
@@ -179,10 +205,13 @@ function TileAction({
         e.stopPropagation();
         onClick();
       }}
-      className={`inline-flex h-7 items-center gap-1.5 rounded bg-[rgba(0,0,0,0.65)] px-2 text-xs text-[#fff] hover:bg-[rgba(0,0,0,0.85)] ${FOCUS}`}
+      className={`inline-flex h-7 items-center gap-1.5 rounded bg-[rgba(0,0,0,0.65)] px-2 text-xs text-[#fff] hover:bg-[rgba(0,0,0,0.85)] ${
+        text === "touch" ? "[@media(hover:none)]:gap-1 [@media(hover:none)]:px-1.5" : ""
+      } ${FOCUS}`}
     >
       {children}
-      {text ? <span>{label}</span> : null}
+      {text === true ? <span>{label}</span> : null}
+      {text === "touch" ? <span className="hidden text-[11px] [@media(hover:none)]:inline">{shortText ?? label}</span> : null}
     </button>
   );
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { LiveDot } from "@/components/live/call-stage";
+import { LiveDot } from "@/components/live/live-dot";
 import { AddPeopleForm, JoinCallConfirm, addableStaff } from "@/components/live/add-to-call";
 import { EditCallForm, type InviteeOption } from "@/components/live/invite-form";
 import { CallRecordings } from "@/components/live/recording-player";

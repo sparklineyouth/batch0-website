@@ -30,14 +30,13 @@ one seekable file.
   swept to `interrupted` (the media route, start, lists that see one, the
   follow-up cron and the call-lifecycle cron all sweep). Every take records
   why it ended: `stop`, `leave`, `unload`, `stale` or `replaced`.
-- **Everyone sees REC** (viewers included) from `GET /api/recordings/active`;
-  the green room says so before Join (calls always; webinars that record).
-  In the current room every tab but the recorder's polls it, one request at
-  a time — hosts and calls every 15 s, a webinar's audience every 45 s
-  (jittered). Interim: the new room takes `serverRecording` from the
-  session's heartbeat (`session.room.recording`, filled by
-  `activeRecordingFor()`), and this poll and route are then for the green
-  room only.
+- **Everyone sees REC** (viewers included) from the session's heartbeat
+  answer (`session.room.recording`, filled by `activeRecordingFor()`), plus
+  this tab's own take — no extra polling. The green room says so before Join
+  (calls always; webinars that record automatically, or that are recording
+  now: hosts read it with the green room's 10 s `getHostingStatus` poll and
+  again when Join is pressed, viewers from one `GET /api/recordings/active` on
+  entry).
 - **What is recorded** is the room's main stage
   (`lib/recording-layout.ts`): a screen share or slide deck full-frame with
   faces inset, else the primary camera with insets, else everyone side by side

@@ -38,7 +38,6 @@ import {
   canMarkCallCompleted,
   cohostsToAdd,
   formatEasternDateTime,
-  isPastPhase,
   startOfMinute,
   type CallPhase,
   type CallTiming,
@@ -645,17 +644,3 @@ export async function endCall(id: string): Promise<ActionResult<{ completed: boo
   });
 }
 
-/**
- * Is this call over? Polled by everyone in the room. Null for anyone not on
- * the call (the join gate's non-answer). A failed co-host read throws instead
- * — the room reads null as "over" — and the poll asks again.
- */
-export async function getCallRoomStatus(id: string): Promise<{ over: boolean } | null> {
-  const actor = await requireActor();
-  const admin = createAdminClient();
-  const { data } = await admin.from("call_invites").select(ROW).eq("id", id).maybeSingle();
-  const row = data as any;
-  if (!row) return null;
-  if (!(await onCall(admin, row, actor.userId))) return null;
-  return { over: isPastPhase(callPhase(timingOf(row))) };
-}

@@ -2,7 +2,6 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import type { EventAccess } from "@/lib/live-access";
-import type { WebinarQuestion } from "@/lib/live";
 import { liveParticipants } from "@/lib/live-rooms";
 import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import {
@@ -558,31 +557,6 @@ export async function loadWebinarPanelInitial(
     questions: read.questions ?? [],
     polls: read.polls ?? [],
   };
-}
-
-/**
- * The legacy question list (the Daily room's QAPanel): the whole queue for a
- * host, only their own for anyone else. A guest speaker sees students as "A
- * student", and no asker id but the reader's own leaves the server.
- */
-export async function listLegacyQuestions(
-  access: EventAccess,
-): Promise<WebinarQuestion[]> {
-  const rows = access.isHost
-    ? await listQuestionsForEvent(access.event.id)
-    : await listQuestionsForAsker(access.event.id, access.userId);
-  return rows.map((q) => {
-    const mine = q.askerId === access.userId;
-    return {
-      id: q.id,
-      eventId: q.eventId,
-      askerId: mine ? access.userId : "",
-      askerName: mine || access.discloseNames ? q.askerName : WITHHELD_NAME,
-      body: q.body,
-      status: q.status,
-      createdAt: q.createdAt,
-    };
-  });
 }
 
 // ---------------------------------------------------------------------------

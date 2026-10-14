@@ -282,7 +282,7 @@ export async function getInvite(id: string): Promise<
  *
  * Throws on a real read failure rather than answering "nobody": an empty
  * answer would quietly lock every co-host out of the call they are sitting
- * in (End call refused, the status poll closing their room). A database
+ * in (End call refused, the heartbeat closing their room). A database
  * without 0092 has no co-hosts, and says so.
  */
 export async function readCohostIds(

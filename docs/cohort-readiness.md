@@ -31,4 +31,4 @@ The original repository must have its private `content/course-launch/generated/`
 4. Read back every inserted row and compare every submitted field with the manifest. Verify private downloads using an enrolled Winter account. Metadata and content previews alone do not prove student access to storage objects.
 5. If an operation times out or partially succeeds, inspect current records and receipts before retrying. Stable identities prevent a new identity on retries, but existing rows still require fresh MCP hashes.
 
-Live scheduling is separate. These curriculum windows do not commit workshop or office-hour times and do not decide the December 24/31 holiday policy. Preserve the hosted Batch0 Live implementation; null Daily room fields are intentional. Do not rerun historical Fall `prepare-kickoff.mts` or `prepare-course-schedule.mts` to provision Winter.
+Live scheduling is separate. These curriculum windows do not commit workshop or office-hour times and do not decide the December 24/31 holiday policy. Preserve the hosted Batch0 Live implementation; null Daily room fields are intentional. Create Winter sessions in `/admin/events`.

@@ -284,7 +284,7 @@ export function isOnCall(call: CallParties, userId: string): boolean {
  * taking place. For the student it is anyone on the staff side. Before
  * co-hosts the only other person in a call room was always the other side, so
  * "someone else is here" and "the other side is here" were the same question;
- * End call's gate (broadcast-room) asks this one.
+ * End call's gate (components/live/room/controller.tsx) asks this one.
  *
  * `staffIds` is the call's staff side (callStaffIds).
  */

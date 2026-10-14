@@ -62,6 +62,11 @@ export type ControlBarProps = {
   selfId: string;
   media: LocalMediaView | null;
   presentation: PresentationController | null;
+  /**
+   * Another host's presentation holds the main stage and would keep it (the
+   * primary's): their name, said in the Present menu.
+   */
+  presentHeldBy?: string | null;
   /** Only for people who may record (null otherwise). */
   recording: RoomRecordingView | null;
   reactions: ReactNode | null;
@@ -84,7 +89,7 @@ export type ControlBarProps = {
 };
 
 export function ControlBar(props: ControlBarProps) {
-  const { media, presentation, recording, reactions, panel, onSettings, leave, kind, selfId } = props;
+  const { media, presentation, recording, reactions, panel, onSettings, leave, kind, selfId, presentHeldBy = null } = props;
   const showRecord = !!recording && recording.state !== "unavailable";
   const totalUnread = panel
     ? panel.tabs.reduce((n, t) => n + unreadFor(t, panel.unread), 0)
@@ -97,7 +102,7 @@ export function ControlBar(props: ControlBarProps) {
       <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 max-[359px]:gap-1 sm:gap-2">
         {media ? <MicButton media={media} /> : null}
         {media ? <CameraButton media={media} /> : null}
-        {presentation ? <PresentButton presentation={presentation} /> : null}
+        {presentation ? <PresentButton presentation={presentation} heldBy={presentHeldBy} /> : null}
         {showRecord ? (
           <div className="hidden sm:block">
             <RecordButton recording={recording!} selfId={selfId} />
@@ -205,7 +210,7 @@ function CameraButton({ media }: { media: LocalMediaView }) {
   );
 }
 
-function PresentButton({ presentation: p }: { presentation: PresentationController }) {
+function PresentButton({ presentation: p, heldBy }: { presentation: PresentationController; heldBy: string | null }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const pop = usePopover("present");
@@ -238,6 +243,11 @@ function PresentButton({ presentation: p }: { presentation: PresentationControll
         }}
       />
       <Popover anchor={anchor} open={pop.open} onClose={close} label="Present" testId="present-menu">
+        {heldBy ? (
+          <p className="max-w-[16rem] px-3 pb-1 pt-2 text-xs text-[#a1a1aa]" data-testid="present-held">
+            {heldBy} is presenting. Yours shows when they stop.
+          </p>
+        ) : null}
         {p.screenSupported && p.kind !== "screen" ? (
           <MenuItem
             icon={<MonitorUp />}
@@ -453,6 +463,16 @@ function LeaveButton({
     pop.setOpen(false);
     setConfirming(false);
   };
+  // A failed End is said in its confirm, and only there: if the menu was
+  // closed meanwhile, it opens again on the confirm with the error.
+  // (Keyed on the error alone: closing the menu must not bring it back.)
+  const setOpenRef = useRef(pop.setOpen);
+  setOpenRef.current = pop.setOpen;
+  useEffect(() => {
+    if (!error) return;
+    setConfirming(true);
+    setOpenRef.current(true);
+  }, [error]);
 
   return (
     <>
