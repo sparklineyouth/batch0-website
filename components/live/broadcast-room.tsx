@@ -1064,6 +1064,21 @@ function BroadcastSession({
       exitingRef.current = true;
       setEnding(true);
       let completed = how === "elsewhere";
+      // Ending the call on the server doesn't wait for the recorder's last
+      // chunk (a bounded flush of a few seconds): the two run side by side.
+      const ended =
+        how === "mine"
+          ? call.onEndCall().then(
+              (r) => r.completed,
+              (err) => {
+                // A failed request must not trap anyone in the room. The sweep
+                // (/api/cron/call-lifecycle) completes the call when its
+                // window closes regardless.
+                console.error("[live] end call failed", err);
+                return false;
+              },
+            )
+          : null;
       try {
         await stopRecording();
       } catch (err) {
@@ -1073,16 +1088,7 @@ function BroadcastSession({
       // off now rather than after a server round trip.
       screen.stop();
       media.stop();
-      if (how === "mine") {
-        try {
-          completed = (await call.onEndCall()).completed;
-        } catch (err) {
-          // A failed request must not trap anyone in the room. The sweep
-          // (/api/cron/call-lifecycle) completes the call when its window
-          // closes regardless.
-          console.error("[live] end call failed", err);
-        }
-      }
+      if (ended) completed = await ended;
       setPhase(completed ? "ended" : "left");
       if (how === "mine") {
         await drainRecording();
