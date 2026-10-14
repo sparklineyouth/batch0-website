@@ -2,9 +2,9 @@
  * What the recording's 1280×720 frame shows: the same main stage the room
  * shows, so the file matches what people saw.
  *
- *   presentation  a shared screen or slide deck fills the frame (contain-fit,
- *                 never cropped); everyone's face is a small inset along the
- *                 bottom right
+ *   presentation  a shared screen or slide deck fills the frame left of a
+ *                 column of faces, like the room's filmstrip (contain-fit,
+ *                 never cropped, never covered)
  *   speaker       one person's camera fills the frame (the webinar's primary
  *                 host), everyone else is an inset
  *   grid          equal columns, side by side — a 1:1 with nobody presenting
@@ -28,7 +28,7 @@ export type StagePerson = {
 export type StageLayout = { mainId: string | null; mainIsPresentation: boolean };
 
 export type StagePlan =
-  | { kind: "presentation"; presenter: string; full: Box; insets: { id: string; box: Box }[] }
+  | { kind: "presentation"; presenter: string; screen: Box; insets: { id: string; box: Box }[] }
   | { kind: "speaker"; main: string; full: Box; insets: { id: string; box: Box }[] }
   | { kind: "grid"; tiles: { id: string; box: Box }[] };
 
@@ -45,12 +45,12 @@ export function planStage(
     people.find((p) => p.presenting) ??
     null;
   if (presenter) {
-    const boxes = insetBoxes(people.length, width, height);
+    const { screen, faces } = presentationBoxes(people.length, width, height);
     return {
       kind: "presentation",
       presenter: presenter.id,
-      full,
-      insets: people.map((p, i) => ({ id: p.id, box: boxes[i] })),
+      screen,
+      insets: people.map((p, i) => ({ id: p.id, box: faces[i] })),
     };
   }
   if (named && !layout.mainIsPresentation && people.length > 1) {
@@ -84,8 +84,35 @@ export function tileBoxes(count: number, width: number, height: number): Box[] {
 }
 
 /**
+ * A presentation and the faces beside it: the faces in a right-hand column,
+ * centred and shrinking so any number fits, and the presentation in the rest
+ * of the frame. Nothing is drawn over a slide or a shared screen (a 16:9 one
+ * keeps 79% of the frame's width at 1280).
+ */
+export function presentationBoxes(
+  count: number,
+  width: number,
+  height: number,
+): { screen: Box; faces: Box[] } {
+  const n = Math.max(1, Math.floor(count));
+  const margin = Math.round(width * 0.0125); // 16px at 1280
+  const gap = Math.round(margin / 2);
+  const column = Math.round(width * 0.1875); // 240px at 1280
+  const fit = Math.floor((height - margin * 2 - gap * (n - 1)) / n);
+  const h = Math.max(1, Math.min(Math.round((column * 9) / 16), fit));
+  const w = Math.max(1, Math.round((h * 16) / 9));
+  const top = Math.round((height - (n * h + (n - 1) * gap)) / 2);
+  const x = width - margin - column + Math.round((column - w) / 2);
+  return {
+    screen: { x: 0, y: 0, w: width - column - margin * 2, h: height },
+    faces: Array.from({ length: n }, (_, i) => ({ x, y: top + i * (h + gap), w, h })),
+  };
+}
+
+/**
  * Small 16:9 insets along the bottom right, right to left, shrinking so any
- * number of people still fits inside the frame.
+ * number of people still fits inside the frame (over a camera, never over a
+ * presentation).
  */
 export function insetBoxes(count: number, width: number, height: number): Box[] {
   const n = Math.max(1, Math.floor(count));

@@ -17,7 +17,8 @@ import { planStage, type Box, type StageLayout } from "@/lib/recording-layout";
  *
  * batch0 Live has no media server (lib/live-signal.ts), so the room is
  * recorded where it is seen: one tab draws everyone on stage onto a 1280×720
- * canvas — the same main stage the room shows (lib/recording-layout.ts) — and
+ * canvas — the same main stage the room shows, faces beside a presentation
+ * rather than on it (lib/recording-layout.ts) — and
  * mixes every voice through an AudioContext into one track. ONE MediaRecorder
  * runs over that canvas track and that mixed track for the whole take. Nothing
  * it records from ever ends: people arriving or leaving, a device switch, a
@@ -202,7 +203,7 @@ export function useRecorder({
     };
     if (plan.kind === "presentation") {
       const screen = els(plan.presenter)?.screen ?? null;
-      if (ready(screen)) drawContain(ctx, screen, plan.full);
+      if (ready(screen)) drawContain(ctx, screen, plan.screen);
       for (const i of plan.insets) person(i.id, i.box, true);
     } else if (plan.kind === "speaker") {
       person(plan.main, plan.full, false);
