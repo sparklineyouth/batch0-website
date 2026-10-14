@@ -12,6 +12,10 @@ Google links; batch0 stores ids, never files.
 - **Admins** (`teams.manage`) — same panel on `/admin/teams/[id]`, editable
   (to fix a wrong folder link); changes by non-members are audit-logged. The
   page also shows the team's Demo Day deck/video links, status and notes.
+  Editable on purpose: the plan said read-only here, but it also lets
+  `teams.manage` write through the same actions, and this page is the only
+  place an admin can use that. Signed off at integration; mentors stay
+  read-only. To make it read-only, pass `canEdit={false}` on the admin page.
 - **Mentors** — same panel on `/mentor/teams/[id]`, read-only, plus the
   submitted deck/video.
 - **Investors** — no team folder. Once a team submits, `/investor/teams/[id]`

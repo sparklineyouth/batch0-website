@@ -147,6 +147,9 @@ export default async function AdminTeamDetail(
         </Card>
       )}
 
+      {/* Editable for teams.manage, so an admin can fix a wrong folder link.
+          The actions re-check teams.manage and audit-log every edit by a
+          non-member (docs/google-drive.md); mentors get it read-only. */}
       <GoogleDrivePanel
         className="mt-6"
         teamId={team.id}
