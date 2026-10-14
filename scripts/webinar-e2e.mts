@@ -7,12 +7,10 @@
  *
  * Why this exists
  * ---------------
- * `daily-doctor` passed every check for months while hosted webinars were
- * completely broken. It exercised the REST plane — create a room, mint a
- * token, decode the claims — and every one of those still works. What did not
- * work was joining: the Daily account refuses every media session with
- * `account-missing-payment-method`, including into a bare public room with no
- * properties set. A REST-shaped check can never see that.
+ * A REST check of the old Daily provider passed for months while hosted
+ * webinars were completely broken: rooms and tokens were fine, but the Daily
+ * account refused every media session (`account-missing-payment-method`). A
+ * REST-shaped check can never see that.
  *
  * So this asserts on decoded media in a real browser, through the real app:
  * real accounts, real Supabase sessions, the real `/dashboard/events/[id]/live`
@@ -31,13 +29,19 @@
  * as broken as one nobody can enter:
  *   - the host is an ADMIN (profiles.role = 'admin') — an admin must host,
  *     never be downgraded to a viewer;
+ *   - the host shares a screen: a connected viewer and one who joins
+ *     MID-SHARE both get it as the main stage, and stopping returns everyone
+ *     to the camera; then the host presents the event's PDF deck and a
+ *     viewer decodes it as the main stage;
+ *   - a chat message the host removes disappears for the other students;
+ *   - a second admin is offered "Join as co-host" (the first is hosting),
+ *     joins with camera and mic off, and the host's "Pin for everyone" moves
+ *     every viewer's main stage to them (and back);
  *   - a viewer presses Leave, lands on "You've left", presses Rejoin and
  *     decodes the host again on a fresh connection;
- *   - the host presses End for everyone (arm, then confirm): every viewer is
- *     moved to "This webinar has ended" within seconds, their connections
- *     close and frames stop, and a fresh join is refused;
- *   - the host shares a screen: a connected viewer and one who joins
- *     MID-SHARE both see it, and stopping returns everyone to the camera;
+ *   - the host presses End for everyone (Leave menu, then confirm): every
+ *     viewer is moved to "This webinar has ended" within seconds, their
+ *     connections close and frames stop, and a fresh join is refused;
  *   - the host presses Reopen, goes back on air, and the ended viewer is
  *     offered Rejoin (the ended screen's slow poll) and decodes video again;
  *   - the 1:1 is hosted by a MENTOR (the live-room middleware exemption):
@@ -45,7 +49,9 @@
  *     mentor's End call puts both sides on "This call has ended" and marks
  *     the call completed, the mentor lands back on their own calls page, and
  *     the mentor's browser — the side that records — has uploaded the call
- *     as one finished take.
+ *     as one finished take, whose media route answers 206 with video/webm.
+ *
+ * Selectors are the room kit's data-testid attributes (components/live/room).
  *
  * Every account, row and stored file it creates is removed in a finally
  * block, including on failure.
@@ -96,6 +102,7 @@ const stamp = String(process.pid);
 const HOST_EMAIL = `e2e-webinar-host-${stamp}@example.invalid`;
 const VIEWER_EMAIL = `e2e-webinar-viewer-${stamp}@example.invalid`;
 const MENTOR_EMAIL = `e2e-webinar-mentor-${stamp}@example.invalid`;
+const COHOST_EMAIL = `e2e-webinar-cohost-${stamp}@example.invalid`;
 /**
  * A fresh password every run, and never one that is written down.
  *
@@ -161,11 +168,13 @@ async function createUser(email: string, role: string): Promise<string> {
     body: JSON.stringify({
       role,
       full_name:
-        role === "admin"
-          ? "E2E Host"
-          : role === "mentor"
-            ? "E2E Mentor"
-            : "E2E Student",
+        email === COHOST_EMAIL
+          ? "E2E Cohost"
+          : role === "admin"
+            ? "E2E Host"
+            : role === "mentor"
+              ? "E2E Mentor"
+              : "E2E Student",
     }),
   });
   if (!patch.ok) throw new Error(`setRole ${email}: ${await patch.text()}`);
@@ -217,12 +226,70 @@ async function createLiveWebinar(): Promise<string> {
       ends_at: new Date(now + 55 * 60_000).toISOString(),
       visibility: "public",
       live_mode: "hosted",
+      // Chat on, and no recording (the 1:1 below covers recording): said
+      // here so the run doesn't depend on the database's column defaults.
+      audience_mode: "open",
+      auto_record: false,
     }),
   });
   const rows = await res.json();
   if (!res.ok) throw new Error(`createEvent: ${JSON.stringify(rows)}`);
   createdEventId = rows[0].id;
   return rows[0].id;
+}
+
+/**
+ * A small, valid PDF: `pages` slides reading "Slide N". Built by hand (with a
+ * correct xref) so the run needs no fixture file.
+ */
+function makePdf(pages: number): Buffer {
+  const objs: string[] = [];
+  objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objs[2] = `<< /Type /Pages /Kids [${Array.from({ length: pages }, (_, i) => `${4 + i * 2} 0 R`).join(" ")}] /Count ${pages} >>`;
+  objs[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+  for (let i = 0; i < pages; i++) {
+    const content = `BT /F1 96 Tf 120 240 Td (Slide ${i + 1}) Tj ET`;
+    objs[4 + i * 2] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 960 540] ` +
+      `/Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + i * 2} 0 R >>`;
+    objs[5 + i * 2] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  }
+  let out = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (let n = 1; n < objs.length; n++) {
+    offsets[n] = Buffer.byteLength(out, "latin1");
+    out += `${n} 0 obj\n${objs[n]}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(out, "latin1");
+  out += `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
+  for (let n = 1; n < objs.length; n++) out += `${String(offsets[n]).padStart(10, "0")} 00000 n \n`;
+  out += `trailer\n<< /Size ${objs.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+}
+
+/** The event's slide deck: a PDF in webinar-media and its event_assets row. */
+async function uploadDeck(eventId: string): Promise<void> {
+  const pdf = makePdf(3);
+  const path = `${eventId}/deck/e2e-deck.pdf`;
+  const up = await fetch(`${url}/storage/v1/object/webinar-media/${path}`, {
+    method: "POST",
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/pdf" },
+    body: new Uint8Array(pdf),
+  });
+  if (!up.ok) throw new Error(`uploadDeck: ${await up.text()}`);
+  const row = await fetch(`${url}/rest/v1/event_assets`, {
+    method: "POST",
+    headers: adm,
+    body: JSON.stringify({
+      event_id: eventId,
+      kind: "deck",
+      storage_path: path,
+      filename: "E2E deck.pdf",
+      mime_type: "application/pdf",
+      size_bytes: pdf.length,
+    }),
+  });
+  if (!row.ok) throw new Error(`deck row: ${await row.text()}`);
 }
 
 /**
@@ -311,9 +378,8 @@ async function removeRecordings(kind: "webinar" | "call", roomId: string): Promi
 
 async function cleanup() {
   // Recordings first: the 1:1 is recorded (recording_sessions rows + parts in
-  // the private recordings bucket). The test webinar leaves auto-record off,
-  // but a run against a database whose default changed must not leave a
-  // recording of test accounts behind.
+  // the private recordings bucket). The test webinar turns auto-record off,
+  // but a recording of test accounts must never be left behind.
   if (createdInviteId) await removeRecordings("call", createdInviteId);
   if (createdEventId) await removeRecordings("webinar", createdEventId);
   if (createdEventId) {
@@ -506,8 +572,9 @@ async function openAs(
 
 /** Click the green room's join button, whatever it is labelled. */
 async function enterRoom(page: Page, label: string): Promise<boolean> {
-  // "Start" (webinar host), "Join" (viewer), "Join call" (either side of a 1:1).
-  const button = page.getByRole("button", { name: /^(start|join|join call)$/i });
+  // "Start webinar" / "Join as co-host" (webinar hosts), "Join" (viewer),
+  // "Join call" (either side of a 1:1): one test id.
+  const button = page.getByTestId("green-room-join");
   const ok = await until(
     `${label} green room`,
     async () =>
@@ -558,6 +625,11 @@ const ALL_PCS_CLOSED = `(() => (window.__b0pcs || []).every(
   (pc) => pc.signalingState === "closed" || pc.connectionState === "closed"
 ))()`;
 
+/** Peer connections still open on the page. */
+const OPEN_PCS = `(() => (window.__b0pcs || []).filter(
+  (pc) => pc.signalingState !== "closed" && pc.connectionState !== "closed"
+).length)()`;
+
 const pcCount = (page: Page) =>
   page.evaluate(`(window.__b0pcs || []).length`) as Promise<number>;
 
@@ -581,25 +653,45 @@ async function decodesAgain(
   return next.frames > (first as any).frames;
 }
 
-/** Wait for a visible button by accessible name, then click it. */
-async function press(
+/** Wait for a visible, enabled element by test id, then click it. */
+async function tap(
   page: Page,
-  name: RegExp,
+  testId: string,
   label: string,
   timeoutMs = 20_000,
 ): Promise<boolean> {
-  const button = page.getByRole("button", { name });
+  const el = page.getByTestId(testId);
   const ok = await until(
     label,
     async () =>
-      (await button.count()) > 0 &&
-      (await button.first().isVisible()) &&
-      (await button.first().isEnabled()),
+      (await el.count()) > 0 &&
+      (await el.first().isVisible()) &&
+      (await el.first().isEnabled()),
     timeoutMs,
   );
   if (!ok) return false;
-  await button.first().click();
+  await el.first().click();
   return true;
+}
+
+/** What the main stage shows: whose tile, camera or presentation. */
+async function mainTile(page: Page): Promise<{ peer: string | null; kind: string | null } | null> {
+  const tile = page.locator('[data-testid="tile-main"]');
+  if ((await tile.count()) === 0) return null;
+  return {
+    peer: await tile.first().getAttribute("data-peer"),
+    kind: await tile.first().getAttribute("data-kind"),
+  };
+}
+
+const count = (page: Page, testId: string) => page.getByTestId(testId).count();
+
+/** The host's headcount, from its badge (null when there is none). */
+async function audience(page: Page): Promise<number | null> {
+  const badge = page.getByTestId("badge-audience");
+  if ((await badge.count()) === 0) return null;
+  const m = /\d+/.exec((await badge.first().innerText()) || "");
+  return m ? Number(m[0]) : null;
 }
 
 const hasText = async (page: Page, re: RegExp) =>
@@ -641,8 +733,10 @@ async function main() {
   const hostUserId = await createUser(HOST_EMAIL, "admin");
   const viewerUserId = await createUser(VIEWER_EMAIL, "student");
   const mentorUserId = await createUser(MENTOR_EMAIL, "mentor");
+  const cohostUserId = await createUser(COHOST_EMAIL, "admin");
   const eventId = await createLiveWebinar();
-  pass(`admin + mentor + student accounts, and a webinar that is live now`);
+  await uploadDeck(eventId);
+  pass(`two admins + mentor + student accounts, and a webinar that is live now, with a PDF deck`);
   info(`event ${eventId}`);
 
   // The webinar host is an ADMIN, and nothing else — not a speaker row, not an
@@ -677,8 +771,11 @@ async function main() {
     contexts.push(host.ctx);
     check(await enterRoom(host.page, "host"), "host reached the green room and started");
 
-    const hosting = await until("host to be hosting", async () =>
-      (await host.page.getByText(/hosting/i).count()) > 0,
+    const hosting = await until(
+      "host to be hosting",
+      async () =>
+        (await count(host.page, "stage")) > 0 &&
+        (await host.page.getByText(/^\s*hosting\s*$/i).count()) > 0,
     );
     check(!!hosting, "the ADMIN is in the room as host, broadcasting");
 
@@ -688,8 +785,11 @@ async function main() {
     contexts.push(viewer.ctx);
     check(await enterRoom(viewer.page, "viewer"), "viewer reached the green room and joined");
 
-    const watching = await until("viewer to be watching", async () =>
-      (await viewer.page.getByText(/watching/i).count()) > 0,
+    const watching = await until(
+      "viewer to be watching",
+      async () =>
+        (await count(viewer.page, "stage")) > 0 &&
+        (await viewer.page.getByText(/^\s*watching\s*$/i).count()) > 0,
     );
     check(!!watching, "viewer is in the room");
 
@@ -744,12 +844,11 @@ async function main() {
       (await viewer.page.locator("body").innerText().catch(() => "")) || "";
 
     // The audience count is the single number a webinar exists to withhold.
-    const leaked = /\d+\s+watching/i.exec(viewerBody);
+    const leaked =
+      (await count(viewer.page, "badge-audience")) > 0 ||
+      (await viewer.page.getByText(/\d+\s+watching/i).count()) > 0;
     check(!leaked, "viewer is shown NO audience count");
-    if (leaked) {
-      info(`viewer page leaked: "${leaked[0]}"`);
-      info(`viewer body: ${viewerBody.slice(0, 400).replace(/\s+/g, " ")}`);
-    }
+    if (leaked) info(`viewer body: ${viewerBody.slice(0, 400).replace(/\s+/g, " ")}`);
 
     // A viewer has no camera or mic controls at all — not disabled ones.
     const micButtons = await viewer.page
@@ -759,7 +858,10 @@ async function main() {
       .getByRole("button", { name: /camera/i })
       .count();
     check(
-      micButtons === 0 && camButtons === 0,
+      micButtons === 0 &&
+        camButtons === 0 &&
+        (await count(viewer.page, "ctrl-mic")) === 0 &&
+        (await count(viewer.page, "ctrl-camera")) === 0,
       "viewer has no camera or mic controls",
     );
 
@@ -783,10 +885,11 @@ async function main() {
     // The host, by contrast, must see the audience — this is the thing the
     // Daily setup could NOT do, because hasPresence:false hid viewers from
     // the host too, leaving nobody able to tell if anyone was watching.
-    const sawAudience = await until("host to count the audience", async () => {
-      const body = (await host.page.locator("body").innerText()) || "";
-      return /\d+\s+watching/i.test(body);
-    }, 30_000);
+    const sawAudience = await until(
+      "host to count the audience",
+      async () => (await audience(host.page)) !== null,
+      30_000,
+    );
     check(!!sawAudience, "host DOES see a headcount of the audience");
 
     // --- layout truthfulness ----------------------------------------------
@@ -797,10 +900,17 @@ async function main() {
     // put every viewer into the presenting layout, staring at a black
     // rectangle where the host's face should be — and a decoded-frames check
     // passes right through it, which is exactly why this assertion exists.
-    const presenting = await viewer.page.getByText(/presenting/i).count();
+    const presenting =
+      (await viewer.page.getByText(/presenting/i).count()) +
+      (await viewer.page.locator('[data-kind="presentation"]').count());
     check(
       presenting === 0,
       "viewer is NOT shown a 'presenting' tile when nobody is presenting",
+    );
+    const firstMain = await mainTile(viewer.page);
+    check(
+      firstMain?.peer === hostUserId && firstMain.kind === "camera",
+      "the viewer's main stage is the host's camera",
     );
 
     // --- a second student: the real test of the star topology -------------
@@ -830,25 +940,24 @@ async function main() {
     check(!!secondSees, "second student also decodes the host's video");
 
     // Each student holds exactly one peer connection — to the host. If they
-    // were being introduced to each other, this would be two.
-    const v1pcs: any = await viewer.page.evaluate(
-      `(window.__b0pcs || []).length`,
-    );
-    const v2pcs: any = await viewer2.page.evaluate(
-      `(window.__b0pcs || []).length`,
-    );
+    // were being introduced to each other, this would be two. "Holds" is the
+    // connections still open: a link rebuilt after a stuck negotiation closes
+    // the old one first (the total built is logged).
+    const v1pcs: any = await viewer.page.evaluate(OPEN_PCS);
+    const v2pcs: any = await viewer2.page.evaluate(OPEN_PCS);
     check(
       v1pcs === 1 && v2pcs === 1,
       "each student holds exactly ONE connection — to the host, never to each other",
     );
-    info(`student A: ${v1pcs} connection(s), student B: ${v2pcs}`);
+    info(
+      `student A: ${v1pcs} connection(s) (${await pcCount(viewer.page)} built), ` +
+        `student B: ${v2pcs} (${await pcCount(viewer2.page)} built)`,
+    );
 
     // And the host holds one per student: a star, not a mesh.
-    const hostPcs: any = await host.page.evaluate(
-      `(window.__b0pcs || []).length`,
-    );
+    const hostPcs: any = await host.page.evaluate(OPEN_PCS);
     check(hostPcs === 2, "host holds one connection per student (a star)");
-    info(`host: ${hostPcs} connection(s)`);
+    info(`host: ${hostPcs} connection(s) (${await pcCount(host.page)} built)`);
 
     // Neither student's page may contain the other's name anywhere.
     const v1body = (await viewer.page.locator("body").innerText()) || "";
@@ -858,16 +967,17 @@ async function main() {
       "student A's page does not list the other student",
     );
     check(
-      !/\d+\s+watching/i.test(v2body),
+      (await count(viewer2.page, "badge-audience")) === 0,
       "second student is also shown no audience count",
     );
 
     // The host's headcount must now read 2 — proving the count is real and
     // not a placeholder that happened to be non-zero.
-    const countsTwo = await until("host count to reach 2", async () => {
-      const body = (await host.page.locator("body").innerText()) || "";
-      return /2\s+watching/i.test(body);
-    }, 30_000);
+    const countsTwo = await until(
+      "host count to reach 2",
+      async () => (await audience(host.page)) === 2,
+      30_000,
+    );
     check(!!countsTwo, "host's headcount reflects BOTH students");
 
     // --- screen share, and a viewer who arrives MID-SHARE ----------------
@@ -876,18 +986,20 @@ async function main() {
     // viewer has no connection to file a separate `media` message under
     // until the offer lands — that message used to be dropped, and anyone
     // who joined or reloaded mid-share watched the host's face instead of
-    // the slides until the host happened to toggle something.
+    // the slides until the host happened to toggle something. Screen share is
+    // the main thing: it takes the main stage.
     console.log("\nhost shares the screen; a viewer arrives mid-share");
     check(
-      await press(host.page, /^share screen$/i, "host's Share screen"),
+      (await tap(host.page, "ctrl-present", "host's Present menu")) &&
+        (await tap(host.page, "present-screen", "host's Share screen")),
       "host started sharing (a fake capture)",
     );
     const sharedSeen = await until(
       "connected viewer to be shown the share",
-      async () => (await viewer2.page.getByText(/presenting/i).count()) > 0,
+      async () => (await mainTile(viewer2.page))?.kind === "presentation",
       20_000,
     );
-    check(!!sharedSeen, "a viewer already in the room is shown the share");
+    check(!!sharedSeen, "a viewer already in the room is shown the share as the main stage");
 
     await viewer2.page.reload({ waitUntil: "domcontentloaded" });
     check(await enterRoom(viewer2.page, "viewer2 mid-share"), "a viewer joins mid-share");
@@ -897,10 +1009,17 @@ async function main() {
     );
     const midShare = await until(
       "mid-share viewer to be shown the share",
-      async () => (await viewer2.page.getByText(/presenting/i).count()) > 0,
+      async () => {
+        const m = await mainTile(viewer2.page);
+        return m?.kind === "presentation" && m.peer === hostUserId;
+      },
       20_000,
     );
-    check(!!midShare, "a viewer who joins MID-SHARE is shown the screen");
+    check(!!midShare, "a viewer who joins MID-SHARE sees the screen as the main stage");
+    check(
+      (await viewer2.page.getByText(/presenting/i).count()) > 0,
+      "…labelled as presenting",
+    );
     if (!midShare) {
       const pcs = await viewer2.page
         .evaluate(`(window.__b0pcs || []).map((pc) => pc.connectionState).join(", ")`)
@@ -921,18 +1040,199 @@ async function main() {
     check(!!shareA && shareB > shareA, "…and decodes it (screen frames climb)");
 
     check(
-      await press(host.page, /^stop sharing screen$/i, "host's Stop sharing"),
+      (await tap(host.page, "ctrl-present", "host's Present menu")) &&
+        (await tap(host.page, "present-stop", "host's Stop presenting")),
       "host stopped sharing",
     );
     const unshared = await until(
       "viewers to leave the presenting layout",
       async () =>
         (await viewer.page.getByText(/presenting/i).count()) === 0 &&
-        (await viewer2.page.getByText(/presenting/i).count()) === 0,
+        (await viewer2.page.getByText(/presenting/i).count()) === 0 &&
+        (await mainTile(viewer.page))?.kind === "camera" &&
+        (await mainTile(viewer2.page))?.kind === "camera",
       20_000,
     );
     check(!!unshared, "stopping the share takes every viewer back to the camera");
     // --- end screen share ---------------------------------------------------
+
+    // --- the event's PDF deck ------------------------------------------------
+    //
+    // "Present slides" renders the event's uploaded PDF (signed URL) to a
+    // canvas and sends it through the same screen slot: the viewer decodes it
+    // as the main stage, and paging on the presenter keeps frames coming.
+    console.log("\nhost presents the event's PDF deck");
+    check(
+      (await tap(host.page, "ctrl-present", "host's Present menu")) &&
+        (await tap(host.page, "present-event-deck", "host's Present slides")),
+      "host chose the event's deck",
+    );
+    const deckOpen = await until(
+      "the deck to open on the host",
+      async () => /1\s*\/\s*3/.test((await host.page.getByTestId("deck-counter").innerText().catch(() => "")) || ""),
+      45_000,
+    );
+    check(!!deckOpen, "the host's presenter view shows slide 1 of 3");
+    if (!deckOpen) {
+      const body = (await host.page.locator("body").innerText().catch(() => "")) || "";
+      info(`[host] page said: ${body.slice(0, 300).replace(/\s+/g, " ")}`);
+    }
+    const deckMain = await until(
+      "viewer to be shown the deck",
+      async () => {
+        const m = await mainTile(viewer.page);
+        return m?.kind === "presentation" && m.peer === hostUserId;
+      },
+      20_000,
+    );
+    check(!!deckMain, "the viewer's main stage is the deck");
+    const deckA = (await viewer.page.evaluate(screenFramesSince(0))) as number;
+    await tap(host.page, "deck-next", "host's Next slide");
+    const deckB: any = await until(
+      "viewer to decode the deck",
+      async () => {
+        const n = (await viewer.page.evaluate(screenFramesSince(0))) as number;
+        return n > deckA ? n : null;
+      },
+      20_000,
+    );
+    check(!!deckB, "the viewer decodes the deck (frames climb)");
+    check(
+      /2\s*\/\s*3/.test((await host.page.getByTestId("deck-counter").innerText().catch(() => "")) || ""),
+      "Next moves the presenter to slide 2",
+    );
+    check(
+      (await tap(host.page, "ctrl-present", "host's Present menu")) &&
+        (await tap(host.page, "present-stop", "host's Stop presenting")),
+      "host stopped presenting",
+    );
+    check(
+      !!(await until(
+        "viewer back on the camera",
+        async () => (await mainTile(viewer.page))?.kind === "camera",
+        20_000,
+      )),
+      "stopping the deck takes the viewer back to the camera",
+    );
+    // --- end deck -------------------------------------------------------------
+
+    // --- chat: a host's Remove reaches everyone ---------------------------------
+    console.log("\nchat remove");
+    const chatText = `e2e chat ${stamp}`;
+    const chatBox = viewer.page.getByRole("textbox", { name: "Chat message" });
+    const canChat = await until("viewer's chat box", async () => (await chatBox.count()) > 0, 20_000);
+    if (canChat) {
+      await chatBox.first().fill(chatText);
+      await chatBox.first().press("Enter");
+    }
+    const chatRow = (page: Page) => page.locator("li[data-message-id]", { hasText: chatText });
+    check(
+      !!(await until("the other student to see the message", async () => (await chatRow(viewer2.page).count()) > 0, 20_000)),
+      "a chat message reaches the other student",
+    );
+    const onHost = await until("the host to see the message", async () => (await chatRow(host.page).count()) > 0, 20_000);
+    if (onHost) {
+      await chatRow(host.page).first().hover();
+      await chatRow(host.page).first().getByRole("button", { name: "Remove", exact: true }).click();
+    }
+    check(
+      !!onHost &&
+        !!(await until(
+          "the message to disappear for both students",
+          async () => (await chatRow(viewer2.page).count()) === 0 && (await chatRow(viewer.page).count()) === 0,
+          15_000,
+        )),
+      "the host's Remove takes it away for the other students",
+    );
+
+    // --- a second admin: co-host, and Pin for everyone --------------------------
+    //
+    // Someone is hosting, so the green room offers "Join as co-host" (camera
+    // and mic off), not "Start webinar". Staff can pin any host for everyone:
+    // that host becomes primary and every viewer's main stage follows.
+    console.log("\na second admin joins as co-host; Pin for everyone");
+    const cohost = await openAs(browser, COHOST_EMAIL, live, "cohost");
+    contexts.push(cohost.ctx);
+    const cta = await until(
+      "the co-host's green room to say someone is hosting",
+      async () =>
+        (await cohost.page.getByTestId("green-room").getAttribute("data-cta").catch(() => null)) === "Join as co-host" &&
+        /E2E Host is hosting/.test((await cohost.page.getByTestId("green-room-hosting").innerText().catch(() => "")) || ""),
+      45_000,
+    );
+    check(!!cta, "a second admin sees 'Join as co-host' and that E2E Host is hosting");
+    check(await enterRoom(cohost.page, "cohost"), "the second admin joined as co-host");
+    const mutedIn = await until(
+      "the co-host's camera and mic to be off",
+      async () =>
+        (await cohost.page.getByTestId("ctrl-camera").getAttribute("aria-pressed")) === "true" &&
+        (await cohost.page.getByTestId("ctrl-mic").getAttribute("aria-pressed")) === "true",
+      30_000,
+    );
+    check(!!mutedIn, "a co-host joins with camera and mic off");
+
+    const cohostTile = host.page.locator(`[data-peer="${cohostUserId}"][data-kind="camera"]`);
+    const onHostStage = await until(
+      "the host to see the co-host",
+      async () => (await cohostTile.count()) > 0,
+      45_000,
+    );
+    // The viewer has the co-host on stage (a thumbnail) before the pin, so
+    // what follows measures the pin, not the link coming up.
+    check(
+      !!(await until(
+        "the viewer to have the co-host on stage",
+        async () => (await viewer.page.locator(`[data-peer="${cohostUserId}"]`).count()) > 0,
+        45_000,
+      )),
+      "the viewer sees the co-host join the stage",
+    );
+    if (onHostStage) {
+      await cohostTile.first().hover();
+      await cohostTile.first().getByTestId("tile-pin-everyone").click();
+    }
+    const pinned = await until(
+      "the viewer's main stage to move to the co-host",
+      async () => (await mainTile(viewer.page))?.peer === cohostUserId,
+      20_000,
+    );
+    check(!!onHostStage && !!pinned, "'Pin for everyone' moves the viewer's main stage to that host");
+    if (!pinned) {
+      const tiles = `(() => [...document.querySelectorAll('[data-peer]')].map((t) => t.getAttribute('data-testid') + ':' + t.getAttribute('data-peer') + ':' + t.getAttribute('data-kind')).join(' '))()`;
+      const pcs = `(() => (window.__b0pcs || []).map((pc) => pc.connectionState).join(','))()`;
+      info(`co-host ${cohostUserId}, host ${hostUserId}`);
+      info(`viewer tiles: ${await viewer.page.evaluate(tiles)}; links: ${await viewer.page.evaluate(pcs)}`);
+      info(`host tiles: ${await host.page.evaluate(tiles)}`);
+    }
+    const primaryRes = await fetch(`${url}/rest/v1/events?id=eq.${eventId}&select=live_primary_host_id`, { headers: adm });
+    const primaryRows = (await primaryRes.json()) as { live_primary_host_id: string | null }[];
+    check(primaryRows[0]?.live_primary_host_id === cohostUserId, "the server holds the pin (events.live_primary_host_id)");
+
+    // And back: the host pins themselves for everyone.
+    const selfTile = host.page.locator(`[data-peer="${hostUserId}"][data-kind="camera"]`);
+    if ((await selfTile.count()) > 0) {
+      await selfTile.first().hover();
+      await selfTile.first().getByTestId("tile-pin-everyone").click();
+    }
+    check(
+      !!(await until(
+        "the viewer's main stage to move back to the host",
+        async () => (await mainTile(viewer.page))?.peer === hostUserId,
+        20_000,
+      )),
+      "pinning the host again moves it back",
+    );
+    // The co-host leaves (staff get a menu: Leave, or End for everyone).
+    check(
+      (await tap(cohost.page, "ctrl-leave", "co-host's Leave")) &&
+        (await tap(cohost.page, "leave-leave", "co-host's Leave menu item")),
+      "the co-host left (the webinar keeps running)",
+    );
+    check(
+      !!(await until("co-host left screen", async () => (await count(cohost.page, "end-left")) > 0, 15_000)),
+      "the co-host sees \"You've left\"",
+    );
+    await cohost.ctx.close().catch(() => {});
 
     // --- camera off must read as "camera off", not as a black frame -------
     //
@@ -940,10 +1240,7 @@ async function main() {
     // a frozen picture rather than being told. The engine detaches the track
     // instead, which mutes the receiver's and lets the UI say so.
     console.log("\nhost turns the camera off");
-    await host.page
-      .getByRole("button", { name: /turn camera off/i })
-      .first()
-      .click();
+    await tap(host.page, "ctrl-camera", "host's camera button");
     const toldCameraOff = await until(
       "viewer to be told the camera is off",
       async () =>
@@ -957,10 +1254,7 @@ async function main() {
     const stillHears: any = await viewer.page.evaluate(INBOUND_FRAMES);
     check(stillHears.audio > 0, "audio keeps flowing while the camera is off");
 
-    await host.page
-      .getByRole("button", { name: /turn camera on/i })
-      .first()
-      .click();
+    await tap(host.page, "ctrl-camera", "host's camera button");
     const cameraBack = await until(
       "video to come back",
       async () => {
@@ -979,12 +1273,12 @@ async function main() {
     // on a "You've left" screen whose Rejoin did nothing until a reload.
     console.log("\nviewer leaves and rejoins");
     check(
-      await press(viewer.page, /^leave$/i, "viewer's Leave button"),
+      await tap(viewer.page, "ctrl-leave", "viewer's Leave button"),
       "viewer pressed Leave",
     );
     const leftScreen = await until(
       "viewer's left screen",
-      async () => hasText(viewer.page, /you.ve left/i),
+      async () => (await count(viewer.page, "end-left")) > 0 && (await hasText(viewer.page, /you.ve left/i)),
       15_000,
     );
     check(!!leftScreen, "viewer sees \"You've left\"");
@@ -997,15 +1291,16 @@ async function main() {
 
     // The room kept running for everyone else: the host's count drops to the
     // one student still watching rather than holding a ghost.
-    const countsOne = await until("host count to drop to 1", async () => {
-      const body = (await host.page.locator("body").innerText()) || "";
-      return /(^|\D)1\s+watching/i.test(body);
-    }, 30_000);
+    const countsOne = await until(
+      "host count to drop to 1",
+      async () => (await audience(host.page)) === 1,
+      30_000,
+    );
     check(!!countsOne, "host's headcount drops when a viewer leaves");
 
     const beforeRejoin = await pcCount(viewer.page);
     check(
-      await press(viewer.page, /^rejoin$/i, "viewer's Rejoin button"),
+      await tap(viewer.page, "end-rejoin", "viewer's Rejoin button"),
       "viewer pressed Rejoin",
     );
     check(
@@ -1019,18 +1314,18 @@ async function main() {
 
     // --- End for everyone ----------------------------------------------------
     //
-    // One control, two steps, and it must reach every viewer: not by the
-    // viewer's next 8s poll alone but by the stage hint, and in every case
-    // well inside ~15s. After it, the room is shut: no media, no rejoin, no
-    // fresh join.
+    // One control (the Leave menu), two steps, and it must reach every viewer:
+    // not by a poll but by the stage hint, and in every case well inside
+    // ~15s. After it, the room is shut: no media, no rejoin, no fresh join.
     console.log("\nhost ends the webinar for everyone");
     const viewerPcsAtEnd = await pcCount(viewer.page);
     check(
-      await press(host.page, /^end for everyone$/i, "host's End for everyone"),
+      (await tap(host.page, "ctrl-leave", "host's Leave menu")) &&
+        (await tap(host.page, "leave-end", "host's End for everyone")),
       "host armed End for everyone",
     );
     check(
-      await press(host.page, /^confirm end$/i, "End confirm step", 5_000),
+      await tap(host.page, "leave-end-confirm", "End confirm step", 5_000),
       "host confirmed the end",
     );
     const endPressedAt = Date.now();
@@ -1076,7 +1371,7 @@ async function main() {
       "nothing reconnects the viewer on its own after End",
     );
     check(
-      (await viewer.page.getByRole("button", { name: /^rejoin$/i }).count()) === 0,
+      (await count(viewer.page, "end-rejoin")) === 0,
       "the viewer's ended screen offers no Rejoin while the webinar is ended",
     );
 
@@ -1090,17 +1385,18 @@ async function main() {
     );
     check(!!lateRefused, "a fresh viewer join after End is shown the ended page");
     check(
-      (await late.page.getByRole("button", { name: /^(join|start)$/i }).count()) === 0,
+      (await count(late.page, "green-room-join")) === 0,
       "and there is no Join button to press",
     );
+    await late.ctx.close().catch(() => {});
 
     // --- Reopen ------------------------------------------------------------
     //
     // Staff only, on the ended screen. Reopen alone puts nobody on air: the
-    // host goes back through the green room and presses Start.
+    // host goes back through the green room and presses Start webinar.
     console.log("\nhost reopens");
     check(
-      await press(host.page, /^reopen$/i, "host's Reopen button"),
+      await tap(host.page, "end-reopen", "host's Reopen button"),
       "host pressed Reopen",
     );
     const cleared = await until(
@@ -1113,23 +1409,18 @@ async function main() {
       await enterRoom(host.page, "host after reopen"),
       "host is back in the green room and starts again",
     );
-    // The in-room "Hosting" chip exactly — the green room's "You're hosting —
-    // your camera…" copy must not pass for being on air.
+    // The in-room "Hosting" chip exactly — the green room's copy must not
+    // pass for being on air.
     const hostingAgain = await until("host to be hosting again", async () =>
       hasText(host.page, /^\s*hosting\s*$/i),
     );
     check(!!hostingAgain, "host is broadcasting again");
 
     // The ended viewer is not reconnected behind their back; their ended
-    // screen polls every 30s and offers Rejoin once the webinar is open.
+    // screen polls (15 s) and offers Rejoin once the webinar is open.
     const beforeReopenRejoin = await pcCount(viewer.page);
     check(
-      await press(
-        viewer.page,
-        /^rejoin$/i,
-        "ended viewer to be offered Rejoin",
-        45_000,
-      ),
+      await tap(viewer.page, "end-rejoin", "ended viewer to be offered Rejoin", 45_000),
       "the ended viewer is offered Rejoin after Reopen, and pressed it",
     );
     check(
@@ -1156,6 +1447,8 @@ async function main() {
     // and a mentor used to be bounced out of the room they were hosting by
     // the student-dashboard role gate.
     console.log("\n1:1 call (mentor host)");
+    // The webinar is done; free its browsers before the call's two.
+    for (const c of contexts.splice(0)) await c.close().catch(() => {});
     const inviteId = await createAcceptedCall(mentorUserId, viewerUserId);
     const callPath = `/dashboard/calls/${inviteId}/live`;
 
@@ -1241,18 +1534,34 @@ async function main() {
       "BOTH sides send media (a 1:1 is two broadcasters, not a broadcast)",
     );
 
+    // Two people: the other person is the main stage, yourself a small PiP.
+    const twoUp = await until(
+      "the student's stage to show the mentor, self in the corner",
+      async () =>
+        (await mainTile(callee.page))?.peer === mentorUserId && (await count(callee.page, "stage-pip")) > 0,
+      20_000,
+    );
+    check(!!twoUp, "a 1:1 shows the other person on the main stage and yourself as a PiP");
+
     // The mentor's browser records (the call's team starts it on joining),
-    // and the room says so.
+    // and the room says so — to everyone, the student included.
     const recording = await until("the mentor's Recording indicator", async () =>
-      hasText(caller.page, /^\s*recording\s*$/i),
+      (await count(caller.page, "badge-rec")) > 0 && (await hasText(caller.page, /^\s*recording\s*$/i)),
     );
     check(!!recording, "the mentor's room shows it is recording");
+    check(
+      !!(await until("the student's REC badge", async () => (await count(callee.page, "badge-rec")) > 0, 30_000)),
+      "the student sees the REC badge too",
+    );
 
-    // End call: one press, offered once both people have been in the room and
-    // the start has come (the call started two minutes ago). Final for both.
+    // End call: in the Leave menu, offered once both people have been in the
+    // room and the start has come (the call started two minutes ago), then
+    // confirmed. Final for both.
     console.log("\nthe host ends the call");
     check(
-      await press(caller.page, /^end call$/i, "the mentor's End call", 30_000),
+      (await tap(caller.page, "ctrl-leave", "the mentor's Leave menu", 30_000)) &&
+        (await tap(caller.page, "leave-end", "the mentor's End call")) &&
+        (await tap(caller.page, "leave-end-confirm", "End call confirm", 5_000)),
       "the mentor pressed End call",
     );
     const callEnded = /this call has ended/i;
@@ -1300,6 +1609,17 @@ async function main() {
       "the mentor's browser recorded the call as ONE take and finished it after End call",
     );
     if (takes) info(`take: ${takes[0].part_count} part(s), ${Math.round(takes[0].duration_ms / 1000)}s`);
+    if (takes?.length) {
+      // Played back through the media route: ranged, as a <video> asks.
+      const res = await caller.page.request.get(`${BASE}/api/recordings/${takes[0].id}/media`, {
+        headers: { Range: "bytes=0-1023" },
+      });
+      check(
+        res.status() === 206 && /^video\/webm/.test(res.headers()["content-type"] ?? ""),
+        "the take's media route answers 206 with video/webm",
+      );
+      if (res.status() !== 206) info(`media route said ${res.status()}`);
+    }
 
     await callee.page.reload({ waitUntil: "domcontentloaded" });
     const calleeRefused = await until(

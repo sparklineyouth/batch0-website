@@ -235,9 +235,7 @@ async function openAs(browser: Browser, email: string, path: string, label: stri
 
 /** Through the green room and into the room, until the panel is on screen. */
 async function enterRoom(page: Page, label: string): Promise<boolean> {
-  const button = page.getByRole("button", {
-    name: /^(start|start webinar|join|join as co-host)$/i,
-  });
+  const button = page.getByTestId("green-room-join");
   const ready = await until(
     `${label} green room`,
     async () => (await button.count()) > 0 && (await button.first().isEnabled()),

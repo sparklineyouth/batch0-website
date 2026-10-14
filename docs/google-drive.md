@@ -47,7 +47,7 @@ files should be shared as "Anyone with the link" (the panel says so).
 - `next.config.js` sends `X-Frame-Options: SAMEORIGIN` and
   `Content-Security-Policy: frame-ancestors 'self'` (who may frame us; it does
   not limit what we embed). Don't add a restrictive `frame-src` without
-  allowing drive/docs.google.com, Daily, YouTube and Loom.
+  allowing drive/docs.google.com, YouTube and Loom.
 
 ## Older uploads
 

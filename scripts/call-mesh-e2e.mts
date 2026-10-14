@@ -250,7 +250,7 @@ async function openAs(
 
 /** Press the green room's join button once it is ready. */
 async function enterRoom(page: Page, label: string): Promise<boolean> {
-  const button = page.getByRole("button", { name: /^(start|join|join call)$/i });
+  const button = page.getByTestId("green-room-join");
   const ok = await until(
     `${label} green room`,
     async () => (await button.count()) > 0 && (await button.first().isEnabled()),

@@ -207,9 +207,9 @@ before they join, and see the REC badge.
 
 ### The End button (and Leave)
 
-There is **one** End for everyone, in the room's control bar, with a two-step
-confirm. Staff hosts always see it; a guest speaker sees
-it only in the last-host Leave prompt, and only when no staff host is present.
+There is **one** End for everyone, in the room's Leave menu, confirmed in
+place. Staff hosts always have it; a guest speaker only when no staff host is
+present (the menu also says when you are the only host on air).
 Admins also have End and Reopen on `/admin/events` and
 `/admin/events/[id]`, so a webinar a host walked away from can be closed
 without going on air.
@@ -219,9 +219,9 @@ going live early (`webinarHasBegun`, enforced by `endLive` through
 the room's `canEnd`). Hosts can open the room an hour early to set up, and an
 End there used to end the real webinar before it started: the audience got
 "This webinar has ended" at the start, and a guest speaker who pressed it could
-not undo it. Before the start the control bar has no End, and the last-host
-prompt offers only Leave, which keeps the room ready. To take an event off the
-calendar, edit or delete it.
+not undo it. Before the start there is no End, and the Leave menu offers only
+Leave, which keeps the room ready. To take an event off the calendar, edit or
+delete it.
 
 The order, and why:
 
@@ -250,11 +250,10 @@ The order, and why:
 
 End is reversible, but only deliberately: **staff** press Reopen (on the ended
 screen or on the admin pages). Pressing Start again does **not** reopen an
-ended webinar, and a host who arrives after End sees when it ended and a
-"Reopen and go live" choice instead of their camera switching on. Every ended
-screen — a host's, a guest speaker's, the ended green room, a viewer's —
-slowly polls for a Reopen pressed elsewhere and offers the way back (Rejoin,
-or the ordinary Start) when it comes.
+ended webinar: a host who arrives after End lands on the ended screen (when it
+ended; Reopen for staff) instead of their camera switching on. Every ended
+screen — a host's, a guest speaker's, a viewer's — slowly polls for a Reopen
+pressed elsewhere and offers Rejoin when it comes.
 
 After End, viewers see "This webinar has ended" with no media and no Rejoin;
 chat, questions and polls close for the audience (moderators can still read
@@ -361,7 +360,7 @@ The email and the bell link to `/dashboard/events`. They used to link to
 | Admin actions | `app/admin/events/webinar-actions.ts` |
 | Admin pages | `app/admin/events/*` (list, form, Start now, End / Reopen, record page) |
 | Follow-up job | `app/api/cron/webinar-followups/route.ts` |
-| Room | `components/live/broadcast-room.tsx`, `premiere-player.tsx`, `speaker-strip.tsx` |
+| Room | `components/live/room/controller.tsx` (wiring), `components/live/room/**` (UI kit) |
 | Side panel | `components/live/room/panel/*`, `lib/webinar-panel.ts` (+ test), `app/api/live/panel/route.ts`, `lib/webinar-panel-writes.ts`, `lib/webinar-gate.ts` |
 | Recording | see [recording.md](recording.md) |
 | Admin form rules | `lib/event-form.ts`, `lib/event-form.test.ts`, `supabase/migrations/0098_events.sql` |
@@ -370,9 +369,8 @@ The email and the bell link to `/dashboard/events`. They used to link to
 
 ## Known gaps
 
-- **No PDF/PPTX rendering.** A deck is a download, not an in-page viewer — there
-  is no renderer in the repo and adding one would be a new dependency.
+- **Slides are PDF only.** The room presents a PDF (the event's deck or one
+  from disk) with pdf.js; PowerPoint has to be exported to PDF first.
 - **Existing webinars are not backfilled** to `type = 'webinar'`. They are still
   `type = 'workshop'` with `live_mode = 'hosted'`; `/admin/events` lists every
-  event regardless. A backfill would break `scripts/prepare-course-schedule.mts`,
-  which hard-asserts the counts of each type in the seeded schedule.
+  event regardless.

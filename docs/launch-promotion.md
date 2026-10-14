@@ -64,7 +64,7 @@ The live event was checked through the database and Daily read APIs on September
 
 - [ ] Rishabh and Shresht agree who presents and who watches the private Q&A/support inbox. Both currently have an admin role with `events.manage`; each must sign in to their own staff account. A staff title or display name alone does not grant host controls.
 - [ ] By 7:30 p.m., open the lesson/worksheet and test the intended microphone, camera, headphones, screen share, network, and any local recorder. The actual event rejects **hosts and students alike** before 7:45; do device checks before that.
-- [ ] At 7:45 p.m., open the event through Batch0, confirm the prejoin screen says host, choose camera/mic settings, and click **Start**. Verify the live header says **Hosting**. The cohost should independently verify sound and the shared lesson.
+- [ ] At 7:45 p.m., open the event through Batch0, choose camera/mic settings in the green room, and click **Start webinar**. Verify the top bar says **Hosting**. The cohost (who sees **Join as co-host**) should independently verify sound and the shared lesson.
 - [ ] One enrolled student tests **Join**, sound, and the separate Q&A panel. Do not send raw Daily room URLs or host tokens; students need the Batch0 page to receive their own authorized token.
 - [ ] At 8:00 p.m., tell students: “Your camera and mic are off. Type your problem, answers, and questions in the Q&A beside the video; only staff can see them.” Read selected responses aloud without exposing private details or opening the staff queue on a shared screen.
 
