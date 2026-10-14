@@ -591,7 +591,7 @@ export function LogRequestForm({
           </span>
           <span className="mt-0.5 block text-xs text-ink-faint">
             {sendConfirmation
-              ? "The reference, the recorded arrival time and a private link to follow the request — the same receipt as one filed on the site."
+              ? "Sends the reference and a private link to follow it."
               : "No email now. Your first reply sends them the thread link."}
           </span>
         </span>

@@ -134,7 +134,7 @@ export function InterviewRequestCard({
     <div className={shell}>
       <Eyebrow icon={MessageCircle}>Request a 1:1</Eyebrow>
       <p className="mt-2 text-sm text-ink-soft">
-        A private video call with the batch0 team. Suggest a time; we&rsquo;ll book it.
+        Suggest a time; we&rsquo;ll book it.
       </p>
       {balance}
 

@@ -101,7 +101,7 @@ export function SettingsForm({
             ))}
           </Select>
           <Hint>
-            Blank = the next upcoming cohort.
+            New applications join this cohort. Blank = next upcoming.
           </Hint>
         </Field>
         <Field label="Closed-message text">
@@ -113,7 +113,7 @@ export function SettingsForm({
             }
             placeholder="Applications are currently closed."
           />
-          <Hint>Shown on /apply when applications_open is off.</Hint>
+          <Hint>Shown on /apply while applications are closed.</Hint>
         </Field>
       </Section>
 
@@ -124,7 +124,7 @@ export function SettingsForm({
             value={values.demo_day_date ?? ""}
             onChange={(e) => set("demo_day_date", e.target.value || null)}
           />
-          <Hint>Surfaced to enrolled students in the dashboard.</Hint>
+          <Hint>Used on Demo Day tickets until a Demo Day event exists.</Hint>
         </Field>
       </Section>
 

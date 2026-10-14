@@ -83,9 +83,6 @@ export default async function SettingsPage(
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-      <p className="mt-1 text-sm text-ink-soft">
-        Update your profile, preferences, and account.
-      </p>
 
       {status && (
         <div
@@ -141,7 +138,7 @@ export default async function SettingsPage(
           Small type: these are help, not settings. */}
       <div className="mt-6 space-y-1.5 text-xs text-ink-faint">
         <p>
-          Email on your account wrong, or two accounts to merge?{" "}
+          Two accounts to merge?{" "}
           <Link
             href="/dashboard/support/new?topic=account&source=settings"
             prefetch={false}

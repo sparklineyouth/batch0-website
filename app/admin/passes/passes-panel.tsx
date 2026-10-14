@@ -481,11 +481,10 @@ export function PassesPanel({
         <div>
           <h2 className="text-sm font-semibold text-ink">Send virtual passes</h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Starting at serial{" "}
-            <span className="font-mono text-ink">#{nextSerial}</span> as batch{" "}
-            <span className="font-mono text-ink">{nextVirtualBatch}</span>. No
-            printer — the code is emailed and redeems itself at /pass, with
-            nothing to type.
+            From serial{" "}
+            <span className="font-mono text-ink">#{nextSerial}</span>, batch{" "}
+            <span className="font-mono text-ink">{nextVirtualBatch}</span>.
+            Emailed; redeems at /pass.
           </p>
         </div>
 
@@ -798,9 +797,6 @@ export function PassesPanel({
                 </button>
               ))}
             </div>
-            <p className="mt-1 text-xs text-ink-faint">
-              More than one is for handing someone a small stack to pass on.
-            </p>
           </div>
         </div>
 

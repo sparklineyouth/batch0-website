@@ -402,7 +402,7 @@ export function ReviewActions({
               Accept automatically, later
             </p>
             <p className="mt-0.5 text-xs text-ink-soft">
-              Sends the notes above then. A manual decision cancels it.
+              Accepts at that time with the notes above. Deciding by hand cancels it.
             </p>
           </div>
           <div>

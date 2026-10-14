@@ -257,7 +257,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
                 </button>
               ))}
             </div>
-            <Hint>Just the label on the page. All three work the same: register, submit, win.</Hint>
+            <Hint>Label only; all three work the same.</Hint>
           </Field>
           <Field label="Title">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Build an AI tutor in a weekend" />
@@ -403,8 +403,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
         >
           {questions.filter(isInputQuestion).length === 0 && (
             <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[13px] text-ink">
-              Entrants can&apos;t submit until there&apos;s at least one question. For a giveaway,
-              quick-add <strong>Agree to rules</strong> — that makes entering a single tick and a click.
+              Needs at least one question before anyone can enter.
             </p>
           )}
           <ChallengeQuestionBuilder value={questions} onChange={setQuestions} />

@@ -127,7 +127,7 @@ export default async function CoursePage() {
         {(modules?.length ?? 0) === 0 && (
           <Card>
             <p className="text-ink-soft">
-              The instructors haven't published any modules yet. Check back soon.
+              No modules yet.
             </p>
           </Card>
         )}

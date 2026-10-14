@@ -65,10 +65,7 @@ export default async function AdminScholarshipsPage() {
       {scholarships.length === 0 ? (
         <Card className="mt-6">
           <p className="text-sm text-ink-soft">
-            No scholarships yet.{" "}
-            {canManage
-              ? "Create one and it appears on every accepted student's dashboard."
-              : "Nobody has created one yet."}
+            No scholarships yet.
           </p>
         </Card>
       ) : (

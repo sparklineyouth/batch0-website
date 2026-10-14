@@ -510,16 +510,15 @@ export function BlastForm({
                 placeholder={"Hi {{name}},\n\nYour message…"}
               />
               <p className="mt-1 text-xs text-ink-faint">
-                Plain text. Blank line = new paragraph.{" "}
+                Plain text.{" "}
                 <code className="rounded bg-wash px-1 font-mono">
                   {"{{name}}"}
                 </code>{" "}
-                greets the reader — the student&apos;s first name, or
-                &ldquo;there&rdquo; for a parent.{" "}
+                = reader&apos;s first name (&ldquo;there&rdquo; for parents);{" "}
                 <code className="rounded bg-wash px-1 font-mono">
                   {"{{student}}"}
                 </code>{" "}
-                is always the student, so one message reads correctly to both.
+                = the student.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

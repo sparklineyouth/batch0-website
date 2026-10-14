@@ -10,11 +10,9 @@ import { fmtDateOnly } from "@/lib/pre-cohort";
 import { isDiscordEnabled } from "@/lib/discord";
 import {
   ArrowRight,
-  CalendarDays,
   CheckCircle,
   FolderArchive,
   MessagesSquare,
-  PlayCircle,
   Receipt,
   Rocket,
   Video,
@@ -107,21 +105,7 @@ export default async function EnrolledPage(
           {started ? "Open now" : "Open to you today"}
         </h2>
         <div className="mt-4 border-t border-line">
-          {started ? (
-            <NextStep
-              href="/dashboard/course"
-              icon={PlayCircle}
-              title="The course"
-              body="Start with week one."
-            />
-          ) : (
-            <NextStep
-              href="/dashboard/kickoff"
-              icon={CalendarDays}
-              title="Your kickoff page"
-              body={`Day one${startLabel ? `, ${startLabel}` : ""}.`}
-            />
-          )}
+          {/* The course (or, before day one, kickoff) is the button below. */}
           {discordEnabled && (
             <NextStep
               href="/dashboard/community"
@@ -153,7 +137,7 @@ export default async function EnrolledPage(
 
       {!started && (
         <p className="mt-8 text-sm text-ink-soft">
-          Everything else opens at kickoff{startLabel ? `, ${startLabel}` : ""}.
+          Everything else opens at kickoff.
         </p>
       )}
 

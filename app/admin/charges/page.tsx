@@ -52,7 +52,7 @@ export default async function AdminChargesPage(
         <div>
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Fees &amp; fines</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Fees prompt. Fines block until paid or waived.
+            Fees are reminders. Fines lock access until paid or waived.
           </p>
         </div>
         <a

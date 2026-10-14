@@ -441,12 +441,11 @@ export function TemplateEditor({
                   />
                 </div>
                 <p className="text-xs text-ink-faint sm:col-span-3">
-                  Leave blank to use the addresses set at{" "}
+                  Blank ={" "}
                   <Link href="/admin/email/settings" className="underline">
                     email settings
                   </Link>
-                  . A From address on a domain the transport hasn't verified will
-                  bounce or land in spam.
+                  . Use a verified sending domain.
                 </p>
               </div>
             )}

@@ -114,14 +114,6 @@ export default async function AdminFlowsPage() {
           </table>
         )}
       </Card>
-
-      <p className="mt-6 text-xs text-ink-faint">
-        Static files and links live in{" "}
-        <Link href="/admin/resources" className="underline">
-          Resources
-        </Link>
-        . Flows are the interactive layer on top.
-      </p>
     </div>
   );
 }

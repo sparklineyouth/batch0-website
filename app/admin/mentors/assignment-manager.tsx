@@ -88,8 +88,7 @@ export function AssignmentManager({
     <div>
       {mentors.length === 0 ? (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-200">
-          You don't have any users with the mentor role yet. Promote someone
-          to mentor in the People page first.
+          No mentors yet. Assign the mentor role in People.
         </p>
       ) : (
         <div className="grid gap-3 md:grid-cols-4">

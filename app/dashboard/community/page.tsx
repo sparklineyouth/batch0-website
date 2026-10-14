@@ -37,7 +37,7 @@ export default async function CommunityPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Community</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        The batch0 Discord. Link once; your role syncs.
+        The batch0 Discord.
       </p>
 
       <Card className="mt-8 overflow-hidden border-[#5865F2]/20">
