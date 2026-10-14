@@ -831,11 +831,13 @@ function RoomSession({
     wasRehearsing.current = false;
     setFlash({
       id: "went-live",
-      message: autoRecord
-        ? "You're live. Students can join now. Recording starts automatically."
-        : "You're live. Students can join now.",
+      // Before migration 0095 nothing records, so nothing says it will.
+      message:
+        autoRecord && recordingReady
+          ? "You're live. Students can join now. Recording starts automatically."
+          : "You're live. Students can join now.",
     });
-  }, [rehearsing, phase, room.liveStartedAt, autoRecord]);
+  }, [rehearsing, phase, room.liveStartedAt, autoRecord, recordingReady]);
 
   // ── Pin for everyone (webinar staff) ──────────────────────────────────────
   // The outcome goes back to the room, which says it where the pin was made
