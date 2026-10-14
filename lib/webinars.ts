@@ -769,8 +769,13 @@ export function canEndForEveryone({
 }
 
 // ---------------------------------------------------------------------------
-// Premieres
+// Premieres (retired)
 // ---------------------------------------------------------------------------
+//
+// A legacy premiere row now runs as an ordinary hosted room. These remain only
+// for the premiere UI still compiled into components/live/broadcast-room.tsx
+// and premiere-player.tsx, which the live page never reaches (it passes
+// `premiere={null}`); they go with that room.
 
 /**
  * Where a premiere is right now.
@@ -801,115 +806,6 @@ export type PremiereState = {
 };
 
 /**
- * Resolve a premiere's phase from the clock.
- *
- * `now` is injected rather than read, for the same reason `joinState` injects
- * it: this has to be a pure function so the tests can pin it, and so a server
- * render can pass the request time and have every element on the page agree
- * with itself.
- *
- * The precedence is the interesting part, and there is one rule above all the
- * others: **`liveStartedAt` wins.** A host who presses "go live" thirty minutes
- * into a forty-minute recording has made a decision about the room, and the
- * schedule must yield to it immediately — the alternative is an audience
- * watching a recording of a person who is, at that moment, live on the other
- * side of the same page. Everything else is arithmetic on `startsAt`.
- *
- * With one exception above even that: **`liveEndedAt` ends it.** A host who
- * pressed End for everyone has ended the premiere too — a recording that kept
- * playing to viewers under an "Ended" badge was the bug that added this.
- *
- * And one rule about what a premiere IS: with `premiereSeconds` null there is
- * nothing to play, so there is nothing to wait for either. A hosted webinar
- * (which is what passes null) is 'live' from before its start — reading it as
- * a premiere in 'waiting' hid the host's camera controls and End button for
- * the whole early set-up window and then switched the camera on by itself at
- * the scheduled start.
- */
-export function premiereState({
-  startsAt,
-  premiereSeconds,
-  qaOpensAt,
-  liveStartedAt,
-  liveEndedAt,
-  endsAt,
-  now = new Date(),
-}: {
-  startsAt: string | Date;
-  /**
-   * Length of the recording. Null means there is nothing to play — a hosted
-   * webinar, or a premiere whose file has not been uploaded — and the room is
-   * simply live.
-   */
-  premiereSeconds: number | null;
-  /** Explicit switch-over time, when a host wanted one. */
-  qaOpensAt?: string | Date | null;
-  /** Set once a host has actually gone live. */
-  liveStartedAt?: string | Date | null;
-  /** Set once a host has pressed End for everyone. Beats everything. */
-  liveEndedAt?: string | Date | null;
-  endsAt?: string | Date | null;
-  now?: Date;
-}): PremiereState {
-  const t = now.getTime();
-  const start = new Date(startsAt).getTime();
-
-  // Ended for everyone. Terminal for the premiere as for the live room.
-  if (liveEndedAt) {
-    return { phase: "ended", offsetSeconds: 0, secondsUntilNext: null };
-  }
-
-  // A host is on camera. Nothing about the schedule matters any more.
-  if (liveStartedAt) {
-    const wentLive = new Date(liveStartedAt).getTime();
-    if (t >= wentLive) {
-      return { phase: "live", offsetSeconds: 0, secondsUntilNext: null };
-    }
-  }
-
-  // Only a premiere with something to play waits for its start. Everything
-  // else — and in particular every hosted webinar — is live the moment anyone
-  // is let in.
-  if (t < start && premiereSeconds) {
-    return {
-      phase: "waiting",
-      offsetSeconds: 0,
-      secondsUntilNext: Math.ceil((start - t) / 1000),
-    };
-  }
-
-  // When the recording hands over. An explicit `qaOpensAt` is a host saying
-  // "Q&A at the top of the hour" for a talk that runs forty minutes; without
-  // one it is simply the end of the recording.
-  const switchAt = qaOpensAt
-    ? new Date(qaOpensAt).getTime()
-    : premiereSeconds
-      ? start + premiereSeconds * 1000
-      : start;
-
-  if (premiereSeconds && t < switchAt) {
-    // Clamped to the recording's length, which matters when `qaOpensAt` is
-    // later than the video is long: the last minutes then hold on the final
-    // frame rather than asking the player to seek past the end, where browsers
-    // disagree about what happens (some clamp, some fire `ended`, one seeks to
-    // zero and starts the talk again in front of everyone).
-    const offset = Math.min((t - start) / 1000, premiereSeconds);
-    return {
-      phase: "playing",
-      offsetSeconds: Math.max(0, offset),
-      secondsUntilNext: Math.ceil((switchAt - t) / 1000),
-    };
-  }
-
-  const end = endsAt ? new Date(endsAt).getTime() : null;
-  if (end !== null && t > end + 30 * 60_000) {
-    return { phase: "ended", offsetSeconds: 0, secondsUntilNext: null };
-  }
-
-  return { phase: "live", offsetSeconds: 0, secondsUntilNext: null };
-}
-
-/**
  * How far the player may drift from where the clock says it should be before
  * it is corrected, in seconds.
  *
@@ -922,17 +818,9 @@ export function premiereState({
 export const PREMIERE_DRIFT_TOLERANCE_SECONDS = 2;
 
 /**
- * Does this event play a recording rather than a live camera?
- *
- * A one-line helper with a real job: `live_mode` has three values now, and
- * every `=== "hosted"` left over from when it had two is a place a premiere
- * silently behaves like an external link. Grep for this instead.
+ * Does this event have a batch0-hosted room? A legacy premiere row counts: it
+ * runs as a hosted room.
  */
-export function isPremiere(liveMode: string | null | undefined): boolean {
-  return liveMode === "premiere";
-}
-
-/** Does this event have a batch0-hosted room of any kind? */
 export function isHostedOnBatch0(liveMode: string | null | undefined): boolean {
   return liveMode === "hosted" || liveMode === "premiere";
 }

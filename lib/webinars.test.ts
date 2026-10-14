@@ -8,7 +8,6 @@ import {
   formatBytes,
   isDeckFile,
   isHostedOnBatch0,
-  isPremiere,
   isReaction,
   messagesNeedApproval,
   normalizeAudienceMode,
@@ -17,7 +16,6 @@ import {
   pollPercentages,
   pollVisibleToAudience,
   sortQuestions,
-  premiereState,
   recordingSegmentSlot,
   CALL_RECORDER_LISTEN_MS,
   electCallRecorder,
@@ -227,191 +225,6 @@ test("a viewer never ends anything", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Premieres — the clock
-// ---------------------------------------------------------------------------
-//
-// The offset these produce is what every viewer's player seeks to, so an error
-// here is not a wrong number on a screen: it is the whole audience watching a
-// different moment from each other, or a Q&A that never opens.
-
-const START = new Date("2026-09-21T18:00:00Z");
-const SECONDS = 40 * 60; // a 40-minute recording
-const MINUTE = 60_000;
-
-/** `minutes` relative to the premiere's start. */
-function at(minutes: number): Date {
-  return new Date(START.getTime() + minutes * MINUTE);
-}
-
-test("before the start, a premiere is waiting and counts down", () => {
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    now: at(-5),
-  });
-  assert.equal(s.phase, "waiting");
-  assert.equal(s.secondsUntilNext, 300);
-});
-
-test("a viewer arriving twenty minutes late is seeked twenty minutes in", () => {
-  // This single assertion is the feature. Without it a late arrival watches
-  // from the top, which is the difference between a premiere and a video.
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    now: at(20),
-  });
-  assert.equal(s.phase, "playing");
-  assert.equal(s.offsetSeconds, 20 * 60);
-});
-
-test("when the recording runs out, the room goes live", () => {
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    now: at(41),
-  });
-  assert.equal(s.phase, "live");
-});
-
-test("a host going live early beats the schedule immediately", () => {
-  // The alternative is an audience watching a recording of somebody who is, at
-  // that moment, live on the other side of the same page.
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    liveStartedAt: at(12),
-    now: at(15),
-  });
-  assert.equal(s.phase, "live");
-  assert.equal(s.offsetSeconds, 0);
-});
-
-test("a live_started_at in the future does not yet end the premiere", () => {
-  // Guards against a clock skew or a scheduled stamp switching the room over
-  // before the host is actually there.
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    liveStartedAt: at(30),
-    now: at(10),
-  });
-  assert.equal(s.phase, "playing");
-  assert.equal(s.offsetSeconds, 10 * 60);
-});
-
-test("an explicit qaOpensAt moves the handover without moving the video", () => {
-  // A 40-minute talk with Q&A at the top of the hour: the recording still ends
-  // at 40 minutes, and the last 20 hold on the final frame rather than seeking
-  // past the end, where browsers disagree about what happens.
-  const held = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    qaOpensAt: at(60),
-    now: at(50),
-  });
-  assert.equal(held.phase, "playing");
-  assert.equal(
-    held.offsetSeconds,
-    SECONDS,
-    "Clamped to the recording's length — never seek past the end",
-  );
-
-  const after = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    qaOpensAt: at(60),
-    now: at(61),
-  });
-  assert.equal(after.phase, "live");
-});
-
-test("an event with no premiere video is live from its start time", () => {
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: null,
-    now: at(1),
-  });
-  assert.equal(s.phase, "live");
-});
-
-test("a hosted webinar opened early is live, not a premiere 'waiting'", () => {
-  // Regression: an admin setting up ten minutes early had their camera
-  // controls and End button hidden, and the camera switched itself on at the
-  // scheduled start. With nothing to play there is nothing to wait for.
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: null,
-    now: at(-10),
-  });
-  assert.equal(s.phase, "live");
-  assert.equal(s.secondsUntilNext, null);
-});
-
-test("End for everyone ends a premiere mid-recording", () => {
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    liveEndedAt: at(15),
-    now: at(20),
-  });
-  assert.equal(s.phase, "ended");
-});
-
-test("End beats a host having gone live, and a hosted webinar, too", () => {
-  assert.equal(
-    premiereState({
-      startsAt: START,
-      premiereSeconds: SECONDS,
-      liveStartedAt: at(10),
-      liveEndedAt: at(30),
-      now: at(31),
-    }).phase,
-    "ended",
-  );
-  assert.equal(
-    premiereState({
-      startsAt: START,
-      premiereSeconds: null,
-      liveEndedAt: at(30),
-      now: at(31),
-    }).phase,
-    "ended",
-  );
-});
-
-test("liveStartedAt still wins over the schedule when nobody has ended it", () => {
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    liveStartedAt: at(-5),
-    liveEndedAt: null,
-    now: at(-2),
-  });
-  assert.equal(s.phase, "live");
-});
-
-test("long past the end, a premiere is over", () => {
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    endsAt: at(60),
-    now: at(95),
-  });
-  assert.equal(s.phase, "ended");
-});
-
-test("the offset never goes negative at the exact start instant", () => {
-  const s = premiereState({
-    startsAt: START,
-    premiereSeconds: SECONDS,
-    now: START,
-  });
-  assert.equal(s.phase, "playing");
-  assert.equal(s.offsetSeconds, 0);
-});
-
-// ---------------------------------------------------------------------------
 // live_mode helpers
 // ---------------------------------------------------------------------------
 
@@ -421,11 +234,6 @@ test("both batch0-hosted modes are recognised as ours", () => {
   assert.equal(isHostedOnBatch0("external"), false);
   assert.equal(isHostedOnBatch0(null), false);
   assert.equal(isHostedOnBatch0(undefined), false);
-});
-
-test("only a premiere is a premiere", () => {
-  assert.equal(isPremiere("premiere"), true);
-  assert.equal(isPremiere("hosted"), false);
 });
 
 // ---------------------------------------------------------------------------

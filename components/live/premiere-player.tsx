@@ -6,6 +6,9 @@ import { Loader2, PhoneOff, Play, RotateCcw } from "lucide-react";
 /**
  * A premiere, as the audience sees it: a recording played on the clock.
  *
+ * Retired and unreachable: premiere rows run as hosted rooms and the live page
+ * passes `premiere={null}`. This goes with components/live/broadcast-room.tsx.
+ *
  * ---------------------------------------------------------------------------
  * Why the clock, and not the player, decides where everyone is
  * ---------------------------------------------------------------------------
@@ -25,7 +28,7 @@ import { Loader2, PhoneOff, Play, RotateCcw } from "lucide-react";
  * page mounts a new player, asks the clock where the talk is, and drops the
  * viewer back exactly where the room is, with no memory of where they were.
  *
- * The offset arrives as a prop from the server (`premiereState()` in
+ * The offset arrives as a prop from the server (`PremiereState` in
  * lib/webinars.ts) and is never recomputed here from `Date.now()`. A laptop
  * whose clock is four minutes fast is not rare — it is the normal state of a
  * machine that has been asleep in a bag — and trusting it would sit that

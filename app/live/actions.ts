@@ -224,11 +224,8 @@ async function resolveRoom(kind: RoomKind, id: string): Promise<Resolution> {
         ? { ok: false, reason: "error", status: "error" }
         : { ok: false, reason: "no-access", status: "revoked" };
     }
-    // Both batch0-hosted modes. A premiere plays a recording and then hands
-    // over to this same room for the live Q&A, so it needs credentials for the
-    // whole of its run — not only after the handover, because the chat and the
-    // question queue are live from the first minute and that is most of what
-    // makes a premiere feel live.
+    // Both batch0-hosted modes: a legacy premiere row runs as an ordinary
+    // hosted room (premiere is retired).
     if (!isHostedOnBatch0(access.event.liveMode)) {
       return { ok: false, reason: "not-hosted", status: "revoked" };
     }
