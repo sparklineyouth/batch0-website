@@ -9,8 +9,10 @@ import { FOCUS, Spinner } from "./ui";
  * The full-viewport call surface: top bar, main region (stage + side panel),
  * pinned control bar. Fixed above the dashboard chrome (z-60) without changing
  * the URL. The side panel is a 360px column on desktop and a bottom sheet on
- * phones that stops above the control bar; toasts sit in the main region, so
- * nothing but the bar's own popovers ever covers the bar.
+ * phones that stops above the control bar. Notices and toasts live inside the
+ * stage (see Stage's `notices`), or, while the phone sheet is open, in
+ * `sheetNotices` under the sheet's header, pushing the panel down instead of
+ * covering its composer. Nothing but the bar's own popovers covers the bar.
  */
 export function RoomShell({
   top,
@@ -19,7 +21,7 @@ export function RoomShell({
   panelOpen = false,
   onClosePanel,
   controls,
-  toasts,
+  sheetNotices,
 }: {
   top: ReactNode;
   children: ReactNode;
@@ -27,7 +29,8 @@ export function RoomShell({
   panelOpen?: boolean;
   onClosePanel?: () => void;
   controls?: ReactNode;
-  toasts?: ReactNode;
+  /** Phones, sheet open: shown in flow at the top of the sheet. */
+  sheetNotices?: ReactNode;
 }) {
   // No page scroll behind the room.
   useEffect(() => {
@@ -67,10 +70,14 @@ export function RoomShell({
                 <X className="h-4 w-4" />
               </button>
             </div>
+            {sheetNotices ? (
+              <div className="shrink-0 border-b border-[#26262b] px-2 py-2 lg:hidden" data-testid="sheet-notices">
+                {sheetNotices}
+              </div>
+            ) : null}
             <div className="min-h-0 flex-1">{panel}</div>
           </aside>
         ) : null}
-        {toasts}
       </div>
       {controls ? (
         <footer

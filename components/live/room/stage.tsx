@@ -33,7 +33,7 @@ export function Stage({
   selfThumb,
   empty,
   overlay,
-  pipNotice,
+  notices,
 }: {
   model: StageModel;
   view: (tile: StageTile) => TileView;
@@ -47,10 +47,15 @@ export function Stage({
   selfThumb: (tile: StageTile) => ReactNode | null;
   /** Shown when nobody is on stage. */
   empty: ReactNode;
-  /** Banners, reactions: drawn over the main area, never over the filmstrip. */
+  /** Veils and reactions: drawn over the main area, never over the filmstrip. */
   overlay?: ReactNode;
-  /** A chip over the main tile (e.g. "Waiting for Ana to join"). */
-  pipNotice?: ReactNode;
+  /**
+   * Banners, chips ("Reconnecting…", "Waiting for Ana to join") and toasts:
+   * stacked in one column at the top of the main area, so they never overlap
+   * each other, the filmstrip or the control bar. Each interactive child sets
+   * its own pointer-events.
+   */
+  notices?: ReactNode;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -160,10 +165,15 @@ export function Stage({
             {tileFor(model.pip, "pip", { className: "absolute inset-0" })}
           </div>
         ) : null}
-        {pipNotice ? (
-          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">{pipNotice}</div>
-        ) : null}
         {overlay}
+        {notices ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-2 z-[15] flex flex-col items-center gap-2 px-3"
+            data-testid="stage-notices"
+          >
+            {notices}
+          </div>
+        ) : null}
       </div>
 
       {hasFilm && (

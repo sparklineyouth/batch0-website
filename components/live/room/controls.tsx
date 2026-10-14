@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3,
   Circle,
@@ -20,7 +20,7 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
-import { formatElapsed } from "./logic";
+import { formatElapsed, recordControl } from "./logic";
 import { MenuItem, Popover, usePopover } from "./popover";
 import type { PresentationController } from "./use-presentation";
 import type {
@@ -34,10 +34,13 @@ import type {
 import { Badge, FOCUS, RoomButton } from "./ui";
 
 /**
- * The pinned control bar. Desktop: mic, camera, present, record, reactions,
- * settings, leave in the middle; panel toggles on the right. Phones: mic,
- * camera, present, reactions, panel, "more" (record, settings), leave.
- * Menus open upwards as popovers; nothing here ever reflows.
+ * The pinned control bar, centred. Desktop: mic, camera, present, record,
+ * reactions, settings, panel, leave. Phones: mic, camera, present, reactions,
+ * panel, "more" (record, settings), leave; below 360px the buttons shrink so
+ * all of them fit. Menus open upwards as popovers; nothing here ever reflows.
+ *
+ * One panel toggle on every size: the panel draws its own tab strip, so the
+ * bar never offers a tab the panel doesn't have.
  */
 
 const TAB_META: Record<PanelTab, { label: string; icon: ReactNode }> = {
@@ -51,10 +54,15 @@ function unreadFor(tab: PanelTab, u: PanelUnread): number {
   return tab === "people" ? 0 : u[tab];
 }
 
+/** Narrow phones (Android "display size", 320px CSS): smaller buttons. */
+const NARROW_ICON = "max-[359px]:h-9 max-[359px]:w-9";
+
 export type ControlBarProps = {
   kind: RoomKind;
+  selfId: string;
   media: LocalMediaView | null;
   presentation: PresentationController | null;
+  /** Only for people who may record (null otherwise). */
   recording: RoomRecordingView | null;
   reactions: ReactNode | null;
   panel: {
@@ -76,24 +84,23 @@ export type ControlBarProps = {
 };
 
 export function ControlBar(props: ControlBarProps) {
-  const { media, presentation, recording, reactions, panel, onSettings, leave, kind } = props;
-  const showRecord = !!recording && recording.canRecord && recording.state !== "unavailable";
+  const { media, presentation, recording, reactions, panel, onSettings, leave, kind, selfId } = props;
+  const showRecord = !!recording && recording.state !== "unavailable";
   const totalUnread = panel
     ? panel.tabs.reduce((n, t) => n + unreadFor(t, panel.unread), 0)
     : 0;
+  // The toggle is named after the panel's first tab (Chat; Q&A when chat is off).
+  const lead = panel ? (panel.tabs.includes("chat") ? "chat" : (panel.tabs[0] ?? "chat")) : "chat";
 
   return (
-    <div className="flex h-full items-center gap-2 px-3 sm:px-4" data-testid="control-bar">
-      {/* Left spacer keeps the middle group centred on desktop. */}
-      <div className="hidden flex-1 lg:block" />
-
-      <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 sm:gap-2 lg:flex-none">
+    <div className="flex h-full items-center px-3 max-[359px]:px-2 sm:px-4" data-testid="control-bar">
+      <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 max-[359px]:gap-1 sm:gap-2">
         {media ? <MicButton media={media} /> : null}
         {media ? <CameraButton media={media} /> : null}
         {presentation ? <PresentButton presentation={presentation} /> : null}
         {showRecord ? (
           <div className="hidden sm:block">
-            <RecordButton recording={recording!} />
+            <RecordButton recording={recording!} selfId={selfId} />
           </div>
         ) : null}
         {reactions ? <div className="shrink-0">{reactions}</div> : null}
@@ -103,37 +110,21 @@ export function ControlBar(props: ControlBarProps) {
           </CtrlButton>
         </div>
         {panel ? (
-          <div className="lg:hidden">
-            <CtrlButton
-              label={panel.open ? "Close chat" : "Chat"}
-              on={panel.open}
-              onClick={() => panel.onToggle(panel.tab)}
-              testId="ctrl-panel"
-            >
-              <MessageSquare className="h-5 w-5" />
-              <Badge count={panel.open ? 0 : totalUnread} />
-            </CtrlButton>
-          </div>
+          <CtrlButton
+            label={panel.open ? `Close ${lead === "qa" ? "Q&A" : TAB_META[lead].label.toLowerCase()}` : TAB_META[lead].label}
+            on={panel.open}
+            onClick={() => panel.onToggle(panel.tab)}
+            testId="ctrl-panel"
+            expanded={panel.open}
+          >
+            {TAB_META[lead].icon}
+            <Badge count={panel.open ? 0 : totalUnread} />
+          </CtrlButton>
         ) : null}
         <div className="sm:hidden">
-          <MoreMenu recording={showRecord ? recording : null} onSettings={onSettings} />
+          <MoreMenu recording={showRecord ? recording : null} selfId={selfId} onSettings={onSettings} />
         </div>
         <LeaveButton kind={kind} {...leave} />
-      </div>
-
-      <div className="hidden flex-1 items-center justify-end gap-2 lg:flex">
-        {panel?.tabs.map((t) => (
-          <CtrlButton
-            key={t}
-            label={TAB_META[t].label}
-            on={panel.open && panel.tab === t}
-            onClick={() => panel.onToggle(t)}
-            testId={`ctrl-tab-${t}`}
-          >
-            {TAB_META[t].icon}
-            <Badge count={panel.open && panel.tab === t ? 0 : unreadFor(t, panel.unread)} />
-          </CtrlButton>
-        ))}
       </div>
     </div>
   );
@@ -168,6 +159,7 @@ function CtrlButton({
     <RoomButton
       ref={buttonRef}
       size="icon"
+      className={NARROW_ICON}
       variant={danger ? "danger" : on ? "on" : "control"}
       aria-label={label}
       title={label}
@@ -299,28 +291,34 @@ function PresentButton({ presentation: p }: { presentation: PresentationControll
   );
 }
 
-function RecordButton({ recording: r }: { recording: RoomRecordingView }) {
+/**
+ * The take's running time. A leaf with its own 1 s timer: useRoomRecording
+ * doesn't re-render per second, and `elapsedMs` is a getter read on each tick.
+ */
+function RecClock({ recording }: { recording: RoomRecordingView }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <>{formatElapsed(recording.elapsedMs)}</>;
+}
+
+function RecordButton({ recording: r, selfId }: { recording: RoomRecordingView; selfId: string }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const pop = usePopover("record");
-  const recordingNow = r.state === "recording";
-  const someoneElse = recordingNow && !r.mine;
-  const busy = r.state === "starting" || r.state === "stopping";
+  const c = recordControl(r, selfId);
 
-  if (someoneElse) {
+  if (c.kind === "other") {
     return (
-      <CtrlButton
-        label={`Recording by ${r.by?.name ?? "another host"}`}
-        onClick={() => {}}
-        disabled
-        testId="ctrl-record"
-      >
+      <CtrlButton label={c.label} onClick={() => {}} disabled testId="ctrl-record">
         <Circle className="h-5 w-5 fill-[#e5484d] text-[#e5484d]" />
       </CtrlButton>
     );
   }
-  if (!recordingNow) {
+  if (c.kind === "record") {
     return (
-      <CtrlButton label="Record" onClick={() => void r.start()} busy={busy} testId="ctrl-record">
+      <CtrlButton label="Record" onClick={() => void r.start()} busy={c.busy} testId="ctrl-record">
         <CircleDot className="h-5 w-5" />
       </CtrlButton>
     );
@@ -334,12 +332,14 @@ function RecordButton({ recording: r }: { recording: RoomRecordingView }) {
         aria-label="Stop recording"
         title="Stop recording"
         onClick={pop.toggle}
-        busy={busy}
+        busy={c.busy}
         aria-expanded={pop.open}
         data-testid="ctrl-record"
       >
         <Square className="h-3.5 w-3.5 fill-[#e5484d] text-[#e5484d]" />
-        <span className="text-xs tabular-nums">{formatElapsed(r.elapsedMs)}</span>
+        <span className="text-xs tabular-nums" data-testid="record-elapsed">
+          <RecClock recording={r} />
+        </span>
       </RoomButton>
       <Popover anchor={anchor} open={pop.open} onClose={() => pop.setOpen(false)} label="Stop recording" role="dialog">
         <div className="space-y-3 p-2" data-testid="record-confirm">
@@ -366,31 +366,39 @@ function RecordButton({ recording: r }: { recording: RoomRecordingView }) {
   );
 }
 
-function MoreMenu({ recording, onSettings }: { recording: RoomRecordingView | null; onSettings: () => void }) {
+function MoreMenu({
+  recording: r,
+  selfId,
+  onSettings,
+}: {
+  recording: RoomRecordingView | null;
+  selfId: string;
+  onSettings: () => void;
+}) {
   const anchor = useRef<HTMLButtonElement>(null);
   const pop = usePopover("more");
   const close = () => pop.setOpen(false);
-  const r = recording;
+  const c = r ? recordControl(r, selfId) : null;
   return (
     <>
       <CtrlButton label="More" onClick={pop.toggle} buttonRef={anchor} testId="ctrl-more" expanded={pop.open}>
         <MoreVertical className="h-5 w-5" />
       </CtrlButton>
       <Popover anchor={anchor} open={pop.open} onClose={close} label="More" align="end" testId="more-menu">
-        {r && r.state !== "recording" ? (
+        {r && c?.kind === "record" ? (
           <MenuItem
             icon={<CircleDot />}
             onClick={() => {
               close();
               void r.start();
             }}
-            disabled={r.state === "starting" || r.state === "stopping"}
+            disabled={c.busy}
             testId="more-record"
           >
             Record
           </MenuItem>
         ) : null}
-        {r && r.state === "recording" && r.mine ? (
+        {r && c?.kind === "recording" ? (
           <MenuItem
             icon={<Square />}
             tone="danger"
@@ -398,15 +406,16 @@ function MoreMenu({ recording, onSettings }: { recording: RoomRecordingView | nu
               close();
               void r.stop();
             }}
+            disabled={c.busy}
             testId="more-record-stop"
-            hint={formatElapsed(r.elapsedMs)}
+            hint={<RecClock recording={r} />}
           >
             Stop recording
           </MenuItem>
         ) : null}
-        {r && r.state === "recording" && !r.mine ? (
-          <MenuItem icon={<Circle />} onClick={close} disabled>
-            Recording by {r.by?.name ?? "another host"}
+        {c?.kind === "other" ? (
+          <MenuItem icon={<Circle />} onClick={close} disabled testId="more-record-other">
+            {c.label}
           </MenuItem>
         ) : null}
         <MenuItem
@@ -438,6 +447,8 @@ function LeaveButton({
   const [confirming, setConfirming] = useState(false);
   const endLabel = kind === "call" ? "End call" : "End for everyone";
   const offerEnd = canEnd && !!onEnd;
+  // A menu only when there is a choice (End) or something to read (hint).
+  const menu = offerEnd || !!hint;
   const close = () => {
     pop.setOpen(false);
     setConfirming(false);
@@ -448,12 +459,17 @@ function LeaveButton({
       <RoomButton
         ref={anchor}
         variant="danger"
-        className="h-10 gap-2 px-3 sm:h-11 sm:px-4"
+        className="h-10 gap-2 px-3 max-[359px]:h-9 max-[359px]:px-2.5 sm:h-11 sm:px-4"
         aria-label="Leave"
         title="Leave"
-        aria-haspopup="menu"
-        aria-expanded={pop.open}
+        aria-haspopup={menu ? "menu" : undefined}
+        aria-expanded={menu ? pop.open : undefined}
         onClick={() => {
+          if (!menu) {
+            close();
+            onLeave();
+            return;
+          }
           setConfirming(false);
           pop.toggle();
         }}

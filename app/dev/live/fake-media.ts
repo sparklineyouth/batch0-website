@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LocalMediaView } from "@/components/live/room";
 
 /**
@@ -203,19 +203,43 @@ const DEVICES = {
 export function useFakeLocalMedia(
   feeds: FakeFeeds | null,
   name: string,
-  opts: { cameraOn?: boolean; micOn?: boolean; status?: LocalMediaView["status"] } = {},
+  opts: {
+    cameraOn?: boolean;
+    micOn?: boolean;
+    status?: LocalMediaView["status"];
+    /** The camera is busy (another app): mic only until another camera is picked. */
+    cameraBusy?: boolean;
+  } = {},
 ): LocalMediaView {
   const [cameraOn, setCameraOn] = useState(opts.cameraOn ?? true);
   const [micOn, setMicOn] = useState(opts.micOn ?? true);
   const [micId, setMicId] = useState("default");
-  const [cameraId, setCameraId] = useState("cam-built-in");
+  const [cameraId, setCameraId] = useState<string | null>(opts.cameraBusy ? null : "cam-built-in");
+  const [hasCamera, setHasCamera] = useState(!opts.cameraBusy);
+  const [switching, setSwitching] = useState(false);
   const stream = useMemo(() => {
     if (!feeds || opts.status === "denied") return null;
     return new MediaStream([
-      ...feeds.camera(name, 210).getVideoTracks(),
+      ...(hasCamera ? feeds.camera(name, 210).getVideoTracks() : []),
       ...feeds.voice(180, 1500).getAudioTracks(),
     ]);
-  }, [feeds, name, opts.status]);
+  }, [feeds, name, opts.status, hasCamera]);
+  // Like useLocalMedia: picking a camera with none open acquires it.
+  const setCamera = useCallback(
+    (id: string) => {
+      if (hasCamera) {
+        setCameraId(id);
+        return;
+      }
+      setSwitching(true);
+      setTimeout(() => {
+        setCameraId(id);
+        setHasCamera(true);
+        setSwitching(false);
+      }, 400);
+    },
+    [hasCamera],
+  );
   useEffect(() => {
     stream?.getVideoTracks().forEach((t) => (t.enabled = cameraOn));
     stream?.getAudioTracks().forEach((t) => (t.enabled = micOn));
@@ -224,6 +248,8 @@ export function useFakeLocalMedia(
     () => ({
       stream,
       status: opts.status ?? (stream ? "ready" : "requesting"),
+      cameraStatus: hasCamera ? "ready" : "error",
+      micStatus: "ready",
       error: null,
       cameraOn,
       micOn,
@@ -234,11 +260,11 @@ export function useFakeLocalMedia(
       micId,
       cameraId,
       setMic: setMicId,
-      setCamera: setCameraId,
-      switching: false,
+      setCamera,
+      switching,
       deviceError: null,
     }),
-    [stream, opts.status, cameraOn, micOn, micId, cameraId],
+    [stream, opts.status, cameraOn, micOn, micId, cameraId, hasCamera, setCamera, switching],
   );
 }
 

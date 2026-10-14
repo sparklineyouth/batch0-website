@@ -81,6 +81,70 @@ export function greenRoomCta(opts: {
   };
 }
 
+// ── Stage notice ────────────────────────────────────────────────────────────
+
+export type StageNoticeKind = "connecting" | "waiting" | "starts" | "away" | "reconnecting" | "failed";
+
+type PeerLink = "idle" | "connecting" | "live" | "reconnecting" | "failed" | "left";
+
+/**
+ * What an empty stage says. In order: the join failed; the join hasn't landed;
+ * a link that was up is coming back; a host is here but this viewer's link to
+ * them is still being set up (ICE/TURN); the host was on air and isn't now;
+ * the webinar starts later; nobody is on air.
+ */
+export function stageNotice(input: {
+  joinFailed: boolean;
+  joined: boolean;
+  /** Remote broadcasters as the engine lists them. */
+  peers: readonly { state: PeerLink; seenLive: boolean }[];
+  /** A host has been on air this session. */
+  hadHost: boolean;
+  liveStartedAt: string | null;
+  startsAt: string | null | undefined;
+  now: number;
+}): StageNoticeKind {
+  if (input.joinFailed) return "failed";
+  if (!input.joined) return "connecting";
+  const dialling = input.peers.filter(
+    (p) => p.state === "idle" || p.state === "connecting" || p.state === "failed",
+  );
+  if (input.peers.some((p) => p.state === "reconnecting") || dialling.some((p) => p.seenLive)) {
+    return "reconnecting";
+  }
+  if (dialling.length > 0) return "connecting";
+  if (input.hadHost || input.liveStartedAt) return "away";
+  if (input.startsAt && Date.parse(input.startsAt) > input.now) return "starts";
+  return "waiting";
+}
+
+// ── Recording control ───────────────────────────────────────────────────────
+
+export type RecordControl =
+  | { kind: "record"; busy: boolean }
+  | { kind: "recording"; busy: boolean }
+  | { kind: "other"; label: string };
+
+/**
+ * The record control for a person who may record. useRoomRecording reports
+ * another host's take as `by` with this tab's state left idle/error (`mine`
+ * stays false), so "someone else" is `by` without `mine`.
+ */
+export function recordControl(
+  r: { state: string; mine: boolean; by: { id: string; name: string } | null },
+  selfId: string,
+): RecordControl {
+  const busy = r.state === "starting" || r.state === "stopping";
+  if (r.mine) return { kind: "recording", busy };
+  if (r.by && !busy) {
+    return {
+      kind: "other",
+      label: r.by.id === selfId ? "Recording in another tab" : `Recording by ${r.by.name || "another host"}`,
+    };
+  }
+  return { kind: "record", busy };
+}
+
 /**
  * What to say when getDisplayMedia fails. Null means stay silent (the person
  * cancelled the picker). `message` is the DOMException message, which is how

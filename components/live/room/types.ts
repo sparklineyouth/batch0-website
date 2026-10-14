@@ -88,14 +88,20 @@ export type RoomServerState = {
   recording: { sessionId: string; byUserId: string; byName: string; startedAt: string } | null;
 };
 
-/** useRoomRecording's result plus whether this person may record. */
+/**
+ * useRoomRecording's result, passed as is (never spread: `elapsedMs` is a
+ * getter read on each tick of the room's own clock).
+ *
+ *   mine       this tab is recording (state "recording")
+ *   by         who holds the room's recording: this person while `mine`,
+ *              otherwise another host (state stays idle/error for this tab)
+ */
 export type RoomRecordingView = {
-  canRecord: boolean;
   state: "idle" | "starting" | "recording" | "stopping" | "error" | "unavailable";
-  /** This tab is the recorder. */
   mine: boolean;
   by: { id: string; name: string } | null;
-  elapsedMs: number;
+  /** How long the take has run, as of when it is read. */
+  readonly elapsedMs: number;
   error: string | null;
   pendingUploads: number;
   start: () => void | Promise<void>;
@@ -107,7 +113,11 @@ export type PanelUnread = { chat: number; qa: number; polls: number };
 
 /** Webinar side panel (WS-C's <WebinarPanel/>), rendered with the shell's tab state. */
 export type RoomPanelSlot = {
-  /** Tabs to offer, in order. People only for hosts. */
+  /**
+   * The panel's tabs, in order: lib/webinar-panel's panelTabs(role, chatOn),
+   * the list WebinarPanel shows. Picks the first tab, the toggle's label and
+   * which unread counts its badge adds up.
+   */
   tabs: readonly PanelTab[];
   render: (ctx: {
     tab: PanelTab;
@@ -118,7 +128,11 @@ export type RoomPanelSlot = {
   }) => ReactNode;
 };
 
-/** Webinar reactions (WS-C): a control-bar button and an overlay inside the stage. */
+/**
+ * Webinar reactions (WS-C): a control-bar button, and an overlay rendered in a
+ * full-size, clipped, pointer-events-none box over the stage's main area (it
+ * places itself, e.g. absolute bottom-0 right-0 top-0).
+ */
 export type RoomReactionsSlot = { button: ReactNode; overlay: ReactNode };
 
 /** What ended, for the terminal screens. */
@@ -170,7 +184,10 @@ export type LiveRoomProps = {
   room: RoomServerState;
   /** Webinar hosts only: live viewers. */
   audienceCount?: number | null;
+  /** useRoomRecording() (webinar hosts, call staff). */
   recording?: RoomRecordingView | null;
+  /** This person may start and stop the recording (webinar staff host / call staff). */
+  canRecord?: boolean;
   /** Green room: names of hosts already live (getHostingStatus). Null while loading. */
   hosting?: readonly string[] | null;
   /** Shown in the green room (everyone) whenever the session records or will. */

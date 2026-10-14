@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { AlertTriangle, CloudUpload, Loader2, LogOut, PhoneOff, Radio, ShieldOff } from "lucide-react";
 import { LocalTime } from "@/components/ui/local-time";
+import type { StageNoticeKind } from "./logic";
 import type { RoomBusy, RoomEnd, RoomKind, RoomPhase, RoomSelf } from "./types";
 import { FOCUS, Notice, RoomButton, Spinner } from "./ui";
 
@@ -136,7 +137,7 @@ export function UploadingRecording() {
   );
 }
 
-export type StageNoticeKind = "connecting" | "waiting" | "starts" | "away" | "reconnecting" | "failed";
+export type { StageNoticeKind };
 
 /** The empty stage: what a viewer sees with nobody on air. */
 export function StageNotice({

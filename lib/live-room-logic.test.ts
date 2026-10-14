@@ -10,8 +10,10 @@ import {
   looksLikePdf,
   Lru,
   nextSpeaking,
+  recordControl,
   screenShareError,
   SPEAKING_HOLD_MS,
+  stageNotice,
 } from "../components/live/room/logic.ts";
 
 test("levelFromRms maps -60..-10 dBFS onto 0..1", () => {
@@ -153,4 +155,71 @@ test("Lru evicts least recently used, honours keep, and reports evictions", () =
   lru.clear();
   assert.equal(lru.size, 0);
   assert.deepEqual(evicted.slice(3).sort(), [1, 4]);
+});
+
+test("stage notice: failed, joining, reconnecting, still dialling, away, starts, waiting", () => {
+  const now = Date.parse("2026-10-14T10:00:00Z");
+  const base = {
+    joinFailed: false,
+    joined: true,
+    peers: [] as { state: "idle" | "connecting" | "live" | "reconnecting" | "failed" | "left"; seenLive: boolean }[],
+    hadHost: false,
+    liveStartedAt: null as string | null,
+    startsAt: null as string | null,
+    now,
+  };
+  const live = "2026-10-14T09:50:00Z";
+  assert.equal(stageNotice({ ...base, joinFailed: true, joined: false }), "failed");
+  assert.equal(stageNotice({ ...base, joined: false, liveStartedAt: live }), "connecting");
+  // Joined a webinar that is on air: the host's link is still being set up.
+  // Not "the host stepped away" (live has started) nor "isn't on air".
+  for (const state of ["connecting", "idle", "failed"] as const) {
+    assert.equal(stageNotice({ ...base, liveStartedAt: live, peers: [{ state, seenLive: false }] }), "connecting");
+    assert.equal(stageNotice({ ...base, peers: [{ state, seenLive: false }] }), "connecting");
+    // The same link after it had been up is a reconnect.
+    assert.equal(stageNotice({ ...base, liveStartedAt: live, peers: [{ state, seenLive: true }] }), "reconnecting");
+  }
+  assert.equal(stageNotice({ ...base, peers: [{ state: "reconnecting", seenLive: true }] }), "reconnecting");
+  // A reconnect outranks a second host still dialling.
+  assert.equal(
+    stageNotice({
+      ...base,
+      peers: [
+        { state: "connecting", seenLive: false },
+        { state: "reconnecting", seenLive: true },
+      ],
+    }),
+    "reconnecting",
+  );
+  // The host said bye: away while the webinar is live or a host was seen.
+  assert.equal(stageNotice({ ...base, liveStartedAt: live, peers: [{ state: "left", seenLive: true }] }), "away");
+  assert.equal(stageNotice({ ...base, hadHost: true }), "away");
+  // Not live yet.
+  assert.equal(stageNotice({ ...base, startsAt: "2026-10-14T10:30:00Z" }), "starts");
+  assert.equal(stageNotice({ ...base, startsAt: "2026-10-14T09:30:00Z" }), "waiting");
+  assert.equal(stageNotice(base), "waiting");
+});
+
+test("record control follows useRoomRecording: another host's take is `by` without `mine`", () => {
+  const ana = { id: "ana", name: "Ana" };
+  const me = { id: "me", name: "Rish" };
+  // Nobody records.
+  assert.deepEqual(recordControl({ state: "idle", mine: false, by: null }, "me"), { kind: "record", busy: false });
+  assert.deepEqual(recordControl({ state: "starting", mine: false, by: null }, "me"), { kind: "record", busy: true });
+  // This tab records.
+  assert.deepEqual(recordControl({ state: "recording", mine: true, by: me }, "me"), { kind: "recording", busy: false });
+  // Stopping: the hook drops `mine` and `by` while the take closes.
+  assert.deepEqual(recordControl({ state: "stopping", mine: false, by: null }, "me"), { kind: "record", busy: true });
+  // Another host records: this tab stays idle (or error after a refused start).
+  assert.deepEqual(recordControl({ state: "idle", mine: false, by: ana }, "me"), { kind: "other", label: "Recording by Ana" });
+  assert.deepEqual(recordControl({ state: "error", mine: false, by: ana }, "me"), { kind: "other", label: "Recording by Ana" });
+  assert.deepEqual(recordControl({ state: "idle", mine: false, by: { id: "x", name: "" } }, "me"), {
+    kind: "other",
+    label: "Recording by another host",
+  });
+  // The same person in another tab.
+  assert.deepEqual(recordControl({ state: "idle", mine: false, by: me }, "me"), {
+    kind: "other",
+    label: "Recording in another tab",
+  });
 });

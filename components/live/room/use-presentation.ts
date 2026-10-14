@@ -39,6 +39,9 @@ const IDLE_DECK: DeckSnapshot = {
   count: 0,
   drawn: false,
   error: null,
+  pageError: null,
+  opening: null,
+  deckId: 0,
 };
 const noop = () => () => {};
 
@@ -60,8 +63,10 @@ function isTyping(target: EventTarget | null): boolean {
 
 /**
  * One presentation state for the room: none, a screen share, or a PDF deck.
- * Starting one replaces the other only once the new one is actually running
- * (a cancelled picker or a broken PDF leaves the current one up).
+ * Starting one replaces the current one only once the new one is actually
+ * running: a cancelled picker, or a PDF that fails to open, leaves whatever
+ * was being presented (screen or slides) up. Another deck replaces a deck on
+ * the same stream, so viewers' track never ends.
  */
 export function usePresentation({
   enabled = true,
@@ -74,7 +79,6 @@ export function usePresentation({
   const screen = useScreenShare();
   const { start: startShare, stop: stopShare, clearError: clearShareError } = screen;
   const [active, setActive] = useState<PresentationKind>("none");
-  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [deck, setDeck] = useState<DeckEngine | null>(null);
   const [deckError, setDeckError] = useState<string | null>(null);
   const [deckLoading, setDeckLoading] = useState(false);
@@ -96,13 +100,13 @@ export function usePresentation({
     if (screenStream) {
       deckRef.current?.close();
       setActive("screen");
-      setStartedAt(Date.now());
     } else {
       setActive((a) => (a === "screen" ? "none" : a));
     }
   }, [screenStream]);
 
-  // The deck engine failing or closing ends a deck presentation.
+  // The deck engine closing ends a deck presentation. (A replacement deck
+  // loads with the status still "ready", and one that fails leaves it so.)
   useEffect(() => {
     if (snap.status !== "ready") setActive((a) => (a === "deck" ? "none" : a));
   }, [snap.status]);
@@ -124,17 +128,15 @@ export function usePresentation({
       const e = engine();
       void e
         .open(source === "event" ? { kind: "url", ...eventDeck! } : { kind: "file", file: source })
-        .then((ok) => {
+        .then((res) => {
           // A newer pick owns the spinner and the outcome.
           if (attempt !== deckAttempt.current) return;
           setDeckLoading(false);
-          if (ok) {
+          if (res.ok) {
             stopShare();
             setActive("deck");
-            setStartedAt(Date.now());
-          } else {
-            const err = e.getSnapshot().error;
-            if (err) setDeckError(err);
+          } else if (res.error) {
+            setDeckError(res.error);
           }
         });
     },
@@ -147,7 +149,6 @@ export function usePresentation({
     setDeckLoading(false);
     deckRef.current?.close();
     setActive("none");
-    setStartedAt(null);
   }, [stopShare]);
 
   // Deck keyboard: ←/→/PgUp/PgDn/Space/Home/End, Esc stops. Never while typing.
@@ -171,6 +172,9 @@ export function usePresentation({
 
   const stream =
     active === "screen" ? screen.stream : active === "deck" && snap.status === "ready" ? deck?.stream ?? null : null;
+  // When this person started presenting; switching screen ⇄ slides or deck ⇄ deck keeps it.
+  const presenting = stream !== null;
+  const startedAt = useMemo(() => (presenting ? Date.now() : null), [presenting]);
   const error = screen.error ?? deckError;
   const clearError = useCallback(() => {
     clearShareError();
@@ -181,7 +185,7 @@ export function usePresentation({
     () => ({
       kind: stream ? active : "none",
       stream,
-      startedAt: stream ? startedAt : null,
+      startedAt,
       screenSupported: screen.supported,
       screenPending: screen.pending,
       deckLoading,

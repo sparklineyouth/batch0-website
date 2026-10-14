@@ -88,39 +88,43 @@ function peer(
   };
 }
 
-/** A recording that starts/stops like the real one. */
-function useFakeRecording(initial: "idle" | "mine" | "other", canRecord: boolean): RoomRecordingView {
-  const [state, setState] = useState<RoomRecordingView["state"]>(initial === "idle" ? "idle" : "recording");
-  const [startedAt, setStartedAt] = useState<number | null>(initial === "idle" ? null : Date.now() - 754_000);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (state !== "recording") return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [state]);
-  return {
-    canRecord,
-    state,
-    mine: initial !== "other",
-    by: initial === "other" ? { id: ANA.id, name: ANA.name } : { id: SELF.id, name: SELF.name },
-    elapsedMs: startedAt ? now - startedAt : 0,
-    error: null,
-    pendingUploads: 0,
-    start: () => {
-      setState("starting");
-      setTimeout(() => {
-        setStartedAt(Date.now());
-        setState("recording");
-      }, 600);
-    },
-    stop: () => {
-      setState("stopping");
-      setTimeout(() => {
-        setStartedAt(null);
-        setState("idle");
-      }, 600);
-    },
-  };
+/**
+ * A recording with useRoomRecording's semantics: `mine` only while this tab
+ * records; another host's take shows as `by` with this tab left idle;
+ * `elapsedMs` is a getter and nothing re-renders per second.
+ */
+function useFakeRecording(initial: "idle" | "mine" | "other", pendingUploads = 0): RoomRecordingView {
+  const [state, setState] = useState<RoomRecordingView["state"]>(initial === "mine" ? "recording" : "idle");
+  const [startedAt, setStartedAt] = useState<number | null>(() => (initial === "idle" ? null : Date.now() - 754_000));
+  const mine = state === "recording";
+  const other = initial === "other";
+  return useMemo(() => {
+    const since = mine || other ? startedAt : null;
+    return {
+      state,
+      mine,
+      by: mine ? { id: SELF.id, name: SELF.name } : other ? { id: ANA.id, name: ANA.name } : null,
+      get elapsedMs() {
+        return since !== null ? Math.max(0, Date.now() - since) : 0;
+      },
+      error: null,
+      pendingUploads,
+      start: () => {
+        setState("starting");
+        setTimeout(() => {
+          setStartedAt(Date.now());
+          setState("recording");
+        }, 600);
+      },
+      stop: () => {
+        setState("stopping");
+        setTimeout(() => {
+          setStartedAt(null);
+          setState("idle");
+        }, 600);
+      },
+    };
+  }, [state, mine, other, startedAt, pendingUploads]);
 }
 
 /** A presentation controller frozen in "presenting a screen" (no picker needed). */
@@ -168,6 +172,7 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     cameraOn: !(state === "prejoin" && w === "cohost"),
     micOn: !(state === "prejoin" && w === "cohost"),
     status: w === "denied" ? "denied" : undefined,
+    cameraBusy: w === "busycam",
   });
   const real = useLocalMedia({ autoStart: realMedia && broadcaster });
   const media = broadcaster ? (realMedia ? real : fakeMedia) : null;
@@ -215,6 +220,8 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
       case "live-viewer":
         if (w === "waiting" || w === "starts") return [];
         if (w === "away") return [peer(ANA, feeds, { state: "left", seenLive: true })];
+        // Joined while Ana is on air; the link to her is still being set up.
+        if (w === "joining") return [peer(ANA, feeds, { state: "connecting", seenLive: false })];
         if (w === "reconnecting") return [peer(ANA, feeds, { state: "connecting", seenLive: true })];
         if (w === "failed") return [];
         return [peer(ANA, feeds, { hue: 20, freq: 210 }), peer(BEN, feeds, { hue: 140, freq: 260, offset: 3000 })];
@@ -249,7 +256,11 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     [remotes, state, w, feeds],
   );
 
-  const recording = useFakeRecording(w === "rec" ? "mine" : w === "rec-other" ? "other" : "idle", broadcaster && (isCall || state.startsWith("live-host") || state.startsWith("presenting")));
+  const recording = useFakeRecording(
+    w === "rec" ? "mine" : w === "rec-other" ? "other" : "idle",
+    state === "ended" && w === "uploading" ? 3 : 0,
+  );
+  const canRecord = broadcaster && (isCall || state === "live-host" || state.startsWith("presenting"));
 
   const panel = useMemo<LiveRoomProps["panel"]>(() => {
     if (kind !== "webinar") return null;
@@ -310,6 +321,7 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     (window as unknown as { __b0harness?: unknown }).__b0harness = {
       presentationStream: () => presentation?.stream ?? null,
       deckSnapshot: () => realPresentation.deck?.getSnapshot() ?? null,
+      deck: () => realPresentation.deck,
       presentationError: () => realPresentation.error,
     };
   });
@@ -327,7 +339,14 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     connection: {
       state: w === "reconnecting" && state === "live-host" ? "reconnecting" : joined ? "live" : "connecting",
       joined,
-      error: w === "error" ? "Couldn't reach one viewer. Retrying." : null,
+      // Like the engine: a refused join sets `error` too (the room shows it once);
+      // a reconnect with an error stacks the banner and the chip.
+      error:
+        w === "error" || (w === "reconnecting" && state === "live-host")
+          ? "Couldn't reach one viewer. Retrying."
+          : w === "failed" && joinFailed
+            ? "The room isn't open yet."
+            : null,
       joinFailed: joinFailed ? { message: "The room isn't open yet." } : null,
     },
     room: {
@@ -337,13 +356,14 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
       canEnd: broadcaster,
       recording:
         w === "rec-other"
-          ? { sessionId: "s1", byUserId: ANA.id, byName: ANA.name, startedAt: new Date().toISOString() }
-          : recording.state === "recording"
+          ? { sessionId: "s1", byUserId: ANA.id, byName: ANA.name, startedAt: new Date(Date.now() - 754_000).toISOString() }
+          : recording.mine
             ? { sessionId: "s1", byUserId: SELF.id, byName: SELF.name, startedAt: new Date().toISOString() }
             : null,
     },
     audienceCount: broadcaster && kind === "webinar" ? 23 : null,
     recording: broadcaster ? recording : null,
+    canRecord,
     hosting: state === "prejoin" && w === "cohost" ? [ANA.name] : [],
     recordingNotice:
       kind === "call"
@@ -360,13 +380,11 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
       reason: w === "revoked" ? "revoked" : w === "cancelled" ? "cancelled" : w === "closed" ? "closed" : undefined,
     },
     busy,
+    actionError: w === "toast" ? "Couldn't pin that host. Try again." : null,
     leaveHint: state === "live-host" && w === "leave" ? "You're the only host on air." : null,
     actions,
     onSharedLayout,
   };
-  if (state === "ended" && w === "uploading" && props.recording) {
-    props.recording = { ...props.recording, pendingUploads: 3 };
-  }
 
   return <AutoOpen state={state} w={w} props={props} />;
 }
@@ -390,7 +408,7 @@ function AutoOpen({ state, w, props }: { state: string; w: string; props: LiveRo
           setTimeout(() => click("more-settings"), 150);
         }
       }
-      if (w === "panel" && window.innerWidth < 1024) click("ctrl-panel");
+      if ((w === "panel" || w === "toast") && window.innerWidth < 1024) click("ctrl-panel");
       if (w === "pin-self") document.querySelector<HTMLElement>('[data-testid="stage-pip"] [data-testid="tile-pin"]')?.click();
     }, 400);
     return () => clearTimeout(t);

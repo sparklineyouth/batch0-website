@@ -1,7 +1,10 @@
 /**
- * Screenshot every live-room harness state (/dev/live) at desktop and phone
- * sizes and check the layout: control bar on screen, nothing over it but its
- * own menus, no sideways scroll, presentations never cropped, no page errors.
+ * Screenshot every live-room harness state (/dev/live) at desktop, phone and
+ * narrow-phone (320px) sizes and check the layout: control bar on screen with
+ * every control inside it, nothing over it but its own menus, notices and
+ * toasts stacked (never on each other, the filmstrip or the side panel), the
+ * side panel's own controls uncovered, no sideways scroll, presentations
+ * never cropped, no page errors.
  *
  *   npx next dev -p 3102
  *   E2E_BASE_URL=http://localhost:3102 npm run room-screens -- --out=/tmp/room-screens
@@ -22,31 +25,69 @@ mkdirSync(OUT, { recursive: true });
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },
   { name: "phone", width: 390, height: 844 },
+  // Android "display size" set large: 320 CSS pixels.
+  { name: "narrow", width: 320, height: 700 },
 ];
 
 // Runs in the page.
 const CHECK = `(() => {
   const out = [];
   const vw = innerWidth, vh = innerHeight;
+  const box = (el) => {
+    const r = el && el.getBoundingClientRect();
+    return r && r.width && r.height ? r : null;
+  };
+  const hit = (a, b) =>
+    !!a && !!b && a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  const shown = (el) => !!box(el) && getComputedStyle(el).visibility !== 'hidden';
   const bar = document.querySelector('[data-testid="room-controls"]');
-  const br = bar && bar.getBoundingClientRect();
+  const br = box(bar);
   if (br && (br.bottom > vh + 0.5 || br.top < 0)) out.push('control bar off-screen');
   if (document.documentElement.scrollWidth > vw + 1) out.push('sideways scroll');
+  const FLOATING = '[data-testid="stage-notices"] > :not([data-testid="room-toasts"]), [data-testid="room-toasts"] > *';
   if (br) {
-    for (const el of document.querySelectorAll('[data-testid="side-panel"], [data-testid="room-toasts"] > *, [data-testid="stage-pip"], [data-testid="filmstrip"], [data-testid="stage-main"]')) {
-      const r = el.getBoundingClientRect();
-      if (r.width && r.height && r.bottom > br.top + 0.5 && r.top < br.bottom) out.push('over the bar: ' + el.getAttribute('data-testid'));
+    for (const el of document.querySelectorAll('[data-testid="side-panel"], [data-testid="stage-pip"], [data-testid="filmstrip"], [data-testid="stage-main"], ' + FLOATING)) {
+      const r = box(el);
+      if (r && r.bottom > br.top + 0.5 && r.top < br.bottom) out.push('over the bar: ' + (el.getAttribute('data-testid') || 'toast'));
     }
     for (const b of bar.querySelectorAll('button')) {
       const r = b.getBoundingClientRect();
       if (r.width && (r.left < -0.5 || r.right > vw + 0.5)) out.push('control off-screen: ' + (b.getAttribute('aria-label') || '?'));
     }
   }
+  // Notices and toasts over the stage: never on the side panel, the filmstrip or each other.
+  const panel = document.querySelector('[data-testid="side-panel"]');
+  const pr = panel && shown(panel) ? box(panel) : null;
+  const fr = box(document.querySelector('[data-testid="filmstrip"]'));
+  const floating = [...document.querySelectorAll(FLOATING)].filter((el) => box(el) && !(panel && panel.contains(el)));
+  const label = (el) => (el.closest('[data-testid="room-toasts"]') ? 'toast' : el.getAttribute('data-testid') || 'notice');
+  for (const el of floating) {
+    if (hit(box(el), pr)) out.push(label(el) + ' over the side panel');
+    if (hit(box(el), fr)) out.push(label(el) + ' over the filmstrip');
+  }
+  for (let i = 0; i < floating.length; i++)
+    for (let j = i + 1; j < floating.length; j++)
+      if (hit(box(floating[i]), box(floating[j]))) out.push(label(floating[i]) + ' on ' + label(floating[j]));
+  // The side panel's own fields and buttons are reachable (nothing drawn on
+  // them), unless a modal dialog is meant to cover the room.
+  if (pr && !document.querySelector('[aria-modal="true"]')) {
+    for (const el of panel.querySelectorAll('input, textarea, button')) {
+      const r = box(el);
+      if (!r) continue;
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      if (x < pr.left || x > pr.right || y < pr.top || y > pr.bottom) continue;
+      const top = document.elementFromPoint(x, y);
+      if (top && !panel.contains(top)) {
+        const what = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.textContent || el.tagName).trim().slice(0, 30);
+        out.push('covered in the side panel: ' + what);
+      }
+    }
+  }
   for (const v of document.querySelectorAll('[data-testid^="tile-"] video')) {
     const tile = v.closest('[data-testid^="tile-"]');
     if (/Presenting/.test(tile ? tile.textContent || '' : '') && getComputedStyle(v).objectFit !== 'contain') out.push('presentation cropped');
   }
-  return out;
+  return [...new Set(out)];
 })()`;
 
 const launch = () =>

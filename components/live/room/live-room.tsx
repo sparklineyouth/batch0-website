@@ -5,16 +5,17 @@ import { ControlBar } from "./controls";
 import { DeckPresenter } from "./deck/deck-presenter";
 import { DevicePanel } from "./devices/device-panel";
 import { GreenRoom } from "./devices/green-room";
-import { joinNames } from "./logic";
+import { joinNames, stageNotice } from "./logic";
 import { PopoverProvider, useCloseAllPopovers } from "./popover";
 import { PresentingScreen } from "./presenting";
-import { EndScreen, StageNotice, type StageNoticeKind } from "./screens";
+import { EndScreen, StageNotice } from "./screens";
 import { RoomShell, TopBar } from "./shell";
 import { PresentingThumb, Stage, type TileView } from "./stage";
 import { computeStage, type StagePerson, type StageTile } from "./stage-model";
 import { ToastProvider, useToasts } from "./toasts";
 import type { LiveRoomProps, PanelTab, PanelUnread, RoomPeer } from "./types";
 import { useRoomShortcuts } from "./use-shortcuts";
+import { DESKTOP_QUERY, useMediaQuery } from "./use-size";
 import { Spinner } from "./ui";
 
 /**
@@ -27,18 +28,24 @@ export function LiveRoom(props: LiveRoomProps) {
   // Desktop webinars open the side panel at the start; phones start with the stage.
   const hasPanel = !!props.panel;
   useEffect(() => {
-    if (hasPanel && window.matchMedia?.("(min-width: 1024px)").matches) setPanelOpen(true);
+    if (hasPanel && window.matchMedia?.(DESKTOP_QUERY).matches) setPanelOpen(true);
   }, [hasPanel]);
 
   const onPopoverOpen = useCallback(() => {
-    if (!window.matchMedia?.("(min-width: 1024px)").matches) setPanelOpen(false);
+    if (!window.matchMedia?.(DESKTOP_QUERY).matches) setPanelOpen(false);
   }, []);
 
   return (
     <PopoverProvider onOpen={onPopoverOpen}>
       <ToastProvider>
-        {(toasts) => (
-          <RoomBody {...props} toasts={toasts} panelOpen={panelOpen} setPanelOpen={setPanelOpen} />
+        {(toasts, toastCount) => (
+          <RoomBody
+            {...props}
+            toasts={toasts}
+            toastCount={toastCount}
+            panelOpen={panelOpen}
+            setPanelOpen={setPanelOpen}
+          />
         )}
       </ToastProvider>
     </PopoverProvider>
@@ -73,6 +80,7 @@ function usePresentingSince(remotes: readonly RoomPeer[]): ReadonlyMap<string, n
 function RoomBody(
   props: LiveRoomProps & {
     toasts: ReactNode;
+    toastCount: number;
     panelOpen: boolean;
     setPanelOpen: (open: boolean | ((o: boolean) => boolean)) => void;
   },
@@ -89,12 +97,14 @@ function RoomBody(
     connection,
     room,
     recording = null,
+    canRecord = false,
     panel = null,
     reactions = null,
     actions,
     busy = null,
     actionError = null,
     toasts,
+    toastCount,
     panelOpen,
     setPanelOpen,
   } = props;
@@ -246,13 +256,15 @@ function RoomBody(
   // ── Notices ───────────────────────────────────────────────────────────────
   const hadHost = useRef(false);
   if (remotes.some((r) => r.state === "live")) hadHost.current = true;
-  let emptyKind: StageNoticeKind = "waiting";
-  if (connection.joinFailed) emptyKind = "failed";
-  else if (!connection.joined) emptyKind = "connecting";
-  else if (remotes.some((r) => r.state === "reconnecting" || (r.state === "connecting" && r.seenLive)))
-    emptyKind = "reconnecting";
-  else if (hadHost.current || room.liveStartedAt) emptyKind = "away";
-  else if (props.startsAt && Date.parse(props.startsAt) > Date.now()) emptyKind = "starts";
+  const emptyKind = stageNotice({
+    joinFailed: !!connection.joinFailed,
+    joined: connection.joined,
+    peers: remotes,
+    hadHost: hadHost.current,
+    liveStartedAt: room.liveStartedAt,
+    startsAt: props.startsAt,
+    now: Date.now(),
+  });
 
   let waitingChip: ReactNode = null;
   if (kind === "call" && model.why === "alone" && connection.joined) {
@@ -267,40 +279,52 @@ function RoomBody(
     waitingChip = <Chip testId="chip-waiting">{text}</Chip>;
   }
 
+  // A refused join is the "Couldn't join" notice; the same text isn't bannered too.
   const [hiddenError, setHiddenError] = useState<string | null>(null);
   const banner =
-    connection.error && connection.error !== hiddenError ? (
-      <div className="absolute inset-x-0 top-2 z-20 flex justify-center px-3" data-testid="banner-error">
-        <div className="flex max-w-xl items-center gap-2 rounded-md border border-[#4a3a12] bg-[#241d0c] px-3 py-2 text-sm text-[#ffe3a3]">
-          <span className="min-w-0 flex-1">{connection.error}</span>
-          <button
-            type="button"
-            className="shrink-0 text-xs font-semibold text-[#FFBB00] hover:underline"
-            onClick={() => setHiddenError(connection.error)}
-          >
-            Dismiss
-          </button>
-        </div>
+    connection.error && !connection.joinFailed && connection.error !== hiddenError ? (
+      <div
+        className="pointer-events-auto flex w-full max-w-xl items-center gap-2 rounded-md border border-[#4a3a12] bg-[#241d0c] px-3 py-2 text-sm text-[#ffe3a3]"
+        data-testid="banner-error"
+      >
+        <span className="min-w-0 flex-1">{connection.error}</span>
+        <button
+          type="button"
+          className="shrink-0 text-xs font-semibold text-[#FFBB00] hover:underline"
+          onClick={() => setHiddenError(connection.error)}
+        >
+          Dismiss
+        </button>
       </div>
     ) : null;
 
-  const overlay = (
+  // Phones with the chat sheet open: toasts go in the sheet, above the chat.
+  const desktop = useMediaQuery(DESKTOP_QUERY);
+  const sheetOpen = !!panel && panelOpen && !desktop;
+
+  const notices = (
     <>
       {banner}
       {connection.state === "reconnecting" && model.layout !== "empty" ? (
-        <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center" data-testid="veil-reconnecting">
-          <Chip>
-            <Spinner className="h-3.5 w-3.5" /> Reconnecting…
-          </Chip>
-        </div>
+        <Chip testId="veil-reconnecting">
+          <Spinner className="h-3.5 w-3.5" /> Reconnecting…
+        </Chip>
       ) : null}
+      {waitingChip}
+      {sheetOpen ? null : toasts}
+    </>
+  );
+
+  const overlay = (
+    <>
       {connection.joinFailed && model.layout !== "empty" ? (
-        <div className="absolute inset-0 z-20 grid place-items-center rounded-md bg-[rgba(12,12,14,0.85)]">
+        <div className="absolute inset-0 z-[12] grid place-items-center rounded-md bg-[rgba(12,12,14,0.85)]">
           <StageNotice kind="failed" message={connection.joinFailed.message} onRetry={actions.retry} />
         </div>
       ) : null}
       {reactions ? (
-        <div className="pointer-events-none absolute bottom-2 right-2 z-10">{reactions.overlay}</div>
+        // The overlay places itself (bottom-right of this box, full height).
+        <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">{reactions.overlay}</div>
       ) : null}
     </>
   );
@@ -331,14 +355,15 @@ function RoomBody(
     (kind === "webinar"
       ? (!!room.liveStartedAt && !room.liveEndedAt) || anyOnAir || (selfOnStage && connection.joined)
       : connection.state === "live");
-  const recBy = room.recording?.byName ?? recording?.by?.name ?? null;
-  const recActive = phase === "live" && (!!room.recording || recording?.state === "recording");
+  // Everyone sees REC: the server's word, or this tab's own take / refused start.
+  const recBy = recording?.mine ? null : (room.recording?.byName ?? recording?.by?.name ?? null);
+  const recActive = phase === "live" && (!!room.recording || !!recording?.mine || !!recording?.by);
   const top = (
     <TopBar
       title={phase === "prejoin" ? "" : title}
       backHref={phase === "live" ? null : backHref}
       live={live}
-      rec={recActive ? { by: recording?.mine ? null : recBy } : null}
+      rec={recActive ? { by: recBy } : null}
       since={phase === "live" ? (kind === "webinar" ? room.liveStartedAt : firstLive.current) : null}
       audienceCount={phase === "live" ? props.audienceCount : null}
       role={phase === "live" && kind === "webinar" ? (self.broadcaster ? "Hosting" : "Watching") : null}
@@ -402,13 +427,14 @@ function RoomBody(
         panel={panelNode}
         panelOpen={panelOpen}
         onClosePanel={closePanel}
-        toasts={toasts}
+        sheetNotices={sheetOpen && toastCount > 0 ? toasts : null}
         controls={
           <ControlBar
             kind={kind}
+            selfId={self.id}
             media={self.broadcaster ? media : null}
             presentation={self.broadcaster ? presentation : null}
-            recording={recording}
+            recording={canRecord ? recording : null}
             reactions={reactions?.button ?? null}
             panel={
               panel
@@ -445,7 +471,7 @@ function RoomBody(
             />
           }
           overlay={overlay}
-          pipNotice={waitingChip}
+          notices={notices}
         />
       </RoomShell>
       <AudioSinks peers={remotes} onBlocked={sinks.onBlocked} register={sinks.register} />

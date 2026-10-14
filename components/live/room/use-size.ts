@@ -26,3 +26,20 @@ export function useSize(ref: RefObject<HTMLElement | null>): { w: number; h: num
   }, [ref]);
   return size;
 }
+
+/** Whether a media query matches, kept current. False until mounted. */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+  useLayoutEffect(() => {
+    const mq = typeof window !== "undefined" ? window.matchMedia?.(query) : undefined;
+    if (!mq) return;
+    const read = () => setMatches(mq.matches);
+    read();
+    mq.addEventListener?.("change", read);
+    return () => mq.removeEventListener?.("change", read);
+  }, [query]);
+  return matches;
+}
+
+/** The side panel is a column at this width and up, a bottom sheet below it. */
+export const DESKTOP_QUERY = "(min-width: 1024px)";

@@ -103,12 +103,18 @@ export function DeviceControls({ media }: { media: LocalMediaView | null }) {
             {media.devices.mics.length ? (
               <select
                 className={SELECT}
-                value={selectedDevice(media.devices.mics, media.micId)}
-                onChange={(e) => media.setMic(e.target.value)}
+                value={hasMic ? selectedDevice(media.devices.mics, media.micId) : ""}
+                onChange={(e) => e.target.value && media.setMic(e.target.value)}
                 disabled={media.switching}
                 aria-label="Microphone"
                 data-testid="select-mic"
               >
+                {/* No mic track (busy, unplugged): any pick, the first one too, tries it. */}
+                {!hasMic ? (
+                  <option value="" disabled>
+                    Choose a microphone
+                  </option>
+                ) : null}
                 {media.devices.mics.map((d) => (
                   <option key={d.deviceId} value={d.deviceId}>
                     {d.label}
@@ -149,12 +155,18 @@ export function DeviceControls({ media }: { media: LocalMediaView | null }) {
             {media.devices.cameras.length ? (
               <select
                 className={SELECT}
-                value={selectedDevice(media.devices.cameras, media.cameraId)}
-                onChange={(e) => media.setCamera(e.target.value)}
-                disabled={media.switching || !hasCam}
+                value={hasCam ? selectedDevice(media.devices.cameras, media.cameraId) : ""}
+                onChange={(e) => e.target.value && media.setCamera(e.target.value)}
+                disabled={media.switching}
                 aria-label="Camera"
                 data-testid="select-camera"
               >
+                {/* No camera track (busy, unplugged): setCamera acquires the one picked. */}
+                {!hasCam ? (
+                  <option value="" disabled>
+                    Choose a camera
+                  </option>
+                ) : null}
                 {media.devices.cameras.map((d) => (
                   <option key={d.deviceId} value={d.deviceId}>
                     {d.label}

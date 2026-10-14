@@ -13,7 +13,9 @@ import { AlertTriangle, Info, X } from "lucide-react";
 import { FOCUS } from "./ui";
 
 /**
- * Short messages over the stage, just above the control bar (never on it).
+ * Short messages. The provider hands back the list; the room decides where
+ * it goes (the top of the stage, or inside the phone's chat sheet) so a toast
+ * never covers the control bar, the filmstrip or the chat composer.
  * Same message twice is shown once. Errors stay longer.
  */
 
@@ -40,7 +42,7 @@ export function useToasts(): ToastApi {
   return ctx;
 }
 
-export function ToastProvider({ children }: { children: (toasts: ReactNode) => ReactNode }) {
+export function ToastProvider({ children }: { children: (toasts: ReactNode, count: number) => ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const current = useRef<Toast[]>([]);
@@ -86,7 +88,7 @@ export function ToastProvider({ children }: { children: (toasts: ReactNode) => R
 
   const layer = (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex flex-col items-center gap-2 px-4"
+      className="pointer-events-none flex w-full flex-col items-center gap-2"
       aria-live="polite"
       data-testid="room-toasts"
     >
@@ -127,5 +129,5 @@ export function ToastProvider({ children }: { children: (toasts: ReactNode) => R
     </div>
   );
 
-  return <ToastContext.Provider value={api}>{children(layer)}</ToastContext.Provider>;
+  return <ToastContext.Provider value={api}>{children(layer, toasts.length)}</ToastContext.Provider>;
 }

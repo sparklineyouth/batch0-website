@@ -129,7 +129,7 @@ export function FakeReactionsButton() {
         aria-label="React"
         title="React"
         onClick={() => setOpen((o) => !o)}
-        className="grid h-10 w-10 place-items-center rounded-md bg-[#26262b] text-[#f4f4f5] hover:bg-[#323238] sm:h-11 sm:w-11"
+        className="grid h-11 w-11 place-items-center rounded-md bg-[#26262b] text-[#f4f4f5] hover:bg-[#323238]"
         data-testid="fake-reactions"
       >
         <SmilePlus className="h-5 w-5" />
@@ -168,8 +168,9 @@ export function FakeReactionsOverlay() {
       listeners.delete(on);
     };
   }, []);
+  // Positioned like WS-C's ReactionsOverlay: it fills its container's height, bottom-right.
   return (
-    <div className="flex flex-col-reverse items-end gap-1 text-2xl">
+    <div className="pointer-events-none absolute bottom-0 right-0 top-0 flex w-40 flex-col-reverse items-end gap-1 overflow-hidden p-4 text-2xl sm:w-56">
       {items.map((x) => (
         <span key={x.id}>{x.e}</span>
       ))}

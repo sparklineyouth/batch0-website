@@ -7,6 +7,9 @@
  *
  *   const media = useLocalMedia({ autoStart: canBroadcast && phase !== "ended" });
  *   const presentation = usePresentation({ enabled: canBroadcast, eventDeck }); // eventDeck memoised
+ *     // eventDeck: { url, name } — a signed URL of the event's PDF deck. The
+ *     // deck reads the first slides by range and downloads the rest in the
+ *     // background; sign it for at least an hour.
  *   const session = useLiveSession({ ..., localStream: media.stream,
  *                                    screenStream: presentation.stream, ... });
  *   const [layout, setLayout] = useState({ mainId: null, mainIsPresentation: false });
@@ -21,10 +24,12 @@
  *                   joinFailed: session.joinFailed && { message } }}
  *     room={session.room ?? fallback}       // LiveRoomState: primaryId, canEnd, recording, …
  *     audienceCount={session.audienceCount} // hosts only
- *     recording={{ ...recording, canRecord }}
+ *     recording={recording}                 // the hook's object as is — never spread it
+ *     canRecord={canRecord}                 // webinar staff host / call staff
  *     hosting={names from getHostingStatus} // webinar green room CTA
  *     recordingNotice={…}                   // green room, everyone, when it records
- *     panel={{ tabs, render: ({ tab, onTabChange, onUnread }) => <WebinarPanel … /> }}
+ *     panel={{ tabs: panelTabs(role, chatOn),            // lib/webinar-panel: the panel's own tabs
+ *              render: ({ tab, onTabChange, onUnread }) => <WebinarPanel … /> }}
  *     reactions={{ button: <ReactionsButton …/>, overlay: <ReactionsOverlay …/> }}
  *     end={{ at, byMe, reopened, canReopen, rejoinUntil, reason }}
  *     busy / actionError / leaveHint
@@ -34,7 +39,8 @@
  *
  * Every prop is documented on LiveRoomProps (./types.ts). Stable data-testid
  * attributes mark controls and states for e2e (ctrl-*, tile-*, stage[data-layout],
- * green-room[data-cta], end-*, notice-*, badge-*, device-*, deck-*).
+ * green-room[data-cta], end-*, notice-*, badge-*, device-*, deck-*, stage-notices,
+ * room-toasts).
  */
 export { LiveRoom } from "./live-room";
 export { RoomShell, TopBar } from "./shell";
@@ -46,7 +52,7 @@ export { DevicePanel } from "./devices/device-panel";
 export { DeviceControls, MicMeter } from "./devices/device-controls";
 export { playTestSound, useMicTest } from "./devices/tests";
 export { DeckPresenter } from "./deck/deck-presenter";
-export { DeckEngine, type DeckSnapshot, type DeckSource } from "./deck/deck-engine";
+export { DeckEngine, type DeckOpenResult, type DeckSnapshot, type DeckSource } from "./deck/deck-engine";
 export { EndScreen, StageNotice, UploadingRecording } from "./screens";
 export { AudioSinks, useAudioSinks } from "./audio-sinks";
 export { useSpeaking, useAudioLevel, resumeAudio } from "./audio-levels";
