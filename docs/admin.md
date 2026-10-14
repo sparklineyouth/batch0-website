@@ -17,8 +17,9 @@ roles holding the permission of the page it links to.
 3. Call `assertPermission` in every server action.
 
 A row's `perm` can be a list, meaning any one of them. Email uses this: the
-sidebar's single Email row opens `/admin/email`, which forwards to the first
-tab in `EMAIL_TABS` the viewer holds; each tab keeps its own key.
+sidebar's single Email row opens `/admin/email`, which the middleware forwards
+to the first tab in `EMAIL_TAB_ROUTES` (`lib/permissions.ts`) the viewer holds;
+each tab keeps its own key.
 
 ## Retired (October 2026)
 
