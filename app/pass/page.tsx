@@ -130,7 +130,7 @@ const PERKS: Perk[] = [
     key: "badge",
     icon: Users,
     title: "The badge on the site",
-    body: "On batch0 itself — team pages, team threads — a Founder Pass badge sits next to your name, where mentors and investors are looking.",
+    body: "On batch0 team pages, a Founder Pass badge sits next to your name, where mentors and investors are looking.",
   },
   {
     key: "numbered",

@@ -236,7 +236,7 @@ export function TeamProfileTab({ team }: { team: Team }) {
       <ConfirmDialog
         open={confirmLeave}
         title="Leave this team?"
-        description="You'll lose access to the thread, drive, and pitch submission."
+        description="You'll lose access to the drive and pitch submission."
         confirmLabel="Leave"
         destructive
         pending={pending}

@@ -11,11 +11,6 @@ export const dynamic = "force-dynamic";
 /**
  * Announcements, read-only.
  *
- * The desktop page also carries emoji reactions (migration 0027). They're
- * omitted here on purpose: reacting is a social nicety, reading is the job, and
- * every reaction control is another 44px target competing with the text on a
- * 390px screen. Reactions still work from /dashboard/announcements.
- *
  * Capped at 30. Announcements accumulate for the life of a cohort and nobody
  * scrolls to the fortieth; an uncapped list is a payload that grows forever on
  * the connection least able to carry it.

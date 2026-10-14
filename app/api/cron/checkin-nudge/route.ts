@@ -118,7 +118,7 @@ export async function GET(req: Request) {
               description: [
                 `Hey${c.full_name ? `, ${c.full_name}` : ""} — your weekly batch0 check-in for the week of **${week}** is empty.`,
                 "",
-                "Run `/checkin` right here to post it in 30 seconds, or open the dashboard:",
+                "Post it on the dashboard:",
                 `${env.siteUrl}/dashboard/checkin`,
               ].join("\n"),
               color: 0xffbb00,

@@ -954,7 +954,13 @@ async function handleFlagBlocker(
     console.error("[discord] open thread failed", err);
   }
 
-  // Notify all admins in-app as well.
+  // Notify all admins in-app as well, linking to the message in Discord
+  // (triage happens in the thread opened above).
+  const snowflake = /^\d{1,25}$/;
+  const messageUrl =
+    env.discordGuildId && snowflake.test(channelId) && snowflake.test(targetId)
+      ? `https://discord.com/channels/${env.discordGuildId}/${channelId}/${targetId}`
+      : null;
   try {
     const { data: admins } = await admin
       .from("profiles")
@@ -966,7 +972,7 @@ async function handleFlagBlocker(
         type: "discord_blocker",
         title: `Blocker flagged in Discord`,
         body: (message.content ?? "").slice(0, 200) || "(no message body)",
-        link: "/admin/interventions",
+        link: messageUrl,
       })),
     );
   } catch {}
