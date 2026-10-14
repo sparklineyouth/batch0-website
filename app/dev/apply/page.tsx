@@ -10,8 +10,9 @@ import { ApplyFlow, type CohortOption } from "@/app/apply/apply-flow";
  * the experience can be walked end to end without creating an account or
  * landing a test application in the review queue.
  *
- * Gated like app/dev/live: renders on localhost and branch previews, 404s on
- * production. See that page for why the gate is VERCEL_ENV, not NODE_ENV.
+ * Gated on VERCEL_ENV: renders on localhost and branch previews, 404s on
+ * production. Not NODE_ENV, which Vercel sets to "production" for every
+ * deployment, previews included.
  *
  *   ?cohorts=1|2          one open cohort (no chooser) or two (chooser)
  *   ?mode=new|draft|reapply

@@ -10,9 +10,9 @@ import { DrivePreviewHarness } from "./preview";
  * iterating. This renders both against fixed mock rows and locally made
  * blob URLs — no auth, no database, no storage bucket.
  *
- * Same gate as /dev/live: VERCEL_ENV, so it renders on localhost and on
- * branch deployments and 404s on the real site. See app/dev/live/page.tsx
- * for why it is VERCEL_ENV and not NODE_ENV.
+ * Gated on VERCEL_ENV: it renders on localhost and on branch deployments and
+ * 404s on the real site. Not NODE_ENV, which Vercel sets to "production" for
+ * every deployment, previews included.
  */
 export const metadata = {
   title: "Team drive preview · batch0",
