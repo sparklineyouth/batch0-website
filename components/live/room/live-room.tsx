@@ -201,6 +201,7 @@ function RoomBody(
     () => computeStage({ kind, people, primaryId, localPin }),
     [kind, people, primaryId, localPin],
   );
+  // The shared view, never this viewer's pin: what the recorder composes.
   const shared = useMemo(() => computeStage({ kind, people, primaryId, localPin: null }), [kind, people, primaryId]);
   const sharedMainId = shared.main?.peerId ?? null;
   const sharedIsPresentation = shared.main?.kind === "presentation";

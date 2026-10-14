@@ -6,7 +6,6 @@ import {
   gridShape,
   pickPresenter,
   presentationKey,
-  sharedLayout,
   type StageInput,
   type StagePerson,
 } from "../components/live/room/stage-model.ts";
@@ -392,24 +391,36 @@ test("every tile appears exactly once across main, pip, grid and filmstrip", () 
   }
 });
 
-// ── Shared layout (recording) ───────────────────────────────────────────────
+// ── Shared view (recording) ─────────────────────────────────────────────────
+//
+// live-room.tsx hands the recorder the main tile of computeStage with
+// localPin: null, as { mainId, mainIsPresentation }.
 
-test("sharedLayout ignores local pins and reports the presentation", () => {
+const sharedView = (input: Omit<StageInput, "localPin">) => {
+  const main = computeStage({ ...input, localPin: null }).main;
+  return { mainId: main?.peerId ?? null, mainIsPresentation: main?.kind === "presentation" };
+};
+
+test("the shared view reports the presentation, and a local pin never reaches it", () => {
   const people = [person("ana"), person("ben", { presenting: "screen", presentingSince: 1 })];
-  assert.deepEqual(sharedLayout({ kind: "webinar", people, primaryId: "ana" }), {
+  assert.deepEqual(sharedView({ kind: "webinar", people, primaryId: "ana" }), {
     mainId: "ben",
     mainIsPresentation: true,
   });
-  assert.deepEqual(sharedLayout({ kind: "webinar", people: [person("ana")], primaryId: "ana" }), {
+  // The pinning viewer's own stage moves; the shared view does not.
+  const pinned = computeStage({ kind: "webinar", people, primaryId: "ana", localPin: cameraKey("ana") });
+  assert.equal(pinned.main?.peerId, "ana");
+  assert.equal(pinned.main?.kind, "camera");
+  assert.deepEqual(sharedView({ kind: "webinar", people: [person("ana")], primaryId: "ana" }), {
     mainId: "ana",
     mainIsPresentation: false,
   });
-  assert.deepEqual(sharedLayout({ kind: "call", people: [], primaryId: null }), {
+  assert.deepEqual(sharedView({ kind: "call", people: [], primaryId: null }), {
     mainId: null,
     mainIsPresentation: false,
   });
   assert.deepEqual(
-    sharedLayout({ kind: "call", people: [me(), person("ana"), person("ben")], primaryId: null }),
+    sharedView({ kind: "call", people: [me(), person("ana"), person("ben")], primaryId: null }),
     { mainId: null, mainIsPresentation: false },
   );
 });

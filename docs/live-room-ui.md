@@ -29,8 +29,8 @@ Presentations are `object-contain` on black; cameras `object-cover`. A
 presenter never sees their own capture: "You're presenting" (screen) or the
 presenter view (slides). When another presentation holds the stage, their own
 is a filmstrip card ("You're presenting", or slides n/N with previous / next /
-Stop) and a toast says whose is up. `sharedLayout()` (no local pin) is what the recorder
-should compose.
+Stop) and a toast says whose is up. The shared view (`computeStage` with no local
+pin) is what the recorder composes: the room reports it through `onSharedLayout`.
 
 ## Presenting (`usePresentation`)
 One state: none | screen | deck. Its `stream` goes into the session's

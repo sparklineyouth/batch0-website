@@ -23,6 +23,7 @@ import {
   fromLocalInput,
   nextRoundHour,
   toLocalInput,
+  cohortWho,
   validateEventFields,
   whoFromRow,
   type EventFieldErrors,
@@ -88,7 +89,7 @@ export function EventForm({
     event
       ? whoFromRow({ visibility: event.visibility, cohort_id: event.cohortId }, defaultCohortId)
       : defaultCohortId
-        ? `cohort:${defaultCohortId}`
+        ? cohortWho(defaultCohortId)
         : "public",
   );
   const [notify, setNotify] = useState(isNew);
@@ -429,7 +430,7 @@ export function EventForm({
           }}
         >
           {cohorts.map((c) => (
-            <option key={c.id} value={`cohort:${c.id}`}>
+            <option key={c.id} value={cohortWho(c.id)}>
               {c.name}
             </option>
           ))}
