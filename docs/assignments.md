@@ -32,7 +32,7 @@ release bell when a scheduled assignment opens; bell + email (`assignment.due_so
 
 ## Data
 
-`course_assignments`, `course_assignment_targets`, `course_assignment_submissions`. Read-only RLS; every write is a service-role server action. `student_checkins` / `checkin_feedback` are kept read-only for the record.
+`course_assignments`, `course_assignment_targets`, `course_assignment_submissions`. Read-only RLS; every write is a service-role server action. `student_checkins` / `checkin_feedback` are kept read-only for the record, and shown that way: "Earlier check-ins", collapsed, with the feedback on each, on the student's `/dashboard/assignments`, the mentor's `/mentor/students/[id]` and the admin's `/admin/students/[id]` (`lib/checkin-history-server.ts`; absent for anyone who never posted one).
 
 0093 seeds the running Fall cohort with a "Weekly update" series (weeks 5–9) and the Demo Day submission. Check-ins posted for one of those weeks before the switch become that week's submission (a mentor reply becomes its review).
 
