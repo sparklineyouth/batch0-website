@@ -462,11 +462,9 @@ export function WebinarFields({
         we asked for rather than from the row.
 
         `EventAsset` carries a fourth kind this form has no business holding:
-        `recording`, which is written by the recorder from inside the live
-        room, one row per two-minute segment. A form that spread the server's
-        row into its asset list would type-widen to include it, and the first
-        person to open a finished webinar in the editor would find eleven
-        recording segments listed under "Slides" with an X beside each one.
+        `recording` — legacy recording segments, one row per two minutes. A
+        form that spread the server's row into its asset list would type-widen
+        to include it, and list them under "Slides" with an X beside each.
         Narrowing here keeps the draft to the three kinds an admin uploads.
       */
       const asset: AssetDraft = {
@@ -979,9 +977,7 @@ export function WebinarFields({
           questions, polls). What they cannot: see who is watching (they get a
           headcount, never names — audience privacy), end a room a staff host
           is running (their End only appears when no staff host is on), or
-          reopen an ended webinar. Their browser may be the one that records
-          it: the room elects one recorder among every host present, guests
-          included (electRecorder in lib/webinars.ts).
+          reopen an ended webinar. Any host may record, guests included.
         */}
         <p className="text-xs text-ink-faint">
           A speaker can broadcast and moderate the chat, questions and polls in
@@ -1172,12 +1168,9 @@ export function WebinarFields({
       <div className="space-y-3">
         <Toggle
           label="Record automatically"
-          // One recorder per webinar: every host's browser elects the lowest
-          // user id present — staff or guest speaker alike (electRecorder in
-          // lib/webinars.ts) — and that browser records the whole stage. So a
-          // session with only guest speakers on air is recorded too, from a
-          // guest's laptop, and shared afterwards if "Share afterwards" is on.
-          description="Records the whole stage while anyone is on air, from one host's browser — which can be a guest speaker's, so a session with only guests on air is recorded too. It starts on its own, with no button to forget."
+          // The first host on air starts it (use-room-recording.ts); hosts can
+          // also stop and restart it from the room.
+          description="Starts recording when the first host goes live. Hosts can stop it in the room."
           checked={value.autoRecord}
           // Deliberately touches nothing but its own field. This used to clear
           // `autoShare` on the way off, which meant an admin who flicked

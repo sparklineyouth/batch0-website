@@ -1,0 +1,80 @@
+import "server-only";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { listAssets, signedAssetUrl } from "@/lib/webinar-data";
+import {
+  CALL_RECORDING_BUCKET,
+  callRecordingFolder,
+  sortCallSegments,
+} from "@/lib/call-recording";
+
+/**
+ * Recordings from before one-take recording (migration 0095): self-contained
+ * segment files, played back to back by the legacy player.
+ *
+ *   webinar  event_assets rows (kind 'recording') in the webinar-media bucket,
+ *            in sort_order
+ *   call     files under calls/<id>/recording/ in the call-recordings bucket,
+ *            ordered by the stamp in their names (lib/call-recording.ts)
+ *
+ * Read-only: nothing writes either any more, and nothing here deletes them.
+ * Like lib/recording-sessions.ts, the caller has checked who may watch.
+ */
+
+export type LegacyPart = {
+  bucket: "webinar-media" | "call-recordings";
+  path: string;
+  seconds: number | null;
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function legacyRecording(
+  kind: "webinar" | "call",
+  roomId: string,
+): Promise<LegacyPart[]> {
+  if (!UUID.test(roomId)) return [];
+  if (kind === "webinar") {
+    const assets = await listAssets(roomId, ["recording"]);
+    return assets.map((a) => ({
+      bucket: "webinar-media",
+      path: a.storagePath,
+      seconds: a.durationSeconds,
+    }));
+  }
+  const folder = callRecordingFolder(roomId);
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin.storage
+      .from(CALL_RECORDING_BUCKET)
+      .list(folder, { limit: 1000 });
+    // No bucket (nothing was ever recorded this way) reads as no parts.
+    if (error || !data) return [];
+    return sortCallSegments(data as { name: string }[]).map((o) => ({
+      bucket: "call-recordings",
+      path: `${folder}/${o.name}`,
+      seconds: null,
+    }));
+  } catch (err) {
+    console.error("[recordings] legacy list failed", roomId, err);
+    return [];
+  }
+}
+
+/** A ten-minute link to one legacy part, minted at the moment it is played. */
+export async function signLegacyPart(part: LegacyPart): Promise<string | null> {
+  if (part.bucket === "webinar-media") return signedAssetUrl(part.path, 60 * 10);
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin.storage
+      .from(CALL_RECORDING_BUCKET)
+      .createSignedUrl(part.path, 60 * 10);
+    if (error) {
+      console.error("[recordings] legacy sign failed", error.message);
+      return null;
+    }
+    return data?.signedUrl ?? null;
+  } catch (err) {
+    console.error("[recordings] legacy sign threw", err);
+    return null;
+  }
+}

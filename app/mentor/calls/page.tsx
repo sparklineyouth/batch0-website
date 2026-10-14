@@ -6,7 +6,6 @@ import {
   listInvitableStaff,
   listInvitableStudents,
 } from "@/lib/calls";
-import { countCallRecordings, recordingCandidates } from "@/lib/call-recordings";
 
 export const metadata = { title: "1:1 calls · Mentor" };
 
@@ -22,10 +21,9 @@ export default async function MentorCallsPage() {
   // is already on every call listed. Each card's Add people leaves out the
   // rest of that call's people itself.
   const staff = allStaff.filter((s) => s.id !== viewer.profile.id);
-  // One clock for the render: the Upcoming/Past split, the recording lookup
-  // and the cards' first paint all agree on what "now" is.
+  // One clock for the render: the Upcoming/Past split and the cards' first
+  // paint agree on what "now" is.
   const now = new Date();
-  const recordings = await countCallRecordings(recordingCandidates(invites, now));
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -44,7 +42,6 @@ export default async function MentorCallsPage() {
           students={students}
           staff={staff}
           now={now.toISOString()}
-          recordings={recordings}
         />
       </Card>
     </div>

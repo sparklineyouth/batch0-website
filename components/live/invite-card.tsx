@@ -17,13 +17,14 @@ import {
   callPhase,
   canAddCallCohosts,
   canCancelCall,
+  mayHaveCallRecording,
   splitCalls,
   type CallPhase,
 } from "@/lib/call-lifecycle";
+import { CallRecordings } from "@/components/live/recording-player";
 import {
   CalendarPlus,
   ChevronRight,
-  CircleDot,
   Clock,
   User,
   UserPlus,
@@ -107,7 +108,7 @@ export function InviteCard({
   invite,
   perspective,
   now: nowProp,
-  recordingParts = 0,
+  showRecordings = false,
   onAccept,
   onDecline,
   onCancel,
@@ -124,8 +125,11 @@ export function InviteCard({
    * guessing one.
    */
   now?: Date | null;
-  /** Recorded segments, for a past call. Zero hides the row. */
-  recordingParts?: number;
+  /**
+   * Observer cards: show the call's recordings (admins only). The people on
+   * the call always see them; the API decides either way.
+   */
+  showRecordings?: boolean;
   onAccept?: (id: string) => void;
   onDecline?: (id: string) => void;
   onCancel?: (id: string) => void;
@@ -273,9 +277,10 @@ export function InviteCard({
             </p>
           )}
 
-          {recordingParts > 0 && (
-            <RecordingLinks inviteId={invite.id} parts={recordingParts} />
-          )}
+          {(participant || showRecordings) &&
+            now &&
+            (phase === "ended" || phase === "completed" || phase === "cancelled") &&
+            mayHaveCallRecording(invite, now) && <CallRecordings inviteId={invite.id} />}
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -383,48 +388,13 @@ export function InviteCard({
   );
 }
 
-/**
- * "Recording · Part 1 · Part 2".
- *
- * Each part is a link to /api/calls/<id>/recording/<n>, which checks the
- * viewer against the call and only then mints a ten-minute signed URL — so
- * nothing on this page is itself a working link to the file. Parts rather
- * than one file because that is what the recorder writes (two-minute
- * segments, so a crash costs one and not the call), and stitching them
- * server-side is a transcode this change does not take on.
- */
-function RecordingLinks({ inviteId, parts }: { inviteId: string; parts: number }) {
-  return (
-    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-soft">
-      <span className="inline-flex items-center gap-1.5 font-medium text-ink">
-        <CircleDot className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-        Recording
-        <span className="font-normal text-ink-faint">
-          ({parts} {parts === 1 ? "part" : "parts"})
-        </span>
-      </span>
-      {Array.from({ length: parts }, (_, i) => (
-        <a
-          key={i}
-          href={`/api/calls/${inviteId}/recording/${i + 1}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-phosphor-ink underline-offset-2 hover:underline"
-        >
-          Part {i + 1}
-        </a>
-      ))}
-    </p>
-  );
-}
-
 /** A list of invites with an empty state, used on every calls page. */
 export function InviteList({
   invites,
   perspective,
   emptyMessage,
   now,
-  recordings,
+  showRecordings,
   onAccept,
   onDecline,
   onCancel,
@@ -437,8 +407,8 @@ export function InviteList({
   perspective: InvitePerspective;
   emptyMessage: string;
   now?: Date | null;
-  /** inviteId → recorded parts. Only ever passed to people allowed to watch. */
-  recordings?: Record<string, number>;
+  /** Observer lists: show recordings (admins only). See InviteCard. */
+  showRecordings?: boolean;
   onAccept?: (id: string) => void;
   onDecline?: (id: string) => void;
   onCancel?: (id: string) => void;
@@ -465,7 +435,7 @@ export function InviteList({
           invite={i}
           perspective={perspective}
           now={now}
-          recordingParts={recordings?.[i.id] ?? 0}
+          showRecordings={showRecordings}
           onAccept={onAccept}
           onDecline={onDecline}
           onCancel={onCancel}
@@ -520,7 +490,7 @@ export function CallSections({
   invites,
   perspective,
   now: initialNow,
-  recordings,
+  showRecordings,
   emptyMessage,
   onCancel,
   pending,
@@ -532,7 +502,8 @@ export function CallSections({
   perspective: InvitePerspective;
   /** The server's render time, as ISO. See `useNow`. */
   now: string;
-  recordings?: Record<string, number>;
+  /** Observer lists: show recordings (admins only). See InviteCard. */
+  showRecordings?: boolean;
   emptyMessage: string;
   onCancel?: (id: string) => void;
   pending?: boolean;
@@ -553,7 +524,6 @@ export function CallSections({
         invites={upcoming}
         perspective={perspective}
         now={now}
-        recordings={recordings}
         emptyMessage={
           past.length > 0 ? "Nothing coming up. Past calls are below." : emptyMessage
         }
@@ -573,7 +543,7 @@ export function CallSections({
           invites={past}
           perspective={perspective}
           now={now}
-          recordings={recordings}
+          showRecordings={showRecordings}
           emptyMessage=""
           onCancel={onCancel}
           pending={pending}

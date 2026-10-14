@@ -53,7 +53,7 @@ and ICE candidates that lets two browsers find each other — and that rides
 | --- | --- |
 | `lib/live.ts` | Pure rules: the audience window, `roomAccess` (who may be in a room now, by role), `eventLiveStatus` (what a list shows). Unit-tested. |
 | `lib/call-lifecycle.ts` | Pure rules for a 1:1: `callPhase` (where a call stands, from its status and the clock), who may cancel, answer, end it or add people to it. Unit-tested; see docs/live-video.md. |
-| `lib/call-roster.ts` | Pure rules for a 1:1's roster while it runs: folding the heartbeat's peers into the session (`mergeCallPeers`) and keeping the staff list the room elects its recorder from. Import-free, unit-tested. |
+| `lib/call-roster.ts` | Pure rules for a 1:1's roster while it runs: folding the heartbeat's peers into the session (`mergeCallPeers`) and keeping the room's staff list current. Import-free, unit-tested. |
 | `lib/live-signal.ts` | Pure wire protocol: channel names, message shapes, media slots, and the client's reaction to a status answer (`nextStatusAction`). Import-free, unit-tested. |
 | `lib/live-access.ts` | Server-only. **Who someone is in a room**, computed once: `resolveEventAccess` / `resolveCallAccess`, and the identity-only `leaveInternal`. Every gate below calls it. |
 | `lib/live-rooms.ts` | Server-only. Derives channel keys, issues credentials, records attendance, publishes the server's hints. Holds the room secret. |
@@ -177,8 +177,8 @@ The ordering problem is that students arrive before the host does.
   and they had never heard of the newcomer. The engine folds the roster in
   on every answer (`mergeCallPeers` in `lib/call-roster.ts`), dials anyone
   new at once, and publishes the staff side as `callStaffIds`, which changes
-  only when its membership does. The room elects its recorder, and decides
-  who counts as the other side for End call, from that list. It can make
+  only when its membership does. The room decides who may record, and who
+  counts as the other side for End call, from that list. It can make
   other people staff but never the student's own browser, which records
   nothing whatever an answer says (`selfIsCallStaff`).
   Nothing extra is disclosed: it is the join's own peer list, sent only on an
@@ -316,7 +316,7 @@ their tracks, tears down, is marked left, and sees "You've left" with a Rejoin
 that really goes back through the green room. A host who leaves while another
 host is on air just leaves. Leaving takes a host off air at once — the
 session (and every peer connection) goes down the moment Leave is confirmed;
-the recorder then captures its final segment, the devices stop, and any upload
+the recorder then captures its final part, the devices stop, and any upload
 still running finishes behind the "You've left" screen, which says "keep this
 tab open" while the unload prompt stays armed until it lands; Rejoin and Back
 wait for it first (bounded at 90 s). The **last** host on air in a webinar
@@ -344,7 +344,7 @@ guest speaker. `endLive` stamps
 `live_ended_at` — the first End wins and later presses return the same stamp —
 closes open polls and open attendance rows, and sends `room-changed`. Only
 then does the host's own client go off air, capture the recorder's final
-segment and stop its tracks (the upload finishes on the ended screen, as for
+part and stop its tracks (the upload finishes on the ended screen, as for
 Leave); if `endLive` fails, nothing is torn down and the host can retry. Everyone else
 tears down when they hear it (the hint, the next heartbeat, or the room's
 poll): other hosts see "The webinar was ended", viewers a terminal "This
@@ -375,8 +375,8 @@ and so does coming back to the tab through the browser's back-forward cache:
 the page reloads instead of resuming a session whose peers were already told
 it left.
 The browser's "leave this page?" prompt appears only while you are the sole
-host on air in a live, un-ended webinar, or while recording segments are still
-uploading. The second is held for the whole tab (`use-recorder.ts`), not by the
+host on air in a live, un-ended webinar, or while a recording is still
+uploading. The second is held for the whole tab (`use-room-recording.ts`), not by the
 room, so it survives Back or anything else that takes the room off the screen
 before the last upload lands.
 
@@ -390,7 +390,7 @@ co-hosts it is a two-step "End for everyone": `endCall` (app/calls/actions.ts) s
 from `accepted`, so it is idempotent) and audits it; the side that pressed it
 sees "This call has ended", and everyone else's room closes to the same
 screen on its next status poll or heartbeat. The recording (one staff
-browser's: `electCallRecorder`) captures its final segment on the way out, and the upload finishes behind that screen;
+browser's, under the server lease — docs/recording.md) captures its final part on the way out, and the upload finishes behind that screen;
 the side that pressed End call is then taken back to their calls list (after
 the upload, bounded, and only if they are still on the room's page). `endCall`
 deliberately revalidates nothing: a revalidating action re-renders the current

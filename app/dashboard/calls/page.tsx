@@ -13,7 +13,6 @@ import {
   interviewCardState,
   interviewStage,
 } from "@/lib/call-lifecycle";
-import { countCallRecordings, recordingCandidates } from "@/lib/call-recordings";
 
 export const metadata = { title: "1:1 calls · batch0" };
 
@@ -56,8 +55,8 @@ export default async function StudentCallsPage() {
       }
     : null;
 
-  // One clock for the render — the Upcoming/Past split, the interview card and
-  // the recording lookup all agree on what "now" is.
+  // One clock for the render — the Upcoming/Past split and the interview card
+  // agree on what "now" is.
   const now = new Date();
 
   // Any enrolled student can ask the team for a 1:1 whenever they want, and
@@ -74,10 +73,6 @@ export default async function StudentCallsPage() {
     canRequestTeamCall(access),
   );
 
-  const recordings = profile
-    ? await countCallRecordings(recordingCandidates(invites, now))
-    : {};
-
   // Deliberately not behind the enrolled gate that /dashboard/events uses.
   // An invite is addressed to one named person by someone who already decided
   // to reach them — an accepted applicant who is invited to a call should be
@@ -87,7 +82,6 @@ export default async function StudentCallsPage() {
     <StudentCalls
       invites={invites}
       now={now.toISOString()}
-      recordings={recordings}
       interviewRequest={interviewRequest}
       interviewState={interviewState}
       interviewKind={access.preCohort ? "interview" : "call"}

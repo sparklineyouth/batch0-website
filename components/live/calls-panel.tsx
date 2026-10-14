@@ -29,7 +29,6 @@ export function CallsPanel({
   students,
   staff = [],
   now,
-  recordings,
   emptyMessage = "You haven't invited anyone yet.",
 }: {
   invites: CallInvite[];
@@ -42,8 +41,6 @@ export function CallsPanel({
   staff?: InviteeOption[];
   /** The server's render time (ISO) — the clock the Upcoming/Past split starts on. */
   now: string;
-  /** inviteId → recorded parts, for this person's own past calls. */
-  recordings?: Record<string, number>;
   emptyMessage?: string;
 }) {
   const router = useRouter();
@@ -115,7 +112,6 @@ export function CallsPanel({
         invites={invites}
         perspective="host"
         now={now}
-        recordings={recordings}
         emptyMessage={emptyMessage}
         onCancel={cancel}
         pending={pending}

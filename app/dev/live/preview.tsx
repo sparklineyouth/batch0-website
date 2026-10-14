@@ -185,7 +185,6 @@ export function LivePreview() {
                   invites={mocks.invites}
                   perspective="host"
                   now={mocks.now}
-                  recordings={mocks.recordings}
                   emptyMessage="You haven't invited anyone yet."
                   onCancel={(id) => alert(`Would cancel ${id}`)}
                 />
@@ -197,7 +196,6 @@ export function LivePreview() {
                 <InviteList
                   invites={mocks.invites}
                   perspective="invitee"
-                  recordings={mocks.recordings}
                   emptyMessage="No call invites right now."
                   onAccept={(id) => alert(`Would accept ${id}`)}
                   onDecline={(id) => alert(`Would decline ${id}`)}
@@ -211,7 +209,6 @@ export function LivePreview() {
                   invites={mocks.invites}
                   perspective="observer"
                   now={mocks.now}
-                  recordings={mocks.recordings}
                   emptyMessage="Nobody else has booked a 1:1 yet."
                 />
               </div>
@@ -241,7 +238,6 @@ type Mocks = {
   invites: CallInvite[];
   /** Build time, standing in for the server's render time. */
   now: string;
-  recordings: Record<string, number>;
   students: Parameters<typeof InviteForm>[0]["students"];
   staff: Parameters<typeof InviteForm>[0]["students"];
   webinarParticipants: Parameters<typeof CallStage>[0]["participants"];
@@ -267,9 +263,6 @@ function buildMocks(): Mocks {
 
   return {
     now: new Date().toISOString(),
-    // Only past calls carry a recording — the dev room never uploads, so
-    // these links 404 here; they are for the layout.
-    recordings: { "i-ended": 3, "i-completed": 1 },
     events: [
       {
         ...baseEvent,

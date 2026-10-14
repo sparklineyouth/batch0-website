@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { ButtonLink } from "@/components/ui/button";
 import { SpeakerStrip } from "@/components/live/speaker-strip";
+import { EventRecordings } from "@/components/live/recording-player";
 import {
   listAssets,
   listAttendance,
@@ -90,7 +91,6 @@ export default async function AdminWebinarPage(props: {
     listSpeakers(id, true),
   ]);
 
-  const recordings = assets.filter((a) => a.kind === "recording");
   const files = assets.filter((a) => a.kind !== "recording");
   // Signed for an hour rather than the usual ten minutes: this is a page-render
   // batch an admin will click through over several minutes, not a single
@@ -101,10 +101,6 @@ export default async function AdminWebinarPage(props: {
   const hosts = attendance.filter((a) => a.role === "host");
   const watched = viewers.filter((a) => a.minutes >= 1);
   const medianMinutes = median(watched.map((a) => a.minutes));
-  const recordedSeconds = recordings.reduce(
-    (n, r) => n + (r.durationSeconds ?? 0),
-    0,
-  );
   const mode = normalizeAudienceMode(ev.audience_mode);
 
   // Live state for the status card. The request's clock: this page is
@@ -247,34 +243,12 @@ export default async function AdminWebinarPage(props: {
           <Video className="h-4 w-4 text-phosphor-ink" />
           Recording
         </h2>
-        {recordings.length === 0 ? (
-          <p className="mt-2 text-sm text-ink-soft">
-            {ev.auto_record
-              ? "Nothing recorded yet. Recording runs in one host's browser while they are on air, so either no host went live, or the tab was closed before the first two-minute segment finished uploading."
-              : "Auto-record was off for this webinar."}
-          </p>
-        ) : (
-          <>
-            <p className="mt-2 text-sm text-ink-soft">
-              {recordings.length} segment{recordings.length === 1 ? "" : "s"} ·{" "}
-              {Math.round(recordedSeconds / 60)} minutes ·{" "}
-              {formatBytes(
-                recordings.reduce((n, r) => n + (r.sizeBytes ?? 0), 0),
-              )}
-            </p>
-            {/*
-              Segments are listed rather than stitched. The recorder writes a
-              self-contained file every two minutes so a crashed tab costs one
-              segment instead of the hour behind it (see docs/webinars.md), and
-              joining them back into a single file needs a muxer this project
-              does not have. The student-facing player walks them in order.
-            */}
-            <p className="mt-1 text-xs text-ink-faint">
-              Segments play back-to-back for students. To get one file, download
-              them in order and concatenate with ffmpeg.
-            </p>
-          </>
-        )}
+        <div className="mt-3">
+          <EventRecordings
+            eventId={ev.id}
+            emptyText={ev.auto_record ? "Nothing recorded yet." : "Not recorded."}
+          />
+        </div>
       </Card>
 
       {/* ---- Files ------------------------------------------------------ */}

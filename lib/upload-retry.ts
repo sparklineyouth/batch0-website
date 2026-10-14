@@ -1,10 +1,9 @@
 /**
  * Retry an upload through a network blip — and only a network blip.
  *
- * A recording segment is uploaded once, straight from the browser to Storage.
- * On a flaky connection that one attempt fails now and then, and a failed
- * segment is a hole in the recording: at End call it is the end of the
- * conversation, gone. So the room's `onSegment` wraps the upload in this.
+ * A file is uploaded straight from the browser to Storage. On a flaky
+ * connection that one attempt fails now and then, so the caller wraps the
+ * upload in this.
  *
  * What is worth another try: no response at all (a dropped connection, a
  * DNS hiccup — the error carries no HTTP status), a 5xx, 408 or 429. What is

@@ -40,6 +40,7 @@ import { BuiltinEventRoom } from "./builtin-room";
 import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
+import { EventRecordings } from "@/components/live/recording-player";
 
 export const metadata = {
   title: "Live · batch0",
@@ -81,8 +82,8 @@ export default async function EventLivePage(
   // with come from the same code.
   //
   //   staff (events.manage)  broadcasts, moderates, sees the audience by
-  //                          name, owns End / Reopen (recording is elected
-  //                          among every host, speakers too). Admins are
+  //                          name, owns End / Reopen (any host may record).
+  //                          Admins are
   //                          staff through `*`, and are NEVER downgraded to
   //                          viewer: an events.manage holder the RLS read
   //                          returns nothing for is re-read with the admin
@@ -175,7 +176,7 @@ export default async function EventLivePage(
             Watch the recording
           </a>
         )}
-        {files && <SessionFiles files={files} />}
+        {files && <SessionFiles eventId={ev.id} files={files} />}
         <BackLink href={backHref} />
       </Shell>
     );
@@ -206,7 +207,7 @@ export default async function EventLivePage(
             Watch the recording
           </a>
         )}
-        {files && <SessionFiles files={files} />}
+        {files && <SessionFiles eventId={ev.id} files={files} />}
         <BackLink href={backHref} />
       </Shell>
     );
@@ -310,8 +311,7 @@ export default async function EventLivePage(
     return (
       <BuiltinEventRoom
         eventId={ev.id}
-        // The id every other host's browser knows this one by (a peer's id
-        // is its user id) — what the recorder election compares.
+        // Their peer id: a peer's id is its user id.
         selfUserId={access.userId}
         selfName={profile?.full_name || "Host"}
         title={ev.title}
@@ -435,20 +435,17 @@ type SignedFile = EventAsset & { url: string | null };
  * The recording and the slides, once the follow-up has gone out — or null.
  *
  * The follow-up email says "everything from the session is on the event
- * page" and links here, and the ended screen used to show at most an
- * admin-pasted `recording_url`: the segments the room itself recorded, and
- * the deck, were on no page a student could reach. They are listed now, but
- * only once `assets_shared_at` is set — the moment the email promising them
- * went out. That is the auto-share decision, not an access decision (the
- * reader already passed the room's gate): a webinar without auto-share, or
- * one whose follow-up has not been sent, shows exactly what it showed before.
+ * page" and links here. Listed only once `assets_shared_at` is set — the
+ * moment the email promising them went out. That is the auto-share decision,
+ * not an access decision (the reader already passed the room's gate; the
+ * recordings API checks the same rule again for every byte it serves).
  *
- * Signed per render, for an hour, like the admin record page: short enough
- * that a copied link goes stale, long enough to click through the parts.
+ * Slides are signed per render, for an hour: short enough that a copied link
+ * goes stale.
  */
 async function sharedSessionFiles(
   eventId: string,
-): Promise<{ recordings: SignedFile[]; decks: SignedFile[] } | null> {
+): Promise<{ decks: SignedFile[] } | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("events")
@@ -456,58 +453,20 @@ async function sharedSessionFiles(
     .eq("id", eventId)
     .maybeSingle();
   if (!(data as any)?.assets_shared_at) return null;
-  const assets = await listAssets(eventId, ["recording", "deck", "handout"]);
-  if (assets.length === 0) return null;
-  const [recordings, decks] = await Promise.all([
-    // Recordings open in the browser (no download filename), decks download.
-    Promise.all(
-      assets
-        .filter((a) => a.kind === "recording")
-        .map(async (a) => ({
-          ...a,
-          url: await signedAssetUrl(a.storagePath, 60 * 60),
-        })),
-    ),
-    signAssets(
-      assets.filter((a) => a.kind !== "recording"),
-      60 * 60,
-    ),
-  ]);
-  return { recordings, decks };
+  const decks = await signAssets(await listAssets(eventId, ["deck", "handout"]), 60 * 60);
+  return { decks };
 }
 
 function SessionFiles({
+  eventId,
   files,
 }: {
-  files: { recordings: SignedFile[]; decks: SignedFile[] };
+  eventId: string;
+  files: { decks: SignedFile[] };
 }) {
-  const parts = files.recordings.length;
   return (
     <div className="mt-4 space-y-3 text-sm">
-      {parts > 0 && (
-        <div>
-          <p className="font-medium text-ink">The recording</p>
-          <ul className="mt-1 space-y-1">
-            {files.recordings.map((r, i) =>
-              r.url ? (
-                <li key={r.id}>
-                  <a
-                    href={r.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-phosphor-ink hover:underline"
-                  >
-                    {parts === 1 ? "Watch" : `Part ${i + 1} of ${parts}`}
-                    {r.durationSeconds
-                      ? ` · ${Math.max(1, Math.round(r.durationSeconds / 60))} min`
-                      : ""}
-                  </a>
-                </li>
-              ) : null,
-            )}
-          </ul>
-        </div>
-      )}
+      <EventRecordings eventId={eventId} />
       {files.decks.length > 0 && (
         <div>
           <p className="font-medium text-ink">The slides</p>

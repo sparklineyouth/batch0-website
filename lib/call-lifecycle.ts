@@ -204,52 +204,6 @@ export function canMarkCallCompleted(call: CallTiming, now: Date = new Date()): 
   );
 }
 
-/**
- * How long after the join window closes a recording segment may still be
- * uploaded.
- *
- * The room closes itself when the window does (it polls for exactly that), and
- * closing FLUSHES the recorder — so the last segment of a call that ran right
- * to the wire is finished at the moment the window shuts and uploaded just
- * after it. Without a grace, the gate that refuses uploads for a closed call
- * refused that segment: up to two minutes, and always the end of the
- * conversation. Ten minutes covers a two-minute segment's upload on a slow
- * uplink (it finishes behind the room's ended screen) with room to spare, and
- * is still a door that shuts.
- */
-export const RECORDING_UPLOAD_GRACE_MINUTES = 10;
-
-/**
- * May the host upload a recording segment for this call right now?
- *
- * Accepted, or completed — when the OTHER person presses End call the row
- * flips to completed while the host's recorder is still flushing, and refusing
- * that upload would cut the end off every call the student closed. Or
- * cancelled, for the same reason: a host who cancels from another tab while
- * sitting in the room (waiting on a student who never came) has a recorder
- * that flushes when the room notices, and that last segment belongs with the
- * rest. From the moment the room opens until the grace after it closes; never
- * for a call next week or last week, whatever its status.
- */
-export function canUploadCallRecording(
-  call: CallTiming,
-  now: Date = new Date(),
-): boolean {
-  if (
-    call.status !== "accepted" &&
-    call.status !== "completed" &&
-    call.status !== "cancelled"
-  ) {
-    return false;
-  }
-  const start = new Date(call.startsAt).getTime();
-  const closes =
-    callEndsAt(call.startsAt, call.durationMinutes).getTime() +
-    (JOIN_CLOSES_MINUTES_AFTER + RECORDING_UPLOAD_GRACE_MINUTES) * MINUTE;
-  const t = now.getTime();
-  return t >= start - JOIN_OPENS_MINUTES_BEFORE * MINUTE && t <= closes;
-}
-
 /** What /api/cron/call-lifecycle stamps `completed`: accepted, window closed. */
 export function shouldAutoComplete(call: CallTiming, now: Date = new Date()): boolean {
   return call.status === "accepted" && callPhase(call, now) === "ended";
@@ -266,21 +220,19 @@ export function shouldAutoWithdraw(call: CallTiming, now: Date = new Date()): bo
 }
 
 /**
- * Could this call have recording segments in storage?
+ * Could this call have a recording?
  *
  * Accepted or completed: the host was recording from the moment the room
  * opened. Declined and never-answered invites never had a room.
  *
  * Cancelled, only if it was cancelled WHILE the room was open — a host giving
- * up on a no-show from the room has segments, and the room tells the host
- * they are "under Past", so the Past list has to look. The row's `updatedAt`
+ * up on a no-show from the room has a recording, and the room tells the host
+ * it is "under Past", so the Past list has to look. The row's `updatedAt`
  * dates the cancel (nothing writes a cancelled row again). A call cancelled
  * days ahead, or an expired invite withdrawn after its window (by the sweep
- * or by hand), never had a room — and must not be asked about, because the
- * list pages only look up a capped number of calls, newest first, and every
- * one of these would push a genuinely recorded call past the cap and quietly
- * take its recording link off the page. With no timestamp to go on it falls
- * back to "could the room have opened yet", which errs toward looking.
+ * or by hand), never had a room, and its card does not ask. With no timestamp
+ * to go on it falls back to "could the room have opened yet", which errs
+ * toward looking.
  */
 export function mayHaveCallRecording(call: CallTiming, now: Date = new Date()): boolean {
   if (call.status === "accepted" || call.status === "completed") return true;

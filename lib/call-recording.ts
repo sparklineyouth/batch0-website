@@ -1,47 +1,14 @@
 /**
- * Where a 1:1 call's recording lives, what its files are called, and how the
- * two people are laid out in the picture — the rules, with no I/O.
+ * Legacy 1:1 recordings — the segment files calls were recorded as before
+ * one-take recording (migration 0095), named and ordered. No I/O.
  *
- * ---------------------------------------------------------------------------
- * Why the storage bucket IS the index
- * ---------------------------------------------------------------------------
- *
- * Webinar segments are rows in `event_assets`, whose `event_id` references
- * `events` — so a call has nowhere to put a row, and adding a table (or a
- * `call_id` column) is a migration this change deliberately does not make.
- * Instead the file NAME carries everything a row would have: which call (the
- * folder), which segment (the index) and when (the stamp). Listing the folder
- * with the service role is the whole read path, and it cannot drift from the
- * bytes because it is the bytes.
- *
- * The files go in their OWN private bucket, `call-recordings`, not beside the
- * webinar files. `webinar-media` carries a staff-direct storage policy
- * (0084's "webinar-media staff all", granted by `events.manage`, which interns
- * hold by default) — so anything in it is downloadable through the Storage API
- * by roles the app would never show a 1:1 recording to. These are recordings
- * of calls with minors. The dedicated bucket has NO storage policies at all:
- * only the service role can touch it, and every read and write goes through a
- * server action that checks the call first and mints a one-shot signed URL.
- * The app creates the bucket on first use (lib/call-recordings.ts), so there is
- * no migration.
- *
- * Why the stamp matters and the index is not enough: the recorder numbers
- * segments from zero every time the page loads, so a host who reloads
- * mid-call starts a second run whose segment 0 would collide with the first
- * run's. Names are unique by the stamp, and ordering is by the stamp first —
- * which is also chronological, because a segment is uploaded the moment it
- * finishes.
- *
- * Who uploaded it, and whether it was their LAST: since co-hosts (migration
- * 0092) more than one browser on a call may record, and the room's election
- * only works between browsers that can see each other. Two staff whose link
- * to each other never came up both elect themselves, and both runs, sorted by
- * stamp, interleave into a recording of the whole call twice over. A webinar
- * stops that with a server backstop over its asset rows (`recordingRival` in
- * lib/webinars.ts); a call has no rows, so the name carries what the backstop
- * reads: the uploader's id, and `-last` on the segment a recorder captured as
- * it STOPPED (Leave, End, or handing over). See `callRecordingRegistry`.
- * Older names without either still parse, and still play.
+ * A call's recording used to be self-contained two-minute files in the
+ * private `call-recordings` bucket, with no table: the file name carried
+ * which call (the folder), which segment (the index), when (the stamp) and
+ * later who uploaded it and whether it was their last —
+ * `calls/<id>/recording/segment-NNNN-<stamp>[-<uploader>[-last]].<webm|mp4>`.
+ * Nothing writes them any more; the legacy player (lib/recording-legacy.ts)
+ * plays them back to back in the order below.
  *
  * Pure and import-free; tested by lib/call-recording.test.ts.
  */
@@ -53,51 +20,13 @@ export function callRecordingFolder(inviteId: string): string {
   return `calls/${inviteId}/recording`;
 }
 
-/**
- * Largest segment index accepted. Two-minute segments make a 240-minute call
- * (the longest the CHECK allows) 120 files; this is headroom for many reloads,
- * and a ceiling on what a tampered client can ask to have signed.
- */
-export const MAX_SEGMENT_INDEX = 9_999;
-
-export type SegmentExtension = "webm" | "mp4";
-
-/**
- * The container a recorder produced, from its MIME type.
- *
- * Safari's `MediaRecorder` only writes MP4, and a file called `.webm` that is
- * really MP4 plays in some players and not others — so the name follows the
- * bytes rather than assuming Chrome.
- */
-export function segmentExtension(mimeType: string | null | undefined): SegmentExtension {
-  return /^video\/mp4/i.test(mimeType ?? "") ? "mp4" : "webm";
-}
-
-/**
- * `segment-0003-1790000000000-<uploader>.webm`, and
- * `segment-0003-1790000000000-<uploader>-last.webm` for a recorder's final
- * segment. Without `by`, the pre-co-host `segment-0003-1790000000000.webm`.
- */
-export function callSegmentName(
-  index: number,
-  stamp: number,
-  ext: SegmentExtension = "webm",
-  by?: { userId: string; last?: boolean },
-): string {
-  const who =
-    by && isUuid(by.userId)
-      ? `-${by.userId.toLowerCase()}${by.last ? "-last" : ""}`
-      : "";
-  return `segment-${String(index).padStart(4, "0")}-${stamp}${who}.${ext}`;
-}
-
 const SEGMENT_RE =
   /^segment-(\d{4,})-(\d{10,})(?:-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(-last)?)?\.(webm|mp4)$/;
 
 export type ParsedCallSegment = {
   index: number;
   stamp: number;
-  ext: SegmentExtension;
+  ext: "webm" | "mp4";
   /** Null for a segment named before uploaders were (migration 0092). */
   uploaderId: string | null;
   /** The segment its recorder captured as it stopped. */
@@ -114,137 +43,21 @@ export function parseCallSegmentName(name: string): ParsedCallSegment | null {
   return {
     index,
     stamp,
-    ext: m[5] as SegmentExtension,
+    ext: m[5] as "webm" | "mp4",
     uploaderId: m[3] ?? null,
     last: !!m[4],
   };
 }
 
 /**
- * What a call's segment files say about who is recording it — the inputs
- * `recordingRival` (lib/webinars.ts) takes for a webinar from its asset rows
- * and its attendance table, read here from the names alone.
- *
- *   recent          every segment an uploader registered while still
- *                   recording, dated by its stamp (when it was signed). A
- *                   `-last` segment is left out: it proves its recorder
- *                   STOPPED then, not that they are recording — and dated by
- *                   arrival, a departing recorder's final flush landed
- *                   "during" the successor's first segment and refused it.
- *   stillRecording  uploaders whose most recent segment is not a `-last` one:
- *                   as far as the files can tell, still recording. Stands in
- *                   for attendance (a call has none), so someone who pressed
- *                   Leave stops counting as a rival the moment their final
- *                   segment is signed. Someone whose laptop died says nothing,
- *                   and counts until their registrations age out of the lease.
- *
- * Unnamed (pre-0092) segments say nothing about anybody and are ignored.
+ * Segments in playback order: by run (stamp), then by index within it — a
+ * reload numbered from zero again, and its segments come after the first
+ * run's. Anything that is not a segment is dropped.
  */
-export function callRecordingRegistry(names: readonly string[]): {
-  recent: { userId: string; at: string }[];
-  stillRecording: Set<string>;
-} {
-  const latest = new Map<string, { stamp: number; last: boolean }>();
-  const recent: { userId: string; at: string }[] = [];
-  for (const name of names) {
-    const p = parseCallSegmentName(name);
-    if (!p || !p.uploaderId) continue;
-    const prev = latest.get(p.uploaderId);
-    // Two segments signed in the same millisecond: the stop wins, because a
-    // recorder's final flush is the last thing it ever signs.
-    if (!prev || p.stamp > prev.stamp || (p.stamp === prev.stamp && p.last)) {
-      latest.set(p.uploaderId, { stamp: p.stamp, last: p.last });
-    }
-    if (!p.last) {
-      recent.push({ userId: p.uploaderId, at: new Date(p.stamp).toISOString() });
-    }
-  }
-  const stillRecording = new Set<string>();
-  for (const [userId, l] of latest) if (!l.last) stillRecording.add(userId);
-  return { recent, stillRecording };
-}
-
-/** Segments in playback order: by run (stamp), then by index within it. */
 export function sortCallSegments<T extends { name: string }>(files: readonly T[]): T[] {
   return files
     .map((f) => ({ f, p: parseCallSegmentName(f.name) }))
-    .filter((x): x is { f: T; p: NonNullable<ReturnType<typeof parseCallSegmentName>> } => !!x.p)
+    .filter((x): x is { f: T; p: ParsedCallSegment } => !!x.p)
     .sort((a, b) => a.p.stamp - b.p.stamp || a.p.index - b.p.index)
     .map((x) => x.f);
-}
-
-/** An index the upload action will sign a path for. */
-export function isValidSegmentIndex(index: unknown): index is number {
-  return (
-    typeof index === "number" &&
-    Number.isInteger(index) &&
-    index >= 0 &&
-    index <= MAX_SEGMENT_INDEX
-  );
-}
-
-/**
- * A UUID, as Postgres prints one.
- *
- * Route params reach the recording endpoints as free text and go into a
- * storage prefix; anything that is not a bare id must never get that far.
- */
-export function isUuid(s: unknown): s is string {
-  return (
-    typeof s === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The composed picture
-// ---------------------------------------------------------------------------
-
-export type Box = { x: number; y: number; w: number; h: number };
-
-/**
- * Side by side, one column per person, the full height of the frame.
- *
- * Equal columns rather than a big speaker and a small one: nobody in a 1:1 is
- * the audience, and a recording that makes the student a thumbnail says
- * something about whose meeting it was. Each video is contain-fitted inside
- * its column by the drawer, so a 16:9 camera in a 640×720 column letterboxes
- * top and bottom instead of being cropped to someone's forehead.
- *
- * Integer edges, with the last column taking any remainder, so three people
- * in 1280 pixels do not leave a one-pixel seam of backdrop between tiles.
- */
-export function callTileBoxes(count: number, width: number, height: number): Box[] {
-  const n = Math.max(1, Math.floor(count));
-  const col = Math.floor(width / n);
-  return Array.from({ length: n }, (_, i) => ({
-    x: i * col,
-    y: 0,
-    w: i === n - 1 ? width - i * col : col,
-    h: height,
-  }));
-}
-
-/**
- * Small camera insets along the bottom-right, for while someone presents.
- *
- * The shared screen takes the frame — it is what the two of them are looking
- * at — and each person's face drops to a 16:9 inset, right to left, the way
- * the webinar recording drops the host to a corner. Clamped so any number of
- * people still fits inside the frame rather than running off the left edge.
- */
-export function callInsetBoxes(count: number, width: number, height: number): Box[] {
-  const n = Math.max(1, Math.floor(count));
-  const margin = Math.round(width * 0.01875); // 24px at 1280
-  const gap = Math.round(margin / 2);
-  const ideal = Math.round(width * 0.2); // 256px at 1280
-  const fit = Math.floor((width - margin * 2 - gap * (n - 1)) / n);
-  const w = Math.max(1, Math.min(ideal, fit));
-  const h = Math.round((w * 9) / 16);
-  return Array.from({ length: n }, (_, i) => ({
-    x: width - margin - w - i * (w + gap),
-    y: height - margin - h,
-    w,
-    h,
-  }));
 }

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logAuditMany } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { refundScholarshipCreditFor } from "@/lib/calls";
+import { sweepStaleRecordings } from "@/lib/recording-sessions";
 import {
   autoCompleteCutoff,
   shouldAutoComplete,
@@ -47,6 +48,11 @@ export const dynamic = "force-dynamic";
  * each call once — and a credit is refunded only for rows THIS run changed.
  * No email, no notification — the call is over (or never was), and both
  * people knew that before this ran.
+ *
+ * It also sweeps recordings (calls' and webinars'): a take whose recorder's
+ * tab vanished is closed as interrupted and finalized from what reached
+ * storage (sweepStaleRecordings) — the room's lists and players do this too,
+ * lazily, but nobody may look for days.
  */
 
 /** Plenty for a quarter-hour's worth of calls; the rest wait for the next run. */
@@ -111,6 +117,7 @@ export async function GET(req: Request) {
   }
 
   const withdrawn = await withdrawExpiredScholarshipInvites(admin, now);
+  const recordings = await sweepStaleRecordings();
 
   // One audit round trip for the batch, attributed to the system.
   await logAuditMany(null, [
@@ -132,6 +139,7 @@ export async function GET(req: Request) {
     considered: rows?.length ?? 0,
     completed: completed.length,
     withdrawn: withdrawn.length,
+    recordings,
   });
 }
 

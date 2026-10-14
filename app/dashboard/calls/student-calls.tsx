@@ -35,7 +35,6 @@ import {
 export function StudentCalls({
   invites,
   now: serverNow,
-  recordings,
   interviewRequest = null,
   interviewState = "hidden",
   interviewKind = "call",
@@ -45,8 +44,6 @@ export function StudentCalls({
   invites: CallInvite[];
   /** The server's render time (ISO). See `useNow`. */
   now: string;
-  /** inviteId → recorded parts, for this student's own past calls. */
-  recordings?: Record<string, number>;
   interviewRequest?: InterviewRequest | null;
   /** Decided on the server from the request AND its call — see the page. */
   interviewState?: InterviewCardState;
@@ -152,7 +149,6 @@ export function StudentCalls({
           invites={past}
           perspective="invitee"
           now={clock}
-          recordings={recordings}
           emptyMessage=""
           pending={pending}
         />

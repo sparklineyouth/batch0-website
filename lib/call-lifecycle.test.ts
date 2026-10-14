@@ -10,7 +10,6 @@ import {
   canCancelCall,
   canMarkCallCompleted,
   canRespondToCall,
-  canUploadCallRecording,
   canRequestTeamCall,
   canViewCallRecording,
   cohostsToAdd,
@@ -22,7 +21,6 @@ import {
   isPastPhase,
   mayHaveCallRecording,
   proposalsAllPast,
-  RECORDING_UPLOAD_GRACE_MINUTES,
   shouldAutoComplete,
   shouldAutoWithdraw,
   splitCalls,
@@ -214,45 +212,6 @@ test("End call marks completed only once the call has started", () => {
   assert.equal(canMarkCallCompleted(call("accepted"), at(FIRST_CLOSED + 60)), true);
   assert.equal(canMarkCallCompleted(call("invited"), at(5)), false);
   assert.equal(canMarkCallCompleted(call("cancelled"), at(5)), false);
-});
-
-test("recording uploads are open from the room opening to a short grace after it closes", () => {
-  const c = call("accepted");
-  assert.equal(canUploadCallRecording(c, at(-JOIN_OPENS_MINUTES_BEFORE - 1)), false);
-  assert.equal(canUploadCallRecording(c, at(-JOIN_OPENS_MINUTES_BEFORE)), true);
-  assert.equal(canUploadCallRecording(c, at(10)), true);
-  // The room closes itself at the window's end and flushes; that last segment
-  // lands just after, and must still be accepted.
-  assert.equal(canUploadCallRecording(c, at(FIRST_CLOSED)), true);
-  assert.equal(
-    canUploadCallRecording(c, at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES)),
-    true,
-  );
-  assert.equal(
-    canUploadCallRecording(c, at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES + 1)),
-    false,
-  );
-});
-
-test("the host may finish uploading after the student ends the call, but never for a dead call", () => {
-  assert.equal(canUploadCallRecording(call("completed"), at(10)), true);
-  for (const s of ["invited", "declined"] as const) {
-    assert.equal(canUploadCallRecording(call(s), at(10)), false, s);
-  }
-});
-
-test("a call cancelled mid-room keeps its last segment, inside the window only", () => {
-  // The host cancels from another tab while sitting in the room; the room
-  // notices and flushes, and that flush must land with the rest.
-  assert.equal(canUploadCallRecording(call("cancelled"), at(10)), true);
-  assert.equal(
-    canUploadCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE - 1)),
-    false,
-  );
-  assert.equal(
-    canUploadCallRecording(call("cancelled"), at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES + 1)),
-    false,
-  );
 });
 
 test("the Past list looks for recordings on calls whose room could have opened", () => {

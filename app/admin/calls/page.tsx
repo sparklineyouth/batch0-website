@@ -11,7 +11,6 @@ import {
   listInvitableStudents,
 } from "@/lib/calls";
 import { listOpenInterviewRequests } from "@/lib/interview-requests";
-import { countCallRecordings, recordingCandidates } from "@/lib/call-recordings";
 import { scholarshipFundedRequestIds } from "@/lib/scholarships";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -46,23 +45,13 @@ export default async function AdminCallsPage() {
 
   // One clock for the whole render. See the mentor page.
   const now = new Date();
-  // Recordings of OTHER people's calls are for admins only — the same rule the
-  // playback route enforces (canViewCallRecording). This page is gated on
-  // calls.invite, which a custom role can hold without being an admin, and
-  // such a viewer must not even be shown that a recording exists.
-  const [myRecordings, otherRecordings, scholarshipIds] = await Promise.all([
-    countCallRecordings(recordingCandidates(mine, now)),
-    viewer.caps.superAdmin
-      ? countCallRecordings(recordingCandidates(others, now))
-      : Promise.resolve(undefined),
-    // Which queued requests are learner's-scholarship calls (migration 0071),
-    // so they are not mistaken for onboarding interviews. Tolerant: an empty
-    // set on a database without 0071.
-    scholarshipFundedRequestIds(
-      createAdminClient(),
-      interviewRequests.map((r) => r.id),
-    ),
-  ]);
+  // Which queued requests are learner's-scholarship calls (migration 0071),
+  // so they are not mistaken for onboarding interviews. Tolerant: an empty
+  // set on a database without 0071.
+  const scholarshipIds = await scholarshipFundedRequestIds(
+    createAdminClient(),
+    interviewRequests.map((r) => r.id),
+  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -81,7 +70,6 @@ export default async function AdminCallsPage() {
           students={students}
           staff={staff}
           now={now.toISOString()}
-          recordings={myRecordings}
         />
       </Card>
 
@@ -120,7 +108,10 @@ export default async function AdminCallsPage() {
           invites={others}
           perspective="observer"
           now={now.toISOString()}
-          recordings={otherRecordings}
+          // Recordings of OTHER people's calls are for admins only — the rule
+          // the recordings API enforces (canViewCallRecording); this page is
+          // gated on calls.invite, which a custom role can hold.
+          showRecordings={viewer.caps.superAdmin}
           emptyMessage="Nobody else has booked a 1:1 yet."
           viewerId={viewer.profile.id}
           canJoinAny={canJoinAny}
