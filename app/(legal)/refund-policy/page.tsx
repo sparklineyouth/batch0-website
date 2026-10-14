@@ -73,13 +73,12 @@ export default function RefundPolicyPage() {
         Thursday.
       </p>
       <p>
-        Requests sent any other way — a direct message in batch0, a Discord
-        message, a chat message, a social DM, a text to a team member, a
-        reply in an unrelated thread, a PayPal dispute, or a card
-        chargeback — are not refund requests under this policy and do not
-        stop the clock. Use a support request or email instead: the two
-        routes above are the only two, and both give you a record of when
-        you asked.
+        Requests sent any other way — a Discord message, a chat message, a
+        social DM, a text to a team member, a reply in an unrelated thread, a
+        PayPal dispute, or a card chargeback — are not refund requests under
+        this policy and do not stop the clock. Use a support request or email
+        instead: the two routes above are the only two, and both give you a
+        record of when you asked.
       </p>
       <p>
         We don't extend the window and we don't ask why you're leaving. A
