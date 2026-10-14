@@ -880,12 +880,23 @@ async function main() {
 
     await viewer2.page.reload({ waitUntil: "domcontentloaded" });
     check(await enterRoom(viewer2.page, "viewer2 mid-share"), "a viewer joins mid-share");
+    check(
+      await decodesAgain(viewer2.page, 0, "mid-share viewer to decode video"),
+      "the mid-share viewer is connected",
+    );
     const midShare = await until(
       "mid-share viewer to be shown the share",
       async () => (await viewer2.page.getByText(/presenting/i).count()) > 0,
-      30_000,
+      20_000,
     );
     check(!!midShare, "a viewer who joins MID-SHARE is shown the screen");
+    if (!midShare) {
+      const pcs = await viewer2.page
+        .evaluate(`(window.__b0pcs || []).map((pc) => pc.connectionState).join(", ")`)
+        .catch(() => "?");
+      const body = (await viewer2.page.locator("body").innerText().catch(() => "")) || "";
+      info(`[viewer2] connections: ${pcs || "none"}; page said: ${body.slice(0, 300).replace(/\s+/g, " ")}`);
+    }
     const shareA: any = await until(
       "mid-share viewer to decode the screen",
       async () => {
