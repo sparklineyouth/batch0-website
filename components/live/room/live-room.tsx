@@ -505,6 +505,7 @@ function RoomBody(
           name={self.name}
           media={self.broadcaster ? media : null}
           hosting={props.hosting}
+          primary={!!props.hostingPrimary}
           recordingNotice={props.recordingNotice}
           joining={busy === "joining"}
           error={actionError}

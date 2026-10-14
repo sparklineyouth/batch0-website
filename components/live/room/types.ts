@@ -208,6 +208,8 @@ export type LiveRoomProps = {
   canRecord?: boolean;
   /** Green room: names of hosts already live (getHostingStatus). Null while loading. */
   hosting?: readonly string[] | null;
+  /** Green room: this host still holds the main-stage seat (getHostingStatus). */
+  hostingPrimary?: boolean;
   /** Shown in the green room (everyone) whenever the session records or will. */
   recordingNotice?: ReactNode | null;
   /** Webinar only. */

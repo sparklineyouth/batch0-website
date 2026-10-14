@@ -19,6 +19,7 @@ export function GreenRoom({
   name,
   media,
   hosting,
+  primary = false,
   recordingNotice,
   joining,
   error,
@@ -31,6 +32,8 @@ export function GreenRoom({
   /** Null: this person never sends media (webinar viewer). */
   media: LocalMediaView | null;
   hosting: readonly string[] | null | undefined;
+  /** This host still holds the main-stage seat: "Rejoin as host". */
+  primary?: boolean;
   recordingNotice: ReactNode | null | undefined;
   joining: boolean;
   error: string | null | undefined;
@@ -38,7 +41,7 @@ export function GreenRoom({
   rehearsalUntil?: string | null;
   onJoin: () => void;
 }) {
-  const cta = greenRoomCta({ kind, broadcaster: !!media, hosting, rehearsal: !!rehearsalUntil });
+  const cta = greenRoomCta({ kind, broadcaster: !!media, hosting, rehearsal: !!rehearsalUntil, primary });
   // A click before hydration would be lost: the button waits for it.
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);

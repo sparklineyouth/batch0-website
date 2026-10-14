@@ -88,6 +88,19 @@ test("green room CTA per room kind and role", () => {
   );
 });
 
+test("green room CTA: the host who still holds the main stage rejoins as the host", () => {
+  // Back within moments of leaving while a co-host is live: not a muted co-host.
+  assert.deepEqual(greenRoomCta({ kind: "webinar", broadcaster: true, hosting: ["Ben"], primary: true }), {
+    label: "Rejoin as host",
+    detail: "Ben is in the room",
+    cohost: false,
+  });
+  // Nobody else live: the seat changes nothing.
+  assert.equal(greenRoomCta({ kind: "webinar", broadcaster: true, hosting: [], primary: true }).label, "Start webinar");
+  assert.equal(greenRoomCta({ kind: "webinar", broadcaster: true, hosting: ["Ben"], primary: false }).cohost, true);
+  assert.equal(greenRoomCta({ kind: "webinar", broadcaster: false, hosting: ["Ben"], primary: true }).label, "Join");
+});
+
 test("green room CTA before the go-live window: Enter room, not Start", () => {
   assert.equal(greenRoomCta({ kind: "webinar", broadcaster: true, hosting: [], rehearsal: true }).label, "Enter room");
   assert.equal(greenRoomCta({ kind: "webinar", broadcaster: true, hosting: null, rehearsal: true }).label, "Enter room");

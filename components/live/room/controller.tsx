@@ -97,8 +97,8 @@ export type WebinarBinding = {
   reopenLive: () => Promise<void>;
   fetchLiveState: () => Promise<WebinarLiveState>;
   setPrimaryHost: (userId: string) => Promise<ActionResult>;
-  /** Who else is hosting, and whether a take is running (getHostingStatus). */
-  hostingStatus: () => Promise<{ hosts: { userId: string; name: string }[]; recording?: boolean }>;
+  /** Who else is hosting, whether a take is running, and whether the caller holds the main stage (getHostingStatus). */
+  hostingStatus: () => Promise<{ hosts: { userId: string; name: string }[]; recording?: boolean; primary?: boolean }>;
 };
 
 export type CallBinding = {
@@ -387,6 +387,10 @@ function RoomSession({
   // the ones on camera).
   const hostingStatus = webinar?.hostingStatus;
   const [hosting, setHosting] = useState<string[] | null>(null);
+  // This host still holds the main-stage seat (back within moments of leaving).
+  const [selfPrimary, setSelfPrimary] = useState(false);
+  const selfPrimaryRef = useRef(selfPrimary);
+  selfPrimaryRef.current = selfPrimary;
   // A webinar that isn't auto-recorded may still be recording right now.
   const autoRecord = !!webinar?.autoRecord;
   const [recordingNow, setRecordingNow] = useState(false);
@@ -395,11 +399,11 @@ function RoomSession({
   const recordingNowRef = useRef(recordingNow);
   recordingNowRef.current = recordingNow;
   /** One read of the green room's server truth; null when it couldn't be read. */
-  const readHosting = useCallback(async (): Promise<{ hosts: string[]; recording: boolean } | null> => {
+  const readHosting = useCallback(async (): Promise<{ hosts: string[]; recording: boolean; primary: boolean } | null> => {
     if (!hostingStatus) return null;
     try {
       const r = await hostingStatus();
-      return { hosts: r.hosts.map((h) => h.name), recording: !!r.recording };
+      return { hosts: r.hosts.map((h) => h.name), recording: !!r.recording, primary: !!r.primary };
     } catch {
       return null; // The next tick asks again; the server still decides who is primary.
     }
@@ -414,6 +418,7 @@ function RoomSession({
         if (!stopped && r) {
           setHosting(r.hosts);
           setRecordingNow(r.recording);
+          setSelfPrimary(r.primary);
         }
       }
       if (!stopped) timer = setTimeout(tick, HOSTING_POLL_MS);
@@ -470,13 +475,21 @@ function RoomSession({
         const before = (hostingRef.current ?? []).some((n) => n.trim());
         const newlyRecorded = fresh.recording && !recordingNowRef.current && !autoRecord;
         hostingRef.current = fresh.hosts;
+        selfPrimaryRef.current = fresh.primary;
         setHosting(fresh.hosts);
         setRecordingNow(fresh.recording);
+        setSelfPrimary(fresh.primary);
         if ((fresh.hosts.some((n) => n.trim()) && !before) || newlyRecorded) return;
       }
     }
+    // A co-host joins muted. The host who still holds the main stage does
+    // not: everyone's main tile is theirs, and a muted one is a dead stage.
     joinMuted.current =
-      !!webinar && broadcaster && !!hostingRef.current && hostingRef.current.some((n) => n.trim());
+      !!webinar &&
+      broadcaster &&
+      !selfPrimaryRef.current &&
+      !!hostingRef.current &&
+      hostingRef.current.some((n) => n.trim());
     setPhase("live");
   }, [webinar, broadcaster, hostingStatus, readHosting, autoRecord]);
 
@@ -977,6 +990,7 @@ function RoomSession({
       recording={recording}
       canRecord={canRecord}
       hosting={hosting}
+      hostingPrimary={selfPrimary}
       recordingNotice={recordingNotice}
       panel={panel}
       reactions={reactions}

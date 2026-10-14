@@ -620,14 +620,17 @@ export async function setPrimaryHost(
  *
  * Never the caller: a host who reloads before their own row goes stale (the
  * leave beacon lost) is not someone already hosting for them to join.
+ * `primary`: the caller still holds the main-stage seat (a primary back
+ * within PEER_TIMEOUT_MS of leaving keeps it — claimStage), so they come back
+ * as the host, on camera, not as a muted co-host left on the main stage.
  * Hosts only (staff and speakers): a viewer gets an empty list, never names.
  * Empty too when presence cannot be read.
  */
 export async function getHostingStatus(
   eventId: string,
-): Promise<{ hosts: { userId: string; name: string }[]; recording: boolean }> {
+): Promise<{ hosts: { userId: string; name: string }[]; recording: boolean; primary: boolean }> {
   const access = await resolveEventAccess(eventId);
-  if (!access.ok || !access.isHost) return { hosts: [], recording: false };
+  if (!access.ok || !access.isHost) return { hosts: [], recording: false, primary: false };
   const [present, active] = await Promise.all([
     presentHosts(access.event.id, PEER_TIMEOUT_MS),
     activeRecordingFor("webinar", access.event.id).catch(() => null),
@@ -643,5 +646,6 @@ export async function getHostingStatus(
       )
       .map((h) => ({ userId: h.userId, name: h.name })),
     recording: active !== null,
+    primary: !!primary && primary === access.userId,
   };
 }
