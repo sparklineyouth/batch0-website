@@ -41,13 +41,13 @@ export const MIGRATION_PROBES: readonly MigrationProbe[] = [
   {
     migration: "0099",
     table: "app_roles",
-    columns: "id",
+    columns: "slug",
     leftover: { column: "permissions", values: ["discussions.manage"] },
   },
   {
     migration: "0100",
     table: "app_roles",
-    columns: "id",
+    columns: "slug",
     leftover: { column: "permissions", values: ["ai_usage.view"] },
   },
 ];
