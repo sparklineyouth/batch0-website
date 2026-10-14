@@ -45,7 +45,8 @@ when paid), that account gets exactly one extra door:
   ticket wasn't pinned to one) — nothing else opens up;
 - `StudentAccess.demoDayTicket` (`lib/access.ts`) shows the Events link in the
   student nav and lets `/dashboard/events` render for a non-enrolled holder;
-- the dashboard home shows a "You're confirmed for Demo Day" card, and
+- the dashboard home's "Needs you" list shows the Demo Day event (Join once
+  it's open), or "Demo Day ticket confirmed" until the event is posted, and
   `/dashboard/billing` lists the ticket in payment history.
 
 A hosted (Daily) Demo Day is joined from `/dashboard/events/<id>/live`, which

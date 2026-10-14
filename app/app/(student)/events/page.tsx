@@ -89,7 +89,7 @@ export default async function StudentAppEvents() {
 
   return (
     <>
-      <AppHeader title="Events" eyebrow="Office hours, workshops, demo day" />
+      <AppHeader title="Events" eyebrow="Live sessions, Demo Day" />
       <AppBody>
         <Section title="Upcoming">
           {ahead.length === 0 ? (

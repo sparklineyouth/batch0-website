@@ -159,8 +159,8 @@ export default async function AdminApplicationsPage(
   const rows = referredOnly ? allRows.filter(isVouched) : allRows;
 
   // Fast-track: vouched-for applications rise to the top of the review queue.
-  // This backs both the "we'll fast-track their application" promise on the
-  // student referral card AND the same promise on the founder pass (/pass).
+  // This backs both the fast-track promise on /dashboard/referrals AND the
+  // same promise on the founder pass (/pass).
   //
   // Three-way partition, pass holders first: someone holding a physical card we
   // handed out is a stronger signal than a link someone forwarded, and the card
@@ -286,7 +286,7 @@ export default async function AdminApplicationsPage(
         </Link>
         <Link
           href={hrefWith({ sort: "referred" })}
-          title="Referred applicants first — the fast-track promised on the student referral card"
+          title="Referred applicants first — the fast-track promised on /dashboard/referrals"
           className={pill(sort === "referred")}
         >
           <Share2 className="h-3 w-3" />

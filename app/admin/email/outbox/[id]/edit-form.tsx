@@ -144,8 +144,7 @@ export function QueuedEmailEditor({
           <p className="text-sm text-ink-soft">
             {!canEdit ? (
               <>
-                You can view this queued email but not change it — that needs
-                the <strong className="text-ink">Send email</strong> permission.
+                Read-only. Editing needs <strong className="text-ink">Send email</strong>.
               </>
             ) : (
               <>

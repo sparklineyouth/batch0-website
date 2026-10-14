@@ -34,9 +34,8 @@ export const dynamic = "force-dynamic";
  *
  * It answers three questions in order of how often they're asked: is anything
  * blocking me, what's due, and what's next on the calendar.
- * Everything else the /dashboard home carries — the referral card, the founder
- * pass, the certificate, the intro pipeline — is a once-a-cohort read and lives
- * behind More.
+ * The founder pass and the certificate are once-a-cohort reads; they stay on
+ * the /dashboard home.
  */
 export default async function StudentAppHome() {
   // requireUser() is a LOCAL JWT verify (lib/auth.ts), not a database read, so

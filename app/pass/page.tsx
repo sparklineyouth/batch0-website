@@ -219,7 +219,7 @@ export default async function PassPage(
     // The early-access perk is the one thing an admin can switch off (site
     // setting `founder_pass_early_access`), because the global applications
     // gate can't tell "not open yet" from "closed for good". Don't advertise
-    // it while it's off — that's how the referral card ended up lying.
+    // it while it's off: an advertised perk that isn't on is a broken promise.
     if (perk.key === "early_access" && !earlyAccess) return false;
     if (pass && sectionedKeys.has(perk.key)) return false;
     if (pass && tierVaryingKeys.has(perk.key)) return false;
