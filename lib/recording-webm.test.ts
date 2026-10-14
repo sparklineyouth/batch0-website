@@ -203,6 +203,43 @@ test("the rewritten head has a Duration, and Cues that land on Clusters", () => 
   assert.deepEqual(rescan.cues, found);
 });
 
+test("a long take's head (20,000 cues, ~11 h of 2 s keyframes) builds and indexes every Cluster", () => {
+  // The head used to be assembled with push(...bytes), which throws RangeError
+  // past ~125k arguments: any take over ~2.6 h could never be finalized.
+  const head = parseWebmHead(fixture.subarray(0, 4096));
+  assert.ok(head);
+  const n = 20_000;
+  const step = 300_000;
+  const cues: Cue[] = Array.from({ length: n }, (_, i) => [head.firstCluster + i * step, i * 2000]);
+  const built = buildWebmHead({
+    head,
+    durationMs: n * 2000,
+    cues,
+    rawLength: head.firstCluster + n * step,
+  });
+  assert.equal(built.cueCount, n);
+  // Head + the real first Cluster, so the reader below finds where Cues end.
+  const out = new Uint8Array(built.bytes.length + fixture.length - built.replaces);
+  out.set(built.bytes, 0);
+  out.set(fixture.subarray(built.replaces), built.bytes.length);
+  const f = readFinished(out);
+  assert.deepEqual(
+    f.children.map((c) => c.id.toString(16)),
+    ["1549a966", "1654ae6b", "1c53bb6b", "1f43b675"],
+  );
+  const cuesEl = f.children[2];
+  assert.equal(cuesEl.size, n * 27);
+  const clustersAt = f.children[3].at - f.dataStart;
+  const view = new DataView(out.buffer, out.byteOffset);
+  for (let i = 0; i < n; i++) {
+    const p = cuesEl.body + i * 27;
+    assert.equal(out[p], 0xbb);
+    assert.equal(Number(view.getBigUint64(p + 4)), i * 2000, `cue ${i} time`);
+    assert.equal(Number(view.getBigUint64(p + 19)), clustersAt + i * step, `cue ${i} position`);
+  }
+  assert.ok(isClusterStart(out.subarray(f.dataStart + clustersAt)));
+});
+
 test("no usable cues: Duration only, still a valid head", () => {
   const { out, built } = stitched(4977, []);
   assert.equal(built.cueCount, 0);

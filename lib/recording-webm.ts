@@ -449,71 +449,116 @@ export function parseWebmHead(bytes: Uint8Array): WebmHead | null {
 }
 
 // --- writing ---------------------------------------------------------------
+//
+// Bytes are appended to a growable buffer, never spread into call arguments:
+// `arr.push(...bytes)` throws RangeError past ~125k arguments, which a long
+// take's Cues (27 bytes a cue, one cue every ~2 s) passes at about 2.6 hours.
 
-function idBytes(id: number): number[] {
-  const out: number[] = [];
-  let v = id;
-  while (v > 0) {
-    out.unshift(v & 0xff);
-    v = Math.floor(v / 256);
+class ByteWriter {
+  private buf = new Uint8Array(1024);
+  length = 0;
+
+  private reserve(n: number) {
+    if (this.length + n <= this.buf.length) return;
+    let size = this.buf.length * 2;
+    while (size < this.length + n) size *= 2;
+    const next = new Uint8Array(size);
+    next.set(this.buf.subarray(0, this.length));
+    this.buf = next;
   }
-  return out;
-}
 
-/** A size vint, minimal length unless `length` is given. */
-function sizeBytes(value: number, length?: number): number[] {
-  let len = length ?? 1;
-  if (length === undefined) while (value >= 2 ** (7 * len) - 1) len++;
-  if (len > 8 || value >= 2 ** (7 * len) - 1) throw new Error("EBML size out of range");
-  const out = new Array<number>(len);
-  let v = value;
-  for (let i = len - 1; i >= 0; i--) {
-    out[i] = v % 256;
-    v = Math.floor(v / 256);
+  byte(b: number) {
+    this.reserve(1);
+    this.buf[this.length++] = b & 0xff;
   }
-  out[0] |= 0x80 >> (len - 1);
-  return out;
-}
 
-function uintBytes(value: number, length: number): number[] {
-  const out = new Array<number>(length);
-  let v = Math.max(0, Math.floor(value));
-  for (let i = length - 1; i >= 0; i--) {
-    out[i] = v % 256;
-    v = Math.floor(v / 256);
+  bytes(src: ArrayLike<number>) {
+    this.reserve(src.length);
+    if (src instanceof Uint8Array) this.buf.set(src, this.length);
+    else for (let i = 0; i < src.length; i++) this.buf[this.length + i] = src[i] & 0xff;
+    this.length += src.length;
   }
-  return out;
-}
 
-function element(id: number, body: ArrayLike<number>, sizeLength?: number): number[] {
-  return [...idBytes(id), ...sizeBytes(body.length, sizeLength), ...Array.from(body)];
-}
+  /** Big-endian unsigned integer in exactly `length` bytes. */
+  uint(value: number, length: number) {
+    this.reserve(length);
+    let v = Math.max(0, Math.floor(value));
+    for (let i = length - 1; i >= 0; i--) {
+      this.buf[this.length + i] = v % 256;
+      v = Math.floor(v / 256);
+    }
+    this.length += length;
+  }
 
-function float64Bytes(value: number): number[] {
-  const b = new Uint8Array(8);
-  new DataView(b.buffer).setFloat64(0, value);
-  return Array.from(b);
+  id(id: number) {
+    const out: number[] = [];
+    for (let v = id; v > 0; v = Math.floor(v / 256)) out.unshift(v & 0xff);
+    this.bytes(out);
+  }
+
+  /** A size vint: minimal length unless `length` is given. */
+  size(value: number, length?: number) {
+    let len = length ?? 1;
+    if (length === undefined) while (value >= 2 ** (7 * len) - 1) len++;
+    if (len > 8 || value >= 2 ** (7 * len) - 1) throw new Error("EBML size out of range");
+    const start = this.length;
+    this.uint(value, len);
+    this.buf[start] |= 0x80 >> (len - 1);
+  }
+
+  /** A whole element whose body is already written out. */
+  element(id: number, body: Uint8Array, sizeLength?: number) {
+    this.id(id);
+    this.size(body.length, sizeLength);
+    this.bytes(body);
+  }
+
+  /** An unsigned-integer element with a fixed-width body. */
+  uintElement(id: number, value: number, length: number) {
+    this.id(id);
+    this.size(length);
+    this.uint(value, length);
+  }
+
+  float64Element(id: number, value: number) {
+    const b = new Uint8Array(8);
+    new DataView(b.buffer).setFloat64(0, value);
+    this.id(id);
+    this.size(8);
+    this.bytes(b);
+  }
+
+  /** A copy of what was written. */
+  done(): Uint8Array {
+    return this.buf.slice(0, this.length);
+  }
 }
 
 /** Info with Duration set (in the head's timecode units). */
-function rewriteInfo(info: Uint8Array, durationUnits: number): number[] {
+function rewriteInfo(info: Uint8Array, durationUnits: number): Uint8Array {
   const h = readHeader(info, 0);
   if (!h || h === "invalid" || h.size === null) throw new Error("bad Info");
-  const body: number[] = [];
+  const body = new ByteWriter();
   let p = h.headerLength;
   while (p < info.length) {
     const c = readHeader(info, p);
     if (!c || c === "invalid" || c.size === null) break;
     const end = p + c.headerLength + c.size;
-    if (c.id !== DURATION_ID && c.id !== VOID_ID) body.push(...info.subarray(p, end));
+    if (c.id !== DURATION_ID && c.id !== VOID_ID) body.bytes(info.subarray(p, end));
     p = end;
   }
-  body.push(...element(DURATION_ID, float64Bytes(durationUnits)));
-  return element(INFO_ID, body);
+  body.float64Element(DURATION_ID, durationUnits);
+  const out = new ByteWriter();
+  out.element(INFO_ID, body.done());
+  return out.done();
 }
 
 /** Bytes of one CuePoint as built below (fixed widths, so sizes are known up front). */
 const CUE_POINT_BYTES = 1 + 1 + (1 + 1 + 8) + (1 + 1 + (1 + 1 + 1) + (1 + 1 + 8));
+/** CueTrackPositions body: CueTrack (1-byte value) + CueClusterPosition (8-byte value). */
+const CUE_POSITIONS_BODY = 1 + 1 + 1 + (1 + 1 + 8);
+/** CuePoint body: CueTime (8-byte value) + CueTrackPositions. */
+const CUE_POINT_BODY = 1 + 1 + 8 + (1 + 1 + CUE_POSITIONS_BODY);
 
 /**
  * Keyframe cues that can be trusted against a stream of `rawLength` bytes whose
@@ -542,7 +587,7 @@ export function usableCues(cues: readonly Cue[], firstCluster: number, rawLength
   return out;
 }
 
-const UNKNOWN_SIZE = [0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+const UNKNOWN_SIZE = Uint8Array.from([0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
 /**
  * The replacement head: EBML header, the Segment header, Info with a
@@ -561,12 +606,13 @@ export function buildWebmHead(args: {
   const { head, rawLength } = args;
   const units = (Math.max(0, args.durationMs) * 1e6) / head.timecodeScale;
   const info = head.children.find((c) => c.id === INFO_ID)!;
-  const before: number[] = [...rewriteInfo(info.bytes, units)];
+  const before = new ByteWriter();
+  before.bytes(rewriteInfo(info.bytes, units));
   for (const c of head.children) {
     if (c.id === INFO_ID || c.id === SEEKHEAD_ID || c.id === CUES_ID || c.id === VOID_ID) {
       continue;
     }
-    before.push(...c.bytes);
+    before.bytes(c.bytes);
   }
 
   const cues =
@@ -574,28 +620,31 @@ export function buildWebmHead(args: {
   // Cues: ID + an 8-byte size vint, so its length depends only on the count.
   const cuesLength = cues.length > 0 ? 4 + 8 + cues.length * CUE_POINT_BYTES : 0;
   const clustersAt = before.length + cuesLength; // relative to the Segment's data
-  const cueBytes: number[] = [];
-  if (cues.length > 0) {
-    const body: number[] = [];
-    for (const [offset, timeMs] of cues) {
-      const time = Math.round((timeMs * 1e6) / head.timecodeScale);
-      const positions = [
-        ...element(CUE_TRACK_ID, uintBytes(head.videoTrack!, 1)),
-        ...element(CUE_CLUSTER_POSITION_ID, uintBytes(clustersAt + (offset - head.firstCluster), 8)),
-      ];
-      const point = [
-        ...element(CUE_TIME_ID, uintBytes(time, 8)),
-        ...element(CUE_TRACK_POSITIONS_ID, positions),
-      ];
-      body.push(...element(CUE_POINT_ID, point));
-    }
-    cueBytes.push(...element(CUES_ID, body, 8));
-  }
 
+  const out = new ByteWriter();
+  out.bytes(head.ebml);
   // The Segment stays unknown-size, as recorded: its Clusters are
   // unknown-size, and players (FFmpeg) object to those inside a sized parent.
-  const out = [...head.ebml, ...idBytes(SEGMENT_ID), ...UNKNOWN_SIZE, ...before, ...cueBytes];
-  return { bytes: Uint8Array.from(out), replaces: head.firstCluster, cueCount: cues.length };
+  out.id(SEGMENT_ID);
+  out.bytes(UNKNOWN_SIZE);
+  out.bytes(before.done());
+  if (cues.length > 0) {
+    out.id(CUES_ID);
+    out.size(cues.length * CUE_POINT_BYTES, 8);
+    for (const [offset, timeMs] of cues) {
+      out.id(CUE_POINT_ID);
+      out.size(CUE_POINT_BODY);
+      out.uintElement(CUE_TIME_ID, Math.round((timeMs * 1e6) / head.timecodeScale), 8);
+      out.id(CUE_TRACK_POSITIONS_ID);
+      out.size(CUE_POSITIONS_BODY);
+      out.uintElement(CUE_TRACK_ID, head.videoTrack!, 1);
+      out.uintElement(CUE_CLUSTER_POSITION_ID, clustersAt + (offset - head.firstCluster), 8);
+    }
+  }
+  const bytes = out.done();
+  const expected = head.ebml.length + 4 + 8 + clustersAt;
+  if (bytes.length !== expected) throw new Error("head size mismatch");
+  return { bytes, replaces: head.firstCluster, cueCount: cues.length };
 }
 
 /** Do these bytes start a Cluster? (Spot-checking a cue against storage.) */
