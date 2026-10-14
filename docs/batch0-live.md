@@ -59,9 +59,11 @@ and ICE candidates that lets two browsers find each other — and that rides
 | `lib/live-rooms.ts` | Server-only. Derives channel keys, issues credentials, records attendance, publishes the server's hints. Holds the room secret. |
 | `app/live/actions.ts` | The server actions: `joinRoom`, `announcePresence`, `leaveRoom`, `listAudience`. The access-control surface for media. (A 1:1's End call and status poll are `endCall` / `getCallRoomStatus` in `app/calls/actions.ts`.) |
 | `app/api/live/leave/route.ts` | The same leave as `leaveRoom`, as a `sendBeacon` target for a closing tab. |
-| `app/dashboard/events/[id]/live/room-actions.ts` | Everything in a webinar that isn't video — chat, Q&A, polls — plus `endLive` / `reopenLive`. |
+| `app/dashboard/events/[id]/live/room-actions.ts` | Everything in a webinar that isn't video — chat, Q&A, polls (writes) — plus `endLive` / `reopenLive` / `fetchLiveState`. |
+| `app/api/live/panel/route.ts` | The webinar side panel's reads (GET), off the serial server-action queue. Same gate (`lib/webinar-gate.ts`). |
+| `components/live/room/panel/*` | The webinar side panel (`WebinarPanel`: Chat · Q&A · Polls · People) and reactions. Rules in `lib/webinar-panel.ts`. |
 | `components/live/use-live-session.ts` | The WebRTC engine. Runs both webinars and 1:1s. |
-| `components/live/broadcast-room.tsx` | The room UI. Reuses `PreJoin`, `VideoTile`, `CallControls`, `QAPanel`. |
+| `components/live/broadcast-room.tsx` | The room UI. Reuses `PreJoin`, `VideoTile`, `CallControls`, `WebinarPanel`. |
 | `supabase/migrations/0076_builtin_live.sql` | Attendance table + RLS. Optional — see below. |
 
 ---
