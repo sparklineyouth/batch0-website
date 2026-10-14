@@ -1,37 +1,31 @@
 import { notFound } from "next/navigation";
-import { LivePreview } from "./preview";
+import { Harness } from "./harness";
 
 /**
- * Interface preview for the live-video work.
+ * Live room harness: <LiveRoom/> on a fake session (canvas cameras and
+ * screens, oscillator voices, in-memory chat), so every state can be looked at
+ * and screenshotted without a server, a second browser or a camera.
  *
- * Every screen in the feature, rendered against fixed mock data with no auth,
- * no database, and no video provider — so the UI can be reviewed and iterated
- * on before any of that exists. Your real camera and microphone do work here,
- * because those are plain `getUserMedia` and owe nothing to a provider.
+ *   /dev/live                         index of states
+ *   /dev/live?state=<state>&w=<variant>[&media=real]
  *
- * This is not behind a permission check — it is behind not existing on the
- * live site at all, which is the only guarantee worth having for a route that
- * deliberately skips every guard the real pages apply.
- *
- * The gate is VERCEL_ENV, not NODE_ENV. Vercel builds *every* deployment with
- * NODE_ENV=production, preview branches included, so a NODE_ENV check would
- * 404 the preview too and leave nowhere to review this but localhost.
- * VERCEL_ENV distinguishes them:
- *
- *   undefined    → local `next dev`                        → renders
- *   "preview"    → a branch deployment                     → renders
- *   "production" → batch0.org / app.batch0.org             → 404
- *
- * So this can be looked at on a branch URL and cannot appear on the real site,
- * including if this branch is ever merged to main. To close the preview door
- * as well, change the check to `!== undefined`.
+ * Localhost only: it skips every guard the real rooms apply, so it 404s on
+ * any Vercel deployment (production and preview). VERCEL_ENV is unset under
+ * `next dev`; "development" is `vercel dev`.
  */
 export const metadata = {
-  title: "Live video preview · batch0",
+  title: "Live room harness · batch0",
   robots: { index: false, follow: false },
 };
 
-export default function LivePreviewPage() {
-  if (process.env.VERCEL_ENV === "production") notFound();
-  return <LivePreview />;
+export default async function LiveHarnessPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const env = process.env.VERCEL_ENV;
+  if (env === "production" || (env && env !== "development")) notFound();
+  const sp = await searchParams;
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+  return <Harness state={one(sp.state)} w={one(sp.w)} realMedia={one(sp.media) === "real"} />;
 }

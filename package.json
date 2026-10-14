@@ -27,6 +27,7 @@
     "assignments-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/assignments-e2e.mts",
     "call-mesh-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/call-mesh-e2e.mts",
     "ui-audit": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/ui-audit.mts",
+    "room-screens": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/room-screens.mts",
     "webinar-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-doctor.mts"
   },
   "dependencies": {
@@ -43,6 +44,7 @@
     "next": "15.5.25",
     "next-themes": "^0.4.6",
     "nodemailer": "^9.1.0",
+    "pdfjs-dist": "6.3.289",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "rehype-autolink-headings": "^7.1.0",
