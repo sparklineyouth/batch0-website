@@ -28,6 +28,7 @@ export async function recordedEventIds(admin: Admin, eventIds: string[]): Promis
       .eq("room_kind", "webinar")
       .in("room_id", eventIds)
       .in("status", ["finished", "interrupted"])
+      .not("finalized_at", "is", null)
       .gt("part_count", 0),
   ]);
   for (const r of (legacy.data ?? []) as { event_id: string }[]) out.add(r.event_id);
