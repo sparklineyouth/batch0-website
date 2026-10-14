@@ -55,6 +55,24 @@ create trigger touch_team_drive_links before update on public.team_drive_links
 
 alter table public.team_drive_links enable row level security;
 
+-- Is the signed-in user on this team? SECURITY DEFINER so the check doesn't
+-- run through team_members' own read policy, which refers to itself and
+-- fails with "infinite recursion detected" for a signed-in student. Takes
+-- no user id: it only ever answers for the caller.
+create or replace function public.caller_on_team(p_team_id uuid)
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.team_members
+    where team_id = p_team_id and user_id = auth.uid()
+  );
+$$;
+revoke execute on function public.caller_on_team(uuid) from public, anon;
+grant execute on function public.caller_on_team(uuid) to authenticated;
+
 -- Members of the team, mentors and team managers. Not investors: a team's
 -- working folder is not part of what they assess (they see the pitch links).
 drop policy if exists "team_drive_links read" on public.team_drive_links;
@@ -62,10 +80,7 @@ create policy "team_drive_links read" on public.team_drive_links
   for select to authenticated using (
     public.has_permission(auth.uid(), 'mentor.panel')
     or public.has_permission(auth.uid(), 'teams.manage')
-    or exists (
-      select 1 from public.team_members tm
-      where tm.team_id = team_drive_links.team_id and tm.user_id = auth.uid()
-    )
+    or public.caller_on_team(team_id)
   );
 
 -- Supabase grants table privileges to the API roles by default. Writes are

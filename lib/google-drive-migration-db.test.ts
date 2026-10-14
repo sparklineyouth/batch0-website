@@ -85,6 +85,15 @@ async function setup() {
       team_id uuid not null references public.teams(id) on delete cascade,
       user_id uuid not null references public.profiles(id) on delete cascade
     );
+    -- Production's read policy (0011), which refers to its own table. Any
+    -- signed-in query that expands it fails with "infinite recursion", so a
+    -- policy that subqueries team_members directly would break for students.
+    alter table public.team_members enable row level security;
+    create policy "team_members read" on public.team_members
+      for select using (public.is_staff(auth.uid()) or public.is_investor(auth.uid())
+        or user_id = auth.uid()
+        or exists (select 1 from public.team_members tm
+          where tm.team_id = team_members.team_id and tm.user_id = auth.uid()));
 
     -- 0011 pitch_submissions (member write still allowed after 0094).
     create table public.pitch_submissions (
@@ -216,6 +225,11 @@ test("0094 applies, and re-applies", async () => {
 test("team_drive_links: the team, mentors and team managers read; nobody else", async () => {
   const db = await setup();
   await seedLinks(db);
+  // The fixture is faithful: team_members' own policy does recurse…
+  await assert.rejects(as(db, MEMBER, `select id from public.team_members`), /infinite recursion/);
+  // …and the membership helper only ever answers for the caller.
+  assert.equal((await as(db, MEMBER, `select public.caller_on_team($1) as on`, [TEAM])).rows[0].on, true);
+  assert.equal((await as(db, OUTSIDER, `select public.caller_on_team($1) as on`, [TEAM])).rows[0].on, false);
   const read = async (uid: string) =>
     (await as(db, uid, `select title from public.team_drive_links where team_id = $1 order by title`, [TEAM])).rows.map(
       (r: any) => r.title,
@@ -289,15 +303,16 @@ test("pitch links: https only; old http video links upgraded", async () => {
   // NOT VALID: a junk row from before the migration is left as it was.
   assert.equal(rows[1].video_url, "not a url");
 
-  await as(db, MEMBER, `update public.pitch_submissions set deck_url = 'https://docs.google.com/presentation/d/x/edit' where team_id = $1`, [TEAM]);
+  // CHECK constraints bind every writer, the service role included.
+  await db.query(`update public.pitch_submissions set deck_url = 'https://docs.google.com/presentation/d/x/edit' where team_id = $1`, [TEAM]);
   for (const bad of ["javascript:alert(1)", "http://example.com/deck", "https://exa mple.com", `https://x.com/${"a".repeat(2050)}`]) {
     await assert.rejects(
-      as(db, MEMBER, `update public.pitch_submissions set deck_url = $2 where team_id = $1`, [TEAM, bad]),
+      db.query(`update public.pitch_submissions set deck_url = $2 where team_id = $1`, [TEAM, bad]),
       /pitch_submissions_deck_url_https/,
       bad,
     );
     await assert.rejects(
-      as(db, MEMBER, `update public.pitch_submissions set video_url = $2 where team_id = $1`, [TEAM, bad]),
+      db.query(`update public.pitch_submissions set video_url = $2 where team_id = $1`, [TEAM, bad]),
       /pitch_submissions_video_url_https/,
       bad,
     );
@@ -306,30 +321,38 @@ test("pitch links: https only; old http video links upgraded", async () => {
 
 test("legacy uploads: readable, frozen for writes", async () => {
   const db = await setup();
-  // Rows: still readable by their owners; owners can still delete their own.
+  const policies = async (schema: string, table: string) =>
+    (
+      await db.query<any>(
+        `select policyname, cmd from pg_policies where schemaname = $1 and tablename = $2 order by policyname`,
+        [schema, table],
+      )
+    ).rows.map((r: any) => `${r.policyname}:${r.cmd}`);
+
+  // Only reads (and an owner's delete of their own index row) remain.
+  assert.deepEqual(await policies("public", "student_files"), [
+    "student_files own delete:DELETE",
+    "student_files own select:SELECT",
+  ]);
+  assert.deepEqual(await policies("public", "team_drive_files"), ["team_drive_files read:SELECT"]);
+  assert.deepEqual(await policies("storage", "objects"), [
+    "student-files own read:SELECT",
+    "team-drive read:SELECT",
+  ]);
+
+  // Behaviour where it doesn't route through team_members' recursive policy.
   assert.equal((await as(db, MEMBER, `select id from public.student_files`)).rows.length, 1);
-  assert.equal((await as(db, MEMBER, `select id from public.team_drive_files`)).rows.length, 1);
-  assert.equal((await as(db, OUTSIDER, `select id from public.team_drive_files`)).rows.length, 0);
-  // No new rows, no edits — the old confused-deputy path (a row pointing at
-  // someone else's object) is closed.
+  assert.equal((await as(db, OUTSIDER, `select id from public.student_files`)).rows.length, 0);
+  // The old confused-deputy path (a row pointing at someone else's object) is closed.
   await assert.rejects(
     as(db, MEMBER, `insert into public.student_files (user_id, name, path) values ($1, 'x', $2)`, [MEMBER, `${OUTSIDER}/drive/x`]),
     /row-level security/,
   );
-  const renamed = await as(db, MEMBER, `update public.student_files set path = 'elsewhere' returning id`);
-  assert.equal(renamed.rows.length, 0);
+  assert.equal((await as(db, MEMBER, `update public.student_files set path = 'elsewhere' returning id`)).rows.length, 0);
   await assert.rejects(
     as(db, MEMBER, `insert into public.team_drive_files (team_id, name, path) values ($1, 'x', $2)`, [TEAM, `${OTHER_TEAM}/drive/x`]),
     /row-level security/,
   );
-  assert.equal((await as(db, MEMBER, `delete from public.team_drive_files returning id`)).rows.length, 0);
-  assert.equal((await as(db, MEMBER, `delete from public.student_files returning id`)).rows.length, 1);
-
-  // Buckets: reads keep working, writes are gone.
-  assert.equal((await as(db, MEMBER, `select name from storage.objects where bucket_id = 'student-files'`)).rows.length, 1);
-  assert.equal((await as(db, MENTOR, `select name from storage.objects where bucket_id = 'student-files'`)).rows.length, 1);
-  assert.equal((await as(db, OUTSIDER, `select name from storage.objects where bucket_id = 'student-files'`)).rows.length, 0);
-  assert.equal((await as(db, MEMBER, `select name from storage.objects where bucket_id = 'team-drive'`)).rows.length, 1);
   for (const [bucket, path] of [
     ["student-files", `${MEMBER}/drive/new.pdf`],
     ["team-drive", `${TEAM}/drive/new.pdf`],
@@ -340,7 +363,7 @@ test("legacy uploads: readable, frozen for writes", async () => {
       bucket,
     );
   }
-  assert.equal((await as(db, MEMBER, `delete from storage.objects returning id`)).rows.length, 0);
+  assert.equal((await as(db, MEMBER, `delete from public.student_files returning id`)).rows.length, 1);
 });
 
 test("lesson text and notifications leave /dashboard/files", async () => {

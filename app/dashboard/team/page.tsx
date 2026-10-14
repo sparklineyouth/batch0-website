@@ -33,6 +33,8 @@ export default async function TeamPage(props: {
   const team = await getMyTeam(user.id);
 
   if (team) {
+    const drivePromise = loadTeamDrive(admin, team.id);
+    const olderUploadsPromise = loadOlderUploads(admin, { userId: user.id, teamId: team.id });
     const [
       { data: members },
       { data: invites },
@@ -68,10 +70,7 @@ export default async function TeamPage(props: {
         .maybeSingle(),
       passHolderUserIds(admin),
     ]);
-    const [drive, olderUploads] = await Promise.all([
-      loadTeamDrive(admin, team.id),
-      loadOlderUploads(admin, { userId: user.id, teamId: team.id }),
-    ]);
+    const [drive, olderUploads] = await Promise.all([drivePromise, olderUploadsPromise]);
 
     return (
       <TeamHome

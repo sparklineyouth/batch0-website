@@ -165,7 +165,9 @@ function FolderSection({
   run: Run;
 }) {
   const folder = row ? linkFromRow(row) : null;
-  const [view, setView] = useState<"grid" | "list">("grid");
+  // List by default: titles and dates read better than thumbnails, and it
+  // works on a phone.
+  const [view, setView] = useState<"grid" | "list">("list");
   const [replacing, setReplacing] = useState(false);
   const [url, setUrl] = useState("");
   const showForm = canEdit && (!folder || replacing);
@@ -177,7 +179,7 @@ function FolderSection({
         {folder && (
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-md border border-line bg-paper p-0.5" role="group" aria-label="Folder layout">
-              {(["grid", "list"] as const).map((v) => {
+              {(["list", "grid"] as const).map((v) => {
                 const Icon = v === "grid" ? LayoutGrid : List;
                 return (
                   <button
@@ -196,21 +198,6 @@ function FolderSection({
               })}
             </div>
             <OpenLink href={openUrl(folder)} label="Open in Drive" />
-            {canEdit && !replacing && (
-              <Button variant="ghost" size="sm" onClick={() => setReplacing(true)} disabled={pending}>
-                Change
-              </Button>
-            )}
-            {canEdit && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={pending}
-                onClick={() => run(() => clearTeamFolder({ teamId }))}
-              >
-                Unlink
-              </Button>
-            )}
           </div>
         )}
       </div>
@@ -266,9 +253,26 @@ function FolderSection({
             title="Team folder — Google Drive"
             className="mt-3 h-[60vh] min-h-[320px] max-h-[720px]"
           />
-          <p className="mt-2 text-xs text-ink-faint">
-            Blank or asking to sign in? In Drive, share the folder with “Anyone with the link”.
-          </p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <p className="text-xs text-ink-faint">
+              Blank or asking to sign in? In Drive, share the folder with “Anyone with the link”.
+            </p>
+            {canEdit && !replacing && (
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={() => setReplacing(true)} disabled={pending}>
+                  Change folder
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => run(() => clearTeamFolder({ teamId }))}
+                >
+                  Unlink
+                </Button>
+              </div>
+            )}
+          </div>
         </>
       )}
     </section>
