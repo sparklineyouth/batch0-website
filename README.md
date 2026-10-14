@@ -79,8 +79,9 @@ Production uses `batch0.org` and `app.batch0.org`, with matching authentication
 redirects and webhook endpoints. See `.env.local.example` for available settings.
 
 Migrations are run by hand in the Supabase SQL editor after the code deploys.
-The October 2026 release adds 0093–0100: see `docs/migrations-2026-10.md` for
-the order and a verify query per file. The app runs without them. `/admin`
+The October 2026 release adds 0093–0100: 0095 and 0096 go in before the
+deploy and the rest right after it; see `docs/migrations-2026-10.md` for the
+order, why, and a verify query per file. The app runs without them. `/admin`
 shows `settings.manage` holders one line while it detects one missing (the
 tables and columns of 0093–0096, leftovers of 0099–0100); the policy changes
 in 0097–0099 are confirmed only by the doc's verify queries.

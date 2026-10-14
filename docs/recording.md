@@ -117,5 +117,15 @@ one-take recording existed can't have segments, so its bucket isn't listed.
 ## Deploying
 
 Migration `0095_recordings.sql` (table, RLS, `recording_mint_part`, private
-bucket). Before it is applied the room shows no Record control's effect
-("unavailable") and lists show no new recordings; nothing errors.
+bucket). **Apply it before the deploy**: it only adds things the previous code
+never touches, and the deploy removes the old segment recorder, so until 0095
+runs nothing records at all. In that window nothing errors: the green room
+tells hosts and call staff "This call/webinar isn't recorded" (and nobody else
+that it is), a refused start says so once in a toast, Record goes away
+("unavailable"), and lists show no new recordings.
+
+Part upload tokens are minted without upsert: a stored part can't be
+replaced, during the take or with a token kept after it. A retry of a part
+whose first upload landed gets "Duplicate", which the uploader counts as done.
+Starting, closing and sweeping a take send the room a `room-changed`, so the
+REC badge follows within a second.
