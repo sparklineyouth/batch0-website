@@ -277,8 +277,7 @@ export default async function StudentAppHome() {
                 </ActionLink>
               }
             >
-              The course, your team page and assignments unlock when the cohort
-              starts{startLabel ? ` on ${startLabel}` : ""}.
+              The course and assignments open{startLabel ? ` ${startLabel}` : " at kickoff"}.
             </Alert>
           </Section>
         ) : (
