@@ -41,10 +41,15 @@ type LivePromo =
  * server renders the static deadline, and the ticking clock replaces it after
  * mount.
  */
+/**
+ * Signed-in work surfaces: a tuition sale with "Apply now" is noise to admins,
+ * mentors and enrolled students, and at phone width it pushes every page's
+ * heading down four lines.
+ */
+const SIGNED_IN_SURFACE = /^\/(admin|dashboard|app|mentor|investor|notifications)(\/|$)/;
+
 export function SaleBanner() {
-  // /messages is a full-screen surface drawn over the page; a banner hidden
-  // under it would still sit in the tab order.
-  const onMessages = usePathname()?.startsWith("/messages") ?? false;
+  const pathname = usePathname() ?? "";
   const [expired, setExpired] = React.useState(false);
   const [remaining, setRemaining] = React.useState<string | null>(null);
   // Null until the fetch resolves: before then the seed promo governs
@@ -125,7 +130,7 @@ export function SaleBanner() {
   // Build-time truth for the server pass and first paint (seed promo), the
   // admin-set state once the fetch has resolved.
   const showable = liveActive === null ? !!activePromo() : liveActive;
-  if (expired || !showable || onMessages) return null;
+  if (SIGNED_IN_SURFACE.test(pathname) || expired || !showable) return null;
 
   return (
     <aside

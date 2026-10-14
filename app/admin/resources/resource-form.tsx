@@ -153,9 +153,7 @@ export function ResourceForm({
             Pre-cohort resource
           </span>
           <span className="mt-0.5 block text-xs text-ink-faint">
-            Shows in the "Pre-cohort resources" section for accepted students
-            before their cohort starts — the only resources they can see until
-            kickoff. Everything else unlocks when the cohort begins.
+            Visible before kickoff. Others open at kickoff.
           </span>
         </span>
       </label>
@@ -163,8 +161,7 @@ export function ResourceForm({
       <div className="rounded-xl border border-line bg-wash p-4">
         <Label>File</Label>
         <p className="text-xs text-ink-faint">
-          Upload a file (PDF, deck, image, etc.) OR paste an external link
-          below. One or the other.
+          A file or a link, not both.
         </p>
         {v.storage_path ? (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-line bg-paper p-2">

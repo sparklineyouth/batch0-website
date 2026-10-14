@@ -75,8 +75,7 @@ export default async function DashboardSupportPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Help &amp; support</h1>
           <p className="mt-1 max-w-xl text-sm text-ink-soft">
-            Requests you&rsquo;ve sent the batch0 team, and what&rsquo;s
-            happened to them. A reply lands in your email too.
+            Your requests. Replies also arrive by email.
           </p>
         </div>
         <ButtonLink href="/dashboard/support/new" prefetch={false} size="sm">
@@ -90,9 +89,7 @@ export default async function DashboardSupportPage() {
           <div className="py-6 text-center">
             <LifeBuoy className="mx-auto h-8 w-8 text-ink-faint" />
             <p className="mt-3 text-sm text-ink-soft">
-              You haven&rsquo;t sent us anything yet. Refunds, billing, account
-              access, tech trouble, a concern, or a privacy request all start
-              with a{" "}
+              No requests yet. Refunds, billing and privacy all start with a{" "}
               <Link href="/dashboard/support/new" prefetch={false} className="link-ink">
                 new request
               </Link>

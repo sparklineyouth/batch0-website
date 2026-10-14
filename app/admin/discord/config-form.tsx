@@ -52,7 +52,7 @@ export function DiscordConfigForm({
     <div className="space-y-8">
       <Section
         title="Channels"
-        hint="Snowflake IDs (right-click a channel in Discord → Copy ID; needs Developer Mode on)."
+        hint="Right-click a channel → Copy ID (Developer Mode)."
       >
         <Row
           label="Announcements channel ID"
@@ -84,15 +84,9 @@ export function DiscordConfigForm({
       >
         <Row
           label="Teams category ID"
-          hint="Auto-created team channels land here. Use a category, not a regular channel."
+          hint="A category for team channels."
           value={values.teamsCategoryId}
           onChange={(v) => set("teamsCategoryId", v)}
-        />
-        <Row
-          label="#wins channel ID"
-          hint="Milestone check-ins cross-post here."
-          value={values.winsChannelId}
-          onChange={(v) => set("winsChannelId", v)}
         />
         <Row
           label="#help channel ID"
@@ -116,7 +110,7 @@ export function DiscordConfigForm({
 
       <Section
         title="Role IDs"
-        hint="A role ID for each batch0 role. We auto-assign these on link, on role change, and on enrollment."
+        hint="Assigned on link, role change and enrollment."
       >
         <Row
           label="Student role ID"
@@ -148,7 +142,7 @@ export function DiscordConfigForm({
           others the sync would strip it from every holder. */}
       <Section
         title="Founder pass"
-        hint="Granted when someone redeems a printed card at /pass, and kept across role changes. Leave blank to skip the Discord perk entirely — the pass still works."
+        hint="Granted on redeeming a card. Blank = no Discord perk."
       >
         <Row
           label="Founder pass role ID"

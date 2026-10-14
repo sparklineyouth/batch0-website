@@ -135,12 +135,7 @@ export function QuestionEditor({
       <div>
         <h2 className="text-lg font-semibold text-ink">Built-in questions</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          These seventeen are stored in their own database columns, so their
-          type and what they store can't change — but you can rewrite any of
-          them, and remove the ones you don't want. Removing takes a question
-          off the form and stops collecting it;{" "}
-          <strong className="text-ink">answers already given are kept</strong>{" "}
-          and stay readable in the review queue.
+          Wording editable. Removing keeps answers already given.
           {removedCount > 0 && (
             <>
               {" "}
@@ -272,10 +267,7 @@ export function QuestionEditor({
       <div className="border-t border-line pt-8">
         <h2 className="text-lg font-semibold text-ink">Your questions</h2>
         <p className="mb-4 mt-1 text-sm text-ink-soft">
-          Anything else you want to ask. These are yours to add, reorder and
-          delete — their answers are stored alongside the application rather
-          than in a column of their own. They appear in a section of their own
-          at the end of the form, in the order below.
+          Shown at the end of the form, in this order.
         </p>
         <QuestionListEditor
           questions={custom}

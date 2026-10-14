@@ -156,8 +156,7 @@ export function ScholarshipApplyForm({
       </div>
 
       <p className="mt-4 text-xs text-ink-faint">
-        Worth {awardSummary}. You can hold one batch0 scholarship at a time, so
-        applying here means waiting on this decision before applying elsewhere.
+        Worth {awardSummary}. One scholarship at a time.
       </p>
     </Card>
   );

@@ -143,8 +143,7 @@ export default async function AdminStudentsPage(
           <p className="mt-1 text-sm text-ink-faint">
             {canChangeRoles ? (
               <>
-                Everyone with an account. Change a role inline to grant or
-                revoke access — no application needed.{" "}
+                Everyone with an account.{" "}
                 <Link
                   href="/admin/roles"
                   className="text-phosphor-ink hover:underline"

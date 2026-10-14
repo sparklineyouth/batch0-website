@@ -102,10 +102,7 @@ export async function getTemplateById(id: string): Promise<TemplateRow | null> {
   }
 }
 
-export async function listTemplates(): Promise<{
-  templates: TemplateRow[];
-  missingTable: boolean;
-}> {
+export async function listTemplates(): Promise<{ templates: TemplateRow[] }> {
   try {
     const admin = createAdminClient();
     const { data, error } = await admin
@@ -113,16 +110,15 @@ export async function listTemplates(): Promise<{
       .select("*")
       .order("category")
       .order("name");
-    if (error) return { templates: [], missingTable: isMissingTable(error) };
-    return { templates: (data ?? []) as TemplateRow[], missingTable: false };
+    if (error) return { templates: [] };
+    return { templates: (data ?? []) as TemplateRow[] };
   } catch {
-    return { templates: [], missingTable: true };
+    return { templates: [] };
   }
 }
 
 export async function listAutomations(): Promise<{
   automations: (AutomationRow & { steps: AutomationStepRow[] })[];
-  missingTable: boolean;
 }> {
   try {
     const admin = createAdminClient();
@@ -130,16 +126,16 @@ export async function listAutomations(): Promise<{
       .from("email_automations")
       .select("*, steps:email_automation_steps(*)")
       .order("created_at", { ascending: false });
-    if (error) return { automations: [], missingTable: isMissingTable(error) };
+    if (error) return { automations: [] };
     const rows = (data ?? []).map((a: any) => ({
       ...a,
       steps: [...(a.steps ?? [])].sort(
         (x: AutomationStepRow, y: AutomationStepRow) => x.step_index - y.step_index,
       ),
     }));
-    return { automations: rows, missingTable: false };
+    return { automations: rows };
   } catch {
-    return { automations: [], missingTable: true };
+    return { automations: [] };
   }
 }
 

@@ -49,8 +49,8 @@ export async function broadcastAnnouncement(
   const admin = createAdminClient();
 
   // Persist the announcement so the dashboard can show past
-  // announcements + collect reactions. Done before the fan-out so the
-  // notification "link" can deep-link straight to the announcement.
+  // announcements. Done before the fan-out so the notification "link" can
+  // deep-link straight to the announcement.
   let announcementId: string | null = null;
   try {
     const { data: ann, error: annErr } = await admin
@@ -64,11 +64,8 @@ export async function broadcastAnnouncement(
       .select("id")
       .single();
     if (annErr) {
-      // Older deployments may not have run 0027 yet; degrade gracefully
-      // — the broadcast still happens, just without a persisted row.
-      if (!/relation .*announcements.* does not exist/i.test(annErr.message)) {
-        console.error("[announcements] insert failed", annErr);
-      }
+      // The broadcast still goes out, just without a persisted row.
+      console.error("[announcements] insert failed", annErr);
     } else {
       announcementId = ann?.id ?? null;
     }

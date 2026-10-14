@@ -72,6 +72,29 @@ export function selectedDevice(
   return options[0]?.deviceId ?? "";
 }
 
+/** Where a person turns a blocked device back on. */
+const ALLOW_IN = {
+  browser: "the address bar",
+  system: "System Settings › Privacy",
+} as const;
+
+/**
+ * Was this denial the OPERATING SYSTEM's rather than the browser's? Chrome on
+ * macOS answers "Permission denied by system" when the browser itself has no
+ * camera / microphone permission, and the fix is then System Settings, not
+ * the address bar.
+ */
+export function isSystemDenial(
+  err: { name?: unknown; message?: unknown } | null | undefined,
+): boolean {
+  return (
+    !!err &&
+    err.name === "NotAllowedError" &&
+    typeof err.message === "string" &&
+    /by system/i.test(err.message)
+  );
+}
+
 /**
  * What to tell someone whose device switch failed. The previous device stays
  * live, so every message says what to try, not that the call is broken.
@@ -79,16 +102,106 @@ export function selectedDevice(
 export function deviceSwitchError(
   name: string | null | undefined,
   kind: "audio" | "video",
+  system = false,
 ): string {
   const noun = kind === "audio" ? "microphone" : "camera";
   if (name === "NotReadableError" || name === "AbortError") {
-    return `That ${noun} is busy — close any other app using it, then pick it again.`;
+    return `That ${noun} is in use by another app. Close it, then pick the ${noun} again.`;
   }
   if (name === "NotFoundError" || name === "OverconstrainedError") {
     return `That ${noun} isn't connected any more.`;
   }
   if (name === "NotAllowedError" || name === "SecurityError") {
-    return `The browser blocked that ${noun}. Allow it in the address bar, then pick it again.`;
+    return `That ${noun} is blocked. Allow it in ${system ? ALLOW_IN.system : ALLOW_IN.browser}, then pick it again.`;
   }
   return `Couldn't switch to that ${noun}. Still using the previous one.`;
+}
+
+// ---------------------------------------------------------------------------
+// Camera / microphone status
+// ---------------------------------------------------------------------------
+
+/** One device's state: "off" until it has been acquired (or after stop). */
+export type DeviceStatus = "ready" | "denied" | "missing" | "error" | "off";
+
+/** The stream as a whole (useLocalMedia().status). */
+export type MediaStatus =
+  | "idle"
+  | "requesting"
+  | "ready"
+  | "denied"
+  | "missing"
+  | "unsupported"
+  | "error";
+
+/** What a getUserMedia failure means for the device asked for. */
+export function mediaErrorKind(name: string | null | undefined): DeviceStatus {
+  if (name === "NotAllowedError" || name === "SecurityError") return "denied";
+  if (
+    name === "NotFoundError" ||
+    name === "OverconstrainedError" ||
+    name === "DevicesNotFoundError"
+  ) {
+    return "missing";
+  }
+  // NotReadableError / AbortError: the device exists but another app (or the
+  // OS) holds it. Anything unknown reads the same way: try again later.
+  return "error";
+}
+
+/** The stream's status from its two devices: ready while either one is. */
+export function overallMediaStatus(cam: DeviceStatus, mic: DeviceStatus): MediaStatus {
+  if (cam === "ready" || mic === "ready") return "ready";
+  if (cam === "off" && mic === "off") return "idle";
+  if (cam === "denied" || mic === "denied") return "denied";
+  const absent = (s: DeviceStatus) => s === "missing" || s === "off";
+  if (absent(cam) && absent(mic)) return "missing";
+  return "error";
+}
+
+type NotReady = Exclude<DeviceStatus, "ready" | "off">;
+
+function isNotReady(s: DeviceStatus): s is NotReady {
+  return s === "denied" || s === "missing" || s === "error";
+}
+
+/** One device's problem, as a sentence that says what to do. */
+function problem(noun: "Camera" | "Microphone", s: NotReady, system: boolean): string {
+  if (s === "denied") {
+    return `${noun} blocked: allow it in ${system ? ALLOW_IN.system : ALLOW_IN.browser}.`;
+  }
+  if (s === "missing") return `No ${noun.toLowerCase()} found.`;
+  return `${noun} is in use by another app.`;
+}
+
+/**
+ * One line saying which device is not working, or null when nothing is
+ * wrong. Terse, and never "the call is broken": with one device down the
+ * other still works. `system` marks a denial that came from the operating
+ * system (isSystemDenial), which is fixed somewhere else.
+ */
+export function mediaStatusText(
+  cam: DeviceStatus,
+  mic: DeviceStatus,
+  system: { camera?: boolean; mic?: boolean } = {},
+): string | null {
+  const camSystem = !!system.camera;
+  const micSystem = !!system.mic;
+  if (isNotReady(cam) && isNotReady(mic)) {
+    if (cam === mic && camSystem === micSystem) {
+      if (cam === "denied") {
+        return `Camera and microphone blocked: allow them in ${camSystem ? ALLOW_IN.system : ALLOW_IN.browser}.`;
+      }
+      if (cam === "missing") return "No camera or microphone found.";
+      return "Camera and microphone are in use by another app.";
+    }
+    return `${problem("Camera", cam, camSystem)} ${problem("Microphone", mic, micSystem)}`;
+  }
+  if (isNotReady(cam)) {
+    return `${problem("Camera", cam, camSystem)}${mic === "ready" ? " You can still talk." : ""}`;
+  }
+  if (isNotReady(mic)) {
+    return `${problem("Microphone", mic, micSystem)}${cam === "ready" ? " Your camera still works." : ""}`;
+  }
+  return null;
 }

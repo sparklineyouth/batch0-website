@@ -164,14 +164,13 @@ export default async function AdminDemoDayPage() {
 
       {criteria?.length === 0 && (
         <p className="mt-6 text-sm text-amber-700 dark:text-amber-200">
-          No rubric yet —{" "}
+          No rubric yet.{" "}
           <Link
             href="/admin/demo-day/rubric"
             className="font-semibold underline"
           >
-            define one
-          </Link>{" "}
-          before Demo Day so judges have something to score against.
+            Define one
+          </Link>
         </p>
       )}
 

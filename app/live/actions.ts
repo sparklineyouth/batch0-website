@@ -1,7 +1,11 @@
 "use server";
 import { requireActor } from "@/lib/server-guards";
 import { createClient } from "@/lib/supabase/server";
-import { callStaffIds, type RoomStatus } from "@/lib/live";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { runAction, type ActionResult } from "@/lib/action-result";
+import { isMissingSchemaError } from "@/lib/schema-ready";
+import { activeRecordingFor } from "@/lib/recording-sessions";
+import { callStaffIds, type LiveRoomState, type RoomStatus } from "@/lib/live";
 import { isHostedOnBatch0, type AudienceMode } from "@/lib/webinars";
 import {
   inboxTopic,
@@ -9,21 +13,29 @@ import {
   type SignalRole,
 } from "@/lib/live-signal";
 import {
+  callLineFor,
   credentialsFor,
   inboxKeyFor,
   liveParticipants,
   notifyHosts,
+  notifyStage,
+  presentHosts,
   touchParticipant,
   type LiveCredentials,
   type LivePeer,
 } from "@/lib/live-rooms";
 import {
   callRefusal,
+  callRoomState,
   callRoomStatus,
+  claimStage,
   leaveInternal,
+  notePrimaryColumnMissing,
   resolveCallAccess,
   resolveEventAccess,
   roomAccessFor,
+  webinarRoomState,
+  withinHardClose,
   type CallAccess,
   type EventAccess,
   type LiveRoomKind,
@@ -75,9 +87,9 @@ import {
  *              announcePresence refuse the room with status 'ended' — for
  *              everyone, hosts included, until staff Reopen it. A 1:1's is
  *              `endCall` in app/calls/actions.ts, which marks the invite
- *              completed; each side's room notices on its status poll, and
- *              this heartbeat answers 'ended' too. A completed call never
- *              reopens.
+ *              completed and sends `room-changed` (notifyCallChanged); each
+ *              side's room re-asks, and this heartbeat answers 'ended'. A
+ *              completed call never reopens.
  */
 
 export type RoomKind = LiveRoomKind;
@@ -91,11 +103,12 @@ export type RoomKind = LiveRoomKind;
  *   error       a query failed — retry; never a revocation
  *   not-hosted  the event exists and you may see it, but it is not a batch0
  *               room (an external Zoom link)
- *   early       your window has not opened (hosts: start-60m; viewers:
- *               start-15m; calls: start-15m)
+ *   early       your window has not opened (webinar viewers: start-15m
+ *               unless a host is already live; calls: staff start-60m,
+ *               student start-15m). Webinar hosts are never early.
  *   ended       a webinar was ended for everyone (hosts too — Reopen first)
- *   closed      your window has passed, or a call was never accepted
- *   completed   the 1:1 was ended, or its window closed
+ *   closed      your window has passed (the hard stop is end+3h)
+ *   completed   End call was pressed
  *   cancelled / declined   the 1:1's status
  */
 export type JoinRefusal =
@@ -119,12 +132,20 @@ export type JoinResult =
        * one rather than run a host engine on viewer credentials.
        */
       role: SignalRole;
+      /** Server truth about the room at the join. See LiveRoomState. */
+      room: LiveRoomState;
     }
   | { ok: false; reason: JoinRefusal };
 
 export type PresenceResult = {
   /** See RoomStatus in lib/live.ts; act on it with nextStatusAction. */
   status: RoomStatus;
+  /**
+   * Server truth about the room — primary host, live stamps, whether this
+   * caller may End, the running recording. Present on every 'ok' answer, for
+   * webinars and calls alike; the engine exposes it as `session.room`.
+   */
+  room?: LiveRoomState;
   /**
    * A 1:1's roster as of this heartbeat. Present only for a call, and only
    * when `status` is 'ok' — never for a webinar, whose heartbeat answer is
@@ -135,11 +156,13 @@ export type PresenceResult = {
    * mesh only the smaller id of each pair dials, so everyone in the room with
    * a smaller id than the newcomer's — who should be offering to them — has
    * never heard of them, and the newcomer waits on a "waiting for…" tile for
-   * people who are sitting right there. And each staff browser elects the
-   * recorder from the staff list its page rendered, which does not have them
-   * on it. The engine folds this in on every answer (mergeCallPeers in
-   * lib/call-roster.ts): new people are dialled at once, and the room elects
-   * from `staffIds` from then on.
+   * people who are sitting right there. And each staff browser knows the team
+   * — who may record, who "the other side" is — from the staff list its page
+   * rendered, which does not have them on it. The engine folds this in on
+   * every answer (mergeCallPeers in lib/call-roster.ts): new people are
+   * dialled at once, and the room reads the team from `staffIds` from then
+   * on. (One take at a time is the server's lease, not this list:
+   * docs/recording.md.)
    *
    * Nothing here is new to the person receiving it: it is the join payload's
    * peer list again, behind the same gate, and only to someone who is on the
@@ -204,11 +227,8 @@ async function resolveRoom(kind: RoomKind, id: string): Promise<Resolution> {
         ? { ok: false, reason: "error", status: "error" }
         : { ok: false, reason: "no-access", status: "revoked" };
     }
-    // Both batch0-hosted modes. A premiere plays a recording and then hands
-    // over to this same room for the live Q&A, so it needs credentials for the
-    // whole of its run — not only after the handover, because the chat and the
-    // question queue are live from the first minute and that is most of what
-    // makes a premiere feel live.
+    // Both batch0-hosted modes: a legacy premiere row runs as an ordinary
+    // hosted room (premiere is retired).
     if (!isHostedOnBatch0(access.event.liveMode)) {
       return { ok: false, reason: "not-hosted", status: "revoked" };
     }
@@ -244,9 +264,13 @@ async function resolveRoom(kind: RoomKind, id: string): Promise<Resolution> {
       ? { ok: false, reason: "error", status: "error" }
       : { ok: false, reason: "no-access", status: "revoked" };
   }
-  const refusal = callRefusal(access.phase);
+  const refusal = callRefusal(access.roomAccess);
   if (refusal) {
-    return { ok: false, reason: refusal, status: callRoomStatus(access.phase) };
+    return {
+      ok: false,
+      reason: refusal,
+      status: callRoomStatus(access.roomAccess),
+    };
   }
   return {
     ok: true,
@@ -259,8 +283,7 @@ async function resolveRoom(kind: RoomKind, id: string): Promise<Resolution> {
       // protect, and withholding the names would leave each of them looking at
       // unlabelled tiles.
       discloseNames: true,
-      // A 1:1 has no audience channel at all; `private` is what stops
-      // credentialsFor handing one out.
+      // Unused for a call: credentialsFor hands a call no room channel.
       audienceMode: "private",
       event: null,
       call: access,
@@ -280,14 +303,15 @@ async function displayName(userId: string): Promise<string> {
 
 /**
  * Everyone on a 1:1 but the caller, as peers the engine can dial: the
- * student and the whole staff side, every one a broadcaster, each with THEIR
- * inbox topic — derived from the room and their id under a secret only the
- * server holds (inboxKeyFor in lib/live-rooms.ts), so no browser can work it
- * out for itself; it has to be told.
+ * student and the whole staff side, every one a broadcaster, each with the
+ * private line between them and the caller (callLineFor in lib/live-rooms.ts)
+ * — derived under a secret only the server holds, and handed only to the two
+ * people it joins. Nobody on the call can reach a pair they are not part of,
+ * so nobody can pose as someone else on it.
  *
  * One helper for both of the places a browser learns who is on its call:
  * joinRoom's known peers, and every heartbeat's roster (PresenceResult.call).
- * Two copies of this map could drift, and an inbox derived from the wrong
+ * Two copies of this map could drift, and a line derived from the wrong
  * string is a topic nobody listens on — which presents as an offer that never
  * lands and a "waiting for…" tile that never clears, with nothing in any log.
  *
@@ -299,7 +323,7 @@ function callPeers(roomId: string, call: CallAccess): LivePeer[] {
     peerId: p.id,
     name: p.name,
     role: "host" as const,
-    inbox: inboxTopic(roomId, inboxKeyFor(roomId, p.id)),
+    inbox: callLineFor(roomId, call.userId, p.id),
   }));
 }
 
@@ -348,6 +372,14 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
 
   const name = await displayName(actor.userId);
 
+  // A host joining a webinar inside its go-live window is the start of it:
+  // stamp live_started_at, and take the primary seat if it is free
+  // (claimStage). Before the state is read, so the join's answer says so.
+  if (room.event?.isHost) await claimStage(room.event);
+  const roomState = room.event
+    ? await webinarRoomState(room.event)
+    : await callRoomState(room.call!);
+
   // Deliberately does NOT announce.
   //
   // Announcing here would be a race the viewer always loses: the server would
@@ -361,6 +393,7 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
   // So the client subscribes first and calls announcePresence() second. That
   // ordering is the contract; see useLiveSession's lifecycle effect.
   const creds = credentialsFor({
+    kind,
     eventId: room.roomId,
     peerId: actor.userId,
     name,
@@ -369,7 +402,7 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
     audienceMode: room.audienceMode,
     discloseNames: room.discloseNames,
   });
-  return { ok: true, creds, role: room.role };
+  return { ok: true, creds, role: room.role, room: roomState };
 }
 
 /**
@@ -414,7 +447,8 @@ export async function announcePresence(
   // while it runs, the roster as it stands now: everyone on the call but the
   // caller (the join's own known peers, from the row resolveRoom just read)
   // and its staff side. The engine dials anyone it has not heard of and
-  // elects the recorder from the list. See PresenceResult.call.
+  // the room reads the team (who may record) from the list. See
+  // PresenceResult.call.
   if (room.call) {
     return {
       status: "ok",
@@ -422,6 +456,7 @@ export async function announcePresence(
         peers: callPeers(room.roomId, room.call),
         staffIds: callStaffIds(room.call),
       },
+      room: await callRoomState(room.call),
     };
   }
   if (!room.event) return { status: "ok" };
@@ -466,7 +501,10 @@ export async function announcePresence(
     displayName: name,
   });
 
-  return { status: "ok" };
+  // A host still here keeps the room's stage right: the first heartbeat after
+  // the primary went away takes the seat.
+  if (room.event.isHost) await claimStage(room.event);
+  return { status: "ok", room: await webinarRoomState(room.event) };
 }
 
 /**
@@ -517,4 +555,97 @@ export async function listAudience(
     resolved.room.discloseNames,
   );
   return peers.filter((p) => p.peerId !== actor.userId);
+}
+
+/**
+ * Pin a host for everyone: make them the webinar's primary — the stage every
+ * viewer sees whenever nobody is presenting.
+ *
+ * Staff only (events.manage), and only a host who is in the room right now.
+ * The pin is a column the server writes (events.live_primary_host_id, 0096),
+ * never a message on the stage: the stage is public and forgeable. Clients
+ * hear a content-free `room-changed`, re-ask the server, and read the new
+ * primary from their next answer.
+ */
+export async function setPrimaryHost(
+  eventId: string,
+  userId: string,
+): Promise<ActionResult> {
+  return runAction({ name: "live.setPrimaryHost" }, async () => {
+    const access = await resolveEventAccess(eventId);
+    if (!access.ok) {
+      throw new Error(
+        access.reason === "error"
+          ? "Couldn't reach the room — try again."
+          : "This webinar isn't available.",
+      );
+    }
+    if (!access.isStaff) throw new Error("Only staff can pin a host for everyone.");
+    const ev = access.event;
+    if (!isHostedOnBatch0(ev.liveMode)) {
+      throw new Error("This event isn't hosted on batch0.");
+    }
+    if (ev.liveEndedAt) throw new Error("This webinar has ended.");
+    if (!withinHardClose(ev)) throw new Error("This webinar closed a while ago.");
+    if (ev.primaryHostId === userId) return;
+
+    const hosts = await presentHosts(ev.id, PEER_TIMEOUT_MS);
+    if (hosts === null) throw new Error("Couldn't check who's hosting — try again.");
+    if (!hosts.some((h) => h.userId === userId)) {
+      throw new Error("That host isn't in the room.");
+    }
+
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("events")
+      .update({ live_primary_host_id: userId })
+      .eq("id", ev.id);
+    if (error) {
+      if (isMissingSchemaError(error)) {
+        notePrimaryColumnMissing();
+        throw new Error("Pinning isn't set up yet.");
+      }
+      throw new Error(error.message);
+    }
+    await notifyStage(`event:${ev.id}`, { t: "room-changed" });
+  });
+}
+
+/**
+ * Who ELSE is hosting right now — for the green room's "Start webinar" vs
+ * "Join as co-host · Ana is hosting". The primary first, then by arrival.
+ * And whether the room is being recorded, so the green room's recording
+ * notice is as current as its hosting line (a host who presses Record while
+ * a speaker waits there puts the notice up before the speaker joins).
+ *
+ * Never the caller: a host who reloads before their own row goes stale (the
+ * leave beacon lost) is not someone already hosting for them to join.
+ * `primary`: the caller still holds the main-stage seat (a primary back
+ * within PEER_TIMEOUT_MS of leaving keeps it — claimStage), so they come back
+ * as the host, on camera, not as a muted co-host left on the main stage.
+ * Hosts only (staff and speakers): a viewer gets an empty list, never names.
+ * Empty too when presence cannot be read.
+ */
+export async function getHostingStatus(
+  eventId: string,
+): Promise<{ hosts: { userId: string; name: string }[]; recording: boolean; primary: boolean }> {
+  const access = await resolveEventAccess(eventId);
+  if (!access.ok || !access.isHost) return { hosts: [], recording: false, primary: false };
+  const [present, active] = await Promise.all([
+    presentHosts(access.event.id, PEER_TIMEOUT_MS),
+    activeRecordingFor("webinar", access.event.id).catch(() => null),
+  ]);
+  const primary = access.event.primaryHostId;
+  return {
+    hosts: (present ?? [])
+      .filter((h) => h.userId !== access.userId)
+      .sort(
+        (a, b) =>
+          Number(b.userId === primary) - Number(a.userId === primary) ||
+          a.joinedAt.localeCompare(b.joinedAt),
+      )
+      .map((h) => ({ userId: h.userId, name: h.name })),
+    recording: active !== null,
+    primary: !!primary && primary === access.userId,
+  };
 }

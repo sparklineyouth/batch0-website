@@ -337,9 +337,7 @@ export function FlowBuilder({
             ))}
           </div>
           <p className="mt-3 text-xs text-ink-faint">
-            Steps run top to bottom unless a choice option (or a step's
-            "jump to") points somewhere else — that's how a flow branches
-            and personalizes.
+            Top to bottom, unless a choice or "jump to" branches.
           </p>
         </div>
 

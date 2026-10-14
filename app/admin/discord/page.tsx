@@ -7,20 +7,12 @@ import { OpsPanel } from "./ops-panel";
 import { BootstrapPanel } from "./bootstrap-panel";
 import { AdminMyDiscordLinkCard } from "./my-link-card";
 import { AutoQuestionsPanel } from "./auto-questions-panel";
+import { HealthCheck } from "./health-check";
 import { automaticQuestionSnapshot } from "@/lib/discord-auto-runtime";
 import { requireUser } from "@/lib/auth";
-import {
-  isDiscordEnabled,
-  listRegisteredCommands,
-  fetchGuildMemberCount,
-  fetchDiscordAppInfo,
-  expectedOauthRedirectUris,
-  SLASH_COMMANDS,
-} from "@/lib/discord";
+import { isDiscordEnabled, SLASH_COMMANDS } from "@/lib/discord";
 import { env } from "@/lib/env";
-import { runDiscordDoctor, type Check } from "@/lib/discord-doctor";
 import type { DiscordConfigInput } from "./actions";
-import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Discord · Admin" };
 
@@ -33,7 +25,6 @@ const KEYS_TO_FIELD = {
   discord_channel_events_id: "eventsChannelId",
   discord_channel_admin_feed_id: "adminFeedChannelId",
   discord_channel_teams_category_id: "teamsCategoryId",
-  discord_channel_wins_id: "winsChannelId",
   discord_channel_help_id: "helpChannelId",
   discord_channel_oh_voice_id: "ohVoiceChannelId",
   discord_channel_introductions_id: "introductionsChannelId",
@@ -44,38 +35,35 @@ const KEYS_TO_FIELD = {
   discord_role_founder_pass_id: "roleFounderPassId",
 } as const;
 
+// Database reads only. Anything that calls Discord (health check, stats)
+// waits for "Run check", so the page stays fast and off the rate limit.
 export default async function AdminDiscordPage() {
   const admin = createAdminClient();
   const user = await requireUser();
   const [
     { data: rows },
     enabled,
-    registered,
-    memberCount,
     { data: meRow },
-    doctor,
-    appInfo,
+    { data: recentActivity },
+    autoQuestions,
   ] = await Promise.all([
     admin
       .from("site_settings")
       .select("key, value")
       .in("key", Object.keys(KEYS_TO_FIELD)),
     isDiscordEnabled(),
-    listRegisteredCommands(),
-    fetchGuildMemberCount(),
     admin
       .from("profiles")
       .select("discord_user_id, discord_username, discord_linked_at")
       .eq("id", user.id)
       .maybeSingle(),
-    // Live end-to-end check. Read-only, so it is safe to run on every page
-    // load; it is the only thing here that proves the integration actually
-    // works rather than merely being configured.
-    runDiscordDoctor().catch((err) => {
-      console.error("[discord] doctor failed", err);
-      return null;
-    }),
-    fetchDiscordAppInfo(),
+    admin
+      .from("audit_log")
+      .select("id, action, created_at, actor_email")
+      .like("action", "discord.%")
+      .order("created_at", { ascending: false })
+      .limit(10),
+    automaticQuestionSnapshot(),
   ]);
 
   const initial: DiscordConfigInput = {
@@ -83,7 +71,6 @@ export default async function AdminDiscordPage() {
     eventsChannelId: "",
     adminFeedChannelId: "",
     teamsCategoryId: "",
-    winsChannelId: "",
     helpChannelId: "",
     ohVoiceChannelId: "",
     introductionsChannelId: "",
@@ -99,99 +86,22 @@ export default async function AdminDiscordPage() {
     initial[field] = typeof r.value === "string" ? r.value : "";
   }
 
-  // Linked-account stats. 0008 may not be applied yet, so swallow that
-  // case and fall back to zeros.
-  let linkedCount = 0;
-  let enrolledCount = 0;
-  let enrolledLinkedCount = 0;
-  const byRole: Partial<Record<Role, number>> = {};
-  try {
-    const { data: linkedRows } = await admin
-      .from("profiles")
-      .select("id, role")
-      .not("discord_user_id", "is", null);
-    linkedCount = linkedRows?.length ?? 0;
-    for (const r of linkedRows ?? []) {
-      const role = ((r as any).role as Role) ?? "student";
-      byRole[role] = (byRole[role] ?? 0) + 1;
-    }
-
-    const linkedIds = new Set((linkedRows ?? []).map((r: any) => r.id));
-    const { data: enrollments } = await admin
-      .from("enrollments")
-      .select("user_id");
-    enrolledCount = enrollments?.length ?? 0;
-    enrolledLinkedCount = (enrollments ?? []).filter((e: any) =>
-      linkedIds.has(e.user_id),
-    ).length;
-  } catch {
-    // ignore — column doesn't exist yet
-  }
-
-  // Recent discord.* audit entries — the activity feed for the page.
-  let recentActivity: { id: string; action: string; created_at: string; actor_email: string | null }[] = [];
-  try {
-    const { data } = await admin
-      .from("audit_log")
-      .select("id, action, created_at, actor_email")
-      .like("action", "discord.%")
-      .order("created_at", { ascending: false })
-      .limit(10);
-    recentActivity = (data as any) ?? [];
-  } catch {
-    // audit_log query is harmless even if empty
-  }
-
-  const hasBot = Boolean(env.discordBotToken);
-  const hasOauth = Boolean(env.discordClientId && env.discordClientSecret);
-  // /auth/discord/start builds the redirect from the REQUEST origin, so apex
-  // and www each produce their own URI and both must be registered.
-  const expectedRedirects = expectedOauthRedirectUris(env.siteUrl);
-  const registeredRedirects = appInfo?.redirectUris ?? null;
-  const missingRedirects =
-    registeredRedirects === null
-      ? []
-      : expectedRedirects.filter((u) => !registeredRedirects.includes(u));
-  const redirectsOk =
-    expectedRedirects.length > 0 &&
-    registeredRedirects !== null &&
-    missingRedirects.length === 0;
-
-  // The bot token and DISCORD_CLIENT_ID can belong to DIFFERENT Discord
-  // applications. When they do, everything above still looks healthy — the
-  // redirect check reads the bot's app while the OAuth link uses the other one
-  // — and account linking fails with "Invalid OAuth2 redirect_uri" no matter
-  // how many times the URI is added, because it keeps being added to the app
-  // nobody is authorising against.
-  const appIdMatches =
-    !appInfo?.id || !env.discordClientId || appInfo.id === env.discordClientId;
-  const hasInteractions = Boolean(env.discordPublicKey);
-  const guildId = env.discordGuildId;
-
-  const registeredNames = registered?.map((c) => c.name) ?? null;
-  const specNames = SLASH_COMMANDS.map((c) => c.name);
-  const missingFromDiscord = specNames.filter(
-    (n) => registeredNames && !registeredNames.includes(n),
-  );
-
-  const linkRate =
-    enrolledCount > 0
-      ? Math.round((enrolledLinkedCount / enrolledCount) * 100)
-      : null;
-
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Discord</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Wire batch0 into your Discord server. Account linking, role sync,
-        cross-posts, and slash commands run off of this configuration.
+        Account linking, role sync, cross-posts and slash commands.
       </p>
 
       <div className="mt-6">
         <EnableToggle initial={enabled} />
       </div>
 
-      <AutoQuestionsPanel initial={await automaticQuestionSnapshot()} />
+      <Card className="mt-6">
+        <HealthCheck />
+      </Card>
+
+      <AutoQuestionsPanel initial={autoQuestions} />
 
       <div className="mt-6">
         <AdminMyDiscordLinkCard
@@ -204,164 +114,11 @@ export default async function AdminDiscordPage() {
       </div>
 
       <Card className="mt-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-            Live health check
-          </h2>
-          {doctor && (
-            <p className="text-xs text-ink-faint">
-              {doctor.counts.fail > 0
-                ? `${doctor.counts.fail} failing`
-                : doctor.counts.warn > 0
-                  ? `${doctor.counts.warn} warning${doctor.counts.warn === 1 ? "" : "s"}`
-                  : "All checks passing"}
-              {doctor.guildName ? ` · ${doctor.guildName}` : ""}
-            </p>
-          )}
-        </div>
-        <p className="mt-1 text-xs text-ink-faint">
-          Calls Discord on every load and compares the live server against this
-          configuration. Read-only — it never changes your server.
-        </p>
-        {doctor === null ? (
-          <p className="mt-4 text-xs text-red-700 dark:text-red-300">
-            The health check itself failed to run — see the server logs.
-          </p>
-        ) : (
-          <ul className="mt-4 space-y-3 text-sm">
-            {doctor.checks.map((c) => (
-              <CheckRow key={c.id} check={c} />
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-          Connection status
-        </h2>
-        <ul className="mt-4 space-y-2 text-sm">
-          <Status
-            ok={hasBot}
-            label="Bot token (DISCORD_BOT_TOKEN)"
-            hint={hasBot ? "Loaded from env." : "Missing — set in Vercel env."}
-          />
-          <Status
-            ok={Boolean(guildId)}
-            label="Guild ID (DISCORD_GUILD_ID)"
-            hint={guildId ? `Guild ${guildId}` : "Missing — set in Vercel env."}
-          />
-          <Status
-            ok={hasOauth}
-            label="OAuth (DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET)"
-            hint={
-              hasOauth
-                ? "Account-linking enabled."
-                : "Without these, users can't link Discord accounts."
-            }
-          />
-          <Status
-            ok={appIdMatches}
-            label="Bot token and DISCORD_CLIENT_ID are the same application"
-            hint={
-              appIdMatches
-                ? appInfo?.name
-                  ? `Both point at “${appInfo.name}” (${appInfo.id}).`
-                  : "No mismatch detected."
-                : `MISMATCH — the bot token belongs to “${appInfo?.name}” (${appInfo?.id}) but DISCORD_CLIENT_ID is ${env.discordClientId}. Account linking authorises against DISCORD_CLIENT_ID, so redirect URIs must be registered on THAT application. The check below reads the bot's app, so it can't be trusted while these differ.`
-            }
-          />
-          {/*
-            Discord rejects an unregistered redirect on its own domain, before
-            the browser returns — /auth/discord/callback never runs, so this is
-            the only place the failure can be surfaced.
-          */}
-          <Status
-            ok={redirectsOk}
-            label="OAuth redirect URIs registered with Discord"
-            hint={
-              expectedRedirects.length === 0
-                ? "NEXT_PUBLIC_SITE_URL is malformed, so the callback URL can't be derived."
-                : registeredRedirects === null
-                  ? `Couldn't read the allow-list. Ensure OAuth2 → Redirects contains: ${expectedRedirects.join(", ")}`
-                  : missingRedirects.length === 0
-                    ? `All ${expectedRedirects.length} registered.`
-                    : `MISSING: ${missingRedirects.join(", ")} — add these at https://discord.com/developers/applications/${env.discordClientId ?? appInfo?.id ?? ""}/oauth2 and press Save Changes, or linking fails with "Invalid OAuth2 redirect_uri".`
-            }
-          />
-          <Status
-            ok={hasInteractions}
-            label="Slash commands (DISCORD_PUBLIC_KEY)"
-            hint={
-              hasInteractions
-                ? `Endpoint: ${env.siteUrl}/api/discord/interactions`
-                : "Set the Public Key from the Discord developer portal to enable interactions."
-            }
-          />
-          <Status
-            ok={
-              registeredNames !== null &&
-              missingFromDiscord.length === 0 &&
-              registeredNames.length > 0
-            }
-            label="Slash commands registered with Discord"
-            hint={
-              registeredNames === null
-                ? "Couldn't query Discord — check the bot token."
-                : registeredNames.length === 0
-                  ? "No commands live yet. Use the Operations panel below."
-                  : missingFromDiscord.length === 0
-                    ? `All ${registeredNames.length} commands match the spec.`
-                    : `Out of sync — missing: /${missingFromDiscord.join(", /")}`
-            }
-          />
-        </ul>
-      </Card>
-
-      <Card className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-          At a glance
-        </h2>
-        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat label="Linked accounts" value={String(linkedCount)} />
-          <Stat
-            label="Enrolled · linked"
-            value={
-              linkRate == null
-                ? "—"
-                : `${enrolledLinkedCount}/${enrolledCount} (${linkRate}%)`
-            }
-          />
-          <Stat
-            label="Guild members"
-            value={memberCount == null ? "—" : String(memberCount)}
-          />
-          <Stat
-            label="By role"
-            value={
-              [
-                ["student", "S"],
-                ["mentor", "M"],
-                ["admin", "A"],
-                ["investor", "I"],
-              ]
-                .map(([k, abbr]) => `${abbr}:${byRole[k as Role] ?? 0}`)
-                .join(" · ")
-            }
-          />
-        </div>
-      </Card>
-
-      <Card className="mt-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Operations
         </h2>
-        <p className="mt-1 text-xs text-ink-faint">
-          Register commands after editing the spec, then re-sync roles or refresh
-          stored usernames as needed.
-        </p>
         <div className="mt-4">
-          <OpsPanel registeredNames={registeredNames} />
+          <OpsPanel />
         </div>
       </Card>
 
@@ -374,9 +131,7 @@ export default async function AdminDiscordPage() {
           Bootstrap server from scratch
         </h2>
         <p className="mt-1 text-xs text-ink-faint">
-          First-time setup: wipe every existing channel + role and rebuild the
-          canonical batch0 layout in one click. New IDs are saved to
-          the config above automatically.
+          Deletes every channel and role, then rebuilds the batch0 layout.
         </p>
         <div className="mt-4">
           <BootstrapPanel />
@@ -387,14 +142,13 @@ export default async function AdminDiscordPage() {
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Slash commands
         </h2>
-        <p className="mt-2 text-sm text-ink-soft">
-          Set the interactions endpoint URL in your Discord application to:
+        <p className="mt-2 text-xs text-ink-faint">
+          Interactions endpoint
         </p>
-        <pre className="mt-2 overflow-x-auto rounded-lg bg-wash p-3 text-xs text-phosphor-ink">
+        <pre className="mt-1 overflow-x-auto rounded-lg bg-wash p-3 text-xs text-phosphor-ink">
           {env.siteUrl}/api/discord/interactions
         </pre>
-        <p className="mt-3 text-sm text-ink-soft">Built-in commands:</p>
-        <ul className="mt-2 grid gap-1.5 text-sm text-ink-soft sm:grid-cols-2">
+        <ul className="mt-3 grid gap-1.5 text-sm text-ink-soft sm:grid-cols-2">
           {SLASH_COMMANDS.map((c) => {
             // type 3 = MESSAGE context menu — appears under "right-click →
             // Apps", not as a slash command, so render the difference.
@@ -418,20 +172,18 @@ export default async function AdminDiscordPage() {
           })}
         </ul>
         <p className="mt-3 text-xs text-ink-faint">
-          Editing the list lives in <code>SLASH_COMMANDS</code> in{" "}
-          <code>lib/discord.ts</code>. Click <strong>Register slash commands</strong>{" "}
-          above after changes — Discord propagates global commands within an hour
-          on a fresh app and instantly after that.
+          After a deploy that changes this list, press{" "}
+          <strong>Register slash commands</strong> above.
         </p>
       </Card>
 
-      {recentActivity.length > 0 && (
+      {(recentActivity?.length ?? 0) > 0 && (
         <Card className="mt-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Recent Discord activity
           </h2>
           <ul className="mt-3 divide-y divide-line text-sm">
-            {recentActivity.map((a) => (
+            {(recentActivity ?? []).map((a: any) => (
               <li key={a.id} className="flex items-baseline justify-between gap-4 py-2">
                 <span className="font-mono text-xs text-phosphor-ink">
                   {a.action.replace(/^discord\./, "")}
@@ -445,64 +197,5 @@ export default async function AdminDiscordPage() {
         </Card>
       )}
     </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-line bg-wash p-3">
-      <p className="text-[10px] uppercase tracking-wider text-ink-faint">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-ink">{value}</p>
-    </div>
-  );
-}
-
-const CHECK_DOT: Record<Check["status"], string> = {
-  ok: "bg-emerald-500",
-  warn: "bg-amber-500",
-  fail: "bg-red-500",
-  skip: "bg-ink-faint/40",
-};
-
-function CheckRow({ check }: { check: Check }) {
-  return (
-    <li className="flex items-start gap-3">
-      <span
-        className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${CHECK_DOT[check.status]}`}
-      />
-      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-        <p className="font-medium text-ink">{check.label}</p>
-        <p className="text-xs text-ink-faint">{check.detail}</p>
-        {check.remedy && (
-          <p className="mt-1 text-xs text-amber-700 dark:text-amber-200">
-            Fix: {check.remedy}
-          </p>
-        )}
-      </div>
-    </li>
-  );
-}
-
-function Status({
-  ok,
-  label,
-  hint,
-}: {
-  ok: boolean;
-  label: string;
-  hint: string;
-}) {
-  return (
-    <li className="flex items-start gap-3">
-      <span
-        className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${
-          ok ? "bg-emerald-500" : "bg-amber-500"
-        }`}
-      />
-      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-        <p className="font-medium text-ink">{label}</p>
-        <p className="text-xs text-ink-faint">{hint}</p>
-      </div>
-    </li>
   );
 }

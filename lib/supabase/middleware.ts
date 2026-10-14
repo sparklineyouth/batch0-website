@@ -11,6 +11,7 @@ import {
   canAccessAdmin,
   canViewAdminPath,
   capabilitiesFrom,
+  emailLandingFor,
   resolveHome,
   type Capabilities,
 } from "@/lib/permissions";
@@ -304,11 +305,6 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/mentor") ||
     path.startsWith("/investor") ||
     path.startsWith("/notifications") ||
-    // Messages, like notifications: every account has it, so it carries no
-    // role gate of its own and must not sit under /dashboard (which is gated
-    // on student.dashboard — a mentor following a "someone messaged you" link
-    // would have been bounced straight back out).
-    path.startsWith("/messages") ||
     // The installable app (app/app/**). Every route under it is authenticated;
     // the per-side permission gates live in its layouts, the same way /dashboard
     // and /admin work. It has to be listed here so a signed-out tap on the home
@@ -424,7 +420,6 @@ export async function updateSession(request: NextRequest) {
     // too, so an /app request now does zero database work in middleware.
     const finePath =
       (path.startsWith("/dashboard") ||
-        path.startsWith("/messages") ||
         path.startsWith("/apply") ||
         path.startsWith("/mentor") ||
         path.startsWith("/investor")) &&
@@ -568,6 +563,10 @@ export async function updateSession(request: NextRequest) {
         // panel entirely would be a dead end.
         return redirectTo(canAccessAdmin(caps) ? "/admin" : home);
       }
+      // The sidebar's one Email row: forward to the first tab they hold.
+      if (path === "/admin/email") {
+        return redirectTo(emailLandingFor(caps) ?? "/admin");
+      }
       if (path.startsWith("/mentor") && !can(caps, "mentor.panel")) {
         return redirectTo(home);
       }
@@ -576,17 +575,15 @@ export async function updateSession(request: NextRequest) {
       }
 
       // Pre-cohort lockdown: an accepted (or already-enrolled) student whose
-      // cohort hasn't started yet can only load the personal pages — home,
-      // application, resources, billing, referrals, settings (+ pay-fine).
-      // Every other /dashboard route bounces home. The sidebar hides the
-      // links too; this is the hard server-side gate, so a typed URL, a
+      // cohort hasn't started yet can only load the pages listed in
+      // lib/pre-cohort.ts. Every other /dashboard route bounces home. The nav
+      // hides the links too (lib/student-nav.ts); this is the hard gate, so a typed URL, a
       // stale link, or a prefetch can't reach past the designated pages.
-      // Staff previewing the student view are exempt. The live rooms get no
-      // exemption of their own here: a 1:1 room is under /dashboard/calls,
-      // which is on the allowed list (pre-cohort interviews are the point of
-      // it), and a webinar room stays locked like the events list that links
-      // to it, so a pre-cohort student cannot walk into a cohort webinar
-      // their RLS read happens to allow.
+      // Staff previewing the student view are exempt. Both live rooms are on
+      // the allowed list (lib/pre-cohort.ts): a 1:1 room is under
+      // /dashboard/calls, and a webinar room is allowed so a pre-start
+      // orientation webinar can be attended — the event's RLS still decides
+      // who may see it, and the events list itself stays locked.
       if (
         path.startsWith("/dashboard") &&
         !canAccessAdmin(caps) &&

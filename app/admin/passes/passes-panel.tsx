@@ -454,9 +454,7 @@ export function PassesPanel({
 
         {minting && (
           <p className="mt-4 text-xs text-ink-faint">
-            Exporting {count} STLs from Onshape (~{Math.ceil(count * 1.5)}s). Nothing is
-            written to the database until every export succeeds, so a failure here
-            leaves no trace — don&apos;t close this tab.
+            Exporting {count} STLs (~{Math.ceil(count * 1.5)}s). Keep this tab open.
           </p>
         )}
 
@@ -483,11 +481,10 @@ export function PassesPanel({
         <div>
           <h2 className="text-sm font-semibold text-ink">Send virtual passes</h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Starting at serial{" "}
-            <span className="font-mono text-ink">#{nextSerial}</span> as batch{" "}
-            <span className="font-mono text-ink">{nextVirtualBatch}</span>. No
-            printer — the code is emailed and redeems itself at /pass, with
-            nothing to type.
+            From serial{" "}
+            <span className="font-mono text-ink">#{nextSerial}</span>, batch{" "}
+            <span className="font-mono text-ink">{nextVirtualBatch}</span>.
+            Emailed; redeems at /pass.
           </p>
         </div>
 
@@ -565,8 +562,7 @@ export function PassesPanel({
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-ink-faint">
-                  Works for people with no batch0 account — they&apos;ll make
-                  one when they claim it, and the code carries across signup.
+                  No account needed; the code carries across signup.
                 </p>
               </div>
 
@@ -777,12 +773,7 @@ export function PassesPanel({
                   .
                 </span>
               ) : (
-                <>
-                  Leave blank to use the tier&apos;s own amount. Type a number to
-                  override it — <span className="font-mono">0</span> is a real
-                  choice, meaning a pass with no discount at all. Never charges
-                  more than the tuition.
-                </>
+                <>Blank = tier default. <span className="font-mono">0</span> = no discount.</>
               )}
             </p>
           </div>
@@ -806,9 +797,6 @@ export function PassesPanel({
                 </button>
               ))}
             </div>
-            <p className="mt-1 text-xs text-ink-faint">
-              More than one is for handing someone a small stack to pass on.
-            </p>
           </div>
         </div>
 
@@ -831,12 +819,6 @@ export function PassesPanel({
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-ink-faint">
-            Enforced server-side wherever it counts — checkout reads the
-            discount off the pass, the applications gate reads the early
-            access, the feedback form reads the credit count. Nothing here is
-            copy.
-          </p>
         </div>
 
         <div className="mt-4">
@@ -850,8 +832,7 @@ export function PassesPanel({
             onChange={(e) => setSendNote(e.target.value)}
           />
           <p className="mt-1 text-xs text-ink-faint">
-            Saved on the pass and quoted in the email every recipient reads — so
-            write it to them, not about them.
+            Quoted in their email. Write it to them.
           </p>
         </div>
 
@@ -880,9 +861,7 @@ export function PassesPanel({
 
         {!canEmail && (
           <p className="mt-4 rounded-lg border border-amber-400/40 bg-amber-400/[0.06] px-3 py-2 text-xs text-amber-200">
-            This environment can&apos;t send: {emailDetail} Nothing would leave
-            the building, so the button stays off rather than issuing serials
-            that get revoked a second later.
+            Can&apos;t send from here: {emailDetail}
           </p>
         )}
 
@@ -963,9 +942,7 @@ export function PassesPanel({
               </div>
             )}
             <p className="mt-3 text-xs text-amber-200/80">
-              Keep a copy if you need to read one back to someone — the database
-              stores a peppered hash, so nobody, including us, can recover these
-              later. If a send is lost, revoke that serial and issue a new pass.
+              Shown once — copy them now.
             </p>
           </div>
         )}

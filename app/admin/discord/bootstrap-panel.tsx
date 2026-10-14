@@ -39,25 +39,10 @@ export function BootstrapPanel() {
     <div className="space-y-4">
       <div className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-4">
         <p className="text-sm font-semibold text-red-700 dark:text-red-200">
-          This deletes every channel and role in your guild.
+          Every channel (with its message history) and every custom role is deleted.
         </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-red-700/80 dark:text-red-100/80">
-          <li>All channels (and their entire message history) are gone forever.</li>
-          <li>All custom roles are deleted. @everyone and bot-managed roles are kept.</li>
-          <li>
-            The canonical layout is built: 4 roles (Student / Mentor / Investor /
-            Admin) + 5 categories with ~14 channels.
-          </li>
-          <li>
-            The new channel and role IDs are saved to site_settings automatically
-            — you don&apos;t need to copy anything by hand.
-          </li>
-        </ul>
-        <p className="mt-3 text-xs text-red-700/70 dark:text-red-100/70">
-          The bot needs <strong>Manage Channels</strong> and{" "}
-          <strong>Manage Roles</strong> permissions, and its role must sit above
-          the roles it&apos;s creating (Server Settings → Roles → drag the bot
-          above @everyone).
+        <p className="mt-1 text-xs text-red-700/80 dark:text-red-100/80">
+          The bot needs Manage Channels and Manage Roles, with its role above @everyone.
         </p>
       </div>
 

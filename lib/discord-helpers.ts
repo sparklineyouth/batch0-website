@@ -19,38 +19,27 @@ export async function sendOnboardingDM(
 ): Promise<boolean> {
   const { data: profile } = await admin
     .from("profiles")
-    .select(
-      "id, full_name, discord_introduced_at, discord_first_rsvp_at, discord_linked_at",
-    )
+    .select("id, full_name, discord_introduced_at, discord_linked_at")
     .eq("discord_user_id", discordUserId)
     .maybeSingle();
   if (!profile) return false;
 
   const settings = await getDiscordSettings();
   const introCh = settings.introductionsChannelId;
-  const eventsCh = settings.eventsChannelId;
 
   const linkedDone = !!profile.discord_linked_at;
   const introDone = !!profile.discord_introduced_at;
-  const rsvpDone = !!profile.discord_first_rsvp_at;
 
   const lines = [
     `Welcome${profile.full_name ? `, ${profile.full_name}` : ""}!`,
     "",
-    "Here's your 3-step setup:",
     `1. ${linkedDone ? "✅" : "⬜"} Link your batch0 account`,
     `2. ${introDone ? "✅" : "⬜"} Introduce yourself${introCh ? ` in <#${introCh}>` : ""}`,
-    `3. ${rsvpDone ? "✅" : "⬜"} RSVP to an event${eventsCh ? ` in <#${eventsCh}>` : ""}`,
   ];
 
-  const buttons: { customId: string; label: string; style?: 1 | 2 | 3 | 4 }[] = [];
-  if (!introDone) {
-    buttons.push({ customId: "onb:intro", label: "Mark intro done", style: 3 });
-  }
-  if (!rsvpDone) {
-    buttons.push({ customId: "onb:rsvp-info", label: "How to RSVP", style: 2 });
-  }
-  const components = buttons.length ? [buttonRow(buttons)] : [];
+  const components = introDone
+    ? []
+    : [buttonRow([{ customId: "onb:intro", label: "Mark intro done", style: 3 }])];
 
   // Mark when we last nudged so the admin-feed can show stalled members.
   await admin

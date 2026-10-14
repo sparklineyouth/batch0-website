@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { syncMemberRoles } from "@/lib/discord";
 import { getRole } from "@/lib/roles";
 import {
+  PERMISSION_BY_KEY,
   ROLE_SLUG_PATTERN,
   ROLE_COLOR_KEYS,
   WILDCARD,
@@ -17,6 +18,7 @@ import {
   isSystemRole,
   isValidRoleHome,
   slugifyRole,
+  unmetPermissionNeed,
 } from "@/lib/permissions";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -95,6 +97,11 @@ function validate(input: RoleInput, permissions: string[]) {
     throw new Error(
       "A role with no permissions can't reach anything. Tick at least one.",
     );
+  }
+  const unmet = unmetPermissionNeed(permissions);
+  if (unmet) {
+    const [key, needs] = unmet.map((k) => PERMISSION_BY_KEY.get(k)?.label ?? k);
+    throw new Error(`"${key}" needs "${needs}" too.`);
   }
   return { label, description: input.description.trim().slice(0, 400) };
 }

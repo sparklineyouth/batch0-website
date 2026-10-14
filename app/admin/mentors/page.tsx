@@ -34,8 +34,7 @@ export default async function AdminMentorsPage() {
     <div className="mx-auto max-w-5xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Mentor assignments</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        Pair students with mentors. Each pair shows up in the mentor's
-        dashboard so they can take notes.
+        Pair students with mentors.
       </p>
 
       <Card className="mt-6">

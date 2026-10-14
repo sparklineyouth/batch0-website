@@ -10,7 +10,7 @@ export default function DashboardNotFound() {
     <NotFoundScreen
       variant="inline"
       title="Not available."
-      body="This page doesn't exist, or it isn't part of your program right now. If it was here yesterday, it may have been unpublished."
+      body="It may have been unpublished."
       homeHref="/dashboard"
       homeLabel="Back to dashboard"
     />

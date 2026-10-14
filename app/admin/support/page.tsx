@@ -16,7 +16,6 @@ import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { isMissingTable } from "@/lib/email/store";
 import {
   SUPPORT_PAGE_SIZE,
   countTicketsForStaff,
@@ -27,7 +26,6 @@ import {
   CATEGORY_LABELS,
   PRIORITY_LABELS,
   SEARCH_QUERY_MAX,
-  SLA_TARGET_HOURS,
   STAFF_TICKET_VIEWS,
   STAFF_VIEW_LABELS,
   TICKET_CATEGORIES,
@@ -128,10 +126,7 @@ const OWNER_FILTERS: { value: StaffAssigneeFilter; label: string }[] = [
   { value: "unassigned", label: "Unassigned" },
 ];
 
-/**
- * The chip tones of the email metrics page (app/admin/email/metric-ui.tsx),
- * so a warning reads the same everywhere in the panel.
- */
+/** Chip tones for the attention row. */
 const ATTENTION_TONE = {
   bad: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
   warn: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
@@ -336,25 +331,6 @@ export default async function AdminSupportPage(props: {
   ]);
   const { tickets, total, page, pageSize, error } = list;
 
-  if (error && isMissingTable(error)) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <h1 className="font-display text-3xl text-ink">
-          Support
-        </h1>
-        <Card className="mt-6">
-          <p className="text-sm text-ink-soft">
-            Run migration{" "}
-            <code className="font-mono text-phosphor-ink">
-              0090_support_tickets.sql
-            </code>{" "}
-            to create the queue.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   // Any change of filter lands on page 1 — page 3 of a different result set
   // is nobody's "where I was". Only the pager passes a page on.
   const href = (patch: Partial<QueueState>) => queueHref({ ...state, page: 1, ...patch });
@@ -404,18 +380,7 @@ export default async function AdminSupportPage(props: {
             Support
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Requests filed at{" "}
-            <Link href="/support" prefetch={false} className="underline">
-              batch0.org/support
-            </Link>{" "}
-            and from every policy page, plus the ones the team logs from email
-            or a call. Replying emails the requester and takes the request out
-            of this queue; their follow-up puts it back. Needs reply is ordered
-            by when a reply is due — urgent {SLA_TARGET_HOURS.urgent}h, high{" "}
-            {SLA_TARGET_HOURS.high}h, normal {SLA_TARGET_HOURS.normal}h, low{" "}
-            {SLA_TARGET_HOURS.low}h after their last message. Refund requests
-            carry a 48-hour deadline measured from the payment, so work those
-            first.
+            Refund requests first (48h). Replies email the requester.
           </p>
         </div>
         {canManage && (
@@ -562,15 +527,14 @@ export default async function AdminSupportPage(props: {
         </div>
       )}
 
-      {error && !isMissingTable(error) && (
+      {error && (
         <p className="mt-3 text-xs text-red-500">
           The queue could not be read: {error.message}
         </p>
       )}
       {!canManage && (
         <p className="mt-3 text-xs text-ink-faint">
-          You have read access to this queue. Answering a request needs the
-          &ldquo;Answer support requests&rdquo; permission.
+          Read-only. Answering needs &ldquo;Answer support requests&rdquo;.
         </p>
       )}
     </div>

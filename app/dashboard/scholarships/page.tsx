@@ -38,8 +38,8 @@ export const revalidate = 0;
  *
  * Deliberately reachable before enrolment — scholarships open at the ACCEPTED
  * stage, which is exactly the window where someone is deciding whether they
- * can afford the program at all. See the note beside this route in
- * lib/nav-config.ts ENROLLED_ONLY_HREFS.
+ * can afford the program at all. The nav shows it until the cohort starts
+ * (lib/student-nav.ts); Billing links it after that.
  *
  * Reads through the service-role client rather than the session: the RLS read
  * policy on scholarship_applications would otherwise make "no award" and "RLS
@@ -92,11 +92,12 @@ export default async function ScholarshipsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight text-ink">Scholarships</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        batch0 runs scholarships so money isn't what decides who gets to build.
-        You can hold one at a time, and you can apply after you're accepted or
-        after you've enrolled. When each one is open follows your cohort's
-        dates: until the enrollment deadline while you're accepted, and until
-        the cohort ends once you've enrolled.
+        One at a time.
+        {state.enrolled
+          ? " Open until your cohort ends."
+          : state.applicationStatus === "accepted"
+            ? " Open until the enrollment deadline."
+            : ""}
       </p>
 
       {missingTable && (
@@ -137,7 +138,7 @@ export default async function ScholarshipsPage() {
           <Card className="mt-4">
             <p className="text-sm text-ink-soft">
               {award
-                ? "You already hold a scholarship, so nothing else is open right now — students hold one at a time."
+                ? "You hold a scholarship. One at a time."
                 : cards.length === 0
                   ? "No scholarships are running at the moment."
                   : "Nothing is open to you right now. The reasons are listed below."}
@@ -240,8 +241,7 @@ function AwardCard({
                 <strong className="text-ink">
                   {formatMoney(mine.awardCents)}
                 </strong>{" "}
-                off your tuition. There's nothing to enter — the lower price is
-                already applied when you go to pay.
+                off tuition, applied at checkout.
               </>
             )}
           </p>
@@ -266,7 +266,7 @@ function AwardCard({
         <PerkBlock
           icon={Video}
           title={`Extra mentor ${perks.mentorCalls === 1 ? "call" : "calls"}`}
-          subtitle={`${mine.credits.remaining} of ${mine.credits.granted} left to book. They don't expire during the cohort — but they also don't do anything sitting unused.`}
+          subtitle={`${mine.credits.remaining} of ${mine.credits.granted} calls left.`}
         >
           <ButtonLink href="/dashboard/calls" size="sm">
             {mine.credits.remaining > 0 ? "Book a call" : "See your calls"}
@@ -281,9 +281,9 @@ function AwardCard({
           subtitle={
             credits
               ? credits.remaining > 0
-                ? `${credits.remaining} of ${credits.total} left — a focused, written review from the team of the thing you're stuck on. One at a time.`
-                : `All ${credits.total} used. A focused, written review of the thing you're stuck on.`
-              : "A focused, written review from the team of the thing you're stuck on."
+                ? `${credits.remaining} of ${credits.total} left. Written feedback from the team.`
+                : `All ${credits.total} used.`
+              : "Written feedback from the team."
           }
         >
           <FeedbackCredit request={feedbackRequest} />
@@ -297,9 +297,9 @@ function AwardCard({
           subtitle={
             guests
               ? guests.remaining > 0
-                ? `${guests.remaining} of ${guests.granted} left to send. A guest gets a real ticket by email — nothing to pay — and sees the event details there.`
-                : `All ${guests.granted} sent. Ask the team if you need one changed.`
-              : "Send a real ticket to family or friends by email — nothing to pay."
+                ? `${guests.remaining} of ${guests.granted} left. Free tickets, sent by email.`
+                : `All ${guests.granted} sent.`
+              : "Free tickets for family or friends, sent by email."
           }
         >
           <GuestTicketSender
@@ -313,7 +313,7 @@ function AwardCard({
         <PerkBlock
           icon={Sparkles}
           title="AI co-founder boost"
-          subtitle={`${AI_BOOST_MULTIPLIER}× the free monthly AI allowance before anything is billed. Already on — the meter on the AI page shows the wider band.`}
+          subtitle={`${AI_BOOST_MULTIPLIER}× the free monthly AI allowance. Already on.`}
         >
           <ButtonLink href="/dashboard/ai" size="sm" variant="secondary">
             Open the AI co-founder
@@ -394,12 +394,15 @@ function MyApplicationRow({ card }: { card: ScholarshipCard }) {
 
       {mine.status === "declined" && (
         <p className="mt-3 text-xs text-ink-faint">
-          This doesn't change your place at batch0. If cost is what's standing
-          between you and the program,{" "}
-          <Link href="/dashboard/discussions" className="underline">
+          Your place at batch0 doesn't change. If cost is in the way,{" "}
+          <Link
+            href="/dashboard/support/new?topic=billing&source=scholarships"
+            prefetch={false}
+            className="underline"
+          >
             tell the team
-          </Link>{" "}
-          — we'd rather hear it.
+          </Link>
+          .
         </p>
       )}
     </Card>

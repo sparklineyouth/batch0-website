@@ -1,57 +1,27 @@
 "use client";
 import { useCallback, useMemo } from "react";
-import {
-  BroadcastRoom,
-  type SegmentOutcome,
-} from "@/components/live/broadcast-room";
+import { RoomController, type WebinarBinding } from "@/components/live/room/controller";
+import type { EventDeck } from "@/components/live/room/use-presentation";
 import {
   joinRoom,
   announcePresence,
   leaveRoom,
   listAudience,
+  setPrimaryHost,
+  getHostingStatus,
 } from "@/app/live/actions";
-import {
-  endLive,
-  fetchPremiereState,
-  goLive,
-  reopenLive,
-} from "./room-actions";
-import {
-  getWebinarRecordingUploadToken,
-  registerWebinarRecordingSegment,
-} from "@/app/admin/events/webinar-actions";
-import type { RoomState } from "./room-actions";
-import type { LiveRole, WebinarQuestion } from "@/lib/live";
+import { endLive, fetchLiveState, reopenLive } from "./room-actions";
+import type { LiveRole } from "@/lib/live";
 import type { SignalRole } from "@/lib/live-signal";
-import {
-  webinarSegmentName,
-  type AudienceMode,
-  type EventSpeaker,
-  type PremiereState,
-} from "@/lib/webinars";
-import { withUploadRetry } from "@/lib/upload-retry";
+import type { WebinarPanelInitial } from "@/lib/webinar-panel";
 
 /**
- * A hosted webinar on batch0 Live.
+ * A hosted webinar on batch0 Live: binds the event's server actions to the
+ * room controller.
  *
- * This binds the event to a room that knows nothing about events. `BroadcastRoom`
- * takes callbacks and data; everything that makes this particular room a WEBINAR
- * — which event it is, where its recording segments go, what its premiere is
- * playing — is resolved here and handed down. The same component serves a 1:1
- * with `kind: "call"` and none of these props, which is the whole reason the
- * binding lives out here rather than inside the room.
- *
- * ---------------------------------------------------------------------------
- * Why every callback is memoised on the event id alone
- * ---------------------------------------------------------------------------
- *
- * `useLiveSession` treats its action props as stable and deliberately leaves
- * them out of its lifecycle effect's dependency array, with an eslint-disable
- * and a comment saying so. If one of them changed identity on a render, that
- * effect would re-run and tear down every live peer connection — mid-webinar,
- * in front of the audience, with no error anywhere to explain it. So the
- * `useMemo` and `useCallback` below are not an optimisation, they are the
- * thing keeping the room up, and the dependency lists must stay this narrow.
+ * Every callback is memoised on the event id alone. useLiveSession treats its
+ * transport as stable and leaves it out of its lifecycle effect; a new
+ * identity would tear every peer connection down mid-webinar.
  */
 export function BuiltinEventRoom({
   eventId,
@@ -64,217 +34,105 @@ export function BuiltinEventRoom({
   isStaffHost,
   canEnd,
   backHref,
-  audienceMode,
-  displayViewerCount,
   autoRecord,
-  premiere,
+  liveStartedAt,
   liveEndedAt,
-  speakers,
-  deck,
-  initialQuestions,
-  initialRoomState,
+  deckUrl,
+  deckName,
+  panel,
+  recordingReady = true,
 }: {
   eventId: string;
-  /**
-   * The signed-in person's id — the same id every other host's browser sees
-   * them by (a peer's id IS its user id), which is what lets every browser in
-   * the room agree on which one of them records.
-   */
+  /** Their peer id: a peer's id is its user id. */
   selfUserId: string;
-  /** The signed-in person's name, for their tile if their browser records. */
   selfName: string;
   title: string;
-  /** The schedule — see WebinarRoom in components/live/broadcast-room. */
   startsAt: string;
   endsAt: string | null;
   role: LiveRole;
-  /**
-   * Staff, as opposed to a guest speaker who also holds `role: "host"`.
-   *
-   * Both broadcast. Only staff are shown who is watching — a guest founder
-   * needs a camera, not the attendance list of a room containing minors. The
-   * server already enforces this by withholding the names (see `discloseNames`
-   * in lib/live-rooms.ts); this prop is what lets the UI avoid drawing an
-   * empty column where the roster would be.
-   */
+  /** events.manage, as opposed to a guest speaker (who also hosts). */
   isStaffHost: boolean;
-  /**
-   * May this reader end the webinar for everyone, as the server saw it at
-   * render time (nobody before the start; then staff always, and a guest
-   * speaker only with no staff host present). The room keeps it current from
-   * then on.
-   */
+  /** As the server saw it at render; the room keeps it current. */
   canEnd: boolean;
-  /**
-   * Back / after-leave destination, decided by the page from the role: staff
-   * go back to /admin/webinars, speakers and students to /dashboard/events.
-   */
   backHref: string;
-  audienceMode: AudienceMode;
-  /** Admin-announced headcount, shown to everyone. Null = hidden roster. */
-  displayViewerCount: number | null;
   autoRecord: boolean;
-  /** Null for an ordinary live webinar. */
-  premiere:
-    | (PremiereState & { url: string; durationSeconds: number })
-    | null;
+  liveStartedAt: string | null;
   liveEndedAt: string | null;
-  speakers: EventSpeaker[];
-  deck: { id: string; filename: string; sizeBytes: number | null }[];
-  initialQuestions: WebinarQuestion[];
-  initialRoomState: RoomState | null;
+  /** The event's PDF deck, signed (hosts only); null when there is none. */
+  deckUrl: string | null;
+  deckName: string | null;
+  panel: WebinarPanelInitial;
+  /** False before migration 0095 (recordingsReady). */
+  recordingReady?: boolean;
 }) {
-  const actions = useMemo(
+  const transport = useMemo(
     () => ({
       join: () => joinRoom("event", eventId),
       // `joinedAs` lets the server answer 'revoked' to a host whose grant was
-      // removed mid-session, rather than silently re-announcing them as a
-      // viewer while they still hold host credentials.
-      announce: (joinedAs?: SignalRole) =>
-        announcePresence("event", eventId, joinedAs),
+      // removed mid-session instead of re-announcing them as a viewer.
+      announce: (joinedAs?: SignalRole) => announcePresence("event", eventId, joinedAs),
       leave: () => leaveRoom("event", eventId),
       listPeers: () => listAudience("event", eventId),
     }),
     [eventId],
   );
-
-  /**
-   * Put one recording segment in the bucket.
-   *
-   * The three-step dance this repo already uses for every large upload, and it
-   * is three steps for a reason Next imposes: a server action's request body is
-   * capped at 1 MB by default and this project does not raise it, so a 19 MB
-   * segment cannot be POSTed to an action at all. Instead the server mints a
-   * signed URL, the bytes go straight from the tab to Supabase Storage without
-   * touching a Vercel function, and a second action records the path.
-   *
-   * Either server step may answer "another host's browser is recording this
-   * webinar" (see recordingRival in lib/webinars.ts). That is not a failure —
-   * it is the room's one-recorder rule being enforced — so it comes back as
-   * `"refused"` rather than a throw, and the room stands this recorder down.
-   *
-   * Throws on real failure, which is deliberate: `useRecorder` catches, counts
-   * the failure, and KEEPS RECORDING. Losing one segment must never stop the
-   * next one, because the alternative is a network blip at minute twelve
-   * costing the remaining forty-eight.
-   */
-  const onSegment = useCallback(
-    async (
-      blob: Blob,
-      index: number,
-      durationSeconds: number,
-      run: number,
-    ): Promise<SegmentOutcome> => {
-      // `run` is the room mount the recorder belongs to — see WebinarRoom's
-      // onSegment in components/live/broadcast-room.tsx.
-      const filename = webinarSegmentName(run, index);
-      // The segment's length goes with the ask, so the server can tell a
-      // co-host who registered BEFORE this segment began (a recorder who has
-      // since handed over) from one recording alongside it. Unrounded: it is
-      // only compared, never stored, and at a handover the departing
-      // recorder's last registration can sit within a second of this
-      // segment's start.
-      const minted = await getWebinarRecordingUploadToken(
-        eventId,
-        filename,
-        durationSeconds,
-      );
-      if (!minted.ok) return "refused";
-      // Deferred import keeps supabase-js out of the route's first-load JS;
-      // it's only needed here, at the moment an upload starts.
-      const { createClient } = await import("@/lib/supabase/client");
-      const supabase = createClient();
-      // Through a network blip, not past a refusal (lib/upload-retry.ts).
-      await withUploadRetry(async () => {
-        const up = await supabase.storage
-          .from("webinar-media")
-          .uploadToSignedUrl(minted.path, minted.token, blob, {
-            contentType: blob.type || "video/webm",
-          });
-        if (up.error) throw up.error;
-      });
-
-      const filed = await registerWebinarRecordingSegment(eventId, {
-        storagePath: minted.path,
-        filename,
-        mimeType: blob.type || "video/webm",
-        sizeBytes: blob.size,
-        durationSeconds: Math.round(durationSeconds),
-        sortOrder: index,
-      });
-      return filed.ok ? "saved" : "refused";
-    },
-    [eventId],
-  );
-
-  const onGoLive = useCallback(() => goLive(eventId), [eventId]);
   const onEndLive = useCallback(() => endLive(eventId), [eventId]);
   const onReopenLive = useCallback(() => reopenLive(eventId), [eventId]);
-  const refreshPremiere = useCallback(
-    () => fetchPremiereState(eventId),
-    [eventId],
+  const onFetchLiveState = useCallback(() => fetchLiveState(eventId), [eventId]);
+  const onSetPrimary = useCallback((userId: string) => setPrimaryHost(eventId, userId), [eventId]);
+  const onHosting = useCallback(() => getHostingStatus(eventId), [eventId]);
+  const deck = useMemo<EventDeck | null>(
+    () => (deckUrl ? { url: deckUrl, name: deckName || "Slides.pdf" } : null),
+    [deckUrl, deckName],
   );
 
-  const webinar = useMemo(
+  const webinar = useMemo<WebinarBinding>(
     () => ({
       eventId,
       startsAt,
       endsAt,
-      selfUserId,
-      selfName,
-      audienceMode,
       isStaffHost,
       autoRecord,
-      premiere,
+      liveStartedAt,
       liveEndedAt,
       canEnd,
-      speakers,
       deck,
-      initialQuestions,
-      initialRoomState,
-      onSegment,
-      onGoLive,
-      onEndLive,
-      onReopenLive,
-      refreshPremiere,
+      panel,
+      endLive: onEndLive,
+      reopenLive: onReopenLive,
+      fetchLiveState: onFetchLiveState,
+      setPrimaryHost: onSetPrimary,
+      hostingStatus: onHosting,
     }),
-    // `speakers`, `deck` and the two initial payloads are server-rendered and
-    // stable for the life of the page; listing them keeps the lint honest
-    // without ever actually changing identity mid-webinar.
     [
       eventId,
       startsAt,
       endsAt,
-      selfUserId,
-      selfName,
-      audienceMode,
       isStaffHost,
       autoRecord,
-      premiere,
+      liveStartedAt,
       liveEndedAt,
       canEnd,
-      speakers,
       deck,
-      initialQuestions,
-      initialRoomState,
-      onSegment,
-      onGoLive,
+      panel,
       onEndLive,
       onReopenLive,
-      refreshPremiere,
+      onFetchLiveState,
+      onSetPrimary,
+      onHosting,
     ],
   );
+  const self = useMemo(() => ({ id: selfUserId, name: selfName }), [selfUserId, selfName]);
 
   return (
-    <BroadcastRoom
-      kind="event"
-      roomId={eventId}
+    <RoomController
       title={title}
+      self={self}
       role={role}
       backHref={backHref}
-      displayViewerCount={displayViewerCount}
+      transport={transport}
       webinar={webinar}
-      {...actions}
+      recordingReady={recordingReady}
     />
   );
 }

@@ -85,21 +85,8 @@ export function EmailSettingsForm({
         Email settings
       </h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Where email goes out from, and the switch that stops all of it.
+        Sender, transport and the kill switch.
       </p>
-
-      {!tablesReady && (
-        <Card className="mt-5 border-amber-500/30 bg-amber-500/5">
-          <p className="text-sm text-ink-soft">
-            Run migration{" "}
-            <code className="font-mono text-phosphor-ink">
-              0052_email_automation.sql
-            </code>{" "}
-            before changing anything here — until then these settings have
-            nowhere to save, and email uses the environment variables.
-          </p>
-        </Card>
-      )}
 
       {error && (
         <div className="mt-5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
@@ -138,10 +125,7 @@ export function EmailSettingsForm({
           <div>
             <h2 className="text-sm font-semibold text-ink">How email is sent</h2>
             <p className="mt-0.5 text-xs text-ink-soft">
-              Resend is the default and what the batch0.org domain is verified
-              against. SMTP lets you send through a Gmail account or any other
-              relay instead — useful when you want mail to come from a real
-              mailbox you can reply from.
+              Resend (default) or SMTP.
             </p>
           </div>
 
@@ -302,11 +286,9 @@ export function EmailSettingsForm({
           </div>
           {v.transport === "smtp" && v.smtpUser && v.fromEmail !== v.smtpUser && (
             <p className="text-xs text-amber-600">
-              Gmail and most relays only let you send as the mailbox you signed
-              in with, or an alias it owns. Sending as{" "}
+              Most relays reject sending as{" "}
               <code className="font-mono">{v.fromEmail}</code> from{" "}
-              <code className="font-mono">{v.smtpUser}</code> will be rewritten
-              or rejected — use the test button below before you rely on it.
+              <code className="font-mono">{v.smtpUser}</code>. Send a test.
             </p>
           )}
         </Card>
@@ -325,12 +307,7 @@ export function EmailSettingsForm({
               className="max-w-[140px]"
             />
           </div>
-          <p className="text-xs text-ink-soft">
-            The queue drains this many at most each time it runs. Keeps a large
-            automation inside the serverless time limit, and keeps a burst from
-            tripping a provider's rate limit — Gmail in particular. Anything
-            left over goes on the next run a few minutes later.
-          </p>
+          <p className="text-xs text-ink-soft">Max sends per queue run.</p>
         </Card>
 
         <div className="flex flex-wrap items-center gap-2">

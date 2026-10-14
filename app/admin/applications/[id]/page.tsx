@@ -229,8 +229,7 @@ export default async function AdminApplicationDetail(
             </span>
           </div>
           <p className="mt-1 text-xs text-ink-faint">
-            This pass holder was declined and built their way back in. Read it,
-            then re-open and re-decide below to give them their fresh review.
+            Read it, then re-open and decide below.
           </p>
           <p className="mt-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-ink-soft">
             {rebuild.summary}
@@ -343,8 +342,7 @@ export default async function AdminApplicationDetail(
             Possible duplicate ideas
           </h3>
           <p className="text-xs text-ink-faint">
-            Heuristic word-overlap on the startup idea text. Useful for
-            spotting copy-paste and coordinated applications.
+            Word overlap on the idea. Spots copy-paste.
           </p>
           <ul className="mt-3 space-y-2 text-sm">
             {duplicates.map((d) => (

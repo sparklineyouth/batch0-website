@@ -53,7 +53,7 @@ export function DeleteAnnouncementButton({
           <div className="text-left">
             <p className="text-sm text-ink-soft">
               Removes the announcement and any deep-links that point at
-              it. Reactions are deleted with it.
+              it.
             </p>
             {err && (
               <p className="mt-2 text-xs text-red-700 dark:text-red-300">{err}</p>

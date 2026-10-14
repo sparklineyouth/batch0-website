@@ -21,11 +21,8 @@ import {
  * table; these filters are what make the backstop never the thing that saves
  * us.
  *
- * These return calls in storage order (newest start first) and no more. What
- * a call IS right now — upcoming, live, over — depends on the clock as much as
- * on `status`, and is decided by lib/call-lifecycle.ts at the point of display
- * (`splitCalls` re-sorts Upcoming soonest-first). Filtering by time here would
- * be a second copy of that rule, frozen at query time.
+ * These return calls in storage order (newest start first). What a call IS
+ * right now is decided by lib/call-lifecycle.ts at the point of display.
  *
  * ---------------------------------------------------------------------------
  * Co-hosts, and a database that is a deploy behind
@@ -48,7 +45,7 @@ import {
 // and profiles many-to-many as well, and an unhinted embed is a guess.
 const BASE_SELECT = `
   id, host_id, invitee_id, starts_at, duration_minutes, topic, status,
-  daily_room_name, daily_room_url, recap, created_at, updated_at,
+  created_at, updated_at,
   host:profiles!call_invites_host_id_fkey(full_name, role),
   invitee:profiles!call_invites_invitee_id_fkey(full_name)
 `;
@@ -148,7 +145,9 @@ export function cohostsFromRow(row: any): CallCohost[] {
       (c) =>
         !!c?.profile_id &&
         c.profile_id !== row.host_id &&
-        c.profile_id !== row.invitee_id,
+        c.profile_id !== row.invitee_id &&
+        // Never a student on the staff side (see hostIsStudent).
+        one<any>(c.profile)?.role !== "student",
     )
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
     .map((c) => {
@@ -159,6 +158,18 @@ export function cohostsFromRow(row: any): CallCohost[] {
         role: p?.role || "mentor",
       };
     });
+}
+
+/**
+ * A call whose host is a student is not a call. Calls are booked by people
+ * holding calls.invite; until migration 0097 the 0092 update policy let
+ * either party rewrite their own call_invites row, host_id included, so a
+ * student could make themselves the host of a call with another student and
+ * be treated as staff on it (record it, watch it back). Such a row reads as
+ * no call at all (getInvite, resolveCallAccess), whether or not 0097 has run.
+ */
+export function hostIsStudent(row: any): boolean {
+  return one<any>(row?.host)?.role === "student";
 }
 
 function toInvite(row: any): CallInvite {
@@ -177,8 +188,9 @@ function toInvite(row: any): CallInvite {
     topic: row.topic,
     status: row.status as CallInviteStatus,
     updatedAt: row.updated_at ?? undefined,
-    roomName: row.daily_room_name,
-    roomUrl: row.daily_room_url,
+    // batch0 Live needs no provider-side room.
+    roomName: null,
+    roomUrl: null,
   };
 }
 
@@ -270,7 +282,7 @@ export async function getInvite(id: string): Promise<
   const { data } = await withCohosts((select) =>
     admin.from("call_invites").select(select).eq("id", id).maybeSingle(),
   );
-  if (!data) return null;
+  if (!data || hostIsStudent(data)) return null;
   return {
     ...toInvite(data),
     hostId: (data as any).host_id,
@@ -284,7 +296,7 @@ export async function getInvite(id: string): Promise<
  *
  * Throws on a real read failure rather than answering "nobody": an empty
  * answer would quietly lock every co-host out of the call they are sitting
- * in (End call refused, the status poll closing their room). A database
+ * in (End call refused, the heartbeat closing their room). A database
  * without 0092 has no co-hosts, and says so.
  */
 export async function readCohostIds(
@@ -305,34 +317,45 @@ export async function readCohostIds(
 export type InviteeOption = {
   id: string;
   name: string;
+  /** Empty unless the viewer may see people's emails (people.view). */
   email: string;
   teamName?: string | null;
 };
 
 /**
- * Who can be invited.
+ * Who can be invited: every student, deliberately (a product decision). The
+ * audit log and the admins' view of every call cover the edge that an
+ * investor can reach a student they don't know; tighten here if ever needed.
  *
- * Every student, deliberately — not just a mentor's assigned students or an
- * investor's portfolio. That was a product decision, and it has a real edge:
- * an investor can reach a student they have no prior relationship with. The
- * audit log and the invite's own visibility to admins are what cover that,
- * rather than the picker being narrow. If it ever needs tightening, this
- * function is the one place to do it.
+ * The list goes to the host's browser whole, so emails only travel to hosts
+ * who may see them anyway (`withEmail`: people.view). Mentors and investors
+ * pick by name, told apart by team.
  */
-export async function listInvitableStudents(): Promise<InviteeOption[]> {
+export async function listInvitableStudents(
+  opts: { withEmail?: boolean } = {},
+): Promise<InviteeOption[]> {
+  const withEmail = opts.withEmail === true;
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("id, full_name, email, role")
-    .eq("role", "student")
-    .order("full_name", { ascending: true })
-    .limit(500);
+  const [{ data }, { data: memberships }] = await Promise.all([
+    admin
+      .from("profiles")
+      .select(withEmail ? "id, full_name, email" : "id, full_name")
+      .eq("role", "student")
+      .order("full_name", { ascending: true })
+      .limit(500),
+    admin.from("team_members").select("user_id, team:teams(name)").limit(5000),
+  ]);
+  const teamOf = new Map<string, string>();
+  for (const m of (memberships ?? []) as any[]) {
+    const name = one<any>(m.team)?.name;
+    if (name && !teamOf.has(m.user_id)) teamOf.set(m.user_id, name);
+  }
 
-  return (data ?? []).map((p: any) => ({
+  return ((data ?? []) as any[]).map((p) => ({
     id: p.id,
-    name: p.full_name || p.email || "Unnamed student",
-    email: p.email ?? "",
-    teamName: null,
+    name: p.full_name || (withEmail ? p.email : "") || "Unnamed student",
+    email: withEmail ? (p.email ?? "") : "",
+    teamName: teamOf.get(p.id) ?? null,
   }));
 }
 
@@ -341,23 +364,26 @@ export async function listInvitableStudents(): Promise<InviteeOption[]> {
  * (callStaffRoleSlugs) — admins, and mentors and investors while their roles
  * hold calls.invite. The page drops the viewer (already the host), so one
  * list serves every host. `teamName` carries the role, so the picker reads
- * "mentor" where a student's team would be.
+ * "mentor" where a student's team would be. Emails as for students.
  */
-export async function listInvitableStaff(): Promise<InviteeOption[]> {
+export async function listInvitableStaff(
+  opts: { withEmail?: boolean } = {},
+): Promise<InviteeOption[]> {
+  const withEmail = opts.withEmail === true;
   const roles = await callStaffRoleSlugs();
   if (roles.length === 0) return [];
   const admin = createAdminClient();
   const { data } = await admin
     .from("profiles")
-    .select("id, full_name, email, role")
+    .select(withEmail ? "id, full_name, email, role" : "id, full_name, role")
     .in("role", roles)
     .order("full_name", { ascending: true })
     .limit(500);
 
-  return (data ?? []).map((p: any) => ({
+  return ((data ?? []) as any[]).map((p) => ({
     id: p.id,
-    name: p.full_name || p.email || "Unnamed",
-    email: p.email ?? "",
+    name: p.full_name || (withEmail ? p.email : "") || "Unnamed",
+    email: withEmail ? (p.email ?? "") : "",
     teamName: p.role,
   }));
 }

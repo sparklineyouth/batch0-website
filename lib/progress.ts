@@ -7,8 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * looks at together: `lesson_progress` (watched seconds + completion),
  * `flow_progress` (which carries `current_step` — literally the step they're
  * sitting on), `resource_views` (added in 0053), `challenge_submissions` and
- * `assignment_submissions`. Answering "where did they stop?" meant joining
- * those by hand, so in practice nobody did.
+ * `course_assignment_submissions` (0093). Answering "where did they stop?"
+ * meant joining those by hand, so in practice nobody did.
  *
  * The headline this module exists to produce is `stoppedAt`: the single most
  * recent thing a student touched, named in words. Everything else on the
@@ -57,7 +57,6 @@ export type StudentProgress = {
   recent: ProgressEvent[];
   /** Days since `stoppedAt`, or null if they've never started. */
   idleDays: number | null;
-  missingTable: boolean;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -100,17 +99,13 @@ export function formatWatched(seconds: number): string {
 }
 
 /**
- * Build the progress picture for one student.
- *
- * Every query is tolerant of a missing table so this keeps working before
- * migration 0053 lands — resources simply report zero reach rather than the
- * page failing.
+ * Build the progress picture for one student. A failed read counts as no
+ * activity rather than failing the page.
  */
 export async function getStudentProgress(
   userId: string,
 ): Promise<StudentProgress> {
   const admin = createAdminClient();
-  let missingTable = false;
 
   const [
     lessonsRes,
@@ -144,24 +139,12 @@ export async function getStudentProgress(
       // An autosaved draft isn't activity worth reporting.
       .neq("status", "draft"),
     admin
-      .from("assignment_submissions")
-      .select(
-        "id, assignment_id, status, submitted_at, updated_at, assignment:assignments(title)",
-      )
-      .eq("user_id", userId),
+      .from("course_assignment_submissions")
+      .select("id, status, submitted_at, updated_at, assignment:course_assignments(title)")
+      .eq("user_id", userId)
+      // Excused rows are a staff decision, not something the student did.
+      .neq("status", "excused"),
   ]);
-
-  // "Migration 0053 hasn't run here" rather than a real failure. PostgREST
-  // returns PGRST205 with no table name in the message as often as not, so
-  // both the code and the message are checked.
-  const viewErr = resourceViewsRes.error as { code?: string; message?: string } | null;
-  if (
-    viewErr &&
-    (["PGRST205", "42P01", "42703"].includes(viewErr.code ?? "") ||
-      /does not exist|schema cache/i.test(viewErr.message ?? ""))
-  ) {
-    missingTable = true;
-  }
 
   const events: ProgressEvent[] = [];
 
@@ -253,14 +236,13 @@ export async function getStudentProgress(
   const assignmentRows = (assignmentsRes.data ?? []) as any[];
   for (const r of assignmentRows) {
     const a = Array.isArray(r.assignment) ? r.assignment[0] : r.assignment;
-    const submitted = r.status !== "draft";
     events.push({
       area: "assignment",
       label: a?.title ?? "an assignment",
-      detail: submitted ? r.status : "draft, not submitted",
+      detail: r.status === "submitted" ? "submitted" : r.status === "returned" ? "returned for changes" : "reviewed",
       at: r.submitted_at ?? r.updated_at,
-      complete: submitted,
-      href: "/admin/course",
+      complete: true,
+      href: "/admin/assignments",
     });
   }
 
@@ -285,11 +267,10 @@ export async function getStudentProgress(
       inProgress: 0,
     },
     challenges: challengeRows.length,
-    assignments: assignmentRows.filter((r: any) => r.status !== "draft").length,
+    assignments: assignmentRows.length,
     stoppedAt,
     recent: sortRecent(events),
     idleDays: stoppedAt ? daysSince(stoppedAt.at) : null,
-    missingTable,
   };
 }
 

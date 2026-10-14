@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireUser, getProfile } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isDiscordEnabled } from "@/lib/discord";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
 import {
   daysLeftLabel,
@@ -33,8 +34,15 @@ export const metadata = { title: "Kickoff · batch0" };
 // The agenda and checklist are admin-authored rows with no icon field — an
 // admin should be writing copy, not picking glyphs. Cycling a fixed set by
 // position keeps a custom list looking as considered as the default one.
-const AGENDA_ICONS = [PlayCircle, MessagesSquare, CalendarDays, CheckCircle];
+const AGENDA_ICONS = [PlayCircle, CalendarDays, CheckCircle, MessagesSquare];
 const CHECKLIST_ICONS = [FolderArchive, MessagesSquare, Rocket, Settings];
+/** The default checklist's own pages keep their glyph wherever they land. */
+const CHECKLIST_ICON_BY_HREF: Record<string, typeof FolderArchive> = {
+  "/dashboard/resources": FolderArchive,
+  "/dashboard/community": MessagesSquare,
+  "/dashboard/team": Rocket,
+  "/dashboard/settings": Settings,
+};
 
 type CohortRow = {
   id: string;
@@ -101,7 +109,10 @@ export default async function KickoffPage() {
     cohort = upcoming ?? rows[0] ?? null;
   }
 
-  const kickoffRow = cohort ? await readKickoffRow(admin, cohort.id) : null;
+  const [kickoffRow, discordEnabled] = await Promise.all([
+    cohort ? readKickoffRow(admin, cohort.id) : null,
+    isDiscordEnabled(),
+  ]);
 
   const today = todayISO();
   const k = resolveKickoff(
@@ -204,15 +215,22 @@ export default async function KickoffPage() {
               {isPast ? "Jump back in" : "Before kickoff"}
             </h2>
             <ul className="mt-4 space-y-2">
-              {k.checklist.map((item, i) => (
-                <li key={`${item.href}-${i}`}>
-                  <ChecklistLink
-                    href={item.href}
-                    label={item.label}
-                    icon={CHECKLIST_ICONS[i % CHECKLIST_ICONS.length]}
-                  />
-                </li>
-              ))}
+              {/* /dashboard/community sends everyone home while Discord is
+                  off, so its row goes too. */}
+              {k.checklist
+                .filter((item) => discordEnabled || item.href !== "/dashboard/community")
+                .map((item, i) => (
+                  <li key={`${item.href}-${i}`}>
+                    <ChecklistLink
+                      href={item.href}
+                      label={item.label}
+                      icon={
+                        CHECKLIST_ICON_BY_HREF[item.href] ??
+                        CHECKLIST_ICONS[i % CHECKLIST_ICONS.length]
+                      }
+                    />
+                  </li>
+                ))}
             </ul>
 
             <div className="mt-6 rounded-xl border border-line bg-wash p-4">

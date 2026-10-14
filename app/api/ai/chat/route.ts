@@ -5,6 +5,8 @@ import { buildCurriculumContext, buildSystemPrompt } from "@/lib/ai/system-promp
 import { resolveAiTeamContext } from "@/lib/ai/team-context";
 import { env } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { loadStudentAssignments } from "@/lib/assignments-server";
+import { formatEastern, isDone, statusLabel } from "@/lib/assignments";
 import { applyUsage, isOverHardCap } from "@/lib/ai/usage";
 import { getAllRoles } from "@/lib/roles";
 import { capabilitiesFrom, can, canAccessAdmin } from "@/lib/permissions";
@@ -77,7 +79,7 @@ export async function POST(req: Request) {
     { data: enrollments },
     { data: application },
     { data: memberships, error: membershipError },
-    { data: recentCheckins },
+    assignments,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -124,12 +126,7 @@ export async function POST(req: Request) {
       .from("team_members")
       .select("team_id")
       .eq("user_id", user.id),
-    admin
-      .from("student_checkins")
-      .select("week_start, accomplished, next_up, blockers")
-      .eq("user_id", user.id)
-      .order("week_start", { ascending: false })
-      .limit(4),
+    loadStudentAssignments(admin, user.id),
   ]);
 
   const role = (profile?.role as Role | undefined) ?? "student";
@@ -219,8 +216,17 @@ export async function POST(req: Request) {
     });
   }
 
-  const latestCheckin = (recentCheckins ?? [])[0] ?? null;
-  const checkinHistory = (recentCheckins ?? []).slice(1);
+  // What's due, by title and status only — never the student's submitted text.
+  const assignmentContext = [
+    ...assignments.items.filter((i) => !isDone(i.status)),
+    ...assignments.items.filter((i) => isDone(i.status)).reverse(),
+  ]
+    .slice(0, 6)
+    .map((i) => ({
+      title: i.assignment.title,
+      due: i.assignment.due_at ? formatEastern(i.assignment.due_at) : null,
+      status: statusLabel(i.status),
+    }));
 
   // Conversations are self-editable under RLS. A pinned team_id is not an
   // authorization grant, and a former member must not retain team retrieval.
@@ -241,8 +247,6 @@ export async function POST(req: Request) {
       : null;
 
   let teamRetrieval: any = null;
-  let teamMessages: { author: string | null; body: string; created_at: string }[] =
-    [];
   let curriculumCorpus: string | null = null;
 
   await Promise.all([
@@ -255,7 +259,7 @@ export async function POST(req: Request) {
     }),
     (async () => {
       if (!teamId) return;
-      const [{ data: team }, { count }, { data: pitch }, { data: tMsgs }] =
+      const [{ data: team }, { count }, { data: pitch }] =
         await Promise.all([
           supabase
             .from("teams")
@@ -271,14 +275,6 @@ export async function POST(req: Request) {
             .select("submitted_at")
             .eq("team_id", teamId)
             .maybeSingle(),
-          supabase
-            .from("team_messages")
-            .select(
-              "body, created_at, kind, author:profiles(full_name)",
-            )
-            .eq("team_id", teamId)
-            .order("created_at", { ascending: false })
-            .limit(8),
         ]);
       if (team) {
         teamRetrieval = {
@@ -288,16 +284,6 @@ export async function POST(req: Request) {
           member_count: count ?? 1,
           submitted_pitch_at: pitch?.submitted_at ?? null,
         };
-        teamMessages = (tMsgs ?? [])
-          .filter((m: any) => m.kind !== "system")
-          .map((m: any) => {
-            const author = Array.isArray(m.author) ? m.author[0] : m.author;
-            return {
-              author: author?.full_name ?? null,
-              body: m.body,
-              created_at: m.created_at,
-            };
-          });
         // Pin the conversation to the team so subsequent messages
         // continue routing the same way.
         if (!convo.team_id) {
@@ -342,21 +328,7 @@ export async function POST(req: Request) {
           }
         : null,
       team: teamRetrieval,
-      latest_checkin: latestCheckin
-        ? {
-            week_start: latestCheckin.week_start,
-            accomplished: latestCheckin.accomplished,
-            next_up: latestCheckin.next_up,
-            blockers: latestCheckin.blockers,
-          }
-        : null,
-      checkin_history: checkinHistory.map((c: any) => ({
-        week_start: c.week_start,
-        accomplished: c.accomplished,
-        next_up: c.next_up,
-        blockers: c.blockers,
-      })),
-      team_messages: teamMessages,
+      assignments: assignmentContext,
     },
   });
 

@@ -13,7 +13,7 @@ the ones already sitting there.
   one entry per type with a label, a group for the settings UI, and a default of
   `important` or `other`. The rule of thumb: important means a human probably has
   to act, or would be annoyed to have missed it (acceptance decisions, failed
-  payments, invites, DMs). Receipts, recaps and staff-queue chatter are not.
+  payments, invites). Receipts, recaps and staff-queue chatter are not.
 - **Overrides** live in `public.notification_importance` (migration 0091), one
   row per `(user_id, type)` — and only for the types a person has actually
   changed. Setting a type back to its default deletes the row, so "reset" is a
@@ -26,7 +26,9 @@ the ones already sitting there.
   with a humanised label.
 
 Adding a notification type? Add it to `NOTIFICATION_KINDS`. Nothing else is
-needed — no backfill, no migration.
+needed — no backfill, no migration. Retiring one? Move it to
+`RETIRED_NOTIFICATION_KINDS` with default `other`: old rows keep their label
+and stay out of Important, and the settings tab stops offering it.
 
 ## Reading the page
 
@@ -42,6 +44,6 @@ needed — no backfill, no migration.
 
 The first thing that made the admin inbox unreadable wasn't classification, it
 was volume: the at-risk cron sent `"<name> needs a mentor"` to **every** admin,
-once per unassigned student per week. That notification is gone — the
-`at_risk_interventions` row and `/admin/interventions` were always the real
-queue for it — and migration 0091 marks the existing backlog read.
+once per unassigned student per week. That notification is gone, and migration
+0091 marks the existing backlog read. (The at-risk crons and queue themselves
+went with check-ins in 0093; overdue work now shows on /admin/assignments.)

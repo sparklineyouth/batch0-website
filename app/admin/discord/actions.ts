@@ -16,6 +16,7 @@ import {
   type RepairResult,
   type CanonicalLayoutIds,
 } from "@/lib/discord";
+import { runDiscordDoctor, type DoctorReport } from "@/lib/discord-doctor";
 import type { Role } from "@/lib/types";
 
 /**
@@ -51,10 +52,10 @@ export type DiscordConfigInput = {
   eventsChannelId: string;
   adminFeedChannelId: string;
   // 0033 feature-pack channels — all optional. When empty, the
-  // associated feature silently no-ops (e.g. milestone check-ins won't
-  // cross-post if winsChannelId is unset).
+  // associated feature silently no-ops (e.g. no team channels without
+  // teamsCategoryId). #wins is not here: the site no longer posts to it, so
+  // only bootstrap/repair (persistLayoutIds) record its id.
   teamsCategoryId: string;
-  winsChannelId: string;
   helpChannelId: string;
   ohVoiceChannelId: string;
   introductionsChannelId: string;
@@ -74,7 +75,6 @@ const KEY_BY_FIELD: Record<keyof DiscordConfigInput, string> = {
   eventsChannelId: "discord_channel_events_id",
   adminFeedChannelId: "discord_channel_admin_feed_id",
   teamsCategoryId: "discord_channel_teams_category_id",
-  winsChannelId: "discord_channel_wins_id",
   helpChannelId: "discord_channel_help_id",
   ohVoiceChannelId: "discord_channel_oh_voice_id",
   introductionsChannelId: "discord_channel_introductions_id",
@@ -117,6 +117,47 @@ export async function saveDiscordConfig(input: DiscordConfigInput) {
     ),
   });
   revalidatePath("/admin/discord");
+}
+
+export type DiscordCheckResult = {
+  /** Null when the check itself crashed (see server logs). */
+  report: DoctorReport | null;
+  linked: number;
+  enrolled: number;
+  enrolledLinked: number;
+  byRole: Partial<Record<Role, number>>;
+};
+
+/**
+ * The live health check + link stats. Runs only on demand ("Run check") so
+ * the page itself never waits on Discord or spends its rate limit.
+ */
+export async function runDiscordCheck(): Promise<DiscordCheckResult> {
+  await assertPermission("discord.manage");
+  const admin = createAdminClient();
+  const [report, { data: linkedRows }, { data: enrollments }] =
+    await Promise.all([
+      runDiscordDoctor().catch((err) => {
+        console.error("[discord] doctor failed", err);
+        return null;
+      }),
+      admin.from("profiles").select("id, role").not("discord_user_id", "is", null),
+      admin.from("enrollments").select("user_id"),
+    ]);
+  const byRole: Partial<Record<Role, number>> = {};
+  for (const r of linkedRows ?? []) {
+    const role = ((r as any).role as Role) ?? "student";
+    byRole[role] = (byRole[role] ?? 0) + 1;
+  }
+  const linkedIds = new Set((linkedRows ?? []).map((r: any) => r.id));
+  const enrolledIds = new Set((enrollments ?? []).map((e: any) => e.user_id));
+  return {
+    report,
+    linked: linkedIds.size,
+    enrolled: enrolledIds.size,
+    enrolledLinked: [...enrolledIds].filter((id) => linkedIds.has(id)).length,
+    byRole,
+  };
 }
 
 /**

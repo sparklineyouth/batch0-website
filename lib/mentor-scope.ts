@@ -115,20 +115,3 @@ export async function mentorScope(
     studentIds: [...new Set(rows.map((a) => a.student_id as string))],
   };
 }
-
-/**
- * The scope as one PostgREST `or()` filter, for a table that carries both
- * `cohort_id` and `user_id` (enrollments, student_checkins). Both halves are
- * needed because an assignment may carry no cohort, and either half can be
- * empty — PostgREST rejects an empty `in.()`, so those are dropped.
- *
- * Null means the mentor is in scope for nobody: there is no filter that says
- * "no rows", so the caller must SKIP the read rather than run it unfiltered.
- */
-export function mentorScopeFilter(scope: MentorScope): string | null {
-  const halves = [
-    scope.cohortIds.length ? `cohort_id.in.(${scope.cohortIds.join(",")})` : null,
-    scope.studentIds.length ? `user_id.in.(${scope.studentIds.join(",")})` : null,
-  ].filter(Boolean);
-  return halves.length > 0 ? halves.join(",") : null;
-}

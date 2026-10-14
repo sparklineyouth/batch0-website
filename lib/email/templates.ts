@@ -192,6 +192,21 @@ function alsoJoiningLine(names: readonly string[] | undefined): string {
   return `<p style="margin:12px 0">Also joining: <strong>${escape(joinNames(names))}</strong>.</p>`;
 }
 
+/** The room itself; it asks them to sign in and opens 15 minutes early. */
+function callJoinUrl(inviteId: string): string {
+  return `${env.siteUrl}/dashboard/calls/${encodeURIComponent(inviteId)}/live`;
+}
+
+/** "When: … · Add to calendar" for a 1:1 email. */
+function callWhenLine(startsAt: string, inviteId: string): string {
+  const ics = `${env.siteUrl}/api/calls/${encodeURIComponent(inviteId)}/ics`;
+  return `<p style="margin:12px 0">When: <strong>${escape(eventWhen(startsAt))}</strong> · <a href="${ics}" style="color:#ffbb00">Add to calendar</a></p>`;
+}
+
+function callFooter(): string {
+  return `<p style="color:#8b949e;font-size:13px">Can't make it? Decline from <a href="${env.siteUrl}/dashboard/calls" style="color:#8b949e">your 1:1 calls</a>.</p>`;
+}
+
 export const Templates = {
   /**
    * Admin-composed blast email (the /admin/email/blast composer). Body
@@ -322,26 +337,6 @@ ${env.siteUrl}`,
         <p>Thanks for applying to batch0. After reviewing your application, we're unable to offer you a seat in this cohort. We hope you'll apply again next time.</p>
         ${args.notes ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,255,255,0.2);color:#bbb">${escape(args.notes)}</p>` : ""}
       `,
-    }),
-  }),
-
-  /**
-   * "We need your phone number" — sent to students who were accepted before
-   * the application form asked for one. Points them at /dashboard/phone, where
-   * they add it (see app/dashboard/phone). Triggered by an admin from
-   * /admin/email/phone-request; nothing hangs off an automation event, so this
-   * is a plain compiled template with no catalog entry.
-   */
-  collectPhone: (args: { name?: string | null }) => ({
-    subject: "One quick thing — add your phone number",
-    html: layout({
-      preheader: "We need a phone number to reach you about the program.",
-      body: `
-        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">Add your phone number</h1>
-        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — you're in, and we're getting ready for the cohort. We collect a phone number for everyone so we can reach you about kickoff logistics and anything time-sensitive.</p>
-        <p>It takes a few seconds — just open the link below and enter your number.</p>
-      `,
-      cta: { url: `${env.siteUrl}/dashboard/phone`, label: "Add your phone number" },
     }),
   }),
 
@@ -598,28 +593,6 @@ One account, one pass — the code stops working the moment it's claimed.`,
     }),
   }),
 
-  weeklyDigest: (args: {
-    apps: number;
-    accepted: number;
-    paid: number;
-    revenue: number;
-  }) => ({
-    subject: "batch0 weekly digest",
-    html: layout({
-      preheader: `${args.apps} apps · ${args.paid} new enrollments · $${(args.revenue / 100).toFixed(0)} revenue`,
-      body: `
-        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">Weekly digest</h1>
-        <ul style="padding-left:18px">
-          <li>${args.apps} new applications</li>
-          <li>${args.accepted} accepted</li>
-          <li>${args.paid} new enrollments</li>
-          <li>$${(args.revenue / 100).toFixed(2)} revenue</li>
-        </ul>
-      `,
-      cta: { url: `${env.siteUrl}/admin`, label: "Open admin panel" },
-    }),
-  }),
-
   /**
    * An event is coming up. The time is rendered in Eastern with its zone
    * named (formatEasternDateTime, the same as the 1:1 invite): this runs on
@@ -630,6 +603,8 @@ One account, one pass — the code stops working the moment it's claimed.`,
     title: string;
     startsAt: string;
     zoomUrl: string | null;
+    /** Defaults to the events list. */
+    cta?: { url: string; label: string };
   }) => ({
     subject: `Coming up: ${args.title}`,
     html: layout({
@@ -637,9 +612,22 @@ One account, one pass — the code stops working the moment it's claimed.`,
       body: `
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
         <p>Starts <strong>${escape(eventWhen(args.startsAt))}</strong>.</p>
-        ${args.zoomUrl ? `<p>Join: <a href="${args.zoomUrl}" style="color:#ffbb00">${escape(args.zoomUrl)}</a></p>` : ""}
+        ${args.zoomUrl ? `<p>Join: <a href="${escape(args.zoomUrl)}" style="color:#ffbb00">${escape(args.zoomUrl)}</a></p>` : ""}
       `,
-      cta: { url: `${env.siteUrl}/dashboard/events`, label: "All events" },
+      cta: args.cta ?? { url: `${env.siteUrl}/dashboard/events`, label: "All events" },
+    }),
+  }),
+
+  /** A host started a webinar right now ("Start a webinar now"). */
+  eventLive: (args: { title: string; hostName: string; joinUrl: string }) => ({
+    subject: `${args.hostName} is live now: ${args.title}`,
+    html: layout({
+      preheader: `${args.hostName} is live now`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
+        <p><strong>${escape(args.hostName)}</strong> is live now.</p>
+      `,
+      cta: { url: args.joinUrl, label: "Join now" },
     }),
   }),
 
@@ -726,158 +714,59 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }),
 
   /**
-   * A mentor, investor, or admin has proposed a 1:1.
-   *
-   * The time is rendered in UTC with the zone named, because this is sent
-   * server-side and we don't know the recipient's timezone. The CTA carries
-   * the real answer: /dashboard/calls renders every time in their own zone.
+   * A 1:1 was booked with the student, or started now. No accept step: the
+   * button joins the call (the room opens 15 minutes early), the calendar link
+   * is the authenticated .ics, and declining happens on their calls page.
    */
   callInvite: (args: {
+    inviteId: string;
     hostName: string;
     startsAt: string;
     durationMinutes: number;
     topic: string | null;
     /** Co-hosts (migration 0092): the rest of the team who will be there. */
     alsoJoining?: readonly string[];
+    startingNow?: boolean;
   }) => ({
-    subject: `${args.hostName} invited you to a 1:1 call`,
+    subject: args.startingNow
+      ? `${args.hostName} is starting a 1:1 call with you now`
+      : `${args.hostName} booked a 1:1 call with you`,
     html: layout({
       preheader: args.topic
         ? `${args.topic} · ${args.durationMinutes} minutes`
         : `${args.durationMinutes} minutes`,
       body: `
-        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">A 1:1 call invite</h1>
-        <p><strong>${escape(args.hostName)}</strong> would like ${args.durationMinutes} minutes with you.</p>
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${args.startingNow ? "Your 1:1 is starting" : "1:1 call booked"}</h1>
+        <p><strong>${escape(args.hostName)}</strong> ${args.startingNow ? "is waiting for you" : `booked ${args.durationMinutes} minutes with you`}.</p>
         ${alsoJoiningLine(args.alsoJoining)}
         ${args.topic ? `<p style="margin:12px 0">About: <strong>${escape(args.topic)}</strong></p>` : ""}
-        <p style="margin:12px 0">Proposed for <strong>${escape(
-          // Eastern, with the zone named — not toUTCString(), which read as
-          // Saturday evening for a call that was Saturday afternoon in New
-          // York. See formatEasternDateTime.
-          formatEasternDateTime(args.startsAt) ?? args.startsAt,
-        )}</strong>. Open your calls to see it in your own timezone.</p>
-        <p style="color:#8b949e;font-size:13px">You can accept or decline — declining is a normal answer, and the host is told either way.</p>
+        ${args.startingNow ? "" : callWhenLine(args.startsAt, args.inviteId)}
+        ${callFooter()}
       `,
-      cta: { url: `${env.siteUrl}/dashboard/calls`, label: "Accept or decline" },
+      cta: { url: callJoinUrl(args.inviteId), label: args.startingNow ? "Join now" : "Join the call" },
     }),
   }),
 
-  /**
-   * The team confirmed a 1:1 the student asked for, at a time the student
-   * offered. It is booked, not proposed: there is nothing to accept, so this
-   * is not `callInvite` with its "Accept or decline" button. When the team
-   * picks a different time, the student gets `callInvite` instead.
-   */
-  callConfirmed: (args: {
-    hostName: string;
+  /** A booked 1:1 moved, or its length changed. */
+  callUpdated: (args: {
+    inviteId: string;
+    changedBy: string;
     startsAt: string;
     durationMinutes: number;
     topic: string | null;
-    /** Co-hosts (migration 0092): the rest of the team who will be there. */
-    alsoJoining?: readonly string[];
   }) => ({
-    subject: `Your 1:1 call is confirmed`,
+    subject: "Your 1:1 call moved",
     html: layout({
-      preheader: args.topic
-        ? `${args.topic} · ${args.durationMinutes} minutes`
-        : `${args.durationMinutes} minutes`,
+      preheader: eventWhen(args.startsAt),
       body: `
-        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">You're booked</h1>
-        <p><strong>${escape(args.hostName)}</strong> confirmed the time you asked for: ${args.durationMinutes} minutes with the batch0 team.</p>
-        ${alsoJoiningLine(args.alsoJoining)}
-        ${args.topic ? `<p style="margin:12px 0">About: <strong>${escape(args.topic)}</strong></p>` : ""}
-        <p style="margin:12px 0">It's on <strong>${escape(
-          formatEasternDateTime(args.startsAt) ?? args.startsAt,
-        )}</strong>. Open your calls to see it in your own timezone.</p>
-        <p style="color:#8b949e;font-size:13px">Nothing to accept. Join from your 1:1 calls when it starts; the room opens a few minutes early. Can't make it anymore? Reply to this email and we'll find another time.</p>
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">New time for your 1:1</h1>
+        <p><strong>${escape(args.changedBy)}</strong> changed your ${args.topic ? `call about <strong>${escape(args.topic)}</strong>` : "call"}. It now runs ${args.durationMinutes} minutes.</p>
+        ${callWhenLine(args.startsAt, args.inviteId)}
+        ${callFooter()}
       `,
-      cta: { url: `${env.siteUrl}/dashboard/calls`, label: "Open your 1:1 calls" },
+      cta: { url: callJoinUrl(args.inviteId), label: "Join the call" },
     }),
   }),
-
-  /**
-   * The team answered a private question a student asked at
-   * /dashboard/discussions. Sent only for admin-visibility threads — a reply
-   * on a cohort discussion is an in-app notification, not an email, or every
-   * lively thread would become a mailbox flood.
-   */
-  discussionReply: (args: {
-    name?: string | null;
-    title: string;
-    replierName: string;
-    reply: string;
-    threadUrl: string;
-  }) => ({
-    subject: `Re: ${args.title}`,
-    html: layout({
-      preheader: args.reply.slice(0, 120),
-      body: `
-        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.replierName)} replied to your question</h1>
-        ${args.name ? `<p>Hi ${escape(args.name)},</p>` : ""}
-        <p style="margin:12px 0;color:#8b949e;font-size:13px">You asked: <strong style="color:#e7e7e7">${escape(args.title)}</strong></p>
-        <div style="margin:16px 0;padding:14px 16px;border-left:3px solid #ffbb00;background:rgba(255,255,255,0.04);white-space:pre-wrap">${escape(args.reply)}</div>
-        <p style="color:#8b949e;font-size:13px">Only you and the batch0 team can see this thread. Reply on the site if you have a follow-up.</p>
-      `,
-      cta: { url: args.threadUrl, label: "Open the thread" },
-    }),
-  }),
-
-  /**
-   * Weekly "students who went quiet" digest for mentors + admins.
-   * Lists each at-risk student with the assigned mentor's name (or a
-   * placeholder when unassigned) so the recipient knows whose turn it
-   * is to reach out.
-   */
-  atRiskDigest: (args: {
-    recipientName: string | null;
-    scope: "admin" | "mentor";
-    cohortName: string | null;
-    students: Array<{
-      name: string;
-      cohortName: string | null;
-      mentorName: string | null;
-      weeksSilent: number;
-    }>;
-  }) => {
-    const rows = args.students
-      .map(
-        (s) => `
-          <li style="margin:0 0 10px 0">
-            <strong style="color:#fff">${escape(s.name)}</strong>
-            ${s.cohortName ? `<span style="color:#888"> · ${escape(s.cohortName)}</span>` : ""}
-            <br>
-            <span style="color:#bbb">${s.weeksSilent} week${s.weeksSilent === 1 ? "" : "s"} without a check-in${
-              s.mentorName
-                ? ` · mentor <strong style="color:#fff">${escape(s.mentorName)}</strong>`
-                : args.scope === "admin"
-                  ? " · <span style=\"color:#ffbb00\">no mentor assigned</span>"
-                  : ""
-            }</span>
-          </li>`,
-      )
-      .join("");
-    const subjectScope =
-      args.scope === "mentor"
-        ? "your students"
-        : args.cohortName
-          ? args.cohortName
-          : "the cohort";
-    return {
-      subject: `At-risk check: ${subjectScope}`,
-      html: layout({
-        preheader: `${args.students.length} student${args.students.length === 1 ? "" : "s"} flagged this week`,
-        body: `
-          <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">Quiet for ${args.students[0]?.weeksSilent ?? 2}+ weeks</h1>
-          <p>The following${args.scope === "mentor" ? " students you mentor" : ""} haven't checked in for two weeks running. A quick DM tends to be enough to pull them back.</p>
-          <ul style="padding-left:18px;margin:18px 0 0 0">${rows}</ul>
-        `,
-        cta: {
-          url: `${env.siteUrl}${args.scope === "mentor" ? "/mentor/students" : "/admin/students"}`,
-          label: args.scope === "mentor" ? "Open mentor panel" : "Open admin panel",
-        },
-      }),
-    };
-  },
 
   /**
    * "Your card is expiring soon" — fires from the daily card-expiring
@@ -906,64 +795,27 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }),
 
   /**
-   * Weekly cohort highlights — one email per active cohort, sent to
-   * every enrolled student. Pulls real check-in copy so the cohort
-   * sees what teammates have been shipping, not generic platitudes.
+   * Assignment due within 24 hours and not handed in yet. Sent once per
+   * assignment by the hourly assignment-reminders cron. Fallback for the
+   * admin-editable `assignment.due_soon` row.
    */
-  cohortDigest: (args: {
-    cohortName: string;
-    weekRange: string;
-    totals: {
-      checkins: number;
-      activeStudents: number;
-      enrolled: number;
-    };
-    highlights: { name: string | null; accomplished: string }[];
-    upcomingEvents: { title: string; startsAt: string }[];
-  }) => {
-    const highlightItems = args.highlights
-      .map(
-        (h) => `
-          <li style="margin:0 0 12px 0">
-            <strong style="color:#fff">${escape(h.name ?? "A student")}</strong>
-            <br>
-            <span style="color:#bbb">${escape(h.accomplished)}</span>
-          </li>`,
-      )
-      .join("");
-    const eventItems = args.upcomingEvents
-      .map(
-        (e) =>
-          `<li style="margin:0 0 6px 0;color:#bbb">${escape(e.title)} · <span style="color:#888">${escape(eventWhen(e.startsAt))}</span></li>`,
-      )
-      .join("");
-    return {
-      subject: `${args.cohortName} · what shipped this week`,
-      html: layout({
-        preheader: `${args.totals.checkins} check-ins from ${args.totals.activeStudents} students`,
-        body: `
-          <h1 style="margin:0 0 6px 0;font-size:22px;color:#fff">This week in ${escape(args.cohortName)}</h1>
-          <p style="color:#888;margin:0 0 18px 0">${escape(args.weekRange)}</p>
-          <p style="margin:0 0 18px 0">${args.totals.activeStudents} of ${args.totals.enrolled} students checked in. Here's what they shipped:</p>
-          ${
-            args.highlights.length > 0
-              ? `<ul style="padding-left:18px;margin:0 0 20px 0">${highlightItems}</ul>`
-              : `<p style="color:#888">No check-ins this week — be the first next week.</p>`
-          }
-          ${
-            args.upcomingEvents.length > 0
-              ? `<h2 style="font-size:14px;color:#ffbb00;margin:24px 0 10px 0;text-transform:uppercase;letter-spacing:0.08em">Coming up</h2>
-                 <ul style="padding-left:18px;margin:0">${eventItems}</ul>`
-              : ""
-          }
-        `,
-        cta: {
-          url: `${env.siteUrl}/dashboard`,
-          label: "Open dashboard",
-        },
-      }),
-    };
-  },
+  assignmentDueSoon: (args: {
+    name?: string | null;
+    title: string;
+    due: string;
+    url: string;
+  }) => ({
+    subject: `Due soon: ${args.title}`,
+    html: layout({
+      preheader: `Due ${args.due}.`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""},</p>
+        <p>This is due <strong>${escape(args.due)}</strong> and we don't have it yet.</p>
+      `,
+      cta: { url: args.url, label: "Open the assignment" },
+    }),
+  }),
 
   /**
    * Demo Day team recap — sent to founders after admin generates the
@@ -1011,55 +863,6 @@ One account, one pass — the code stops working the moment it's claimed.`,
         : { url: `${env.siteUrl}/dashboard`, label: "Open dashboard" },
     }),
   }),
-
-  /**
-   * Founder weekly recap for parents + mentors. Summarizes the team's
-   * activity that week — check-ins, milestones, blockers — in plain
-   * language so parents can follow along without needing an account.
-   */
-  founderWeeklyRecap: (args: {
-    teamName: string;
-    weekRange: string;
-    summary: string;
-    headlines: string[];
-    blockers: string[];
-  }) => {
-    const headlineItems = args.headlines
-      .map(
-        (h) =>
-          `<li style="margin:0 0 6px 0;color:#ddd">${escape(h)}</li>`,
-      )
-      .join("");
-    const blockerItems = args.blockers
-      .map(
-        (b) =>
-          `<li style="margin:0 0 6px 0;color:#ddd">${escape(b)}</li>`,
-      )
-      .join("");
-    return {
-      subject: `Weekly recap — ${args.teamName}`,
-      html: layout({
-        preheader: `What ${args.teamName} did this week`,
-        body: `
-          <h1 style="margin:0 0 6px 0;font-size:20px;color:#fff">${escape(args.teamName)} — weekly recap</h1>
-          <p style="color:#888;margin:0 0 18px 0">${escape(args.weekRange)}</p>
-          <p style="white-space:pre-wrap">${escape(args.summary)}</p>
-          ${
-            args.headlines.length > 0
-              ? `<h2 style="font-size:13px;color:#ffbb00;margin:20px 0 6px 0;text-transform:uppercase;letter-spacing:0.08em">Wins</h2>
-                 <ul style="padding-left:18px;margin:0">${headlineItems}</ul>`
-              : ""
-          }
-          ${
-            args.blockers.length > 0
-              ? `<h2 style="font-size:13px;color:#ffbb00;margin:20px 0 6px 0;text-transform:uppercase;letter-spacing:0.08em">Blockers</h2>
-                 <ul style="padding-left:18px;margin:0">${blockerItems}</ul>`
-              : ""
-          }
-        `,
-      }),
-    };
-  },
 
   /**
    * SAFE-offer notification. Sent to all team members when an investor
@@ -1642,11 +1445,8 @@ The link is private to you - anyone who has it can read and reply, so don't forw
   },
 
   /**
-   * The team answered. Mirrors Templates.discussionReply in shape, because to
-   * the person reading it these are the same event — someone at batch0 wrote
-   * back — and two different-looking emails for one experience is noise. A
-   * "Send & resolve" says so here rather than in a second email a minute
-   * later.
+   * The team answered. A "Send & resolve" says so here rather than in a second
+   * email a minute later.
    */
   supportTicketReplied: (e: SupportRepliedEmail) => ({
     subject: `Re: ${e.subject} (${e.reference})`,

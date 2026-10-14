@@ -2,11 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
+import { LocalTime } from "@/components/ui/local-time";
 import { TeamForm } from "../team-form";
 import { MembersManager } from "./members-manager";
 import { TearSheetCard } from "./tear-sheet-button";
 import { CapTable } from "./cap-table";
-import { TeamDrive } from "@/components/team/team-drive";
+import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
+import { PitchLinkPreview } from "@/components/team/pitch-links";
+import { loadTeamDrive } from "@/lib/team-drive";
+import { getCapabilities } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { RecapButton } from "@/app/admin/demo-day/recap-button";
 
 export const metadata = { title: "Edit team · Admin" };
@@ -24,7 +29,9 @@ export default async function AdminTeamDetail(
     { data: members },
     { data: students },
     { data: capRows },
-    { data: files },
+    { data: pitch },
+    drive,
+    caps,
   ] = await Promise.all([
     admin.from("teams").select("*").eq("id", params.id).maybeSingle(),
     admin.from("cohorts").select("id, name").order("starts_on"),
@@ -42,16 +49,16 @@ export default async function AdminTeamDetail(
       .select("*")
       .eq("team_id", params.id)
       .order("created_at", { ascending: true }),
-    admin
-      .from("team_drive_files")
-      .select(
-        "id, name, size_bytes, mime_type, created_at, uploader:profiles(full_name, email)",
-      )
-      .eq("team_id", params.id)
-      .order("created_at", { ascending: false }),
+    // `*`: deck_url only exists once migration 0094 is applied.
+    admin.from("pitch_submissions").select("*").eq("team_id", params.id).maybeSingle(),
+    loadTeamDrive(admin, params.id),
+    getCapabilities(),
   ]);
 
   if (!team) notFound();
+  const p = pitch as
+    | { deck_url?: string | null; video_url: string | null; notes: string | null; submitted_at: string | null }
+    | null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -122,12 +129,32 @@ export default async function AdminTeamDetail(
         />
       </Card>
 
-      <TeamDrive
+      {p && (p.deck_url || p.video_url || p.submitted_at) && (
+        <Card className="mt-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
+            Demo Day submission
+          </h2>
+          {p.submitted_at ? (
+            <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+              Submitted on <LocalTime value={p.submitted_at} />
+            </div>
+          ) : (
+            <div className="mt-1 text-xs text-ink-faint">Draft</div>
+          )}
+          <PitchLinkPreview url={p.deck_url} title="Pitch deck" collapsed className="mt-3" />
+          <PitchLinkPreview url={p.video_url} title="Pitch video" collapsed className="mt-2" />
+          {p.notes && <p className="mt-3 whitespace-pre-wrap text-sm text-ink-soft">{p.notes}</p>}
+        </Card>
+      )}
+
+      {/* Editable for teams.manage, so an admin can fix a wrong folder link.
+          The actions re-check teams.manage and audit-log every edit by a
+          non-member (docs/google-drive.md); mentors get it read-only. */}
+      <GoogleDrivePanel
         className="mt-6"
         teamId={team.id}
-        files={(files ?? []) as any[]}
-        title={`Drive (${(files ?? []).length})`}
-        subtitle="Files the team uploaded. Preview in place, or download."
+        drive={drive}
+        canEdit={can(caps, "teams.manage")}
       />
 
       <Card className="mt-6">
@@ -135,8 +162,7 @@ export default async function AdminTeamDetail(
           Demo Day recap
         </h2>
         <p className="mt-1 text-xs text-ink-faint">
-          AI-written narrative pulled from judge scores + comments + audience
-          reactions. Emails every member when sent.
+          AI recap from scores and reactions. Emails every member.
         </p>
         {(team as any).demo_day_recap && (
           <p className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-wash p-3 text-xs text-ink-soft">

@@ -7,7 +7,7 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
-import { Pencil, Trash2, Plus, Activity, Flag, Megaphone } from "lucide-react";
+import { Pencil, Trash2, Plus, Flag, Megaphone } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
 import { activePromo, promoPriceCents, type PromoConfig } from "@/lib/promo";
 import { easternDateOf } from "@/lib/cohort-eligibility";
@@ -165,14 +165,6 @@ export function CohortsManager({
                 >
                   <Megaphone className="h-4 w-4" />
                 </Link>
-                <Link
-                  href={`/admin/cohorts/${c.id}/health`}
-                  className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
-                  aria-label={`View health for ${c.name}`}
-                  title="Cohort health"
-                >
-                  <Activity className="h-4 w-4" />
-                </Link>
                 <button
                   onClick={() => setEditing(c)}
                   className="p-1.5 text-ink-faint hover:text-ink"
@@ -266,8 +258,7 @@ function CohortForm({
             onChange={(e) => setC({ ...c, name: e.target.value })}
           />
           <p className="mt-1 text-xs text-ink-faint">
-            Season label shown across the site (e.g. "Fall 2026") — match
-            the actual dates, or the whole site mislabels the cohort.
+            Shown site-wide. Match the dates.
           </p>
         </div>
         <div>
@@ -310,6 +301,11 @@ function CohortForm({
             onChange={(e) => setC({ ...c, ends_on: e.target.value })}
           />
         </div>
+        {initial.id && (c.starts_on !== initial.starts_on || c.ends_on !== initial.ends_on) && (
+          <p className="text-xs text-ink-faint sm:col-span-2">
+            Course-week assignment dates move too, except ones with work handed in.
+          </p>
+        )}
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <div>
@@ -399,8 +395,7 @@ function CohortForm({
           }
         />
         <p className="mt-1 text-xs text-ink-faint">
-          Optional. When set, the landing page shows a countdown
-          ("Applications close in N days").
+          Optional. Shows a countdown on the landing page.
         </p>
       </div>
       <div>
@@ -416,9 +411,7 @@ function CohortForm({
           }
         />
         <p className="mt-1 text-xs text-ink-faint">
-          Optional, and only applies once the cohort has started. Ends at
-          11:59:59 p.m. Eastern on this date. Needs a catch-up plan below —
-          set one without the other and enrollment stays closed.
+          Optional. End of this day, Eastern. Needs a catch-up plan.
         </p>
       </div>
       <div>
@@ -432,8 +425,7 @@ function CohortForm({
           }
         />
         <p className="mt-1 text-xs text-ink-faint">
-          Shown to late entrants on the apply and enrollment pages: what they
-          need to do to join mid-cohort, and who to contact for help.
+          Shown to late entrants: how to catch up, who to ask.
         </p>
       </div>
       {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}

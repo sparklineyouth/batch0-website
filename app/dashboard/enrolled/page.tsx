@@ -7,22 +7,15 @@ import { ButtonLink } from "@/components/ui/button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { fmtDateOnly } from "@/lib/pre-cohort";
-import { getInterviewRequestForStudent } from "@/lib/interview-requests";
-import { InterviewRequestCard } from "@/components/interview-request-card";
-import {
-  canRequestTeamCall,
-  interviewCardState,
-  interviewStage,
-} from "@/lib/call-lifecycle";
+import { isDiscordEnabled } from "@/lib/discord";
 import {
   ArrowRight,
-  CalendarDays,
   CheckCircle,
   FolderArchive,
   MessagesSquare,
-  PlayCircle,
   Receipt,
   Rocket,
+  Video,
 } from "lucide-react";
 
 export const metadata = { title: "You're enrolled · batch0" };
@@ -50,7 +43,10 @@ export default async function EnrolledPage(
   const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
   const profile = await getProfile();
-  const access = await getStudentAccess(profile?.role ?? "student");
+  const [access, discordEnabled] = await Promise.all([
+    getStudentAccess(profile?.role ?? "student"),
+    isDiscordEnabled(),
+  ]);
 
   const { data: app } = await supabase
     .from("applications")
@@ -76,19 +72,6 @@ export default async function EnrolledPage(
   const firstName = profile?.full_name?.split(" ")[0] ?? null;
   const started = !access.preCohort;
 
-  // The first thing a student sees after paying, so it is where they first
-  // learn they can ask the team for a 1:1 whenever they want: before kickoff
-  // as a getting-to-know-you interview, after it as an ordinary call. The
-  // action needs an enrollment row, so a payment still clearing gets no form
-  // yet. A request already in flight keeps showing, read through the call it
-  // booked (interviewStage).
-  const interviewRequest = await getInterviewRequestForStudent(user.id);
-  const interviewLastStage = interviewStage(interviewRequest);
-  const interviewState = interviewCardState(
-    interviewLastStage,
-    canRequestTeamCall(access),
-  );
-
   return (
     <div className="mx-auto max-w-3xl">
       <div className="border-b border-line pb-8">
@@ -102,18 +85,14 @@ export default async function EnrolledPage(
         <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-ink-soft">
           {paidUp ? (
             <>
-              Payment received{firstName ? `, ${firstName}` : ""}. You're
-              officially part of{" "}
+              Enrolled in{" "}
               <span className="font-medium text-ink">{cohortName}</span>
-              {startLabel && !started
-                ? `, which kicks off on ${startLabel}.`
-                : "."}{" "}
-              A receipt is on its way to your inbox.
+              {startLabel && !started ? `. Starts ${startLabel}.` : "."}{" "}
+              Receipt sent by email.
             </>
           ) : (
             <>
-              We've got your payment and we're waiting on your bank to
-              confirm it. Nothing more for you to do.
+              Waiting on your bank to confirm. Nothing to do.
             </>
           )}
         </p>
@@ -126,60 +105,39 @@ export default async function EnrolledPage(
           {started ? "Open now" : "Open to you today"}
         </h2>
         <div className="mt-4 border-t border-line">
-          {started ? (
+          {/* The course (or, before day one, kickoff) is the button below. */}
+          {discordEnabled && (
             <NextStep
-              href="/dashboard/course"
-              icon={PlayCircle}
-              title="The course"
-              body="Weekly modules and deliverables. Start with week one."
-            />
-          ) : (
-            <NextStep
-              href="/dashboard/kickoff"
-              icon={CalendarDays}
-              title="Your kickoff page"
-              body={`What happens on day one${startLabel ? ` — ${startLabel}` : ""}, and how to arrive ready.`}
+              href="/dashboard/community"
+              icon={MessagesSquare}
+              title="Join the Discord"
+              body="Meet your cohort."
             />
           )}
-          <NextStep
-            href="/dashboard/community"
-            icon={MessagesSquare}
-            title="Link your Discord"
-            body="Meet your cohort. Link once and your role stays in sync forever."
-          />
           <NextStep
             href="/dashboard/team"
             icon={Rocket}
             title="Start your team"
-            body="Up to 4 teammates from your cohort. You can begin before kickoff."
+            body="Up to 4 teammates. Start any time."
           />
           <NextStep
             href="/dashboard/resources"
             icon={FolderArchive}
             title="Before One"
-            body="The pre-cohort flows — the work you do before your company becomes real."
+            body="Pre-cohort worksheets."
+          />
+          <NextStep
+            href="/dashboard/calls"
+            icon={Video}
+            title="Meet the team"
+            body="Request a 1:1 call."
           />
         </div>
       </section>
 
-      {interviewState !== "hidden" && (
-        <section className="mt-10">
-          <h2 className="mb-4 text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
-            Meet the team
-          </h2>
-          <InterviewRequestCard
-            request={interviewRequest}
-            state={interviewState}
-            composeKind={started ? "call" : "interview"}
-            lastStage={interviewLastStage}
-          />
-        </section>
-      )}
-
       {!started && (
         <p className="mt-8 text-sm text-ink-soft">
-          The rest of the program — course, check-ins, office hours, events —
-          unlocks at kickoff{startLabel ? ` on ${startLabel}` : ""}.
+          Everything else opens at kickoff.
         </p>
       )}
 

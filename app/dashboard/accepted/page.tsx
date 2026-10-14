@@ -14,15 +14,7 @@ import type { TuitionQuote } from "@/lib/tuition-quote";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fmtDateOnly, isAcceptedStatus } from "@/lib/pre-cohort";
 import { PayButton } from "../application/pay-button";
-import {
-  CalendarDays,
-  FolderArchive,
-  MessagesSquare,
-  PartyPopper,
-  Rocket,
-  Zap,
-  GraduationCap,
-} from "lucide-react";
+import { PartyPopper, Zap, GraduationCap } from "lucide-react";
 
 export const metadata = { title: "You're in · batch0" };
 
@@ -95,7 +87,7 @@ export default async function AcceptedPage() {
           You're in{firstName ? `, ${firstName}` : ""}.
         </h1>
         <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-ink-soft">
-          Your application to <span className="font-medium text-ink">{cohortName}</span> is accepted. Review the schedule and tuition below before confirming enrollment.
+          Accepted to <span className="font-medium text-ink">{cohortName}</span>.
         </p>
       </div>
 
@@ -133,67 +125,11 @@ export default async function AcceptedPage() {
         </> : !admission?.eligible ? <p className="mt-5 text-sm"><Link href="/apply" className="link-ink">See available cohorts</Link> or <a href="mailto:hello@batch0.org" className="link-ink">ask the team for help</a>.</p> : <p className="mt-5 text-sm"><a href="mailto:hello@batch0.org" className="link-ink">Contact the team if tuition remains unavailable.</a></p>}
       </Card>
 
-      <section className="mt-10">
-        <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
-          {started ? "Your first steps after enrollment" : "What enrollment opens now"}
-        </h2>
-        <div className="mt-4 border-t border-line">
-          <Perk
-            icon={CalendarDays}
-            title={started ? "Your course and calendar" : "Your kickoff page"}
-            body={started ? "Open Course for the lessons and workbooks. Events holds your live session links and calendar downloads." : `Get ready for day one${startLabel ? ` on ${startLabel}` : ""}. Review your kickoff instructions and available preparation materials.`}
-          />
-          <Perk
-            icon={MessagesSquare}
-            title="The Discord"
-            body="Meet the students you will build alongside in the moderated community."
-          />
-          <Perk
-            icon={Rocket}
-            title="Your team page"
-            body="Set up your project and find teammates. You can begin with an idea or work through discovery exercises."
-          />
-          <Perk
-            icon={FolderArchive}
-            title={started ? "Catch up with support" : "Before One"}
-            body={started ? "Complete the kickoff project brief and bring your questions to office hours. Ask the team which work to prioritize." : "Start with the preparation resources while you wait for the live cohort."}
-          />
-        </div>
-        <p className="mt-6 text-sm text-ink-soft">
-          {started ? "The cohort has started. After enrollment, course materials, check-ins and scheduled live sessions are available in your dashboard." : `The full program opens at kickoff${startLabel ? ` on ${startLabel}` : ""}.`}
+      {admission?.deadline && (
+        <p className="mt-10 text-xs text-ink-faint">
+          Enroll by {easternDeadline(admission.deadline)}.
         </p>
-      </section>
-
-      <p className="mt-10 text-xs text-ink-faint">
-        Need more time or have a question first?{" "}
-        <Link
-          href="/dashboard/application"
-          className="underline underline-offset-2 hover:text-ink-soft"
-        >
-          Review your application
-        </Link>{" "}
-        . {admission?.deadline ? `The enrollment deadline is ${easternDeadline(admission.deadline)}.` : "Contact the team if you need help deciding."}
-      </p>
-    </div>
-  );
-}
-
-function Perk({
-  icon: Icon,
-  title,
-  body,
-}: {
-  icon: any;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div className="flex items-start gap-4 border-b border-line py-4">
-      <Icon className="mt-0.5 h-5 w-5 shrink-0 text-phosphor-ink" />
-      <div className="min-w-0 flex-1">
-        <p className="text-[15px] font-medium text-ink">{title}</p>
-        <p className="mt-0.5 text-sm leading-relaxed text-ink-soft">{body}</p>
-      </div>
+      )}
     </div>
   );
 }

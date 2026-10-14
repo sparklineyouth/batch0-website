@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import {
   Home,
   PlayCircle,
-  CheckCircle,
+  ClipboardList,
   MoreHorizontal,
   LayoutDashboard,
   Inbox,
@@ -23,7 +23,7 @@ import {
 const ICONS = {
   Home,
   PlayCircle,
-  CheckCircle,
+  ClipboardList,
   MoreHorizontal,
   LayoutDashboard,
   Inbox,

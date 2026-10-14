@@ -1,15 +1,17 @@
 import { Video, MapPin } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
+import { AppLockedAlert } from "@/components/app/locked-alert";
 import { getCohortEvents } from "@/lib/app-cache";
 import { LocalTime } from "@/components/ui/local-time";
+import { studentEventStatus } from "@/lib/event-form";
+import { isHostedOnBatch0 } from "@/lib/webinars";
 import {
   AppHeader,
   AppBody,
   Section,
   Empty,
   Row,
-  Alert,
 } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
 
@@ -25,15 +27,9 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /**
- * The calendar, upcoming-first.
- *
- * The join link is the entire point of opening this on a phone — you are
- * standing up, it starts in two minutes, and you need one tap. So it renders as
- * a real button on every upcoming event rather than something you reach by
- * opening a detail view.
- *
- * Past events keep their recording link and nothing else, which is the only
- * reason to look backwards here.
+ * The calendar, upcoming-first, with a one-tap Join: the batch0 room for a
+ * hosted event once it opens (15 minutes before, or when a host goes live),
+ * the pasted link for an external one. Past events keep their recording link.
  */
 export default async function StudentAppEvents() {
   const { profile } = await requireViewer();
@@ -58,10 +54,10 @@ export default async function StudentAppEvents() {
       <>
         <AppHeader title="Events" eyebrow="Locked" />
         <AppBody>
-          <Alert tone="info" title="Events unlock at enrollment.">
-            Office hours, workshops and demo day show up here once your seat is
-            paid for.
-          </Alert>
+          <AppLockedAlert
+            title="Events unlock at enrollment."
+            applicationStatus={access.applicationStatus}
+          />
         </AppBody>
       </>
     );
@@ -76,22 +72,38 @@ export default async function StudentAppEvents() {
     { cohortId: access.cohortId },
     nowIso,
   );
+  const now = new Date(nowIso);
+  const statusOf = (e: (typeof upcoming)[number]) =>
+    studentEventStatus(
+      {
+        startsAt: e.starts_at,
+        endsAt: e.ends_at,
+        liveStartedAt: e.live_started_at,
+        liveEndedAt: e.live_ended_at,
+      },
+      now,
+    );
+  const ahead = upcoming
+    .map((e) => ({ e, s: statusOf(e) }))
+    .filter((x) => x.s === "live" || x.s === "open" || x.s === "upcoming")
+    .sort((a, b) => Number(b.s === "live") - Number(a.s === "live"));
 
   return (
     <>
-      <AppHeader title="Events" eyebrow="Office hours, workshops, demo day" />
+      <AppHeader title="Events" eyebrow="Live sessions, Demo Day" />
       <AppBody>
         <Section title="Upcoming">
-          {(upcoming ?? []).length === 0 ? (
+          {ahead.length === 0 ? (
             <Empty>Nothing scheduled right now.</Empty>
           ) : (
             <div className="space-y-2.5">
-              {(upcoming ?? []).map((e) => (
+              {ahead.map(({ e, s }) => (
                 <div
                   key={e.id as string}
                   className="rounded-2xl border border-line bg-wash px-5 py-4"
                 >
                   <p className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-phosphor-ink">
+                    {s === "live" ? "Live now · " : ""}
                     {TYPE_LABEL[e.type as string] ?? "Event"}
                   </p>
                   <p className="mt-1.5 text-[15px] leading-snug text-ink">
@@ -106,16 +118,28 @@ export default async function StudentAppEvents() {
                       {e.location as string}
                     </p>
                   )}
-                  {!!e.zoom_url && (
-                    <a
-                      href={e.zoom_url as string}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="press mt-3 inline-flex h-9 items-center gap-2 rounded-md bg-phosphor px-3.5 text-[13px] font-semibold leading-none text-on-phosphor active:scale-[0.98]"
-                    >
-                      <Video className="h-3.5 w-3.5" />
-                      Join
-                    </a>
+                  {isHostedOnBatch0(e.live_mode) ? (
+                    (s === "live" || s === "open") && (
+                      <a
+                        href={`/dashboard/events/${e.id}/live`}
+                        className="press mt-3 inline-flex h-9 items-center gap-2 rounded-md bg-phosphor px-3.5 text-[13px] font-semibold leading-none text-on-phosphor active:scale-[0.98]"
+                      >
+                        <Video className="h-3.5 w-3.5" />
+                        Join
+                      </a>
+                    )
+                  ) : (
+                    !!e.zoom_url && (
+                      <a
+                        href={e.zoom_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="press mt-3 inline-flex h-9 items-center gap-2 rounded-md bg-phosphor px-3.5 text-[13px] font-semibold leading-none text-on-phosphor active:scale-[0.98]"
+                      >
+                        <Video className="h-3.5 w-3.5" />
+                        Join
+                      </a>
+                    )
                   )}
                 </div>
               ))}

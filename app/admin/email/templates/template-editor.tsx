@@ -234,10 +234,8 @@ export function TemplateEditor({
       {isSystem && (
         <Card className="mt-5 border-amber-500/30 bg-amber-500/5">
           <p className="text-sm text-ink-soft">
-            <strong className="text-ink">Built-in template.</strong> The app sends
-            this one by name, so its key is fixed and it can't be deleted. Edit
-            the copy freely — turning it off doesn't stop the email, it falls
-            back to the original wording shipped in the code.
+            <strong className="text-ink">Built-in.</strong> Can&apos;t be deleted;
+            turning it off sends the default copy.
           </p>
         </Card>
       )}
@@ -255,8 +253,7 @@ export function TemplateEditor({
         <Card className="mt-5">
           <p className="text-sm text-ink-soft">
             Used by {usedByAutomations} automation step
-            {usedByAutomations === 1 ? "" : "s"}. Edits apply to mail that hasn't
-            gone out yet, including anything already queued.{" "}
+            {usedByAutomations === 1 ? "" : "s"}. Edits reach queued mail too.{" "}
             <Link href="/admin/email/automations" className="text-phosphor-ink underline">
               See automations
             </Link>
@@ -444,12 +441,11 @@ export function TemplateEditor({
                   />
                 </div>
                 <p className="text-xs text-ink-faint sm:col-span-3">
-                  Leave blank to use the addresses set at{" "}
+                  Blank ={" "}
                   <Link href="/admin/email/settings" className="underline">
                     email settings
                   </Link>
-                  . A From address on a domain the transport hasn't verified will
-                  bounce or land in spam.
+                  . Use a verified sending domain.
                 </p>
               </div>
             )}
@@ -496,8 +492,7 @@ export function TemplateEditor({
               </Button>
             </div>
             <p className="text-xs text-ink-faint">
-              A real send through the live transport, with sample values filled
-              in. The only way to see what a client actually does with it.
+              A real send, with sample values.
             </p>
           </Card>
 
@@ -576,8 +571,7 @@ function VariablesCard({
         <div>
           <Label>Variables</Label>
           <p className="text-xs text-ink-faint">
-            Merge tags this template expects. Declaring one adds it to the
-            insert menu and gives it a sample value in the preview.
+            Merge tags this template expects.
           </p>
         </div>
         <Button
@@ -664,9 +658,7 @@ function VariablesCard({
             </div>
           ))}
           <p className="text-xs text-ink-faint">
-            A required variable with no value blocks the send and falls back to
-            the built-in copy — better a plain email than one with a gap in the
-            middle of a sentence.
+            Missing a required value? The built-in copy sends instead.
           </p>
         </div>
       )}

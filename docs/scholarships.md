@@ -200,17 +200,21 @@ the record of what happened would be wrong.
 
 A scholarship-funded call is an ordinary `interview_requests` row with
 `scholarship_application_id` set, so it lands in the team's existing queue at
-`/admin/calls` and rides the existing `call_invites` / Daily plumbing.
+`/admin/calls` and becomes an ordinary 1:1 call when booked (docs/calls.md).
+The student asks from the "Request a 1:1" card on `/dashboard/calls` by
+ticking "Use a scholarship mentor call".
 
 **The credit is spent when the team schedules the call**, not when the student
 asks. A request nobody picks up costs them nothing. Cancelling a scheduled call
-hands the credit back.
+(until 30 minutes after its end), or the student declining it before it
+starts, hands the credit back. A booked call nobody cancelled counts as held:
+a no-show keeps the credit spent (docs/calls.md).
 
 **The calls belong to the cohort the award was made in.** A request is refused
 once that cohort has ended, a proposed time after its last day (Eastern) is
-refused, and the request row is stamped with the award's cohort. The calls
-card on `/dashboard/calls` names the last bookable day and, once the cohort is
-over, says so instead of offering a booking.
+refused, and the request row is stamped with the award's cohort. The card
+caps the date pickers at the last bookable day and, once the cohort is over,
+says so instead of offering the checkbox.
 
 One open request at a time (`interview_requests_one_open_per_student`, from
 0061). A student with three credits books them one at a time — three open asks

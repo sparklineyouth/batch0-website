@@ -257,7 +257,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
                 </button>
               ))}
             </div>
-            <Hint>Just the label on the page. All three work the same: register, submit, win.</Hint>
+            <Hint>Label only; all three work the same.</Hint>
           </Field>
           <Field label="Title">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Build an AI tutor in a weekend" />
@@ -342,7 +342,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
           </div>
           <Field label="Extra milestones">
             <ScheduleBuilder value={schedule} onChange={setSchedule} />
-            <Hint>Kickoff calls, office hours, demo day. The three dates above are added to the timeline automatically.</Hint>
+            <Hint>The three dates above are added automatically.</Hint>
           </Field>
         </Section>
 
@@ -360,10 +360,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
               <div className="min-w-0 max-w-md">
                 <p className="text-sm font-medium text-ink">Required referrals to submit</p>
                 <p className="mt-1 text-xs text-ink-soft">
-                  Entrants can register and draft freely, but can&apos;t submit until this many friends
-                  have <strong>made a batch0 account</strong> through their link and either
-                  <strong> registered for this challenge</strong> or <strong>applied to a cohort</strong>.
-                  Only friends who join after this challenge was created count. 0 = off.
+                  Friends who must sign up via their link first. 0 = off.
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -387,7 +384,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
           </div>
           <Toggle
             label="Let entrants edit after submitting"
-            description="They can keep improving their entry until the deadline. The version at the deadline is what you judge."
+            description="Editable until the deadline."
             checked={allowEdits}
             onChange={setAllowEdits}
           />
@@ -406,12 +403,11 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
         >
           {questions.filter(isInputQuestion).length === 0 && (
             <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[13px] text-ink">
-              Entrants can&apos;t submit until there&apos;s at least one question. For a giveaway,
-              quick-add <strong>Agree to rules</strong> — that makes entering a single tick and a click.
+              Needs at least one question before anyone can enter.
             </p>
           )}
           <ChallengeQuestionBuilder value={questions} onChange={setQuestions} />
-          <Hint>Editing questions never changes answers already submitted — each entry keeps a copy of the form it was submitted against.</Hint>
+          <Hint>Edits don&apos;t change submitted answers.</Hint>
         </Section>
 
         <Section id="details" title="Rules, FAQ, links">
@@ -431,7 +427,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
         <Section id="banner" title="Homepage banner">
           <Toggle
             label="Feature in the homepage banner"
-            description="When several are live, a featured one takes the banner. Otherwise the one closing soonest does."
+            description="Takes the banner over the soonest-closing one."
             checked={featured}
             onChange={setFeatured}
           />
@@ -458,14 +454,14 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
         <Section id="winners" title="Winners">
           <Toggle
             label="Publish winners publicly"
-            description="Shows the winners you mark as public on this page and in the site-wide winners strip. Each winner is opt-in on their submission."
+            description="Public winners show here and site-wide."
             checked={winnersPublished}
             onChange={setWinnersPublished}
           />
         </Section>
 
         {/* Sticky save bar */}
-        <div data-bottom-bar className="sticky bottom-0 z-30 -mx-2 rounded-t-xl border border-b-0 border-line bg-paper/95 px-2 backdrop-blur">
+        <div className="sticky bottom-0 z-30 -mx-2 rounded-t-xl border border-b-0 border-line bg-paper/95 px-2 backdrop-blur">
           <div className="flex flex-wrap items-center gap-3 px-3 py-3">
             <Button type="submit" disabled={pending || (!dirty && !!initial?.id)}>
               {pending ? "Saving…" : initial?.id ? (dirty ? "Save changes" : "Saved") : "Create draft"}

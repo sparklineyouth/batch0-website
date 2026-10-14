@@ -4,30 +4,23 @@ import {
   Percent,
   PlayCircle,
   CalendarDays,
-  Sparkles,
-  FolderOpen,
   CreditCard,
   Settings,
   ShieldCheck,
   LayoutDashboard,
   Inbox,
   Users,
-  UserPlus,
   Calendar,
   Briefcase,
   BookOpen,
   ScrollText,
   Handshake,
   MessagesSquare,
-  MessageSquareText,
-  MessageCircleQuestion,
-  MessageCircle,
   Star,
   Megaphone,
-  CheckCircle,
+  ClipboardList,
   FolderArchive,
   Rocket,
-  Activity,
   Mail,
   Send,
   Trophy,
@@ -35,8 +28,6 @@ import {
   Ticket,
   Flag,
   KeyRound,
-  Calendar as CalendarIcon,
-  Radio,
   Video,
   Workflow,
   LineChart,
@@ -44,8 +35,20 @@ import {
   LifeBuoy,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
-import { can, type Capabilities, type Permission } from "@/lib/permissions";
+import {
+  STUDENT_NAV_LAYOUT,
+  isStudentHrefVisible,
+  type StudentNavContext,
+  type StudentNavHref,
+} from "@/lib/student-nav";
+import {
+  canMeet,
+  EMAIL_PERMISSIONS,
+  EMAIL_TAB_ROUTES,
+  type Capabilities,
+  type Permission,
+  type Requirement,
+} from "@/lib/permissions";
 
 export type NavItem = {
   href: string;
@@ -56,10 +59,21 @@ export type NavItem = {
    * Permission required to see this link. Admin items carry one so the
    * sidebar shows exactly the pages the viewer can actually open — the same
    * string the route guard checks (see ADMIN_ROUTE_PERMISSIONS). Items with
-   * no `perm` are visible to anyone who can reach the panel.
+   * no `perm` are visible to anyone who can reach the panel. A list means
+   * any one of them (a section landing such as Email).
    */
-  perm?: Permission;
+  perm?: Requirement;
+  /** Extra words the nav search matches, e.g. the tabs a row opens. */
+  keywords?: readonly string[];
 };
+
+/** The nav search: label or keyword contains the (lowercased) query. */
+export function navItemMatches(item: NavItem, q: string): boolean {
+  if (!q) return true;
+  return [item.label, ...(item.keywords ?? [])].some((w) =>
+    w.toLowerCase().includes(q),
+  );
+}
 
 // A NavGroup is a labeled subset of nav items rendered as a collapsible
 // section in the sidebar. The first group is always expanded; the rest
@@ -72,155 +86,52 @@ export type NavGroup = {
 };
 
 // ---------------------------------------------------------------------------
-// Student
+// Student — the links and who sees them live in lib/student-nav.ts; this adds
+// the icons.
 // ---------------------------------------------------------------------------
 
-export const STUDENT_NAV_GROUPS: NavGroup[] = [
-  {
-    label: "",
-    items: [
-      { href: "/dashboard", label: "Home", icon: Home, exact: true },
-      { href: "/dashboard/application", label: "Application", icon: FileText },
-      { href: "/dashboard/kickoff", label: "Kickoff", icon: Flag },
-    ],
-  },
-  {
-    label: "Program",
-    items: [
-      { href: "/dashboard/course", label: "Course", icon: PlayCircle },
-      { href: "/dashboard/team", label: "Team", icon: Rocket },
-      { href: "/dashboard/checkin", label: "Check-in", icon: CheckCircle },
-      {
-        href: "/dashboard/office-hours",
-        label: "Office hours",
-        icon: CalendarIcon,
-      },
-      { href: "/dashboard/calls", label: "1:1 calls", icon: Video },
-      { href: "/dashboard/events", label: "Events", icon: CalendarDays },
-      { href: "/dashboard/resources", label: "Resources", icon: FolderArchive },
-    ],
-  },
-  {
-    label: "Workspace",
-    items: [
-      {
-        href: "/dashboard/discussions",
-        label: "Discussions",
-        icon: MessageSquareText,
-      },
-      // Lives at /messages, not /dashboard/messages: every account has DMs,
-      // so the page carries no role gate (see lib/supabase/middleware.ts).
-      { href: "/messages", label: "Messages", icon: MessageCircle },
-      { href: "/dashboard/community", label: "Community", icon: MessagesSquare },
-      { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
-      { href: "/dashboard/ai", label: "AI co-founder", icon: Sparkles },
-      { href: "/dashboard/files", label: "Files", icon: FolderOpen },
-      { href: "/dashboard/intros", label: "Investor intros", icon: Handshake },
-    ],
-  },
-  {
-    label: "Account",
-    items: [
-      { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
-      // Deliberately NOT in ENROLLED_ONLY_HREFS: scholarships open at the
-      // ACCEPTED stage, which is exactly the window where someone decides
-      // whether they can afford to enroll at all. Hiding the tab until after
-      // they've paid would hide it from the people it exists for.
-      {
-        href: "/dashboard/scholarships",
-        label: "Scholarships",
-        icon: GraduationCap,
-      },
-      { href: "/dashboard/referrals", label: "Refer friends", icon: Star },
-      // In Account rather than Workspace, and deliberately not gated behind
-      // enrolment: the requests people file here are about billing, account
-      // access, and data rights, which are exactly the things someone needs
-      // when the rest of the dashboard is NOT working for them.
-      { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
-      { href: "/dashboard/settings", label: "Settings", icon: Settings },
-    ],
-  },
-];
-
-// Legacy flat list — kept so older importers still resolve. New code should
-// use STUDENT_NAV_GROUPS.
-export const STUDENT_NAV: NavItem[] = STUDENT_NAV_GROUPS.flatMap(
-  (g) => g.items,
-);
-
-// Routes that only resolve once a student is enrolled in a cohort. Used by
-// the desktop sidebar, the mobile drawer, and the dashboard quick links to
-// hide dead-end links before enrollment — keep this list as the single
-// source of truth. (Community is deliberately absent: Discord is open to
-// every signed-in student.)
-export const ENROLLED_ONLY_HREFS = new Set<string>([
-  "/dashboard/course",
-  "/dashboard/team",
-  // Matches the RLS policy exactly (migration 0027): every read path on
-  // `announcements` requires a row in `enrollments`, so an applicant who
-  // isn't enrolled can only ever be shown an empty page. The tab was
-  // visible to them anyway, which read as "the team has said nothing"
-  // rather than "this unlocks when you enroll".
-  "/dashboard/announcements",
-  // Same reasoning: a cohort discussion board is scoped to the cohort the
-  // student is enrolled in, and a private question to the team is a thing
-  // an enrolled student does. RLS (migration 0068) returns nothing for an
-  // applicant either way.
-  "/dashboard/discussions",
-  "/dashboard/checkin",
-  "/dashboard/office-hours",
-  "/dashboard/events",
-  "/dashboard/resources",
-  "/dashboard/files",
-  "/dashboard/intros",
-]);
-
-export type StudentNavContext = {
-  aiAccess: boolean;
-  discordEnabled: boolean;
-  referralsEnabled: boolean;
-  enrolled: boolean;
-  preCohort: boolean;
-  /**
-   * Holds a paid Demo Day ticket (lib/access.ts). Opens the Events link for
-   * someone who isn't enrolled — the one enrolled-only page a ticket buys.
-   * Optional so older callers keep their exact behaviour.
-   */
-  demoDayTicket?: boolean;
+const STUDENT_ICONS: Record<StudentNavHref, LucideIcon> = {
+  "/dashboard": Home,
+  "/dashboard/application": FileText,
+  "/dashboard/kickoff": Flag,
+  "/dashboard/course": PlayCircle,
+  "/dashboard/assignments": ClipboardList,
+  "/dashboard/team": Rocket,
+  "/dashboard/events": CalendarDays,
+  "/dashboard/calls": Video,
+  "/dashboard/resources": FolderArchive,
+  "/dashboard/announcements": Megaphone,
+  "/dashboard/community": MessagesSquare,
+  "/dashboard/billing": CreditCard,
+  "/dashboard/scholarships": GraduationCap,
+  "/dashboard/referrals": Star,
+  "/dashboard/support": LifeBuoy,
+  "/dashboard/settings": Settings,
 };
 
-/**
- * The one visibility predicate for student nav items — desktop sidebar and
- * mobile drawer both call this so the two can never drift. Pre-cohort
- * lockdown wins first (only the personal pages + Community and Team
- * survive); then per-feature flags; then the hiding of enrolled-only
- * routes — which applies inside the pre-cohort window too, so an
- * accepted-but-unpaid student sees no Kickoff, Resources, or Team.
- */
+/** Words the nav search also matches: pages reached from inside another one. */
+const STUDENT_KEYWORDS: Partial<Record<StudentNavHref, readonly string[]>> = {
+  "/dashboard/team": ["investor intros", "ai co-founder", "pitch", "drive"],
+  "/dashboard/billing": ["receipts", "scholarships", "fees", "refer friends", "referrals"],
+};
+
+export const STUDENT_NAV_GROUPS: NavGroup[] = STUDENT_NAV_LAYOUT.map((g) => ({
+  label: g.label,
+  items: g.items.map((it) => ({
+    href: it.href,
+    label: it.label,
+    icon: STUDENT_ICONS[it.href],
+    ...(it.href === "/dashboard" ? { exact: true } : {}),
+    ...(STUDENT_KEYWORDS[it.href] ? { keywords: STUDENT_KEYWORDS[it.href] } : {}),
+  })),
+}));
+
+/** Desktop sidebar and mobile drawer: one predicate, so they can't drift. */
 export function filterStudentNavItem(
   item: NavItem,
   ctx: StudentNavContext,
 ): boolean {
-  if (ctx.preCohort && !PRE_COHORT_ALLOWED_HREFS.has(item.href)) return false;
-  // Kickoff belongs to an enrolled student for the whole life of the cohort:
-  // a countdown before day one, the record of day one afterwards. It used to
-  // vanish the moment the cohort started, which turned every bookmark and
-  // every link in a welcome email into a silent redirect home. Staff resolve
-  // as enrolled (lib/access.ts) so they can preview the page they edit.
-  if (item.href === "/dashboard/kickoff") {
-    return ctx.enrolled;
-  }
-  if (item.href === "/dashboard/ai") return ctx.aiAccess;
-  if (item.href === "/dashboard/community") return ctx.discordEnabled;
-  if (item.href === "/dashboard/referrals") return ctx.referralsEnabled;
-  // A paid Demo Day ticket opens Events and nothing else. Checked before the
-  // enrolled-only hiding so a ticket holder who never enrolled can find the
-  // one page their ticket is for.
-  if (item.href === "/dashboard/events" && ctx.demoDayTicket) return true;
-  if (!ctx.enrolled && ENROLLED_ONLY_HREFS.has(item.href)) {
-    return false;
-  }
-  return true;
+  return isStudentHrefVisible(item.href, ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -255,12 +166,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "People",
         icon: Users,
         perm: "people.view",
-      },
-      {
-        href: "/admin/students/new",
-        label: "Add a person",
-        icon: UserPlus,
-        perm: "people.manage",
+        keywords: ["add a person", "students"],
       },
       {
         href: "/admin/mentors",
@@ -278,6 +184,12 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "Cohorts",
         icon: Calendar,
         perm: "cohorts.manage",
+      },
+      {
+        href: "/admin/assignments",
+        label: "Assignments",
+        icon: ClipboardList,
+        perm: "assignments.manage",
       },
       {
         href: "/admin/challenges",
@@ -322,12 +234,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         perm: "events.manage",
       },
       {
-        href: "/admin/webinars",
-        label: "Webinars",
-        icon: Radio,
-        perm: "events.manage",
-      },
-      {
         href: "/admin/calls",
         label: "1:1 calls",
         icon: Video,
@@ -351,12 +257,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: Megaphone,
         perm: "announcements.manage",
       },
-      {
-        href: "/admin/discussions",
-        label: "Discussions",
-        icon: MessageCircleQuestion,
-        perm: "discussions.manage",
-      },
     ],
   },
   {
@@ -364,7 +264,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/admin/pricing",
-        label: "Pricing & revenue",
+        label: "Pricing",
         icon: Percent,
         perm: "settings.manage",
       },
@@ -381,76 +281,30 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         perm: "payments.view",
       },
       {
-        href: "/admin/scholarships/applications",
-        label: "Scholarship queue",
-        icon: Inbox,
-        perm: "scholarships.view",
-      },
-      {
         href: "/admin/scholarships",
         label: "Scholarships",
         icon: GraduationCap,
         perm: "scholarships.view",
+        keywords: ["scholarship queue"],
       },
     ],
   },
   {
     label: "Operations",
     items: [
-      { href: "/admin/pulse", label: "Pulse", icon: Activity, perm: "pulse.view" },
       {
         href: "/admin/progress",
         label: "Student progress",
         icon: LineChart,
         perm: "people.view",
       },
-      {
-        href: "/admin/interventions",
-        label: "At-risk",
-        icon: ShieldCheck,
-        perm: "interventions.manage",
-      },
-      {
-        href: "/admin/mentors/match",
-        label: "Mentor match",
-        icon: Sparkles,
-        perm: "mentors.manage",
-      },
-      {
-        href: "/admin/ai-usage",
-        label: "AI usage",
-        icon: Sparkles,
-        perm: "ai_usage.view",
-      },
+      // One row for the whole section; its tabs (EMAIL_TABS) do the rest.
       {
         href: "/admin/email",
-        label: "Email metrics",
+        label: "Email",
         icon: Mail,
-        perm: "email.view",
-      },
-      {
-        href: "/admin/email/blast",
-        label: "Email blast",
-        icon: Send,
-        perm: "email.send",
-      },
-      {
-        href: "/admin/email/templates",
-        label: "Email templates",
-        icon: FileText,
-        perm: "email.templates",
-      },
-      {
-        href: "/admin/email/automations",
-        label: "Email automations",
-        icon: Workflow,
-        perm: "email.automate",
-      },
-      {
-        href: "/admin/email/outbox",
-        label: "Email outbox",
-        icon: Inbox,
-        perm: "email.view",
+        perm: EMAIL_PERMISSIONS,
+        keywords: ["templates", "automations", "blast", "compose", "outbox"],
       },
       // One row, not two. The queue is the only page in the section anyone
       // navigates to directly — a request's detail page is always reached by
@@ -486,12 +340,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         perm: "moderation.manage",
       },
       {
-        href: "/admin/messages",
-        label: "Reported DMs",
-        icon: MessageCircle,
-        perm: "moderation.manage",
-      },
-      {
         href: "/admin/discord",
         label: "Discord",
         icon: MessagesSquare,
@@ -522,6 +370,22 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
 export const ADMIN_NAV: NavItem[] = ADMIN_NAV_GROUPS.flatMap((g) => g.items);
 
 /**
+ * The Email section's tab bar: EMAIL_TAB_ROUTES (lib/permissions.ts, which
+ * the /admin/email landing also reads) dressed with labels and icons.
+ */
+const EMAIL_TAB_LOOK: Record<(typeof EMAIL_TAB_ROUTES)[number][0], Pick<NavItem, "label" | "icon">> = {
+  "/admin/email/templates": { label: "Templates", icon: FileText },
+  "/admin/email/automations": { label: "Automations", icon: Workflow },
+  "/admin/email/blast": { label: "Blast", icon: Send },
+  "/admin/email/compose": { label: "Compose", icon: Mail },
+  "/admin/email/outbox": { label: "Outbox", icon: Inbox },
+  "/admin/email/settings": { label: "Settings", icon: Settings },
+};
+export const EMAIL_TABS: (NavItem & { perm: Permission })[] = EMAIL_TAB_ROUTES.map(
+  ([href, perm]) => ({ href, perm, ...EMAIL_TAB_LOOK[href] }),
+);
+
+/**
  * The one visibility predicate for admin nav items. Both the desktop sidebar
  * and the mobile drawer call it with the viewer's permission list, so the two
  * can't drift — and neither can drift from the route guard, since both read
@@ -532,7 +396,7 @@ export function filterAdminNavItem(
   caps: Capabilities | null,
 ): boolean {
   if (!item.perm) return true;
-  return can(caps, item.perm);
+  return canMeet(caps, item.perm);
 }
 
 // ---------------------------------------------------------------------------
@@ -544,7 +408,6 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/mentor", label: "Overview", icon: LayoutDashboard, exact: true },
-      { href: "/messages", label: "Messages", icon: MessageCircle },
       // Under /dashboard but open to every role (lib/dashboard-gate.ts): a
       // mentor's own requests to the team, not the student view.
       { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
@@ -560,12 +423,7 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
   {
     label: "Sessions",
     items: [
-      { href: "/mentor/checkins", label: "Check-ins", icon: CheckCircle },
-      {
-        href: "/mentor/office-hours",
-        label: "Office hours",
-        icon: CalendarIcon,
-      },
+      { href: "/mentor/assignments", label: "Assignments", icon: ClipboardList },
       { href: "/mentor/calls", label: "1:1 calls", icon: Video },
       { href: "/mentor/course", label: "Course", icon: BookOpen },
     ],
@@ -589,7 +447,6 @@ export const INVESTOR_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/investor", label: "Overview", icon: LayoutDashboard, exact: true },
-      { href: "/messages", label: "Messages", icon: MessageCircle },
       // Same exemption as the mentor's — see MENTOR_NAV_GROUPS.
       { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
     ],

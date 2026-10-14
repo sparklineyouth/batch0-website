@@ -32,7 +32,7 @@ export const IMPORTANCE_GROUPS = [
   "Scholarships",
   "Money",
   "Schedule & calls",
-  "Check-ins & feedback",
+  "Assignments & feedback",
   "Challenges",
   "Your team",
   "Conversations",
@@ -230,6 +230,12 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
+    type: "event_live",
+    label: "A webinar started now",
+    group: "Schedule & calls",
+    default: "important",
+  },
+  {
     type: "call_invited",
     label: "You're invited to a call",
     group: "Schedule & calls",
@@ -242,34 +248,28 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "important",
   },
   {
-    type: "call_response",
-    label: "Someone answered a call invite",
+    type: "call_updated",
+    label: "A call moved or changed",
     group: "Schedule & calls",
-    default: "other",
+    default: "important",
+  },
+  {
+    type: "call_response",
+    label: "A student can't make a call",
+    group: "Schedule & calls",
+    default: "important",
   },
   {
     type: "interview_requested",
-    label: "Interview requested",
+    label: "A student asked for a 1:1",
     group: "Schedule & calls",
     default: "important",
   },
   {
     type: "interview_declined",
-    label: "Interview declined",
+    label: "Your 1:1 request couldn't be booked",
     group: "Schedule & calls",
     default: "important",
-  },
-  {
-    type: "office_hours_booked",
-    label: "Office hours booked",
-    group: "Schedule & calls",
-    default: "important",
-  },
-  {
-    type: "office_hours_recap",
-    label: "Office hours recap",
-    group: "Schedule & calls",
-    default: "other",
   },
   {
     type: "founder_pass_feedback_scheduled",
@@ -284,36 +284,35 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "important",
   },
 
-  // ── Check-ins & feedback ──────────────────────────────────────────────
+  // ── Assignments & feedback ────────────────────────────────────────────
   {
-    type: "checkin_nudge",
-    label: "Reminder to check in",
-    group: "Check-ins & feedback",
+    type: "assignment_released",
+    label: "New assignment",
+    group: "Assignments & feedback",
     default: "important",
   },
   {
-    type: "intervention",
-    label: "A student you mentor needs a nudge",
-    hint: "Raised when someone misses two check-ins in a row.",
-    group: "Check-ins & feedback",
+    type: "assignment_due_soon",
+    label: "Assignment due within a day",
+    group: "Assignments & feedback",
     default: "important",
   },
   {
-    type: "checkin_feedback",
-    label: "Feedback on your check-in",
-    group: "Check-ins & feedback",
+    type: "assignment_returned",
+    label: "Assignment returned for changes",
+    group: "Assignments & feedback",
+    default: "important",
+  },
+  {
+    type: "assignment_reviewed",
+    label: "Assignment reviewed",
+    group: "Assignments & feedback",
     default: "other",
   },
   {
-    type: "file_feedback",
-    label: "Feedback on a file you uploaded",
-    group: "Check-ins & feedback",
-    default: "other",
-  },
-  {
-    type: "checkin_submitted",
-    label: "A student submitted a check-in",
-    group: "Check-ins & feedback",
+    type: "assignment_submitted",
+    label: "A student you mentor submitted an assignment",
+    group: "Assignments & feedback",
     default: "other",
   },
 
@@ -345,12 +344,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
-    type: "team_message",
-    label: "Message in your team",
-    group: "Your team",
-    default: "other",
-  },
-  {
     type: "team_logo_rejected",
     label: "Team logo rejected",
     group: "Your team",
@@ -376,24 +369,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   },
 
   // ── Conversations ─────────────────────────────────────────────────────
-  {
-    type: "direct_message",
-    label: "Direct messages",
-    group: "Conversations",
-    default: "important",
-  },
-  {
-    type: "discussion_question",
-    label: "A question for the team",
-    group: "Conversations",
-    default: "other",
-  },
-  {
-    type: "discussion_reply",
-    label: "Reply in a discussion",
-    group: "Conversations",
-    default: "other",
-  },
   {
     type: "intro_request",
     label: "Intro requested",
@@ -462,13 +437,6 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
-    type: "dm_reported",
-    label: "A conversation was reported",
-    hint: "Opens a private DM to moderators — worth seeing promptly.",
-    group: "Staff queues",
-    default: "important",
-  },
-  {
     type: "discord_blocker",
     label: "Blocker posted in Discord",
     group: "Staff queues",
@@ -476,13 +444,41 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   },
 ];
 
-const BY_TYPE = new Map(NOTIFICATION_KINDS.map((k) => [k.type, k]));
+/**
+ * Types from features that were removed. Old rows still exist, so they keep a
+ * label and an "other" default (rather than falling to DEFAULT_FOR_UNKNOWN),
+ * but they are not in NOTIFICATION_KINDS: the settings panel only offers the
+ * kinds a person can still receive.
+ */
+export const RETIRED_NOTIFICATION_KINDS: NotificationKind[] = [
+  // Discord replaced these in October 2026 (docs/discord.md).
+  { type: "team_message", label: "Team thread message", group: "Your team", default: "other" },
+  { type: "direct_message", label: "Direct message", group: "Conversations", default: "other" },
+  { type: "discussion_question", label: "Question for the team", group: "Conversations", default: "other" },
+  { type: "discussion_reply", label: "Discussion reply", group: "Conversations", default: "other" },
+  { type: "dm_reported", label: "Reported conversation", group: "Staff queues", default: "other" },
+  // Assignments replaced weekly check-ins (migration 0093).
+  { type: "checkin_nudge", label: "Check-in reminder", group: "Assignments & feedback", default: "other" },
+  { type: "intervention", label: "Missed check-ins", group: "Assignments & feedback", default: "other" },
+  { type: "checkin_feedback", label: "Check-in feedback", group: "Assignments & feedback", default: "other" },
+  { type: "checkin_submitted", label: "Check-in submitted", group: "Assignments & feedback", default: "other" },
+  // Office hours were retired in favour of 1:1 calls (migration 0097).
+  { type: "office_hours_booked", label: "Office hours booked", group: "Schedule & calls", default: "other" },
+  { type: "office_hours_recap", label: "Office hours recap", group: "Schedule & calls", default: "other" },
+  // Google Drive replaced in-app files and their mentor feedback (migration 0094).
+  { type: "file_feedback", label: "Feedback on a file", group: "Assignments & feedback", default: "other" },
+];
 
+const BY_TYPE = new Map(
+  [...NOTIFICATION_KINDS, ...RETIRED_NOTIFICATION_KINDS].map((k) => [k.type, k]),
+);
+
+/** Any known type, current or retired. */
 export function kindFor(type: string): NotificationKind | undefined {
   return BY_TYPE.get(type);
 }
 
-/** "office_hours_recap" → "Office hours recap", for types not in the list. */
+/** "some_old_type" → "Some old type", for types not in the list. */
 export function labelForType(type: string): string {
   const known = BY_TYPE.get(type);
   if (known) return known.label;

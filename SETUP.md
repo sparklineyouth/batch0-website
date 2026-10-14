@@ -1,6 +1,6 @@
 # batch0 — Setup
 
-This app is a Next.js 14 marketing site + a full Supabase + Stripe backend for student applications, payments, and an embedded course (LMS).
+This app is a Next.js 15 marketing site + a full Supabase + Stripe backend for student applications, payments, an embedded course, assignments, and live webinars and 1:1 calls.
 
 Follow these steps once on your machine.
 
@@ -18,15 +18,17 @@ Then in the project root:
 npm install
 ```
 
-## 2. Run the database migration
+## 2. Run the database migrations
 
 Open the Supabase SQL Editor for your project:
 
 https://supabase.com/dashboard/project/taiqnjpojenqkbuuwxeo/sql/new
 
-Paste the contents of [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) and click **Run**. This creates every table, RLS policy, the storage buckets, and seeds the first cohort (Summer 2026, 24 seats, $97).
-
-You can re-run the file safely — it uses `if not exists` and `on conflict do nothing` everywhere.
+Run every file in [`supabase/migrations/`](supabase/migrations) in number
+order (paste, **Run**). Each is idempotent, so re-running one is safe.
+`0001_init.sql` creates the base tables, policies and buckets and seeds the
+first cohort. The latest batch, 0093–0100, has its own checklist with a verify
+query per file: [`docs/migrations-2026-10.md`](docs/migrations-2026-10.md).
 
 ## 3. Set up environment variables
 
@@ -147,21 +149,11 @@ Visit http://localhost:3000.
 
 ## 8. Adding course content
 
-Course videos and materials live in private Supabase Storage buckets:
-
-- `course-videos` — MP4 files
-- `course-materials` — PDFs, slides, worksheets
-
-Upload via the Supabase dashboard (Storage → bucket → Upload). Then in `/admin/course`:
-
-1. Create a Module (week, title, summary, attached to a cohort).
-2. Add Lessons under it. Paste the storage path (e.g. `week1/intro.mp4`) into **Video path**, or use an external URL.
-3. Optional: list materials as JSON, e.g.
-   ```json
-   [{ "title": "Slides", "path": "week1/slides.pdf" }]
-   ```
-
-Lessons are gated — only students enrolled in the matching cohort can read them, and signed URLs are generated server-side per request.
+In `/admin/course`, create a module (week, title, cohort), add lessons, and
+upload each lesson's video and materials right there. They land in the private
+`course-videos` and `course-materials` buckets. Lessons are gated: only students
+enrolled in the matching cohort can read them, through short-lived signed URLs.
+Weekly work goes in `/admin/assignments` (`docs/assignments.md`).
 
 ## 9. Deploy
 
@@ -179,20 +171,19 @@ The repo deploys cleanly to Vercel:
 app/
   (auth)/                login, signup, forgot, reset
   apply/                 application, one question per screen (rules in lib/apply-flow.ts)
-  dashboard/             student: home, application, course, billing, settings
-  admin/                 admin: overview, applications, students, cohorts, course, payments, settings
-  api/stripe/            checkout, webhook
-  auth/                  callback, signout
+  dashboard/             student: home, course, assignments, team, events, calls, billing, settings
+  admin/                 admin panel (one page per sidebar row, gated in lib/permissions.ts)
+  mentor/, investor/     the mentor and investor panels
+  app/                   the installed phone app (app.batch0.org)
+  api/                   Stripe, crons, live rooms, recordings
 lib/
   supabase/              client / server / admin / middleware
-  stripe.ts
-  auth.ts
-  types.ts
-supabase/
-  migrations/0001_init.sql
+  student-nav.ts         student links and who sees them
+  nav-config.ts          every panel's sidebar
+  permissions.ts         permission keys and admin route gates
+supabase/migrations/     0001…0100, run in order
 components/
   ui/                    shared primitives (button, input, card)
-  dashboard/sidebar.tsx
-  admin/sidebar.tsx
-  ... existing marketing components
+  live/                  the webinar and 1:1 room
+docs/                    one file per feature
 ```

@@ -6,16 +6,20 @@ import {
   Users,
   Settings,
   FolderOpen,
-  MessageSquare,
   Rocket,
   FileSignature,
   Sparkles,
+  MessageSquare,
+  Handshake,
+  Bot,
 } from "lucide-react";
 import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
-import { TeamDrive } from "@/components/team/team-drive";
-import { TeamThreadTab } from "./team-thread-tab";
+import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
+import { OlderUploads } from "@/components/team/older-uploads";
+import type { OlderUploadsState, TeamDriveState } from "@/lib/team-drive";
 import { TeamPitchTab } from "./team-pitch-tab";
+import { isTeamToolVisible, type TeamToolHref } from "@/lib/student-nav";
 
 type Team = {
   id: string;
@@ -32,36 +36,52 @@ type Team = {
   my_role: string;
 };
 
-type Tab = "overview" | "members" | "drive" | "thread" | "pitch";
+type Tab = "overview" | "members" | "drive" | "pitch";
+
+const CHIP =
+  "inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink";
 
 export function TeamHome({
+  initialTab,
   currentUserId,
   team,
   members,
   pendingInvites,
-  files,
-  messages,
+  drive,
+  olderUploads,
   pitch,
   passHolderIds = [],
+  discordChannelUrl = null,
+  showAi = false,
+  preCohort = false,
 }: {
+  /** From ?tab=, so links can open a tab directly. */
+  initialTab?: string;
   currentUserId: string;
   team: Team;
   members: any[];
   pendingInvites: any[];
-  files: any[];
-  messages: any[];
+  drive: TeamDriveState;
+  olderUploads: OlderUploadsState;
   pitch: any;
   passHolderIds?: string[];
+  /** The team's private Discord text channel, when Discord is on and it exists. */
+  discordChannelUrl?: string | null;
+  /** The AI co-founder is open to this student (and configured). */
+  showAi?: boolean;
+  /** Before kickoff: only the tools middleware lets through get a chip. */
+  preCohort?: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [picked, setTab] = useState<string | undefined>(initialTab);
 
   const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: "overview", label: "Profile", icon: Settings },
     { id: "members", label: `Members (${members.length})`, icon: Users },
-    { id: "thread", label: "Thread", icon: MessageSquare },
-    { id: "drive", label: `Drive (${files.length})`, icon: FolderOpen },
+    { id: "drive", label: "Drive", icon: FolderOpen },
     { id: "pitch", label: "Demo Day", icon: Rocket },
   ];
+  const tab: Tab = tabs.some((t) => t.id === picked) ? (picked as Tab) : "overview";
+  const tool = (href: TeamToolHref) => isTeamToolVisible(href, { preCohort, ai: showAi });
 
   const showApprovedLogo =
     team.logo_status === "approved" && team.logo_url;
@@ -101,8 +121,7 @@ export function TeamHome({
 
       {team.logo_status === "pending" && team.logo_url && (
         <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          Your logo is awaiting admin review. The placeholder shows on public
-          pages until it's approved.
+          Logo pending review.
         </div>
       )}
       {team.logo_status === "rejected" && (
@@ -114,16 +133,36 @@ export function TeamHome({
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Link href="/dashboard/team/offers">
-          <button className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink">
+        {discordChannelUrl && (
+          <a
+            href={discordChannelUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={CHIP}
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Team chat on Discord
+          </a>
+        )}
+        {tool("/dashboard/intros") && (
+          <Link href="/dashboard/intros" className={CHIP}>
+            <Handshake className="h-3.5 w-3.5" /> Investor intros
+          </Link>
+        )}
+        {tool("/dashboard/team/offers") && (
+          <Link href="/dashboard/team/offers" className={CHIP}>
             <FileSignature className="h-3.5 w-3.5" /> SAFE offers
-          </button>
-        </Link>
-        <Link href="/dashboard/team/pitch-coach">
-          <button className="inline-flex items-center gap-1.5 rounded-full border border-line bg-wash px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink">
+          </Link>
+        )}
+        {tool("/dashboard/team/pitch-coach") && (
+          <Link href="/dashboard/team/pitch-coach" className={CHIP}>
             <Sparkles className="h-3.5 w-3.5" /> Pitch coach
-          </button>
-        </Link>
+          </Link>
+        )}
+        {tool("/dashboard/ai") && (
+          <Link href="/dashboard/ai" className={CHIP}>
+            <Bot className="h-3.5 w-3.5" /> AI co-founder
+          </Link>
+        )}
       </div>
 
       <nav className="mt-6 flex gap-1 overflow-x-auto rounded-xl border border-line bg-wash p-1">
@@ -160,15 +199,11 @@ export function TeamHome({
             passHolderIds={passHolderIds}
           />
         )}
-        {tab === "thread" && (
-          <TeamThreadTab
-            teamId={team.id}
-            messages={messages}
-            passHolderIds={passHolderIds}
-          />
-        )}
         {tab === "drive" && (
-          <TeamDrive teamId={team.id} files={files} canUpload />
+          <div className="space-y-6">
+            <GoogleDrivePanel teamId={team.id} drive={drive} canEdit />
+            <OlderUploads {...olderUploads} />
+          </div>
         )}
         {tab === "pitch" && (
           <TeamPitchTab teamId={team.id} pitch={pitch} />

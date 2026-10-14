@@ -99,7 +99,7 @@ export function PricingForm({
     <form onSubmit={onSubmit} className="space-y-6">
       <Toggle
         label="Promotion active"
-        description="Master switch. When off, tuition shows and charges the full list price everywhere."
+        description="When off, everyone pays list price."
         checked={enabled}
         onChange={(v) => {
           setEnabled(v);
@@ -165,7 +165,7 @@ export function PricingForm({
       <div>
         <Toggle
           label="Set an end date"
-          description="When off, the promo runs until you turn it off. When on, it expires on its own — no cleanup needed."
+          description="Ends the promo automatically at the time below."
           checked={hasDeadline}
           onChange={(v) => {
             setHasDeadline(v);

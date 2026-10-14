@@ -143,8 +143,7 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
         <p className="mt-1 text-xs text-ink-faint">
           {SCHOLARSHIP_KIND_BLURBS[v.kind as keyof typeof SCHOLARSHIP_KIND_BLURBS] ??
             ""}{" "}
-          This is a label — what it actually pays out is set below, so a merit
-          scholarship granting mentor calls is perfectly valid.
+          A label only; payouts are set below.
         </p>
       </div>
 
@@ -172,8 +171,7 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
       <div className="rounded-xl border border-line bg-wash p-4">
         <h3 className="mb-1 text-sm font-medium text-ink">What it's worth</h3>
         <p className="mb-4 text-xs text-ink-faint">
-          Tick what this scholarship carries. Money and perks stack — or leave
-          money off for a scholarship that&apos;s perks only.
+          Money and perks stack.
         </p>
 
         {/* ---- The money half. */}
@@ -199,8 +197,7 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
                 Money off tuition
               </span>
               <span className="mt-0.5 block text-xs leading-snug text-ink-faint">
-                Comes off checkout for a student who hasn&apos;t paid; a partial
-                refund you approve by hand for one who has.
+                Off checkout if unpaid; a partial refund if paid.
               </span>
             </span>
           </label>
@@ -233,8 +230,8 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
               </div>
               <p className="text-xs text-ink-faint sm:col-span-2">
                 {usesPercent
-                  ? "A percentage wins over the flat amount, and is resolved against what the student would actually be billed — after regional pricing, any sale, and a founder pass. So it stays half of tuition even when tuition changes."
-                  : "A flat amount is taken off the price after every other discount, and is capped at what they actually owe. Set a percentage instead if you want it to track tuition."}
+                  ? "Percent wins; applied to the final billed price."
+                  : "Taken off last; capped at what they owe."}
               </p>
             </div>
           )}
@@ -336,8 +333,7 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
             </>
           ) : (
             <span className="text-amber-600 dark:text-amber-300">
-              Tick money off tuition, at least one perk, or both — a scholarship
-              worth nothing can&apos;t be saved.
+              Pick money, a perk, or both.
             </span>
           )}
         </p>
@@ -361,9 +357,7 @@ export function ScholarshipForm({ initial }: { initial: ScholarshipFormValues })
           id="s-seats-help"
           className="self-end text-xs text-ink-faint sm:col-span-2"
         >
-          Each student&apos;s window follows their cohort: accepted students
-          until its enrollment deadline, enrolled students until it ends.
-          Seats count separately in each cohort.
+          Seats count per cohort.
         </p>
       </div>
 

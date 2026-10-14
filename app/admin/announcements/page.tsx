@@ -12,7 +12,7 @@ export const revalidate = 0;
 
 export default async function AdminAnnouncementsPage() {
   const admin = createAdminClient();
-  const [{ data: cohorts }, { data: anns, error: annErr }, discord] =
+  const [{ data: cohorts }, { data: anns }, discord] =
     await Promise.all([
       admin.from("cohorts").select("id, name").order("starts_on"),
       admin
@@ -37,19 +37,11 @@ export default async function AdminAnnouncementsPage() {
     (r) => !!discord.roleIdByRole[r.role],
   );
 
-  // Pre-0027 deployments will see an error referencing the missing
-  // table. We still render the broadcast form (the broadcast action
-  // degrades gracefully) but suppress the list to avoid noise.
-  const announcementsTableMissing =
-    !!annErr &&
-    /relation .*announcements.* does not exist/i.test(annErr.message);
-
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Announcements</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Broadcast to enrolled students. Optionally cross-post to your
-        Discord announcements channel.
+        Broadcast to enrolled students.
       </p>
       <Card className="mt-6">
         <AnnouncementForm
@@ -61,17 +53,7 @@ export default async function AdminAnnouncementsPage() {
       <h2 className="mt-10 text-sm font-semibold uppercase tracking-wider text-ink-soft">
         Past announcements
       </h2>
-      {announcementsTableMissing ? (
-        <Card className="mt-3">
-          <p className="text-sm text-ink-soft">
-            Announcements aren't enabled yet — apply migration{" "}
-            <code className="font-mono text-phosphor-ink">
-              0027_announcements_and_reactions.sql
-            </code>
-            .
-          </p>
-        </Card>
-      ) : (anns?.length ?? 0) === 0 ? (
+      {(anns?.length ?? 0) === 0 ? (
         <Card className="mt-3">
           <p className="text-sm text-ink-soft">No announcements sent yet.</p>
         </Card>

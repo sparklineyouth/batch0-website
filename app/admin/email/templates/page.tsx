@@ -15,45 +15,17 @@ const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 export default async function EmailTemplatesPage() {
-  const { templates, missingTable } = await listTemplates();
+  const { templates } = await listTemplates();
 
   // How many automation steps point at each template. Shown on the row
   // because "can I change this?" is the first question an admin has about a
   // template they didn't write, and the answer is whether anything sends it.
   const usage = new Map<string, number>();
-  if (!missingTable) {
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from("email_automation_steps")
-      .select("template_id");
-    for (const row of (data ?? []) as any[]) {
-      usage.set(row.template_id, (usage.get(row.template_id) ?? 0) + 1);
-    }
-  }
-
-  if (missingTable) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
-          Email templates
-        </h1>
-        <Card className="mt-6">
-          <p className="text-sm text-ink-soft">
-            Run migration{" "}
-            <code className="font-mono text-phosphor-ink">
-              0052_email_automation.sql
-            </code>{" "}
-            (<code className="font-mono">supabase db push</code> from the repo
-            root) to create the template, automation, and outbox tables. Until
-            then every email still sends — from the copy compiled into{" "}
-            <code className="font-mono text-phosphor-ink">
-              lib/email/templates.ts
-            </code>{" "}
-            — it just isn't editable here.
-          </p>
-        </Card>
-      </div>
-    );
+  const { data: steps } = await createAdminClient()
+    .from("email_automation_steps")
+    .select("template_id");
+  for (const row of (steps ?? []) as any[]) {
+    usage.set(row.template_id, (usage.get(row.template_id) ?? 0) + 1);
   }
 
   const byCategory = TEMPLATE_CATEGORIES.map((c) => ({
@@ -69,9 +41,7 @@ export default async function EmailTemplatesPage() {
             Email templates
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Every email the site sends, editable here. Built-in templates start
-            as the copy that's already going out; edit one and the new wording
-            takes effect on the next send — no deploy.
+            Every email the site sends.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -88,10 +58,7 @@ export default async function EmailTemplatesPage() {
       {templates.length === 0 ? (
         <Card className="mt-6 text-center">
           <FileText className="mx-auto h-8 w-8 text-ink-faint" />
-          <p className="mt-3 text-sm text-ink-soft">
-            No templates yet. Add the built-in ones to start from the copy the
-            app already sends, or write a new one from scratch.
-          </p>
+          <p className="mt-3 text-sm text-ink-soft">No templates yet.</p>
         </Card>
       ) : (
         <div className="mt-6 space-y-6">

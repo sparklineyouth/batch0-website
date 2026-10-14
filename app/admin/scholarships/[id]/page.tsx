@@ -61,8 +61,7 @@ export default async function EditScholarshipPage(props: {
       {!canManage && (
         <Card className="mt-6 border-amber-400/30 bg-amber-400/5">
           <p className="text-sm text-amber-300">
-            You can read this but not change it — that needs the "Award
-            scholarships" permission.
+            Read-only. Editing needs "Award scholarships".
           </p>
         </Card>
       )}
@@ -70,10 +69,8 @@ export default async function EditScholarshipPage(props: {
       {(awarded ?? 0) > 0 && canManage && (
         <Card className="mt-6 border-amber-400/30 bg-amber-400/5">
           <p className="text-sm text-amber-300">
-            {awarded} {awarded === 1 ? "student holds" : "students hold"} this
-            already. Editing what it's worth only affects awards made from now
-            on — each award snapshots its value when it's granted, so nobody's
-            existing scholarship changes under them.
+            {awarded} {awarded === 1 ? "student holds" : "students hold"} this.
+            Changes apply to new awards only.
           </p>
         </Card>
       )}
@@ -88,15 +85,7 @@ export default async function EditScholarshipPage(props: {
         Its questions
       </h2>
       <p className="mt-1 text-sm text-ink-soft">
-        Asked only of students applying for this scholarship, after they've been
-        accepted. This is where merit questions go. They're also editable from{" "}
-        <Link
-          href="/admin/application-questions"
-          className="underline hover:no-underline"
-        >
-          the application form page
-        </Link>
-        .
+        Asked only of students applying for this one.
       </p>
       <Card className="mt-6">
         <ScholarshipQuestionsPanel

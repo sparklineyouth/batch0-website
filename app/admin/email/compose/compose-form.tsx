@@ -229,9 +229,7 @@ export function ComposeForm({
           Compose
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-          Send a one-off email — to any address, whether or not they have an
-          account, or to a whole audience. Everything goes out in the house
-          template and lands in the outbox and the metrics like any other send.
+          One-off email to any address or audience.
         </p>
       </div>
 
@@ -563,8 +561,7 @@ export function ComposeForm({
             {v.scheduledFor && (
               <p className="flex items-center gap-1.5 text-xs text-ink-soft">
                 <Clock className="h-3.5 w-3.5" />
-                In your local time. It goes into the outbox and sends on the
-                first queue run after that moment — you can cancel it until then.
+                Your local time. Cancel from the outbox until it sends.
               </p>
             )}
           </Card>

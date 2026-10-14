@@ -35,8 +35,7 @@ export default async function AdminReferralsPage() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Referrals</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Top recruiters by paid enrollments. Sort tiebreaks on accepted
-            then total applied.
+            Top recruiters by paid enrollments.
           </p>
         </div>
         <Link

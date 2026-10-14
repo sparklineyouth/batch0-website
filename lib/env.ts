@@ -40,53 +40,11 @@ export const env = {
   // writable and an open endpoint would be a denial-of-service vector.
   resendWebhookSecret: process.env.RESEND_WEBHOOK_SECRET,
 
-  // Daily (live video — webinars and 1:1 calls). Optional: every helper in
-  // lib/daily.ts no-ops when unset, so an environment without a key degrades
-  // to "hosting unavailable" and the rest of the site is unaffected.
-  //
-  // dailyApiKey is server-only and must NEVER gain a NEXT_PUBLIC_ prefix. It
-  // can create rooms and mint owner tokens for ANY room on the domain, so in
-  // the browser it is a key to every call the site will ever host — including
-  // 1:1s it was not issued for.
-  dailyApiKey: process.env.DAILY_API_KEY,
-  // The domain rooms live on, e.g. "batch0.daily.co". Public by design: it
-  // appears in every room URL the client connects to. On its own it grants
-  // nothing, because rooms are private and joining needs a minted token.
-  dailyDomain: process.env.NEXT_PUBLIC_DAILY_DOMAIN,
-  // Cloud recording is a PAID Daily feature — a free plan rejects room and
-  // token creation outright if `enable_recording: "cloud"` is set. Off by
-  // default so webinars work on any plan; set DAILY_ENABLE_RECORDING=true once
-  // the account is on a plan that includes recording, and hosts can record.
-  dailyRecording: process.env.DAILY_ENABLE_RECORDING === "true",
-  // Large-call optimization (`experimental_optimize_large_calls`) is only
-  // needed above 50 participants, and it opts the room into Daily's paid-scale
-  // infrastructure — which an account WITHOUT a payment method rejects with
-  // "account is missing a payment method", failing the whole webinar. batch0's
-  // webinars are far smaller than 50, so this is OFF by default and every
-  // webinar works on any plan. Set DAILY_LARGE_CALLS=true only when the account
-  // has a card on file AND a webinar genuinely expects 50+ viewers. Same shape
-  // as dailyRecording: a paid feature, opt-in, defaulting to "works anywhere".
-  dailyLargeCalls: process.env.DAILY_LARGE_CALLS === "true",
-
   // ---------------------------------------------------------------------
   // batch0 Live — the built-in webinar provider (lib/live-rooms.ts).
   // ---------------------------------------------------------------------
   //
-  // Which provider hosted events and 1:1 calls actually run on.
-  //
-  // Defaults to "builtin", and that default is load-bearing rather than a
-  // preference: the Daily account this project was wired to cannot start a
-  // media session at all. Every join — including into a bare public room with
-  // no properties set — is refused with `account-missing-payment-method`,
-  // which is an account-level block no code here can clear. Daily's REST API
-  // still answers perfectly, which is exactly why it looked healthy for so
-  // long (see scripts/daily-doctor.mts, and scripts/webinar-e2e.mts for the
-  // check that catches it).
-  //
-  // Set LIVE_PROVIDER=daily to go back, once that account has a card on file.
-  // Nothing about the Daily path was removed.
-  liveProvider:
-    process.env.LIVE_PROVIDER === "daily" ? ("daily" as const) : ("builtin" as const),
+  // The only provider hosted events and 1:1 calls run on (docs/batch0-live.md).
 
   // Secret that channel names and host proofs are derived from. Never sent to
   // a browser; only HMACs of it are, and only to the participant they belong

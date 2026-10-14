@@ -20,7 +20,7 @@ import type { Role } from "@/lib/types";
  * Getting to four was the whole design problem. The student sidebar carries 17
  * links; most are things you do once (billing, referrals, settings) or things
  * that want a keyboard and a big screen (the AI co-founder, file uploads, the
- * pitch coach). What is left — where am I, what's this week, log my week, and a
+ * pitch coach). What is left — where am I, what's this week, what's due, and a
  * door to everything else — is what a phone is actually good for.
  *
  * Announcements and Events are deliberately NOT tabs even though they are read
@@ -32,7 +32,7 @@ import type { Role } from "@/lib/types";
 const STUDENT_TABS: Tab[] = [
   { href: "/app/home", label: "Home", icon: "Home", exact: true },
   { href: "/app/course", label: "Course", icon: "PlayCircle" },
-  { href: "/app/checkin", label: "Check in", icon: "CheckCircle" },
+  { href: "/app/assignments", label: "Assignments", icon: "ClipboardList" },
   { href: "/app/more", label: "More", icon: "MoreHorizontal" },
 ];
 
@@ -42,7 +42,7 @@ const STUDENT_TABS: Tab[] = [
 const PREFETCH_ROUTES = [
   "/app/home",
   "/app/course",
-  "/app/checkin",
+  "/app/assignments",
   "/app/more",
   "/app/announcements",
   "/app/events",
@@ -131,8 +131,8 @@ function NotInTheProgram({ status }: { status: string | null }) {
       </h1>
       <p className="mt-4 max-w-xs text-[14px] leading-relaxed text-ink-soft">
         {closed
-          ? "Your application for this cohort is closed, so there's nothing here to show you yet. You can apply again when the next one opens."
-          : "batch0 on your phone is for students in the program. Submit an application and it unlocks — you'll get your cohort, your week, and your check-in right here."}
+          ? "You can apply again when the next cohort opens."
+          : "Apply to unlock."}
       </p>
       <div className="mt-9">
         <ActionLink href="/apply">

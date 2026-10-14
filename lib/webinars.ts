@@ -29,12 +29,11 @@
  * itself — a name on a message is a disclosure that the person is in the room,
  * and no amount of care in the UI changes that. So instead of weakening a
  * guarantee the whole system is built on, the guarantee becomes a per-event
- * setting an admin chooses, defaulting to exactly what happens today.
+ * setting an admin chooses.
  *
  *   private    A viewer sees only their own questions, and there is no chat.
- *              Nothing on the wire tells one student that another exists. This
- *              is the default, and it is what every event created before
- *              migration 0084 does.
+ *              Nothing on the wire tells one student that another exists. What
+ *              an unreadable or missing value falls back to.
  *
  *   moderated  Viewers write; a host decides what the room sees. An unapproved
  *              message reaches the hosts and nobody else — enforced in RLS, not
@@ -43,8 +42,10 @@
  *              that a human has not read.
  *
  *   open       Ordinary live chat. Everyone sees every message and who wrote
- *              it. For rooms where the audience is meant to know each other —
- *              a cohort call, not a public intake webinar.
+ *              it, and hosts can remove any of it. The default for a new
+ *              cohort event (DEFAULT_AUDIENCE_MODE; column default since
+ *              migration 0098); "Everyone signed in" starts moderated
+ *              (defaultAudienceModeFor).
  *
  * Deliberately ONE knob rather than three (chat on/off, questions
  * public/private, upvotes on/off). All three are the same question, and
@@ -53,11 +54,21 @@
  */
 export type AudienceMode = "private" | "moderated" | "open";
 
-export const AUDIENCE_MODES: readonly AudienceMode[] = [
-  "private",
-  "moderated",
-  "open",
-] as const;
+/** What a new event starts with: chat on. */
+export const DEFAULT_AUDIENCE_MODE: AudienceMode = "open";
+
+/**
+ * The chat a new event starts with, by who it is for (`events.visibility`).
+ *
+ * Open for a cohort: people who know each other, the room 0084 meant open
+ * for. Moderated for "Everyone signed in" (`public`): anyone with an account
+ * can be in that room, and open chat would hand them the full name of every
+ * student (minors among them) who writes. A host reads each message before
+ * the room does. An admin can still pick Open; the form says what it shows.
+ */
+export function defaultAudienceModeFor(visibility: string): AudienceMode {
+  return visibility === "public" ? "moderated" : DEFAULT_AUDIENCE_MODE;
+}
 
 /**
  * Is there a shared, audience-visible channel at all?
@@ -138,20 +149,34 @@ export function normalizeChatMessage(input: string): string | null {
   return cleaned.slice(0, MAX_CHAT_LENGTH);
 }
 
+/**
+ * One chat message as a reader receives it. Carries no user ids: `mine` is
+ * all a client needs, and an id is one more thing a student could collect
+ * about another.
+ */
 export type ChatMessage = {
   id: string;
-  eventId: string;
-  authorId: string;
   /** Resolved server-side. "You" for the reader's own messages. */
   authorName: string;
+  mine: boolean;
   body: string;
   /** Was the author staff or a guest speaker when they sent it? */
   isHost: boolean;
   /** Null while waiting on a host in `moderated` mode. */
   approvedAt: string | null;
+  /** Set once removed (by a host or its author). Such a row is never drawn. */
+  removedAt: string | null;
   pinned: boolean;
   createdAt: string;
 };
+
+/** Author self-deletes: a spam ceiling, not a participation limit. */
+export const CHAT_DELETE_LIMIT = 10;
+export const CHAT_DELETE_WINDOW_SECONDS = 60;
+
+/** Upvotes and poll votes: each one makes the whole room re-read, so toggling is capped. */
+export const VOTE_LIMIT = 20;
+export const VOTE_WINDOW_SECONDS = 10;
 
 /**
  * Is this message visible to the audience right now?
@@ -191,41 +216,24 @@ export type EventAsset = {
 };
 
 /**
- * What the deck picker accepts.
- *
- * pptx and pdf are what the product promises; `application/vnd.ms-powerpoint`
- * is legacy .ppt, and keyed .key files are not included because nothing
- * downstream can open one. The list is advisory in the browser (an `accept`
- * attribute is a filter on a file dialog, not a gate) and re-checked in
- * `assetKindForFile` on the server, which is the part that binds.
+ * Slides are PDF only: a PDF is what the room can present (pdf.js) and what
+ * the follow-up email can link. Export from Keynote / PowerPoint / Google
+ * Slides as PDF.
  */
-export const DECK_MIME_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.ms-powerpoint",
-] as const;
+export const DECK_MIME_TYPES = ["application/pdf"] as const;
 
-export const DECK_EXTENSIONS = [".pdf", ".pptx", ".ppt"] as const;
+export const DECK_EXTENSIONS = [".pdf"] as const;
 
 /**
- * Longest premiere or recording segment we will accept, in bytes.
- *
- * Matches the `webinar-media` bucket's `file_size_limit` in migration 0084.
- * Stated here too so the form can refuse a 4 GB file before spending ten
- * minutes uploading it to a bucket that will reject it at the end — the
- * bucket's copy is the one that binds, this one is the one that is kind.
+ * Largest file the `webinar-media` bucket accepts (its `file_size_limit` in
+ * migration 0084). Checked before uploading so a too-big file fails at once.
  */
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
 /**
- * Is this file a usable deck?
- *
- * Checks the extension as well as the MIME type, because browsers disagree
- * about pptx: Chrome sends the long
- * `vnd.openxmlformats-officedocument.presentationml.presentation`, some Windows
- * configurations send `application/octet-stream`, and a file dragged out of a
- * zip can arrive with an empty type. Rejecting on MIME alone turns "upload your
- * deck" into a coin flip, so the extension is enough on its own.
+ * Is this file a usable deck? The extension alone is enough (some browsers
+ * send an empty or generic type); a PDF MIME type with no extension also
+ * passes.
  */
 export function isDeckFile(filename: string, mimeType?: string | null): boolean {
   const lower = filename.toLowerCase();
@@ -245,453 +253,6 @@ export function formatBytes(bytes: number | null | undefined): string {
     unit += 1;
   }
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
-}
-
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
-
-/**
- * How much of a webinar goes into one recording segment.
- *
- * The recorder writes a self-contained file this long and uploads it while the
- * webinar is still running, rather than holding an hour in the tab and pushing
- * it all at the end. That trade is the whole design:
- *
- *   - memory stays bounded by one segment instead of growing all hour;
- *   - the upload finishes seconds after the talk does, not ten minutes later
- *     while the host is trying to close the laptop;
- *   - a crashed tab or a dropped connection costs the segment in flight,
- *     not the hour behind it.
- *
- * The cost is a seam every two minutes, because a `MediaRecorder` has to be
- * stopped and restarted for each file to carry its own header and be playable
- * on its own. That seam is tens of milliseconds and the player preloads across
- * it.
- *
- * Two minutes, not the five this started at, because of the SIZE of a file,
- * not the number of seams. At the bitrates below five minutes is ~48.6 MB
- * before the encoder's VBR overshoot — and Supabase's default global upload
- * limit is 50 MB, which binds every signed upload whatever the bucket says. A
- * segment that sometimes comes out at 51 MB is a recording that silently
- * loses five minutes at a time. Two minutes is ~19 MB: comfortably inside
- * that limit even at double the nominal rate, and cheaper to lose.
- */
-export const RECORDING_SEGMENT_SECONDS = 120;
-
-/**
- * Video bitrate for the recording, in bits per second.
- *
- * 1.2 Mbps is a deliberate compromise. Higher looks better and puts an hour of
- * webinar past a gigabyte, which is a lot to ask of a host's upstream *while
- * they are broadcasting on the same connection* — the recording competes with
- * the thing it is recording. At 1.2 Mbps a two-minute segment is about 19 MB
- * and an hour is about 580 MB, and screen-shared slides (which is most of what
- * a webinar shows, and which compresses very well) look clean.
- */
-export const RECORDING_VIDEO_BITRATE = 1_200_000;
-export const RECORDING_AUDIO_BITRATE = 96_000;
-
-/** Frame rate the composed canvas is captured at. */
-export const RECORDING_FPS = 24;
-
-/**
- * A recording segment's name, as the live room writes it: which room mount
- * (`run`) recorded it, and its index within that run.
- *
- * `segment-<run>-<index>.webm` — the server then appends its own upload stamp,
- * so a stored path reads `<event>/recording/segment-<run>-<index>-<stamp>.webm`.
- * The run is the recording room's mount time (a page load, or a Rejoin/Reopen,
- * which remount the room); see `recordingSegmentSlot` for what it is for.
- */
-export function webinarSegmentName(run: number, index: number): string {
-  return `segment-${Math.max(0, Math.floor(run))}-${String(
-    Math.max(0, Math.floor(index)),
-  ).padStart(4, "0")}.webm`;
-}
-
-/**
- * The (run, index) a stored segment path carries, or null for a path from
- * before runs existed (`segment-0003-<stamp>.webm`) or any other name.
- */
-export function parseSegmentRun(
-  storagePath: string,
-): { run: number; index: number } | null {
-  const m = /(?:^|\/)segment-(\d+)-(\d+)-(\d+)\.[a-z0-9]+$/i.exec(storagePath);
-  if (!m) return null;
-  const run = Number(m[1]);
-  const index = Number(m[2]);
-  if (!Number.isSafeInteger(run) || !Number.isSafeInteger(index)) return null;
-  return { run, index };
-}
-
-/**
- * Spare slots left before a new recording run's block — room for the tail of
- * the run before it, still filing when the new run's first segment lands (see
- * recordingSegmentSlot). Segments are two minutes and nothing waits on their
- * uploads, so a departing recorder can have its final segment and, on a slow
- * uplink, the one or two before it still in flight at the handover.
- */
-export const RECORDING_RUN_GAP = 4;
-
-/**
- * Which `sort_order` a newly uploaded recording segment should be registered
- * at, given the segments the event already has.
- *
- *   - The same file registered again (the same storage path) is the SAME
- *     segment — a retried register after a dropped response. It keeps its
- *     slot, so the recording can never play that stretch twice.
- *   - A segment from a run the event has already seen goes at that run's
- *     base plus its index. Every run is laid out as one contiguous block, so a
- *     slow segment arriving after its successors still lands in order, and a
- *     segment whose upload failed leaves a harmless gap in its own block.
- *   - A segment from a NEW run starts a new block after everything already
- *     registered. `useRecorder` numbers from zero on every mount, so a host
- *     who reloads (or a second host who takes over) begins a second run whose
- *     indexes mean nothing against the first run's. Filling the first run's
- *     gaps with them — which "a free index is taken as asked" used to do —
- *     played minutes 32-37 between minutes 5-10 and 15-20.
- *   - That new block starts RECORDING_RUN_GAP slots past the last one, not
- *     straight after it, because the run before it may not have finished
- *     filing. A recorder who presses Leave is off air at once and its final
- *     segment uploads behind the "You've left" screen, while the co-host who
- *     takes over starts recording at once — so a short first segment from
- *     the successor (they said thanks and pressed End twenty seconds later)
- *     routinely registers BEFORE the departing recorder's last two minutes.
- *     Placed straight after the last registered slot, the successor took the
- *     departing run's next slot, that run's final segment found its slot held
- *     and went after the last, and the replay played the closing twenty
- *     seconds before the two minutes that led up to them. The spare slots are
- *     where such a tail lands, at its own run's base plus its index; any left
- *     empty are harmless gaps, like a failed upload's.
- *   - Should the computed slot be held by a different file anyway (only a
- *     tampered or pathological name, or a tail longer than the spare slots,
- *     can do it), the segment goes after the last one rather than over it.
- *
- * Paths from before runs existed (no run in the name) keep the old rule: a
- * free index is taken as asked, a held one goes after the last. That is
- * correct for the one run such a recording has, which is all it ever had.
- *
- * Pure so the rule is pinned in lib/webinars.test.ts. The caller re-reads and
- * re-asks if its insert then loses a race for the slot (23505).
- */
-export function recordingSegmentSlot(
-  requested: number,
-  storagePath: string,
-  taken: readonly { sortOrder: number; storagePath: string }[],
-): { kind: "existing"; sortOrder: number } | { kind: "insert"; sortOrder: number } {
-  const same = taken.find((t) => t.storagePath === storagePath);
-  if (same) return { kind: "existing", sortOrder: same.sortOrder };
-  const asked = Number.isInteger(requested) && requested >= 0 ? requested : 0;
-  const last = taken.reduce((m, t) => Math.max(m, t.sortOrder), -1);
-  const held = (slot: number) => taken.some((t) => t.sortOrder === slot);
-
-  const mine = parseSegmentRun(storagePath);
-  if (mine) {
-    // The run's base is where its block starts. Every row it placed sits at
-    // base + index, except one the safety net below pushed later — which can
-    // only ever be LATER — so the smallest offset is the true base.
-    let base: number | null = null;
-    for (const t of taken) {
-      const theirs = parseSegmentRun(t.storagePath);
-      if (!theirs || theirs.run !== mine.run) continue;
-      const offset = t.sortOrder - theirs.index;
-      if (base === null || offset < base) base = offset;
-    }
-    const slot = (base ?? last + 1 + RECORDING_RUN_GAP) + mine.index;
-    return { kind: "insert", sortOrder: held(slot) ? last + 1 : slot };
-  }
-
-  if (!held(asked)) return { kind: "insert", sortOrder: asked };
-  return { kind: "insert", sortOrder: last + 1 };
-}
-
-// ---------------------------------------------------------------------------
-// One recorder per webinar
-// ---------------------------------------------------------------------------
-//
-// Every host in the room — staff and guest speakers alike — runs the same
-// page, and any of their browsers could record. Whichever one does records the
-// WHOLE STAGE: every live host's camera and screen share composited onto one
-// canvas, every voice mixed into one track (use-recorder.ts). So which browser
-// records decides nothing about what ends up in the recording — only whose
-// upstream carries it. What matters is that exactly ONE does: two recorders
-// put the webinar into one event's segment sequence twice, interleaved a
-// segment at a time. So one browser is chosen by a rule every browser in the
-// room computes identically from what it can already see, and the server
-// refuses segments from anyone the same rule would not have chosen.
-//
-// The rule is deliberately the dullest one available: the lowest user id
-// among the hosts present. An earlier version ranked staff ahead of guest
-// speakers, which needed every browser to agree on who was a guest — and the
-// only place a browser could learn that was the speaker list rendered into
-// its page when it loaded. A guest who claimed their slot after a co-host's
-// page had loaded was staff to that co-host and a guest to themselves; each
-// browser elected the other, and nobody recorded. A peer's id is the one fact
-// about it that every browser holds identically from the moment it appears.
-
-/**
- * Whose browser records, among the hosts present: the lowest user id. Null
- * when nobody is. Every browser in the room — and `recordingRival` on the
- * server — applies this same comparison, so they cannot disagree about the
- * winner given the same set of ids.
- */
-export function electRecorder(userIds: readonly string[]): string | null {
-  let best: string | null = null;
-  for (const id of userIds) {
-    if (!id) continue;
-    if (best === null || id < best) best = id;
-  }
-  return best;
-}
-
-/**
- * How long after joining a browser counts a co-host whose connection is still
- * coming up as present.
- *
- * The join payload names every host already in the room, and their
- * connections start as "connecting". Counting those as present is what stops a
- * host who arrives second from recording for the few seconds it takes the
- * connection to come up. After this, only a connection that is (or was, and is
- * re-establishing) live counts: a host whose connection never came up must not
- * hold the recording hostage for the rest of the webinar.
- */
-export const RECORDER_SETTLE_MS = 15_000;
-
-/**
- * How long after joining a CALL a browser counts every staff peer still
- * "connecting" as present, before it could have heard from any of them —
- * long enough for a co-host already in the room to answer over Realtime,
- * short enough that one who never came costs the recording seconds, not the
- * whole settling window. See `electCallRecorder`.
- */
-export const CALL_RECORDER_LISTEN_MS = 3_000;
-
-/**
- * How long a co-host whose connection DROPPED keeps counting as present: two
- * segments.
- *
- * Long enough that a wifi handover — ICE dipping through "disconnected" and
- * coming back — does not hand the recording to somebody else and back again.
- * Bounded, because a host whose laptop died or whose lid closed never says
- * goodbye: no `bye`, no `peer-offline`, and a connection that sits in
- * "reconnecting" with nothing to reconnect to. Unbounded, that host would stay
- * the elected recorder for the rest of the webinar while recording nothing.
- * The live-session engine also rebuilds such a connection on its heartbeat
- * (which drops it to "connecting", no longer counted once settling is over);
- * this bound is what holds if that never happens.
- */
-export const RECORDER_RECONNECT_GRACE_MS = 2 * RECORDING_SEGMENT_SECONDS * 1000;
-
-/**
- * Does a co-host in this connection state count as present for the election?
- *
- * `state` is a `ConnectionState` from use-live-session, taken as a string so
- * this file stays import-free. `downForMs` is how long the connection has not
- * been live — only consulted for "reconnecting".
- */
-export function presentForRecording(
-  state: string,
-  settling: boolean,
-  downForMs = 0,
-): boolean {
-  if (state === "live") return true;
-  if (state === "reconnecting") return downForMs <= RECORDER_RECONNECT_GRACE_MS;
-  return settling && state === "connecting";
-}
-
-/**
- * Whose browser records a 1:1, as seen from this one. Null when it is not a
- * browser that may record at all — the student's.
- *
- * A call used to be recorded by its host's browser, full stop. Co-hosts
- * (migration 0092) broke that: an admin who books a call for a mentor and a
- * student, and never comes, would leave the call unrecorded while the student
- * was told it was being recorded. So a call runs the webinar election, over
- * its STAFF SIDE only (`recorderIds`: the host and the co-hosts): the lowest
- * user id among the staff present records, counting a peer exactly as
- * `presentForRecording` does. Everyone in a call broadcasts, so the signal
- * role cannot say who is staff; the invite can, and every browser on the call
- * was handed the same list by its page.
- *
- * A call with no co-hosts elects its host the moment they are in the room,
- * which is exactly the old rule.
- *
- * One difference from a webinar, in the settling window. RECORDER_SETTLE_MS
- * assumes the join payload names only hosts already IN the room; a call's
- * names everyone on the invite, here or not, and each starts "connecting".
- * Counted as present while settling, an absent lower-id co-host held the
- * recording for fifteen seconds after every join, rejoin and reload of the
- * one actually here, while the room said "Recording". So during settling a
- * "connecting" staff peer counts only once this session has HEARD from them
- * (`heard`: an offer, an answer or candidates arrived — they are on the page,
- * and the link is just coming up) — or, for the first CALL_RECORDER_LISTEN_MS
- * (`listening`), before anybody could have been heard from: without that, a
- * browser joining a call a lower-id co-host was already recording started
- * its own recorder for the round trip it took to hear them, and left a
- * fraction-of-a-second part in the recording every time.
- */
-export function electCallRecorder(args: {
-  selfId: string;
-  recorderIds: readonly string[];
-  peers: readonly {
-    peerId: string;
-    state: string;
-    downSince: number | null;
-    /** This session has had signalling from them (RemotePeer.heard). */
-    heard?: boolean;
-  }[];
-  settling: boolean;
-  /** Inside CALL_RECORDER_LISTEN_MS of the join. */
-  listening?: boolean;
-  now: number;
-}): string | null {
-  const eligible = new Set(args.recorderIds);
-  if (!args.selfId || !eligible.has(args.selfId)) return null;
-  const present = [args.selfId];
-  for (const p of args.peers) {
-    if (!eligible.has(p.peerId)) continue;
-    const downFor = p.downSince === null ? 0 : args.now - p.downSince;
-    const settling =
-      args.settling && (p.heard === true || args.listening === true);
-    if (presentForRecording(p.state, settling, downFor)) present.push(p.peerId);
-  }
-  return electRecorder(present);
-}
-
-/**
- * How long a recorder's claim on an event outlives its last registered
- * segment: two segments, so one failed upload does not hand the recording to
- * somebody else mid-talk.
- */
-export const RECORDER_LEASE_MS = 2 * RECORDING_SEGMENT_SECONDS * 1000;
-
-/**
- * When the segment being filed began, in epoch ms on the SERVER's clock, from
- * how long the browser says it ran. Undefined when no usable length was sent,
- * which `recordingRival` reads as "any registration inside the lease counts".
- *
- * Derived from a DURATION rather than taken as a timestamp, because a duration
- * is the one number a browser with a wrong clock still gets right: a laptop
- * four minutes fast would otherwise put every rival's registration "before"
- * its segment and never be refused.
- */
-export function recordingSegmentStart(
-  now: Date,
-  durationSeconds: number | null | undefined,
-): number | undefined {
-  if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds)) {
-    return undefined;
-  }
-  return now.getTime() - Math.max(0, durationSeconds) * 1000;
-}
-
-/**
- * The server's backstop: who (if anyone) is recording this event in the
- * caller's place, such that the caller's segment must be refused?
- *
- * The client-side election is the rule; this is what holds when the clients
- * disagree — two hosts whose connection to each other never came up, a
- * transient in the first seconds after a join, a stale tab. A rival is a
- * DIFFERENT user who registered a segment within the lease — and, when
- * `segmentStartMs` is given, AFTER the caller's segment began — who is still
- * in the room (`present`; null when attendance can't be read, which counts
- * everyone as present), and whom the election ranks ahead of the caller
- * (a lower id).
- *
- * Ranked, not first-come. "Whoever registered most recently keeps it" loses
- * the start of a webinar every time a second host's tab records for a few
- * seconds before seeing the first: that stub registers first and the rightful
- * recorder is refused for the whole lease. Under ranking the rightful
- * recorder is never refused by someone the room would not have chosen, and a
- * handover works as soon as the departing host is no longer present.
- *
- * "After the caller's segment began", because a registration only proves the
- * rival was recording at the time it landed. The recorder who left (A) and
- * came back three minutes later still has a registration inside the lease —
- * but it predates everything the host who covered for them (B) recorded in
- * between, and refusing B's handover flush for it dropped that stretch of the
- * talk outright. A host genuinely recording ALONGSIDE the rival always sees
- * the rival register during its own segment, and is still refused.
- *
- * `at` is when the row was filed, as `recordingFiledAt` dated it: its arrival,
- * except for a segment filed after its uploader had left the room — A's final
- * segment, still uploading when B took over — which is dated to A's last
- * heartbeat. Dated by its arrival, that tail landed "during" B's first segment
- * and refused B's flush the moment A rejoined.
- *
- * The same user is never their own rival: a host who reloads starts a new run
- * that must carry straight on from the old one.
- */
-export function recordingRival({
-  callerId,
-  recent,
-  present,
-  now,
-  segmentStartMs,
-}: {
-  callerId: string;
-  recent: readonly { userId: string | null; at: string }[];
-  present: ReadonlySet<string> | null;
-  now: Date;
-  /** From `recordingSegmentStart`. Omitted: every registration in the lease counts. */
-  segmentStartMs?: number;
-}): string | null {
-  const since = now.getTime() - RECORDER_LEASE_MS;
-  for (const r of recent) {
-    if (!r.userId || r.userId === callerId) continue;
-    const at = Date.parse(r.at);
-    if (!Number.isFinite(at) || at < since) continue;
-    if (segmentStartMs !== undefined && at <= segmentStartMs) continue;
-    if (present && !present.has(r.userId)) continue;
-    if (electRecorder([r.userId, callerId]) === r.userId) return r.userId;
-  }
-  return null;
-}
-
-/**
- * When a newly filed recording segment counts as registered — the `at` that
- * `recordingRival` later reads back from `event_assets.created_at`.
- *
- * Normally now. But a segment filed after its uploader has LEFT the room is a
- * departing recorder's tail. Leave takes a host off air at once and their
- * final segment uploads behind the "You've left" screen, while the co-host
- * who takes over starts recording straight away (the election counts a host
- * who said goodbye as gone). Dated by its arrival, that tail looked like a
- * registration made DURING the successor's first segment — so when the
- * departing host came back (Rejoin waits for exactly this upload, then
- * rejoins, and the successor stands down and flushes), the successor's flush
- * was refused and deleted, and everything they had covered was lost.
- *
- * So a segment filed by someone attendance no longer has in the room is dated
- * to their last heartbeat: the last moment the server saw them there, and so
- * the latest the segment can have been recorded — before any successor can
- * have started. "In the room" is the same rule `recordingRival`'s `present`
- * is read with (no `left_at`, a heartbeat inside `presenceTimeoutMs`), and the
- * departure is on record first: the room sends its leave the moment Leave is
- * pressed, and the final segment is filed only once its upload has finished
- * (a page's server actions run one at a time, in order). A present uploader —
- * a recorder still on air, or one recording alongside the caller — is dated
- * by arrival exactly as before, so the one-recorder backstop is not weakened.
- *
- * `uploader` is their attendance row; null when it can't be read (or there is
- * none), which files the segment at `now`, as it always was.
- */
-export function recordingFiledAt(
-  now: Date,
-  uploader: { leftAt: string | null; lastSeenAt: string | null } | null,
-  presenceTimeoutMs: number,
-): Date {
-  if (!uploader) return now;
-  const seen = uploader.lastSeenAt ? Date.parse(uploader.lastSeenAt) : NaN;
-  const present =
-    !uploader.leftAt &&
-    Number.isFinite(seen) &&
-    seen >= now.getTime() - presenceTimeoutMs;
-  if (present) return now;
-  if (Number.isFinite(seen)) return new Date(Math.min(now.getTime(), seen));
-  const left = uploader.leftAt ? Date.parse(uploader.leftAt) : NaN;
-  return Number.isFinite(left) ? new Date(Math.min(now.getTime(), left)) : now;
 }
 
 // ---------------------------------------------------------------------------
@@ -775,173 +336,48 @@ export function canEndForEveryone({
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Premieres
-// ---------------------------------------------------------------------------
-
 /**
- * Where a premiere is right now.
- *
- *   waiting  Before the start. The room shows a countdown.
- *   playing  The recording is running. Every viewer is positioned at the same
- *            offset, computed from the wall clock, so someone arriving twenty
- *            minutes late joins twenty minutes in — which is what makes it
- *            read as live rather than as a video that started when they
- *            pressed play.
- *   live     A host is genuinely on camera. Either the recording has finished
- *            and the Q&A has opened, or a host went live early. Also the
- *            answer for any event with nothing to play (a hosted webinar),
- *            from before its start onwards.
- *   ended    A host pressed End for everyone, or the window has closed.
+ * Does this event have a batch0-hosted room? A legacy premiere row counts: it
+ * runs as a hosted room.
  */
-export type PremierePhase = "waiting" | "playing" | "live" | "ended";
+export function isHostedOnBatch0(liveMode: string | null | undefined): boolean {
+  return liveMode === "hosted" || liveMode === "premiere";
+}
 
-export type PremiereState = {
-  phase: PremierePhase;
-  /**
-   * Where to seek the player, in seconds from the top of the recording. Only
-   * meaningful while `phase === "playing"`.
-   */
-  offsetSeconds: number;
-  /** Seconds until the next transition, for a countdown. Null when there is none. */
-  secondsUntilNext: number | null;
+// ---------------------------------------------------------------------------
+// Questions (as the room panel receives them)
+// ---------------------------------------------------------------------------
+
+export type RoomQuestion = {
+  id: string;
+  /** "You" for the reader's own; "A student" where names are withheld. */
+  askerName: string;
+  mine: boolean;
+  body: string;
+  status: "open" | "answered" | "dismissed";
+  voteCount: number;
+  /** Has the READER upvoted it. */
+  voted: boolean;
+  spotlighted: boolean;
+  /** Null until a host lets it through (or it was asked in an open room). */
+  approvedAt: string | null;
+  createdAt: string;
 };
 
 /**
- * Resolve a premiere's phase from the clock.
- *
- * `now` is injected rather than read, for the same reason `joinState` injects
- * it: this has to be a pure function so the tests can pin it, and so a server
- * render can pass the request time and have every element on the page agree
- * with itself.
- *
- * The precedence is the interesting part, and there is one rule above all the
- * others: **`liveStartedAt` wins.** A host who presses "go live" thirty minutes
- * into a forty-minute recording has made a decision about the room, and the
- * schedule must yield to it immediately — the alternative is an audience
- * watching a recording of a person who is, at that moment, live on the other
- * side of the same page. Everything else is arithmetic on `startsAt`.
- *
- * With one exception above even that: **`liveEndedAt` ends it.** A host who
- * pressed End for everyone has ended the premiere too — a recording that kept
- * playing to viewers under an "Ended" badge was the bug that added this.
- *
- * And one rule about what a premiere IS: with `premiereSeconds` null there is
- * nothing to play, so there is nothing to wait for either. A hosted webinar
- * (which is what passes null) is 'live' from before its start — reading it as
- * a premiere in 'waiting' hid the host's camera controls and End button for
- * the whole early set-up window and then switched the camera on by itself at
- * the scheduled start.
+ * Queue order: the spotlight first, then open questions by votes (ties in the
+ * order asked), then answered / dismissed at the bottom.
  */
-export function premiereState({
-  startsAt,
-  premiereSeconds,
-  qaOpensAt,
-  liveStartedAt,
-  liveEndedAt,
-  endsAt,
-  now = new Date(),
-}: {
-  startsAt: string | Date;
-  /**
-   * Length of the recording. Null means there is nothing to play — a hosted
-   * webinar, or a premiere whose file has not been uploaded — and the room is
-   * simply live.
-   */
-  premiereSeconds: number | null;
-  /** Explicit switch-over time, when a host wanted one. */
-  qaOpensAt?: string | Date | null;
-  /** Set once a host has actually gone live. */
-  liveStartedAt?: string | Date | null;
-  /** Set once a host has pressed End for everyone. Beats everything. */
-  liveEndedAt?: string | Date | null;
-  endsAt?: string | Date | null;
-  now?: Date;
-}): PremiereState {
-  const t = now.getTime();
-  const start = new Date(startsAt).getTime();
-
-  // Ended for everyone. Terminal for the premiere as for the live room.
-  if (liveEndedAt) {
-    return { phase: "ended", offsetSeconds: 0, secondsUntilNext: null };
-  }
-
-  // A host is on camera. Nothing about the schedule matters any more.
-  if (liveStartedAt) {
-    const wentLive = new Date(liveStartedAt).getTime();
-    if (t >= wentLive) {
-      return { phase: "live", offsetSeconds: 0, secondsUntilNext: null };
-    }
-  }
-
-  // Only a premiere with something to play waits for its start. Everything
-  // else — and in particular every hosted webinar — is live the moment anyone
-  // is let in.
-  if (t < start && premiereSeconds) {
-    return {
-      phase: "waiting",
-      offsetSeconds: 0,
-      secondsUntilNext: Math.ceil((start - t) / 1000),
-    };
-  }
-
-  // When the recording hands over. An explicit `qaOpensAt` is a host saying
-  // "Q&A at the top of the hour" for a talk that runs forty minutes; without
-  // one it is simply the end of the recording.
-  const switchAt = qaOpensAt
-    ? new Date(qaOpensAt).getTime()
-    : premiereSeconds
-      ? start + premiereSeconds * 1000
-      : start;
-
-  if (premiereSeconds && t < switchAt) {
-    // Clamped to the recording's length, which matters when `qaOpensAt` is
-    // later than the video is long: the last minutes then hold on the final
-    // frame rather than asking the player to seek past the end, where browsers
-    // disagree about what happens (some clamp, some fire `ended`, one seeks to
-    // zero and starts the talk again in front of everyone).
-    const offset = Math.min((t - start) / 1000, premiereSeconds);
-    return {
-      phase: "playing",
-      offsetSeconds: Math.max(0, offset),
-      secondsUntilNext: Math.ceil((switchAt - t) / 1000),
-    };
-  }
-
-  const end = endsAt ? new Date(endsAt).getTime() : null;
-  if (end !== null && t > end + 30 * 60_000) {
-    return { phase: "ended", offsetSeconds: 0, secondsUntilNext: null };
-  }
-
-  return { phase: "live", offsetSeconds: 0, secondsUntilNext: null };
-}
-
-/**
- * How far the player may drift from where the clock says it should be before
- * it is corrected, in seconds.
- *
- * Some drift is unavoidable and re-seeking on every tick is worse than the
- * drift: a `<video>` that seeks constantly stutters, drops audio, and on
- * Safari can re-buffer for a second each time. Two seconds is under the
- * threshold where a viewer would notice the difference against anyone else's
- * screen, and well above the jitter of a normally-playing element.
- */
-export const PREMIERE_DRIFT_TOLERANCE_SECONDS = 2;
-
-/**
- * Does this event play a recording rather than a live camera?
- *
- * A one-line helper with a real job: `live_mode` has three values now, and
- * every `=== "hosted"` left over from when it had two is a place a premiere
- * silently behaves like an external link. Grep for this instead.
- */
-export function isPremiere(liveMode: string | null | undefined): boolean {
-  return liveMode === "premiere";
-}
-
-/** Does this event have a batch0-hosted room of any kind? */
-export function isHostedOnBatch0(liveMode: string | null | undefined): boolean {
-  return liveMode === "hosted" || liveMode === "premiere";
+export function sortQuestions<T extends Pick<RoomQuestion, "status" | "voteCount" | "spotlighted" | "createdAt">>(
+  questions: readonly T[],
+): T[] {
+  const rank = (q: T) => (q.spotlighted ? 0 : q.status === "open" ? 1 : 2);
+  return [...questions].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (rank(a) === 1 ? b.voteCount - a.voteCount : 0) ||
+      a.createdAt.localeCompare(b.createdAt),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1002,6 +438,17 @@ export function normalizePoll(input: {
     return { ok: false, error: "Two options say the same thing." };
   }
   return { ok: true, question, options };
+}
+
+/**
+ * May the audience see this poll? While it is open, and after it closes if
+ * anyone voted (its result). A draft — never opened, so never voted on — stays
+ * the host's private preparation.
+ */
+export function pollVisibleToAudience(
+  poll: Pick<WebinarPoll, "open" | "tally">,
+): boolean {
+  return poll.open || poll.tally.some((n) => n > 0);
 }
 
 /** Percentages for a tally, rounded so they still add to 100. */

@@ -6,8 +6,8 @@ import { useSyncExternalStore } from "react";
  *
  * A tiny module-level store rather than a prop, because the thing that sets
  * it (the device picker, in the control bar or the green room) and the things
- * that obey it (every remote `<audio>` sink, several components deep in
- * broadcast-room) share no parent worth threading it through. It is also the
+ * that obey it (every remote `<audio>` sink, in the room's AudioSinks) share
+ * no parent worth threading it through. It is also the
  * browser's choice, not the room's: remembered in localStorage, so the
  * headset picked in the green room is still the headset after joining, and
  * on the next call.

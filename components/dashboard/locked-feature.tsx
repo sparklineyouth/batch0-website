@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Lock, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { ApplicationStatus } from "@/lib/types";
 
 /**
@@ -12,15 +12,15 @@ export function LockedFeature({
   title,
   applicationStatus,
 }: {
-  /** Feature name, e.g. "Team", "Course", "Check-ins". */
+  /** Feature name, e.g. "Team", "Course", "Assignments". */
   title: string;
   applicationStatus: ApplicationStatus | null;
 }) {
-  const { lede, cta } = copyFor(applicationStatus);
+  const { lede, cta } = lockedCopy(applicationStatus);
   return (
     <div className="mx-auto max-w-2xl">
       <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
-        {title} · locked
+        Locked
       </p>
       <h1 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.02em] text-ink">
         {title} unlocks at enrollment.
@@ -46,68 +46,36 @@ export function LockedFeature({
           Back to dashboard
         </Link>
       </div>
-      <div className="mt-10 flex items-start gap-3 rounded-xl border border-line bg-wash px-5 py-4 text-sm text-ink-soft">
-        <Lock className="mt-0.5 h-4 w-4 shrink-0 text-ink-faint" />
-        <p>
-          Cohort-only features (Team, Check-in, Course, Office hours, Events,
-          Resources, Files, Announcements) unlock once you're enrolled. You'll
-          see them in the sidebar then.
-        </p>
-      </div>
     </div>
   );
 }
 
-function copyFor(status: ApplicationStatus | null) {
+/**
+ * What a locked page says, by where the applicant stands. Shared with the
+ * installed app's locked screens (components/app/locked-alert.tsx): only an
+ * accepted applicant has a seat to pay for.
+ */
+export function lockedCopy(status: ApplicationStatus | null): {
+  lede: string;
+  cta: { href: string; label: string } | null;
+} {
   switch (status) {
     case null:
     case undefined:
-      return {
-        lede:
-          "Apply to claim a seat. Acceptance unlocks the team workspace, weekly check-ins, and live cohort events.",
-        cta: { href: "/apply", label: "Start application" },
-      };
+      return { lede: "Apply to claim a seat.", cta: { href: "/apply", label: "Start application" } };
     case "draft":
-      return {
-        lede:
-          "Your application is still a draft. Finish and submit it to start review.",
-        cta: { href: "/apply", label: "Finish application" },
-      };
+      return { lede: "Your application is a draft.", cta: { href: "/apply", label: "Finish application" } };
     case "submitted":
-      return {
-        lede:
-          "Your application is in review. We'll email you when there's a decision; cohort features unlock once you're enrolled.",
-        cta: null,
-      };
+      return { lede: "Your application is in review.", cta: null };
     case "accepted":
-      return {
-        lede:
-          "You're accepted — lock in your seat with the one-time tuition and the cohort features come online immediately.",
-        cta: { href: "/dashboard/application", label: "Pay to enroll" },
-      };
+      return { lede: "You're accepted.", cta: { href: "/dashboard/accepted", label: "Pay to enroll" } };
     case "waitlisted":
-      return {
-        lede:
-          "You're on the waitlist. If a seat opens you're first in line — cohort features unlock at acceptance.",
-        cta: null,
-      };
+      return { lede: "You're waitlisted. We'll email you.", cta: null };
     case "rejected":
-      return {
-        lede:
-          "You weren't selected for this cohort. You can apply again to a different one.",
-        cta: { href: "/apply", label: "Apply to another cohort" },
-      };
+      return { lede: "Not this cohort.", cta: { href: "/apply", label: "Apply to another cohort" } };
     case "withdrawn":
-      return {
-        lede:
-          "You withdrew from a previous application. Reapply when you're ready to claim a seat.",
-        cta: { href: "/apply", label: "Reapply" },
-      };
+      return { lede: "You withdrew your application.", cta: { href: "/apply", label: "Reapply" } };
     default:
-      return {
-        lede:
-          "Cohort features unlock once you're enrolled. Apply or finish your application to get there.",
-        cta: { href: "/apply", label: "Open application" },
-      };
+      return { lede: "Opens once you're enrolled.", cta: { href: "/apply", label: "Open application" } };
   }
 }

@@ -53,6 +53,51 @@ const nextConfig = {
         destination: to,
         permanent: true,
       },
+      // Check-ins became assignments (migration 0093). Old links, emails and
+      // installed-app shortcuts still point here.
+      { source: "/dashboard/checkin", destination: "/dashboard/assignments", permanent: true },
+      { source: "/mentor/checkins", destination: "/mentor/assignments", permanent: true },
+      { source: "/app/checkin", destination: "/app/assignments", permanent: true },
+      // The check-in monitors went with them; the completion matrix replaces them.
+      { source: "/admin/pulse", destination: "/admin", permanent: true },
+      { source: "/admin/interventions", destination: "/admin/assignments?filter=missing", permanent: true },
+      { source: "/admin/cohorts/:id/health", destination: "/admin/assignments?cohort=:id", permanent: true },
+      // Retired features (October 2026): community features Discord covers,
+      // and admin pages cut as bulk. Old notification links and bookmarks land
+      // on the section they lived in instead of a 404.
+      ...[
+        ["/messages/:path*", "/notifications"],
+        ["/dashboard/discussions/:path*", "/dashboard/support"],
+        ["/admin/discussions/:path*", "/admin"],
+        ["/admin/messages/:path*", "/admin"],
+        ["/admin/ai-usage/:path*", "/admin"],
+        ["/admin/mentors/match/:path*", "/admin/mentors"],
+        ["/admin/course/analytics/:path*", "/admin/course"],
+        ["/admin/payments/acquisition/:path*", "/admin/payments"],
+        ["/admin/email/phone-request/:path*", "/admin/email"],
+      ].map(([source, destination]) => ({ source, destination, permanent: true })),
+      // Office hours were retired; old links land on 1:1 calls.
+      { source: "/dashboard/office-hours", destination: "/dashboard/calls", permanent: false },
+      { source: "/mentor/office-hours", destination: "/mentor/calls", permanent: false },
+      // Personal Files was replaced by the team's Google Drive (0094).
+      {
+        source: "/dashboard/files/:path*",
+        destination: "/dashboard/team?tab=drive",
+        permanent: false,
+      },
+    ];
+  },
+  // Nobody else may frame batch0 (clickjacking). This governs who frames us,
+  // not what we frame: Google Drive, YouTube and Loom embeds are unaffected.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
     ];
   },
   webpack: (config) => {

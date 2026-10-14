@@ -142,8 +142,7 @@ export function StaffThread({
         // anyway. Said about their permissions, never about the ticket.
         <p className="mt-6 flex items-center gap-2 text-sm text-ink-faint">
           <Lock className="h-3.5 w-3.5" />
-          You have read access to this request. Answering it needs the
-          &ldquo;Answer support requests&rdquo; permission.
+          Read-only. Answering needs &ldquo;Answer support requests&rdquo;.
         </p>
       )}
     </div>

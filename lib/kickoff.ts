@@ -106,29 +106,14 @@ export function kickoffPhase(
 // ---------------------------------------------------------------------------
 // Defaults
 //
-// These are what a cohort nobody has edited shows — the copy the page shipped
-// with, kept verbatim so an uncustomised cohort reads exactly as it did before.
-// They are deliberately true of every batch0 cohort, so leaving a new cohort's
-// kickoff row empty is a perfectly reasonable thing for an admin to do.
+// What a cohort nobody has edited shows. True of every batch0 cohort, so an
+// empty kickoff row is fine.
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_AGENDA: readonly KickoffAgendaItem[] = [
-  {
-    title: "The course",
-    body: "Weekly modules and deliverables open, starting with week one. You'll ship something every week from day one.",
-  },
-  {
-    title: "Your cohort",
-    body: "Announcements, events, and the shared cohort surfaces go live. Discord and your team page are already open — start there.",
-  },
-  {
-    title: "Events & office hours",
-    body: "The full schedule appears: mentor office hours, workshops, and the road to Demo Day.",
-  },
-  {
-    title: "Weekly check-ins",
-    body: "Every week you report progress, blockers, and momentum. The first one lands in week one.",
-  },
+  { title: "The course", body: "Week one opens." },
+  { title: "Events", body: "Live sessions and the road to Demo Day." },
+  { title: "Assignments", body: "The first is due in week one." },
 ];
 
 export const DEFAULT_CHECKLIST: readonly KickoffChecklistItem[] = [
@@ -142,21 +127,17 @@ export const DEFAULT_CHECKLIST: readonly KickoffChecklistItem[] = [
 ];
 
 export const DEFAULT_NOTE =
-  "The founders who get the most out of batch0 arrive with the pre-cohort readings done and a one-page sketch of their idea. Show up ready to build.";
+  "Arrive with the pre-cohort work done and a one-page sketch of your idea.";
 
 const DEFAULT_HEADLINE_UNDATED = "Kickoff is being scheduled";
 const DEFAULT_HEADLINE_CANCELLED = "This cohort was cancelled";
 
 const INTRO: Record<KickoffPhase, string> = {
-  upcoming:
-    "Kickoff is day one of the cohort — the moment the full program unlocks. Until then this page, Discord, your team, and the pre-cohort resources are your launchpad.",
-  today:
-    "Today is day one. The full program unlocks with kickoff — the course, the schedule, and every cohort surface. Everything you need is on this page.",
-  past: "Kickoff has happened and the full program is open. This page stays here as the record of day one: the call details, and what went live with it.",
-  undated:
-    "Your cohort's kickoff date hasn't been posted yet. You'll get an email and a Discord ping the moment it is — in the meantime, the list on the right is the work that pays off before day one.",
-  cancelled:
-    "This cohort was cancelled, so there's no kickoff to count down to. If you haven't already heard from us about what happens next, reach out and we'll sort it.",
+  upcoming: "Day one of the cohort. Until then: your team and the pre-cohort work.",
+  today: "Today is day one.",
+  past: "The record of day one.",
+  undated: "The date isn't set yet. We'll email you.",
+  cancelled: "This cohort was cancelled. Contact support if you haven't heard from us.",
 };
 
 // ---------------------------------------------------------------------------

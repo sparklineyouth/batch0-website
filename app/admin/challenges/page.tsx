@@ -65,7 +65,7 @@ export default async function AdminChallengesPage(props: {
         <div>
           <h1 className="font-display text-3xl text-ink">Hackathons &amp; challenges</h1>
           <p className="mt-1 text-sm text-ink-faint">
-            Each one gets an event page people register for, then submit to. Published ones show on{" "}
+            Published ones show on{" "}
             <a href="/challenges" target="_blank" className="underline">/challenges</a>.
           </p>
         </div>

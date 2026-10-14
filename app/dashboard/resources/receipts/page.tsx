@@ -79,9 +79,7 @@ export default async function BuildReceiptsPage() {
         Build receipts
       </h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Proof of work, visible to your cohort. Post what you actually did —
-        interviews, landing pages, experiments, killed ideas. Credibility here
-        comes from evidence, not likes.
+        Proof of work, visible to your cohort.
       </p>
 
       {badges.length > 0 && (
@@ -145,8 +143,7 @@ export default async function BuildReceiptsPage() {
         {(receipts?.length ?? 0) === 0 && (
           <Card>
             <p className="text-sm text-ink-soft">
-              No receipts yet. Be the first — post the interview you did, the
-              page you shipped, or the idea you killed.
+              No receipts yet.
             </p>
           </Card>
         )}

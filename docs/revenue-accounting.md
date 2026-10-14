@@ -7,9 +7,8 @@ Deploy migrations `0080_revenue_ledger.sql` and `0081_parent_checkout.sql` befor
 - **Captured tuition** is Stripe's actual captured amount, stored in `payments.amount_cents`. A pending row is only a quote; settlement replaces its amount and currency.
 - **Refunded tuition** is cumulative `amount_refunded_cents`. Full refunds retain the original captured amount and mark the row `refunded`. Gross includes captured and subsequently refunded payments; retained money subtracts refunds exactly once.
 - **Paying people** counts distinct users retaining positive USD tuition. A free, manually granted, or fully refunded enrollment is not a paying customer. Enrollment counts measure occupied places separately.
-- **Overview money** includes retained USD tuition, fees and Demo Day tickets, before processing fees. Payment-page totals are tuition only. Non-USD transactions must be reported separately; currencies are never added together.
-- **Payment date** comes from a Stripe success event. A successful automatically captured card Charge also supplies its payment timestamp for immediate Checkout returns. Delayed methods require their actual success event. Unknown historical dates stay unknown; checkout creation and reconciliation time are never substituted. Pulse charts show gross USD tuition by verified payment date, excluding unknown dates.
-- **Pricing simulator** uses an assumed starting payer count and assumed elasticity. Historical customers bought at different prices; the chart is neither measured price sensitivity nor a recommended optimum.
+- **Overview money** is the one revenue number on `/admin` and the phone home `/app/admin`: retained USD tuition, fees and Demo Day tickets (`netRevenueCents`, net of refunds), before processing fees. Payment-page totals are tuition only. Non-USD transactions must be reported separately; currencies are never added together.
+- **Payment date** comes from a Stripe success event. A successful automatically captured card Charge also supplies its payment timestamp for immediate Checkout returns. Delayed methods require their actual success event. Unknown historical dates stay unknown; checkout creation and reconciliation time are never substituted.
 
 ## Payment/refund consistency
 

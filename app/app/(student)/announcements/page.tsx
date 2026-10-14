@@ -1,8 +1,9 @@
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
+import { AppLockedAlert } from "@/components/app/locked-alert";
 import { getCohortAnnouncements } from "@/lib/app-cache";
 import { LocalTime } from "@/components/ui/local-time";
-import { AppHeader, AppBody, Empty, Alert } from "@/components/app/frame";
+import { AppHeader, AppBody, Empty } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Announcements · batch0" };
@@ -10,11 +11,6 @@ export const dynamic = "force-dynamic";
 
 /**
  * Announcements, read-only.
- *
- * The desktop page also carries emoji reactions (migration 0027). They're
- * omitted here on purpose: reacting is a social nicety, reading is the job, and
- * every reaction control is another 44px target competing with the text on a
- * 390px screen. Reactions still work from /dashboard/announcements.
  *
  * Capped at 30. Announcements accumulate for the life of a cohort and nobody
  * scrolls to the fortieth; an uncapped list is a payload that grows forever on
@@ -31,7 +27,7 @@ export default async function StudentAppAnnouncements() {
   // the cohort-scoped and the global branch) never applies. This check is the
   // enforcement, not a convenience.
   //
-  // lib/nav-config.ts already lists /dashboard/announcements in
+  // lib/student-nav.ts already lists /dashboard/announcements in
   // ENROLLED_ONLY_HREFS for exactly this reason, and
   // /dashboard/announcements renders <LockedFeature> here.
   if (!access.enrolled) {
@@ -39,10 +35,10 @@ export default async function StudentAppAnnouncements() {
       <>
         <AppHeader title="Announcements" eyebrow="Locked" />
         <AppBody>
-          <Alert tone="info" title="Announcements open at enrollment.">
-            This is how the team reaches your cohort — it unlocks once your seat
-            is paid for.
-          </Alert>
+          <AppLockedAlert
+            title="Announcements open at enrollment."
+            applicationStatus={access.applicationStatus}
+          />
         </AppBody>
       </>
     );

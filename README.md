@@ -3,6 +3,14 @@
 The batch0 marketing site and application platform for student founders, with
 applications, payments, courses, and student/admin dashboards.
 
+The program runs on: the course and an assignment tracker
+(`docs/assignments.md`), Google Drive links for team work
+(`docs/google-drive.md`), webinars and 1:1 calls in a built-in room with one
+continuous recording (`docs/batch0-live.md`, `docs/recording.md`), and Discord
+for community (`docs/discord.md`). Check-ins, in-app files, discussions, DMs,
+the team thread and office hours were retired in October 2026; their tables
+stay, read-only.
+
 ## Stack
 
 - Node.js 24.x; `.nvmrc` pins the verified local version, 24.21.0
@@ -38,23 +46,29 @@ do not provide a working backend.
 ## Verify and build
 
 ```sh
+npx tsc --noEmit
 npm test
 npm run test:discord-db
 npm run test:scholarships-db
+npm run test:profile-privileges-db
+npm run test:call-cohosts-db
+npm run test:calls-db
+npm run test-blast-addressing
 npm run build
 npm start
 ```
 
-The two database test commands use isolated, in-memory PGlite databases. The
-production build compiles and type-checks the app, then checks that the expected
-blog and marketing routes remain prerendered.
+`npm test` runs every `lib/*.test.ts`, including the PGlite migration tests;
+the `test:*-db` commands use their own in-memory PGlite databases. CI
+(`.github/workflows/ci.yml`) runs all of the above except the build. On
+2026-10-14 that was 1,207 unit tests and 69 database tests, all passing. The
+production build compiles and type-checks the app, then checks that the
+expected blog and marketing routes remain prerendered.
 
 `STRIPE_SECRET_KEY` must be nonempty even during a build because the Stripe client
-is initialized when its module loads. A clean checkout was verified on Node
-24.21.0 with 393 unit tests, 36 isolated database tests, and a successful build
-using intentionally invalid Supabase/Stripe fixture values. Unavailable Supabase
-reads used the marketing fallback data. This proves build portability; it does
-not validate live authentication, payments, or production configuration.
+is initialized when its module loads. Unavailable Supabase reads use the
+marketing fallback data, so a build with fixture credentials proves portability,
+not live authentication, payments, or production configuration.
 
 ## Deployment
 
@@ -63,6 +77,14 @@ Deploy to Vercel with Node.js 24.x, install with `npm ci`, and build with
 environment settings; do not upload a developer's `.env.local` as configuration.
 Production uses `batch0.org` and `app.batch0.org`, with matching authentication
 redirects and webhook endpoints. See `.env.local.example` for available settings.
+
+Migrations are run by hand in the Supabase SQL editor after the code deploys.
+The October 2026 release adds 0093–0100: 0095 and 0096 go in before the
+deploy and the rest right after it; see `docs/migrations-2026-10.md` for the
+order, why, and a verify query per file. The app runs without them. `/admin`
+shows `settings.manage` holders one line while it detects one missing (the
+tables and columns of 0093–0096, leftovers of 0099–0100); the policy changes
+in 0097–0099 are confirmed only by the doc's verify queries.
 
 The checkout can live anywhere. Dependencies and `.next` are rebuilt locally;
 private course source under `content/course-launch/` is intentionally excluded

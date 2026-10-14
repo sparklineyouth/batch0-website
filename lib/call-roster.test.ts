@@ -8,15 +8,14 @@ import {
   type RosterPeer,
 } from "./call-roster.ts";
 import { callStaffIds, isCallCounterpart } from "./live.ts";
-import { electCallRecorder } from "./webinars.ts";
 
 // Run with `npm test`.
 //
 // The rules a running 1:1 uses to take in people added after it started
 // (addCallCohosts). The first half pins the pure merge; the second walks the
-// scenarios the room depends on through the real election and counterpart
-// rules, with the staff list the room now reads (the server's, from the
-// heartbeat) in place of the one its page rendered.
+// scenarios the room depends on through the real counterpart rules, with the
+// staff list the room now reads (the server's, from the heartbeat) in place of
+// the one its page rendered.
 
 const peer = (peerId: string, name = peerId): RosterPeer => ({
   peerId,
@@ -175,7 +174,7 @@ test("a staff list is cleaned in the server's order: host first, no blanks, no r
 
 test("a staff list with nobody usable on it is ignored, never applied as 'no staff'", () => {
   // Applied, an empty staff side would tell every staff browser it was no
-  // longer staff and stand the recorder down mid-call.
+  // longer staff, mid-call.
   for (const raw of [undefined, null, "host", {}, [], ["", null, 3]]) {
     assert.equal(normalizeStaffIds(raw), null, JSON.stringify(raw));
   }
@@ -232,8 +231,7 @@ test("staff are staff from the first frame, and stay so while the server agrees"
 test("a server list without this person stands their browser down", () => {
   // Not reachable today — nothing removes anyone from a call, and a person
   // no longer on it is answered 'revoked', with no roster — but the rule is
-  // the safe one if that ever changes: the recorder's gate closes, which is
-  // its flush.
+  // the safe one if that ever changes: their Record control goes.
   assert.equal(
     selfIsCallStaff({ selfId: "cohost", rendered: ["host", "cohost"], live: ["host"] }),
     false,
@@ -245,106 +243,10 @@ test("a server list without this person stands their browser down", () => {
 // Scenarios: the live staff list in the room's own rules
 // ---------------------------------------------------------------------------
 
-const link = (
-  peerId: string,
-  state: string,
-  extra: { heard?: boolean; downSince?: number | null } = {},
-) => ({ peerId, state, downSince: extra.downSince ?? null, heard: extra.heard });
-
-test("a lower-id co-host added mid-call takes the recording over once their link is live", () => {
-  // b-host has been recording a plain 1:1 for a while (settling is long
-  // over). a-admin is added and joins; their id ranks ahead.
-  const rendered = callStaffIds({ hostId: "b-host", inviteeId: "z-student", cohosts: [] });
-  const live = callStaffIds({
-    hostId: "b-host",
-    inviteeId: "z-student",
-    cohosts: [{ id: "a-admin" }],
-  });
-  const base = { selfId: "b-host", settling: false, now: 1_000 };
-  const student = link("z-student", "live");
-
-  // On the list the page rendered, the newcomer is invisible to the
-  // election: the incumbent never stands down, and only the server's
-  // backstop kept the call on tape once. This is what the live list fixes.
+test("the student is never call staff, before or after someone is added", () => {
   assert.equal(
-    electCallRecorder({
-      ...base,
-      recorderIds: rendered,
-      peers: [student, link("a-admin", "live")],
-    }),
-    "b-host",
-  );
-
-  // Added, not here yet (their tile reads "waiting"): nothing moves.
-  assert.equal(
-    electCallRecorder({ ...base, recorderIds: live, peers: [student, link("a-admin", "connecting")] }),
-    "b-host",
-  );
-  // On the page and signalling, but the link is not up: still nothing. A
-  // recording handed to a browser this one cannot yet see would be a gap.
-  assert.equal(
-    electCallRecorder({
-      ...base,
-      recorderIds: live,
-      peers: [student, link("a-admin", "connecting", { heard: true })],
-    }),
-    "b-host",
-  );
-  // Live: the incumbent stands down — its gate closing is its flush — and
-  // the newcomer's own browser elects itself, so exactly one carries on.
-  assert.equal(
-    electCallRecorder({ ...base, recorderIds: live, peers: [student, link("a-admin", "live")] }),
-    "a-admin",
-  );
-  assert.equal(
-    electCallRecorder({
-      selfId: "a-admin",
-      recorderIds: live,
-      peers: [student, link("b-host", "live")],
-      settling: true,
-      listening: true,
-      now: 1_000,
-    }),
-    "a-admin",
-  );
-});
-
-test("a higher-id co-host added mid-call leaves the recording where it is", () => {
-  const live = ["b-host", "c-mentor"];
-  const peers = [link("z-student", "live"), link("c-mentor", "live")];
-  assert.equal(
-    electCallRecorder({ selfId: "b-host", recorderIds: live, peers, settling: false, now: 0 }),
-    "b-host",
-  );
-  assert.equal(
-    electCallRecorder({
-      selfId: "c-mentor",
-      recorderIds: live,
-      peers: [link("z-student", "live"), link("b-host", "live")],
-      settling: false,
-      now: 0,
-    }),
-    "b-host",
-  );
-});
-
-test("the student never runs the election, before or after someone is added", () => {
-  // The room only elects when this browser is staff (selfIsCallStaff), and
-  // the election itself refuses anyone off the list it is given.
-  const live = ["b-host", "a-admin"];
-  assert.equal(
-    selfIsCallStaff({ selfId: "0-student", rendered: ["b-host"], live }),
+    selfIsCallStaff({ selfId: "0-student", rendered: ["b-host"], live: ["b-host", "a-admin"] }),
     false,
-  );
-  assert.equal(
-    electCallRecorder({
-      selfId: "0-student",
-      recorderIds: live,
-      peers: [link("b-host", "live"), link("a-admin", "live")],
-      settling: false,
-      now: 0,
-    }),
-    null,
   );
 });
 

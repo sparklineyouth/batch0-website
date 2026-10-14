@@ -3,76 +3,107 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logAuditMany } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { refundScholarshipCreditFor } from "@/lib/calls";
+import { sweepStaleRecordings } from "@/lib/recording-sessions";
 import {
-  autoCompleteCutoff,
+  ACCEPT_STEP_REMOVED_AT,
+  autoCompleteRange,
+  expiredUnderAcceptStep,
   shouldAutoComplete,
-  shouldAutoWithdraw,
+  type CallTiming,
 } from "@/lib/call-lifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The recordings sweep finalizes up to 20 takes.
+export const maxDuration = 120;
 
 /**
- * Mark 1:1 calls `completed` once they are over.
+ * Every 15 minutes (vercel.json):
  *
- * Nothing else ever did. `completed` has been in the status CHECK since
- * migration 0059 and no code path wrote it, so every accepted call stayed
- * `accepted` for ever — and a status that never moves is a status every
- * reader has to second-guess with the clock. The End call button now writes
- * it for calls someone ends by hand; this is the backstop for the ones that
- * end by the laptop closing, which is most of them.
- *
- * Every 15 minutes (vercel.json). "Over" is lib/call-lifecycle.ts's rule —
- * accepted, and the join window has closed — so a call is stamped at most
- * fifteen minutes after nobody could enter it any more. Nothing reads the
- * stamp in the meantime: every surface derives the same "ended" from the
- * clock, so this is the database catching up with what the pages already say,
- * not the thing that makes them say it.
- *
- * Invites nobody answered are mostly left as `invited`. The CHECK has no
- * value for "expired" and this change adds none; the pages derive it
- * (`expired`), and rewriting a student's non-answer as some other decision
- * would be recording something that did not happen.
- *
- * The exception is an unanswered invite holding a SCHOLARSHIP CREDIT. That
- * credit was spent when the call was booked, and once the time has passed
- * nobody can decline the invite (the student's refund path) — so unless the
- * host happens to withdraw it by hand, one of the student's three calls is
- * gone for a call that never happened. Those invites are withdrawn here
- * (`cancelled`, the only status that means "this is not happening", and the
- * status guard that makes the refund once-only) and the credit handed back.
+ *   complete  booked 1:1s past the hard close (end + 3 h) that nobody ended.
+ *             Every page already derives "ended" from the clock; this is the
+ *             database catching up. Only the last AUTO_COMPLETE_LOOKBACK_DAYS
+ *             are looked at, so history is never rewritten in bulk.
+ *   withdraw  invites that expired unanswered while calls still needed an
+ *             Accept (expiredUnderAcceptStep): nobody could join those, so
+ *             they are `cancelled` — never completed — and any scholarship
+ *             credit goes back. A fixed backlog: once it is withdrawn this
+ *             finds nothing.
  *
  * Idempotent: every update is conditional on the status it moves out of, so
- * two overlapping runs, or a run racing someone's End call or Cancel, change
- * each call once — and a credit is refunded only for rows THIS run changed.
- * No email, no notification — the call is over (or never was), and both
- * people knew that before this ran.
+ * an overlapping run, an End call or a cancel in the same second changes each
+ * call once, and a credit is refunded only for rows THIS run withdrew. No
+ * notifications.
+ *
+ * It also sweeps recordings (calls' and webinars'): a take whose recorder's
+ * tab vanished is closed as interrupted and finalized from what reached
+ * storage (sweepStaleRecordings). Lists and players do this lazily too, but
+ * nobody may look for days.
  */
 
-/** Plenty for a quarter-hour's worth of calls; the rest wait for the next run. */
 const BATCH = 500;
 
+type Row = { id: string; status: string; starts_at: string; duration_minutes: number };
+
+function timing(r: Row): CallTiming {
+  return {
+    status: r.status as CallTiming["status"],
+    startsAt: r.starts_at,
+    durationMinutes: r.duration_minutes,
+  };
+}
+
 export async function GET(req: Request) {
-  // Fail closed when CRON_SECRET isn't configured, like every other cron here.
   if (!env.cronSecret) {
     return new Response("CRON_SECRET not configured", { status: 500 });
   }
-  const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${env.cronSecret}`) {
+  if (req.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
     return new Response("Unauthorized", { status: 401 });
   }
 
   const admin = createAdminClient();
   const now = new Date();
 
-  // Prefilter in SQL on the one bound that is exact for every duration (see
-  // autoCompleteCutoff), then decide per row with the shared rule rather than
-  // re-deriving the window as interval arithmetic here — one copy of it.
+  // ---- withdraw ------------------------------------------------------------
+  const { data: legacy, error: legacyErr } = await admin
+    .from("call_invites")
+    .select("id, status, starts_at, duration_minutes")
+    .eq("status", "invited")
+    .lt("starts_at", ACCEPT_STEP_REMOVED_AT)
+    .order("starts_at", { ascending: true })
+    .limit(BATCH);
+  if (legacyErr) {
+    console.error("[cron/call-lifecycle] expired-invite read failed", legacyErr.message);
+    return NextResponse.json({ error: legacyErr.message }, { status: 500 });
+  }
+  const expired = ((legacy ?? []) as Row[])
+    .filter((r) => expiredUnderAcceptStep(timing(r)))
+    .map((r) => r.id);
+
+  let withdrawn: string[] = [];
+  if (expired.length > 0) {
+    const { data: updated, error: updErr } = await admin
+      .from("call_invites")
+      .update({ status: "cancelled" })
+      .in("id", expired)
+      .eq("status", "invited")
+      .select("id");
+    if (updErr) {
+      console.error("[cron/call-lifecycle] withdraw failed", updErr.message);
+      return NextResponse.json({ error: updErr.message }, { status: 500 });
+    }
+    withdrawn = (updated ?? []).map((r: any) => r.id as string);
+    for (const id of withdrawn) await refundScholarshipCreditFor(admin, id);
+  }
+
+  // ---- complete ------------------------------------------------------------
+  const { from, to } = autoCompleteRange(now);
   const { data: rows, error } = await admin
     .from("call_invites")
     .select("id, status, starts_at, duration_minutes")
-    .eq("status", "accepted")
-    .lte("starts_at", autoCompleteCutoff(now).toISOString())
+    .in("status", ["invited", "accepted"])
+    .gte("starts_at", from.toISOString())
+    .lte("starts_at", to.toISOString())
     .order("starts_at", { ascending: true })
     .limit(BATCH);
   if (error) {
@@ -80,18 +111,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const due = (rows ?? [])
-    .filter((r: any) =>
-      shouldAutoComplete(
-        {
-          status: r.status,
-          startsAt: r.starts_at,
-          durationMinutes: r.duration_minutes,
-        },
-        now,
-      ),
-    )
-    .map((r: any) => r.id as string);
+  const due = ((rows ?? []) as Row[])
+    .filter((r) => shouldAutoComplete(timing(r), now))
+    .map((r) => r.id);
 
   let completed: string[] = [];
   if (due.length > 0) {
@@ -99,9 +121,7 @@ export async function GET(req: Request) {
       .from("call_invites")
       .update({ status: "completed" })
       .in("id", due)
-      // Still accepted at the moment of writing — not cancelled in the last
-      // second, not already ended by hand.
-      .eq("status", "accepted")
+      .in("status", ["invited", "accepted"])
       .select("id");
     if (updErr) {
       console.error("[cron/call-lifecycle] update failed", updErr.message);
@@ -110,89 +130,28 @@ export async function GET(req: Request) {
     completed = (updated ?? []).map((r: any) => r.id as string);
   }
 
-  const withdrawn = await withdrawExpiredScholarshipInvites(admin, now);
+  // ---- recordings ----------------------------------------------------------
+  const recordings = await sweepStaleRecordings();
 
-  // One audit round trip for the batch, attributed to the system.
   await logAuditMany(null, [
-    ...completed.map((id) => ({
-      action: "call_invite.completed",
-      targetType: "call_invite",
-      targetId: id,
-      payload: { by: "cron/call-lifecycle" },
-    })),
     ...withdrawn.map((id) => ({
       action: "call_invite.cancelled",
       targetType: "call_invite",
       targetId: id,
       payload: { by: "cron/call-lifecycle", expired_unanswered: true },
     })),
+    ...completed.map((id) => ({
+      action: "call_invite.completed",
+      targetType: "call_invite",
+      targetId: id,
+      payload: { by: "cron/call-lifecycle" },
+    })),
   ]);
 
   return NextResponse.json({
-    considered: rows?.length ?? 0,
+    considered: (rows?.length ?? 0) + (legacy?.length ?? 0),
     completed: completed.length,
     withdrawn: withdrawn.length,
+    recordings,
   });
-}
-
-/**
- * Withdraw every unanswered invite whose time has passed and which is holding
- * a scholarship credit, and hand each credit back. Returns the ids withdrawn.
- *
- * Read from the interview-request side, joined to its call, so the database
- * only ever returns scholarship bookings: reading expired invites first and
- * filtering after would page through every ordinary unanswered invite ever
- * sent (they stay `invited` for good) and eventually never reach a new one.
- *
- * Tolerant, like the refund itself: a database without 0071 has no
- * scholarship column, and failing here must not fail the completion sweep
- * above.
- */
-async function withdrawExpiredScholarshipInvites(
-  admin: ReturnType<typeof createAdminClient>,
-  now: Date,
-): Promise<string[]> {
-  const { data, error } = await admin
-    .from("interview_requests")
-    .select(
-      "call_invite_id, call:call_invites!interview_requests_call_invite_id_fkey!inner(id, status, starts_at, duration_minutes)",
-    )
-    .not("scholarship_application_id", "is", null)
-    .eq("call.status", "invited")
-    .lte("call.starts_at", autoCompleteCutoff(now).toISOString())
-    .limit(BATCH);
-  if (error) {
-    console.error("[cron/call-lifecycle] scholarship invite read failed", error.message);
-    return [];
-  }
-
-  const expired = (data ?? [])
-    .map((r: any) => (Array.isArray(r.call) ? r.call[0] : r.call))
-    .filter(
-      (c: any) =>
-        !!c &&
-        shouldAutoWithdraw(
-          { status: c.status, startsAt: c.starts_at, durationMinutes: c.duration_minutes },
-          now,
-        ),
-    )
-    .map((c: any) => c.id as string);
-  if (expired.length === 0) return [];
-
-  const { data: updated, error: updErr } = await admin
-    .from("call_invites")
-    .update({ status: "cancelled" })
-    .in("id", expired)
-    // Still unanswered at the moment of writing. The host withdrawing it by
-    // hand in the same second wins the row, and refunds it; this run does not.
-    .eq("status", "invited")
-    .select("id");
-  if (updErr) {
-    console.error("[cron/call-lifecycle] withdraw failed", updErr.message);
-    return [];
-  }
-
-  const withdrawn = (updated ?? []).map((r: any) => r.id as string);
-  for (const id of withdrawn) await refundScholarshipCreditFor(admin, id);
-  return withdrawn;
 }

@@ -20,8 +20,7 @@ export default async function MentorTeamsPage() {
     <div className="mx-auto max-w-5xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Teams</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Click a team to view their progress, send feedback, or browse their
-        drive.
+        Progress, pitch and Drive.
       </p>
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {(teams ?? []).map((t: any) => {

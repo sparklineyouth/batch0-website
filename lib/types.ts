@@ -137,26 +137,6 @@ export type Notification = {
   created_at: string;
 };
 
-export type StudentCheckin = {
-  id: string;
-  user_id: string;
-  cohort_id: string | null;
-  week_start: string;
-  accomplished: string | null;
-  next_up: string | null;
-  blockers: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type CheckinFeedback = {
-  id: string;
-  checkin_id: string;
-  author_id: string;
-  body: string;
-  created_at: string;
-};
-
 export type Resource = {
   id: string;
   cohort_id: string | null;
@@ -248,17 +228,6 @@ export type TeamInvite = {
   responded_at: string | null;
 };
 
-export type TeamDriveFile = {
-  id: string;
-  team_id: string;
-  uploader_id: string | null;
-  name: string;
-  path: string;
-  size_bytes: number | null;
-  mime_type: string | null;
-  created_at: string;
-};
-
 export type TeamMessageKind = "member" | "mentor" | "investor" | "admin";
 
 export type TeamMessage = {
@@ -273,6 +242,9 @@ export type TeamMessage = {
 export type PitchSubmission = {
   team_id: string;
   cohort_id: string | null;
+  /** Added by 0094; absent until that migration is applied. */
+  deck_url?: string | null;
+  /** Retired uploads (team-drive bucket), read-only. */
   deck_path: string | null;
   video_path: string | null;
   video_url: string | null;
@@ -462,16 +434,6 @@ export type Lesson = {
   duration_seconds: number | null;
   materials: { title: string; path: string }[];
   position: number;
-  created_at: string;
-};
-
-export type StudentFile = {
-  id: string;
-  user_id: string;
-  name: string;
-  path: string;
-  size_bytes: number | null;
-  mime_type: string | null;
   created_at: string;
 };
 

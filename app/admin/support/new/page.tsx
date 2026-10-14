@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
-import { supportInboxAddress } from "@/lib/support";
 import {
   REQUESTER_NAME_MAX,
   STAFF_LOG_MAX_AGE_DAYS,
@@ -43,10 +42,9 @@ function first(value: string | string[] | undefined): string | undefined {
 export default async function LogSupportRequestPage(props: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const [searchParams, { profile, caps }, inbox] = await Promise.all([
+  const [searchParams, { profile, caps }] = await Promise.all([
     props.searchParams,
     requirePermission("support.manage"),
-    supportInboxAddress(),
   ]);
   const scope = supportScopeFor(profile.id, caps);
 
@@ -73,11 +71,7 @@ export default async function LogSupportRequestPage(props: {
 
       <h1 className="mt-4 font-display text-3xl text-ink">Log a request</h1>
       <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-        For a request that came to {inbox ?? "the team inbox"} or by phone. It
-        becomes a request like any other — in the queue, answered from its
-        thread, counted with the rest. Put in the time it actually arrived:
-        for a refund, that&rsquo;s the time the 48 hours are checked against,
-        not the time you log it.
+        An emailed or phoned-in request.
       </p>
 
       <Card className="mt-6">

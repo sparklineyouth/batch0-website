@@ -10,33 +10,14 @@ import { runAction, type ActionResult } from "@/lib/action-result";
 import { callCreditsForUser, loadWindowCohort } from "@/lib/scholarships";
 import { callTimeProblem, scholarshipCallWindow } from "@/lib/scholarship-window";
 
-// ---------------------------------------------------------------------------
-// Booking a mentor call funded by a learner's scholarship.
-//
-// Deliberately NOT a variant of requestInterview(). That action is the
-// pre-kickoff "getting to know you" interview and carries gates that are right
-// for it and wrong here: it refuses once the cohort is underway, which is
-// exactly when a learner's-scholarship call is most useful.
-//
-// What it DOES share is the row: a scholarship call is an ordinary
-// interview_requests row with `scholarship_application_id` set (migration
-// 0071). That means it lands in the team's existing queue, gets scheduled by
-// the existing action, and rides the existing call_invites / Daily plumbing.
-// A parallel booking system would have been a second thing to keep working.
-//
-// THE CREDIT IS NOT SPENT HERE. It's spent when the team actually schedules
-// the call — see scheduleInterviewRequest. A student whose request is never
-// picked up hasn't used anything, and charging them for it would quietly eat a
-// grant they never got the benefit of.
-//
-// THE CALL BELONGS TO THE AWARD'S COHORT. The grant is extra mentor time for
-// the cohort it was awarded in, so a request is refused once that cohort has
-// ended, a proposed time after its last day is refused, and the request row is
-// stamped with the award's cohort rather than whichever cohort the student is
-// tied to today (getStudentAccess picks the soonest upcoming one, which for a
-// student already accepted into the next cohort is not the one paying).
-// ---------------------------------------------------------------------------
-
+/**
+ * Ask for a mentor call funded by a learner's scholarship: an ordinary
+ * "Request a 1:1" row with `scholarship_application_id` set (migration 0071),
+ * so it lands in the same queue and is booked by scheduleInterviewRequest.
+ * The credit is spent when the team books it, not here. The calls belong to
+ * the award's cohort: refused once it has ended, and times after its last day
+ * are refused.
+ */
 export async function requestScholarshipCall(input: {
   preferredAt: string;
   altAt?: string | null;
@@ -49,8 +30,6 @@ export async function requestScholarshipCall(input: {
     if (actor.role !== "student" || access.staff) {
       throw new Error("Only students book scholarship calls.");
     }
-    // Mentor time is a cohort thing, so the grant is redeemable from enrolment
-    // onward — including during the cohort, unlike the onboarding interview.
     if (!access.enrolled) {
       throw new Error("Scholarship calls open once you're enrolled.");
     }
@@ -61,8 +40,7 @@ export async function requestScholarshipCall(input: {
     if (!held) {
       throw new Error("You don't hold a scholarship that includes mentor calls.");
     }
-    // A legacy award with no cohort on file borrows the student's current one
-    // rather than going unbounded — see scholarshipCallWindow.
+    // A legacy award with no cohort borrows the student's current one.
     const cohortId = held.cohortId ?? access.cohortId;
     const callWindow =
       held.cohortId || !cohortId
@@ -79,7 +57,7 @@ export async function requestScholarshipCall(input: {
 
     const preferredAt = new Date(input.preferredAt);
     if (Number.isNaN(preferredAt.getTime())) {
-      throw new Error("That preferred time isn't valid.");
+      throw new Error("Pick a time that works for you.");
     }
     if (preferredAt.getTime() < now.getTime()) {
       throw new Error("Pick a time in the future.");
@@ -90,10 +68,10 @@ export async function requestScholarshipCall(input: {
     if (input.altAt) {
       altAt = new Date(input.altAt);
       if (Number.isNaN(altAt.getTime())) {
-        throw new Error("That alternate time isn't valid.");
+        throw new Error("That backup time isn't valid.");
       }
       if (altAt.getTime() < now.getTime()) {
-        throw new Error("Your alternate time is in the past.");
+        throw new Error("Your backup time is in the past.");
       }
       const altProblem = callTimeProblem(altAt, callWindow, "backup");
       if (altProblem) throw new Error(altProblem);
@@ -114,14 +92,9 @@ export async function requestScholarshipCall(input: {
       .single();
 
     if (error) {
-      // interview_requests_one_open_per_student (0061). Kept rather than
-      // worked around: a student with three credits still books them one at a
-      // time, and stacking three open asks on the team would just mean three
-      // calls nobody has scheduled.
+      // interview_requests_one_open_per_student (0061): one ask at a time.
       if (error.code === "23505") {
-        throw new Error(
-          "You've already got a call request waiting. Once the team books it, you can ask for the next one.",
-        );
+        throw new Error("You already have a request waiting. Withdraw it to ask again.");
       }
       if (/scholarship_application_id/i.test(error.message)) {
         throw new Error("Scholarship calls aren't switched on yet.");
@@ -155,10 +128,10 @@ export async function requestScholarshipCall(input: {
           .map((uid) => ({
             userId: uid,
             type: "scholarship_call_requested",
-            title: `${name} is booking a ${held.scholarshipName} call`,
+            title: `${name} asked for a ${held.scholarshipName} call`,
             body:
               input.note?.trim() ||
-              `Scholarship-funded — ${held.credits.remaining} of ${held.credits.granted} left. Schedule it from 1:1 calls.`,
+              `Scholarship call · ${held.credits.remaining} of ${held.credits.granted} left. Book it from 1:1 calls.`,
             link: "/admin/calls",
             dedupeKey: `scholarship_call_requested:${id}:${uid}`,
           })),

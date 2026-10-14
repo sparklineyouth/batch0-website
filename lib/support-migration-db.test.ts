@@ -21,7 +21,7 @@ import { PGlite } from "@electric-sql/pglite";
  * on every read of the queue, at runtime, with a clean typecheck and a green
  * build.
  *
- * auth.uid() reads a session setting (the dm-migration-db.test.ts idiom), and
+ * auth.uid() reads a session setting, and
  * has_permission()/is_admin() are the real 0048 shape over a small app_roles
  * table, so "a support.view holder without support.sensitive" is a real
  * principal here rather than a stub that always says no.

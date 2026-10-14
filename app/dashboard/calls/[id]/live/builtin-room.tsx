@@ -1,163 +1,90 @@
 "use client";
 import { useCallback, useMemo } from "react";
-import { BroadcastRoom, type CallRoom } from "@/components/live/broadcast-room";
+import { RoomController, type CallBinding } from "@/components/live/room/controller";
 import { joinRoom, announcePresence, leaveRoom, listAudience } from "@/app/live/actions";
-import { endCall, getCallRoomStatus } from "@/app/calls/actions";
-import { getCallRecordingUploadToken } from "@/app/calls/recording-actions";
-import { withUploadRetry } from "@/lib/upload-retry";
-import { CALL_RECORDING_BUCKET } from "@/lib/call-recording";
+import { endCall } from "@/app/calls/actions";
 import type { SignalRole } from "@/lib/live-signal";
 
 /**
- * A 1:1 call on batch0 Live.
+ * A 1:1 call on batch0 Live: the same room controller a webinar uses, with
+ * everyone on it a broadcaster (signal role "host") and no side panel.
  *
- * The same `BroadcastRoom` a webinar uses, with two differences that both
- * come from the data rather than from a branch in the component: `role` is
- * "host" for everyone on it (a 1:1 has no audience to hide, and a viewer role
- * would leave someone unable to speak), and no `qa` is passed — questions are
- * a webinar affordance, and people on a call just talk.
- *
- * What makes it a CALL is the `call` bundle: every 1:1 is recorded from one
- * staff browser (everyone in it, composited and mixed), anyone on it can End
- * call for everyone, and the room polls for someone else having done so. Same
- * rule as the webinar binding next door: every callback here is memoised on
- * the invite id alone, because `useLiveSession` treats its action props as
- * stable and a changed identity would tear the call down mid-sentence.
- *
- * `listPeers` is wired but inert for calls: the server returns an empty list
- * for `kind: "call"` because everyone on it is already known from the invite
- * row, so there is nothing to reconcile against. That includes anyone added
- * after this page rendered: `announce` answers a call with its roster on
- * every heartbeat (PresenceResult.call), and the session dials them from it.
+ * The call's staff side records (one browser at a time, under the server's
+ * lease) and anyone on it may End call once the other side has been here.
+ * Someone added after this render is dialled from the heartbeat's roster
+ * (PresenceResult.call). Every callback is memoised on the invite id alone,
+ * for the same reason as the webinar binding next door.
  */
 export function BuiltinCallRoom({
   inviteId,
   startsAt,
+  endsAt,
   title,
   selfUserId,
-  recorderIds,
+  staffIds,
   selfName,
   otherName,
-  endsAt,
   backHref,
+  recordingReady = true,
 }: {
   inviteId: string;
-  /** The scheduled start — End call is offered from here on. */
+  /** End call is offered from the scheduled start. */
   startsAt: string;
+  /** The scheduled end: people may rejoin until its hard close. */
+  endsAt: string;
   title: string;
-  /** This person's user id — their peer id in the room. */
+  /** This person's user id: their peer id in the room. */
   selfUserId: string;
-  /**
-   * The call's staff side (host first, then co-hosts) — the browsers that may
-   * record. The room elects one of those present; see CallRoom. As of this
-   * render: from its first heartbeat the room follows the server's list, so
-   * someone added while the call runs is in the election too.
-   */
-  recorderIds: string[];
+  /** The call's staff side as of this render (host, then co-hosts). */
+  staffIds: string[];
   selfName: string;
   /** Everyone else on the call, by name ("Ana", "Ana and Ben"). */
   otherName: string;
-  /** The scheduled end — the room says "they can rejoin until" from it. */
-  endsAt: string;
-  /** Where this person's calls list lives — a host's panel, or /dashboard/calls. */
+  /** This person's calls list: a host's panel, or /dashboard/calls. */
   backHref: string;
+  /** False before migration 0095 (recordingsReady). */
+  recordingReady?: boolean;
 }) {
-  const actions = useMemo(
+  const transport = useMemo(
     () => ({
       join: () => joinRoom("call", inviteId),
-      announce: (joinedAs?: SignalRole) =>
-        announcePresence("call", inviteId, joinedAs),
+      announce: (joinedAs?: SignalRole) => announcePresence("call", inviteId, joinedAs),
       leave: () => leaveRoom("call", inviteId),
       listPeers: () => listAudience("call", inviteId),
     }),
     [inviteId],
   );
 
-  /**
-   * Put one recording segment in the bucket.
-   *
-   * Two steps, not the webinar's three: the server mints a signed upload URL
-   * for a path it builds itself (calls/<id>/recording/segment-NNNN-<ts>), and
-   * the bytes go straight from this tab to Storage — a two-minute segment is
-   * far over a server action's 1 MB body limit. There is no row to register;
-   * for a call the file name is the record (lib/call-recording.ts).
-   *
-   * The server may refuse it — someone ranked ahead of this browser on the
-   * staff side recorded the same stretch (see getCallRecordingUploadToken's
-   * backstop). Then there is nothing to upload: it is a second copy, and the
-   * recorder carries on with the next segment as normal.
-   *
-   * Throws on failure, deliberately: `useRecorder` counts it, tells the host,
-   * and KEEPS RECORDING. One lost segment must never stop the next.
-   */
-  const onSegment = useCallback(
-    async (blob: Blob, index: number, seconds: number, last: boolean) => {
-      const mimeType = blob.type || "video/webm";
-      const signed = await getCallRecordingUploadToken(inviteId, index, mimeType, {
-        seconds,
-        last,
-      });
-      if (signed.refused) return;
-      const { path, token } = signed;
-      // Deferred import keeps supabase-js out of the route's first-load JS;
-      // it's only needed at the moment an upload starts.
-      const { createClient } = await import("@/lib/supabase/client");
-      const supabase = createClient();
-      // Through a network blip, not past a refusal (lib/upload-retry.ts):
-      // the last segment goes up as someone presses End call, and one
-      // dropped request used to cost the end of the conversation.
-      await withUploadRetry(async () => {
-        const up = await supabase.storage
-          .from(CALL_RECORDING_BUCKET)
-          .uploadToSignedUrl(path, token, blob, { contentType: mimeType });
-        if (up.error) throw up.error;
-      });
-    },
-    [inviteId],
-  );
+  const onEndCall = useCallback(async () => {
+    const result = await endCall(inviteId);
+    if (!result.ok) throw new Error(result.error);
+    return { completed: !!result.data?.completed };
+  }, [inviteId]);
 
-  const onEndCall = useCallback(() => endCall(inviteId), [inviteId]);
-  const fetchStatus = useCallback(() => getCallRoomStatus(inviteId), [inviteId]);
-
-  // Joined into a string for the memo's deps, so a re-render that hands over
-  // an equal list never rebuilds the bundle (and with it the session).
-  const recorderKey = recorderIds.join(",");
-  const call = useMemo<CallRoom>(
+  // Joined for the memo, so an equal list from a re-render rebuilds nothing.
+  const staffKey = staffIds.join(",");
+  const call = useMemo<CallBinding>(
     () => ({
       inviteId,
       startsAt,
       endsAt,
-      selfUserId,
-      recorderIds: recorderKey ? recorderKey.split(",") : [],
-      selfName,
+      staffIds: staffKey ? staffKey.split(",") : [],
       otherName,
-      onSegment,
-      onEndCall,
-      fetchStatus,
+      endCall: onEndCall,
     }),
-    [
-      inviteId,
-      startsAt,
-      endsAt,
-      selfUserId,
-      recorderKey,
-      selfName,
-      otherName,
-      onSegment,
-      onEndCall,
-      fetchStatus,
-    ],
+    [inviteId, startsAt, endsAt, staffKey, otherName, onEndCall],
   );
+  const self = useMemo(() => ({ id: selfUserId, name: selfName }), [selfUserId, selfName]);
 
   return (
-    <BroadcastRoom
-      kind="call"
-      roomId={inviteId}
+    <RoomController
       title={title}
+      self={self}
       role="host"
       backHref={backHref}
+      transport={transport}
       call={call}
-      {...actions}
+      recordingReady={recordingReady}
     />
   );
 }

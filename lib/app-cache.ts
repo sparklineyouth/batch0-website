@@ -19,7 +19,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * cohort, so a minute of staleness is invisible.
  *
  * Deliberately NOT cached, and this is the important half: the application
- * review queue, pending charges, check-in state, the at-risk list, revenue.
+ * review queue, pending charges, assignment status, revenue.
  * Those drive decisions about money and about people's places in the program,
  * they change in response to the very actions taken in this app, and a stale
  * one is not a slow screen — it is a wrong one. An admin who accepts an
@@ -104,13 +104,21 @@ export type AppEvent = {
   type: string;
   description: string | null;
   starts_at: string;
+  ends_at: string | null;
   location: string | null;
+  live_mode: string | null;
   zoom_url: string | null;
   recording_url: string | null;
+  live_started_at: string | null;
+  live_ended_at: string | null;
 };
 
 /**
- * Upcoming and recent events for a cohort.
+ * Upcoming and recent events for a cohort. "Upcoming" reaches back a day so
+ * a session that is running (or that a host started early) still shows.
+ *
+ * Visibility mirrors the `events read` policy: enrolled events of this
+ * cohort, and every public one.
  *
  * `nowBucket` is in the cache key on purpose. The query filters on "now", so
  * without it a cached entry would keep answering with a `now` from up to a
@@ -128,16 +136,17 @@ export function getCohortEvents(
     async () => {
       const admin = createAdminClient();
       const cols =
-        "id, title, type, description, starts_at, location, zoom_url, recording_url";
+        "id, title, type, description, starts_at, ends_at, location, live_mode, zoom_url, recording_url, live_started_at, live_ended_at";
       const base = () => {
-        const q = admin.from("events").select(cols).in("visibility", ["enrolled", "public"]);
+        const q = admin.from("events").select(cols);
         return cohortId
-          ? q.or(`cohort_id.is.null,cohort_id.eq.${cohortId}`)
-          : q.is("cohort_id", null);
+          ? q.or(`visibility.eq.public,and(visibility.eq.enrolled,cohort_id.eq.${cohortId})`)
+          : q.eq("visibility", "public");
       };
+      const since = new Date(new Date(nowIso).getTime() - 24 * 60 * 60_000).toISOString();
       const [up, past] = await Promise.all([
         base()
-          .gte("starts_at", nowIso)
+          .gte("starts_at", since)
           .order("starts_at", { ascending: true })
           .limit(20),
         base()

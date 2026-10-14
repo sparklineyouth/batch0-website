@@ -175,7 +175,7 @@ export function StudentsBulkList({
       })}
 
       {someSelected && canChangeRoles && (
-        <div data-bottom-bar className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-wash/95 backdrop-blur md:left-60">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-3">
             <div className="text-sm">
               <span className="font-semibold text-ink tabular-nums">{selected.size}</span>
@@ -229,9 +229,7 @@ export function StudentsBulkList({
         onConfirm={() => confirmRole && runBulk(confirmRole)}
         description={
           <p className="text-sm text-ink-soft">
-            Each user&apos;s role is updated and any linked Discord
-            membership is re-synced. Your own account is skipped — nobody
-            re-roles themselves.
+            Discord roles re-sync. Your own account is skipped.
           </p>
         }
       />

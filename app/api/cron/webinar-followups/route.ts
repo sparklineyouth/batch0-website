@@ -8,6 +8,7 @@ import { JOIN_CLOSES_MINUTES_AFTER, roomWindow } from "@/lib/live";
 import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import { presentHosts } from "@/lib/live-rooms";
 import { listAssets } from "@/lib/webinar-data";
+import { recordingStateFor, sweepStaleRecordings } from "@/lib/recording-sessions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,10 +33,11 @@ export const maxDuration = 300;
  * place for two reasons, and both of them have happened to this feature's
  * predecessors:
  *
- *  1. The recording is not finished then. Segments upload while the webinar
- *     runs, and the last one is still in flight at the moment the host clicks
- *     away — so a follow-up sent from the End button promises a recording that
- *     is missing its final segment.
+ *  1. The recording is not finished then. Its parts upload while the webinar
+ *     runs, and the last ones are still in flight at the moment the host
+ *     clicks away — so a follow-up sent from the End button promises a
+ *     recording that is still being saved. The job waits for every take to
+ *     be finished (or swept as interrupted) first.
  *  2. Hosts do not always press End. They close the laptop. A webinar that
  *     ended by the tab going away has no client left to run anything, and the
  *     students who missed it are exactly the ones the email is for.
@@ -100,20 +102,14 @@ export const maxDuration = 300;
 const SETTLE_MINUTES = 15;
 
 /**
- * How long to keep waiting for a recording that auto-record should have made.
+ * How long to keep waiting for a recording that is still being saved, or that
+ * auto-record should have made.
  *
- * With auto-record on, "no assets yet" right after the end usually means the
- * final segments are still uploading (or registering) — not that there is
- * nothing to share. Stamping `nothing-to-share` then would permanently skip a
- * webinar whose recording lands five minutes later. So such a webinar is left
- * unclaimed and reconsidered on later runs, up to this long past its due time,
- * after which it really is treated as having nothing.
- *
- * Measured from the due time, not from when the room actually emptied. An
- * overrun nobody ended is skipped as `still-running` before this is consulted
- * at all, and overruns are capped at the hard stop (end + 3h), so the grace
- * only runs short for a talk that overran by more than ~2 hours — and that
- * one has been uploading segments the whole time.
+ * A take still recording or not yet finalized means its last parts are still
+ * uploading — not that there is nothing to share — so the webinar is left
+ * unclaimed and reconsidered on later runs, up to this long past its due time.
+ * The same goes for an auto-recorded webinar with no recording yet. After
+ * that it is shared with whatever there is.
  */
 const RECORDING_GRACE_MINUTES = 120;
 
@@ -187,15 +183,20 @@ export async function GET(req: Request) {
       }
     }
 
-    // Look before claiming, for one case only: an auto-recorded webinar with
-    // no recording attached yet, still inside the grace period, is left
-    // UNCLAIMED so a later run can share the recording once its segments land
-    // (rather than stamping `nothing-to-share`, or mailing "the slides are up"
-    // an hour before the recording would have been). Reading first costs
-    // nothing — the claim below is still the atomic guard.
-    if (ev.auto_record && now < dueAt(ev) + RECORDING_GRACE_MINUTES * 60_000) {
-      const early = await listAssets(ev.id, ["recording"]);
-      if (early.length === 0) {
+    // Look before claiming: a take still saving (its recorder's lease, or a
+    // closed take not yet finalized), or an auto-recorded webinar with no
+    // recording yet, is left UNCLAIMED inside the grace period so a later run
+    // shares the finished recording (rather than mailing "the slides are up"
+    // an hour before it lands). Stale leases are swept first. The claim below
+    // is still the atomic guard.
+    await sweepStaleRecordings({ kind: "webinar", roomId: ev.id });
+    const takes = await recordingStateFor("webinar", ev.id);
+    if (now < dueAt(ev) + RECORDING_GRACE_MINUTES * 60_000) {
+      if (takes?.recording) {
+        report.push({ id: ev.id, skipped: "recording-in-progress" });
+        continue;
+      }
+      if (ev.auto_record && !takes?.playable && (await listAssets(ev.id, ["recording"])).length === 0) {
         report.push({ id: ev.id, skipped: "waiting-for-recording" });
         continue;
       }
@@ -221,7 +222,9 @@ export async function GET(req: Request) {
 
     try {
       const assets = await listAssets(ev.id);
-      const hasRecording = assets.some((a) => a.kind === "recording");
+      // A finished take, or (legacy) recorded segments.
+      const hasRecording =
+        !!takes?.playable || assets.some((a) => a.kind === "recording");
       const hasDeck = assets.some(
         (a) => a.kind === "deck" || a.kind === "handout",
       );

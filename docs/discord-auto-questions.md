@@ -16,7 +16,7 @@ Replies stay attached to the source message in its original channel. They are la
 
 ## Context and privacy
 
-The automatic answerer does **not** retrieve private student profiles, applications, payments, refund cases, check-ins, team records, direct messages, private course files, or the dashboard AI's personal history. It receives only the current question and up to three short messages supplied from the **same channel**, plus a fixed public-information prompt. A private Discord channel's own messages remain private channel content; access to that channel is not permission to reuse its content elsewhere.
+The automatic answerer does **not** retrieve private student profiles, applications, payments, refund cases, assignment submissions, team records, direct messages, private course files, or the dashboard AI's personal history. It receives only the current question and up to three short messages supplied from the **same channel**, plus a fixed public-information prompt. A private Discord channel's own messages remain private channel content; access to that channel is not permission to reuse its content elsewhere.
 
 The latest question is limited to 4,000 UTF-8 bytes and nearby context to about 1,200 bytes. No attachments are opened, links fetched, code executed, or tools offered to the model. API credentials remain transport headers, never prompt content. Messages are untrusted data and cannot change the destination, authorize an account action, or become system instructions.
 

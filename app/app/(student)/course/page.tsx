@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2, Circle, Lock, BookOpen } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
+import { AppLockedAlert } from "@/components/app/locked-alert";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cohortWeek } from "@/lib/cohort-week";
 import { getSyllabus, type SyllabusModule } from "@/lib/app-cache";
@@ -42,10 +43,10 @@ export default async function StudentAppCourse() {
       <>
         <AppHeader title="Course" eyebrow="Locked" />
         <AppBody>
-          <Alert tone="info" title="The course unlocks at enrollment.">
-            Once your seat is paid for, every week's lessons and deliverables
-            show up here.
-          </Alert>
+          <AppLockedAlert
+            title="The course unlocks at enrollment."
+            applicationStatus={access.applicationStatus}
+          />
         </AppBody>
       </>
     );

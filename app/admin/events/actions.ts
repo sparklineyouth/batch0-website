@@ -1,445 +1,398 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
-import { notifyMany } from "@/lib/notifications";
-import { sendEmail } from "@/lib/email/send";
-import { Templates } from "@/lib/email/templates";
+import { runAction, type ActionResult } from "@/lib/action-result";
+import { GLOBAL_CONTENT_TAG } from "@/lib/app-cache";
 import {
-  postChannelMessage,
-  eventEmbed,
-  getDiscordSettings,
-  buttonRow,
-} from "@/lib/discord";
-import {
-  createRoom,
-  deleteRoom,
-  updateRoomExpiry,
-  dailyConfigured,
-} from "@/lib/daily";
-import {
-  DEFAULT_EVENT_MINUTES,
-  normalizeDisplayViewers,
-  roomWindow,
-  type LiveMode,
-} from "@/lib/live";
-import {
-  isHostedOnBatch0,
+  defaultAudienceModeFor,
   normalizeAudienceMode,
   type AudienceMode,
 } from "@/lib/webinars";
-import { env } from "@/lib/env";
+import {
+  audienceFor,
+  DEFAULT_DURATION_MINUTES,
+  DEFAULT_LIVE_TITLE,
+  durationOf,
+  endsAtFor,
+  floorToMinute,
+  isEventType,
+  isUuid,
+  liveForAudience,
+  MAX_TITLE_LENGTH,
+  parseHttpUrl,
+  parseWho,
+  pickDefaultCohort,
+  staleRunStamps,
+  validateEventFields,
+  type EventType,
+  type Who,
+} from "@/lib/event-form";
+import { announceEvent, announceLive, type NotifyEvent } from "./notify";
+import { deleteRoomRecordings } from "@/lib/recording-sessions";
+import {
+  attachDeck,
+  removeObjects,
+  verifyStagedDeck,
+  type StagedDeck,
+} from "./deck";
 
-/**
- * Where "join" should point for this event, in email and on Discord.
- *
- * Both batch0-hosted modes (hosted and premiere) link to batch0.org, never to
- * a room URL directly. The room is private, so a raw link is useless without
- * credentials — and the page that mints them is the same page that checks
- * whether the viewer is allowed in at all. This used to test `=== "hosted"`,
- * so every premiere announcement went out with no link.
- */
-function joinUrl(
-  mode: LiveMode,
-  eventId: string,
-  externalUrl: string | null,
-): string | null {
-  return isHostedOnBatch0(mode)
-    ? `${env.siteUrl}/dashboard/events/${eventId}/live`
-    : externalUrl;
-}
+type Admin = ReturnType<typeof createAdminClient>;
 
-/**
- * When a hosted room should stop existing.
- *
- * Daily deletes the room at `exp`, so this is also the cleanup policy. The
- * two-hour tail past the end is deliberate: rooms that evict people mid-
- * sentence because the admin guessed the end time badly are worse than rooms
- * that linger, and lingering costs nothing (billing is per participant-minute,
- * and an empty room has none).
- */
-function roomExpiry(startsAt: string, endsAt: string | null): Date {
-  const end = endsAt
-    ? new Date(endsAt)
-    : new Date(new Date(startsAt).getTime() + DEFAULT_EVENT_MINUTES * 60_000);
-  return new Date(end.getTime() + 2 * 60 * 60 * 1000);
-}
-
-export type EventInput = {
-  id?: string;
-  cohort_id: string | null;
-  type: "demo_day" | "office_hours" | "workshop" | "webinar" | "other";
+export type EventFormInput = {
+  /** The event being edited, or null for a new one. */
+  id: string | null;
+  /** A new event's id, minted when slides were uploaded before the first save. */
+  draftId: string | null;
   title: string;
-  description: string | null;
-  starts_at: string;
-  ends_at: string | null;
-  location: string | null;
-  zoom_url: string | null;
-  recording_url: string | null;
-  visibility: "enrolled" | "staff" | "public";
-  live_mode: LiveMode;
-  /**
-   * Announced attendance shown in the live room in place of the hidden roster
-   * ("43 watching"). Null / omitted = the private default. Display only — see
-   * lib/live.ts. Sanitized on save regardless of what the form sends.
-   */
-  display_viewer_count?: number | null;
-  daily_room_name?: string | null;
-  daily_room_url?: string | null;
-
-  // ---- Webinar settings (migration 0084) ---------------------------------
-  //
-  // All optional, and every one of them defaults to the behaviour the event
-  // had before 0084. An admin surface that does not know about webinars — or a
-  // caller written before this block existed — saves an event unchanged rather
-  // than silently switching its audience on or starting to record it.
-  /** May the audience see itself? See lib/webinars.ts. Omitted = 'private'. */
-  audience_mode?: AudienceMode;
-  /** Start recording when the host starts broadcasting. Omitted = off. */
-  auto_record?: boolean;
-  /** Email the deck and recording out afterwards. Omitted = off. */
-  auto_share?: boolean;
-  /** Premiere only: when the genuinely-live Q&A opens. */
-  qa_opens_at?: string | null;
+  /** ISO. */
+  startsAt: string;
+  durationMinutes: number;
+  liveMode: "hosted" | "external";
+  externalUrl: string;
+  /** "cohort:<id>" | "public" | "staff" — see lib/event-form.ts. */
+  who: string;
+  notify: boolean;
+  description: string;
+  type: EventType;
+  location: string;
+  audienceMode: AudienceMode;
+  autoRecord: boolean;
+  autoShare: boolean;
+  recordingUrl: string;
+  deck: StagedDeck | null;
 };
 
+/** Every surface that lists events. */
+function revalidateEventViews() {
+  revalidatePath("/admin/events");
+  revalidatePath("/dashboard/events");
+  // /program and /parents read a cached timetable; the app caches events.
+  revalidateTag("public-cohort-timetable");
+  revalidateTag(GLOBAL_CONTENT_TAG);
+}
+
+async function assertCohortExists(admin: Admin, who: Who) {
+  if (who.kind !== "cohort") return;
+  const { data } = await admin
+    .from("cohorts")
+    .select("id")
+    .eq("id", who.cohortId)
+    .maybeSingle();
+  if (!data) throw new Error("That cohort no longer exists.");
+}
+
+/** A validated link, or null. Callers have already run validateEventFields. */
+function linkOrNull(input: string): string | null {
+  const parsed = parseHttpUrl(input);
+  return parsed.ok ? parsed.url : null;
+}
+
 /**
- * Returns the event's id — including for an insert, where the caller could not
- * have known it. That is what lets the admin form attach guest speakers to an
- * event it is creating for the first time, in the same click, instead of making
- * the admin save once and come back.
+ * Create or edit an event. Returns its id, plus a warning when the event saved
+ * but its slides did not attach.
  */
 export async function saveEvent(
-  input: EventInput,
-  notify: boolean,
-): Promise<string> {
-  await assertPermission("events.manage");
-  const admin = createAdminClient();
+  input: EventFormInput,
+): Promise<ActionResult<{ id: string; warning?: string }>> {
+  return runAction({ name: "saveEvent" }, async () => {
+    const actor = await assertPermission("events.manage");
+    const admin = createAdminClient();
 
-  // ---- Hosted room lifecycle ---------------------------------------------
-  //
-  // Switching an event to "hosted" creates the room; switching it back (or
-  // deleting the event) tears it down. Done here rather than lazily at join
-  // time so the failure — a bad key, a Daily outage — surfaces to the admin
-  // who is looking at the form, not to twenty students at 7pm.
-  //
-  // ALL OF THIS IS A NO-OP ON batch0 Live, which is the default. The built-in
-  // provider has no provider-side room: the event id is the room, credentials
-  // are minted per join, and there is nothing to create, re-stamp, or reap.
-  // That deletes the entire class of bug this block exists to manage — 0069
-  // moved every webinar to a Sunday and left 17 of 18 pointing at a room that
-  // expired before the webinar started, because the schedule moved and the
-  // room did not.
-  // Daily never hosted a premiere — that mode arrived with batch0 Live — so a
-  // premiere must not take this path even on an environment still pinned to
-  // Daily. It would create a room nobody joins and stamp the row with it.
-  const usesProviderRooms =
-    env.liveProvider === "daily" && input.live_mode !== "premiere";
-  let roomName = input.daily_room_name ?? null;
-  let roomUrl = input.daily_room_url ?? null;
-
-  // A hosted event that already has a room is being re-saved — most likely
-  // with a new time. The room was stamped with the OLD end time as its `exp`,
-  // and Daily deletes it then, so the room must follow the schedule or the
-  // webinar opens on the new date to a room that no longer exists. If Daily
-  // has already reaped it, drop the name and fall through to create a fresh
-  // one below. Anything else Daily says here is not worth failing the save
-  // over: the join page also re-checks the room and heals a dead one.
-  if (usesProviderRooms && input.live_mode === "hosted" && roomName) {
-    try {
-      const stillThere = await updateRoomExpiry(
-        roomName,
-        roomExpiry(input.starts_at, input.ends_at),
-      );
-      if (!stillThere) {
-        roomName = null;
-        roomUrl = null;
-      }
-    } catch (err) {
-      console.error("[events] could not move room expiry", err);
+    if (input.id && !isUuid(input.id)) throw new Error("That event no longer exists.");
+    if (!input.id && input.draftId && !isUuid(input.draftId)) {
+      throw new Error("Open the form again.");
     }
-  }
 
-  if (usesProviderRooms && input.live_mode === "hosted" && !roomName) {
-    if (!dailyConfigured()) {
-      throw new Error(
-        "Live video isn't configured — set DAILY_API_KEY and NEXT_PUBLIC_DAILY_DOMAIN, or use a Zoom link instead.",
-      );
+    let prior: Record<string, string | null> | null = null;
+    if (input.id) {
+      const { data, error } = await admin
+        .from("events")
+        .select("id, cohort_id, starts_at, ends_at, live_started_at, live_ended_at, assets_shared_at")
+        .eq("id", input.id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error("That event no longer exists.");
+      prior = data as Record<string, string | null>;
     }
-    const room = await createRoom({
-      namePrefix: input.title || "event",
-      mode: "webinar",
-      // Daily deletes the room at `exp`, so this doubles as cleanup. Generous
-      // padding: an event that overruns should not evict everyone.
-      expiresAt: roomExpiry(input.starts_at, input.ends_at),
-      enableRecording: true,
-    });
-    roomName = room.name;
-    roomUrl = room.url;
-  }
 
-  if (input.live_mode === "external" && roomName) {
-    // Best-effort: an event that can't drop its room should still save as
-    // external. The room expires on its own regardless. Still attempted when
-    // the built-in provider is active, because the name may be a leftover
-    // Daily room from before the switch and reaping it costs nothing.
-    if (dailyConfigured()) {
+    const firstError = Object.values(
+      validateEventFields({
+        title: input.title,
+        startsAt: input.startsAt,
+        durationMinutes: input.durationMinutes,
+        liveMode: input.liveMode,
+        externalUrl: input.externalUrl,
+        recordingUrl: input.recordingUrl,
+        who: input.who,
+        savedDurationMinutes: prior ? durationOf(prior.starts_at!, prior.ends_at) : null,
+      }),
+    )[0];
+    if (firstError) throw new Error(firstError);
+    if (input.liveMode !== "hosted" && input.liveMode !== "external") {
+      throw new Error("Pick where it happens.");
+    }
+    if (!isEventType(input.type)) throw new Error("Pick a type.");
+    const who = parseWho(input.who)!;
+    if (who.kind === "staff" && input.notify) {
+      throw new Error("Staff-only events don't notify anyone.");
+    }
+    await assertCohortExists(admin, who);
+    const targetId = input.id ?? input.draftId ?? null;
+    if (input.deck) {
+      if (!targetId) throw new Error("Pick the slides again.");
+      await verifyStagedDeck(admin, targetId, input.deck);
+    }
+
+    const startsAt = new Date(input.startsAt).toISOString();
+    const endsAt = endsAtFor(startsAt, input.durationMinutes);
+    const hosted = input.liveMode === "hosted";
+    const audience = audienceFor(who, prior?.cohort_id ?? null);
+
+    // A reschedule must not leave the event "Ended" by an earlier run.
+    const liveReset = prior ? staleRunStamps(prior, startsAt) : {};
+
+    const payload = {
+      cohort_id: audience.cohort_id,
+      visibility: audience.visibility,
+      type: input.type,
+      title: input.title.trim().slice(0, MAX_TITLE_LENGTH),
+      description: input.description?.trim() || null,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      location: input.location?.trim() || null,
+      live_mode: input.liveMode,
+      zoom_url: hosted ? null : linkOrNull(input.externalUrl),
+      recording_url: linkOrNull(input.recordingUrl),
+      audience_mode: normalizeAudienceMode(input.audienceMode),
+      // The "shown attendees" headcount is gone; clear any left on old rows.
+      display_viewer_count: null,
+      auto_record: hosted && !!input.autoRecord,
+      // A rehearsal never emails a cohort.
+      auto_share: audience.visibility !== "staff" && !!input.autoShare,
+      ...liveReset,
+    };
+
+    let id: string;
+    if (input.id) {
+      const { error } = await admin.from("events").update(payload).eq("id", input.id);
+      if (error) throw new Error(error.message);
+      id = input.id;
+    } else {
+      const row: Record<string, unknown> = input.draftId
+        ? { ...payload, id: input.draftId }
+        : payload;
+      const { data, error } = await admin.from("events").insert(row).select("id").single();
+      if (error) throw new Error(error.message);
+      id = (data as { id: string }).id;
+    }
+
+    let warning: string | undefined;
+    if (input.deck) {
       try {
-        await deleteRoom(roomName);
+        await attachDeck(admin, id, input.deck, actor.userId);
       } catch (err) {
-        console.error("[events] could not delete room", err);
+        console.error("[events] deck attach failed", err);
+        warning = "Saved, but the slides didn't attach. Pick the file again.";
       }
     }
-    roomName = null;
-    roomUrl = null;
-  }
 
-  // ---- Live state on a rescheduled event ---------------------------------
-  //
-  // `live_started_at`, `live_ended_at` and `assets_shared_at` describe ONE
-  // run of an event. The recommended staff-only rehearsal on the same row, or
-  // simply moving an event to next week, used to carry the old run's stamps
-  // into the new one: the real webinar opened already "Ended" (and, since End
-  // is now enforced, refused everyone), a premiere read the old
-  // live_started_at as "a host went live" and never played, and the follow-up
-  // email never went out because the rehearsal had already claimed it.
-  //
-  // So a stamp that predates the new schedule's host window (start - 60m) is
-  // from a previous run and is cleared; a stamp inside the window is this
-  // run's and is kept (an admin fixing a typo in the title mid-webinar must
-  // not reopen it). The follow-up claim follows the SAME rule. It used to be
-  // cleared whenever the scheduled end was still ahead, which is also true
-  // right after an early End: host ends at 18:25 of an 18:00-19:00 webinar,
-  // the follow-up goes out at 18:45, an admin pastes the recording link at
-  // 18:50 and saves — and the claim was wiped, so the 19:00 run mailed every
-  // student a second time. A claim made during this run is inside the host
-  // window and survives a plain re-save; one left over from an earlier run
-  // (a reschedule, a reused row) predates it and is cleared.
-  const liveReset: {
-    live_started_at?: null;
-    live_ended_at?: null;
-    assets_shared_at?: null;
-  } = {};
-  if (input.id) {
-    const { data: prior } = await admin
-      .from("events")
-      .select("live_started_at, live_ended_at, assets_shared_at")
-      .eq("id", input.id)
-      .maybeSingle();
-    const p = prior as any;
-    if (p) {
-      const w = roomWindow(input.starts_at, input.ends_at || null);
-      const stale = (at: string | null) =>
-        !!at && new Date(at).getTime() < w.hostOpensAt;
-      if (stale(p.live_started_at)) liveReset.live_started_at = null;
-      if (stale(p.live_ended_at)) liveReset.live_ended_at = null;
-      if (stale(p.assets_shared_at)) liveReset.assets_shared_at = null;
+    await logAudit({
+      action: input.id ? "event.updated" : "event.created",
+      targetType: "event",
+      targetId: id,
+      payload: {
+        title: payload.title,
+        type: payload.type,
+        visibility: payload.visibility,
+        notify: input.notify,
+      },
+    });
+    revalidateEventViews();
+
+    if (input.notify) {
+      const ev: NotifyEvent = {
+        id,
+        title: payload.title,
+        startsAt,
+        visibility: audience.visibility,
+        cohortId: audience.cohort_id,
+        liveMode: payload.live_mode,
+        externalUrl: payload.zoom_url,
+      };
+      after(() => announceEvent(ev, !input.id));
     }
-  }
+    return warning ? { id, warning } : { id };
+  });
+}
 
-  // A staff-only event is a rehearsal or an internal session. Emailing its
-  // recording to a cohort is never what anyone meant, so auto-share is forced
-  // off for it here as well as in the form (and the follow-up cron skips staff
-  // events too).
-  const autoShare = input.visibility === "staff" ? false : !!input.auto_share;
+/**
+ * "Start a webinar now": a hosted webinar starting this minute for the running
+ * (else next) cohort, already marked live, then straight into the room.
+ *
+ * While a webinar for the same people is already live (two admins pressing
+ * it, or a stale page) it starts nothing and returns that one, so the dialog
+ * can offer Join; `again` says the admin saw it and wants a second room.
+ */
+export async function startWebinarNow(input: {
+  title?: string;
+  who?: string;
+  notify: boolean;
+  again?: boolean;
+}): Promise<ActionResult<{ liveId: string; liveTitle: string }>> {
+  let target = "";
+  const result = await runAction({ name: "startWebinarNow" }, async () => {
+    const actor = await assertPermission("events.manage");
+    const admin = createAdminClient();
 
-  const payload = {
-    cohort_id: input.cohort_id || null,
-    type: input.type,
-    title: input.title.trim(),
-    description: input.description?.trim() || null,
-    starts_at: input.starts_at,
-    ends_at: input.ends_at || null,
-    location: input.location?.trim() || null,
-    // An external link only means something for an external event. A leftover
-    // Zoom URL on a hosted webinar is a second, wrong "join" in the admin list
-    // and a stale link in anything that reads the column.
-    zoom_url:
-      input.live_mode === "external" ? input.zoom_url?.trim() || null : null,
-    recording_url: input.recording_url?.trim() || null,
-    visibility: input.visibility,
-    live_mode: input.live_mode,
-    // Re-sanitized here, not trusted from the form: the room reads this back to
-    // decide what number the whole audience sees.
-    display_viewer_count: normalizeDisplayViewers(input.display_viewer_count),
-    daily_room_name: roomName,
-    daily_room_url: roomUrl,
+    let who: Who | null = null;
+    if (input.who) {
+      who = parseWho(input.who);
+      if (!who) throw new Error("Pick who it's for.");
+    } else {
+      const { data: cohorts } = await admin
+        .from("cohorts")
+        .select("id, starts_on, ends_on, status");
+      const cohortId = pickDefaultCohort(
+        (cohorts ?? []).map((c: any) => ({
+          id: c.id,
+          startsOn: c.starts_on,
+          endsOn: c.ends_on,
+          status: c.status,
+        })),
+      );
+      who = cohortId ? { kind: "cohort", cohortId } : { kind: "public" };
+    }
+    await assertCohortExists(admin, who);
+    const audience = audienceFor(who, null);
 
-    // Re-sanitized on the way in, exactly like display_viewer_count and for a
-    // sharper reason: this value decides whether one student's words are shown
-    // to another. `normalizeAudienceMode` fails closed, so a form that sends
-    // nothing, or a value this build does not recognise, stores 'private'.
-    audience_mode: normalizeAudienceMode(input.audience_mode),
-    auto_record: !!input.auto_record,
-    auto_share: autoShare,
-    // Only meaningful for a premiere. Cleared otherwise, so switching an event
-    // away from premiere cannot leave a handover time behind that a later
-    // switch back would silently resurrect.
-    qa_opens_at:
-      input.live_mode === "premiere" ? input.qa_opens_at || null : null,
-    ...liveReset,
-  };
-  let id = input.id;
-  if (id) {
-    const { error } = await admin.from("events").update(payload).eq("id", id);
-    if (error) throw new Error(error.message);
-  } else {
-    const { data: created, error } = await admin
+    const nowDate = new Date();
+    if (!input.again) {
+      const { data: running, error: runningError } = await admin
+        .from("events")
+        .select(
+          "id, title, visibility, cohort_id, live_mode, starts_at, ends_at, live_started_at, live_ended_at",
+        )
+        .in("live_mode", ["hosted", "premiere"])
+        .is("live_ended_at", null)
+        .gte("starts_at", new Date(nowDate.getTime() - 24 * 60 * 60_000).toISOString())
+        .order("starts_at", { ascending: true })
+        .limit(200);
+      if (runningError) throw new Error(runningError.message);
+      const dup = liveForAudience(
+        ((running ?? []) as any[]).map((r) => ({
+          id: r.id as string,
+          title: r.title as string,
+          visibility: r.visibility as string,
+          cohortId: (r.cohort_id as string | null) ?? null,
+          liveMode: r.live_mode as string,
+          startsAt: r.starts_at as string,
+          endsAt: (r.ends_at as string | null) ?? null,
+          liveStartedAt: (r.live_started_at as string | null) ?? null,
+          liveEndedAt: null,
+        })),
+        audience,
+        nowDate,
+      );
+      // Not an error: the dialog offers Join, or Start another.
+      if (dup) return { liveId: dup.id, liveTitle: dup.title };
+    }
+
+    const startsAt = floorToMinute(nowDate).toISOString();
+    const title =
+      (input.title ?? "").trim().slice(0, MAX_TITLE_LENGTH) || DEFAULT_LIVE_TITLE;
+    const { data, error } = await admin
       .from("events")
-      .insert(payload)
+      .insert({
+        type: "webinar",
+        live_mode: "hosted",
+        title,
+        starts_at: startsAt,
+        ends_at: endsAtFor(startsAt, DEFAULT_DURATION_MINUTES),
+        visibility: audience.visibility,
+        cohort_id: audience.cohort_id,
+        audience_mode: defaultAudienceModeFor(audience.visibility),
+        auto_record: true,
+        auto_share: audience.visibility !== "staff",
+        live_started_at: nowDate.toISOString(),
+      })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
-    id = created!.id;
-  }
+    const id = (data as { id: string }).id;
 
-  await logAudit({
-    action: input.id ? "event.updated" : "event.created",
-    targetType: "event",
-    targetId: id ?? null,
-    payload: { title: input.title, type: input.type },
+    await logAudit({
+      action: "event.created",
+      targetType: "event",
+      targetId: id,
+      payload: { title, type: "webinar", startedNow: true, notify: input.notify },
+    });
+    revalidateEventViews();
+
+    if (input.notify && audience.visibility !== "staff") {
+      const { data: me } = await admin
+        .from("profiles")
+        .select("full_name")
+        .eq("id", actor.userId)
+        .maybeSingle();
+      const hostName =
+        ((me as { full_name?: string | null } | null)?.full_name ?? "").trim() || "batch0";
+      const ev: NotifyEvent = {
+        id,
+        title,
+        startsAt,
+        visibility: audience.visibility,
+        cohortId: audience.cohort_id,
+        liveMode: "hosted",
+        externalUrl: null,
+      };
+      after(() => announceLive(ev, hostName));
+    }
+    target = `/dashboard/events/${id}/live`;
+    return undefined;
   });
-
-  // Optionally fan out a notification + email to enrolled students.
-  if (notify && input.cohort_id) {
-    try {
-      const { data: enrollments } = await admin
-        .from("enrollments")
-        .select("user_id, profile:profiles(email, full_name)")
-        .eq("cohort_id", input.cohort_id);
-      const recipients = (enrollments ?? []) as any[];
-      await notifyMany(
-        recipients.map((e) => ({
-          userId: e.user_id,
-          type: "event_posted",
-          title: input.title,
-          // Notification body is a fixed string baked at creation
-          // time, and we don't know the recipient's timezone. Keep the
-          // copy generic and let them click through to /dashboard/events,
-          // where times render in the viewer's local zone.
-          body: "New event posted. Open events to see when it starts.",
-          link: "/dashboard/events",
-        })),
-      );
-      const t = Templates.eventReminder({
-        title: input.title,
-        startsAt: input.starts_at,
-        // A hosted event's join link is on batch0.org, not the provider's
-        // domain. Sending the raw room URL would work but bypasses the token
-        // mint — anyone forwarded the email would hit a private room they
-        // have no ticket for, which reads as "the link is broken".
-        zoomUrl: joinUrl(payload.live_mode, id!, payload.zoom_url),
-      });
-      const emails = recipients
-        .map((e) =>
-          Array.isArray(e.profile) ? e.profile[0]?.email : e.profile?.email,
-        )
-        .filter(Boolean) as string[];
-      for (const to of emails) {
-        await sendEmail({ to, subject: t.subject, html: t.html });
-      }
-    } catch (err) {
-      console.error("[events] notify failed", err);
-    }
-  }
-
-  // Cross-post to Discord's events channel for every save (works for
-  // both new and updated events). Best-effort.
-  if (notify) {
-    try {
-      const settings = await getDiscordSettings();
-      if (settings.eventsChannelId) {
-        let cohortName: string | null = null;
-        if (input.cohort_id) {
-          const { data: c } = await admin
-            .from("cohorts")
-            .select("name")
-            .eq("id", input.cohort_id)
-            .maybeSingle();
-          cohortName = c?.name ?? null;
-        }
-        // RSVP buttons — clicks fire `rsvp:<status>:<eventId>` into
-        // /api/discord/interactions, which writes the row + marks the
-        // user's onboarding step 3 done.
-        const rsvpButtons = id
-          ? [
-              buttonRow([
-                {
-                  customId: `rsvp:going:${id}`,
-                  label: "I'm in",
-                  style: 3,
-                  emoji: "✅",
-                },
-                {
-                  customId: `rsvp:maybe:${id}`,
-                  label: "Maybe",
-                  style: 2,
-                  emoji: "🤔",
-                },
-                {
-                  customId: `rsvp:declined:${id}`,
-                  label: "Can't make it",
-                  style: 2,
-                  emoji: "❌",
-                },
-              ]),
-            ]
-          : undefined;
-        await postChannelMessage(settings.eventsChannelId, {
-          embeds: [
-            eventEmbed({
-              title: payload.title,
-              description: payload.description,
-              startsAt: payload.starts_at,
-              endsAt: payload.ends_at,
-              location: payload.location,
-              zoomUrl: joinUrl(payload.live_mode, id!, payload.zoom_url),
-              type: payload.type,
-              cohortName,
-            }),
-          ],
-          components: rsvpButtons,
-        });
-      }
-    } catch (err) {
-      console.error("[events] discord post failed", err);
-    }
-  }
-
-  revalidatePath("/admin/events");
-  revalidatePath("/dashboard/events");
-  return id!;
+  if (!result.ok || !target) return result;
+  redirect(target);
 }
 
-export async function deleteEvent(id: string) {
-  await assertPermission("events.manage");
-  const admin = createAdminClient();
+/** Delete an event, its rows (cascade), its uploaded files and its recordings. */
+export async function deleteEvent(id: string): Promise<ActionResult> {
+  return runAction({ name: "deleteEvent" }, async () => {
+    await assertPermission("events.manage");
+    if (!isUuid(id)) throw new Error("That event no longer exists.");
+    const admin = createAdminClient();
+    const { data: event } = await admin
+      .from("events")
+      .select("id, title")
+      .eq("id", id)
+      .maybeSingle();
+    if (!event) return;
 
-  // Drop the room before the row, since the row is the only record of the
-  // room's name. Best-effort — a room we fail to delete expires on its own,
-  // whereas an event that refuses to delete is a stuck admin.
-  const { data: existing } = await admin
-    .from("events")
-    .select("daily_room_name")
-    .eq("id", id)
-    .maybeSingle();
-  const roomName = (existing as any)?.daily_room_name as string | null;
-  if (roomName) {
-    try {
-      await deleteRoom(roomName);
-    } catch (err) {
-      console.error("[events] could not delete room on event delete", err);
-    }
-  }
+    const { data: assets } = await admin
+      .from("event_assets")
+      .select("storage_path")
+      .eq("event_id", id);
+    const { error } = await admin.from("events").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    // After the row: a failed delete must not leave an event whose files or
+    // recordings are gone. Both are best-effort and never throw.
+    await removeObjects(
+      admin,
+      (assets ?? [])
+        .map((a: any) => a.storage_path as string)
+        .filter((p) => p.startsWith(`${id}/`)),
+    );
+    await deleteRoomRecordings("webinar", id);
 
-  const { error } = await admin.from("events").delete().eq("id", id);
-  if (error) throw new Error(error.message);
-  await logAudit({
-    action: "event.deleted",
-    targetType: "event",
-    targetId: id,
+    await logAudit({
+      action: "event.deleted",
+      targetType: "event",
+      targetId: id,
+      payload: { title: (event as { title: string }).title },
+    });
+    revalidateEventViews();
   });
-  revalidatePath("/admin/events");
-  revalidatePath("/dashboard/events");
 }

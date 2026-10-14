@@ -259,8 +259,7 @@ export function ReviewActions({
               Founder pass — structured feedback
             </p>
             <p className="mt-0.5 text-xs text-ink-soft">
-              A pass application can&apos;t be declined with a form letter. Fill
-              these in to Reject; they&apos;re shown to the applicant and emailed.
+              Required to reject. Emailed to the applicant.
             </p>
           </div>
           <div>
@@ -403,9 +402,7 @@ export function ReviewActions({
               Accept automatically, later
             </p>
             <p className="mt-0.5 text-xs text-ink-soft">
-              The system accepts this application at the time you pick, sending
-              the notes above. Until then it stays undecided, and a manual
-              decision cancels the schedule.
+              Accepts at that time with the notes above. Deciding by hand cancels it.
             </p>
           </div>
           <div>
@@ -440,9 +437,8 @@ export function ReviewActions({
         description={
           <>
             <p>
-              This skips the {priceLabel} charge entirely and enrolls the
-              student in the cohort right now. They'll get an email confirming
-              access.
+              Skips the {priceLabel} charge and enrolls them now. They get an
+              email.
             </p>
             <div className="mt-3 text-left">
               <Label>Reason (optional, for your records)</Label>

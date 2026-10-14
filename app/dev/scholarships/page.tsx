@@ -16,8 +16,9 @@ import {
  * the reads-as line) can be reviewed without any of that. Save still calls
  * the real server action, which refuses without the permission.
  *
- * Gated on VERCEL_ENV exactly like app/dev/live, and for the same reason: it
- * renders on localhost and on branch previews, and 404s on the live site.
+ * Gated on VERCEL_ENV (not NODE_ENV, which is "production" on every Vercel
+ * deployment): it renders on localhost and on branch previews, and 404s on
+ * the live site.
  */
 export const metadata = {
   title: "Scholarship form preview · batch0",

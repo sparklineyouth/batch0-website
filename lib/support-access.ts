@@ -4,9 +4,8 @@
  *
  * Why this file has zero imports
  * ------------------------------
- * Same reason as lib/discussions-access.ts: these predicates are the one
- * definition of the rule, and they are needed in places that cannot share a
- * Supabase client — the server action that writes, the RSC that renders, the
+ * These predicates are the one definition of the rule, and they are needed in
+ * places that cannot share a Supabase client — the server action that writes, the RSC that renders, the
  * `"use client"` form that has to stop the user before they type 9,000
  * characters, and the housekeeping cron. Keeping it dependency-free is what
  * lets the client bundle import the length caps without dragging a database
@@ -21,12 +20,9 @@
  * or a runtime insert failure, not a compile error. lib/support-access.test.ts
  * reads the vocabularies back out of the migration to pin this side of it.
  *
- * Not to be confused with lib/discussions-access.ts. A discussion is a
- * question from an *enrolled student* about the programme, scoped to a cohort.
- * A ticket is an administrative request about an account, a payment, a policy
- * right or a safety concern — it has no cohort, it can outlive an enrolment,
- * and a refund ticket is a formal instrument under app/(legal)/refund-policy:
- * the recorded arrival time on it is what stops the 48-hour clock.
+ * A ticket has no cohort and can outlive an enrolment, and a refund ticket is a
+ * formal instrument under app/(legal)/refund-policy: the recorded arrival time
+ * on it is what stops the 48-hour clock.
  */
 
 // ---------------------------------------------------------------------------
@@ -169,7 +165,7 @@ export const CATEGORY_HINTS: Record<TicketCategory, string> = {
   application:
     "Your application's status, deadlines, choosing a cohort, or a scholarship application.",
   program:
-    "Schedule, assignments, your team, your mentor, or Demo Day logistics. Questions about lesson content get a faster answer in Discussions.",
+    "Schedule, assignments, your team, your mentor, or Demo Day logistics.",
   concern:
     "Safety, bullying or harassment, inappropriate behaviour by anyone — a student, a mentor or staff — or someone's wellbeing. Only a few senior staff can read these.",
   accessibility:

@@ -37,8 +37,8 @@ export function isAcceptedStatus(
 
 /**
  * Nav hrefs (exact) that stay visible in the sidebar pre-cohort. Kickoff,
- * Resources, and Team additionally require enrollment — filterStudentNavItem
- * and the pages themselves enforce that on top of this set. Community
+ * Resources, and Team additionally require enrollment — isStudentHrefVisible
+ * (lib/student-nav.ts) and the pages enforce that on top of this set. Community
  * (Discord) is open to every pre-cohort student: the server is where a
  * cohort meets before day one.
  */
@@ -54,23 +54,10 @@ export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
   // channel we control was dark for exactly that window, while the sidebar
   // hid the tab so nobody could tell it existed.
   "/dashboard/announcements",
-  // Discussions too, for the same reason in the other direction: the weeks
-  // before day one are when an enrolled student has the most questions for
-  // the team and nowhere else on the site to ask them.
-  "/dashboard/discussions",
-  // DMs, for the same reason as Discussions and Announcements — and this one
-  // isn't really a lockdown decision at all: /messages sits outside
-  // /dashboard, so the page and the chat dock are reachable pre-cohort
-  // regardless. Leaving it out of this set would only have hidden the sidebar
-  // link to a page the student can already open.
-  "/messages",
   "/dashboard/team",
-  // 1:1 calls stay open before kickoff. An enrolled student is invited to a
-  // getting-to-know-you interview in exactly this window — the request lives
-  // on this page, and a staff-sent invite has to have somewhere to land — so
-  // hiding the tab until day one was hiding the one thing pre-cohort calls
-  // are for. The page itself carries no enrollment gate (see the note in
-  // app/dashboard/calls/page.tsx).
+  // 1:1 calls stay open before kickoff: "Request a 1:1" lives on this page,
+  // and a call the team books has to have somewhere to land. The page itself
+  // carries no enrollment gate (see app/dashboard/calls/page.tsx).
   "/dashboard/calls",
   "/dashboard/billing",
   // Scholarships are applied for after acceptance and after enrolment, and
@@ -103,7 +90,6 @@ const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/resources",
   "/dashboard/community",
   "/dashboard/announcements",
-  "/dashboard/discussions",
   "/dashboard/team",
   "/dashboard/calls",
   "/dashboard/billing",
@@ -114,9 +100,17 @@ const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/pay-fine",
 ];
 
+/**
+ * A webinar room (`/dashboard/events/<id>/live`) — reachable pre-cohort, so an
+ * orientation webinar before day one can actually be attended. Only the room,
+ * not the events list, and RLS on the event still decides who may see it.
+ */
+const WEBINAR_ROOM_PATH = /^\/dashboard\/events\/[^/]+\/live\/?$/;
+
 /** Whether a /dashboard pathname is reachable during pre-cohort lockdown. */
 export function isPreCohortAllowedPath(path: string): boolean {
   if (path === "/dashboard") return true;
+  if (WEBINAR_ROOM_PATH.test(path)) return true;
   return PRE_COHORT_ALLOWED_PREFIXES.some(
     (p) => path === p || path.startsWith(p + "/"),
   );

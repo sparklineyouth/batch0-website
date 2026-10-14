@@ -132,11 +132,10 @@ export default async function AdminPaymentsPage(
         <div>
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Payments</h1>
           <p className="mt-1 text-sm text-ink-faint">
-            USD tuition collected, refunds, and paying people. Enrollment alone is not a payment.
+            USD collected, refunds and payers.
           </p>
         </div>
         <div className="flex items-start gap-2">
-          <Link href="/admin/payments/acquisition" className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-wash">Campaign payments</Link>
           <SyncStripeButton />
           <a
             href="/api/admin/export/payments"
@@ -173,7 +172,12 @@ export default async function AdminPaymentsPage(
         />
       </div>
 
-      <p className="mt-4 text-xs text-ink-faint">Checkout attempts are not unique customers or card declines. {summary.unknownPaidDates} captured payments have no verified payment date; run Stripe reconciliation to recover dates still in Stripe’s event history. {summary.otherCurrencyCount > 0 ? `${summary.otherCurrencyCount} non-USD records excluded from USD totals.` : ""}</p>
+      {(summary.unknownPaidDates > 0 || summary.otherCurrencyCount > 0) && (
+        <p className="mt-4 text-xs text-ink-faint">
+          {summary.unknownPaidDates > 0 && `${summary.unknownPaidDates} payments missing a date — Sync from Stripe. `}
+          {summary.otherCurrencyCount > 0 && `${summary.otherCurrencyCount} non-USD records excluded.`}
+        </p>
+      )}
       {/* Cohort breakdown */}
       <Card className="mt-8">
         <div className="mb-4 flex items-baseline justify-between">

@@ -43,8 +43,7 @@ export default async function NewSupportRequestPage(props: {
       </Link>
       <h1 className="mt-4 text-3xl font-bold tracking-tight">New request</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Goes to the batch0 team. Every request gets a reference, a recorded
-        time, and a reply from a person.
+        A person replies to every request.
       </p>
 
       <div className="mt-8">

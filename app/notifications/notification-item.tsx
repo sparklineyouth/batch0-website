@@ -17,6 +17,7 @@ import {
   LifeBuoy,
   MessageSquareReply,
   UserCheck,
+  ClipboardList,
 } from "lucide-react";
 import { markNotificationRead } from "./actions";
 import { formatRelativeTime } from "@/lib/format-time";
@@ -42,11 +43,15 @@ const ICON_BY_TYPE: Record<string, any> = {
   charge_waived: CreditCard,
   payment_succeeded: CreditCard,
   event_created: CalendarDays,
-  checkin_submitted: CheckCircle,
-  checkin_feedback: MessageSquareText,
+  assignment_released: ClipboardList,
+  assignment_due_soon: ClipboardList,
+  assignment_submitted: ClipboardList,
+  assignment_reviewed: MessageSquareText,
+  assignment_returned: MessageSquareText,
   call_invited: Video,
   call_response: Video,
   call_cancelled: Video,
+  call_updated: Video,
   interview_requested: Video,
   interview_declined: Video,
   // Support (lib/support.ts): the team's bells for a new request, a follow-up

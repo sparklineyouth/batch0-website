@@ -453,10 +453,8 @@ export async function issueVirtualPassesAction(input: {
       subject: t.subject,
       html: t.html,
       text: t.text,
-      // Tags the message for /admin/email's metrics the same way every other
-      // send in the app does. Without it a pass invite is the one transactional
-      // email the delivery dashboard can't see — and a bounced invite is a live
-      // serial nobody can redeem, which is exactly the failure worth spotting.
+      // Tagged like every other send, so a bounced invite (a live serial
+      // nobody can redeem) is traceable in email_events.
       templateKey: INVITE_TEMPLATE_KEY,
     });
     if (r.ok) sent.push(p.serial);

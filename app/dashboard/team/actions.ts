@@ -1,10 +1,8 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import { assertSelf } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
-import { checkRateLimit } from "@/lib/rate-limit";
 import { reserveTeamSlug, slugify } from "@/lib/team";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
 import {
@@ -167,8 +165,8 @@ export async function leaveTeam() {
   if ((count ?? 0) <= 1) {
     // Last one out — flush the team's storage prefixes before deleting
     // the row so we don't leave orphan bytes paying rent in the bucket.
-    // DB rows under team_drive_files cascade-delete via FK; this clears
-    // the actual storage objects + the logo.
+    // DB rows (including legacy team_drive_files) cascade-delete via FK;
+    // this clears the storage objects: older drive uploads + the logo.
     await purgeTeamStorage(admin, membership.team_id);
     // Snapshot Discord channel IDs before we delete the team row, then
     // archive in the background so we don't block the user's leave call.
@@ -752,206 +750,4 @@ export async function removeTeamMember(input: {
     console.error("[team] discord resync after remove failed", err);
   }
   revalidatePath("/dashboard/team");
-}
-
-// ---------------------------------------------------------------------------
-// Drive — register a file after a client-side upload to team-drive.
-// ---------------------------------------------------------------------------
-
-export async function getTeamDriveUploadToken(input: {
-  teamId: string;
-  filename: string;
-}) {
-  const { userId } = await assertSelf();
-  await assertTeamMember(userId, input.teamId);
-  const dot = input.filename.lastIndexOf(".");
-  const base = dot > 0 ? input.filename.slice(0, dot) : input.filename;
-  const ext = dot > 0 ? input.filename.slice(dot + 1) : "";
-  const stamp = Date.now();
-  const path = `${input.teamId}/drive/${safeSegment(base)}-${stamp}${ext ? "." + safeSegment(ext) : ""}`;
-  const admin = createAdminClient();
-  const { data, error } = await admin.storage
-    .from("team-drive")
-    .createSignedUploadUrl(path);
-  if (error) throw new Error(error.message);
-  return { path: data.path, token: data.token };
-}
-
-export async function registerTeamDriveFile(input: {
-  teamId: string;
-  name: string;
-  path: string;
-  size_bytes: number | null;
-  mime_type: string | null;
-}) {
-  const { userId } = await assertSelf();
-  await assertTeamMember(userId, input.teamId);
-  if (!input.path.startsWith(`${input.teamId}/`)) {
-    throw new Error("Path doesn't belong to your team.");
-  }
-  if (input.size_bytes != null && input.size_bytes > 250 * 1024 * 1024) {
-    throw new Error("Files are capped at 250 MB.");
-  }
-  const admin = createAdminClient();
-
-  // Verify the storage object actually exists. Without this a tampered
-  // client could register paths it never uploaded; those entries would
-  // 404 on download but still litter team_drive_files.
-  const segments = input.path.split("/");
-  const filename = segments.pop() ?? "";
-  const folder = segments.join("/");
-  const { data: listed } = await admin.storage
-    .from("team-drive")
-    .list(folder, { limit: 1, search: filename });
-  if (!listed?.some((o: any) => o.name === filename)) {
-    throw new Error("Upload didn't complete — try again.");
-  }
-
-  const { error } = await admin.from("team_drive_files").insert({
-    team_id: input.teamId,
-    uploader_id: userId,
-    name: input.name.slice(0, 200),
-    path: input.path,
-    size_bytes: input.size_bytes,
-    mime_type: input.mime_type,
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/team");
-}
-
-export async function deleteTeamDriveFile(input: { fileId: string }) {
-  const { userId } = await assertSelf();
-  const admin = createAdminClient();
-  const { data: file } = await admin
-    .from("team_drive_files")
-    .select("id, team_id, path")
-    .eq("id", input.fileId)
-    .single();
-  if (!file) throw new Error("Not found.");
-  await assertTeamMember(userId, file.team_id);
-  await admin.storage.from("team-drive").remove([file.path]);
-  await admin.from("team_drive_files").delete().eq("id", file.id);
-  revalidatePath("/dashboard/team");
-}
-
-/**
- * Mint a short-lived signed URL for one drive file.
- *
- * `download: true` asks storage for a content-disposition attachment, so
- * the browser saves the file instead of displaying it; the in-page preview
- * pane uses the default (inline) form of the same URL.
- */
-export async function getTeamDriveDownloadUrl(input: {
-  fileId: string;
-  download?: boolean;
-}): Promise<string> {
-  const { userId } = await assertSelf();
-  const admin = createAdminClient();
-  const { data: file } = await admin
-    .from("team_drive_files")
-    .select("id, team_id, path, name")
-    .eq("id", input.fileId)
-    .single();
-  if (!file) throw new Error("Not found.");
-
-  // Allow members + staff + investors to download (read RLS allows them).
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const role = profile?.role;
-  const staff = role === "admin" || role === "mentor" || role === "investor";
-  if (!staff) {
-    await assertTeamMember(userId, file.team_id);
-  }
-
-  const { data, error } = await admin.storage
-    .from("team-drive")
-    .createSignedUrl(
-      file.path,
-      60 * 60,
-      input.download ? { download: file.name } : undefined,
-    );
-  if (error || !data?.signedUrl) {
-    throw new Error(error?.message ?? "Could not generate URL");
-  }
-  return data.signedUrl;
-}
-
-// ---------------------------------------------------------------------------
-// Messages — members + mentors + investors + admins can post
-// ---------------------------------------------------------------------------
-
-export async function postTeamMessage(input: {
-  teamId: string;
-  body: string;
-}) {
-  const { userId } = await assertSelf();
-  const body = input.body.trim();
-  if (!body) throw new Error("Empty message.");
-  if (body.length > 4000) throw new Error("Message too long.");
-
-  // Throttle: a spammy poster shouldn't be able to flood a team thread.
-  // 10 messages / minute / user across all teams; enough for normal
-  // back-and-forth, way below abuse territory.
-  const rl = await checkRateLimit({
-    kind: "team-message",
-    identifier: userId,
-    limit: 10,
-    windowSeconds: 60,
-  });
-  if (!rl.ok) {
-    throw new Error("Slow down — too many messages in a row.");
-  }
-
-  const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", userId)
-    .maybeSingle();
-
-  let kind: "member" | "mentor" | "investor" | "admin" = "member";
-  if (profile?.role === "admin") kind = "admin";
-  else if (profile?.role === "mentor") kind = "mentor";
-  else if (profile?.role === "investor") kind = "investor";
-  else {
-    await assertTeamMember(userId, input.teamId);
-  }
-
-  const { error } = await admin.from("team_messages").insert({
-    team_id: input.teamId,
-    author_id: userId,
-    body,
-    kind,
-  });
-  if (error) throw new Error(error.message);
-
-  // Notify team members when a non-member (mentor/investor/admin) posts.
-  if (kind !== "member") {
-    const { data: members } = await admin
-      .from("team_members")
-      .select("user_id")
-      .eq("team_id", input.teamId);
-    const who = profile?.full_name ?? `Your ${kind}`;
-    for (const m of members ?? []) {
-      await notify({
-        userId: m.user_id,
-        type: "team_message",
-        title: `${who} posted to your team`,
-        body: body.slice(0, 200),
-        link: "/dashboard/team",
-      });
-    }
-  }
-
-  revalidatePath("/dashboard/team");
-  revalidatePath(`/mentor/teams/${input.teamId}`);
-  revalidatePath(`/investor/teams/${input.teamId}`);
 }

@@ -34,10 +34,7 @@ export default async function AdminFlowsPage() {
             Pre-cohort flows
           </h1>
           <p className="mt-1 text-sm text-ink-soft">
-            "Before One" — interactive, personalized experiences (diagnostics,
-            challenges, guided worksheets) shown to accepted students on the
-            Resources page. Steps can branch on a student's answers, so one
-            flow can route different founders down different paths.
+            Interactive pre-cohort worksheets.
           </p>
         </div>
         <Link
@@ -51,8 +48,7 @@ export default async function AdminFlowsPage() {
       <Card className="mt-6 !p-0 overflow-hidden">
         {(flows?.length ?? 0) === 0 ? (
           <p className="p-6 text-sm text-ink-soft">
-            No flows yet. Build your first — a founder diagnostic, a 7-day
-            challenge, or a guided worksheet.
+            No flows yet.
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -118,14 +114,6 @@ export default async function AdminFlowsPage() {
           </table>
         )}
       </Card>
-
-      <p className="mt-6 text-xs text-ink-faint">
-        Static files and links live in{" "}
-        <Link href="/admin/resources" className="underline">
-          Resources
-        </Link>
-        . Flows are the interactive layer on top.
-      </p>
     </div>
   );
 }

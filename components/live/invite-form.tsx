@@ -1,46 +1,54 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, Select, FieldError } from "@/components/ui/input";
 import { Search, Check, X } from "lucide-react";
-import { MAX_CALL_COHOSTS } from "@/lib/live";
+import { getActionError } from "@/lib/action-error";
+import { updateInvite } from "@/app/calls/actions";
+import { MAX_CALL_COHOSTS, type CallInvite } from "@/lib/live";
 
 export type InviteeOption = {
   id: string;
   name: string;
+  /** Empty for hosts who may not see emails (lib/calls.ts listInvitableStudents). */
   email: string;
   teamName?: string | null;
 };
 
+/** The line under a name: email and team, whichever the host was given. */
+function detailOf(s: InviteeOption): string {
+  return [s.email, s.teamName].filter(Boolean).join(" · ");
+}
+
+function matchesQuery(s: InviteeOption, q: string): boolean {
+  return (
+    s.name.toLowerCase().includes(q) ||
+    s.email.toLowerCase().includes(q) ||
+    (s.teamName ?? "").toLowerCase().includes(q)
+  );
+}
+
 export type InviteDraft = {
   inviteeId: string;
-  startsAt: string;
+  /** Absent when starting now: the server starts it on the current minute. */
+  startsAt?: string;
+  startNow: boolean;
   durationMinutes: number;
   topic: string;
   /** Others from the team joining the call (migration 0092). */
   cohostIds: string[];
 };
 
-const DURATIONS = [15, 20, 30, 45, 60];
+const DURATIONS = [15, 20, 30, 45, 60, 90, 120];
 
 /**
- * "Invite a student to a 1:1."
- *
- * The inverse of office hours: there, a mentor posts open slots and a student
- * claims one; here the host picks the person and proposes a time. Both will
- * coexist — a student who wants time asks for a slot, a mentor or investor who
- * wants time sends an invite.
- *
- * The picker lists every student the host is allowed to invite, unfiltered by
- * assignment. That is a deliberate product choice and worth remembering: it
- * means an investor can reach a student they have no prior connection to, so
- * the audit trail on the resulting invite is the safeguard rather than the
- * picker itself.
- *
- * Still one student, but the host can bring anyone from the team along
- * ("Also joining") — a 1:1 is one student and any number of staff.
+ * Book a 1:1 with a student, or start one now. One student; anyone from the
+ * team can come along ("Also joining"). The picker lists every student the
+ * host may invite — the audit trail, not the picker, is the safeguard.
  */
 export function InviteForm({
+  mode,
   students,
   staff = [],
   onSubmit,
@@ -48,6 +56,7 @@ export function InviteForm({
   pending = false,
   error,
 }: {
+  mode: "now" | "schedule";
   students: InviteeOption[];
   /** Who can be added alongside the host. The page has already left the host out. */
   staff?: InviteeOption[];
@@ -58,43 +67,32 @@ export function InviteForm({
 }) {
   const [query, setQuery] = useState("");
   const [inviteeId, setInviteeId] = useState<string | null>(null);
-  const [startsLocal, setStartsLocal] = useState(defaultStart());
+  const [startsLocal, setStartsLocal] = useState(defaultStart);
   const [duration, setDuration] = useState(30);
   const [topic, setTopic] = useState("");
   const [cohostIds, setCohostIds] = useState<string[]>([]);
+  const now = mode === "now";
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? students.filter(
-          (s) =>
-            s.name.toLowerCase().includes(q) ||
-            s.email.toLowerCase().includes(q) ||
-            (s.teamName ?? "").toLowerCase().includes(q),
-        )
-      : students;
-    // Cap the list rather than rendering the whole directory — the search box
-    // is the way to reach someone further down.
+    const list = q ? students.filter((s) => matchesQuery(s, q)) : students;
     return list.slice(0, 8);
   }, [students, query]);
 
   const selected = students.find((s) => s.id === inviteeId) ?? null;
-  const valid = !!inviteeId && !!startsLocal;
+  const valid = !!inviteeId && (now || !!startsLocal);
 
   return (
     <div className="space-y-4">
       <div>
-        <Label>Who</Label>
+        <Label>Student</Label>
         {selected ? (
           <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-wash px-3 py-2.5">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink">
-                {selected.name}
-              </p>
-              <p className="truncate text-xs text-ink-faint">
-                {selected.email}
-                {selected.teamName ? ` · ${selected.teamName}` : ""}
-              </p>
+              <p className="truncate text-sm font-medium text-ink">{selected.name}</p>
+              {detailOf(selected) ? (
+                <p className="truncate text-xs text-ink-faint">{detailOf(selected)}</p>
+              ) : null}
             </div>
             <button
               type="button"
@@ -111,7 +109,8 @@ export function InviteForm({
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search students by name, email, or team"
+                placeholder="Search students"
+                aria-label="Search students"
                 className="pl-9"
               />
             </div>
@@ -132,13 +131,10 @@ export function InviteForm({
                     className="flex w-full items-center justify-between gap-3 border-b border-line px-3 py-2.5 text-left last:border-0 hover:bg-wash"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-sm text-ink">
-                        {s.name}
-                      </span>
-                      <span className="block truncate text-xs text-ink-faint">
-                        {s.email}
-                        {s.teamName ? ` · ${s.teamName}` : ""}
-                      </span>
+                      <span className="block truncate text-sm text-ink">{s.name}</span>
+                      {detailOf(s) ? (
+                        <span className="block truncate text-xs text-ink-faint">{detailOf(s)}</span>
+                      ) : null}
                     </span>
                     <Check className="h-4 w-4 shrink-0 text-ink-faint opacity-0" />
                   </button>
@@ -151,41 +147,17 @@ export function InviteForm({
 
       <CohostPicker staff={staff} value={cohostIds} onChange={setCohostIds} />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <Label>When</Label>
-          <Input
-            type="datetime-local"
-            value={startsLocal}
-            onChange={(e) => setStartsLocal(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label>How long</Label>
-          <Select
-            value={String(duration)}
-            onChange={(e) => setDuration(Number(e.target.value))}
-          >
-            {DURATIONS.map((d) => (
-              <option key={d} value={d}>
-                {d} minutes
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+      <CallTimeFields
+        withTime={!now}
+        startsLocal={startsLocal}
+        onStartsLocal={setStartsLocal}
+        duration={duration}
+        onDuration={setDuration}
+      />
 
       <div>
-        <Label>What it&rsquo;s about (optional)</Label>
-        <Textarea
-          rows={2}
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          placeholder="Fundraising questions, product feedback, a portfolio review…"
-        />
-        <p className="mt-1.5 text-xs text-ink-faint">
-          They&rsquo;ll see this in the invite email and can accept or decline.
-        </p>
+        <Label>Topic (optional)</Label>
+        <Textarea rows={2} value={topic} onChange={(e) => setTopic(e.target.value)} />
       </div>
 
       {error && <FieldError>{error}</FieldError>}
@@ -196,14 +168,15 @@ export function InviteForm({
           onClick={() =>
             onSubmit({
               inviteeId: inviteeId!,
-              startsAt: new Date(startsLocal).toISOString(),
+              startsAt: now ? undefined : new Date(startsLocal).toISOString(),
+              startNow: now,
               durationMinutes: duration,
               topic: topic.trim(),
               cohostIds,
             })
           }
         >
-          {pending ? "Sending…" : "Send invite"}
+          {now ? (pending ? "Starting…" : "Start call") : pending ? "Booking…" : "Book call"}
         </Button>
         {onCancel && (
           <Button variant="ghost" onClick={onCancel} disabled={pending}>
@@ -215,18 +188,122 @@ export function InviteForm({
   );
 }
 
+/** When + how long, shared by booking and editing. */
+function CallTimeFields({
+  withTime,
+  startsLocal,
+  onStartsLocal,
+  duration,
+  onDuration,
+}: {
+  withTime: boolean;
+  startsLocal: string;
+  onStartsLocal: (v: string) => void;
+  duration: number;
+  onDuration: (v: number) => void;
+}) {
+  const options = DURATIONS.includes(duration) ? DURATIONS : [...DURATIONS, duration].sort((a, b) => a - b);
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {withTime && (
+        <div>
+          <Label>When</Label>
+          <Input
+            type="datetime-local"
+            value={startsLocal}
+            onChange={(e) => onStartsLocal(e.target.value)}
+          />
+        </div>
+      )}
+      <div>
+        <Label>How long</Label>
+        <Select value={String(duration)} onChange={(e) => onDuration(Number(e.target.value))}>
+          {options.map((d) => (
+            <option key={d} value={d}>
+              {d} minutes
+            </option>
+          ))}
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 /**
- * "Also joining (optional)": search the team, add people as removable chips.
- *
- * Shared by the invite form, the team's call-request queue and Add people on
- * a call that is already booked (components/live/add-to-call.tsx), so every
- * way of putting someone on a 1:1 puts them there the same way. Search-first
- * rather than a list, like the student picker, because the team is a
- * directory. Renders nothing when there is nobody to add. Stops at
- * MAX_CALL_COHOSTS, the same number the server refuses past, so the limit is
- * met here rather than as an error after Send — counting the co-hosts a
- * booked call already has (`already`), because the server's limit is on the
- * whole staff side, not on one batch of additions.
+ * Move a booked call, change its length or topic (updateInvite). The student
+ * is told; a new time can be declined.
+ */
+export function EditCallForm({
+  invite,
+  onClose,
+}: {
+  invite: Pick<CallInvite, "id" | "startsAt" | "durationMinutes" | "topic">;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [startsLocal, setStartsLocal] = useState(() => toLocalInput(invite.startsAt));
+  const [duration, setDuration] = useState(invite.durationMinutes);
+  const [topic, setTopic] = useState(invite.topic ?? "");
+  const [error, setError] = useState<string | undefined>();
+  const [pending, start] = useTransition();
+  const inFlight = useRef(false);
+
+  function save() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setError(undefined);
+    start(async () => {
+      try {
+        const result = await updateInvite({
+          id: invite.id,
+          startsAt: new Date(startsLocal).toISOString(),
+          durationMinutes: duration,
+          topic,
+        });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        router.refresh();
+        onClose();
+      } catch (err: any) {
+        setError(getActionError(err));
+      } finally {
+        inFlight.current = false;
+      }
+    });
+  }
+
+  return (
+    <div className="mt-4 space-y-3 border-t border-line pt-4">
+      <CallTimeFields
+        withTime
+        startsLocal={startsLocal}
+        onStartsLocal={setStartsLocal}
+        duration={duration}
+        onDuration={setDuration}
+      />
+      <div>
+        <Label>Topic (optional)</Label>
+        <Input value={topic} onChange={(e) => setTopic(e.target.value)} />
+      </div>
+      {error && <FieldError>{error}</FieldError>}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={pending || !startsLocal} onClick={save}>
+          {pending ? "Saving…" : "Save"}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={pending} onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Also joining": search the team, add people as removable chips. Shared by
+ * booking, the request queue and Add people, so everyone lands on a call the
+ * same way. Stops at MAX_CALL_COHOSTS, counting co-hosts the call already has.
  */
 export function CohostPicker({
   staff,
@@ -234,22 +311,14 @@ export function CohostPicker({
   onChange,
   label = "Also joining (optional)",
   already = 0,
-  hint,
   autoFocus = false,
 }: {
   staff: InviteeOption[];
   value: string[];
   onChange: (ids: string[]) => void;
-  /**
-   * The field's label. The booking forms' default says it is optional,
-   * which is true there and false on Add people, where it is the whole form.
-   */
   label?: string;
   /** Co-hosts the call already has. They count toward MAX_CALL_COHOSTS. */
   already?: number;
-  /** Replaces the sentence under the field, for a form that needs to say more. */
-  hint?: React.ReactNode;
-  /** Focus the search box on mount — for a picker opened by a click. */
   autoFocus?: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -259,12 +328,7 @@ export function CohostPicker({
     if (!q || full) return [];
     return staff
       .filter((s) => !value.includes(s.id))
-      .filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.email.toLowerCase().includes(q) ||
-          (s.teamName ?? "").toLowerCase().includes(q),
-      )
+      .filter((s) => matchesQuery(s, q))
       .slice(0, 6);
   }, [staff, query, value, full]);
   const chosen = value
@@ -306,11 +370,8 @@ export function CohostPicker({
         <Input
           value={full ? "" : query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={
-            full
-              ? `That's the most — ${MAX_CALL_COHOSTS} from the team`
-              : "Add people from the team"
-          }
+          placeholder={full ? `That's the most (${MAX_CALL_COHOSTS})` : "Add people from the team"}
+          aria-label={label}
           disabled={full}
           autoFocus={autoFocus}
           className="pl-9"
@@ -335,35 +396,31 @@ export function CohostPicker({
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm text-ink">{s.name}</span>
-                  <span className="block truncate text-xs text-ink-faint">
-                    {s.email}
-                    {s.teamName ? ` · ${s.teamName}` : ""}
-                  </span>
+                  {detailOf(s) ? (
+                    <span className="block truncate text-xs text-ink-faint">{detailOf(s)}</span>
+                  ) : null}
                 </span>
               </button>
             </li>
           ))}
         </ul>
       )}
-      <p className="mt-1.5 text-xs text-ink-faint">
-        {hint ?? (
-          <>
-            Still one student. Add up to {MAX_CALL_COHOSTS} from the team — a
-            handful works best, because everyone&rsquo;s video goes to
-            everyone. They can join, end or cancel the call, and watch it back.
-          </>
-        )}
-      </p>
     </div>
   );
 }
 
-/** Tomorrow at the next round hour — a sane default that is never in the past. */
-function defaultStart(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setMinutes(0, 0, 0);
-  d.setHours(d.getHours() + 1);
+/** An ISO instant as a datetime-local value in the viewer's zone. */
+export function toLocalInput(iso: string | Date): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** The next round hour (at least 15 minutes away), as a datetime-local value. */
+export function defaultStart(): string {
+  const d = new Date(Date.now() + 15 * 60_000);
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  return toLocalInput(d);
 }

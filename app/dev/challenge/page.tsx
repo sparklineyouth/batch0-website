@@ -20,7 +20,7 @@ import { challengeToInitial } from "@/app/admin/challenges/challenge-initial";
  * fixtures — no auth, no database writes, every state one URL away.
  *
  * Gated like app/dev/apply: renders on localhost and branch previews, 404s on
- * production (VERCEL_ENV, not NODE_ENV — see app/dev/live).
+ * production (VERCEL_ENV, not NODE_ENV — see app/dev/apply).
  *
  *   ?view=event|submit|editor   (editor saves are still permission-checked)
  *   ?state=signedout|signedin|registered|draft|submitted|winner|closed

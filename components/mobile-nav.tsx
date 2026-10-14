@@ -12,6 +12,7 @@ import {
   STAFF_LINKS,
   filterStudentNavItem,
   filterAdminNavItem,
+  navItemMatches,
   type NavGroup,
 } from "@/lib/nav-config";
 import { can, canAccessAdmin, type Capabilities } from "@/lib/permissions";
@@ -67,7 +68,6 @@ export function MobileNav({
   kind,
   role,
   caps,
-  aiAccess,
   discordEnabled,
   enrolled = true,
   referralsEnabled = true,
@@ -78,7 +78,6 @@ export function MobileNav({
   role?: Role;
   /** Viewer permissions. Drives admin nav filtering and the cross-panel links. */
   caps?: Capabilities | null;
-  aiAccess?: boolean;
   discordEnabled?: boolean;
   enrolled?: boolean;
   referralsEnabled?: boolean;
@@ -156,7 +155,6 @@ export function MobileNav({
               // mean "not restricted" for the optional props.
               if (
                 !filterStudentNavItem(it, {
-                  aiAccess: aiAccess !== false,
                   discordEnabled: discordEnabled !== false,
                   referralsEnabled: referralsEnabled !== false,
                   enrolled,
@@ -177,7 +175,7 @@ export function MobileNav({
             }
             return true;
           })
-          .filter((it) => (q ? it.label.toLowerCase().includes(q) : true));
+          .filter((it) => navItemMatches(it, q));
         return { ...g, items };
       })
       .filter((g) => g.items.length > 0);
@@ -185,7 +183,6 @@ export function MobileNav({
     rawGroups,
     kind,
     caps,
-    aiAccess,
     discordEnabled,
     enrolled,
     referralsEnabled,

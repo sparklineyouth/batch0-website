@@ -1,14 +1,38 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMissingSchemaError } from "@/lib/schema-ready";
+import type { EventAccess } from "@/lib/live-access";
+import { liveParticipants } from "@/lib/live-rooms";
+import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import {
-  normalizeAudienceMode,
+  audienceCanSeeEachOther,
+  pollVisibleToAudience,
   type AssetKind,
   type AudienceMode,
   type ChatMessage,
   type EventAsset,
   type EventSpeaker,
+  type RoomQuestion,
   type WebinarPoll,
 } from "@/lib/webinars";
+import {
+  laterIso,
+  readFrom,
+  CHAT_PAGE,
+  PANEL_PARTS,
+  type PanelPeople,
+  type PanelRead,
+  type PanelReadPart,
+  type WebinarPanelInitial,
+} from "@/lib/webinar-panel";
+import {
+  listQuestionsForAsker,
+  listQuestionsForEvent,
+  listVisibleQuestions,
+  questionsVotedBy,
+} from "@/lib/webinar-questions";
+
+export type { WebinarPanelInitial } from "@/lib/webinar-panel";
 
 /**
  * Service-role reads for webinars — speakers, files, chat and polls.
@@ -32,70 +56,6 @@ import {
  *    runs, lib/live-access.ts) and passes the answer down. A function that guesses its own permissions is
  *    a function with two sources of truth.
  */
-
-// ---------------------------------------------------------------------------
-// The event, as a webinar
-// ---------------------------------------------------------------------------
-
-export type WebinarEvent = {
-  id: string;
-  title: string;
-  description: string | null;
-  type: string;
-  startsAt: string;
-  endsAt: string | null;
-  liveMode: string;
-  audienceMode: AudienceMode;
-  autoRecord: boolean;
-  autoShare: boolean;
-  premiereSeconds: number | null;
-  qaOpensAt: string | null;
-  liveStartedAt: string | null;
-  liveEndedAt: string | null;
-  displayViewerCount: number | null;
-  recordingUrl: string | null;
-  cohortId: string | null;
-  visibility: string;
-};
-
-/**
- * The columns every webinar surface needs, in one string.
- *
- * Shared so the live page, the join action and the follow-up cron cannot end
- * up reading different subsets and disagreeing about what an event is. Note
- * this is the list passed to an RLS-scoped client as often as to the admin
- * one — it names no column a student may not see.
- */
-export const WEBINAR_EVENT_COLUMNS =
-  "id, title, description, type, starts_at, ends_at, live_mode, audience_mode, " +
-  "auto_record, auto_share, premiere_seconds, qa_opens_at, live_started_at, " +
-  "live_ended_at, display_viewer_count, recording_url, cohort_id, visibility";
-
-export function toWebinarEvent(row: any): WebinarEvent {
-  return {
-    id: row.id,
-    title: row.title,
-    description: row.description ?? null,
-    type: row.type,
-    startsAt: row.starts_at,
-    endsAt: row.ends_at ?? null,
-    liveMode: row.live_mode,
-    // Normalised rather than cast. A row written before 0084 has no value here
-    // at all, and `private` is the answer that discloses least — see the note
-    // on normalizeAudienceMode.
-    audienceMode: normalizeAudienceMode(row.audience_mode),
-    autoRecord: !!row.auto_record,
-    autoShare: !!row.auto_share,
-    premiereSeconds: row.premiere_seconds ?? null,
-    qaOpensAt: row.qa_opens_at ?? null,
-    liveStartedAt: row.live_started_at ?? null,
-    liveEndedAt: row.live_ended_at ?? null,
-    displayViewerCount: row.display_viewer_count ?? null,
-    recordingUrl: row.recording_url ?? null,
-    cohortId: row.cohort_id ?? null,
-    visibility: row.visibility,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Speakers
@@ -127,7 +87,7 @@ export async function listSpeakers(
     .order("created_at", { ascending: true })
     .limit(20);
   if (error) {
-    if (!isMissingTable(error)) {
+    if (!isMissingSchemaError(error)) {
       console.error("[webinars] speaker read failed", error.message);
     }
     return [];
@@ -174,7 +134,7 @@ export async function listAssets(
     // far below anything that would hurt.
     .limit(500);
   if (error) {
-    if (!isMissingTable(error)) {
+    if (!isMissingSchemaError(error)) {
       console.error("[webinars] asset read failed", error.message);
     }
     return [];
@@ -249,7 +209,7 @@ export async function signAssets(
 // ---------------------------------------------------------------------------
 
 const CHAT_SELECT =
-  "id, event_id, author_id, body, is_host, approved_at, removed_at, pinned, created_at, " +
+  "id, author_id, body, is_host, approved_at, removed_at, pinned, created_at, " +
   "author:profiles!webinar_messages_author_id_fkey(full_name)";
 
 /** PostgREST returns an embed as an object or a one-element array. */
@@ -257,22 +217,28 @@ function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
 
-function toChatMessage(row: any, readerId: string | null): ChatMessage {
+/** What a student is called where names are withheld (guest speakers). */
+const WITHHELD_NAME = "A student";
+
+function toChatMessage(
+  row: any,
+  readerId: string,
+  withholdNames: boolean,
+): ChatMessage {
   const author = one<any>(row.author);
+  const mine = row.author_id === readerId;
   return {
     id: row.id,
-    eventId: row.event_id,
-    authorId: row.author_id,
-    // "You" for your own, exactly as askQuestion echoes a question back. It
-    // also means a room in `private` mode — where the only messages a viewer
-    // can read are their own — never renders a name at all.
-    authorName:
-      readerId && row.author_id === readerId
-        ? "You"
-        : author?.full_name || "A student",
+    authorName: mine
+      ? "You"
+      : withholdNames && !row.is_host
+        ? WITHHELD_NAME
+        : author?.full_name || WITHHELD_NAME,
+    mine,
     body: row.body,
     isHost: !!row.is_host,
     approvedAt: row.approved_at ?? null,
+    removedAt: row.removed_at ?? null,
     pinned: !!row.pinned,
     createdAt: row.created_at,
   };
@@ -281,82 +247,81 @@ function toChatMessage(row: any, readerId: string | null): ChatMessage {
 /**
  * The room's chat, shaped by who is asking.
  *
- * `forModerator` is the whole of the privacy split, and it is passed in rather
- * than derived here for the reason given at the top of this file. A moderator
- * (staff host or guest speaker) gets everything including what is pending and
- * what was removed — that IS the moderation queue. Everybody else gets what the
- * room can see, plus their own pending messages, which they must keep seeing:
- * a student whose message vanished on send would reasonably conclude the room
- * is broken and send it again.
+ * Removed rows are never returned — to anyone, moderators included — so a
+ * removal sticks on every refresh. A moderator also gets pending rows (the
+ * queue); everyone else gets approved rows plus their own pending ones.
  *
- * `since` makes a bump cheap. The room re-reads from its last cursor rather
- * than re-reading the whole feed, so a busy room costs one small query per
- * message per client instead of one large one.
+ * Without `since`: the NEWEST `CHAT_PAGE`, oldest first. With it: rows created
+ * after `since` minus the overlap (see CHAT_CURSOR_OVERLAP_MS).
  */
 export async function listChat({
   eventId,
   readerId,
   forModerator,
+  withholdNames,
   since,
-  limit = 200,
 }: {
   eventId: string;
-  readerId: string | null;
+  readerId: string;
   forModerator: boolean;
-  since?: string | null;
-  limit?: number;
-}): Promise<ChatMessage[]> {
+  withholdNames: boolean;
+  since: string | null;
+}): Promise<{ messages: ChatMessage[]; cursor: string | null }> {
   const admin = createAdminClient();
   let query = admin
     .from("webinar_messages")
     .select(CHAT_SELECT)
-    .eq("event_id", eventId);
-
+    .eq("event_id", eventId)
+    .is("removed_at", null);
   if (!forModerator) {
-    // Removed messages are gone for everyone but a moderator, including for
-    // the person who wrote them — a host who takes a message down has taken it
-    // down, and leaving it visible to its author invites them to send it again.
-    query = query.is("removed_at", null);
-    if (readerId) {
-      // Approved, or mine. PostgREST's `or` takes a comma-separated filter
-      // list; `approved_at.not.is.null` is its spelling of IS NOT NULL.
-      query = query.or(`approved_at.not.is.null,author_id.eq.${readerId}`);
-    } else {
-      query = query.not("approved_at", "is", null);
-    }
+    query = query.or(`approved_at.not.is.null,author_id.eq.${readerId}`);
   }
-  if (since) query = query.gt("created_at", since);
-
+  if (since) query = query.gt("created_at", readFrom(since));
+  const ascending = !!since;
   const { data, error } = await query
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
-    .limit(limit);
+    .order("created_at", { ascending })
+    .order("id", { ascending })
+    .limit(CHAT_PAGE);
   if (error) {
-    if (!isMissingTable(error)) {
+    if (!isMissingSchemaError(error)) {
       console.error("[webinars] chat read failed", error.message);
     }
-    return [];
+    return { messages: [], cursor: since };
   }
-  return (data ?? []).map((r) => toChatMessage(r, readerId));
+  const rows = ascending ? (data ?? []) : [...(data ?? [])].reverse();
+  const messages = rows.map((r) => toChatMessage(r, readerId, withholdNames));
+  return {
+    messages,
+    cursor: laterIso(since, messages.at(-1)?.createdAt ?? null),
+  };
 }
 
-/** The one message a host has pinned, if any. */
-export async function pinnedMessage(
-  eventId: string,
-  readerId: string | null,
-): Promise<ChatMessage | null> {
+/** The one message a host has pinned, if the reader may see it. */
+export async function pinnedMessage({
+  eventId,
+  readerId,
+  forModerator,
+  withholdNames,
+}: {
+  eventId: string;
+  readerId: string;
+  forModerator: boolean;
+  withholdNames: boolean;
+}): Promise<ChatMessage | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  let query = admin
     .from("webinar_messages")
     .select(CHAT_SELECT)
     .eq("event_id", eventId)
     .eq("pinned", true)
-    .is("removed_at", null)
+    .is("removed_at", null);
+  if (!forModerator) query = query.not("approved_at", "is", null);
+  const { data, error } = await query
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error || !data) return null;
-  return toChatMessage(data, readerId);
+  return toChatMessage(data, readerId, withholdNames);
 }
 
 // ---------------------------------------------------------------------------
@@ -366,15 +331,10 @@ export async function pinnedMessage(
 /**
  * Polls for one event, with the tally and the reader's own vote.
  *
- * Three queries rather than one join, deliberately: a tally is a group-by that
- * PostgREST cannot express, and doing it in SQL would mean an RPC — a database
- * function to keep in step with a migration, for an aggregate over at most a
- * few hundred rows. Counting in JavaScript is the cheaper thing to own.
- *
- * `tally` is returned even when `results_visible` is false; the CALLER decides
- * whether to send it on. That split is on purpose — a host always sees the
- * numbers, and hiding them from the audience is a rendering decision made
- * where the role is known.
+ * A moderator gets every poll, drafts included. Everyone else gets what
+ * `pollVisibleToAudience` allows (open, or closed with a result), and a hidden
+ * result arrives zeroed. A tally is counted here rather than in SQL: a
+ * group-by PostgREST cannot express, over a few hundred rows.
  */
 export async function listPolls({
   eventId,
@@ -382,54 +342,48 @@ export async function listPolls({
   forModerator,
 }: {
   eventId: string;
-  readerId: string | null;
+  readerId: string;
   forModerator: boolean;
 }): Promise<WebinarPoll[]> {
   const admin = createAdminClient();
-  let pollQuery = admin
+  const { data: polls, error } = await admin
     .from("webinar_polls")
-    .select(
-      "id, event_id, question, options, open, results_visible, created_at",
-    )
-    .eq("event_id", eventId);
-  // A draft poll is the host's private preparation. Showing one to the audience
-  // before it opens would give away where the talk is going.
-  if (!forModerator) pollQuery = pollQuery.eq("open", true);
-
-  const { data: polls, error } = await pollQuery
+    .select("id, event_id, question, options, open, results_visible, created_at")
+    .eq("event_id", eventId)
     .order("created_at", { ascending: true })
     .limit(50);
   if (error) {
-    if (!isMissingTable(error)) {
+    if (!isMissingSchemaError(error)) {
       console.error("[webinars] poll read failed", error.message);
     }
     return [];
   }
-  const rows = polls ?? [];
+  const rows = (polls ?? []) as any[];
   if (rows.length === 0) return [];
 
-  const ids = rows.map((p: any) => p.id);
   const { data: votes } = await admin
     .from("webinar_poll_votes")
     .select("poll_id, voter_id, choice")
-    .in("poll_id", ids)
+    .in(
+      "poll_id",
+      rows.map((p) => p.id),
+    )
     .limit(5000);
 
   const tallies = new Map<string, number[]>();
   const mine = new Map<string, number>();
-  for (const p of rows as any[]) {
+  for (const p of rows) {
     tallies.set(p.id, new Array(optionsOf(p).length).fill(0));
   }
   for (const v of (votes ?? []) as any[]) {
     const t = tallies.get(v.poll_id);
-    // A choice outside the option range cannot be written (the RLS check bounds
-    // it against jsonb_array_length) but a poll whose options were rewritten by
-    // hand could strand one. Ignoring it beats an undefined++ that renders NaN.
+    // A choice outside the options cannot be written (RLS bounds it), but a
+    // hand-edited poll could strand one; ignoring it beats rendering NaN.
     if (t && v.choice >= 0 && v.choice < t.length) t[v.choice] += 1;
-    if (readerId && v.voter_id === readerId) mine.set(v.poll_id, v.choice);
+    if (v.voter_id === readerId) mine.set(v.poll_id, v.choice);
   }
 
-  return (rows as any[]).map((p) => ({
+  const all: WebinarPoll[] = rows.map((p) => ({
     id: p.id,
     eventId: p.event_id,
     question: p.question,
@@ -440,6 +394,10 @@ export async function listPolls({
     myChoice: mine.has(p.id) ? mine.get(p.id)! : null,
     createdAt: p.created_at,
   }));
+  if (forModerator) return all;
+  return all
+    .filter(pollVisibleToAudience)
+    .map((p) => (p.resultsVisible ? p : { ...p, tally: p.tally.map(() => 0) }));
 }
 
 /** jsonb comes back parsed, but a hand-written row could hold anything. */
@@ -447,6 +405,158 @@ function optionsOf(row: any): string[] {
   const raw = row.options;
   if (!Array.isArray(raw)) return [];
   return raw.map((o) => String(o));
+}
+
+// ---------------------------------------------------------------------------
+// The side panel, in one read
+// ---------------------------------------------------------------------------
+
+/** Who is reading, as the room gate resolved them. */
+export type PanelReader = {
+  eventId: string;
+  userId: string;
+  audienceMode: AudienceMode;
+  /** Staff or a guest speaker on this event. */
+  isModerator: boolean;
+  /** False for a guest speaker: students appear as "A student". */
+  discloseNames: boolean;
+};
+
+/**
+ * Chat, questions and polls for one reader. CALLERS MUST GATE FIRST (the
+ * room gate or the page's access check); this only shapes by the role given.
+ *
+ * Questions follow the audience rule: a moderator reads the whole queue; a
+ * viewer reads approved + own where the audience may see itself, and only
+ * their own in a `private` room.
+ */
+export async function loadPanelState(
+  reader: PanelReader,
+  opts: { parts: readonly PanelReadPart[]; since: string | null },
+): Promise<PanelRead> {
+  const { eventId, userId, isModerator } = reader;
+  const chatOn = audienceCanSeeEachOther(reader.audienceMode);
+  const withholdNames = !reader.discloseNames;
+  const want = new Set(opts.parts);
+
+  const [chat, pinned, questions, polls, people] = await Promise.all([
+    want.has("chat") && chatOn
+      ? listChat({
+          eventId,
+          readerId: userId,
+          forModerator: isModerator,
+          withholdNames,
+          since: opts.since,
+        })
+      : null,
+    want.has("chat") && chatOn
+      ? pinnedMessage({ eventId, readerId: userId, forModerator: isModerator, withholdNames })
+      : null,
+    want.has("qa") ? readQuestions(reader, chatOn) : null,
+    want.has("poll")
+      ? listPolls({ eventId, readerId: userId, forModerator: isModerator })
+      : null,
+    want.has("people") && isModerator ? readPeople(reader) : null,
+  ]);
+
+  const read: PanelRead = { audienceMode: reader.audienceMode };
+  if (want.has("chat")) {
+    read.chat = {
+      messages: chat?.messages ?? [],
+      pinned,
+      full: !opts.since,
+      cursor: chat?.cursor ?? opts.since,
+    };
+  }
+  if (questions) read.questions = questions;
+  if (polls) read.polls = polls;
+  if (people) read.people = people;
+  return read;
+}
+
+/**
+ * Who is here, for a host: the same attendance-backed roster the engine
+ * reconciles against (liveParticipants), names only, the reader left out. A
+ * guest speaker gets the count and never the viewers' names.
+ */
+async function readPeople(reader: PanelReader): Promise<PanelPeople> {
+  const peers = (
+    await liveParticipants(
+      reader.eventId,
+      `event:${reader.eventId}`,
+      PEER_TIMEOUT_MS,
+      reader.discloseNames,
+    )
+  ).filter((p) => p.peerId !== reader.userId);
+  const viewers = peers.filter((p) => p.role !== "host");
+  return {
+    hosts: peers.filter((p) => p.role === "host").map((p) => p.name || "Host"),
+    viewers: reader.discloseNames ? viewers.map((p) => p.name || "Student") : null,
+    watching: viewers.length,
+  };
+}
+
+async function readQuestions(
+  reader: PanelReader,
+  chatOn: boolean,
+): Promise<RoomQuestion[]> {
+  const { eventId, userId } = reader;
+  const rows = reader.isModerator
+    ? await listQuestionsForEvent(eventId)
+    : chatOn
+      ? await listVisibleQuestions(eventId, userId)
+      : await listQuestionsForAsker(eventId, userId);
+  const voted = chatOn
+    ? await questionsVotedBy(
+        userId,
+        rows.map((q) => q.id),
+      )
+    : new Set<string>();
+  return rows.map((q) => {
+    const mine = q.askerId === userId;
+    return {
+      id: q.id,
+      askerName: mine ? "You" : reader.discloseNames ? q.askerName : WITHHELD_NAME,
+      mine,
+      body: q.body,
+      status: q.status,
+      voteCount: q.voteCount,
+      voted: voted.has(q.id),
+      spotlighted: q.spotlighted,
+      approvedAt: q.approvedAt,
+      createdAt: q.createdAt,
+    };
+  });
+}
+
+/**
+ * The panel's server-rendered first state, for the live page. `access` is the
+ * page's own resolveEventAccess answer for this event; the page has already
+ * applied the room window.
+ */
+export async function loadWebinarPanelInitial(
+  eventId: string,
+  access: EventAccess,
+): Promise<WebinarPanelInitial> {
+  if (access.event.id !== eventId) {
+    throw new Error("loadWebinarPanelInitial: access is for another event");
+  }
+  const read = await loadPanelState(
+    {
+      eventId,
+      userId: access.userId,
+      audienceMode: access.event.audienceMode,
+      isModerator: access.isHost,
+      discloseNames: access.discloseNames,
+    },
+    { parts: PANEL_PARTS, since: null },
+  );
+  return {
+    ...read,
+    chat: read.chat ?? { messages: [], pinned: null, full: true, cursor: null },
+    questions: read.questions ?? [],
+    polls: read.polls ?? [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -505,7 +615,7 @@ export async function listAttendance(
     admin.from("events").select("live_ended_at").eq("id", eventId).maybeSingle(),
   ]);
   if (error) {
-    if (!isMissingTable(error)) {
+    if (!isMissingSchemaError(error)) {
       console.error("[webinars] attendance read failed", error.message);
     }
     return [];
@@ -533,22 +643,4 @@ export async function listAttendance(
         minutes: Math.max(0, Math.round((end - start) / 60_000)),
       };
     });
-}
-
-/**
- * Is this the "0084 hasn't been run yet" error rather than a real failure?
- *
- * The same shape as `isMissingTable` in lib/live-rooms.ts, and it exists for
- * the same reason: a deploy can reach production before the SQL is applied by
- * hand in the Supabase editor, and when it does, every webinar must degrade to
- * "the new panels are empty" rather than to "nobody can join". PostgREST
- * reports an unknown table as PGRST205 and Postgres as 42P01; both are checked
- * because the message text is not a stable contract.
- */
-function isMissingTable(error: { code?: string; message?: string }): boolean {
-  return (
-    error.code === "PGRST205" ||
-    error.code === "42P01" ||
-    /does not exist|schema cache/i.test(error.message ?? "")
-  );
 }

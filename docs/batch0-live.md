@@ -1,442 +1,200 @@
-# batch0 Live — the built-in webinar and call provider
+# batch0 Live — webinars and 1:1 calls
 
-Webinars and 1:1 calls run on infrastructure this project already owns. No
-video vendor, no new account, no new environment variable.
+Webinars and 1:1 calls run on infrastructure this project already owns: no
+video vendor, no account, no required environment variable. Media goes
+browser to browser over WebRTC; the only thing we run is signalling, over
+Supabase Realtime.
 
-This replaced Daily. The [live-video](./live-video.md) document has the full
-history; the short version is that the Daily *integration* was fine and the
-Daily *account* cannot start a media session — every join, including into a
-bare public room with no properties set, is refused with
-`account-missing-payment-method`. That is an account-level block no code
-change clears, so live video moved onto something we control.
+| Piece | What runs it |
+| --- | --- |
+| Signalling | Supabase Realtime broadcast (~100 ms round trip) |
+| Media | Browser-to-browser WebRTC |
+| NAT traversal | Public STUN; TURN optional (below) |
+| Attendance | `live_participants` (0076) |
+| Primary host | `events.live_primary_host_id` (0096) |
+| Recording | `recording_sessions` + private `recordings` bucket (0095), see [recording.md](recording.md) |
 
----
+A **webinar** is a star: each host sends one stream per viewer, each viewer
+holds exactly one connection per host and is never told another viewer
+exists. A **1:1 call** is a small mesh: everyone sends to everyone.
 
-## How it works
-
-A webinar is a host (or a few — see [Who is a host](#who-is-a-host))
-broadcasting to N viewers. That is a **star**, not a mesh:
-
-```
-                 ┌─────────┐
-                 │  HOST   │  camera + mic + screen
-                 └────┬────┘
-        ┌─────────────┼─────────────┐
-        │             │             │        one send-only connection
-        ▼             ▼             ▼        per viewer
-   ┌────────┐    ┌────────┐    ┌────────┐
-   │viewer A│    │viewer B│    │viewer C│    each: one recv-only
-   └────────┘    └────────┘    └────────┘    connection, to the host
-
-   Viewers are never connected to each other, and are never
-   told that another viewer exists.
-```
-
-Media goes **browser to browser** over WebRTC and never touches our servers.
-The only thing we run is signalling — the short exchange of offers, answers,
-and ICE candidates that lets two browsers find each other — and that rides
-**Supabase Realtime**, which is already in the stack and already used by
-`components/notification-bell.tsx`.
-
-| Piece | What runs it | Cost |
-| --- | --- | --- |
-| Signalling | Supabase Realtime broadcast (~100ms round trip) | included |
-| Media | Browser-to-browser WebRTC | free |
-| NAT traversal | Public STUN | free |
-| Relay for hostile networks | TURN (optional, see below) | only if you add one |
-| Attendance | `live_participants` (migration 0076) | included |
-| Q&A | `webinar_questions` (migration 0060), unchanged | included |
-
-### Files
+## Files
 
 | File | Role |
 | --- | --- |
-| `lib/live.ts` | Pure rules: the audience window, `roomAccess` (who may be in a room now, by role), `eventLiveStatus` (what a list shows). Unit-tested. |
-| `lib/call-lifecycle.ts` | Pure rules for a 1:1: `callPhase` (where a call stands, from its status and the clock), who may cancel, answer, end it or add people to it. Unit-tested; see docs/live-video.md. |
-| `lib/call-roster.ts` | Pure rules for a 1:1's roster while it runs: folding the heartbeat's peers into the session (`mergeCallPeers`) and keeping the staff list the room elects its recorder from. Import-free, unit-tested. |
-| `lib/live-signal.ts` | Pure wire protocol: channel names, message shapes, media slots, and the client's reaction to a status answer (`nextStatusAction`). Import-free, unit-tested. |
-| `lib/live-access.ts` | Server-only. **Who someone is in a room**, computed once: `resolveEventAccess` / `resolveCallAccess`, and the identity-only `leaveInternal`. Every gate below calls it. |
-| `lib/live-rooms.ts` | Server-only. Derives channel keys, issues credentials, records attendance, publishes the server's hints. Holds the room secret. |
-| `app/live/actions.ts` | The server actions: `joinRoom`, `announcePresence`, `leaveRoom`, `listAudience`. The access-control surface for media. (A 1:1's End call and status poll are `endCall` / `getCallRoomStatus` in `app/calls/actions.ts`.) |
-| `app/api/live/leave/route.ts` | The same leave as `leaveRoom`, as a `sendBeacon` target for a closing tab. |
-| `app/dashboard/events/[id]/live/room-actions.ts` | Everything in a webinar that isn't video — chat, Q&A, polls — plus `endLive` / `reopenLive`. |
-| `components/live/use-live-session.ts` | The WebRTC engine. Runs both webinars and 1:1s. |
-| `components/live/broadcast-room.tsx` | The room UI. Reuses `PreJoin`, `VideoTile`, `CallControls`, `QAPanel`. |
-| `supabase/migrations/0076_builtin_live.sql` | Attendance table + RLS. Optional — see below. |
+| `lib/live.ts` | Pure rules: windows (`roomWindow`, `roomAccess`, `callRoomAccess`), `webinarHasBegun`, `mayEndCall`, list status. Unit-tested. |
+| `lib/live-signal.ts` | Pure wire protocol: topics, messages, media slots, encodings, `nextStatusAction`. Unit-tested. |
+| `lib/call-roster.ts`, `lib/call-lifecycle.ts` | A 1:1's roster folding and its lifecycle (`callPhase`, who may cancel/end/add). Unit-tested. |
+| `lib/live-access.ts` | Server-only: who someone is in a room (`resolveEventAccess`, `resolveCallAccess`), primary-host claims, `presentHosts`. |
+| `lib/live-rooms.ts` | Server-only: channel keys, credentials, attendance, the server's hints (`notifyStage`, `notifyCallChanged`). |
+| `app/live/actions.ts` | `joinRoom`, `announcePresence`, `leaveRoom`, `listAudience`, `setPrimaryHost`, `getHostingStatus`. |
+| `app/api/live/leave/route.ts` | The same leave, as a `sendBeacon` target for a closing tab. |
+| `app/dashboard/events/[id]/live/room-actions.ts` | A webinar's `endLive` / `reopenLive` / `fetchLiveState`. A 1:1's End call is `endCall` (`app/calls/actions.ts`). |
+| `components/live/use-live-session.ts` | The WebRTC engine (both shapes). Exposes `session.room`: primary, live stamps, `canEnd`, the running recording. |
+| `components/live/use-local-media.ts`, `use-mic-level.ts`, `audio-output.ts` | Camera/mic (per-device status), the level meter, the speaker choice. |
+| `components/live/room/controller.tsx` | **The room**: phase machine, devices, presentation, session, recording, every exit. Renders the kit. |
+| `components/live/room/**` | The room UI kit (`LiveRoom`: green room, stage, tiles, control bar, deck presenter, end screens). Presentational; `/dev/live` renders every state on fake data (localhost only). |
+| `components/live/room/panel/*` | The webinar side panel (Chat · Q&A · Polls · People) and reactions; reads/writes through `app/api/live/panel`. |
+| `app/dashboard/{events,calls}/[id]/live/` | The pages and their bindings (`builtin-room.tsx`: server actions memoised on the room id). |
 
----
+## The room
 
-## Audience privacy
+`/dashboard/events/[id]/live` and `/dashboard/calls/[id]/live` render a
+full-viewport dark surface over the dashboard chrome (URLs unchanged, so
+emails, ICS files and cards keep working).
 
-A student must not be able to tell whether they are one of three people or one
-of thirty. With Daily that was a token flag (`hasPresence: false`). Here it is
-a property of the topology and of what the server is willing to say, which is
-a stronger guarantee — and it is enforced in four independent places:
+- **Green room** for everyone: camera preview, mic meter, device pickers,
+  test sound, mic test (viewers: speaker only). A webinar host sees **Start
+  webinar** when nobody is hosting, else **Join as co-host · Ana is hosting**
+  (`getHostingStatus`, never the caller, polled every 10 s, and read once more
+  when Join is pressed: if someone went live or started recording since, the
+  host stays to see it first); co-hosts join with camera and mic off. Before
+  the go-live window the button is **Enter room** with "students can join
+  from <time>". The recording notice is shown before Join whenever the room
+  records or will (calls always; webinars with auto-record, or a take running
+  — hosts learn that from the same 10 s poll, viewers once on entry).
+- **Main stage**: your own local pin, else a presentation (screen share or
+  slides; the primary's, else the most recent), else the webinar's primary
+  host, else (1:1) the other person with yourself as a PiP, else a grid.
+  Presentations are never cropped. Everyone else is in the filmstrip.
+- **Pin for everyone** (webinar staff): `setPrimaryHost` writes the primary;
+  the server publishes `room-changed` and every client reads the new
+  `session.room.primaryId`; the presser is told in a toast (their own stage
+  may not move: a local pin wins). The first host in becomes primary; a host
+  who joins while the primary is gone takes it over.
+- **Present**: share a screen, or present a PDF — from disk, or (webinars) the
+  event's uploaded deck (`event_assets` kind `deck`, PDF, signed for 6 h).
+  pdf.js draws it onto a 1920×1080 canvas whose stream goes through the screen
+  slot, so viewers and the recording need nothing new. While another
+  presentation holds the stage (the primary's always does), a presenter is
+  told so ("Cy is presenting. Yours shows when they stop.") and drives their
+  slides from a filmstrip card (n/N, previous, next, Stop).
+- **REC badge** for everyone from `session.room.recording` (and this tab's own
+  take). Record/Stop for webinar hosts and a call's staff. A recorded 1:1 also
+  keeps a line under the top bar saying who can watch it back (from the live
+  staff list). The end screens say "Recording saved." once this tab's upload
+  is done, or what went wrong (a take that lost its lease while draining).
+- **Rehearsal**: a host in the room before the go-live window (start − 60 min)
+  sees "Not live yet: students can join from <time>"; nothing is stamped and
+  Leave is the only way out. The heartbeat that crosses into the window stamps
+  `live_started_at` and the host is told "You're live".
 
-1. **The server never tells a viewer that another viewer exists.** `joinRoom`
-   filters the peer list by role (`lib/live-rooms.ts`, `credentialsFor`). A
-   viewer's payload contains hosts and nothing else. The audience is not
-   hidden from the response — it is never fetched into it.
+## Leave, End, and the other ways out
 
-2. **Channel names are HMACs.** Every inbox and lobby topic is
-   `HMAC(server secret, …)`, truncated to 128 bits. A viewer cannot derive
-   another viewer's inbox, so there is no channel it could subscribe to on
-   which someone else would appear.
+Every exit runs in one order (`controller.tsx`): the session goes down at once
+(`bye` to every peer — off air now), the recording's final part is captured
+(`recording.stop("leave")`, bounded), the presentation and devices stop, the
+phase changes. Any upload still running finishes behind the left/ended screen
+("keep this tab open"); the unload prompt stays armed while parts are unsent
+(held by `use-room-recording.ts` for the whole tab), and Rejoin, Reopen and
+Back wait for it first (bounded at 90 s).
 
-3. **A host↔viewer connection is negotiated entirely on the *viewer's* inbox**,
-   in both directions. This is the subtle one. If a viewer answered on the
-   *host's* inbox it would have to know that topic — and so would every other
-   viewer, any of whom could then subscribe and watch each answer go by,
-   carrying a user id and a display name. Routing both directions through the
-   viewer's own channel means a viewer never learns any topic but its own.
-   Pinned by `connectionTopic()` and its tests in `lib/live-signal.test.ts`.
-   The corollary: every host connected to a viewer listens on that viewer's
-   inbox, so with two broadcasters on air each hears the viewer's traffic for
-   the other. A viewer's `answer`, `ice` and `bye` therefore carry `to` (the
-   host they are for), and a host drops anything addressed to someone else
-   (`isAddressedTo`). A message without `to` — a tab from before the field —
-   is still accepted, so a deploy never splits a live room; as a backstop an
-   answer is applied only while our own offer is outstanding
-   (`shouldApplyAnswer`), and a stray one is dropped quietly.
-
-4. **RLS.** `live_participants` lets a host read the room and a viewer read
-   only their own row. There is deliberately no insert/update policy at all —
-   every write goes through a server action under the service role, because a
-   viewer able to insert its own row with `role: 'host'` would be a viewer who
-   can broadcast.
-
-**What's better than before:** Daily's `hasPresence: false` hid viewers from
-the *host* too, so nobody could tell whether anyone was watching. Here the
-host sees a live headcount and the audience still cannot see itself.
-
-Role is always derived server-side, never accepted from the client — see
-[Who is a host](#who-is-a-host). A guest speaker is a broadcaster who is
-deliberately **not** told names: they get a headcount and opaque ids, never
-the attendance list (`discloseNames` is false; `docs/webinars.md` has the
-detail). None of the End / Leave machinery below carries a name either: the
-server's `room-changed` hint is content-free, and a departure is a `bye` on the
-departing viewer's own inbox.
-
----
-
-## Why the connection is negotiated exactly once
-
-Renegotiation is where naive WebRTC falls apart in front of an audience: the
-host switches to slides, twelve connections renegotiate at once, two collide
-mid-exchange, and those two students get a frozen frame with nothing in the
-console to explain it.
-
-So it never renegotiates. Every connection is built with a fixed set of
-transceivers — **camera, screen, audio, in that order, always all three**, even
-before the host has a screen to share — and the SDP is then settled for the
-life of the call:
-
-- camera off → `track.enabled = false`
-- start presenting → `sender.replaceTrack(screenTrack)`
-- stop presenting → `replaceTrack(null)`
-
-None of those touch the SDP. The fixed order is also how a receiver tells
-camera from screen: slot *i* is transceiver *i* is `mid` *i*. No side-channel
-message, nothing to fall out of sync.
-
-Glare is impossible rather than merely unlikely: a host always offers to a
-viewer, and two hosts break the tie by comparing peer ids.
-
----
-
-## Discovery, and how it heals itself
-
-The ordering problem is that students arrive before the host does.
-
-- A host coming online publishes `host-online` to the **stage** channel, which
-  every participant subscribes to. Every waiting viewer re-announces at once,
-  so a room full of students assembles in about one round trip.
-- A viewer announces itself through a **server action**, never by
-  broadcasting. The server then publishes into the hosts-only **lobby**
-  channel with the service role. That indirection is the point: if viewers
-  published to the lobby directly they would need its key, and a viewer with
-  that key could watch every other arrival.
-- Everyone re-announces every `HEARTBEAT_MS` (12s). This is a self-healing
-  interval, not a keepalive — it is what lets a host who reloads mid-webinar
-  pick the whole room back up without anyone clicking anything.
-- A connection stuck mid-negotiation past `STUCK_MS` (12s) is torn down and
-  rebuilt by the next announcement. The retry path is the same code as the
-  first attempt, so there is no separate recovery mechanism to get wrong.
-- The heartbeat is also how the server says **stop**. `announcePresence`
-  answers with a status (`ok | ended | cancelled | closed | revoked | error`,
-  `RoomStatus` in `lib/live.ts`), and `nextStatusAction` decides what the
-  client does: `ended` and `cancelled` close the session at once; `closed` and
-  `revoked` only on the second consecutive answer, so one read at a boundary
-  ends nobody's session; `error` (a query failed) is never acted on, so a
-  database blip cannot look like a revocation and empty a room.
-- In a 1:1 the heartbeat's answer also carries the call's roster
-  (`PresenceResult.call`: everyone on it but the caller, built by the same
-  helper as `joinRoom`'s peers, and the staff side), because people can be
-  added while it runs. Without it, a newcomer was never dialled by anyone in
-  the room with a smaller id, since only the smaller id of each pair offers
-  and they had never heard of the newcomer. The engine folds the roster in
-  on every answer (`mergeCallPeers` in `lib/call-roster.ts`), dials anyone
-  new at once, and publishes the staff side as `callStaffIds`, which changes
-  only when its membership does. The room elects its recorder, and decides
-  who counts as the other side for End call, from that list. It can make
-  other people staff but never the student's own browser, which records
-  nothing whatever an answer says (`selfIsCallStaff`).
-  Nothing extra is disclosed: it is the join's own peer list, sent only on an
-  `ok` to someone on the call, and it costs no query. A webinar's answer is
-  unchanged.
-- The server's own changes arrive as a hint. On a webinar's End and Reopen
-  the server publishes a content-free `{ t: "room-changed" }` on the
-  **stage** topic — the one channel every participant holds, including a viewer
-  in a `private` webinar who has no room topic. A client that hears it
-  re-announces immediately (throttled to one re-check per
-  `ROOM_CHANGED_THROTTLE_MS`) and acts on what the server answers. The hint
-  itself is **unauthenticated** — the stage topic is derivable, and nothing
-  verifies a stage message in the browser — so it carries nothing and decides
-  nothing. A forged one costs one throttled re-check. `host-online` is a hint
-  in exactly the same sense. A 1:1 learns that it was ended or cancelled from
-  its own status poll (`getCallRoomStatus`, every 15s) or the heartbeat's
-  answer, whichever comes first.
-- A departure is a `bye` with `reason: "leave"` (a connection being rebuilt
-  sends `reason: "rebuild"`, which is not a departure), addressed with `to` to
-  the one peer it concerns. The other side marks
-  that peer as **left** instead of drawing a frozen tile, and the heartbeat
-  never resurrects a peer who left on purpose — reconnecting after a Leave is
-  always the leaver's own Rejoin. Hosts also prune viewer connections that
-  have not been live for longer than `PEER_TIMEOUT_MS`, and the headcount
-  counts only live connections, so a closed laptop does not inflate it.
-
-> **A bug worth remembering.** `joinRoom` originally announced the viewer in
-> the same round trip. That raced the viewer's own subscription: the host's
-> offer went out before the viewer was listening, and a Realtime broadcast has
-> no replay, so the offer was simply lost. The host sat at `have-local-offer`
-> forever and the student held no peer connection at all. The contract now is
-> **subscribe first, announce second**, and `joinRoom` deliberately does not
-> announce.
-
----
-
-## Who is a host
-
-**Webinars.** A host is anyone who holds `events.manage` **or** a claimed
-`event_speakers` row for that event (`canBroadcast` in `lib/webinars.ts`,
-called once, from `resolveEventAccess`). Admins pass through `*`; so does any
-intern or custom role with `events.manage` ticked. There are two kinds:
-
-| | Staff host (`events.manage`) | Guest speaker (speaker row) |
-| --- | --- | --- |
-| Camera, mic, screen | yes | yes |
-| Moderates chat, questions, polls | yes | yes |
-| Sees audience **names** | yes | **never** — headcount and opaque ids only |
-| End for everyone | always | only when no staff host is present |
-| Reopen | yes | no |
-| Records | whichever host's browser the room elects (lowest user id present), the whole stage | same rule |
-
-Every host is on air. There is no backstage mode.
-
-Who among the hosts *present in a room* is staff — for the speaker End rule —
-is decided by each person's own role
-(`presentHostRoles` in `lib/live-access.ts`), never by "not on the speaker
-list". Staff cannot claim a speaker slot at all: opening a guest's claim link
-while signed in as staff is a no-op, and the link stays good for the guest.
-
-An admin is **never downgraded to viewer**. The event is read through the
-caller's own RLS first, and a caller with `events.manage` who gets no row
-(the `events read` policy's staff clause is `is_staff()`, which is
-`mentor.panel`) is re-read with the admin client. That re-read lives only in
-`lib/live-access.ts` and is only for `events.manage`; it must never be reused
-for a viewer.
-
-**1:1 calls.** One student and a staff side, and everyone sends media (signal
-role `host`). The inviter (`call_invites.host_id`) is the **owner**; any
-staff they added (anyone whose role holds `calls.invite`) are **co-hosts** (migration 0092,
-`call_invite_cohosts`), with the owner's powers on that call; the invitee is
-always one student. `joinRoom` hands each person everyone else on the invite,
-so a call with co-hosts is a small mesh (`shouldOffer` decides who dials).
-
-Nobody who is *not* on the call can enter: the page 404s and `joinRoom`
-answers `no-access`, whoever is asking, admins included. That is the
-safeguarding rule, and the privacy of the people on the call, and both are
-kept on purpose. What has changed is how people get *on* a call:
-
-- Anyone on the staff side can add more of the team after booking, right up
-  to and during the call (**Add people** on their calls list).
-- A holder of `calls.join_any` (admins, through `*`) can add *themselves* to
-  any call from the "Booked by everyone else" list on `/admin/calls`: **Join
-  call** once the room is open, **Add me** before that.
-
-Both are `addCallCohosts` (app/calls/actions.ts), so whoever is added is an
-ordinary co-host: named on every card and in the room, with the student told
-in-app who is now joining. There is no unseen way in. Without
-`calls.join_any`, that list stays read-only (every name, no Join, no Cancel).
-Someone added while the call is running reaches everyone's room through the
-heartbeat (see [Discovery](#discovery-and-how-it-heals-itself)).
-
-**Known limits.** Nobody can be taken off a call once they are on it; the only
-undo is cancelling the call, so both ways of adding say so before the click.
-Co-hosts, whenever they were added, hear about it in-app only, and so does the
-student about anyone added after booking. And a big call is a heavy one (see
-[Scale](#scale-and-its-honest-limit)).
+- **Leave** — "I go; the room keeps running." "You've left" offers Rejoin,
+  which remounts the room and goes back through the green room. The last host
+  on air in a live webinar is told so in the Leave menu, next to End for
+  everyone; the browser also prompts before that tab closes. Viewers left
+  without a host see "The host stepped away" and reconnect on their own.
+- **End for everyone** (webinar) — in the Leave menu, confirmed in place. Only
+  once the webinar has begun (its start, or a host going live early); staff
+  always, a guest speaker only with no staff host present (`canEnd`).
+  `endLive` stamps `live_ended_at` (first End wins), closes polls and
+  attendance and sends `room-changed`; only then does this tab go off air. If
+  it fails nothing is torn down. Everyone else closes on the hint or the next
+  heartbeat: hosts see "The webinar was ended", viewers "This webinar has
+  ended". The server then refuses joins and audience writes.
+- **Reopen** — staff only, on the ended screen or the admin pages. It clears
+  the stamp; nobody is reconnected. Every ended screen polls `fetchLiveState`
+  (15 s; 30 s after an empty answer; until the hard close) and offers Rejoin.
+  Pressing Start never reopens: a host who arrives on an ended webinar lands on
+  the ended screen.
+- **End call** (1:1) — in the Leave menu, once the other side has been in the
+  room (for staff, the student; latched across Rejoin and reload) and the start
+  has come. `endCall` completes the invite (idempotent), audits it and calls
+  `notifyCallChanged`; the presser sees "This call has ended" and, after the
+  upload, goes back to their calls list (if still on the page). Everyone else
+  closes on the hint or the next heartbeat. `endCall` revalidates nothing, so
+  the room stays mounted through the upload. Cancelling or declining a running
+  call closes every room the same way, at once ("This call was cancelled").
+- **Someone left a call** — the others see "<name> left the call. They can
+  rejoin until <end + 3 h>"; a person not yet on the page reads as "Waiting
+  for <name> to join" (`RemotePeer.heard` tells them apart).
+- **The server closes it** — a heartbeat or re-check answering `ended`,
+  `cancelled` (a declined 1:1 too), `closed` (window over, no host) or
+  `revoked` (access removed; `closed`/`revoked` only on two answers in a row)
+  runs the same teardown.
+- **Rejoin after an End elsewhere** — Rejoin refreshes the page; a host whose
+  fresh render says the webinar ended lands on the ended screen (Reopen for
+  staff), not on Start.
+- **A closing tab is a Leave**: `pagehide` sends `bye` on every connection and
+  beacons `POST /api/live/leave` (cookie-authenticated, same-origin only).
+  Coming back through the back-forward cache reloads into the green room.
+- **The server minted a different role** than the page rendered: the room
+  remounts as that role, back through the green room.
 
 ## Who may be in the room, and when
 
-`roomAccess` in `lib/live.ts`, per role, shared by the page, `joinRoom`,
-`announcePresence` and every room action:
+`roomAccess` / `callRoomAccess` in `lib/live.ts`, shared by the page,
+`joinRoom`, `announcePresence` and every room action.
 
 | | Opens | Closes |
 | --- | --- | --- |
-| Viewer | start − 15 min | end + 30 min; **or** later while a host is still present and nobody pressed End, up to end + 3 h; **or** immediately when End is pressed |
-| Host (staff or speaker) | start − 60 min | end + 3 h — including after End, so staff can reach the ended screen and Reopen |
+| Webinar viewer | start − 15 min, or as soon as a host has gone live | end + 30 min (later while a host is present, up to end + 3 h); at once on End |
+| Webinar host (staff or speaker) | any time | end + 3 h, including after End (to Reopen) |
+| 1:1 staff side / student | start − 60 min / start − 15 min | End call, cancel, or end + 3 h |
 
-Leaving is never window-gated (it authorizes by identity alone), and End /
-Reopen are bounded only by the hard stop at end + 3 h, so an overrunning
-webinar never loses its End button.
+A host in the room from start − 60 min stamps `live_started_at`, which lets
+the audience in and makes End available. Leaving is never window-gated.
 
-Lists — the student events page, `/admin/webinars`, the cards — use
-`eventLiveStatus`, which reads `live_ended_at` **before** the clock: an ended
-webinar shows **Ended**, with no Join, from the moment it ends.
+**Who is a host.** Webinars: `events.manage` (admins through `*`) or a claimed
+`event_speakers` row. Guest speakers broadcast and moderate but are never told
+audience names. 1:1s: the student, the inviter and any co-hosts
+(`call_invite_cohosts`, 0092); co-hosts have the owner's powers. Nobody else
+can enter a call — the page 404s and `joinRoom` refuses, admins included; a
+`calls.join_any` holder adds themselves visibly as a co-host (`addCallCohosts`).
+People added mid-call are dialled from the heartbeat's roster.
 
-### Reaching the room
+Both room paths are exempt from the student-dashboard gate
+(`isLiveRoomPath`) and on the pre-cohort allow list; the pages authorize.
 
-`/dashboard/events/[id]/live` and `/dashboard/calls/[id]/live` are exempt from
-the middleware's `student.dashboard` role gate (`isLiveRoomPath` and
-`bouncesFromDashboard` in `lib/dashboard-gate.ts`, tested). The page and the
-actions do the authorizing instead, so a mentor or investor who booked a call,
-an intern with `events.manage`, and a mentor invited as a guest speaker can all
-reach a room they host. The pre-cohort lockdown is unchanged: a 1:1 room is on
-its allowed list (under `/dashboard/calls`), a webinar room is not. Back links
-are role-aware: a staff webinar host goes back to `/admin/webinars`, a call's
-host to their own calls page (`hostCallsHref` in `lib/call-lifecycle.ts`:
-`/admin/calls`, `/mentor/calls` or `/investor/calls`), a student to
-`/dashboard/events` or `/dashboard/calls`.
+## Audience privacy
 
-## Leave, and End for everyone
+A student must not learn who else is watching, or how many:
 
-**Leave means "I go; the room keeps running."** A viewer who leaves stops
-their tracks, tears down, is marked left, and sees "You've left" with a Rejoin
-that really goes back through the green room. A host who leaves while another
-host is on air just leaves. Leaving takes a host off air at once — the
-session (and every peer connection) goes down the moment Leave is confirmed;
-the recorder then captures its final segment, the devices stop, and any upload
-still running finishes behind the "You've left" screen, which says "keep this
-tab open" while the unload prompt stays armed until it lands; Rejoin and Back
-wait for it first (bounded at 90 s). The **last** host on air in a webinar
-nobody has ended gets a choice: End for everyone, Leave and keep the room
-open, or Cancel — or, before the scheduled start, only Leave or Cancel (see
-below). While no host is on, viewers see "The host
-stepped away — you'll reconnect automatically", not "waiting for the host to
-start". A viewer who (re)joins during the gap has not seen the host this
-session, so past the scheduled start they get the neutral "The host isn't on
-air right now" instead — never "waiting for the host to start" mid-webinar.
+1. The server never tells a viewer that another viewer exists (`credentialsFor`).
+2. Every inbox and lobby topic is an HMAC of a server secret.
+3. Host↔viewer negotiation runs on the viewer's own inbox in both directions;
+   messages carry `to`, and hosts drop anything addressed to someone else.
+4. RLS: `live_participants` has no client write policy; viewers read only their
+   own row.
 
-A viewer on the ended screen keeps polling (15s, 30s after an empty answer)
-for a Reopen until the hard stop, so a reopen is noticed even when the first
-answers come back empty because no host is on air yet.
+Hosts see a live headcount. Server hints (`room-changed`, `host-online`) are
+unauthenticated and content-free: they only make clients re-ask the server.
 
-**End for everyone** is one control, in the room's control bar, with a
-two-step confirm (admins also have it on `/admin/webinars` and
-`/admin/events/[id]`, without going on air). It exists only once the webinar
-has begun — its scheduled start, or an early "Go live now" on a premiere
-(`webinarHasBegun` in `lib/live.ts`): `endLive` refuses before that, and the
-room's `canEnd` (which the control bar and the last-host prompt read) says so.
-The host window opens an hour early for setup, and an End there used to end
-the real webinar before it started, for everyone, with no way back for a
-guest speaker. `endLive` stamps
-`live_ended_at` — the first End wins and later presses return the same stamp —
-closes open polls and open attendance rows, and sends `room-changed`. Only
-then does the host's own client go off air, capture the recorder's final
-segment and stop its tracks (the upload finishes on the ended screen, as for
-Leave); if `endLive` fails, nothing is torn down and the host can retry. Everyone else
-tears down when they hear it (the hint, the next heartbeat, or the room's
-poll): other hosts see "The webinar was ended", viewers a terminal "This
-webinar has ended" with no Rejoin. From then on the server refuses
-`joinRoom` / `announcePresence` for the room, refuses audience chat, question
-and poll writes, and stops touching attendance.
+## The connection
 
-**Reopen** is staff only: the ended screen's Reopen, or the admin pages. It
-clears the stamp and sends `room-changed`. Nobody is reconnected
-automatically. Nobody on an ended screen has a live session to hear the hint,
-so every ended screen polls (every 15 s) for it: hosts on the ended screen —
-staff and guest speakers alike — and viewers are offered Rejoin, and a host
-in the ended green room gets the ordinary Start back. **Pressing Start never
-reopens** an ended webinar.
+Every connection has fixed transceivers — camera, screen, audio — negotiated
+once. Camera off detaches the track (`replaceTrack(null)`), presenting swaps
+the screen track; nothing renegotiates. Offers and answers carry `slots`, so a
+viewer joining mid-share gets the screen from the first frame. Hosts always
+offer to viewers; two broadcasters compare ids, so glare is impossible.
 
-**The last host gone, never ended.** The room stays open. Once the audience
-window has passed with no host present, heartbeats answer `closed` and viewers
-see "This webinar is over". Nothing stamps `live_ended_at` on its own, so a
-wifi drop can never end a webinar.
+Discovery heals itself: a host coming online publishes `host-online`; viewers
+announce through a server action (never the lobby directly); everyone
+re-announces every 12 s; a link stuck mid-negotiation for 12 s is rebuilt; a
+failed link gets ICE restarts first. Subscribe first, announce second — a
+Realtime broadcast has no replay.
 
-**A closing tab is a Leave.** On `pagehide` the client sends `bye` (reason
-`leave`) on every connection and a `navigator.sendBeacon` to
-`POST /api/live/leave` with `{ kind, id }` — a server action fired from a dying
-page is usually aborted, and the beacon is not. The route authenticates by
-cookie, never takes identity from the body, accepts only same-origin requests,
-and answers 204 even for a no-op. A refresh goes back through the green room,
-and so does coming back to the tab through the browser's back-forward cache:
-the page reloads instead of resuming a session whose peers were already told
-it left.
-The browser's "leave this page?" prompt appears only while you are the sole
-host on air in a live, un-ended webinar, or while recording segments are still
-uploading. The second is held for the whole tab (`use-recorder.ts`), not by the
-room, so it survives Back or anything else that takes the room off the screen
-before the last upload lands.
+## Scale
 
-### 1:1 calls
-
-Anyone can **Leave**; the others see "<name> left the call — they can rejoin
-until <end>", and the leaver can Rejoin inside the window. **End call** is
-offered to anyone on the call once the other side has been in the room (for
-staff, the student — a co-host does not count) and the start has come; with
-co-hosts it is a two-step "End for everyone": `endCall` (app/calls/actions.ts) sets the invite to `completed` (only
-from `accepted`, so it is idempotent) and audits it; the side that pressed it
-sees "This call has ended", and everyone else's room closes to the same
-screen on its next status poll or heartbeat. The recording (one staff
-browser's: `electCallRecorder`) captures its final segment on the way out, and the upload finishes behind that screen;
-the side that pressed End call is then taken back to their calls list (after
-the upload, bounded, and only if they are still on the room's page). `endCall`
-deliberately revalidates nothing: a revalidating action re-renders the current
-route, which for a completed call is a static "This call has ended" page, and
-that swapped the room out mid-upload.
-**Cancelling** a call that is in progress closes both rooms the same way. An
-accepted call whose window has closed counts as over everywhere — Past, no
-Join, no Cancel — even if nobody pressed End call (`callPhase` in
-`lib/call-lifecycle.ts`; the call-lifecycle sweep stamps it `completed`).
-
----
-
-## Scale, and its honest limit
-
-The host encodes once but **sends one copy per viewer**. That is the cost of
-having no media server.
-
-| Viewers | Host upstream needed (~600 kbps each) |
-| --- | --- |
-| 5 | ~3 Mbps |
-| 12 (a current cohort) | ~7 Mbps |
-| 25 | ~15 Mbps |
-| 50 | ~30 Mbps — don't |
-
-**Comfortable to about 25 viewers** on decent home broadband. Past that the
-host's upstream, not the code, is the limit, and the right fix is an SFU
-(LiveKit, mediasoup) or a vendor with a payment method attached — at which
-point `LIVE_PROVIDER` is the switch and `lib/live-signal.ts` is the seam.
-
-Viewers are unaffected by audience size: each receives exactly one stream.
-
-A 1:1 is the other shape: a **mesh**, where everyone sends to everyone, so
-*every* person's upstream grows with the call. Five people is four streams
-each (~2.4 Mbps up); ten is nine (~5.4 Mbps), more than a lot of home and
-school uplinks have to spare. `MAX_CALL_COHOSTS` (20 besides the host) is an
-abuse guard, not a size to aim for, and the picker says a handful works best.
-That matters more now that people can be added after booking: every admin who
-joins is another stream on the student's uplink.
-
----
+A webinar host encodes once but sends one copy per viewer: camera ~500 kbps,
+screen ~1.5 Mbps, split across links between a floor and a ceiling
+(`encodingFor`). Comfortable to about **25 viewers** on home broadband; past
+that the host's upstream is the limit and the fix is an SFU behind
+`lib/live-signal.ts`. Viewers always receive one stream. A 1:1 mesh grows
+everyone's upstream with each person: a handful works best
+(`MAX_CALL_COHOSTS` = 20 is an abuse guard).
 
 ## TURN (optional)
-
-STUN alone gets a direct connection on most home and school networks. A viewer
-behind a symmetric NAT or a strict corporate firewall needs a **TURN** relay,
-and without one they will simply fail to connect.
 
 ```
 LIVE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349
@@ -444,97 +202,45 @@ LIVE_TURN_USERNAME=…
 LIVE_TURN_CREDENTIAL=…
 ```
 
-Server-only, and handed to the browser per join rather than inlined into the
-bundle, so credentials can be rotated or made short-lived without a redeploy.
-`npm run webinar-doctor` warns when it is unset.
-
----
-
-## Configuration
-
-**Nothing is required.** batch0 Live works with the environment this project
-already has.
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `LIVE_PROVIDER` | `builtin` | Set to `daily` to use Daily instead. |
-| `LIVE_ROOM_SECRET` | `SUPABASE_SERVICE_ROLE_KEY` | HMAC input for channel keys. Set it to rotate every room key without touching Supabase credentials. |
-| `LIVE_TURN_*` | unset | Optional relay, above. |
-
-The fallback to the service-role key is safe: it is a one-way HMAC input and
-is never transmitted. Only truncated HMACs of it reach a browser, each scoped
-to one channel that participant is entitled to.
-
-### Migration 0076 is optional
-
-`supabase/migrations/0076_builtin_live.sql` adds `live_participants`.
-**Webinars work without it** — discovery runs entirely over Realtime, and
-every attendance write is best-effort and swallows a missing table. Applying
-it turns on the attendance record and gives the host's roster a reconcile
-backstop.
-
-It also clears the stale `daily_room_name` values described below.
-
----
+Server-only, handed out per join, validated first (`turnServerFrom`). Without
+it, viewers behind a symmetric NAT or strict firewall cannot connect.
+`LIVE_ROOM_SECRET` (default: the service-role key, used only as an HMAC input)
+rotates every room key. Camera and mic need HTTPS (`localhost` counts; a LAN IP
+does not).
 
 ## Checking it
 
 ```bash
-npm run webinar-doctor    # configuration, signalling, scheduled webinars
-npm run dev               # then, in another terminal:
-npm run webinar-e2e       # two real browsers, real accounts, decoded frames
-npm run webinar-e2e -- --headed    # watch it happen
+npm run webinar-doctor     # configuration, signalling, scheduled webinars
+npm run webinar-e2e        # real browsers, real accounts, decoded frames
+npm run call-mesh-e2e      # a 1:1 that gains a co-host mid-call
+npm run webinar-panel-e2e  # chat, Q&A, polls, reactions across three people
+npm run room-screens       # screenshots of every room state (/dev/live)
 ```
 
-`webinar-doctor` is provider-aware and checks what `LIVE_PROVIDER` selects.
+`webinar-e2e` drives the real pages with an admin host, two students, a second
+admin and a mentor, and asserts on `getStats()`: viewers decode climbing video
+and audio and send nothing; each student holds one connection and the host
+one per student; only the host sees a headcount; screen share and the event's
+PDF deck reach viewers (including one joining mid-share) as the main stage;
+chat Remove reaches everyone; the second admin is offered "Join as co-host"
+and "Pin for everyone" moves the viewers' stage; Leave/Rejoin, End for
+everyone, Reopen; and a mentor-hosted 1:1 that is recorded as one take whose
+media route answers 206. Everything it creates is deleted, including on
+failure. A configuration check is not proof: only decoded frames are.
 
-**`webinar-e2e` is the one that matters.** It creates a throwaway admin and
-two throwaway students, schedules a webinar that is live right now, signs them
-all in for real, drives the actual `/dashboard/events/[id]/live` page, and
-asserts:
+## History
 
-- the student **decodes** the host's video, and the frame count **keeps
-  climbing** (a negotiated-but-frozen stream is the most common way a call is
-  "broken", and a single sample cannot tell the difference)
-- the student receives audio
-- the student sends **no** media at all, on the wire, not just in the UI
-- the student is shown **no** audience count and has no camera/mic controls
-- with two students: the host holds **two** connections, each student holds
-  **exactly one**, and neither can see the other
-- the host's headcount reads **2**
+Live video used to run on Daily. The integration worked; the Daily account
+could not start a media session (`account-missing-payment-method`), and a
+REST-only doctor passed for months while every join failed. batch0 Live
+replaced it, and the Daily code, scripts and dependency are gone. The
+`daily_room_*` columns stay as history; nothing reads them. Moving to a vendor
+again means wiring it behind `lib/live-signal.ts` and proving it with
+`webinar-e2e`.
 
-Everything it creates is deleted in a `finally` block, including on failure.
-
-This exists because `daily-doctor` passed for months while webinars were
-completely broken. A configuration check cannot tell you a student sees the
-host; only decoded frames can.
-
----
-
-## The stale-room bug this also fixed
-
-Migration 0069 moved every webinar onto a Sunday but left the Daily rooms
-stamped with their old `exp`. The result: **17 of 18 scheduled webinars
-pointed at a room that expires before the webinar starts**, and one pointed at
-a room Daily had already deleted. The join page healed it at join time — which
-means the repair ran on the critical path, with an audience waiting.
-
-batch0 Live deletes the entire class of bug. There is no provider-side room to
-expire: **the event id is the room**, credentials are minted per join, and a
-webinar is joinable the moment it is scheduled. `app/admin/events/actions.ts`
-skips the room lifecycle entirely, and the "no room yet — re-save to create
-one" warning is gone from `/admin/webinars`.
-
----
-
-## Going back to Daily
-
-Nothing was removed. `lib/daily.ts`, `daily-doctor`, and the `LiveRoom`
-component are all intact.
-
-1. Add a payment method to the Daily account.
-2. `LIVE_PROVIDER=daily`
-3. `npm run webinar-e2e -- --provider=daily` — confirm the **media plane**
-   works before trusting it with an audience. Do not rely on
-   `npm run daily-doctor` alone; that is exactly the mistake that let this go
-   unnoticed.
+**Deploy step:** delete `DAILY_API_KEY`, `NEXT_PUBLIC_DAILY_DOMAIN`,
+`DAILY_ENABLE_RECORDING` and `DAILY_LARGE_CALLS` from the Vercel environment
+(every environment), and revoke the API key in the Daily dashboard: it could
+create rooms and mint owner tokens for any room on the domain, and nothing
+uses it now.
