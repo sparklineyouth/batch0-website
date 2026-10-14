@@ -5,7 +5,8 @@
  * toasts stacked (never on each other, the filmstrip, the side panel or the
  * main tile's Pin / Full screen buttons when they show), the side panel's own
  * controls uncovered, no sideways scroll, presentations never cropped, no
- * page errors. Phone sizes are touch screens (tile actions always shown).
+ * page errors. Phone sizes are touch screens (the main tile's actions always
+ * shown; a filmstrip or PiP tile's only after a tap, so none show here).
  *
  *   npx next dev -p 3102
  *   E2E_BASE_URL=http://localhost:3102 npm run room-screens -- --out=/tmp/room-screens

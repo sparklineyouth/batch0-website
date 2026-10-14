@@ -71,6 +71,15 @@ export function Tile({
   const small = variant === "film" || variant === "pip";
   // Callers that place the tile themselves pass `absolute`; otherwise it is a normal box.
   const position = /\b(absolute|fixed)\b/.test(className) ? "" : "relative";
+  const hasActions = !!(onPin || onPinForEveryone || (fullscreen && fs.supported));
+  // A small tile's buttons would cover most of it on a touch screen, so there
+  // they wait for a tap on the tile, and go again a few seconds later.
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (!revealed) return;
+    const t = setTimeout(() => setRevealed(false), REVEAL_MS);
+    return () => clearTimeout(t);
+  }, [revealed]);
 
   useEffect(() => {
     const el = video.current;
@@ -87,6 +96,7 @@ export function Tile({
       data-peer={peerId}
       data-kind={kind}
       style={style}
+      onClick={small && hasActions ? () => setRevealed((r) => !r) : undefined}
       className={`group isolate overflow-hidden rounded-md ${position} ${
         fit === "contain" ? "bg-[#000]" : "bg-[#1b1b1f]"
       } ${className}`}
@@ -102,11 +112,12 @@ export function Tile({
       />
 
       {!(showVideo && stream) && (
-        <div className="absolute inset-0 grid place-items-center">
+        // Small tiles: the initials sit above the name label, not under it.
+        <div className={`absolute inset-0 grid place-items-center ${small ? "pb-5" : ""}`}>
           <div className="flex flex-col items-center">
             <div
               className={`grid place-items-center rounded-full bg-[#34343a] font-medium text-[#f4f4f5] ${
-                small ? "h-10 w-10 text-sm" : variant === "grid" ? "h-16 w-16 text-xl" : "h-20 w-20 text-2xl sm:h-24 sm:w-24 sm:text-3xl"
+                small ? "h-9 w-9 text-sm" : variant === "grid" ? "h-16 w-16 text-xl" : "h-20 w-20 text-2xl sm:h-24 sm:w-24 sm:text-3xl"
               }`}
               aria-hidden
             >
@@ -147,9 +158,18 @@ export function Tile({
         {pinned ? <Pin className="h-3 w-3 shrink-0 text-[#FFBB00]" aria-label="Pinned" /> : null}
       </div>
 
-      {/* Actions, top right: visible on hover / focus, always on touch screens. */}
-      {(onPin || onPinForEveryone || (fullscreen && fs.supported)) && (
-        <div className="absolute right-1.5 top-1.5 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+      {/* Actions, top right: visible on hover / focus. On touch screens always
+          for the main stage; on a small tile after a tap (see `revealed`). */}
+      {hasActions && (
+        <div
+          className={`absolute right-1.5 top-1.5 flex items-center gap-1 transition-opacity ${
+            revealed
+              ? "opacity-100"
+              : small
+                ? "opacity-0 focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none"
+                : "opacity-0 focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+          }`}
+        >
           {onPinForEveryone ? (
             // Small tiles: an icon on hover screens (the tooltip names it); touch
             // screens have no tooltip, so it says "Everyone" next to the local Pin.
@@ -179,6 +199,9 @@ export function Tile({
   );
 }
 
+/** How long a tapped small tile keeps its buttons showing. */
+const REVEAL_MS = 4_000;
+
 function TileAction({
   label,
   onClick,
@@ -204,6 +227,9 @@ function TileAction({
       onClick={(e) => {
         e.stopPropagation();
         onClick();
+        // A tap leaves focus here, and focus-within would keep a small tile's
+        // buttons over it; keyboard presses (detail 0) keep their focus.
+        if (e.detail > 0 && window.matchMedia?.("(hover: none)").matches) e.currentTarget.blur();
       }}
       className={`inline-flex h-7 items-center gap-1.5 rounded bg-[rgba(0,0,0,0.65)] px-2 text-xs text-[#fff] hover:bg-[rgba(0,0,0,0.85)] ${
         text === "touch" ? "[@media(hover:none)]:gap-1 [@media(hover:none)]:px-1.5" : ""
