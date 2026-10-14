@@ -43,8 +43,7 @@ export default async function StudentAppCourse() {
         <AppHeader title="Course" eyebrow="Locked" />
         <AppBody>
           <Alert tone="info" title="The course unlocks at enrollment.">
-            Once your seat is paid for, every week's lessons and deliverables
-            show up here.
+            Pay for your seat to see it.
           </Alert>
         </AppBody>
       </>

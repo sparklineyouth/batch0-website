@@ -35,8 +35,7 @@ export default async function StudentAppAnnouncements() {
         <AppHeader title="Announcements" eyebrow="Locked" />
         <AppBody>
           <Alert tone="info" title="Announcements open at enrollment.">
-            This is how the team reaches your cohort — it unlocks once your seat
-            is paid for.
+            Pay for your seat to see them.
           </Alert>
         </AppBody>
       </>

@@ -173,10 +173,6 @@ export default async function StudentAppMore() {
               />
             ))}
           </div>
-          <p className="mt-2.5 text-[11px] leading-relaxed text-ink-faint">
-            <ArrowUpRight className="mb-0.5 inline h-3 w-3" /> opens the full
-            dashboard — everything the app doesn&apos;t carry lives there.
-          </p>
         </Section>
 
         <div className="mt-7">

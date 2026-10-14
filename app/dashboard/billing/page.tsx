@@ -78,7 +78,7 @@ export default async function BillingPage(
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Billing</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Your payment history and any fees or fines on your account.
+            Payments, fees and fines.
           </p>
         </div>
         {/* flex-wrap: with the help link this cluster can outgrow a 375px

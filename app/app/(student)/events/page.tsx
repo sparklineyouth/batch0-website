@@ -55,8 +55,7 @@ export default async function StudentAppEvents() {
         <AppHeader title="Events" eyebrow="Locked" />
         <AppBody>
           <Alert tone="info" title="Events unlock at enrollment.">
-            Office hours, workshops and demo day show up here once your seat is
-            paid for.
+            Pay for your seat to see them.
           </Alert>
         </AppBody>
       </>

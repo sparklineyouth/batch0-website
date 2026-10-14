@@ -51,7 +51,7 @@ export default async function MentorOverview() {
     <div className="mx-auto max-w-6xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Mentor overview</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        Snapshot of cohorts, students, and learning activity.
+        Cohorts, students and activity.
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

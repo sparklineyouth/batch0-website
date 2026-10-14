@@ -59,9 +59,7 @@ function RebuildSubmit() {
           Build your way back in
         </p>
         <p className="mt-1 text-sm text-ink-soft">
-          Your pass gives you one shot to earn a fresh review. Validate the
-          problem, talk to potential users, ship something small, and tell us
-          what you learned. One human reads your updated application again.
+          One re-review: tell us what you built since.
         </p>
         <Button
           size="sm"

@@ -54,7 +54,7 @@ export function StudentCalls({
     <div className="mx-auto max-w-3xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">1:1 calls</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        Private video calls with mentors, investors and the batch0 team. Recorded.
+        Private video calls with the team. Recorded.
       </p>
 
       {requestState !== "hidden" && (

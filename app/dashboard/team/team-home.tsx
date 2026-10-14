@@ -108,8 +108,7 @@ export function TeamHome({
 
       {team.logo_status === "pending" && team.logo_url && (
         <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          Your logo is awaiting admin review. The placeholder shows on public
-          pages until it's approved.
+          Logo pending review.
         </div>
       )}
       {team.logo_status === "rejected" && (

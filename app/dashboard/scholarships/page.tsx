@@ -92,11 +92,7 @@ export default async function ScholarshipsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight text-ink">Scholarships</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        batch0 runs scholarships so money isn't what decides who gets to build.
-        You can hold one at a time, and you can apply after you're accepted or
-        after you've enrolled. When each one is open follows your cohort's
-        dates: until the enrollment deadline while you're accepted, and until
-        the cohort ends once you've enrolled.
+        One at a time. Open until your cohort ends.
       </p>
 
       {missingTable && (
@@ -266,7 +262,7 @@ function AwardCard({
         <PerkBlock
           icon={Video}
           title={`Extra mentor ${perks.mentorCalls === 1 ? "call" : "calls"}`}
-          subtitle={`${mine.credits.remaining} of ${mine.credits.granted} left to book. They don't expire during the cohort — but they also don't do anything sitting unused.`}
+          subtitle={`${mine.credits.remaining} of ${mine.credits.granted} calls left.`}
         >
           <ButtonLink href="/dashboard/calls" size="sm">
             {mine.credits.remaining > 0 ? "Book a call" : "See your calls"}

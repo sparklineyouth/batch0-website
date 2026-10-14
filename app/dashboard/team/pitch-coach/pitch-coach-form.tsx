@@ -70,9 +70,7 @@ export function PitchCoachForm({ teamId }: { teamId: string }) {
             />
           </div>
           <p className="text-xs text-amber-700 dark:text-amber-300">
-            The coach can't follow URLs to read decks or watch videos yet, so
-            it scores based on the URL + filename + any context it can infer.
-            For deepest feedback, paste a transcript instead.
+            It can&apos;t open links. Paste a transcript for real feedback.
           </p>
         </>
       )}

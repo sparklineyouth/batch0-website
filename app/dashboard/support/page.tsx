@@ -75,8 +75,7 @@ export default async function DashboardSupportPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Help &amp; support</h1>
           <p className="mt-1 max-w-xl text-sm text-ink-soft">
-            Requests you&rsquo;ve sent the batch0 team, and what&rsquo;s
-            happened to them. A reply lands in your email too.
+            Your requests. Replies also arrive by email.
           </p>
         </div>
         <ButtonLink href="/dashboard/support/new" prefetch={false} size="sm">

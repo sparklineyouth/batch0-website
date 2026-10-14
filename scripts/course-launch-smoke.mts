@@ -132,7 +132,7 @@ try {
   noPrivateMaterial(anonCourse.body);
   const locked = await page("/dashboard/course", cookie);
   assert.equal(locked.status, 200);
-  assert.match(visibleText(locked.body), /Course access unlocks once you're enrolled/);
+  assert.match(visibleText(locked.body), /Course unlocks at enrollment/);
   noPrivateMaterial(locked.body);
   const lockedLesson = await page(`/dashboard/course/${firstLesson.id}`, cookie);
   // Next can send 200 before a streamed notFound; the robots marker is its fallback.
@@ -238,7 +238,7 @@ try {
   // Confirm revocation takes effect even while the student's session is valid.
   await api(`/rest/v1/enrollments?user_id=eq.${fixtureId}&cohort_id=eq.${manifest.cohort.id}`, { method: "DELETE" });
   const revoked = await page("/dashboard/course", cookie);
-  assert.match(visibleText(revoked.body), /Course access unlocks once you're enrolled/);
+  assert.match(visibleText(revoked.body), /Course unlocks at enrollment/);
   noPrivateMaterial(revoked.body);
   assert.equal((await api<unknown[]>(`/rest/v1/lessons?select=id&${lessonFilter}`, { headers: studentHeaders })).length, 0);
   passed("Removing the temporary enrollment immediately revokes course access");

@@ -87,7 +87,7 @@ export default async function StudentEventsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Events</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        {access.enrolled ? "Live sessions, office hours, Demo Day." : "Your Demo Day ticket is confirmed."}
+        {access.enrolled ? "Live sessions and Demo Day." : "Your Demo Day ticket is confirmed."}
       </p>
 
       {liveNow.length > 0 && (

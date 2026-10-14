@@ -23,8 +23,7 @@ const ERROR_COPY: Record<string, string> = {
   save_failed: "We couldn't save the link. Try again.",
   already_linked_to_another_account:
     "That Discord account is already linked to a different batch0 user.",
-  unlink_failed:
-    "We couldn't unlink your Discord account. Nothing changed — try again, and tell us if it keeps failing.",
+  unlink_failed: "We couldn't unlink Discord. Nothing changed — try again.",
 };
 
 // `?discord=` — the success side. `unlinked_partial` is a real outcome, not a
@@ -41,7 +40,7 @@ const STATUS_COPY: Record<string, string> = {
   linked: "Discord linked. Welcome to the community.",
   unlinked: "Discord unlinked.",
   unlinked_partial:
-    "Discord unlinked here, but we couldn't reach Discord to take your batch0 roles off your account — they may still show in the server. Leaving the server clears them, or email hello@batch0.org and we'll do it.",
+    "Discord unlinked, but your server roles may remain. Leave the server or email hello@batch0.org.",
 };
 
 export default async function SettingsPage(
@@ -109,10 +108,6 @@ export default async function SettingsPage(
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-soft">
           Appearance
         </h2>
-        <p className="mb-4 text-sm text-ink-soft">
-          Switch between light and dark mode. Applies across your dashboard
-          on every device you sign in to.
-        </p>
         <ThemeToggle initial={theme} />
       </Card>
 

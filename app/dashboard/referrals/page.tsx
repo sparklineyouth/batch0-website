@@ -74,8 +74,7 @@ export default async function StudentReferralsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Refer friends</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Send people you respect. batch0 works best with founders who
-        know each other already.
+        Send people you respect.
       </p>
 
       <Card className="mt-6">

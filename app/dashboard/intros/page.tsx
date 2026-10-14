@@ -62,8 +62,7 @@ export default async function StudentIntrosPage() {
           No team yet.
         </h1>
         <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
-          Intros are tied to your team. Start or join one to see warm
-          intros from interested investors here.
+          Join a team to see intros.
         </p>
         <Link
           href="/dashboard/team"
@@ -102,9 +101,7 @@ export default async function StudentIntrosPage() {
         Investors interested in your team.
       </h1>
       <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-ink-soft">
-        Investors who request an intro show up here. Admins move them
-        through the funnel — you'll see status changes the moment they
-        happen.
+        Investor intros for your team.
       </p>
 
       {rows.length === 0 && (

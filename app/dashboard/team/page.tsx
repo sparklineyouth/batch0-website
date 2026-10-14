@@ -108,10 +108,7 @@ export default async function TeamPage(props: {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Team</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Build your startup with up to 4 teammates from your cohort.
-        {access.preCohort
-          ? " You don't have to wait for kickoff — start a team now and invite anyone who's already enrolled."
-          : ""}
+        Up to 4 teammates from your cohort.
       </p>
 
       {(pendingForMe?.length ?? 0) > 0 && (
@@ -126,7 +123,7 @@ export default async function TeamPage(props: {
       <Card className="mt-8">
         <h2 className="text-lg font-semibold">Start a new team</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Pick a working name — you can rename it any time.
+          A working name is fine.
         </p>
         <div className="mt-4">
           <CreateTeamForm />

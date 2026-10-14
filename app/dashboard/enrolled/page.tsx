@@ -7,6 +7,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { fmtDateOnly } from "@/lib/pre-cohort";
+import { isDiscordEnabled } from "@/lib/discord";
 import {
   ArrowRight,
   CalendarDays,
@@ -44,7 +45,10 @@ export default async function EnrolledPage(
   const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
   const profile = await getProfile();
-  const access = await getStudentAccess(profile?.role ?? "student");
+  const [access, discordEnabled] = await Promise.all([
+    getStudentAccess(profile?.role ?? "student"),
+    isDiscordEnabled(),
+  ]);
 
   const { data: app } = await supabase
     .from("applications")
@@ -83,18 +87,14 @@ export default async function EnrolledPage(
         <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-ink-soft">
           {paidUp ? (
             <>
-              Payment received{firstName ? `, ${firstName}` : ""}. You're
-              officially part of{" "}
+              Enrolled in{" "}
               <span className="font-medium text-ink">{cohortName}</span>
-              {startLabel && !started
-                ? `, which kicks off on ${startLabel}.`
-                : "."}{" "}
-              A receipt is on its way to your inbox.
+              {startLabel && !started ? `. Starts ${startLabel}.` : "."}{" "}
+              Receipt sent by email.
             </>
           ) : (
             <>
-              We've got your payment and we're waiting on your bank to
-              confirm it. Nothing more for you to do.
+              Waiting on your bank to confirm. Nothing to do.
             </>
           )}
         </p>
@@ -112,47 +112,48 @@ export default async function EnrolledPage(
               href="/dashboard/course"
               icon={PlayCircle}
               title="The course"
-              body="Weekly modules and deliverables. Start with week one."
+              body="Start with week one."
             />
           ) : (
             <NextStep
               href="/dashboard/kickoff"
               icon={CalendarDays}
               title="Your kickoff page"
-              body={`What happens on day one${startLabel ? ` — ${startLabel}` : ""}, and how to arrive ready.`}
+              body={`Day one${startLabel ? `, ${startLabel}` : ""}.`}
             />
           )}
-          <NextStep
-            href="/dashboard/community"
-            icon={MessagesSquare}
-            title="Link your Discord"
-            body="Meet your cohort. Link once and your role stays in sync forever."
-          />
+          {discordEnabled && (
+            <NextStep
+              href="/dashboard/community"
+              icon={MessagesSquare}
+              title="Join the Discord"
+              body="Meet your cohort."
+            />
+          )}
           <NextStep
             href="/dashboard/team"
             icon={Rocket}
             title="Start your team"
-            body="Up to 4 teammates from your cohort. You can begin before kickoff."
+            body="Up to 4 teammates. Start any time."
           />
           <NextStep
             href="/dashboard/resources"
             icon={FolderArchive}
             title="Before One"
-            body="The pre-cohort flows — the work you do before your company becomes real."
+            body="Pre-cohort worksheets."
           />
           <NextStep
             href="/dashboard/calls"
             icon={Video}
             title="Meet the team"
-            body="Request a 1:1 video call with the batch0 team."
+            body="Request a 1:1 call."
           />
         </div>
       </section>
 
       {!started && (
         <p className="mt-8 text-sm text-ink-soft">
-          The rest of the program — course, assignments, events —
-          unlocks at kickoff{startLabel ? ` on ${startLabel}` : ""}.
+          Everything else opens at kickoff{startLabel ? `, ${startLabel}` : ""}.
         </p>
       )}
 

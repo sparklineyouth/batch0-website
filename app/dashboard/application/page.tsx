@@ -163,12 +163,7 @@ export default async function ApplicationPage(
           <h3 className="text-lg font-semibold text-phosphor-ink">You're in.</h3>
           <p className="mt-1 text-sm text-ink-soft">
             Welcome to {app.cohort?.name ?? "batch0"}. Pay your one-time $
-            {(priceCents / 100).toFixed(0)} to lock in your seat.{" "}
-            {started
-              ? "Course access unlocks immediately after."
-              : `Paying unlocks kickoff details, your team page, and the pre-cohort resources right away; the full program opens${
-                  startLabel ? ` on ${startLabel}` : " at kickoff"
-                }.`}
+            {(priceCents / 100).toFixed(0)} to lock in your seat.
           </p>
           {passDiscountCents > 0 && (
             <p className="mt-2 text-xs font-medium text-phosphor-ink">
@@ -191,13 +186,10 @@ export default async function ApplicationPage(
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-phosphor/30 bg-phosphor/[0.04] px-4 py-3">
           <Zap className="mt-0.5 h-4 w-4 shrink-0 text-phosphor-ink" />
           <p className="text-sm text-ink-soft">
-            <span className="font-medium text-ink">Priority lane.</span> Your
-            pass puts you at the top of the queue — we aim to reach a decision{" "}
+            <span className="font-medium text-ink">Priority review.</span>{" "}
             {passGrant.tier.decisionTargetDays === 1
-              ? "by the next business day after"
-              : `within ${passGrant.tier.decisionTargetDays} business days of`}{" "}
-            a complete application. The bar is the same for everyone; you&apos;re
-            just read first.
+              ? "Decision by the next business day."
+              : `Decision within ${passGrant.tier.decisionTargetDays} business days.`}
           </p>
         </div>
       )}
@@ -208,11 +200,7 @@ export default async function ApplicationPage(
             You're on the waitlist
           </h3>
           <p className="mt-1 text-sm text-ink-soft">
-            Not a no. Seats in {app.cohort?.name ?? "this cohort"} open when
-            admitted applicants don't enroll, and waitlisted applications are
-            the first we return to. If a seat opens you'll get an acceptance
-            email with payment instructions; if the cohort fills, we'll tell
-            you that too. Nothing you need to do in the meantime.
+            We&apos;ll email you if a seat opens.
           </p>
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
           <AdmissionsHelp prompt="Questions about the waitlist or your application?" />
@@ -235,7 +223,7 @@ export default async function ApplicationPage(
           <p className="mt-4 text-sm text-ink-soft">
             {holdsPass
               ? "Your Founder Pass keeps the door open — you can apply again to the next cohort, including this one."
-              : "This isn't the end of the road. You can apply again to a cohort you haven't been decided on."}
+              : "You can apply to a future cohort."}
           </p>
           <ButtonLink href="/apply" className="mt-4" variant="secondary" size="sm">
             {holdsPass ? "Apply again" : "Apply to another cohort"}

@@ -40,9 +40,7 @@ export default async function PitchCoachPage() {
       </Link>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">Pitch coach</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Paste a deck link, Loom URL, or your pitch transcript. The coach scores
-        you against the Demo Day rubric and tells you exactly what to fix
-        before pitching live.
+        Scores your pitch against the Demo Day rubric.
       </p>
 
       <Card className="mt-6">
