@@ -1707,8 +1707,33 @@ async function main() {
     const adminPage = await early.ctx.newPage();
     await adminPage.goto(`${BASE}/admin/events/${earlyId}`, { waitUntil: "domcontentloaded", timeout: 180_000 });
     check(await tap(adminPage, "share-files", "the admin page's Share with students", 60_000), "the admin pressed Share with students");
+    // Share is a plain click handler, and dev compiles this page on its first
+    // visit: a press that lands before the page hydrates is swallowed. While
+    // the button still offers "Share with students" (not "Sharing…"), press
+    // again; sharing an already-shared event changes nothing.
+    let sharePresses = 1;
+    let sharePressedAt = Date.now();
     check(
-      !!(await until("the shared line", async () => (await count(adminPage, "files-shared")) > 0, 20_000)),
+      !!(await until(
+        "the shared line",
+        async () => {
+          if ((await count(adminPage, "files-shared")) > 0) return true;
+          const button = adminPage.getByTestId("share-files").first();
+          if (
+            sharePresses < 3 &&
+            Date.now() - sharePressedAt > 3_000 &&
+            (await button.isEnabled().catch(() => false)) &&
+            /share with students/i.test((await button.innerText().catch(() => "")) || "")
+          ) {
+            info("the Share press didn't take; pressing again");
+            await button.click().catch(() => {});
+            sharePressedAt = Date.now();
+            sharePresses++;
+          }
+          return false;
+        },
+        20_000,
+      )),
       "the admin event page says it is shared",
     );
     check(!!(await eventRow(earlyId))?.assets_shared_at, "assets_shared_at is stamped");
