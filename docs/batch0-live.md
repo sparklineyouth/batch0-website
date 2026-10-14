@@ -205,8 +205,14 @@ The ordering problem is that students arrive before the host does.
   and otherwise from its status poll or the heartbeat's answer.
 - Only a broadcaster offers. An offer on a viewer's (pinned) inbox, or from a
   peer known as a viewer, is dropped (`offerDisposition`) — it used to put a
-  phantom "host" tile on hosts' screens. A 1:1's credentials carry no lobby,
-  room or moderation topic and no stage proof (`credentialsFor({ kind })`).
+  phantom "host" tile on hosts' screens. A 1:1's credentials carry no inbox,
+  no lobby, room or moderation topic and no stage proof
+  (`credentialsFor({ kind })`): each pair of people on the call gets its own
+  line (`pairTopic`, keyed on the room and the two ids, handed to those two
+  only), both ends pin it to the other, and an offer counts only on a pair
+  line from someone on the server's roster. When every party held every other
+  party's inbox, a student could offer on a staff inbox as a made-up "Admin",
+  or as a real co-host's id, and be drawn (and recorded) as them.
 - A departure is a `bye` with `reason: "leave"` (a connection being rebuilt
   sends `reason: "rebuild"`, which is not a departure), addressed with `to` to
   the one peer it concerns. The other side marks
@@ -298,10 +304,16 @@ student about anyone added after booking. And a big call is a heavy one (see
 | Viewer | start − 15 min, **or** as soon as a host has gone live (`live_started_at`) | end + 30 min; **or** later while a host is still present and nobody pressed End, up to end + 3 h; **or** immediately when End is pressed |
 | Host (staff or speaker) | any time | end + 3 h — including after End, so staff can reach the ended screen and Reopen |
 
-A host joining is the start: `joinRoom` stamps `live_started_at` if it is
-unset (never for a premiere), which lets the audience in and makes End for
-everyone available (`mayEndWebinar`: from the start or a go-live, staff always,
-a guest speaker only with no staff host present).
+A host in the room from start − 60 min on is the start: joining or
+heartbeating stamps `live_started_at` if it is unset (`shouldStampLiveStart`;
+never for a premiere), which lets the audience in and makes End for everyone
+available (`mayEndWebinar`: from the start or a go-live, staff always, a guest
+speaker only with no staff host present). Earlier than that a host is
+rehearsing: nothing is stamped, students stay out, End is not offered (Leave
+is the way out), and a host still in the room when the hour opens goes live
+on their next heartbeat. Lists follow the room (`eventLiveStatus` reads
+`liveStartedAt`), and an admin save clears only stamps older than the
+go-live window (an earlier run).
 
 **Primary host** (migration 0096, `events.live_primary_host_id`): the stage
 everyone sees when nobody is presenting. The first host in takes it, a host
@@ -531,6 +543,7 @@ npm run webinar-doctor    # configuration, signalling, scheduled webinars
 npm run dev               # then, in another terminal:
 npm run webinar-e2e       # two real browsers, real accounts, decoded frames
 npm run webinar-e2e -- --headed    # watch it happen
+npm run call-mesh-e2e     # a 1:1 that gains a co-host mid-call: everyone decodes everyone
 ```
 
 `webinar-doctor` is provider-aware and checks what `LIVE_PROVIDER` selects.
@@ -551,6 +564,11 @@ asserts:
 - the host's headcount reads **2**
 
 Everything it creates is deleted in a `finally` block, including on failure.
+
+`call-mesh-e2e` covers what a two-person call cannot: a host and a student in
+an unanswered call, then a mentor added while it runs, until all three decode
+both others over their per-pair lines. Who offers to whom follows the random
+ids, so run it a few times.
 
 This exists because `daily-doctor` passed for months while webinars were
 completely broken. A configuration check cannot tell you a student sees the

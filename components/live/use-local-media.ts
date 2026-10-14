@@ -4,6 +4,7 @@ import {
   NO_DEVICES,
   deviceSwitchError,
   groupDevices,
+  isSystemDenial,
   mediaErrorKind,
   mediaStatusText,
   overallMediaStatus,
@@ -67,6 +68,11 @@ function request(
  * whose permission is already granted, so a dismissed prompt never turns into
  * two more prompts.
  *
+ * A device that failed reads as OFF (`cameraOn` / `micOn` false), because it
+ * is: nothing is being sent. Turning it on is a retry — one click, after
+ * closing the app that held it — and a device that comes up on a retry (a
+ * toggle, a pick, or `start` again) comes up on.
+ *
  * The level meter lives in `useMicLevel` (components/live/use-mic-level.ts),
  * mounted only by the leaf that draws it: a meter here re-rendered the whole
  * room on every animation frame.
@@ -86,9 +92,10 @@ export type LocalMedia = {
   micStatus: DeviceStatus;
   /** What went wrong, for whichever device is not ready. */
   error: string | null;
+  /** On and sending. False for a device that failed (see cameraStatus). */
   cameraOn: boolean;
   micOn: boolean;
-  /** Turning a device on that failed earlier tries to acquire it again. */
+  /** Turning on a device that is not live (failed, unplugged) acquires it again. */
   toggleCamera: () => void;
   toggleMic: () => void;
   start: () => void;
@@ -111,7 +118,19 @@ export type LocalMedia = {
   deviceError: string | null;
 };
 
-type KindResult = { track: MediaStreamTrack | null; status: DeviceStatus };
+type KindResult = {
+  track: MediaStreamTrack | null;
+  status: DeviceStatus;
+  /** A denial by the operating system rather than the browser (isSystemDenial). */
+  system: boolean;
+};
+
+type Kind = "audio" | "video";
+
+/** Started and not working: denied, missing, or held by another app. */
+function failed(s: DeviceStatus): boolean {
+  return s === "denied" || s === "missing" || s === "error";
+}
 
 export function useLocalMedia({
   autoStart = false,
@@ -138,6 +157,11 @@ export function useLocalMedia({
   const micOnRef = useRef(true);
   const cameraStatusRef = useRef<DeviceStatus>("off");
   const micStatusRef = useRef<DeviceStatus>("off");
+  /** Per device: was its denial the operating system's? Picks the hint. */
+  const systemRef = useRef<{ camera: boolean; mic: boolean }>({
+    camera: false,
+    mic: false,
+  });
   /**
    * Bumped by every `stop()` — including the one unmount runs. A
    * getUserMedia still pending when the person leaves resolves into a newer
@@ -158,9 +182,34 @@ export function useLocalMedia({
     }
   }, []);
 
-  /** Publish a new stream (or none), with each device's status. */
+  /** Set one device's on/off, in the ref the async paths read and in state. */
+  const setOn = useCallback((kind: Kind, on: boolean) => {
+    if (kind === "video") {
+      cameraOnRef.current = on;
+      setCameraOn(on);
+    } else {
+      micOnRef.current = on;
+      setMicOn(on);
+    }
+  }, []);
+
+  /**
+   * Publish a new stream (or none), with each device's status. A device that
+   * failed reads as off; one that comes up after failing comes up on — it was
+   * off because it failed, not because anyone switched it off.
+   */
   const settle = useCallback(
     (next: MediaStream | null, cam: DeviceStatus, mic: DeviceStatus) => {
+      for (const [kind, before, after] of [
+        ["video", cameraStatusRef.current, cam],
+        ["audio", micStatusRef.current, mic],
+      ] as const) {
+        if (failed(after)) setOn(kind, false);
+        else if (after === "ready" && failed(before)) setOn(kind, true);
+      }
+      for (const t of next?.getTracks() ?? []) {
+        t.enabled = t.kind === "video" ? cameraOnRef.current : micOnRef.current;
+      }
       streamRef.current = next;
       cameraStatusRef.current = cam;
       micStatusRef.current = mic;
@@ -168,9 +217,9 @@ export function useLocalMedia({
       setCameraStatus(cam);
       setMicStatus(mic);
       setStatus(overallMediaStatus(cam, mic));
-      setError(mediaStatusText(cam, mic));
+      setError(mediaStatusText(cam, mic, systemRef.current));
     },
-    [],
+    [setOn],
   );
 
   const stop = useCallback(() => {
@@ -180,6 +229,7 @@ export function useLocalMedia({
     streamRef.current = null;
     cameraStatusRef.current = "off";
     micStatusRef.current = "off";
+    systemRef.current = { camera: false, mic: false };
     setStream(null);
     setStatus("idle");
     setCameraStatus("off");
@@ -189,10 +239,7 @@ export function useLocalMedia({
 
   /** One kind on its own, mapped to a status. Never throws. */
   const acquireKind = useCallback(
-    async (
-      kind: "audio" | "video",
-      deviceId?: string | null,
-    ): Promise<KindResult> => {
+    async (kind: Kind, deviceId?: string | null): Promise<KindResult> => {
       try {
         const s = await navigator.mediaDevices.getUserMedia(
           request(kind, deviceId ?? null),
@@ -200,9 +247,13 @@ export function useLocalMedia({
         const track =
           (kind === "audio" ? s.getAudioTracks() : s.getVideoTracks())[0] ??
           null;
-        return { track, status: track ? "ready" : "missing" };
+        return { track, status: track ? "ready" : "missing", system: false };
       } catch (err: any) {
-        return { track: null, status: mediaErrorKind(err?.name) };
+        return {
+          track: null,
+          status: mediaErrorKind(err?.name),
+          system: isSystemDenial(err),
+        };
       }
     },
     [],
@@ -218,6 +269,10 @@ export function useLocalMedia({
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia
     ) {
+      cameraStatusRef.current = "error";
+      micStatusRef.current = "error";
+      setOn("video", false);
+      setOn("audio", false);
       setStatus("unsupported");
       setCameraStatus("error");
       setMicStatus("error");
@@ -236,6 +291,7 @@ export function useLocalMedia({
       let tracks: MediaStreamTrack[] = [];
       let cam: DeviceStatus = "off";
       let mc: DeviceStatus = "off";
+      let system = { camera: false, mic: false };
       try {
         const s = await navigator.mediaDevices.getUserMedia({
           ...request("video", camera),
@@ -247,14 +303,19 @@ export function useLocalMedia({
       } catch (err: any) {
         // Together failed: try each on its own, so a busy or missing camera
         // still leaves the mic (and the reverse).
-        const failed = mediaErrorKind(err?.name);
-        const retry = await retryableKinds(failed);
+        const both = mediaErrorKind(err?.name);
+        const bothSystem = isSystemDenial(err);
+        const retry = await retryableKinds(both);
         const [v, a] = await Promise.all([
           retry.video ? acquireKind("video", camera) : null,
           retry.audio ? acquireKind("audio", mic) : null,
         ]);
-        cam = v ? v.status : failed;
-        mc = a ? a.status : failed;
+        cam = v ? v.status : both;
+        mc = a ? a.status : both;
+        system = {
+          camera: v ? v.system : bothSystem,
+          mic: a ? a.system : bothSystem,
+        };
         tracks = [v?.track, a?.track].filter((t): t is MediaStreamTrack => !!t);
       }
       // Stopped (or unmounted) while the prompt was up: release what we were
@@ -263,9 +324,7 @@ export function useLocalMedia({
         tracks.forEach((t) => t.stop());
         return;
       }
-      for (const t of tracks) {
-        t.enabled = t.kind === "video" ? cameraOnRef.current : micOnRef.current;
-      }
+      systemRef.current = system;
       settle(tracks.length > 0 ? new MediaStream(tracks) : null, cam, mc);
       // Permission has just been granted, so the device list now has names.
       if (tracks.length > 0) void refreshDevices();
@@ -274,11 +333,12 @@ export function useLocalMedia({
     });
     pendingRef.current = run;
     return run;
-  }, [acquireKind, refreshDevices, settle]);
+  }, [acquireKind, refreshDevices, setOn, settle]);
 
   /**
    * Switch to another microphone or camera without leaving — or acquire one
-   * that is not live at all (it was busy, missing or denied at start).
+   * that is not live at all (it was busy, missing or denied at start, or was
+   * unplugged).
    *
    * Opens ONLY the new device, then publishes a NEW MediaStream holding it
    * plus the untouched track of the other kind, and stops the old track.
@@ -287,12 +347,20 @@ export function useLocalMedia({
    * recorder re-wires, the self-view swaps its srcObject. The new track
    * inherits the old one's on/off, and the old device is released only after
    * the new one is live, so a failed switch leaves the call exactly as it was
-   * and says why.
+   * and says why. Acquiring a device that was not live and failing again
+   * updates its status (and why) instead.
+   *
+   * Resolves "ok" when the device is live, "failed" when it could not be
+   * opened, and "skipped" when nothing was attempted (another switch is in
+   * flight, or the room went away meanwhile).
    */
   const switchDevice = useCallback(
-    async (kind: "audio" | "video", deviceId: string | null) => {
+    async (
+      kind: Kind,
+      deviceId: string | null,
+    ): Promise<"ok" | "failed" | "skipped"> => {
       const current = streamRef.current;
-      if (switchingRef.current) return;
+      if (switchingRef.current) return "skipped";
       const old = current
         ? kind === "audio"
           ? current.getAudioTracks()
@@ -301,7 +369,7 @@ export function useLocalMedia({
       const live = old.find((t) => t.readyState === "live");
       if (deviceId && live && live.getSettings().deviceId === deviceId) {
         writePref(kind === "audio" ? MIC_KEY : CAMERA_KEY, deviceId);
-        return;
+        return "ok";
       }
       const gen = genRef.current;
       switchingRef.current = true;
@@ -309,7 +377,7 @@ export function useLocalMedia({
       setDeviceError(null);
       try {
         let track: MediaStreamTrack | null = null;
-        let failure: string | null = null;
+        let failure: { name: string; system: boolean } | null = null;
         try {
           const fresh = await navigator.mediaDevices.getUserMedia(
             deviceId
@@ -324,16 +392,28 @@ export function useLocalMedia({
               ? fresh.getAudioTracks()
               : fresh.getVideoTracks())[0] ?? null;
         } catch (err: any) {
-          failure = err?.name ?? "Error";
+          failure = { name: err?.name ?? "Error", system: isSystemDenial(err) };
         }
         // Stopped, unmounted, or the stream replaced while the device opened.
         if (gen !== genRef.current || streamRef.current !== current) {
           track?.stop();
-          return;
+          return "skipped";
         }
+        const which = kind === "video" ? "camera" : "mic";
         if (!track) {
-          setDeviceError(deviceSwitchError(failure, kind));
-          return;
+          setDeviceError(deviceSwitchError(failure?.name, kind, failure?.system));
+          if (!live) {
+            // Nothing was working to fall back on: this device's status is
+            // the news (and reads it as off).
+            systemRef.current = { ...systemRef.current, [which]: !!failure?.system };
+            const status = failure ? mediaErrorKind(failure.name) : "missing";
+            settle(
+              current,
+              kind === "video" ? status : cameraStatusRef.current,
+              kind === "audio" ? status : micStatusRef.current,
+            );
+          }
+          return "failed";
         }
         track.enabled =
           old[0]?.enabled ??
@@ -345,6 +425,7 @@ export function useLocalMedia({
           : [];
         const next = new MediaStream([...keep, track]);
         old.forEach((t) => t.stop());
+        systemRef.current = { ...systemRef.current, [which]: false };
         settle(
           next,
           kind === "video" ? "ready" : cameraStatusRef.current,
@@ -355,6 +436,7 @@ export function useLocalMedia({
           track.getSettings().deviceId ?? deviceId,
         );
         void refreshDevices();
+        return "ok";
       } finally {
         // Always cleared — a switch interrupted by stop() must not leave the
         // pickers disabled for the next start.
@@ -365,37 +447,35 @@ export function useLocalMedia({
     [refreshDevices, settle],
   );
 
-  const toggleCamera = useCallback(() => {
-    const next = !cameraOnRef.current;
-    cameraOnRef.current = next;
-    setCameraOn(next);
-    const tracks = streamRef.current?.getVideoTracks() ?? [];
-    tracks.forEach((t) => (t.enabled = next));
-    // Turning on a camera that never came up (busy, missing, denied) is a
-    // retry — the other app may have let go of it since.
-    if (
-      next &&
-      streamRef.current &&
-      !tracks.some((t) => t.readyState === "live")
-    ) {
-      void switchDevice("video", null);
-    }
-  }, [switchDevice]);
-
-  const toggleMic = useCallback(() => {
-    const next = !micOnRef.current;
-    micOnRef.current = next;
-    setMicOn(next);
-    const tracks = streamRef.current?.getAudioTracks() ?? [];
-    tracks.forEach((t) => (t.enabled = next));
-    if (
-      next &&
-      streamRef.current &&
-      !tracks.some((t) => t.readyState === "live")
-    ) {
-      void switchDevice("audio", null);
-    }
-  }, [switchDevice]);
+  /**
+   * Flip one device. Turning on a device that is not live — it failed at
+   * start (and so reads off), or was unplugged — is a retry: the other app
+   * may have let go of it since. A retry that fails leaves it off.
+   */
+  const toggle = useCallback(
+    (kind: Kind) => {
+      const onRef = kind === "video" ? cameraOnRef : micOnRef;
+      const statusRef = kind === "video" ? cameraStatusRef : micStatusRef;
+      const next = !onRef.current;
+      setOn(kind, next);
+      const tracks =
+        (kind === "video"
+          ? streamRef.current?.getVideoTracks()
+          : streamRef.current?.getAudioTracks()) ?? [];
+      tracks.forEach((t) => (t.enabled = next));
+      // Before start (status "off") this only records the choice: start
+      // applies it to whatever it acquires.
+      const started = statusRef.current !== "off" || !!streamRef.current;
+      if (next && started && !tracks.some((t) => t.readyState === "live")) {
+        void switchDevice(kind, null).then((result) => {
+          if (result === "failed") setOn(kind, false);
+        });
+      }
+    },
+    [setOn, switchDevice],
+  );
+  const toggleCamera = useCallback(() => toggle("video"), [toggle]);
+  const toggleMic = useCallback(() => toggle("audio"), [toggle]);
 
   // Plugging a device in or out changes what the pickers offer. When the
   // device IN USE is the one that went (a headset unplugged mid-call), move to

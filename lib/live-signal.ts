@@ -107,6 +107,23 @@ export function inboxTopic(eventId: string, inboxKey: string): string {
 }
 
 /**
+ * A 1:1's private line between two of the people on it. `pairKey` is
+ * `HMAC(secret, room + the two ids in a fixed order)`, so both ends are given
+ * the same topic, and nobody else on the call can derive it.
+ *
+ * A call has no open inbox. When every party was handed every other party's
+ * inbox, a student could publish an offer on a staff member's inbox with any
+ * `from` and any name, and be drawn on staff screens (and recorded) as a
+ * co-host — or, with a real co-host's id, replace that co-host's link under
+ * their name. On a pair line only the other end can publish, and each end
+ * pins the line to that person, so who sent a message is implied by where it
+ * arrived.
+ */
+export function pairTopic(roomId: string, pairKey: string): string {
+  return `${NS}:${roomId}:pair:${pairKey}`;
+}
+
+/**
  * Which channel a connection is negotiated on — and the reason a viewer is
  * never told the host's inbox.
  *
@@ -122,9 +139,10 @@ export function inboxTopic(eventId: string, inboxKey: string): string {
  * never learns any topic but its own, and there is no channel in the system
  * on which one viewer could observe another.
  *
- * Host↔host (a 1:1, or two staff in a webinar) is the ordinary case: each
- * publishes to the other's inbox and listens on its own. There is no audience
- * to protect between two broadcasters.
+ * Host↔host in a webinar (two staff, or staff and a speaker) is the ordinary
+ * case: each publishes to the other's inbox and listens on its own. There is
+ * no audience to protect between two broadcasters. In a 1:1 `peerInbox` is
+ * the pair's own line (pairTopic), which both ends publish on and listen to.
  */
 export function connectionTopic({
   selfRole,
@@ -287,24 +305,33 @@ export function shouldApplyAnswer(signalingState: string): boolean {
 /**
  * May an incoming offer be acted on?
  *
- * Only a broadcaster ever offers, so:
+ * A webinar — only a broadcaster ever offers, so:
  *  - `pinned`: it arrived on a topic pinned to one peer — a VIEWER's inbox,
  *    which only accepts messages from that viewer. A viewer never offers, so
  *    this is a forgery (it used to build a phantom "host" tile, named by the
  *    viewer, on every host's screen). Dropped.
  *  - a broadcaster hearing an offer from a peer it knows as a viewer: same.
- * Anything else arrived on our own inbox, which only hosts (and, in a 1:1,
- * the other people on the call) can derive, so an unknown sender is a host.
+ *  Anything else arrived on our own inbox, which only hosts can derive, so an
+ *  unknown sender is a host.
+ *
+ * A 1:1 — offers arrive only on a pair line (pairTopic), pinned to the one
+ * other person who holds it, and that person must be on the roster the
+ * server gave us (`knownRole`). Anything else — unpinned, or from someone the
+ * server never named — is dropped: a call never builds a peer out of what a
+ * message claims about its sender.
  */
 export function offerDisposition({
+  kind,
   pinned,
   selfRole,
   knownRole,
 }: {
+  kind: "event" | "call";
   pinned: boolean;
   selfRole: SignalRole;
   knownRole: SignalRole | null;
 }): "accept" | "drop" {
+  if (kind === "call") return pinned && knownRole !== null ? "accept" : "drop";
   if (pinned) return "drop";
   if (selfRole === "host" && knownRole === "viewer") return "drop";
   return "accept";

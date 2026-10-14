@@ -1,12 +1,13 @@
 import "server-only";
 import { env } from "@/lib/env";
-import { deriveKey } from "@/lib/live-keys";
+import { deriveKey, pairKeyParts } from "@/lib/live-keys";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   inboxTopic,
   lobbyTopic,
   moderationTopic,
+  pairTopic,
   roomTopic,
   stageTopic,
   turnServerFrom,
@@ -40,9 +41,12 @@ import {
  *                      a stage proof, and every peer (so it can call them)
  *   webinar viewer  -> own inbox key, the room key only where the audience
  *                      may see itself, and the hosts' names
- *   1:1 party       -> own inbox key and everyone else on the call. No lobby,
- *                      room or moderation key: nothing is published there for
- *                      a call, and a lobby key let a student forge arrivals.
+ *   1:1 party       -> one private line per other person on the call (a pair
+ *                      key both ends of that pair, and nobody else, are
+ *                      given), and those people's names. No inbox anyone can
+ *                      offer on, and no lobby, room or moderation key: a lobby
+ *                      key let a student forge arrivals, and an open inbox let
+ *                      them forge a co-host (see pairTopic).
  *
  * A viewer is never handed another viewer's id, name, or inbox key. That is
  * the audience-privacy guarantee, and it lives here rather than in the UI:
@@ -72,6 +76,15 @@ function derive(purpose: string, ...parts: string[]): string {
 /** One participant's inbox key. Disclosed to its owner, and to hosts. */
 export function inboxKeyFor(eventId: string, peerId: string): string {
   return derive("inbox", eventId, peerId);
+}
+
+/**
+ * The line between two people on a 1:1 — the topic both of them negotiate
+ * their connection on, and the only one. Disclosed to those two people and
+ * nobody else; the same string whichever of them asks.
+ */
+export function callLineFor(roomId: string, selfId: string, peerId: string): string {
+  return pairTopic(roomId, derive("pair", ...pairKeyParts(roomId, selfId, peerId)));
 }
 
 /** The lobby key for a room. Disclosed to hosts only. */
@@ -174,7 +187,8 @@ export type LivePeer = {
   /**
    * Where to reach them, and — when they are a viewer — where they answer
    * from too. Hosts are given this for everyone; a viewer is never given
-   * anyone's but its own. See connectionTopic() in lib/live-signal.ts.
+   * anyone's but its own. In a 1:1 it is the private line between the two of
+   * you (callLineFor). See connectionTopic() in lib/live-signal.ts.
    */
   inbox: string;
 };
@@ -183,8 +197,11 @@ export type LiveCredentials = {
   peerId: string;
   name: string;
   role: SignalRole;
-  /** Topic this participant subscribes to for offers/answers/ICE. */
-  inboxTopic: string;
+  /**
+   * Topic this participant subscribes to for offers/answers/ICE. Null for a
+   * 1:1, which has no open inbox: each peer's `inbox` is a line pinned to them.
+   */
+  inboxTopic: string | null;
   /** Topic every participant subscribes to for host announcements. */
   stageTopic: string;
   /** Webinar hosts only: topic arrivals are delivered on. */
@@ -232,9 +249,10 @@ export function credentialsFor({
   discloseNames = true,
 }: {
   /**
-   * A 1:1 gets its inbox and the stage, nothing else: the lobby, room and
-   * moderation channels carry nothing for a call, and handing a student the
-   * lobby key let them forge a `peer-online` and be dialled as a co-host.
+   * A 1:1 gets the stage and its peers' lines, nothing else: no open inbox
+   * (pairTopic says why), and the lobby, room and moderation channels carry
+   * nothing for a call — handing a student the lobby key let them forge a
+   * `peer-online` and be dialled as a co-host.
    */
   kind: "event" | "call";
   /** The namespaced room id (`event:<uuid>` / `call:<uuid>`). */
@@ -285,7 +303,7 @@ export function credentialsFor({
     peerId,
     name,
     role,
-    inboxTopic: inboxTopic(eventId, inboxKeyFor(eventId, peerId)),
+    inboxTopic: webinar ? inboxTopic(eventId, inboxKeyFor(eventId, peerId)) : null,
     stageTopic: stageTopic(eventId),
     lobbyTopic: webinarHost ? lobbyTopic(eventId, lobbyKeyFor(eventId)) : null,
     stageProof: webinarHost ? stageProofFor(eventId, peerId) : null,

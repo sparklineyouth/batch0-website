@@ -981,7 +981,8 @@ export function useLiveSession({
 
       const topic = connectionTopic({
         selfRole: role,
-        selfInbox: creds.inboxTopic,
+        // A 1:1 has none; there, every connection is its pair's own line.
+        selfInbox: creds.inboxTopic ?? "",
         peerRole: peer.role,
         peerInbox: peer.inbox,
       });
@@ -1150,10 +1151,11 @@ export function useLiveSession({
         recomputeOverall();
       };
 
-      // A host talking to a viewer negotiates on the VIEWER's inbox, so it
-      // subscribes there — pinned to that viewer, so nothing arriving on it
-      // can claim to be from someone else. Our own inbox is already
-      // subscribed and is open to any host, so it carries no owner pin.
+      // A host talking to a viewer negotiates on the VIEWER's inbox, and two
+      // people on a 1:1 on their pair's line, so we subscribe there — pinned
+      // to that peer, so nothing arriving on it can claim to be from someone
+      // else. A webinar's own inbox is already subscribed and is open to any
+      // host, so it carries no owner pin.
       if (topic !== creds.inboxTopic) {
         await ensureChannel(topic, peer.peerId);
         // The session may have been torn down (or this connection replaced)
@@ -1275,11 +1277,14 @@ export function useLiveSession({
       if (!isAddressedTo(msg, creds.peerId)) return;
       // Only a broadcaster offers. An offer on a viewer's (pinned) inbox, or
       // from someone we know as a viewer, is a forgery — it used to put a
-      // phantom "host" tile, named by the viewer, on every host's screen.
+      // phantom "host" tile, named by the viewer, on every host's screen. On
+      // a 1:1 an offer counts only on a pair line, from someone the server
+      // named (offerDisposition).
       const known = knownPeer(msg.from);
       if (
         msg.t === "offer" &&
         offerDisposition({
+          kind,
           pinned: !!expectFrom,
           selfRole: role,
           knownRole: known?.role ?? null,
@@ -1331,20 +1336,26 @@ export function useLiveSession({
         if (!restart && existing?.pc.remoteDescription) {
           disconnectFrom(msg.from, false);
         }
-        // An offer is also how a viewer first learns a host exists: the
-        // server never told it, so the peer is constructed from the message —
-        // only ever as a host, and only from our own inbox (offerDisposition).
-        // It answers on the topic the offer arrived on — for a viewer that is
-        // its own inbox, so it never needs to know the host's.
+        // An offer is also how a webinar viewer first learns a host exists:
+        // the server never told it, so the peer is constructed from the
+        // message — only ever as a host, and only from our own inbox
+        // (offerDisposition). It answers on the topic the offer arrived on —
+        // for a viewer that is its own inbox, so it never needs to know the
+        // host's. A 1:1 never does this: everyone on it is on the roster, and
+        // a name taken from a message is a name anyone could have typed.
         if (!connections.current.has(msg.from)) {
-          await connectTo(
-            known ?? {
-              peerId: msg.from,
-              name: msg.name,
-              role: "host",
-              inbox: creds.inboxTopic,
-            },
-          );
+          const peer =
+            known ??
+            (kind === "event" && creds.inboxTopic
+              ? {
+                  peerId: msg.from,
+                  name: msg.name,
+                  role: "host" as const,
+                  inbox: creds.inboxTopic,
+                }
+              : null);
+          if (!peer) return;
+          await connectTo(peer);
         }
         const conn = connections.current.get(msg.from);
         if (!conn) return;
@@ -1575,6 +1586,29 @@ export function useLiveSession({
     };
 
     /**
+     * Say "I'm here" on the stage, as a broadcaster: anyone waiting
+     * re-announces at once, and any broadcaster whose offer to us went
+     * unanswered re-sends it (see the stage handler). Every party to a 1:1
+     * broadcasts, with no proof to attach.
+     */
+    const sayOnline = async () => {
+      const held = credsRef.current;
+      if (cancelled || !held || !isBroadcasterRef.current) return;
+      if (!held.stageProof && kind !== "call") return;
+      const stage = channels.current.get(held.stageTopic);
+      await stage?.send({
+        type: "broadcast",
+        event: SIGNAL_EVENT,
+        payload: {
+          t: "host-online",
+          hostId: held.peerId,
+          name: held.name,
+          proof: held.stageProof ?? "",
+        } satisfies StageMessage,
+      });
+    };
+
+    /**
      * Fold a 1:1's roster into this run — see "A 1:1 that grows while it
      * runs" at the top of this file.
      *
@@ -1586,10 +1620,11 @@ export function useLiveSession({
      * announces can be in flight at once (the heartbeat and a stage-triggered
      * re-check) and each must fold onto what the other added.
      *
-     * Each new peer is dialled with the inbox the server derived for THEM.
-     * connectTo is idempotent per peer, so a newcomer who reached us first —
-     * one with a smaller id offers before our heartbeat has named them —
-     * keeps the connection their offer built.
+     * Each new peer is dialled on the line the server derived for the two of
+     * us, and that line is only listened to from here on. A newcomer with a
+     * smaller id may already have offered on it — before we knew to listen —
+     * so once such an offer would count as unanswered, we say we are here,
+     * and they send it again.
      */
     const onRoster = (roster: NonNullable<PresenceResult["call"]>) => {
       const held = credsRef.current;
@@ -1613,6 +1648,17 @@ export function useLiveSession({
       // an incoming offer, the heartbeat's dial loop — reads credsRef.current.
       credsRef.current = { ...held, peers };
       for (const peer of added) void connectTo(peer);
+      if (added.some((p) => !shouldOffer(held.peerId, role, p))) {
+        addTimer(
+          setTimeout(() => {
+            const waiting = added.some((p) => {
+              const c = connections.current.get(p.peerId);
+              return !!c && c.state !== "live" && !c.pc.remoteDescription;
+            });
+            if (waiting) void sayOnline().catch(() => {});
+          }, UNANSWERED_OFFER_MS + 500),
+        );
+      }
     };
 
     /** Announce and act on the answer. Never rejects. */
@@ -1737,8 +1783,16 @@ export function useLiveSession({
 
         // My inbox: every offer/answer/candidate addressed to me — and, when I
         // am a viewer, the line I answer on too. No owner pin: only a host can
-        // publish here, and any host is legitimate.
-        await ensureChannel(creds.inboxTopic);
+        // publish here, and any host is legitimate. A 1:1 has no inbox: one
+        // line per person on it, each pinned to them, all listened to before
+        // anything is announced so no offer can land ahead of us.
+        if (creds.inboxTopic) {
+          await ensureChannel(creds.inboxTopic);
+        } else {
+          await Promise.all(
+            creds.peers.map((p) => ensureChannel(p.inbox, p.peerId)),
+          );
+        }
         if (cancelled) return;
 
         // The stage: room-wide hints, heard by everyone. Nothing here is
@@ -1828,19 +1882,7 @@ export function useLiveSession({
 
         // Say I'm here, so anyone already waiting re-announces (and any
         // broadcaster whose offer to us went unheard re-sends it) at once.
-        // Every party to a 1:1 broadcasts, with no proof to attach.
-        if (isBroadcasterRef.current && (creds.stageProof || kind === "call")) {
-          await supabaseStage.send({
-            type: "broadcast",
-            event: SIGNAL_EVENT,
-            payload: {
-              t: "host-online",
-              hostId: creds.peerId,
-              name: creds.name,
-              proof: creds.stageProof ?? "",
-            } satisfies StageMessage,
-          });
-        }
+        await sayOnline();
         if (cancelled) return;
 
         // The heartbeat goes in BEFORE the first announce, so a first announce

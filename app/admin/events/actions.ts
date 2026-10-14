@@ -222,12 +222,12 @@ export async function saveEvent(
       .maybeSingle();
     const p = prior as any;
     if (p) {
-      // A stamp from more than an hour before this run's start belongs to an
-      // earlier run.
-      const runOpensAt =
-        roomWindow(input.starts_at, input.ends_at || null).start - 60 * 60_000;
+      // A run's stamps never predate its go-live window (claimStage stamps
+      // nothing earlier, and End needs a stamp or the start), so one that
+      // does belongs to an earlier run.
+      const w = roomWindow(input.starts_at, input.ends_at || null);
       const stale = (at: string | null) =>
-        !!at && new Date(at).getTime() < runOpensAt;
+        !!at && new Date(at).getTime() < w.goLiveOpensAt;
       if (stale(p.live_started_at)) liveReset.live_started_at = null;
       if (stale(p.live_ended_at)) liveReset.live_ended_at = null;
       if (stale(p.assets_shared_at)) liveReset.assets_shared_at = null;

@@ -84,6 +84,13 @@ export type LiveEvent = {
    * webinar looking live for up to fifty minutes. See `eventLiveStatus`.
    */
   liveEndedAt: string | null;
+  /**
+   * When a host went live (`events.live_started_at`). A host who starts early
+   * lets the audience in early, so a list that has read it offers Join before
+   * the usual 15 minutes. Optional: a list that has not read it shows the
+   * schedule's answer.
+   */
+  liveStartedAt?: string | null;
 } & LiveRoom;
 
 /** Someone on a call's staff side who did not send the invite (migration 0092). */
@@ -358,6 +365,16 @@ export const ROOM_HARD_CLOSE_MINUTES_AFTER = 180;
 export const CALL_STAFF_OPENS_MINUTES_BEFORE = 60;
 
 /**
+ * How early a host in a webinar's room counts as GOING LIVE: stamping
+ * `live_started_at`, which lets the audience in and makes End available.
+ *
+ * Hosts may open the room at any time, but before this they are rehearsing.
+ * A camera check on Tuesday for a Thursday webinar must not open the room to
+ * students for two days, nor offer an End that would cancel the real thing.
+ */
+export const GO_LIVE_OPENS_MINUTES_BEFORE = 60;
+
+/**
  * Where a person stands with respect to a room.
  *
  *   early   Before their window opens.
@@ -406,6 +423,7 @@ export function roomWindow(
 ): {
   start: number;
   end: number;
+  goLiveOpensAt: number;
   viewerOpensAt: number;
   viewerClosesAt: number;
   hardCloseAt: number;
@@ -417,6 +435,7 @@ export function roomWindow(
   return {
     start,
     end,
+    goLiveOpensAt: start - GO_LIVE_OPENS_MINUTES_BEFORE * MINUTE,
     viewerOpensAt: start - JOIN_OPENS_MINUTES_BEFORE * MINUTE,
     viewerClosesAt: end + JOIN_CLOSES_MINUTES_AFTER * MINUTE,
     hardCloseAt: end + ROOM_HARD_CLOSE_MINUTES_AFTER * MINUTE,
@@ -424,9 +443,10 @@ export function roomWindow(
 }
 
 /**
- * Has this webinar's run begun? A host went live (`live_started_at` — joining
- * as a host stamps it), or the scheduled start has passed. End for everyone
- * exists only from here on.
+ * Has this webinar's run begun? A host went live (`live_started_at`, stamped
+ * by a host in the room from start − GO_LIVE_OPENS_MINUTES_BEFORE on — see
+ * shouldStampLiveStart), or the scheduled start has passed. End for everyone
+ * exists only from here on; before it, a rehearsal's way out is Leave.
  */
 export function webinarHasBegun(
   startsAt: string | Date,
@@ -438,15 +458,48 @@ export function webinarHasBegun(
 }
 
 /**
+ * Should a host in the room (joining, or heartbeating) stamp
+ * `live_started_at` now?
+ *
+ * Only inside the go-live window — from start − GO_LIVE_OPENS_MINUTES_BEFORE
+ * to the hard stop — and only once: never over an existing stamp, never after
+ * End, never for a premiere (whose stamp is the hand-over to the live Q&A,
+ * pressed on purpose). A host who opened the room earlier is rehearsing, and
+ * their first heartbeat inside the window is the start.
+ */
+export function shouldStampLiveStart({
+  startsAt,
+  endsAt,
+  liveStartedAt,
+  liveEndedAt,
+  liveMode,
+  now = new Date(),
+}: {
+  startsAt: string | Date;
+  endsAt: string | Date | null | undefined;
+  liveStartedAt: string | Date | null | undefined;
+  liveEndedAt: string | Date | null | undefined;
+  liveMode: string;
+  now?: Date;
+}): boolean {
+  if (liveStartedAt || liveEndedAt || liveMode === "premiere") return false;
+  const w = roomWindow(startsAt, endsAt);
+  const t = now.getTime();
+  return t >= w.goLiveOpensAt && t <= w.hardCloseAt;
+}
+
+/**
  * May this person be in this webinar's room right now?
  *
  *   host    any time up to the hard stop (end+3h), whatever `liveEndedAt`
  *           says: staff set up whenever they like, reach the ended screen to
  *           Reopen, and an overrunning webinar never loses its End button.
+ *           Before the go-live window (start-60m) that is a rehearsal: it
+ *           stamps nothing and lets nobody else in (shouldStampLiveStart).
  *   viewer  'ended' once `liveEndedAt` is set. Otherwise start-15m to end+30m,
  *           with two widenings:
- *             - a host went live early (`liveStartedAt`): in now, however
- *               early — the audience follows the host in;
+ *             - a host went live early (`liveStartedAt`, at most an hour
+ *               before the start): in now — the audience follows the host in;
  *             - past end+30m while a host is still present (`hostPresent`),
  *               up to the hard stop. There is no silent auto-stamp of
  *               `live_ended_at`, so a wifi drop can never end a webinar.
@@ -654,8 +707,10 @@ export function roomIsOpen(access: RoomAccess): boolean {
 /**
  * An event's state for a LIST — the dashboard, the admin webinars page, cards.
  *
- *   upcoming  Before the audience's window opens.
- *   open      Joinable, not started.
+ *   upcoming  Before the audience's window opens, and no host has gone live.
+ *   open      Joinable, not started — inside the audience's window, or
+ *             earlier because a host went live early (`liveStartedAt`), the
+ *             same widening `roomAccess` gives viewers.
  *   live      Joinable, started.
  *   ended     A host pressed End for everyone. Shown as "Ended" with no Join,
  *             whatever the clock says — the bug this replaces kept an ended
@@ -673,10 +728,12 @@ export function eventLiveStatus(
   {
     startsAt,
     endsAt,
+    liveStartedAt,
     liveEndedAt,
   }: {
     startsAt: string | Date;
     endsAt: string | Date | null | undefined;
+    liveStartedAt?: string | Date | null;
     liveEndedAt: string | Date | null | undefined;
   },
   now: Date = new Date(),
@@ -684,7 +741,7 @@ export function eventLiveStatus(
   if (liveEndedAt) return "ended";
   const w = roomWindow(startsAt, endsAt);
   const t = now.getTime();
-  if (t < w.viewerOpensAt) return "upcoming";
+  if (t < w.viewerOpensAt) return liveStartedAt ? "open" : "upcoming";
   if (t <= w.viewerClosesAt) return t < w.start ? "open" : "live";
   return "past";
 }

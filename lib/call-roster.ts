@@ -44,9 +44,10 @@ export type RosterPeer = {
   name: string;
   role: "host" | "viewer";
   /**
-   * THEIR inbox topic, as the server derived it from the room and their id.
-   * Never anything a browser could compute: an inbox key is an HMAC under a
-   * secret only the server holds.
+   * The private line between this browser's person and them, as the server
+   * derived it from the room and the pair (callLineFor in lib/live-rooms.ts).
+   * Never anything a browser could compute: the key is an HMAC under a secret
+   * only the server holds.
    */
   inbox: string;
 };
@@ -57,8 +58,8 @@ export type RosterPeer = {
  *   - Never self. A browser that dialled itself would hold a connection to
  *     nobody, offering into its own inbox on every heartbeat.
  *   - Everyone already known is kept exactly as they are, in their order. The
- *     server's copy of someone known is not news — an inbox is derived from
- *     the room and the person, so it cannot have moved — and swapping the
+ *     server's copy of someone known is not news — a line is derived from
+ *     the room and the pair, so it cannot have moved — and swapping the
  *     object would be churn under a link that may be mid-negotiation.
  *   - Someone new is appended in the server's order, and listed in `added`
  *     so the caller can dial exactly them.

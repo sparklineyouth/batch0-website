@@ -12,6 +12,7 @@ import {
   type SignalRole,
 } from "@/lib/live-signal";
 import {
+  callLineFor,
   credentialsFor,
   inboxKeyFor,
   liveParticipants,
@@ -302,14 +303,15 @@ async function displayName(userId: string): Promise<string> {
 
 /**
  * Everyone on a 1:1 but the caller, as peers the engine can dial: the
- * student and the whole staff side, every one a broadcaster, each with THEIR
- * inbox topic — derived from the room and their id under a secret only the
- * server holds (inboxKeyFor in lib/live-rooms.ts), so no browser can work it
- * out for itself; it has to be told.
+ * student and the whole staff side, every one a broadcaster, each with the
+ * private line between them and the caller (callLineFor in lib/live-rooms.ts)
+ * — derived under a secret only the server holds, and handed only to the two
+ * people it joins. Nobody on the call can reach a pair they are not part of,
+ * so nobody can pose as someone else on it.
  *
  * One helper for both of the places a browser learns who is on its call:
  * joinRoom's known peers, and every heartbeat's roster (PresenceResult.call).
- * Two copies of this map could drift, and an inbox derived from the wrong
+ * Two copies of this map could drift, and a line derived from the wrong
  * string is a topic nobody listens on — which presents as an offer that never
  * lands and a "waiting for…" tile that never clears, with nothing in any log.
  *
@@ -321,7 +323,7 @@ function callPeers(roomId: string, call: CallAccess): LivePeer[] {
     peerId: p.id,
     name: p.name,
     role: "host" as const,
-    inbox: inboxTopic(roomId, inboxKeyFor(roomId, p.id)),
+    inbox: callLineFor(roomId, call.userId, p.id),
   }));
 }
 
@@ -370,9 +372,9 @@ export async function joinRoom(kind: RoomKind, id: string): Promise<JoinResult> 
 
   const name = await displayName(actor.userId);
 
-  // A host joining a webinar is the start of it: stamp live_started_at and
-  // take the primary seat if it is free (claimStage). Before the state is
-  // read, so the join's answer already says so.
+  // A host joining a webinar inside its go-live window is the start of it:
+  // stamp live_started_at, and take the primary seat if it is free
+  // (claimStage). Before the state is read, so the join's answer says so.
   if (room.event?.isHost) await claimStage(room.event);
   const roomState = room.event
     ? await webinarRoomState(room.event)
@@ -609,9 +611,11 @@ export async function setPrimaryHost(
 }
 
 /**
- * Who is hosting right now — for the green room's "Start webinar" vs
+ * Who ELSE is hosting right now — for the green room's "Start webinar" vs
  * "Join as co-host · Ana is hosting". The primary first, then by arrival.
  *
+ * Never the caller: a host who reloads before their own row goes stale (the
+ * leave beacon lost) is not someone already hosting for them to join.
  * Hosts only (staff and speakers): a viewer gets an empty list, never names.
  * Empty too when presence cannot be read.
  */
@@ -623,7 +627,8 @@ export async function getHostingStatus(
   const hosts = (await presentHosts(access.event.id, PEER_TIMEOUT_MS)) ?? [];
   const primary = access.event.primaryHostId;
   return {
-    hosts: [...hosts]
+    hosts: hosts
+      .filter((h) => h.userId !== access.userId)
       .sort(
         (a, b) =>
           Number(b.userId === primary) - Number(a.userId === primary) ||

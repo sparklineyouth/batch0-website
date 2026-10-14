@@ -26,7 +26,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { getActionError } from "@/lib/action-error";
 import {
   isCallCounterpart,
-  JOIN_CLOSES_MINUTES_AFTER,
+  ROOM_HARD_CLOSE_MINUTES_AFTER,
   roomWindow,
   type LiveRole,
   type WebinarQuestion,
@@ -494,11 +494,20 @@ function BroadcastSession({
     };
     // Throttled: `stage-change` arrives on a channel any participant can
     // publish on, and each one used to cost every client a server action.
+    // With a trailing call, so a real hint landing just after a forged one is
+    // still acted on within the throttle rather than at the next poll.
     let lastPoll = 0;
+    let trailing: ReturnType<typeof setTimeout> | null = null;
     pollNow.current = () => {
-      const now = Date.now();
-      if (now - lastPoll < 2_000) return;
-      lastPoll = now;
+      const wait = lastPoll + 2_000 - Date.now();
+      if (wait > 0) {
+        trailing ??= setTimeout(() => {
+          trailing = null;
+          pollNow.current();
+        }, wait);
+        return;
+      }
+      lastPoll = Date.now();
       void tick();
     };
     void tick();
@@ -514,6 +523,7 @@ function BroadcastSession({
     return () => {
       cancelled = true;
       pollNow.current = () => {};
+      if (trailing) clearTimeout(trailing);
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
@@ -1456,9 +1466,10 @@ function BroadcastSession({
     pollNow.current();
   }, [recheck]);
 
+  // The call's room stays open to its hard close (callRoomAccess).
   const rejoinUntil = call
     ? new Date(
-        new Date(call.endsAt).getTime() + JOIN_CLOSES_MINUTES_AFTER * 60_000,
+        new Date(call.endsAt).getTime() + ROOM_HARD_CLOSE_MINUTES_AFTER * 60_000,
       ).toISOString()
     : null;
 

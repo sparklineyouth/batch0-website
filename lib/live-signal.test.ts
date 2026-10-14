@@ -20,13 +20,14 @@ import {
   ICE_DISCONNECT_GRACE_MS,
   MAX_ICE_RESTARTS,
   offerDisposition,
+  pairTopic,
   overallState,
   readSlots,
   turnServerFrom,
   type SignalMessage,
   type StageMessage,
 } from "./live-signal.ts";
-import { deriveKey } from "./live-keys.ts";
+import { deriveKey, pairKeyParts } from "./live-keys.ts";
 
 /**
  * The batch0 Live protocol rules that are load-bearing for privacy.
@@ -472,22 +473,39 @@ test("a screen announced on the offer is active before any `media` message", () 
 // ---------------------------------------------------------------------------
 
 test("an offer on a viewer's pinned inbox is a forgery and is dropped", () => {
-  assert.equal(offerDisposition({ pinned: true, selfRole: "host", knownRole: null }), "drop");
-  assert.equal(offerDisposition({ pinned: true, selfRole: "host", knownRole: "host" }), "drop");
+  const offer = (knownRole: "host" | "viewer" | null) =>
+    offerDisposition({ kind: "event", pinned: true, selfRole: "host", knownRole });
+  assert.equal(offer(null), "drop");
+  assert.equal(offer("host"), "drop");
 });
 
 test("a host drops an offer from someone it knows as a viewer", () => {
   assert.equal(
-    offerDisposition({ pinned: false, selfRole: "host", knownRole: "viewer" }),
+    offerDisposition({ kind: "event", pinned: false, selfRole: "host", knownRole: "viewer" }),
     "drop",
   );
 });
 
 test("offers from hosts on our own inbox are accepted", () => {
-  assert.equal(offerDisposition({ pinned: false, selfRole: "host", knownRole: "host" }), "accept");
-  assert.equal(offerDisposition({ pinned: false, selfRole: "host", knownRole: null }), "accept");
+  const offer = (selfRole: "host" | "viewer", knownRole: "host" | null) =>
+    offerDisposition({ kind: "event", pinned: false, selfRole, knownRole });
+  assert.equal(offer("host", "host"), "accept");
+  assert.equal(offer("host", null), "accept");
   // A viewer learns of a host from its first offer.
-  assert.equal(offerDisposition({ pinned: false, selfRole: "viewer", knownRole: null }), "accept");
+  assert.equal(offer("viewer", null), "accept");
+});
+
+// The 1:1 forgery: every party used to hold every other party's inbox, so a
+// student could offer on a staff member's inbox as a made-up "Admin" (drawn on
+// staff screens and recorded), or as a real co-host's id, replacing that
+// co-host's link under their name.
+test("a 1:1 accepts an offer only on its pair line, from someone on the roster", () => {
+  const offer = (pinned: boolean, knownRole: "host" | null) =>
+    offerDisposition({ kind: "call", pinned, selfRole: "host", knownRole });
+  assert.equal(offer(true, "host"), "accept");
+  assert.equal(offer(true, null), "drop", "a sender the server never named");
+  assert.equal(offer(false, "host"), "drop", "a call has no open inbox");
+  assert.equal(offer(false, null), "drop");
 });
 
 // ---------------------------------------------------------------------------
@@ -657,6 +675,20 @@ test("deriveKey matches the keys rooms were minted with (U+0000-joined HMAC)", (
     deriveKey(S, "inbox", "call:7d8a4c1e-0000-4000-8000-000000000002", "user-2"),
     "aZ4AIApBGTcL0jz0k1GQU-",
   );
+});
+
+test("a 1:1 pair line: both ends derive the same key, nobody else's pair does", () => {
+  const S = "test-secret-for-live-keys";
+  const R = "call:7d8a4c1e-0000-4000-8000-000000000002";
+  const pair = (a: string, b: string) => deriveKey(S, "pair", ...pairKeyParts(R, a, b));
+  assert.equal(pair("student", "staff-a"), pair("staff-a", "student"));
+  assert.notEqual(pair("student", "staff-a"), pair("student", "staff-b"));
+  assert.notEqual(pair("staff-a", "staff-b"), pair("student", "staff-b"));
+  // Never an inbox key, for either end.
+  assert.notEqual(pair("student", "staff-a"), deriveKey(S, "inbox", R, "student"));
+  assert.notEqual(pair("student", "staff-a"), deriveKey(S, "inbox", R, "staff-a"));
+  assert.match(pairTopic(R, "KEY"), /^b0live:call:7d8a4c1e-0000-4000-8000-000000000002:pair:KEY$/);
+  assert.notEqual(pairTopic(R, "KEY"), inboxTopic(R, "KEY"));
 });
 
 test("deriveKey separates its parts, so shifting a boundary changes the key", () => {

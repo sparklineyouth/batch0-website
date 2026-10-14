@@ -115,11 +115,12 @@ export default async function AdminWebinarPage(props: {
     {
       startsAt: ev.starts_at,
       endsAt: ev.ends_at,
+      liveStartedAt: ev.live_started_at,
       liveEndedAt: ev.live_ended_at,
     },
     now,
   );
-  // The host window (start-60m to end+3h, whatever End says), not the
+  // The host window (any time to end+3h, whatever End says), not the
   // audience's: an admin is a host, and a staff host entering an ended room
   // lands on the ended screen, where Reopen is.
   const hostWindowOpen = roomIsOpen(

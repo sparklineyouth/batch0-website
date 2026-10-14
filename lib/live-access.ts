@@ -16,6 +16,7 @@ import {
   roomAccess,
   roomWindow,
   shouldClaimPrimary,
+  shouldStampLiveStart,
   type CallCohost,
   type CallInviteStatus,
   type CallRoomAccess,
@@ -25,7 +26,6 @@ import {
 } from "@/lib/live";
 import {
   canBroadcast,
-  isPremiere,
   normalizeAudienceMode,
   type AudienceMode,
 } from "@/lib/webinars";
@@ -346,10 +346,12 @@ export function withinHardClose(
 /**
  * A host is in the room (joining, or heartbeating): make the room reflect it.
  *
- *   - `live_started_at` is stamped if unset — the first host in IS the start,
- *     which opens the room to the audience early and makes End available.
- *     Never for a premiere, whose stamp hands the recording over to the live
- *     Q&A. Never after End.
+ *   - `live_started_at` is stamped if unset and the go-live window has opened
+ *     (shouldStampLiveStart: from start − 60 min) — a host in the room then IS
+ *     the start, which lets the audience in early and makes End available.
+ *     Earlier than that a host is rehearsing: nothing is stamped, and their
+ *     first heartbeat inside the window stamps it. Never for a premiere, whose
+ *     stamp hands the recording over to the live Q&A. Never after End.
  *   - the primary seat is claimed when nobody holds it or its holder is no
  *     longer present (shouldClaimPrimary). Presence here ignores `left_at` and
  *     reads only the heartbeat, so a primary who reloads keeps the seat
@@ -367,7 +369,15 @@ export async function claimStage(access: EventAccess): Promise<void> {
   const admin = createAdminClient();
   let changed = false;
 
-  if (!ev.liveStartedAt && !isPremiere(ev.liveMode)) {
+  if (
+    shouldStampLiveStart({
+      startsAt: ev.startsAt,
+      endsAt: ev.endsAt,
+      liveStartedAt: ev.liveStartedAt,
+      liveEndedAt: ev.liveEndedAt,
+      liveMode: ev.liveMode,
+    })
+  ) {
     const now = new Date().toISOString();
     const { data, error } = await admin
       .from("events")
@@ -723,16 +733,6 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Claimed speakers' user ids, or null when the read failed.
- *
- * Null rather than [] on an error, because here "the query failed" would
- * otherwise silently demote a guest speaker to a viewer mid-webinar. A missing
- * table (0084 not applied) is still "no speakers", which is the truth. Also
- * presentHostRoles' fallback when roles cannot be read. (This replaced the
- * `speakerUserIds` helper that the gates used to share, which swallowed
- * errors into an empty list.)
- */
-/**
  * The event row, with the primary-host column when the database has it. See
  * PRIMARY_COLUMN for the fallback.
  */
@@ -752,6 +752,16 @@ async function readEvent(
   return read(EVENT_COLUMNS);
 }
 
+/**
+ * Claimed speakers' user ids, or null when the read failed.
+ *
+ * Null rather than [] on an error, because here "the query failed" would
+ * otherwise silently demote a guest speaker to a viewer mid-webinar. A missing
+ * table (0084 not applied) is still "no speakers", which is the truth. Also
+ * presentHostRoles' fallback when roles cannot be read. (This replaced the
+ * `speakerUserIds` helper that the gates used to share, which swallowed
+ * errors into an empty list.)
+ */
 async function readSpeakerIds(eventId: string): Promise<string[] | null> {
   const admin = createAdminClient();
   const { data, error } = await admin

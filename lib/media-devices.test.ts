@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   deviceSwitchError,
+  isSystemDenial,
   groupDevices,
   mediaErrorKind,
   mediaStatusText,
@@ -63,10 +64,24 @@ test("the picker shows the device in use, else default, else the first", () => {
 });
 
 test("a failed switch says what to do, by error", () => {
-  assert.match(deviceSwitchError("NotReadableError", "video"), /camera is busy/);
+  assert.match(deviceSwitchError("NotReadableError", "video"), /camera is in use by another app/);
   assert.match(deviceSwitchError("NotFoundError", "audio"), /microphone isn't connected/);
-  assert.match(deviceSwitchError("NotAllowedError", "audio"), /blocked that microphone/);
+  assert.match(deviceSwitchError("NotAllowedError", "audio"), /microphone is blocked\. Allow it in the address bar/);
+  assert.match(
+    deviceSwitchError("NotAllowedError", "video", true),
+    /Allow it in System Settings › Privacy/,
+  );
   assert.match(deviceSwitchError(undefined, "video"), /previous one/);
+});
+
+test("a denial by the operating system is told apart from the browser's", () => {
+  assert.equal(
+    isSystemDenial({ name: "NotAllowedError", message: "Permission denied by system" }),
+    true,
+  );
+  assert.equal(isSystemDenial({ name: "NotAllowedError", message: "Permission denied" }), false);
+  assert.equal(isSystemDenial({ name: "NotReadableError", message: "denied by system" }), false);
+  assert.equal(isSystemDenial(null), false);
 });
 
 test("a getUserMedia failure maps to what is wrong with that device", () => {
@@ -92,12 +107,37 @@ test("the stream is ready while either device works", () => {
 test("the message names the device that is not working, tersely", () => {
   assert.equal(mediaStatusText("ready", "ready"), null);
   assert.equal(mediaStatusText("off", "off"), null);
-  assert.match(mediaStatusText("error", "ready")!, /^Camera is busy.*still talk/);
-  assert.match(mediaStatusText("ready", "missing")!, /^Microphone isn't connected.*camera still works/);
+  assert.equal(
+    mediaStatusText("error", "ready"),
+    "Camera is in use by another app. You can still talk.",
+  );
+  assert.equal(
+    mediaStatusText("denied", "ready"),
+    "Camera blocked: allow it in the address bar. You can still talk.",
+  );
+  assert.equal(mediaStatusText("ready", "missing"), "No microphone found. Your camera still works.");
   assert.equal(
     mediaStatusText("denied", "denied"),
-    "Camera and microphone are blocked — allow them in the address bar.",
+    "Camera and microphone blocked: allow them in the address bar.",
   );
   assert.equal(mediaStatusText("missing", "missing"), "No camera or microphone found.");
-  assert.match(mediaStatusText("error", "denied")!, /^Camera is busy.*Microphone is blocked/);
+  assert.equal(
+    mediaStatusText("error", "denied"),
+    "Camera is in use by another app. Microphone blocked: allow it in the address bar.",
+  );
+});
+
+test("an operating-system denial points at System Settings, not the address bar", () => {
+  assert.equal(
+    mediaStatusText("denied", "ready", { camera: true }),
+    "Camera blocked: allow it in System Settings › Privacy. You can still talk.",
+  );
+  assert.equal(
+    mediaStatusText("denied", "denied", { camera: true, mic: true }),
+    "Camera and microphone blocked: allow them in System Settings › Privacy.",
+  );
+  assert.equal(
+    mediaStatusText("denied", "denied", { camera: true }),
+    "Camera blocked: allow it in System Settings › Privacy. Microphone blocked: allow it in the address bar.",
+  );
 });

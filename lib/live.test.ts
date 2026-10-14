@@ -11,6 +11,7 @@ import {
   JOIN_CLOSES_MINUTES_AFTER,
   DEFAULT_EVENT_MINUTES,
   CALL_STAFF_OPENS_MINUTES_BEFORE,
+  GO_LIVE_OPENS_MINUTES_BEFORE,
   ROOM_HARD_CLOSE_MINUTES_AFTER,
   callRoomAccess,
   mayEndCall,
@@ -28,6 +29,7 @@ import {
   normalizeCohostIds,
   sameRoomState,
   shouldClaimPrimary,
+  shouldStampLiveStart,
   staffNames,
   type CallInvite,
   type LiveRoomState,
@@ -318,7 +320,9 @@ function host(minutes: number, liveEndedAt: string | null = null): RoomAccess {
 
 test("the window constants and instants", () => {
   assert.equal(ROOM_HARD_CLOSE_MINUTES_AFTER, 180);
+  assert.equal(GO_LIVE_OPENS_MINUTES_BEFORE, 60);
   const w = roomWindow(START, END);
+  assert.equal(w.goLiveOpensAt, at(-60).getTime());
   assert.equal(w.viewerOpensAt, at(-15).getTime());
   assert.equal(w.viewerClosesAt, at(90).getTime());
   assert.equal(w.hardCloseAt, at(240).getTime());
@@ -344,9 +348,9 @@ test("a viewer: early before start-15m, open at start-15m, live after the start"
 });
 
 test("a viewer may come in early once a host has gone live", () => {
-  const wentLive = at(-120).toISOString();
-  assert.equal(viewer(-119, { liveStartedAt: wentLive }), "open");
-  assert.equal(viewer(-24 * 60, { liveStartedAt: wentLive }), "open");
+  const wentLive = at(-50).toISOString();
+  assert.equal(viewer(-49, { liveStartedAt: wentLive }), "open");
+  assert.equal(viewer(-16, { liveStartedAt: wentLive }), "open");
   assert.equal(viewer(5, { liveStartedAt: wentLive }), "live");
   // Going live early widens the start, not the end.
   assert.equal(viewer(91, { liveStartedAt: wentLive }), "closed");
@@ -355,6 +359,55 @@ test("a viewer may come in early once a host has gone live", () => {
     viewer(-60, { liveStartedAt: wentLive, liveEndedAt: at(-61).toISOString() }),
     "ended",
   );
+});
+
+// The rehearsal bug: a host opening the room on Tuesday for a Thursday
+// webinar stamped live_started_at, which let students into an empty room for
+// two days and offered an End that cancelled the real webinar.
+function stamp(
+  minutes: number,
+  opts: {
+    liveStartedAt?: string | null;
+    liveEndedAt?: string | null;
+    liveMode?: string;
+  } = {},
+): boolean {
+  return shouldStampLiveStart({
+    startsAt: START,
+    endsAt: END,
+    liveStartedAt: opts.liveStartedAt ?? null,
+    liveEndedAt: opts.liveEndedAt ?? null,
+    liveMode: opts.liveMode ?? "hosted",
+    now: at(minutes),
+  });
+}
+
+test("a host in the room goes live only inside the go-live window", () => {
+  assert.equal(stamp(-2 * 24 * 60), false, "two days early is a rehearsal");
+  assert.equal(stamp(-61), false);
+  assert.equal(stamp(-GO_LIVE_OPENS_MINUTES_BEFORE), true, "the boundary is inside");
+  assert.equal(stamp(-20), true);
+  assert.equal(stamp(30), true);
+  assert.equal(stamp(240), true);
+  assert.equal(stamp(241), false, "past the hard close");
+});
+
+test("going live stamps once: not over a stamp, not after End, never a premiere", () => {
+  assert.equal(stamp(-20, { liveStartedAt: at(-30).toISOString() }), false);
+  assert.equal(stamp(30, { liveEndedAt: at(20).toISOString() }), false);
+  assert.equal(stamp(-20, { liveMode: "premiere" }), false);
+});
+
+test("a rehearsal neither lets viewers in nor offers End; the go-live window does", () => {
+  // Rehearsing at start-2d: nothing stamped, so the room stays shut to
+  // viewers and End stays off.
+  assert.equal(stamp(-2 * 24 * 60), false);
+  assert.equal(viewer(-2 * 24 * 60), "early");
+  assert.equal(mayEnd(-2 * 24 * 60, { isStaff: true }), false);
+  // Still there at start-60m: the next heartbeat stamps, and both open.
+  const wentLive = at(-60).toISOString();
+  assert.equal(viewer(-59, { liveStartedAt: wentLive }), "open");
+  assert.equal(mayEnd(-59, { isStaff: true }, { liveStartedAt: wentLive }), true);
 });
 
 test("a viewer is refused ('ended') inside the window once a host pressed End", () => {
@@ -424,6 +477,22 @@ test("an ended webinar reads 'ended' inside the join window, not Live / Join", (
   // The bug: ended at 18:40, still "Live now" until 19:30.
   assert.equal(listed(45, at(40).toISOString()), "ended");
   assert.equal(listed(120, at(40).toISOString()), "ended");
+});
+
+test("a list offers Join early once a host went live early, as the room does", () => {
+  const wentLive = at(-40).toISOString();
+  const early = (minutes: number, liveEndedAt: string | null = null) =>
+    eventLiveStatus(
+      { startsAt: START, endsAt: END, liveStartedAt: wentLive, liveEndedAt },
+      at(minutes),
+    );
+  assert.equal(early(-39), "open");
+  assert.equal(viewer(-39, { liveStartedAt: wentLive }), "open", "the room agrees");
+  assert.equal(early(-10), "open");
+  assert.equal(early(10), "live");
+  assert.equal(early(91), "past", "going live early widens the start, not the end");
+  assert.equal(early(-30, at(-35).toISOString()), "ended");
+  assert.equal(listed(-39), "upcoming", "without the stamp: the schedule's answer");
 });
 
 test("an event with no end time lists with the default length", () => {

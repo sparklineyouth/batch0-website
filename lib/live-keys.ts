@@ -25,3 +25,16 @@ export function deriveKey(
     .digest("base64url")
     .slice(0, 22);
 }
+
+/**
+ * The parts a 1:1 pair key is derived from (purpose "pair"): the room, then
+ * the two people's ids in a fixed order, so each end of the pair is handed
+ * the same line whichever of them asks.
+ */
+export function pairKeyParts(
+  roomId: string,
+  a: string,
+  b: string,
+): [string, string, string] {
+  return a < b ? [roomId, a, b] : [roomId, b, a];
+}

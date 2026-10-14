@@ -41,6 +41,8 @@ function toLiveEvent(e: any): LiveEvent {
     // Selected by the `*` below. Absent on a database that predates 0084,
     // where nothing can have been ended, so null is the honest default.
     liveEndedAt: e.live_ended_at ?? null,
+    // A host who went live early opens the room early; the card follows.
+    liveStartedAt: e.live_started_at ?? null,
   };
 }
 
@@ -91,6 +93,7 @@ export default async function StudentEventsPage() {
       {
         startsAt: e.starts_at,
         endsAt: e.ends_at,
+        liveStartedAt: e.live_started_at ?? null,
         liveEndedAt: e.live_ended_at ?? null,
       },
       nowDate,
