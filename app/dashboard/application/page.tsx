@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -6,19 +5,14 @@ import { requireUser, getProfile } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { Card, StatusBadge } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
-import { getCountryFromHeaders, getRegionalPrice } from "@/lib/pricing";
-import { promoPriceCents, listPriceCents } from "@/lib/promo";
-import { loadPromoConfig } from "@/lib/promo-settings";
 import { getPassGrantForUser } from "@/lib/founder-pass";
-import { grantDiscountCents } from "@/lib/founder-pass-tiers";
 import { getRebuildForUser, type Rebuild } from "@/lib/founder-pass-perks";
-import { PayButton } from "./pay-button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { TrackSubmitted } from "./track-submitted";
 import { RebuildForm } from "./rebuild-form";
 import { fmtDateOnly } from "@/lib/pre-cohort";
-import { Zap } from "lucide-react";
+import { ArrowRight, Zap } from "lucide-react";
 
 export const metadata = { title: "Application · batch0" };
 
@@ -56,8 +50,8 @@ export default async function ApplicationPage(
       .limit(1)
       .maybeSingle(),
     // founder_passes has a self-select policy, so the user's own client can
-    // answer "do I hold one". Reused below for the discount, the priority-lane
-    // note, and rebuild eligibility.
+    // answer "do I hold one". Reused below for the priority-lane note and
+    // rebuild eligibility.
     getPassGrantForUser(supabase, user.id),
     // The SAME pre-cohort decision the middleware and sidebar make, so the
     // copy and CTAs here can never contradict what the routes allow.
@@ -77,22 +71,6 @@ export default async function ApplicationPage(
   }
 
   const holdsPass = passGrant !== null;
-  const basePriceCents = listPriceCents(app.cohort?.price_cents ?? 13000);
-  const country = getCountryFromHeaders(await headers());
-  const regionalCents = getRegionalPrice(basePriceCents, country).amountCents;
-  // The site-wide promotion, applied before the pass discount — the same order
-  // app/api/stripe/checkout uses. Without it this page quotes list price while
-  // Stripe charges the sale price.
-  const saleCents = promoPriceCents(regionalCents, new Date(), await loadPromoConfig());
-  // Mirror the checkout math (app/api/stripe/checkout) exactly — regional
-  // price, then the tier's discount resolved against it — so the number on
-  // this card is the number Stripe charges.
-  const passDiscountCents =
-    app.status === "accepted" && passGrant
-      ? grantDiscountCents(passGrant, regionalCents)
-      : 0;
-  const priceCents = Math.max(0, saleCents - passDiscountCents);
-
   // The seven-day rebuild (perk 4) is only offered to a pass holder whose most
   // recent application was declined. Read through the admin client — the
   // rebuilds table has a self-select policy, but this keeps the tolerant
@@ -146,7 +124,7 @@ export default async function ApplicationPage(
               <span className="font-mono text-phosphor-ink">03</span>
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 <span className="text-ink">If you&apos;re accepted,</span> you&apos;ll see your
-                final tuition and can lock in your seat from this page.
+                final tuition and can lock in your seat from here.
               </span>
             </li>
           </ol>
@@ -159,26 +137,18 @@ export default async function ApplicationPage(
       )}
 
       {app.status === "accepted" && (
+        // One place to pay: /dashboard/accepted carries the quote checkout
+        // charges (scholarship included), the deadline, the parent payment
+        // link and the refund policy. This card only points there.
         <Card className="mt-6 border-phosphor/40 bg-phosphor/5">
           <h3 className="text-lg font-semibold text-phosphor-ink">You're in.</h3>
           <p className="mt-1 text-sm text-ink-soft">
-            Welcome to {app.cohort?.name ?? "batch0"}. Pay your one-time $
-            {(priceCents / 100).toFixed(0)} to lock in your seat.
+            Accepted to {app.cohort?.name ?? "batch0"}.
           </p>
-          {passDiscountCents > 0 && (
-            <p className="mt-2 text-xs font-medium text-phosphor-ink">
-              {/* A full ride zeroes the bill, and "$130 off tuition" next to a
-                  "pay your one-time $0" line reads like a bug. Say what
-                  happened instead. */}
-              {priceCents === 0
-                ? "Founder pass applied — tuition waived in full. Confirm your seat below; there's nothing to pay."
-                : `Founder pass applied — $${(passDiscountCents / 100).toFixed(0)} off tuition.`}
-            </p>
-          )}
           {app.review_notes && <ReviewerNote text={app.review_notes} />}
-          <div className="mt-5">
-            <PayButton applicationId={app.id} />
-          </div>
+          <ButtonLink href="/dashboard/accepted" className="mt-5">
+            Pay to enroll <ArrowRight className="h-4 w-4" />
+          </ButtonLink>
         </Card>
       )}
 

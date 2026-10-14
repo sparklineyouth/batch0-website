@@ -16,11 +16,11 @@ export function LockedFeature({
   title: string;
   applicationStatus: ApplicationStatus | null;
 }) {
-  const { lede, cta } = copyFor(applicationStatus);
+  const { lede, cta } = lockedCopy(applicationStatus);
   return (
     <div className="mx-auto max-w-2xl">
       <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-phosphor-ink">
-        {title} · locked
+        Locked
       </p>
       <h1 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.02em] text-ink">
         {title} unlocks at enrollment.
@@ -50,7 +50,15 @@ export function LockedFeature({
   );
 }
 
-function copyFor(status: ApplicationStatus | null) {
+/**
+ * What a locked page says, by where the applicant stands. Shared with the
+ * installed app's locked screens (components/app/locked-alert.tsx): only an
+ * accepted applicant has a seat to pay for.
+ */
+export function lockedCopy(status: ApplicationStatus | null): {
+  lede: string;
+  cta: { href: string; label: string } | null;
+} {
   switch (status) {
     case null:
     case undefined:
@@ -60,7 +68,7 @@ function copyFor(status: ApplicationStatus | null) {
     case "submitted":
       return { lede: "Your application is in review.", cta: null };
     case "accepted":
-      return { lede: "You're accepted. Pay to enroll.", cta: { href: "/dashboard/accepted", label: "Pay to enroll" } };
+      return { lede: "You're accepted.", cta: { href: "/dashboard/accepted", label: "Pay to enroll" } };
     case "waitlisted":
       return { lede: "You're waitlisted. We'll email you.", cta: null };
     case "rejected":

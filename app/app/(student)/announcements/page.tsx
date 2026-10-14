@@ -1,8 +1,9 @@
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
+import { AppLockedAlert } from "@/components/app/locked-alert";
 import { getCohortAnnouncements } from "@/lib/app-cache";
 import { LocalTime } from "@/components/ui/local-time";
-import { AppHeader, AppBody, Empty, Alert } from "@/components/app/frame";
+import { AppHeader, AppBody, Empty } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Announcements · batch0" };
@@ -34,9 +35,10 @@ export default async function StudentAppAnnouncements() {
       <>
         <AppHeader title="Announcements" eyebrow="Locked" />
         <AppBody>
-          <Alert tone="info" title="Announcements open at enrollment.">
-            Pay for your seat to see them.
-          </Alert>
+          <AppLockedAlert
+            title="Announcements open at enrollment."
+            applicationStatus={access.applicationStatus}
+          />
         </AppBody>
       </>
     );
