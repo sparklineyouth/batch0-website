@@ -14,7 +14,7 @@ export default function RefundPolicyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Refund Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: October 1, 2026
+        Last updated: October 14, 2026
       </p>
 
       <p>
@@ -270,7 +270,7 @@ export default function RefundPolicyPage() {
           path: "/refund-policy",
           name: "Refund Policy",
           description,
-          dateModified: "2026-10-01",
+          dateModified: "2026-10-14",
         })}
       />
       <JsonLd

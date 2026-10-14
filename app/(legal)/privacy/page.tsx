@@ -49,6 +49,13 @@ export default function PrivacyPage() {
           webinar's chat or Q&amp;A.
         </li>
         <li>
+          <strong>Retired features:</strong> we still hold what was posted or
+          uploaded in parts of batch0 we have since retired: the team thread,
+          lesson comments, discussions, direct messages, weekly check-ins,
+          office hours bookings and their recap notes, and files uploaded to
+          batch0 before files moved to Google Drive.
+        </li>
+        <li>
           <strong>Call and webinar recordings:</strong> 1:1 calls and webinars
           may be recorded, as video and audio of what is on screen and what is
           said. The room shows when it is recording. A call&rsquo;s recording

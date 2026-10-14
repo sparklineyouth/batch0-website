@@ -37,24 +37,41 @@ test("each legal page's 'Last updated' line matches its structured dateModified"
   }
 });
 
+// Retired in October 2026: Discord replaced discussions, the team thread,
+// lesson comments and direct messages; Assignments replaced weekly
+// check-ins; 1:1 calls replaced office hours; Google Drive replaced uploads.
+const RETIRED = [
+  /team threads?/i,
+  /lesson comments?/i,
+  /direct messages?/i,
+  /\bdiscussions\b/i,
+  /check-ins?\b/i,
+  /office hours/i,
+];
+
+// The one place a legal page may name them: the privacy policy's list item
+// saying their data is still held (0093, 0094, 0097 and 0099 keep the rows).
+const RETAINED_ITEM = /<li> <strong>Retired features:<\/strong>(.*?)<\/li>/;
+
 test("no legal page names a removed feature as a current one", () => {
-  // Retired in October 2026: Discord replaced discussions, the team thread,
-  // lesson comments and direct messages; Assignments replaced weekly
-  // check-ins; 1:1 calls replaced office hours.
-  const retired = [
-    /team threads?/i,
-    /lesson comments?/i,
-    /direct messages? in batch0/i,
-    /\bdiscussions\b/i,
-    /check-ins?\b/i,
-    /office hours/i,
-  ];
   for (const name of PAGES) {
-    const src = page(name);
-    for (const phrase of retired) {
+    const src = page(name).replace(RETAINED_ITEM, "");
+    for (const phrase of RETIRED) {
       assert.doesNotMatch(src, phrase, `${name} still mentions ${phrase}`);
     }
   }
+});
+
+test("the privacy policy says what it still holds from retired features", () => {
+  // Parents are promised they can see and delete "what we hold"; the policy
+  // has to name it even though the features are gone.
+  const item = page("privacy").match(RETAINED_ITEM)?.[1];
+  assert.ok(item, "privacy: no 'Retired features' item");
+  assert.match(item, /we still hold/);
+  assert.match(item, /since retired/);
+  for (const phrase of RETIRED) assert.match(item, phrase);
+  assert.match(item, /recap notes/);
+  assert.match(item, /files uploaded to batch0/);
 });
 
 test("the privacy policy says calls and webinars may be recorded, and who can watch", () => {
