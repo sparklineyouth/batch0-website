@@ -136,7 +136,6 @@ export default async function AdminPaymentsPage(
           </p>
         </div>
         <div className="flex items-start gap-2">
-          <Link href="/admin/payments/acquisition" className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-wash">Campaign payments</Link>
           <SyncStripeButton />
           <a
             href="/api/admin/export/payments"

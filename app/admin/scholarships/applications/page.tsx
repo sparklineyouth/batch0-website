@@ -35,7 +35,7 @@ export default async function ScholarshipQueuePage(props: {
   const scholarshipId = searchParams.scholarship ?? null;
 
   const admin = createAdminClient();
-  const { scholarships, missingTable } = await listScholarships(admin);
+  const { scholarships } = await listScholarships(admin);
   const byId = new Map(scholarships.map((s) => [s.id, s]));
 
   let query = admin
@@ -79,14 +79,6 @@ export default async function ScholarshipQueuePage(props: {
       <p className="mt-1 text-sm text-ink-soft">
         Applications waiting on a decision, oldest first.
       </p>
-
-      {missingTable && (
-        <Card className="mt-6 border-amber-400/30 bg-amber-400/5">
-          <p className="text-sm text-amber-300">
-            Run migration <code>0071_scholarships.sql</code> first.
-          </p>
-        </Card>
-      )}
 
       {(refundsOwed ?? 0) > 0 && filter !== "refund_due" && (
         <Card className="mt-6 border-amber-400/30 bg-amber-400/5">

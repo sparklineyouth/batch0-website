@@ -88,19 +88,6 @@ export function EmailSettingsForm({
         Where email goes out from, and the switch that stops all of it.
       </p>
 
-      {!tablesReady && (
-        <Card className="mt-5 border-amber-500/30 bg-amber-500/5">
-          <p className="text-sm text-ink-soft">
-            Run migration{" "}
-            <code className="font-mono text-phosphor-ink">
-              0052_email_automation.sql
-            </code>{" "}
-            before changing anything here — until then these settings have
-            nowhere to save, and email uses the environment variables.
-          </p>
-        </Card>
-      )}
-
       {error && (
         <div className="mt-5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {error}

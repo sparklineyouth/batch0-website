@@ -319,7 +319,6 @@ export default async function PulsePage() {
           current={aiTotal.billed}
           prior={null}
           format={fmtMoney}
-          href="/admin/ai-usage"
           hint={`${aiTotal.users} users active`}
         />
       </section>

@@ -16,19 +16,15 @@
  */
 
 /**
- * How a pass invite is tagged for /admin/email's delivery metrics.
+ * How a pass invite is tagged in email_events.
  *
  * Deliberately NOT a key in `email_templates`. The invite's body is computed
  * from the grant (grantPerkLines), so an admin editing it in a mustache editor
  * could promise perks the code does not grant — the one thing
- * lib/founder-pass-tiers.ts exists to prevent. The tag exists purely so the
- * send shows up beside every other one, because a bounced invite is a live
- * serial nobody can redeem and that is exactly the failure worth spotting.
+ * lib/founder-pass-tiers.ts exists to prevent. The tag only makes the send
+ * traceable: a bounced invite is a live serial nobody can redeem.
  */
 export const INVITE_TEMPLATE_KEY = "founder_pass.invite";
-
-/** The batch every self-check probe row is written under. See self-test.ts. */
-export const SELFTEST_BATCH = "selftest";
 
 /**
  * Split a textarea of addresses into a recipient list.

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
 import { requirePermission } from "@/lib/auth";
-import { getAllRoles, getRoleMemberCounts, rolesTableReady } from "@/lib/roles";
+import { getAllRoles, getRoleMemberCounts } from "@/lib/roles";
 import {
   ALL_PERMISSIONS,
   can,
@@ -20,10 +20,9 @@ export const revalidate = 0;
 
 export default async function AdminRolesPage() {
   const { caps } = await requirePermission("roles.manage");
-  const [roles, counts, ready] = await Promise.all([
+  const [roles, counts] = await Promise.all([
     getAllRoles(),
     getRoleMemberCounts(),
-    rolesTableReady(),
   ]);
 
   const canAssign = can(caps, "people.roles");
@@ -38,9 +37,7 @@ export default async function AdminRolesPage() {
             Roles &amp; permissions
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-faint">
-            A role is a named set of permissions. Everyone with an account holds
-            exactly one. Change what a role can do and every person holding it
-            changes with it — no deploy, no re-signup.
+            One role per person. Changes apply immediately.
           </p>
         </div>
         <ButtonLink href="/admin/roles/new">
@@ -48,22 +45,6 @@ export default async function AdminRolesPage() {
           New role
         </ButtonLink>
       </div>
-
-      {!ready && (
-        <Card className="mt-6 border-amber-500/40">
-          <h2 className="text-sm font-semibold text-ink">
-            Database migration not applied yet
-          </h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            The roles below are the built-in defaults compiled into the app, not
-            editable rows. Run{" "}
-            <code className="font-mono text-xs">
-              supabase/migrations/0048_custom_roles.sql
-            </code>{" "}
-            in the Supabase SQL editor, then reload this page.
-          </p>
-        </Card>
-      )}
 
       <div className="mt-6 space-y-3">
         {roles.map((role) => {

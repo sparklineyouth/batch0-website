@@ -129,10 +129,8 @@ export function ScholarshipQuestionsEditor({
 
       {isShared ? (
         <p className="rounded-lg border border-line bg-wash px-3 py-2 text-xs text-ink-soft">
-          Shown to <strong className="text-ink">every applicant</strong> on
-          /apply, in a scholarship section after the main questions. Nobody has
-          been accepted at this point, so keep these to flagging interest — the
-          questions that decide an award belong on a specific scholarship below.
+          Shown to <strong className="text-ink">every applicant</strong>.
+          Award questions belong on a specific scholarship.
         </p>
       ) : current ? (
         <p className="rounded-lg border border-line bg-wash px-3 py-2 text-xs text-ink-soft">

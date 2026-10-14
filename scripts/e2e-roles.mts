@@ -204,7 +204,9 @@ try {
   console.log(`\nintern: ${allowed.length} pages the role grants\n`);
   for (const path of allowed) {
     const r = await get(intern, path);
-    check(`GET ${path} → 200`, r.status === 200, `${r.status}${r.to ? ` → ${r.to}` : ""}`);
+    // A section landing (/admin/email) forwards to its first permitted tab.
+    const intoSection = r.status === 307 && !!r.to?.startsWith(path + "/");
+    check(`GET ${path} → 200`, r.status === 200 || intoSection, `${r.status}${r.to ? ` → ${r.to}` : ""}`);
   }
 
   console.log(`\nintern: ${blocked.length} pages the role does NOT grant\n`);

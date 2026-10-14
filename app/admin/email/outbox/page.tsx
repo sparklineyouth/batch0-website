@@ -3,7 +3,6 @@ import { Inbox } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { isMissingTable } from "@/lib/email/store";
 import { getEmailSettings } from "@/lib/email/settings";
 import { OutboxControls, RowAction } from "./outbox-controls";
 
@@ -29,32 +28,13 @@ export default async function EmailOutboxPage() {
 
   // Ordered by send_after, not created_at: the queue's own order is what the
   // page is for, and a drip queued today for next week belongs at the bottom.
-  const { data: rows, error } = await admin
+  const { data: rows } = await admin
     .from("email_outbox")
     .select(
       "id, to_email, to_name, status, send_after, sent_at, attempts, last_error, created_at, template:email_templates(name), automation:email_automations(id, name)",
     )
     .order("send_after", { ascending: false })
     .limit(200);
-
-  if (error && isMissingTable(error)) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
-          Outbox
-        </h1>
-        <Card className="mt-6">
-          <p className="text-sm text-ink-soft">
-            Run migration{" "}
-            <code className="font-mono text-phosphor-ink">
-              0052_email_automation.sql
-            </code>{" "}
-            to enable the send queue.
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   const list = (rows ?? []) as any[];
   const pendingCount = list.filter((r) => r.status === "pending").length;
@@ -71,9 +51,7 @@ export default async function EmailOutboxPage() {
             Outbox
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Every automated and scheduled email, before and after it goes out.
-            Anything still pending can be cancelled — once it's sent, it's sent.
-            The queue drains every five minutes; “Run queue now” doesn't wait.
+            Queued and sent email. Pending sends can be cancelled.
           </p>
         </div>
         <OutboxControls pendingCount={pendingCount} />

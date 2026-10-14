@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
 import { LocalTime } from "@/components/ui/local-time";
-import { TableShell } from "@/app/admin/email/metric-ui";
 import {
   CATEGORY_LABELS,
   type TicketCategory,
@@ -155,5 +154,26 @@ export function SupportTicketTable({ rows }: { rows: SupportTicketRow[] }) {
         </tr>
       ))}
     </TableShell>
+  );
+}
+
+function TableShell({
+  head,
+  children,
+}: {
+  head: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-faint">
+            {head}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
   );
 }

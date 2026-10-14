@@ -130,15 +130,15 @@ const MENTOR = [
 ];
 const INVESTOR = ["/investor", "/investor/calls", "/investor/demo-day", "/investor/interests", "/investor/intros", "/investor/teams", "/messages"];
 const ADMIN = [
-  "/admin", "/admin/ai-usage", "/admin/announcements", "/admin/application-questions", "/admin/applications",
+  "/admin", "/admin/announcements", "/admin/application-questions", "/admin/applications",
   "/admin/audit", "/admin/blog", "/admin/blog/new", "/admin/calls", "/admin/challenges", "/admin/challenges/new",
-  "/admin/charges", "/admin/cohorts", "/admin/course", "/admin/course/analytics", "/admin/demo-day",
+  "/admin/charges", "/admin/cohorts", "/admin/course", "/admin/demo-day",
   "/admin/demo-day/rubric", "/admin/demo-day/tickets", "/admin/discord", "/admin/discussions", "/admin/email",
   "/admin/email/automations", "/admin/email/automations/new", "/admin/email/blast", "/admin/email/compose",
-  "/admin/email/outbox", "/admin/email/phone-request", "/admin/email/settings", "/admin/email/templates",
+  "/admin/email/outbox", "/admin/email/settings", "/admin/email/templates",
   "/admin/email/templates/new", "/admin/events", "/admin/flows", "/admin/flows/new", "/admin/interventions",
-  "/admin/intros", "/admin/mentors", "/admin/mentors/match", "/admin/messages", "/admin/moderation",
-  "/admin/pass-requests", "/admin/passes", "/admin/payments", "/admin/payments/acquisition", "/admin/pricing",
+  "/admin/intros", "/admin/mentors", "/admin/messages", "/admin/moderation",
+  "/admin/pass-requests", "/admin/passes", "/admin/payments", "/admin/pricing",
   "/admin/progress", "/admin/pulse", "/admin/recovery", "/admin/referrals", "/admin/resources",
   "/admin/resources/new", "/admin/roles", "/admin/roles/new", "/admin/scholarships", "/admin/scholarships/new",
   "/admin/scholarships/applications", "/admin/settings", "/admin/students", "/admin/students/new", "/admin/teams",

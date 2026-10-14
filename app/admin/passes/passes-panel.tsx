@@ -777,12 +777,7 @@ export function PassesPanel({
                   .
                 </span>
               ) : (
-                <>
-                  Leave blank to use the tier&apos;s own amount. Type a number to
-                  override it — <span className="font-mono">0</span> is a real
-                  choice, meaning a pass with no discount at all. Never charges
-                  more than the tuition.
-                </>
+                <>Blank = tier default. <span className="font-mono">0</span> = no discount.</>
               )}
             </p>
           </div>
@@ -831,12 +826,6 @@ export function PassesPanel({
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-ink-faint">
-            Enforced server-side wherever it counts — checkout reads the
-            discount off the pass, the applications gate reads the early
-            access, the feedback form reads the credit count. Nothing here is
-            copy.
-          </p>
         </div>
 
         <div className="mt-4">
@@ -963,9 +952,7 @@ export function PassesPanel({
               </div>
             )}
             <p className="mt-3 text-xs text-amber-200/80">
-              Keep a copy if you need to read one back to someone — the database
-              stores a peppered hash, so nobody, including us, can recover these
-              later. If a send is lost, revoke that serial and issue a new pass.
+              Shown once — copy them now.
             </p>
           </div>
         )}

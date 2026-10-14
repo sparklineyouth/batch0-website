@@ -36,17 +36,13 @@ const QUEUE = "/admin/scholarships/applications";
 
 const SLUG_RE = /^[a-z][a-z0-9-]{1,47}$/;
 
-/**
- * Name the migration a save is missing, rather than echoing PostgREST's
- * "column does not exist". Migrations here are pasted by hand after the
- * deploy that needs them, so this is a to-do, not a bug.
- */
+/** Say what isn't set up, rather than echoing PostgREST's "column does not exist". */
 function explainSchemaError(message: string): string {
   if (!/does not exist|schema cache/i.test(message)) return message;
   if (/perk_|scholarships_award_type/i.test(message)) {
-    return "Perks aren't switched on in the database yet — run migration 0074_scholarship_perks.sql first.";
+    return "Perks aren't set up in the database yet.";
   }
-  return "The scholarships table isn't there yet — run migration 0071 first.";
+  return "Scholarships aren't set up in the database yet.";
 }
 
 export type ScholarshipInput = {

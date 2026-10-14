@@ -30,8 +30,8 @@ import { parseAddresses, MAX_DIRECT_RECIPIENTS } from "./shared";
  * request can't redirect a blast — that's the right default for bulk mail to
  * the student directory. But "email this one person who isn't in the
  * database" is a real, constant need (a parent, a sponsor, a school
- * counsellor), and routing it through a personal mailbox loses the branding,
- * the record, and the delivery metrics.
+ * counsellor), and routing it through a personal mailbox loses the branding
+ * and the record.
  *
  * So this accepts free-typed addresses, and pays for it with the guards a
  * free-text sender needs: an explicit permission, a hard recipient cap, one

@@ -12,7 +12,6 @@ import {
   LayoutDashboard,
   Inbox,
   Users,
-  UserPlus,
   Calendar,
   Briefcase,
   BookOpen,
@@ -45,7 +44,12 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PRE_COHORT_ALLOWED_HREFS } from "@/lib/pre-cohort";
-import { can, type Capabilities, type Permission } from "@/lib/permissions";
+import {
+  canMeet,
+  EMAIL_PERMISSIONS,
+  type Capabilities,
+  type Requirement,
+} from "@/lib/permissions";
 
 export type NavItem = {
   href: string;
@@ -56,9 +60,10 @@ export type NavItem = {
    * Permission required to see this link. Admin items carry one so the
    * sidebar shows exactly the pages the viewer can actually open — the same
    * string the route guard checks (see ADMIN_ROUTE_PERMISSIONS). Items with
-   * no `perm` are visible to anyone who can reach the panel.
+   * no `perm` are visible to anyone who can reach the panel. A list means
+   * any one of them (a section landing such as Email).
    */
-  perm?: Permission;
+  perm?: Requirement;
 };
 
 // A NavGroup is a labeled subset of nav items rendered as a collapsible
@@ -257,12 +262,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         perm: "people.view",
       },
       {
-        href: "/admin/students/new",
-        label: "Add a person",
-        icon: UserPlus,
-        perm: "people.manage",
-      },
-      {
         href: "/admin/mentors",
         label: "Mentors",
         icon: Handshake,
@@ -364,7 +363,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/admin/pricing",
-        label: "Pricing & revenue",
+        label: "Pricing",
         icon: Percent,
         perm: "settings.manage",
       },
@@ -379,12 +378,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: "Payments",
         icon: CreditCard,
         perm: "payments.view",
-      },
-      {
-        href: "/admin/scholarships/applications",
-        label: "Scholarship queue",
-        icon: Inbox,
-        perm: "scholarships.view",
       },
       {
         href: "/admin/scholarships",
@@ -410,47 +403,12 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         icon: ShieldCheck,
         perm: "interventions.manage",
       },
-      {
-        href: "/admin/mentors/match",
-        label: "Mentor match",
-        icon: Sparkles,
-        perm: "mentors.manage",
-      },
-      {
-        href: "/admin/ai-usage",
-        label: "AI usage",
-        icon: Sparkles,
-        perm: "ai_usage.view",
-      },
+      // One row for the whole section; its tabs (EMAIL_TABS) do the rest.
       {
         href: "/admin/email",
-        label: "Email metrics",
+        label: "Email",
         icon: Mail,
-        perm: "email.view",
-      },
-      {
-        href: "/admin/email/blast",
-        label: "Email blast",
-        icon: Send,
-        perm: "email.send",
-      },
-      {
-        href: "/admin/email/templates",
-        label: "Email templates",
-        icon: FileText,
-        perm: "email.templates",
-      },
-      {
-        href: "/admin/email/automations",
-        label: "Email automations",
-        icon: Workflow,
-        perm: "email.automate",
-      },
-      {
-        href: "/admin/email/outbox",
-        label: "Email outbox",
-        icon: Inbox,
-        perm: "email.view",
+        perm: EMAIL_PERMISSIONS,
       },
       // One row, not two. The queue is the only page in the section anyone
       // navigates to directly — a request's detail page is always reached by
@@ -522,6 +480,19 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
 export const ADMIN_NAV: NavItem[] = ADMIN_NAV_GROUPS.flatMap((g) => g.items);
 
 /**
+ * The Email section's tabs, in order. /admin/email forwards to the first one
+ * the viewer holds, so the tab bar and the landing can't disagree.
+ */
+export const EMAIL_TABS: (NavItem & { perm: Requirement })[] = [
+  { href: "/admin/email/templates", label: "Templates", icon: FileText, perm: "email.templates" },
+  { href: "/admin/email/automations", label: "Automations", icon: Workflow, perm: "email.automate" },
+  { href: "/admin/email/blast", label: "Blast", icon: Send, perm: "email.send" },
+  { href: "/admin/email/compose", label: "Compose", icon: Mail, perm: "email.send" },
+  { href: "/admin/email/outbox", label: "Outbox", icon: Inbox, perm: "email.view" },
+  { href: "/admin/email/settings", label: "Settings", icon: Settings, perm: "email.settings" },
+];
+
+/**
  * The one visibility predicate for admin nav items. Both the desktop sidebar
  * and the mobile drawer call it with the viewer's permission list, so the two
  * can't drift — and neither can drift from the route guard, since both read
@@ -532,7 +503,7 @@ export function filterAdminNavItem(
   caps: Capabilities | null,
 ): boolean {
   if (!item.perm) return true;
-  return can(caps, item.perm);
+  return canMeet(caps, item.perm);
 }
 
 // ---------------------------------------------------------------------------

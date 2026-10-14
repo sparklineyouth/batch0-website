@@ -55,7 +55,6 @@ export const PERMISSION_KEYS = [
   // Operations
   "pulse.view",
   "interventions.manage",
-  "ai_usage.view",
   "email.view",
   "email.send",
   "email.templates",
@@ -147,7 +146,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       {
         key: "mentors.manage",
         label: "Manage mentors",
-        description: "Invite mentors, edit mentor profiles, and run mentor matching.",
+        description: "Invite mentors, edit mentor profiles, and pair them with students.",
       },
     ],
   },
@@ -193,7 +192,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       {
         key: "course.manage",
         label: "Manage the course",
-        description: "Edit modules and lessons, and read course analytics.",
+        description: "Edit modules and lessons.",
       },
       {
         key: "events.manage",
@@ -273,14 +272,9 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         description: "Work the at-risk queue and log interventions.",
       },
       {
-        key: "ai_usage.view",
-        label: "View AI usage",
-        description: "Read AI co-founder usage and spend.",
-      },
-      {
         key: "email.view",
-        label: "View email metrics",
-        description: "Read delivery, open, and bounce metrics.",
+        label: "View the email outbox",
+        description: "Read every queued and sent email.",
       },
       {
         key: "email.send",
@@ -519,6 +513,25 @@ export function canAny(
 }
 
 /**
+ * What a route or nav row needs: one key, or — for a section landing that
+ * forwards to the first tab the viewer holds — any one of several.
+ */
+export type Requirement = Permission | readonly Permission[];
+
+export function canMeet(caps: Capabilities | null, req: Requirement): boolean {
+  return typeof req === "string" ? can(caps, req) : canAny(caps, req);
+}
+
+/** Every key that opens a tab of the Email section. */
+export const EMAIL_PERMISSIONS = [
+  "email.view",
+  "email.send",
+  "email.templates",
+  "email.automate",
+  "email.settings",
+] as const satisfies readonly Permission[];
+
+/**
  * Which of `permissions` the viewer is missing.
  *
  * Takes plain strings because the input is a role's stored permission list,
@@ -582,9 +595,10 @@ export function canAccessAdmin(caps: Capabilities | null): boolean {
  * `email.send` even though `/admin/email` is also a prefix of it.
  *
  * `/admin` itself is absent on purpose — the overview is reachable by anyone
- * with admin-area access, and it hides the tiles they can't see.
+ * with admin-area access, and it hides the tiles they can't see. Every other
+ * page must resolve here (lib/admin-routes.test.ts walks app/admin to check).
  */
-export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
+export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Requirement]> = [
   ["/admin/applications", "applications.view"],
   ["/admin/recovery", "applications.review"],
   ["/admin/application-questions", "applications.form"],
@@ -612,15 +626,16 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/pricing", "settings.manage"],
   ["/admin/pulse", "pulse.view"],
   ["/admin/interventions", "interventions.manage"],
-  ["/admin/ai-usage", "ai_usage.view"],
   ["/admin/email/blast", "email.send"],
-  ["/admin/email/phone-request", "email.send"],
   ["/admin/email/templates", "email.templates"],
   ["/admin/email/automations", "email.automate"],
   ["/admin/email/compose", "email.send"],
   ["/admin/email/outbox", "email.view"],
   ["/admin/email/settings", "email.settings"],
-  ["/admin/email", "email.view"],
+  // The sidebar's one Email row lands here and is forwarded to the first tab
+  // the viewer holds, so the landing opens on any email key. Each tab above
+  // keeps its own.
+  ["/admin/email", EMAIL_PERMISSIONS],
   ["/admin/referrals", "referrals.view"],
   ["/admin/passes", "passes.manage"],
   ["/admin/pass-requests", "passes.manage"],
@@ -664,7 +679,7 @@ function underPrefix(path: string, prefix: string): boolean {
  * The permission `path` requires, or null when the path is inside /admin but
  * has no specific requirement (the overview, and anything not yet mapped).
  */
-export function permissionForAdminPath(path: string): Permission | null {
+export function permissionForAdminPath(path: string): Requirement | null {
   for (const [prefix, perm] of ROUTE_RULES) {
     if (underPrefix(path, prefix)) return perm;
   }
@@ -678,7 +693,7 @@ export function canViewAdminPath(
 ): boolean {
   if (!canAccessAdmin(caps)) return false;
   const required = permissionForAdminPath(path);
-  return required === null ? true : can(caps, required);
+  return required === null ? true : canMeet(caps, required);
 }
 
 // ---------------------------------------------------------------------------

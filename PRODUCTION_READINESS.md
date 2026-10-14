@@ -32,7 +32,7 @@ Run these in the Supabase SQL editor in order. Each is idempotent.
 4. `0015_ai_usage.sql` — adds `ai_usage` rollup table + `ai_messages` token columns + `ai_conversations.team_id` for per-team AI scoping.
 5. `0030_drop_mfa.sql` — drops `mfa_verifications` and its policies. Two-factor auth has been removed from the product.
 
-Vercel cron config (`vercel.json`) was reduced to a single weekly digest job; the assignment-due cron was deleted with the school features.
+Crons are listed in `vercel.json`; the assignment-due cron was deleted with the school features.
 
 ---
 
@@ -155,7 +155,7 @@ Vercel cron config (`vercel.json`) was reduced to a single weekly digest job; th
 
 ### 16. Cron secret accepted in query string
 
-**Fix:** `app/api/cron/weekly-digest/route.ts` rejects `?key=`; `Authorization: Bearer` only.
+**Fix:** every `app/api/cron/*` route rejects `?key=`; `Authorization: Bearer` only.
 
 ### 17. Email send swallowed errors silently
 

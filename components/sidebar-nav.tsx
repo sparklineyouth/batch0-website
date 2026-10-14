@@ -44,10 +44,10 @@ function isMatch(pathname: string, item: NavItem): boolean {
 /**
  * Resolve the ONE active item: the longest href that matches the path.
  *
- * Plain prefix-matching lit up every ancestor too, so /admin/mentors/match
- * marked both "Mentors" and "Mentor match" active (and put aria-current="page"
- * on both — two "current" links is also an a11y violation). Longest-match
- * means the most specific link wins and every ancestor stands down.
+ * Plain prefix-matching lit up every ancestor too, so a nested link marked
+ * its parent active as well (and put aria-current="page" on both — two
+ * "current" links is also an a11y violation). Longest-match means the most
+ * specific link wins and every ancestor stands down.
  *
  * Resolved against the UNFILTERED groups so searching or role-filtering the
  * list can never change which item is current.

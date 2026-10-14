@@ -13,30 +13,11 @@ export const dynamic = "force-dynamic";
 const TRIGGER_ICON = { event: Zap, schedule: Clock, manual: Hand } as const;
 
 export default async function EmailAutomationsPage() {
-  const [{ automations, missingTable }, { templates }, settings] = await Promise.all([
+  const [{ automations }, { templates }, settings] = await Promise.all([
     listAutomations(),
     listTemplates(),
     getEmailSettings(),
   ]);
-
-  if (missingTable) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
-          Email automations
-        </h1>
-        <Card className="mt-6">
-          <p className="text-sm text-ink-soft">
-            Run migration{" "}
-            <code className="font-mono text-phosphor-ink">
-              0052_email_automation.sql
-            </code>{" "}
-            to enable automations.
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   const templateName = new Map(templates.map((t) => [t.id, t.name]));
 
@@ -48,9 +29,7 @@ export default async function EmailAutomationsPage() {
             Email automations
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Rules that send email on their own — when something happens, on a
-            schedule, or a saved send you fire by hand. Each one is a sequence
-            of templates with delays between them.
+            Automatic email sequences.
           </p>
         </div>
         <Link

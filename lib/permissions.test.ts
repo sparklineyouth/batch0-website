@@ -9,6 +9,8 @@ import {
   canViewAdminPath,
   capabilitiesFrom,
   can,
+  canMeet,
+  isKnownPermission,
   rolesHolding,
 } from "./permissions.ts";
 
@@ -149,6 +151,37 @@ test("both scholarship keys are admin-area, so neither may be granted to mentor"
   assert.equal(canViewAdminPath(reviewer, "/admin/roles"), false);
   // Reading the queue must not imply being able to award or refund.
   assert.equal(can(reviewer, "scholarships.manage"), false);
+});
+
+test("the Email landing opens on any email key; each tab keeps its own", () => {
+  // The sidebar has one Email row pointing at /admin/email, which forwards to
+  // the first tab the viewer holds. A templates-only role must reach it…
+  const writer = capabilitiesFrom("writer", ["email.templates"]);
+  assert.equal(canViewAdminPath(writer, "/admin/email"), true);
+  assert.equal(canViewAdminPath(writer, "/admin/email/templates"), true);
+  // …without the landing widening any tab.
+  assert.equal(canViewAdminPath(writer, "/admin/email/outbox"), false);
+  assert.equal(canViewAdminPath(writer, "/admin/email/blast"), false);
+  assert.equal(canViewAdminPath(writer, "/admin/email/settings"), false);
+  // No email key, no landing.
+  const ops = capabilitiesFrom("ops", ["payments.view"]);
+  assert.equal(canViewAdminPath(ops, "/admin/email"), false);
+});
+
+test("canMeet: one key, or any of a list", () => {
+  const caps = capabilitiesFrom("custom", ["email.send"]);
+  assert.equal(canMeet(caps, "email.send"), true);
+  assert.equal(canMeet(caps, "email.view"), false);
+  assert.equal(canMeet(caps, ["email.view", "email.send"]), true);
+  assert.equal(canMeet(caps, ["email.view"]), false);
+  assert.equal(canMeet(capabilitiesFrom("admin", ["*"]), ["email.view"]), true);
+  assert.equal(canMeet(null, ["email.send"]), false);
+});
+
+test("retired keys are gone from the catalog", () => {
+  // Migration 0100 strips 'ai_usage.view' from stored roles; a stale string
+  // would make missingPermissions block non-superadmins from editing a role.
+  assert.equal(isKnownPermission("ai_usage.view"), false);
 });
 
 test("a signed-out viewer reaches nothing", () => {

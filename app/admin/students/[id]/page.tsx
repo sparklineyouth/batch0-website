@@ -268,7 +268,6 @@ export default async function AdminStudentDetail(
             label="Resources opened"
             done={progress.resources.done}
             total={progress.resources.total}
-            hint={progress.missingTable ? "run migration 0053" : undefined}
           />
         </div>
 

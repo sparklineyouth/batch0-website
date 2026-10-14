@@ -9,6 +9,7 @@ import {
   ALL_PERMISSIONS,
   PERMISSION_BY_KEY,
   canAccessAdmin,
+  canMeet,
   capabilitiesFrom,
   covers,
   isSystemRole,
@@ -63,7 +64,7 @@ export default async function RoleDetailPage(
 
   // Where this role can navigate, derived from the same table the guard uses.
   const reachable = ADMIN_ROUTE_PERMISSIONS.filter(([, perm]) =>
-    roleCaps.superAdmin ? true : role.permissions.includes(perm),
+    canMeet(roleCaps, perm),
   ).map(([prefix]) => prefix);
 
   const deleteTargets = roles
