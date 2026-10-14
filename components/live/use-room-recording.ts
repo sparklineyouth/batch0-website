@@ -63,7 +63,12 @@ export type RoomRecording = {
   /** This tab is the recorder. */
   mine: boolean;
   by: { id: string; name: string } | null;
-  elapsedMs: number;
+  /**
+   * How long the room's take has run, as of when it is read (a getter). The
+   * hook does not re-render every second for it: show a running clock from a
+   * small component with its own timer.
+   */
+  readonly elapsedMs: number;
   error: string | null;
   start: () => Promise<void>;
   stop: () => Promise<void>;
@@ -280,19 +285,16 @@ export function useRoomRecording(opts: {
   const by = mine ? { id: selfId, name: selfName || "You" } : others ? { id: others.id, name: others.name } : null;
   const since = mine ? startedAt : others ? Date.parse(others.startedAt) : null;
 
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (since === null) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [since]);
-
   return {
     state: !supported && canRecord ? "unavailable" : state,
     mine,
     by,
-    elapsedMs: since !== null && Number.isFinite(since) ? Math.max(0, now - since) : 0,
+    // Read when rendered — no per-second state here, which would re-render
+    // the whole room every second of a take. A running clock re-renders
+    // itself (broadcast-room's RecBadge).
+    get elapsedMs() {
+      return since !== null && Number.isFinite(since) ? Math.max(0, Date.now() - since) : 0;
+    },
     error,
     start,
     stop,

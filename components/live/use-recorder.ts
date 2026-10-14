@@ -369,11 +369,11 @@ function stopped(recorder: MediaRecorder): Promise<void> {
  *
  * A slow or busy main thread gets fewer frames, never a backlog: the Worker
  * sends its next tick only once the last one has run, and a tick is skipped
- * while composing would take more than about half the thread (the time since
- * the last frame is shorter than frames take to draw — never longer than
- * MAX_FRAME_GAP_MS). Without this, a starved tab spends all its time
- * compositing queued ticks, and the room and the part uploads stall behind
- * them.
+ * while composing would take more than about a third of the thread (the time
+ * since the last frame is under twice what frames take to draw — never longer
+ * than MAX_FRAME_GAP_MS). The room the recording is of comes first. Without
+ * this, a starved tab spends all its time compositing queued ticks, and the
+ * room and the part uploads stall behind them.
  */
 function startTicks(tick: () => void): () => void {
   const ms = Math.round(1000 / RECORDING_FPS);
@@ -383,7 +383,7 @@ function startTicks(tick: () => void): () => void {
   let cost = 0;
   const run = () => {
     const start = performance.now();
-    if (start - lastEnd < Math.min(cost, MAX_FRAME_GAP_MS)) return;
+    if (start - lastEnd < Math.min(cost * 2, MAX_FRAME_GAP_MS)) return;
     try {
       tick();
     } finally {

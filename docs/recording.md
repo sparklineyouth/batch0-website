@@ -28,9 +28,12 @@ one seekable file.
   cameras turning off never restart it. Frames are driven by a Worker timer so
   a hidden tab keeps compositing. A slow machine gets fewer frames, never a
   backlog: the Worker sends a tick only after the last one ran, and a frame
-  is skipped while drawing would take more than about half the main thread
-  (otherwise a starved tab composites queued ticks nonstop, the room freezes,
-  uploads stall and memory climbs).
+  is skipped while drawing would take more than about a third of the main
+  thread — the room comes first (otherwise a starved tab composites queued
+  ticks nonstop, the room freezes, uploads stall and memory climbs). On a
+  CPU-starved test box this meant 3–11 recorded fps and a video track ending
+  a few seconds before the audio (frames still in the encoder at Stop are
+  dropped); a normal machine composites with the GPU and never hits it.
 
 ## Upload
 

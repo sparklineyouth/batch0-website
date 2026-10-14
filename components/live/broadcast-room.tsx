@@ -1990,7 +1990,9 @@ function RecordingStatus({
 
 /**
  * The REC badge. Everyone sees that the room is being recorded; hosts and a
- * call's team (`named`) also see by whom, when it isn't them.
+ * call's team (`named`) also see by whom, when it isn't them, and for how
+ * long. The fact is a live region; the running time is not (it would be read
+ * out every second).
  */
 function RecBadge({ recording, named }: { recording: RoomRecording; named: boolean }) {
   if (!recording.mine && !recording.by) {
@@ -2002,17 +2004,29 @@ function RecBadge({ recording, named }: { recording: RoomRecording; named: boole
     ) : null;
   }
   return (
-    <span
-      className="inline-flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400"
-      role="status"
-      aria-live="polite"
-    >
-      <CircleDot className="h-3.5 w-3.5 animate-pulse" />
-      <span>Recording</span>
-      {named && !recording.mine && recording.by && (
-        <span className="text-ink-faint">· {recording.by.name}</span>
-      )}
-      <span className="font-mono text-ink-faint">{formatDuration(recording.elapsedMs)}</span>
+    <span className="inline-flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+      <span className="inline-flex items-center gap-1.5" role="status" aria-live="polite">
+        <CircleDot className="h-3.5 w-3.5 animate-pulse" />
+        <span>Recording</span>
+        {named && !recording.mine && recording.by && (
+          <span className="text-ink-faint">· {recording.by.name}</span>
+        )}
+      </span>
+      {named && <RecClock recording={recording} />}
+    </span>
+  );
+}
+
+/** The take's running time, re-rendering only itself once a second. */
+function RecClock({ recording }: { recording: RoomRecording }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="font-mono text-ink-faint" role="timer">
+      {formatDuration(recording.elapsedMs)}
     </span>
   );
 }
