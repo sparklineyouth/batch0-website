@@ -5,7 +5,7 @@
 export const HARNESS_STATES: Record<string, readonly string[]> = {
   prejoin: ["host", "cohost", "viewer", "call", "denied", "busycam", "rehearsal"],
   connecting: ["viewer", "host"],
-  "live-host": ["default", "solo", "panel", "toast", "leave", "devices", "rec", "rec-other", "reconnecting", "error", "failed", "rehearsal"],
+  "live-host": ["default", "solo", "panel", "toast", "leave", "devices", "rec", "rec-other", "reconnecting", "error", "failed", "rehearsal", "rehearsal-chat"],
   "live-viewer": ["default", "panel", "joining", "waiting", "starts", "away", "reconnecting", "failed"],
   "presenting-screen": ["self", "viewer", "portrait", "call"],
   "presenting-deck": ["file", "event", "viewer", "behind"],

@@ -216,7 +216,7 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
       case "connecting":
         return [];
       case "live-host":
-        if (w === "solo" || w === "rehearsal") return [];
+        if (w === "solo" || w.startsWith("rehearsal")) return [];
         return [
           peer(BEN, feeds, { hue: 140, freq: 260, offset: 3000, state: w === "reconnecting" ? "reconnecting" : "live" }),
         ];
@@ -363,11 +363,11 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
         kind === "webinar" &&
         !(state === "live-viewer" && (w === "waiting" || w === "starts")) &&
         state !== "connecting" &&
-        w !== "rehearsal"
+        !w.startsWith("rehearsal")
           ? new Date(Date.now() - 754_000).toISOString()
           : null,
       liveEndedAt: null,
-      canEnd: broadcaster && w !== "rehearsal",
+      canEnd: broadcaster && !w.startsWith("rehearsal"),
       recording:
         w === "recorded"
           ? { sessionId: "s1", byUserId: SELF.id, byName: SELF.name, startedAt: new Date(Date.now() - 300_000).toISOString() }
@@ -405,7 +405,7 @@ function ScenarioBody({ state, w, realMedia, feeds }: { state: string; w: string
     actionError: w === "toast" ? "Couldn't pin that host. Try again." : null,
     leaveHint: state === "live-host" && w === "leave" ? "You're the only host on air." : null,
     notice:
-      state === "live-host" && w === "rehearsal" ? (
+      state === "live-host" && w.startsWith("rehearsal") ? (
         <span>
           Not live yet: students can join from <LocalTime value={opensAt} mode="time" />
         </span>
@@ -439,7 +439,7 @@ function AutoOpen({ state, w, props }: { state: string; w: string; props: LiveRo
           setTimeout(() => click("more-settings"), 150);
         }
       }
-      if ((w === "panel" || w === "toast") && window.innerWidth < 1024) click("ctrl-panel");
+      if ((w === "panel" || w === "toast" || w === "rehearsal-chat") && window.innerWidth < 1024) click("ctrl-panel");
       if (w === "pin-self") document.querySelector<HTMLElement>('[data-testid="stage-pip"] [data-testid="tile-pin"]')?.click();
     }, 400);
     return () => clearTimeout(t);

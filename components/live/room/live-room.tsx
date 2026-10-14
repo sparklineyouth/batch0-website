@@ -389,27 +389,44 @@ function RoomBody(
       </div>
     ) : null;
 
-  // Phones with the chat sheet open: toasts go in the sheet, above the chat.
+  // Phones with the chat sheet open: notices and toasts go in the sheet,
+  // above the chat (the sheet covers all but a sliver of the stage).
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const sheetOpen = !!panel && panelOpen && !desktop;
 
-  const notices = (
+  const reconnectingChip =
+    connection.state === "reconnecting" && model.layout !== "empty" ? (
+      <Chip testId="veil-reconnecting">
+        <Spinner className="h-3.5 w-3.5" /> Reconnecting…
+      </Chip>
+    ) : null;
+  const noticeChip = props.notice ? (
+    <Chip testId="chip-notice" wrap>
+      {props.notice}
+    </Chip>
+  ) : null;
+  const stageNotices =
+    banner || reconnectingChip || noticeChip || waitingChip ? (
+      <>
+        {banner}
+        {reconnectingChip}
+        {noticeChip}
+        {waitingChip}
+      </>
+    ) : null;
+  const notices = sheetOpen ? null : (
     <>
-      {banner}
-      {connection.state === "reconnecting" && model.layout !== "empty" ? (
-        <Chip testId="veil-reconnecting">
-          <Spinner className="h-3.5 w-3.5" /> Reconnecting…
-        </Chip>
-      ) : null}
-      {props.notice ? (
-        <Chip testId="chip-notice" wrap>
-          {props.notice}
-        </Chip>
-      ) : null}
-      {waitingChip}
-      {sheetOpen ? null : toasts}
+      {stageNotices}
+      {toasts}
     </>
   );
+  const sheetNotices =
+    sheetOpen && (stageNotices || toastCount > 0) ? (
+      <div className="flex flex-col items-center gap-2">
+        {stageNotices}
+        {toastCount > 0 ? toasts : null}
+      </div>
+    ) : null;
 
   const overlay = (
     <>
@@ -536,7 +553,7 @@ function RoomBody(
         panel={panelNode}
         panelOpen={panelOpen}
         onClosePanel={closePanel}
-        sheetNotices={sheetOpen && toastCount > 0 ? toasts : null}
+        sheetNotices={sheetNotices}
         controls={
           <ControlBar
             kind={kind}
