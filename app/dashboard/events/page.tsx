@@ -4,17 +4,13 @@ import { Card } from "@/components/ui/card";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { EventCard } from "@/components/live/event-card";
-import { eventLiveStatus, type LiveEvent } from "@/lib/live";
+import type { LiveEvent } from "@/lib/live";
+import { studentEventStatus } from "@/lib/event-form";
 
 export const metadata = { title: "Events · batch0" };
 
-/**
- * DB row -> the shape EventCard renders.
- *
- * Kept explicit rather than passing the row through, so a column rename shows
- * up as a type error here instead of an empty card in front of a student.
- */
-function toLiveEvent(e: any): LiveEvent {
+/** DB row → the shape EventCard renders. */
+function toLiveEvent(e: any): LiveEvent & { liveStartedAt: string | null } {
   return {
     id: e.id,
     title: e.title,
@@ -23,25 +19,17 @@ function toLiveEvent(e: any): LiveEvent {
     startsAt: e.starts_at,
     endsAt: e.ends_at,
     location: e.location,
-    // Rows written before migration 0058 have no live_mode; they are all
-    // external by definition, so default rather than render them broken.
-    // Narrowed rather than passed through, so a value this build does not know
-    // about renders as an ordinary external event instead of as a room nobody
-    // can enter.
+    // Legacy premiere rows run as hosted rooms; anything unknown is external.
     liveMode:
-      e.live_mode === "hosted" || e.live_mode === "premiere"
-        ? e.live_mode
-        : "external",
-    // The card only ever offers this for an external event; see EventCard.
+      e.live_mode === "hosted" || e.live_mode === "premiere" ? "hosted" : "external",
     externalUrl: e.zoom_url ?? null,
     recordingUrl: e.recording_url,
     hostName: null,
-    displayViewerCount: e.display_viewer_count ?? null,
-    roomName: e.daily_room_name ?? null,
-    roomUrl: e.daily_room_url ?? null,
-    // Selected by the `*` below. Absent on a database that predates 0084,
-    // where nothing can have been ended, so null is the honest default.
+    displayViewerCount: null,
+    roomName: null,
+    roomUrl: null,
     liveEndedAt: e.live_ended_at ?? null,
+    liveStartedAt: e.live_started_at ?? null,
   };
 }
 
@@ -63,57 +51,52 @@ export default async function StudentEventsPage() {
   const supabase = await createClient();
 
   const nowDate = new Date();
-  const now = nowDate.toISOString();
-  const [{ data: upcoming }, { data: past }] = await Promise.all([
+  // Upcoming, plus anything that started in the last day (it may still be
+  // running, or a host may have gone live early).
+  const since = new Date(nowDate.getTime() - 24 * 60 * 60_000).toISOString();
+  const [{ data: recent }, { data: older }] = await Promise.all([
     supabase
       .from("events")
       .select("*")
-      .gte("starts_at", now)
+      .gte("starts_at", since)
       .order("starts_at", { ascending: true }),
     supabase
       .from("events")
       .select("*")
-      .lt("starts_at", now)
+      .lt("starts_at", since)
       .order("starts_at", { ascending: false })
       .limit(10),
   ]);
 
-  // An event that has already started sorts into `past` by its start time, but
-  // if its join window is still open it is happening RIGHT NOW — not over. Pull
-  // those out so a live webinar shows under "Live now" with a Join button
-  // instead of being buried, looking finished, in "Past".
-  //
-  // `eventLiveStatus` reads `live_ended_at` before the clock, so a webinar the
-  // host ended at 7:40 goes to Past at 7:40 — it used to sit under "Live now"
-  // with a Join button until ends_at + 30 minutes. An event ended before its
-  // own start time (a rehearsal someone closed) leaves Upcoming the same way.
-  const status = (e: any) =>
-    eventLiveStatus(
+  const withStatus = (recent ?? []).map((e: any) => ({
+    e,
+    s: studentEventStatus(
       {
         startsAt: e.starts_at,
         endsAt: e.ends_at,
+        liveStartedAt: e.live_started_at ?? null,
         liveEndedAt: e.live_ended_at ?? null,
       },
       nowDate,
-    );
-  const isOver = (e: any) => {
-    const s = status(e);
-    return s === "ended" || s === "past";
-  };
-  const liveNow = (past ?? []).filter((e: any) => !isOver(e));
-  const stillUpcoming = (upcoming ?? []).filter((e: any) => !isOver(e));
+    ),
+  }));
+  const liveNow = withStatus.filter((x) => x.s === "live").map((x) => x.e);
+  const stillUpcoming = withStatus
+    .filter((x) => x.s === "upcoming" || x.s === "open")
+    .map((x) => x.e);
   const endedPast = [
-    ...(upcoming ?? []).filter(isOver),
-    ...(past ?? []).filter(isOver),
+    ...withStatus
+      .filter((x) => x.s === "ended" || x.s === "past")
+      .map((x) => x.e)
+      .reverse(),
+    ...(older ?? []),
   ];
 
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Events</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        {access.enrolled
-          ? "Demo Day, office hours, workshops."
-          : "Your Demo Day ticket is confirmed — the event is below."}
+        {access.enrolled ? "Live sessions, office hours, Demo Day." : "Your Demo Day ticket is confirmed."}
       </p>
 
       {liveNow.length > 0 && (

@@ -32,9 +32,8 @@
  * setting an admin chooses, defaulting to exactly what happens today.
  *
  *   private    A viewer sees only their own questions, and there is no chat.
- *              Nothing on the wire tells one student that another exists. This
- *              is the default, and it is what every event created before
- *              migration 0084 does.
+ *              Nothing on the wire tells one student that another exists. What
+ *              an unreadable or missing value falls back to.
  *
  *   moderated  Viewers write; a host decides what the room sees. An unapproved
  *              message reaches the hosts and nobody else — enforced in RLS, not
@@ -43,8 +42,8 @@
  *              that a human has not read.
  *
  *   open       Ordinary live chat. Everyone sees every message and who wrote
- *              it. For rooms where the audience is meant to know each other —
- *              a cohort call, not a public intake webinar.
+ *              it, and hosts can remove any of it. The default for new events
+ *              (DEFAULT_AUDIENCE_MODE; column default since migration 0098).
  *
  * Deliberately ONE knob rather than three (chat on/off, questions
  * public/private, upvotes on/off). All three are the same question, and
@@ -58,6 +57,9 @@ export const AUDIENCE_MODES: readonly AudienceMode[] = [
   "moderated",
   "open",
 ] as const;
+
+/** What a new event starts with: chat on. */
+export const DEFAULT_AUDIENCE_MODE: AudienceMode = "open";
 
 /**
  * Is there a shared, audience-visible channel at all?
@@ -191,41 +193,24 @@ export type EventAsset = {
 };
 
 /**
- * What the deck picker accepts.
- *
- * pptx and pdf are what the product promises; `application/vnd.ms-powerpoint`
- * is legacy .ppt, and keyed .key files are not included because nothing
- * downstream can open one. The list is advisory in the browser (an `accept`
- * attribute is a filter on a file dialog, not a gate) and re-checked in
- * `assetKindForFile` on the server, which is the part that binds.
+ * Slides are PDF only: a PDF is what the room can present (pdf.js) and what
+ * the follow-up email can link. Export from Keynote / PowerPoint / Google
+ * Slides as PDF.
  */
-export const DECK_MIME_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.ms-powerpoint",
-] as const;
+export const DECK_MIME_TYPES = ["application/pdf"] as const;
 
-export const DECK_EXTENSIONS = [".pdf", ".pptx", ".ppt"] as const;
+export const DECK_EXTENSIONS = [".pdf"] as const;
 
 /**
- * Longest premiere or recording segment we will accept, in bytes.
- *
- * Matches the `webinar-media` bucket's `file_size_limit` in migration 0084.
- * Stated here too so the form can refuse a 4 GB file before spending ten
- * minutes uploading it to a bucket that will reject it at the end — the
- * bucket's copy is the one that binds, this one is the one that is kind.
+ * Largest file the `webinar-media` bucket accepts (its `file_size_limit` in
+ * migration 0084). Checked before uploading so a too-big file fails at once.
  */
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
 /**
- * Is this file a usable deck?
- *
- * Checks the extension as well as the MIME type, because browsers disagree
- * about pptx: Chrome sends the long
- * `vnd.openxmlformats-officedocument.presentationml.presentation`, some Windows
- * configurations send `application/octet-stream`, and a file dragged out of a
- * zip can arrive with an empty type. Rejecting on MIME alone turns "upload your
- * deck" into a coin flip, so the extension is enough on its own.
+ * Is this file a usable deck? The extension alone is enough (some browsers
+ * send an empty or generic type); a PDF MIME type with no extension also
+ * passes.
  */
 export function isDeckFile(filename: string, mimeType?: string | null): boolean {
   const lower = filename.toLowerCase();

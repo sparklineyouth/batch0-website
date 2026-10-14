@@ -734,7 +734,7 @@ export async function cancelInvite(id: string) {
  * tab open" note, the unload prompt and the navigation back to the calls list,
  * and a host who then closed the tab lost the end of the conversation without
  * a word. (Registering a webinar segment stopped revalidating for the same
- * reason — see registerWebinarAsset.)
+ * reason — see registerWebinarRecordingSegment.)
  *
  * Nothing needs the revalidation. Every calls list (and the interview card)
  * is a dynamic, per-user render and the client router cache is off for dynamic

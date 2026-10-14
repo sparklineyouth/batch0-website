@@ -142,7 +142,7 @@ const ADMIN = [
   "/admin/progress", "/admin/pulse", "/admin/recovery", "/admin/referrals", "/admin/resources",
   "/admin/resources/new", "/admin/roles", "/admin/roles/new", "/admin/scholarships", "/admin/scholarships/new",
   "/admin/scholarships/applications", "/admin/settings", "/admin/students", "/admin/students/new", "/admin/teams",
-  "/admin/teams/new", "/admin/webinars", "/app/admin", "/app/admin/people", "/app/admin/review", "/app/admin/more",
+  "/admin/teams/new", "/app/admin", "/app/admin/people", "/app/admin/review", "/app/admin/more",
   "/messages", "/notifications",
   "/dev/live", "/dev/live/room", "/dev/live/room?role=viewer",
   "/dev/challenge?view=event&state=signedout", "/dev/challenge?view=event&state=registered",

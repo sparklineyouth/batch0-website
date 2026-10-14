@@ -393,7 +393,7 @@ test("the vote trigger recounts rather than steps, so it cannot drift", async ()
 });
 
 test("ON CONFLICT (event_id, sort_order) cannot target the partial segment index", async () => {
-  // Why registerWebinarAsset reads and then inserts instead of upserting.
+  // Why registerRecordingSegment reads and then inserts instead of upserting.
   // The unique index behind recording segments is PARTIAL (`where kind =
   // 'recording'`), and Postgres will only infer a partial index as an
   // ON CONFLICT arbiter when the statement repeats its predicate. PostgREST's

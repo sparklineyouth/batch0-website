@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
+import { isHostedOnBatch0 } from "@/lib/webinars";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -36,14 +37,10 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
   }
 
   const ev = event as any;
-  // A hosted event's calendar entry points at batch0.org, not at the room.
-  // The room is private and needs a minted token, so the raw URL in someone's
-  // calendar would fail to open — and the page it points at instead is the
-  // one that decides whether they're allowed in.
-  const joinUrl =
-    ev.live_mode === "hosted" || ev.live_mode === "premiere"
-      ? `${env.siteUrl}/dashboard/events/${ev.id}/live`
-      : ev.zoom_url;
+  // A hosted event points at its batch0 page, which decides who may join.
+  const joinUrl = isHostedOnBatch0(ev.live_mode)
+    ? `${env.siteUrl}/dashboard/events/${ev.id}/live`
+    : ev.zoom_url;
   const start = toIcsDate(ev.starts_at);
   const end = toIcsDate(
     ev.ends_at ?? new Date(new Date(ev.starts_at).getTime() + 60 * 60 * 1000).toISOString(),

@@ -637,9 +637,22 @@ One account, one pass — the code stops working the moment it's claimed.`,
       body: `
         <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
         <p>Starts <strong>${escape(eventWhen(args.startsAt))}</strong>.</p>
-        ${args.zoomUrl ? `<p>Join: <a href="${args.zoomUrl}" style="color:#ffbb00">${escape(args.zoomUrl)}</a></p>` : ""}
+        ${args.zoomUrl ? `<p>Join: <a href="${escape(args.zoomUrl)}" style="color:#ffbb00">${escape(args.zoomUrl)}</a></p>` : ""}
       `,
       cta: { url: `${env.siteUrl}/dashboard/events`, label: "All events" },
+    }),
+  }),
+
+  /** A host started a webinar right now ("Start a webinar now"). */
+  eventLive: (args: { title: string; hostName: string; joinUrl: string }) => ({
+    subject: `${args.hostName} is live now: ${args.title}`,
+    html: layout({
+      preheader: `${args.hostName} is live now`,
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${escape(args.title)}</h1>
+        <p><strong>${escape(args.hostName)}</strong> is live now.</p>
+      `,
+      cta: { url: args.joinUrl, label: "Join now" },
     }),
   }),
 

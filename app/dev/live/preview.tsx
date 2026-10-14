@@ -5,7 +5,6 @@ import { CallStage } from "@/components/live/call-stage";
 import { EventCard } from "@/components/live/event-card";
 import { InviteForm } from "@/components/live/invite-form";
 import { CallSections, InviteList } from "@/components/live/invite-card";
-import { WebinarsManager } from "@/app/admin/webinars/webinars-manager";
 import type { CallInvite, LiveEvent, LiveRole } from "@/lib/live";
 import { Button } from "@/components/ui/button";
 
@@ -16,7 +15,6 @@ const TABS = [
   { id: "call", label: "1:1 call" },
   { id: "invite", label: "Send an invite" },
   { id: "invites", label: "Invite lists" },
-  { id: "admin", label: "Webinars admin" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -150,27 +148,6 @@ export function LivePreview() {
                       (d.cohostIds.length ? ` with ${d.cohostIds.join(", ")}` : ""),
                   )
                 }
-              />
-            </div>
-          )}
-
-          {tab === "admin" && (
-            <div>
-              <SectionLabel>
-                What an admin sees at /admin/webinars
-              </SectionLabel>
-              <WebinarsManager
-                live={mocks.events
-                  .filter((e) => e.id === "e-live")
-                  .map((e) => ({ ...e, visibility: "enrolled" }))}
-                upcoming={mocks.events
-                  .filter((e) => ["e-soon", "e-later"].includes(e.id))
-                  .map((e) => ({ ...e, visibility: "staff" }))}
-                past={[{ ...mocks.pastEvent, visibility: "enrolled" }]}
-                cohorts={[{ id: "c1", name: "Cohort 1", startsOn: "2026-09-14" }]}
-                // The preview shows the batch0 Live shape, which is the
-                // default: no provider-side room, so nothing is gated on one.
-                needsProviderRoom={false}
               />
             </div>
           )}

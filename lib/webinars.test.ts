@@ -500,14 +500,19 @@ test("poll percentages always add to 100", () => {
 // Files
 // ---------------------------------------------------------------------------
 
-test("a deck is recognised by extension even when the browser sends no type", () => {
-  // Browsers disagree about pptx: Chrome sends the long OpenXML type, some
-  // Windows setups send application/octet-stream, and a file dragged out of a
-  // zip can arrive with an empty type. Rejecting on MIME alone turns "upload
-  // your deck" into a coin flip.
-  assert.equal(isDeckFile("Fundraising.pptx", ""), true);
-  assert.equal(isDeckFile("Fundraising.pptx", "application/octet-stream"), true);
+test("slides are PDF only, recognised by extension even with no MIME type", () => {
+  // The room presents decks with pdf.js; a PowerPoint file cannot be shown.
+  assert.equal(isDeckFile("Fundraising.pdf", ""), true);
+  assert.equal(isDeckFile("Fundraising.pdf", "application/octet-stream"), true);
   assert.equal(isDeckFile("notes.PDF", null), true);
+  assert.equal(isDeckFile("Fundraising.pptx", ""), false);
+  assert.equal(
+    isDeckFile(
+      "Fundraising.pptx",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ),
+    false,
+  );
   assert.equal(isDeckFile("talk.key", null), false);
   assert.equal(isDeckFile("recording.webm", "video/webm"), false);
 });
