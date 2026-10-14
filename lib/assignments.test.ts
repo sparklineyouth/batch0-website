@@ -17,6 +17,7 @@ import {
   isGoogleLink,
   normalizeDraft,
   normalizeLink,
+  sameInstant,
   seriesWeeks,
   statusLabel,
   studentGroup,
@@ -37,6 +38,11 @@ test("New York wall time resolves on both sides of the Nov 1 2026 DST change", (
   assert.equal(easternTime("2026-11-02T04:59:00Z"), "23:59");
   assert.equal(formatEastern("2026-11-02T04:59:00Z"), "Sun, Nov 1, 11:59 PM ET");
   assert.equal(formatEasternDay("2026-11-02T04:59:00Z"), "Nov 1");
+  // Postgres and JS spell the same instant differently.
+  assert.equal(sameInstant("2026-11-02 04:59:00+00", "2026-11-02T04:59:00.000Z"), true);
+  assert.equal(sameInstant("2026-11-02T04:59:00Z", "2026-11-02T05:59:00Z"), false);
+  assert.equal(sameInstant(null, undefined), true);
+  assert.equal(sameInstant(null, "2026-11-02T04:59:00Z"), false);
 });
 
 test("course_week math: Monday 00:00 ET open, Sunday 23:59 ET due, DST-correct", () => {
@@ -46,16 +52,29 @@ test("course_week math: Monday 00:00 ET open, Sunday 23:59 ET due, DST-correct",
   assert.deepEqual(courseWeekWindow({ startsOn: FALL.startsOn, week: 6 }), {
     opensAt: "2026-10-19T04:00:00.000Z",
     dueAt: "2026-10-26T03:59:00.000Z",
+    dueDayOffset: 6,
   });
   // Week 7 opens in EDT and is due in EST.
   assert.deepEqual(courseWeekWindow({ startsOn: FALL.startsOn, week: 7 }), {
     opensAt: "2026-10-26T04:00:00.000Z",
     dueAt: "2026-11-02T04:59:00.000Z",
+    dueDayOffset: 6,
   });
-  assert.deepEqual(courseWeekWindow({ startsOn: FALL.startsOn, week: 8 }), {
+  assert.deepEqual(courseWeekWindow({ ...FALL, week: 8 }), {
     opensAt: "2026-11-02T05:00:00.000Z",
     dueAt: "2026-11-09T04:59:00.000Z",
+    dueDayOffset: 6,
   });
+  // Nothing is due after the cohort ends: Fall's last week (Mon Nov 9 to
+  // Fri Nov 13, Demo Day) is due Friday, not Sunday.
+  assert.deepEqual(courseWeekWindow({ ...FALL, week: 9 }), {
+    opensAt: "2026-11-09T05:00:00.000Z",
+    dueAt: "2026-11-14T04:59:00.000Z",
+    dueDayOffset: 4,
+  });
+  assert.equal(courseWeekWindow({ ...FALL, week: 9, dueDayOffset: 2 })?.dueDayOffset, 2);
+  // A week past the end keeps its own rule.
+  assert.equal(courseWeekWindow({ ...FALL, week: 10 })?.dueDayOffset, 6);
   // Custom due: Wednesday 20:00 of week 9 (Demo Day week).
   assert.equal(
     courseWeekWindow({ startsOn: FALL.startsOn, week: 9, dueDayOffset: 2, dueLocalTime: "20:00:00" })?.dueAt,
@@ -204,6 +223,9 @@ test("admin form normalisation", () => {
   assert.ok(week.ok);
   assert.equal(week.ok && week.value.dueAt, "2026-11-02T04:59:00.000Z");
   assert.equal(week.ok && week.value.dueLocalTime, "23:59");
+  const last = normalizeDraft({ ...base, release: "course_week", week: 9 }, { ...FALL, now });
+  assert.equal(last.ok && last.value.dueAt, "2026-11-14T04:59:00.000Z");
+  assert.equal(last.ok && last.value.dueDayOffset, 4);
   const dated = normalizeDraft(
     { ...base, release: "date", opensDate: "2026-11-01", opensTime: "09:00", dueDate: "2026-11-11", dueTime: "20:00" },
     { startsOn: FALL.startsOn, now },

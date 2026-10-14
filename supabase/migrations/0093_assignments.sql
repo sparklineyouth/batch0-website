@@ -17,9 +17,10 @@
 -- READ policies only, and insert/update/delete is revoked as well.
 --
 -- Also: check-in tables become read-only, retired permission keys are removed
--- from roles, check-in links in notifications/lessons/Demo Day are repointed,
--- the check-in reminder email is disabled, and the running Fall cohort gets a
--- "Weekly update" series (weeks 5–9) plus its Demo Day submission.
+-- from roles, check-in wording and links in notifications/lessons/emails/
+-- Demo Day are repointed, the check-in reminder email is disabled, and the
+-- running Fall cohort gets a "Weekly update" series (weeks 5–9, check-ins
+-- already posted for those weeks carried over) plus its Demo Day submission.
 --
 -- Run in Supabase SQL Editor. Idempotent / safe to re-run.
 -- Assumes 0001..0092 are applied.
@@ -211,9 +212,21 @@ update public.notifications set link = '/dashboard/assignments'
 where link like '/dashboard/checkin%';
 update public.notifications set link = '/mentor/assignments'
 where link like '/mentor/checkins%';
--- "Post your check-in" / "X missed two check-ins" can no longer be acted on.
+-- Pulse, the at-risk queue and cohort health are gone. Discord blocker bells
+-- pointed at the at-risk queue, which never showed them; the thread lives in
+-- Discord, so those lose the link.
+update public.notifications set link = null
+where type = 'discord_blocker' and link like '/admin/interventions%';
+update public.notifications set link = '/admin/assignments?filter=missing'
+where link like '/admin/interventions%';
+update public.notifications set link = '/admin'
+where link like '/admin/pulse%';
+update public.notifications set link = '/admin/assignments'
+where link ~ '^/admin/cohorts/[^/]+/health';
+-- "Post your check-in" / "X missed two check-ins" / "Ana posted her check-in"
+-- can no longer be acted on.
 update public.notifications set read_at = now()
-where type in ('checkin_nudge', 'intervention') and read_at is null;
+where type in ('checkin_nudge', 'intervention', 'checkin_submitted') and read_at is null;
 
 update public.lessons
 set description = replace(replace(replace(replace(replace(description,
@@ -224,6 +237,42 @@ set description = replace(replace(replace(replace(replace(description,
   'If something is a milestone (first stranger interview, first kill, first signup), say so.'),
   '/dashboard/checkin', '/dashboard/assignments')
 where description like '%/dashboard/checkin%';
+
+-- The same lessons (they link Assignments now) still describe the check-in
+-- form's boxes. The weekly update is one field.
+update public.lessons
+set description = replace(replace(replace(replace(replace(replace(description,
+  'Numbers in the first box, the demand test in the second, and at least one honest line in blockers',
+  'Numbers first, then the demand test, and at least one honest line on blockers'),
+  'blockers box', 'blockers line'),
+  'Weekly check-in', 'Weekly update'),
+  'weekly check-in', 'weekly update'),
+  'Check-in', 'Weekly update'),
+  'check-in', 'weekly update')
+where description like '%/dashboard/assignments%'
+  and (description like '%check-in%' or description like '%Check-in%' or description like '%blockers box%');
+update public.lessons
+set title = replace(title, 'Your First Check-in', 'Your First Weekly Update')
+where title like '%Your First Check-in%';
+
+update public.app_roles
+set description = replace(description, 'check-ins', 'assignments')
+where slug = 'mentor' and description like '%check-ins%';
+
+-- Stored copies of two system emails (lib/email/seed.ts only reaches new rows).
+update public.email_templates
+set body_html = replace(replace(body_html,
+  '<strong>Post your check-in.</strong>', '<strong>Submit your weekly update.</strong>'),
+  'post the check-in saying you''re behind', 'say you''re behind in your weekly update')
+where key = 'cohort.next_steps' and body_html like '%check-in%';
+update public.email_templates
+set body_html = replace(replace(replace(body_html,
+    '<li><strong>Your check-in</strong>, same three questions as always.</li>',
+    '<li><strong>Your weekly update</strong>, in Assignments.</li>'),
+    'and a check-in that tells the truth', 'and a weekly update that tells the truth'),
+    'office hours or your check-in before', 'office hours or your weekly update before'),
+  description = replace(description, 'module, deliverable, check-in, office hours', 'module, deliverable, weekly update, office hours')
+where key = 'cohort.week3' and (body_html like '%check-in%' or description like '%check-in%');
 
 -- The check-in reminder email: disabled (system rows can't be deleted), and
 -- any automation step sending it switched off.
@@ -247,7 +296,9 @@ where key = 'cohort.checkin_reminder' and (enabled or coalesce(description, '') 
 
 -- ----------------------------------------------------------------------------
 -- Fall 2026 (running, week 5 of 9). Fixed ids, so a re-run inserts nothing.
--- Dates follow the cohort's start date in New York time.
+-- Dates follow the cohort's start date in New York time: Sunday 23:59, or the
+-- cohort's last day when that comes first (week 9 ends Friday, Demo Day), the
+-- same rule as lib/assignments.ts courseWeekWindow.
 -- ----------------------------------------------------------------------------
 insert into public.course_assignments (
   id, cohort_id, series_id, week, title, instructions, audience, release_mode,
@@ -262,17 +313,64 @@ select
   E'What you shipped this week, what''s next, and what''s in the way.\n\nNumbers over adjectives. Write it here or link a Google Doc.',
   'cohort',
   'course_week',
-  ((c.starts_on + 7 * (w - 1))::timestamp) at time zone 'America/New_York',
-  ((c.starts_on + 7 * (w - 1) + 6)::timestamp + time '23:59') at time zone 'America/New_York',
-  6,
+  (wk.starts::timestamp) at time zone 'America/New_York',
+  ((wk.starts + wk.due_day)::timestamp + time '23:59') at time zone 'America/New_York',
+  wk.due_day,
   time '23:59',
   'text_or_link',
   'published'
 from public.cohorts c
 cross join generate_series(5, 9) as w
+cross join lateral (
+  select
+    c.starts_on + 7 * (w - 1) as starts,
+    case
+      when c.ends_on >= c.starts_on + 7 * (w - 1) then least(6, c.ends_on - (c.starts_on + 7 * (w - 1)))
+      else 6
+    end as due_day
+) wk
 where c.id = '6350c6ac-70f0-4f53-93d5-c99e397185a9'
   and c.starts_on is not null
 on conflict (id) do nothing;
+
+-- Check-ins already posted for one of those weeks carry over as that week's
+-- update (with any mentor reply as its review), so nobody is asked to write
+-- it twice. Matched on when the check-in was first posted against the week's
+-- New York window, not on its UTC week_start: a Sunday-night check-in belongs
+-- to the week that is ending.
+insert into public.course_assignment_submissions (
+  assignment_id, user_id, body, status, submitted_at, late, feedback, reviewed_by, reviewed_at
+)
+select distinct on (a.id, ci.user_id)
+  a.id,
+  ci.user_id,
+  left(concat_ws(E'\n\n',
+    'Shipped: ' || nullif(btrim(ci.accomplished), ''),
+    'Next: ' || nullif(btrim(ci.next_up), ''),
+    'Blockers: ' || nullif(btrim(ci.blockers), '')), 10000),
+  case when fb.feedback is null then 'submitted' else 'reviewed' end,
+  ci.created_at,
+  ci.created_at > a.due_at,
+  fb.feedback,
+  fb.reviewed_by,
+  fb.reviewed_at
+from public.course_assignments a
+join public.student_checkins ci
+  on ci.created_at >= a.opens_at and ci.created_at < a.due_at + interval '1 minute'
+join public.enrollments e on e.user_id = ci.user_id and e.cohort_id = a.cohort_id
+left join lateral (
+  select
+    left(string_agg(f.body, E'\n\n' order by f.created_at), 4000) as feedback,
+    (array_agg(f.author_id order by f.created_at desc))[1] as reviewed_by,
+    max(f.created_at) as reviewed_at
+  from public.checkin_feedback f
+  where f.checkin_id = ci.id and f.author_id <> ci.user_id
+) fb on true
+where a.series_id = 'a0930000-0000-4000-8000-000000000000'
+  and a.release_mode = 'course_week'
+  and coalesce(btrim(ci.accomplished), '') || coalesce(btrim(ci.next_up), '') || coalesce(btrim(ci.blockers), '') <> ''
+order by a.id, ci.user_id, ci.created_at desc
+on conflict (assignment_id, user_id) do nothing;
 
 insert into public.course_assignments (
   id, cohort_id, title, instructions, audience, release_mode,
@@ -285,7 +383,8 @@ select
   E'Put your three-minute demo recording (or written narration), PDF pitch deck and claims/evidence appendix in one Google Drive folder shared as "Anyone with the link can view". Submit the folder link. Teammates can submit the same link.',
   'cohort',
   'now',
-  now(),
+  -- Opens when this runs (never after its own deadline).
+  least(now(), '2026-11-11T05:00:00Z'::timestamptz),
   '2026-11-12T01:00:00Z'::timestamptz,
   'link',
   'published'

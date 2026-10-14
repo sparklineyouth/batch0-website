@@ -11,12 +11,14 @@ import {
   SUBMISSION_COLUMNS,
   notifyReleased,
   recomputeCourseWeekDates,
+  restampLate,
   type AssignmentRow,
   type SubmissionRow,
 } from "@/lib/assignments-server";
 import {
   deriveStatus,
   normalizeDraft,
+  sameInstant,
   seriesWeeks,
   type AssignmentStatus,
   type Audience,
@@ -117,7 +119,11 @@ export async function saveAssignment(input: AssignmentInput): Promise<ActionResu
         audience: input.audience,
         status: input.status,
       },
-      { startsOn: cohort.starts_on, now: keepOpensAt ? new Date(existing!.opens_at!) : new Date() },
+      {
+        startsOn: cohort.starts_on,
+        endsOn: cohort.ends_on,
+        now: keepOpensAt ? new Date(existing!.opens_at!) : new Date(),
+      },
     );
     if (!draft.ok) throw new Error(draft.error);
     const d = draft.value;
@@ -164,6 +170,7 @@ export async function saveAssignment(input: AssignmentInput): Promise<ActionResu
         .select(ASSIGNMENT_COLUMNS);
       if (error) throw dbError(error, "Couldn't save.");
       saved = (data ?? []) as AssignmentRow[];
+      if (!sameInstant(existing.due_at, d.dueAt)) await restampLate(admin, [existing.id]);
       // Targets follow the audience: replaced wholesale, cleared for a cohort-wide one.
       const { error: delErr } = await admin.from("course_assignment_targets").delete().eq("assignment_id", existing.id);
       if (delErr) throw dbError(delErr, "Couldn't save the student list.");
@@ -189,7 +196,8 @@ export async function saveAssignment(input: AssignmentInput): Promise<ActionResu
           .gt("week", d.week!)
           .select(ASSIGNMENT_COLUMNS);
         if (sErr) throw dbError(sErr, "Couldn't update the rest of the series.");
-        await recomputeCourseWeekDates(admin, { cohortId: cohort.id });
+        // The admin asked for these rows, so they move even with work handed in.
+        await recomputeCourseWeekDates(admin, { cohortId: cohort.id }, { ids: (later ?? []).map((r) => r.id as string) });
         saved = saved.concat((later ?? []) as AssignmentRow[]);
       }
     } else {
@@ -200,7 +208,7 @@ export async function saveAssignment(input: AssignmentInput): Promise<ActionResu
           d.release === "course_week" && w !== d.week
             ? normalizeDraft(
                 { ...input, week: w, release: "course_week", title: d.title, instructions: d.instructions },
-                { startsOn: cohort.starts_on },
+                { startsOn: cohort.starts_on, endsOn: cohort.ends_on },
               )
             : draft;
         if (!win.ok) throw new Error(win.error);
@@ -210,6 +218,8 @@ export async function saveAssignment(input: AssignmentInput): Promise<ActionResu
           week: w,
           opens_at: win.value.opensAt,
           due_at: win.value.dueAt,
+          // The last week can end early (cohort end date), so per row.
+          due_day_offset: win.value.dueDayOffset,
           created_by: userId,
         };
       });

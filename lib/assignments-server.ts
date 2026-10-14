@@ -7,6 +7,7 @@ import {
   courseWeekWindow,
   deriveStatus,
   formatEastern,
+  sameInstant,
   type Audience,
   type DerivedStatus,
   type MatrixRow,
@@ -434,61 +435,130 @@ export async function loadReviewQueue(
 // ---------------------------------------------------------------------------
 
 /**
- * Re-derive opens_at/due_at for course_week rows after a cohort's start date
- * or a module's week changes. Best-effort: logs and returns on failure, so the
- * cohort/module save it rides on never fails because of it.
+ * Re-derive week/opens_at/due_at for course_week rows after a cohort's dates
+ * or a module's week change. Rows with work already handed in keep their
+ * dates: moving them could hide a submitted assignment or contradict its late
+ * flag. Passing `ids` (an admin editing exactly those rows) moves them anyway
+ * and re-stamps their late flags. Best-effort: logs and returns on failure,
+ * so the save it rides on never fails because of it.
  */
 export async function recomputeCourseWeekDates(
   admin: Db,
   scope: { cohortId: string } | { moduleId: string },
-): Promise<void> {
+  opts: { ids?: string[] } = {},
+): Promise<{ moved: number; kept: number }> {
+  const result = { moved: 0, kept: 0 };
   try {
-    let cohortId: string | null = "cohortId" in scope ? scope.cohortId : null;
+    let cohortId: string;
+    let moduleWeek: number | null = null;
     if ("moduleId" in scope) {
       const { data: mod } = await admin.from("modules").select("week, cohort_id").eq("id", scope.moduleId).maybeSingle();
-      if (!mod) return;
-      const { error } = await admin
-        .from("course_assignments")
-        .update({ week: mod.week })
-        .eq("module_id", scope.moduleId)
-        .eq("release_mode", "course_week")
-        .neq("week", mod.week);
-      if (error) {
-        fail(error);
-        return;
-      }
-      cohortId = mod.cohort_id as string | null;
+      if (!mod?.cohort_id) return result;
+      cohortId = mod.cohort_id as string;
+      moduleWeek = mod.week as number;
+    } else {
+      cohortId = scope.cohortId;
     }
-    if (!cohortId) return;
+    let q = admin
+      .from("course_assignments")
+      .select("id, week, due_day_offset, due_local_time, opens_at, due_at")
+      .eq("cohort_id", cohortId)
+      .eq("release_mode", "course_week");
+    if ("moduleId" in scope) q = q.eq("module_id", scope.moduleId);
+    if (opts.ids) q = q.in("id", opts.ids);
     const [{ data: cohort }, { data: rows, error }] = await Promise.all([
-      admin.from("cohorts").select("starts_on").eq("id", cohortId).maybeSingle(),
-      admin
-        .from("course_assignments")
-        .select("id, week, due_day_offset, due_local_time, opens_at, due_at")
-        .eq("cohort_id", cohortId)
-        .eq("release_mode", "course_week"),
+      admin.from("cohorts").select("starts_on, ends_on").eq("id", cohortId).maybeSingle(),
+      q,
     ]);
     if (error) {
       fail(error);
-      return;
+      return result;
     }
-    if (!cohort?.starts_on) return;
-    for (const r of rows ?? []) {
+    if (!cohort?.starts_on || !rows?.length) return result;
+
+    const locked = new Set<string>();
+    if (!opts.ids) {
+      const { data: subs, error: subErr } = await admin
+        .from("course_assignment_submissions")
+        .select("assignment_id")
+        .in("assignment_id", rows.map((r) => r.id as string))
+        .neq("status", "excused");
+      if (subErr) {
+        fail(subErr);
+        return result;
+      }
+      for (const r of subs ?? []) locked.add(r.assignment_id as string);
+    }
+
+    const moved: string[] = [];
+    for (const r of rows) {
+      const week = moduleWeek ?? (r.week as number);
       const w = courseWeekWindow({
         startsOn: cohort.starts_on as string,
-        week: r.week as number,
+        endsOn: cohort.ends_on as string | null,
+        week,
         dueDayOffset: r.due_day_offset as number | null,
         dueLocalTime: r.due_local_time as string | null,
       });
       if (!w) continue;
-      if (Date.parse(w.opensAt) === Date.parse(r.opens_at) && Date.parse(w.dueAt) === Date.parse(r.due_at)) continue;
+      if (
+        week === r.week &&
+        w.dueDayOffset === r.due_day_offset &&
+        sameInstant(w.opensAt, r.opens_at as string | null) &&
+        sameInstant(w.dueAt, r.due_at as string | null)
+      ) {
+        continue;
+      }
+      if (locked.has(r.id as string)) {
+        result.kept++;
+        continue;
+      }
       const { error: upErr } = await admin
         .from("course_assignments")
-        .update({ opens_at: w.opensAt, due_at: w.dueAt })
+        .update({ week, opens_at: w.opensAt, due_at: w.dueAt, due_day_offset: w.dueDayOffset })
         .eq("id", r.id);
-      if (upErr) console.error("[assignments] recompute failed", r.id, upErr.message);
+      if (upErr) {
+        console.error("[assignments] recompute failed", r.id, upErr.message);
+        continue;
+      }
+      result.moved++;
+      moved.push(r.id as string);
     }
+    if (opts.ids && moved.length) await restampLate(admin, moved);
   } catch (err) {
     fail(err);
+  }
+  return result;
+}
+
+/** late = handed in after the deadline. Re-stamped when a deadline moves. */
+export async function restampLate(admin: Db, assignmentIds: string[]): Promise<void> {
+  if (assignmentIds.length === 0) return;
+  const [{ data: rows, error }, { data: subs, error: subErr }] = await Promise.all([
+    admin.from("course_assignments").select("id, due_at").in("id", assignmentIds),
+    admin
+      .from("course_assignment_submissions")
+      .select("id, assignment_id, submitted_at, late")
+      .in("assignment_id", assignmentIds)
+      .not("submitted_at", "is", null),
+  ]);
+  if (error || subErr) {
+    fail(error ?? subErr);
+    return;
+  }
+  const dueAt = new Map((rows ?? []).map((r) => [r.id as string, r.due_at as string | null]));
+  const flip: Record<"late" | "onTime", string[]> = { late: [], onTime: [] };
+  for (const s of subs ?? []) {
+    const due = dueAt.get(s.assignment_id as string);
+    const late = !!due && Date.parse(s.submitted_at as string) > Date.parse(due);
+    if (late !== !!s.late) flip[late ? "late" : "onTime"].push(s.id as string);
+  }
+  for (const [key, ids] of Object.entries(flip)) {
+    if (ids.length === 0) continue;
+    const { error: upErr } = await admin
+      .from("course_assignment_submissions")
+      .update({ late: key === "late" })
+      .in("id", ids);
+    if (upErr) console.error("[assignments] late re-stamp failed", upErr.message);
   }
 }

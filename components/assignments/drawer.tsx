@@ -3,7 +3,10 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
-/** Right-hand panel over the page; full width on a phone. Esc or the backdrop closes it. */
+/**
+ * Right-hand panel over the page; full width on a phone. Esc or the backdrop
+ * closes it. A dialog opened on top of it (a delete confirm) takes Esc first.
+ */
 export function Drawer({
   open,
   title,
@@ -15,6 +18,7 @@ export function Drawer({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const root = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -23,7 +27,10 @@ export function Drawer({
     if (!open) return;
     const opener = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key !== "Escape") return;
+      const modals = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (modals[modals.length - 1] !== root.current) return;
+      onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
     const overflow = document.body.style.overflow;
@@ -38,7 +45,7 @@ export function Drawer({
 
   if (!open || typeof window === "undefined") return null;
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[100] flex justify-end">
+    <div ref={root} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[100] flex justify-end">
       <button
         type="button"
         tabIndex={-1}

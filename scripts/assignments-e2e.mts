@@ -10,7 +10,9 @@
  * assignment from /admin/assignments; the reminders cron fires (once); the
  * student hands in a Google Doc link; the mentor reviews it from the queue;
  * the admin's matrix shows it reviewed, excuses a missing cell, and the
- * overview shows the overdue tile. Old check-in URLs redirect.
+ * overview shows the overdue tile. Moving the cohort's start date moves the
+ * course-week deadlines except one with work handed in. Old check-in and
+ * monitor URLs redirect.
  *
  * Every account and row it creates is removed in a finally block.
  */
@@ -125,8 +127,10 @@ async function open(browser: Browser, email: string, mobile = false): Promise<{ 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
   // A screenshot is evidence, not a check: a slow font load must not fail the run.
+  // caret "initial": hiding the caret writes inline styles into inputs, which a
+  // page still hydrating in dev then reports as a hydration mismatch.
   await page
-    .screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true, timeout: 30_000 })
+    .screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true, timeout: 30_000, caret: "initial" })
     .catch((e) => console.log(`        screenshot ${name} skipped: ${String(e).split("\n")[0]}`));
 }
 
@@ -155,6 +159,10 @@ function eastern(ms: number): { date: string; time: string } {
       .map((x) => [x.type, x.value]),
   );
   return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+}
+
+function addDays(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 async function cron(): Promise<any> {
@@ -224,6 +232,18 @@ async function main() {
     await drawer.waitFor({ state: "detached" });
     const [deck] = await rest(`course_assignments?cohort_id=eq.${cohortId}&title=eq.Pitch%20deck%20draft`);
     check(!!deck && deck.release_mode === "date" && deck.submission_type === "link", "dated link assignment saved");
+
+    // ---- Esc closes the delete confirm, not the editor under it --------------
+    await a.page.getByRole("button", { name: "Edit Weekly update" }).last().click();
+    const editor = a.page.getByRole("dialog", { name: "Edit assignment" });
+    await editor.getByRole("button", { name: "Delete" }).click();
+    const confirmDelete = a.page.getByRole("dialog", { name: "Delete this assignment?" });
+    await confirmDelete.waitFor();
+    await a.page.keyboard.press("Escape");
+    await confirmDelete.waitFor({ state: "detached" });
+    check(await editor.isVisible(), "Esc in the delete confirm keeps the editor open");
+    await a.page.keyboard.press("Escape");
+    await editor.waitFor({ state: "detached" });
 
     await a.page.reload();
     const anaRow = a.page.locator("tr", { hasText: "Ana Student" });
@@ -299,9 +319,32 @@ async function main() {
     check(await noHorizontalScroll(am.page), "admin page has no page-level horizontal scroll at 390px");
     await shot(am.page, "admin-assignments-mobile");
 
+    // ---- Moving the cohort start moves course-week dates, except handed-in ones
+    const week3 = series.find((r: any) => r.week === 3);
+    const week4 = series.find((r: any) => r.week === 4);
+    await rest("course_assignment_submissions", {
+      method: "POST",
+      body: JSON.stringify({ assignment_id: week3.id, user_id: ana.id, body: "Week 3 notes", submitted_at: new Date().toISOString() }),
+    });
+    await a.page.goto("/admin/cohorts");
+    await a.page.locator("tr", { hasText: `E2E assignments ${stamp}` }).getByRole("button", { name: "Edit", exact: true }).click();
+    await a.page.getByLabel("Starts on").fill(addDays(startsOn, 7));
+    check(await seen(a.page.getByText("Course-week assignment dates move too")), "cohort form says course-week dates move");
+    await a.page.getByRole("button", { name: "Save cohort" }).click();
+    await a.page.getByRole("button", { name: "New cohort" }).waitFor();
+    const [w3] = await rest(`course_assignments?id=eq.${week3.id}`);
+    const [w4] = await rest(`course_assignments?id=eq.${week4.id}`);
+    check(Date.parse(w3.due_at) === Date.parse(week3.due_at), "a week with work handed in keeps its deadline");
+    const before = eastern(Date.parse(week4.due_at));
+    const after = eastern(Date.parse(w4.due_at));
+    check(after.date === addDays(before.date, 7) && after.time === before.time, "a week without work moves with the start date");
+
     // ---- Old check-in URLs ----------------------------------------------------
     await s.page.goto("/dashboard/checkin");
     check(new URL(s.page.url()).pathname === "/dashboard/assignments", "/dashboard/checkin redirects");
+    await a.page.goto("/admin/interventions");
+    const landed = new URL(a.page.url());
+    check(landed.pathname === "/admin/assignments" && landed.searchParams.get("filter") === "missing", "/admin/interventions redirects to the missing filter");
   } catch (err) {
     // Leave a picture of every open page behind for whoever reads the failure.
     let n = 0;

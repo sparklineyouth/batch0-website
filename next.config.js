@@ -58,6 +58,10 @@ const nextConfig = {
       { source: "/dashboard/checkin", destination: "/dashboard/assignments", permanent: true },
       { source: "/mentor/checkins", destination: "/mentor/assignments", permanent: true },
       { source: "/app/checkin", destination: "/app/assignments", permanent: true },
+      // The check-in monitors went with them; the completion matrix replaces them.
+      { source: "/admin/pulse", destination: "/admin", permanent: true },
+      { source: "/admin/interventions", destination: "/admin/assignments?filter=missing", permanent: true },
+      { source: "/admin/cohorts/:id/health", destination: "/admin/assignments?cohort=:id", permanent: true },
     ];
   },
   webpack: (config) => {

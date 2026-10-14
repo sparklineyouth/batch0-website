@@ -8,6 +8,7 @@ import { Drawer } from "@/components/assignments/drawer";
 import { StatusChip } from "@/components/assignments/status-chip";
 import { SubmissionView } from "@/components/assignments/submission-view";
 import { ReviewForm } from "@/components/assignments/review-form";
+import { getActionError } from "@/lib/action-error";
 import { formatEastern, formatEasternDay, type DerivedStatus } from "@/lib/assignments";
 import { loadReviewCell, setExcused, type ReviewCell } from "./actions";
 
@@ -121,11 +122,15 @@ function ReviewPanel({ assignmentId, userId }: { assignmentId: string; userId: s
 
   useEffect(() => {
     let live = true;
-    loadReviewCell({ assignmentId, userId }).then((res) => {
-      if (!live) return;
-      if (res.ok && res.data) setData(res.data);
-      else if (!res.ok) setError(res.error);
-    });
+    loadReviewCell({ assignmentId, userId })
+      .then((res) => {
+        if (!live) return;
+        if (res.ok && res.data) setData(res.data);
+        else if (!res.ok) setError(res.error);
+      })
+      .catch((e) => {
+        if (live) setError(getActionError(e));
+      });
     return () => {
       live = false;
     };
@@ -134,13 +139,17 @@ function ReviewPanel({ assignmentId, userId }: { assignmentId: string; userId: s
   function excuse(excused: boolean) {
     setError(null);
     start(async () => {
-      const res = await setExcused({ assignmentId, userId, excused });
-      if (!res.ok) {
-        setError(res.error);
-        return;
+      try {
+        const res = await setExcused({ assignmentId, userId, excused });
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        setVersion((v) => v + 1);
+        router.refresh();
+      } catch (e) {
+        setError(getActionError(e));
       }
-      setVersion((v) => v + 1);
-      router.refresh();
     });
   }
 

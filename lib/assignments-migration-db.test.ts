@@ -26,6 +26,8 @@ const BEN = "aaaaaaaa-0000-4000-8000-000000000006"; // FALL
 const OLA = "aaaaaaaa-0000-4000-8000-000000000007"; // OTHER cohort
 const INTERN = "aaaaaaaa-0000-4000-8000-000000000008";
 const LESSON = "11111111-0000-4000-8000-000000000001";
+const LESSON2 = "11111111-0000-4000-8000-000000000002";
+const LESSON3 = "11111111-0000-4000-8000-000000000003";
 
 async function setup() {
   const db = new PGlite();
@@ -40,7 +42,7 @@ async function setup() {
     alter default privileges in schema public grant execute on functions to anon, authenticated;
 
     create table public.profiles (id uuid primary key, full_name text, role text not null default 'student');
-    create table public.app_roles (slug text primary key, permissions text[] not null default '{}');
+    create table public.app_roles (slug text primary key, permissions text[] not null default '{}', description text);
     insert into public.app_roles values
       ('admin', array['*']),
       ('mentor', array['mentor.panel']),
@@ -78,7 +80,9 @@ async function setup() {
     create policy "enrollments self or admin" on public.enrollments
       for select using (user_id = auth.uid() or public.is_admin(auth.uid()));
     create table public.modules (id uuid primary key default gen_random_uuid(), cohort_id uuid references public.cohorts(id) on delete cascade, week int);
-    create table public.lessons (id uuid primary key, module_id uuid references public.modules(id) on delete cascade, description text);
+    create table public.lessons (
+      id uuid primary key, module_id uuid references public.modules(id) on delete cascade, title text, description text
+    );
     create table public.mentor_assignments (
       id uuid primary key default gen_random_uuid(),
       mentor_id uuid not null, student_id uuid not null, cohort_id uuid
@@ -86,14 +90,19 @@ async function setup() {
 
     -- 0010: check-ins, with their original policies.
     create table public.student_checkins (
-      id uuid primary key default gen_random_uuid(), user_id uuid not null, week_start date not null, accomplished text
+      id uuid primary key default gen_random_uuid(), user_id uuid not null references public.profiles(id),
+      week_start date not null, accomplished text, next_up text, blockers text,
+      created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+      unique (user_id, week_start)
     );
     alter table public.student_checkins enable row level security;
     create policy "checkins self all" on public.student_checkins
       for all using (user_id = auth.uid()) with check (user_id = auth.uid());
     create policy "checkins staff read" on public.student_checkins for select using (public.is_staff(auth.uid()));
     create table public.checkin_feedback (
-      id uuid primary key default gen_random_uuid(), checkin_id uuid not null, author_id uuid not null, body text not null
+      id uuid primary key default gen_random_uuid(), checkin_id uuid not null references public.student_checkins(id),
+      author_id uuid not null references public.profiles(id), body text not null,
+      created_at timestamptz not null default now()
     );
     alter table public.checkin_feedback enable row level security;
     create policy "checkin_feedback read" on public.checkin_feedback for select using (public.is_staff(auth.uid()));
@@ -105,7 +114,8 @@ async function setup() {
       title text not null, link text, read_at timestamptz
     );
     create table public.email_templates (
-      id uuid primary key default gen_random_uuid(), key text unique not null, enabled boolean not null default true, description text
+      id uuid primary key default gen_random_uuid(), key text unique not null, enabled boolean not null default true,
+      description text, body_html text not null default ''
     );
     create table public.email_automations (id uuid primary key default gen_random_uuid(), enabled boolean not null default true);
     create table public.email_automation_steps (
@@ -128,19 +138,46 @@ async function setup() {
       ('${MENTOR}', '${BEN}', '${FALL}'),
       ('${DIRECT_MENTOR}', '${ANA}', null);
     insert into public.modules (id, cohort_id, week) values ('22222222-0000-4000-8000-000000000001', '${FALL}', 1);
-    insert into public.lessons values ('${LESSON}', '22222222-0000-4000-8000-000000000001',
-      '- [Check-in](/dashboard/checkin): once a week.' || chr(10) || 'Submit your [check-in](/dashboard/checkin). See /dashboard/checkin?x=1');
+    insert into public.lessons (id, module_id, title, description) values
+      ('${LESSON}', '22222222-0000-4000-8000-000000000001', 'Ship list',
+       '- [Check-in](/dashboard/checkin): once a week.' || chr(10) || 'Submit your [check-in](/dashboard/checkin). See /dashboard/checkin?x=1'),
+      ('${LESSON2}', '22222222-0000-4000-8000-000000000001', 'The One-Sentence Startup and Your First Check-in',
+       $md$## Your first check-in
+
+The [weekly check-in](/dashboard/checkin) asks three things. The blockers box is the one we read first.
+
+4. Submit your [check-in](/dashboard/checkin). Numbers in the first box, the demand test in the second, and at least one honest line in blockers, even if it's small.
+
+| 10 | Weekly check-in | Submitted |$md$),
+      ('${LESSON3}', '22222222-0000-4000-8000-000000000001', 'Cofounders', 'Hold a weekly check-in with your cofounder.');
+    update public.app_roles set description = 'Works with students and teams: check-ins, office hours, course feedback.'
+    where slug = 'mentor';
     insert into public.notifications (user_id, type, title, link) values
       ('${ANA}', 'checkin_feedback', 'Feedback', '/dashboard/checkin'),
       ('${MENTOR}', 'checkin_submitted', 'Ana posted', '/mentor/checkins?week=2026-10-12'),
-      ('${MENTOR}', 'intervention', 'Ben needs a nudge', '/mentor/students/x');
+      ('${MENTOR}', 'intervention', 'Ben needs a nudge', '/mentor/students/x'),
+      ('${ADMIN}', 'discord_blocker', 'Blocker flagged in Discord', '/admin/interventions'),
+      ('${ADMIN}', 'at_risk', 'Two students at risk', '/admin/interventions?x=1'),
+      ('${ADMIN}', 'pulse', 'Weekly pulse', '/admin/pulse'),
+      ('${ADMIN}', 'health', 'Cohort health', '/admin/cohorts/${FALL}/health');
     insert into public.email_templates (id, key) values ('33333333-0000-4000-8000-000000000001', 'cohort.checkin_reminder');
+    insert into public.email_templates (key, description, body_html) values
+      ('cohort.next_steps', 'Next steps.',
+       '<li><strong>Post your check-in.</strong> What you shipped, what''s next, what''s in the way. A mentor replies on it.</li>' ||
+       '<p>If you''re behind, don''t try to catch up on all four. Do the deliverable, post the check-in saying you''re behind, and we''ll sort the rest out with you.</p>'),
+      ('cohort.week3',
+       'Deliberately written about the SHAPE of the week (module, deliverable, check-in, office hours, live session) rather than a sprint title.',
+       '<li><strong>Your check-in</strong>, same three questions as always.</li>' ||
+       '<p><strong>What''s expected of you:</strong> 5–10 focused hours, the deliverable shipped by the end of the week, and a check-in that tells the truth about how it went.</p>' ||
+       '<p>That''s the process working, not you failing — but bring it to office hours or your check-in before you rebuild everything on a hunch.</p>');
     insert into public.email_automations (id) values ('44444444-0000-4000-8000-000000000001');
     insert into public.email_automation_steps (automation_id, template_id) values
       ('44444444-0000-4000-8000-000000000001', '33333333-0000-4000-8000-000000000001');
     insert into public.events (cohort_id, type, description) values ('${FALL}', 'demo_day',
       'Students prepare a demo. Submit through Files and include the links in your Check-in by Wednesday, November 11 at 8:00 p.m.');
-    insert into public.student_checkins (user_id, week_start, accomplished) values ('${ANA}', '2026-10-05', 'shipped');
+    -- Week 4 (Mon Oct 5 to Sun Oct 11): before the seeded series, so not carried over.
+    insert into public.student_checkins (user_id, week_start, accomplished, created_at)
+    values ('${ANA}', '2026-10-05', 'shipped', '2026-10-06T15:00:00Z');
   `);
   await db.exec(migration);
   return db;
@@ -188,7 +225,7 @@ test("Fall seed: weekly update weeks 5–9 (DST-correct) and Demo Day, once", as
   const db = await setup();
   await db.exec(migration);
   const { rows } = await db.query<any>(
-    `select week, title, to_char(opens_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI') as opens,
+    `select week, title, due_day_offset, to_char(opens_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI') as opens,
             to_char(due_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI') as due
      from public.course_assignments where cohort_id = $1 order by week nulls last`,
     [FALL],
@@ -197,12 +234,65 @@ test("Fall seed: weekly update weeks 5–9 (DST-correct) and Demo Day, once", as
   assert.deepEqual(rows.slice(0, 5).map((r) => r.week), [5, 6, 7, 8, 9]);
   const byWeek = Object.fromEntries(rows.filter((r) => r.week).map((r) => [r.week, r]));
   assert.equal(byWeek[5].opens, "2026-10-12T04:00");
+  assert.equal(byWeek[5].due, "2026-10-19T03:59");
   assert.equal(byWeek[6].due, "2026-10-26T03:59"); // EDT
   assert.equal(byWeek[7].opens, "2026-10-26T04:00");
   assert.equal(byWeek[7].due, "2026-11-02T04:59"); // EST — DST ended Nov 1
   assert.equal(byWeek[8].opens, "2026-11-02T05:00");
+  assert.deepEqual(rows.slice(0, 4).map((r) => r.due_day_offset), [6, 6, 6, 6]);
+  // The cohort ends Friday Nov 13 (Demo Day): week 9 is due then, not Sunday.
+  assert.equal(byWeek[9].due, "2026-11-14T04:59");
+  assert.equal(byWeek[9].due_day_offset, 4);
   const demo = rows.find((r) => r.title === "Demo Day submission");
   assert.equal(demo.due, "2026-11-12T01:00");
+});
+
+test("check-ins already posted for a seeded week carry over as that week's update", async () => {
+  const db = await setup();
+  const WEEK5 = "a0930000-0000-4000-8000-000000000005";
+  await db.exec(`
+    insert into public.student_checkins (id, user_id, week_start, accomplished, next_up, blockers, created_at) values
+      -- Ben, Tuesday of week 5. A mentor replied twice.
+      ('c0000000-0000-4000-8000-000000000001', '${BEN}', '2026-10-12', ' 4 interviews ', 'pricing page', '', '2026-10-13T15:00:00Z'),
+      -- Ana, Sunday Oct 18 at 10 p.m. ET: UTC files it under the next week, but it is week 5's,
+      -- and the later of her two week-5 check-ins.
+      ('c0000000-0000-4000-8000-000000000002', '${ANA}', '2026-10-19', 'landing page live', null, 'no replies yet', '2026-10-19T02:00:00Z'),
+      ('c0000000-0000-4000-8000-000000000005', '${ANA}', '2026-10-12', 'early draft', null, null, '2026-10-12T16:00:00Z'),
+      -- Ola is in another cohort.
+      ('c0000000-0000-4000-8000-000000000003', '${OLA}', '2026-10-12', 'hi', null, null, '2026-10-13T15:00:00Z'),
+      -- Ben, Sunday Oct 11 at 9 p.m. ET: week 4, not carried over.
+      ('c0000000-0000-4000-8000-000000000004', '${BEN}', '2026-10-05', 'week four', null, null, '2026-10-12T01:00:00Z');
+    insert into public.checkin_feedback (checkin_id, author_id, body, created_at) values
+      ('c0000000-0000-4000-8000-000000000001', '${DIRECT_MENTOR}', 'Good.', '2026-10-13T18:00:00Z'),
+      ('c0000000-0000-4000-8000-000000000001', '${MENTOR}', 'Ship the pricing page.', '2026-10-14T18:00:00Z');
+  `);
+  // Ana already handed in week 6 in the app: a re-run must not touch it.
+  await db.exec(`
+    insert into public.course_assignment_submissions (assignment_id, user_id, body, submitted_at)
+    values ('a0930000-0000-4000-8000-000000000006', '${ANA}', 'from the app', '2026-10-20T15:00:00Z');
+  `);
+  await db.exec(migration);
+  await db.exec(migration);
+  const { rows } = await db.query<any>(
+    `select assignment_id, user_id, body, status, late, feedback, reviewed_by,
+            to_char(submitted_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI') as submitted
+     from public.course_assignment_submissions order by assignment_id, user_id`,
+  );
+  assert.equal(rows.length, 3);
+  const ben = rows.find((r) => r.user_id === BEN);
+  assert.equal(ben.assignment_id, WEEK5);
+  assert.equal(ben.body, "Shipped: 4 interviews\n\nNext: pricing page");
+  assert.equal(ben.status, "reviewed");
+  assert.equal(ben.feedback, "Good.\n\nShip the pricing page.");
+  assert.equal(ben.reviewed_by, MENTOR);
+  assert.equal(ben.submitted, "2026-10-13T15:00");
+  assert.equal(ben.late, false);
+  const ana = rows.filter((r) => r.user_id === ANA);
+  assert.deepEqual(ana.map((r) => r.assignment_id), [WEEK5, "a0930000-0000-4000-8000-000000000006"]);
+  assert.equal(ana[0].body, "Shipped: landing page live\n\nBlockers: no replies yet");
+  assert.equal(ana[0].status, "submitted");
+  assert.equal(ana[0].feedback, null);
+  assert.equal(ana[1].body, "from the app");
 });
 
 test("a student sees released, published work for their cohort and nothing else", async () => {
@@ -320,18 +410,60 @@ test("check-ins become read-only; roles, links, lessons, email and Demo Day are 
   assert.deepEqual(intern, ["people.view", "course.manage", "assignments.manage"]);
   assert.deepEqual(roles.rows.find((r) => r.slug === "admin").permissions, ["*"]);
 
-  const notes = await db.query<any>(`select type, link, read_at from public.notifications order by type`);
-  assert.deepEqual(notes.rows.map((r) => r.link), ["/dashboard/assignments", "/mentor/assignments", "/mentor/students/x"]);
-  assert.equal(notes.rows.find((r) => r.type === "intervention").read_at !== null, true);
-  assert.equal(notes.rows.find((r) => r.type === "checkin_feedback").read_at, null);
+  const notes = await db.query<any>(`select type, link, read_at from public.notifications`);
+  const note = (type: string) => notes.rows.find((r) => r.type === type);
+  assert.equal(note("checkin_feedback").link, "/dashboard/assignments");
+  assert.equal(note("checkin_submitted").link, "/mentor/assignments");
+  assert.equal(note("intervention").link, "/mentor/students/x");
+  assert.equal(note("discord_blocker").link, null); // the at-risk queue never showed blockers
+  assert.equal(note("at_risk").link, "/admin/assignments?filter=missing");
+  assert.equal(note("pulse").link, "/admin");
+  assert.equal(note("health").link, "/admin/assignments");
+  assert.notEqual(note("intervention").read_at, null);
+  assert.notEqual(note("checkin_submitted").read_at, null);
+  assert.equal(note("checkin_feedback").read_at, null);
 
-  const lesson = await db.query<any>(`select description from public.lessons`);
+  const lessons = await db.query<any>(`select id, title, description from public.lessons`);
+  const lesson = (id: string) => lessons.rows.find((r) => r.id === id);
   assert.equal(
-    lesson.rows[0].description,
+    lesson(LESSON).description,
     "- [Assignments](/dashboard/assignments): once a week.\nSubmit your [weekly update](/dashboard/assignments). See /dashboard/assignments?x=1",
   );
+  assert.equal(lesson(LESSON2).title, "The One-Sentence Startup and Your First Weekly Update");
+  assert.equal(
+    lesson(LESSON2).description,
+    [
+      "## Your first weekly update",
+      "",
+      "The [weekly update](/dashboard/assignments) asks three things. The blockers line is the one we read first.",
+      "",
+      "4. Submit your [weekly update](/dashboard/assignments). Numbers first, then the demand test, and at least one honest line on blockers, even if it's small.",
+      "",
+      "| 10 | Weekly update | Submitted |",
+    ].join("\n"),
+  );
+  // A lesson that never linked the check-in page is left alone.
+  assert.equal(lesson(LESSON3).description, "Hold a weekly check-in with your cofounder.");
 
-  const tpl = await db.query<any>(`select enabled from public.email_templates`);
+  const mentorRole = await db.query<any>(`select description from public.app_roles where slug = 'mentor'`);
+  assert.equal(mentorRole.rows[0].description, "Works with students and teams: assignments, office hours, course feedback.");
+
+  const emails = await db.query<any>(`select key, description, body_html from public.email_templates`);
+  const email = (key: string) => emails.rows.find((r) => r.key === key);
+  assert.equal(
+    email("cohort.next_steps").body_html,
+    "<li><strong>Submit your weekly update.</strong> What you shipped, what's next, what's in the way. A mentor replies on it.</li>" +
+      "<p>If you're behind, don't try to catch up on all four. Do the deliverable, say you're behind in your weekly update, and we'll sort the rest out with you.</p>",
+  );
+  assert.equal(
+    email("cohort.week3").body_html,
+    "<li><strong>Your weekly update</strong>, in Assignments.</li>" +
+      "<p><strong>What's expected of you:</strong> 5–10 focused hours, the deliverable shipped by the end of the week, and a weekly update that tells the truth about how it went.</p>" +
+      "<p>That's the process working, not you failing — but bring it to office hours or your weekly update before you rebuild everything on a hunch.</p>",
+  );
+  assert.match(email("cohort.week3").description, /module, deliverable, weekly update, office hours/);
+
+  const tpl = await db.query<any>(`select enabled from public.email_templates where key = 'cohort.checkin_reminder'`);
   assert.equal(tpl.rows[0].enabled, false);
   const steps = await db.query<any>(`select enabled from public.email_automation_steps`);
   assert.equal(steps.rows[0].enabled, false);

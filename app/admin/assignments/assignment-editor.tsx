@@ -167,14 +167,19 @@ function EditorForm({
   function remove() {
     if (!initial) return;
     start(async () => {
-      const res = await deleteAssignment(initial.id);
-      setConfirmDelete(false);
-      if (!res.ok) {
-        setError(res.error);
-        return;
+      try {
+        const res = await deleteAssignment(initial.id);
+        setConfirmDelete(false);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        onDone();
+        router.refresh();
+      } catch (e) {
+        setConfirmDelete(false);
+        setError(getActionError(e));
       }
-      onDone();
-      router.refresh();
     });
   }
 

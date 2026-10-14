@@ -302,6 +302,11 @@ function CohortForm({
             onChange={(e) => setC({ ...c, ends_on: e.target.value })}
           />
         </div>
+        {initial.id && (c.starts_on !== initial.starts_on || c.ends_on !== initial.ends_on) && (
+          <p className="text-xs text-ink-faint sm:col-span-2">
+            Course-week assignment dates move too, except ones with work handed in.
+          </p>
+        )}
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <div>

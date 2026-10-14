@@ -116,6 +116,12 @@ export function easternTime(iso: string | Date): string {
   return `${p.hour}:${p.minute}`;
 }
 
+/** Two timestamps name the same instant (Postgres and JS spell them differently). */
+export function sameInstant(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return Date.parse(a) === Date.parse(b);
+}
+
 export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
@@ -153,29 +159,41 @@ export function courseWeekStart(startsOn: string, week: number): string | null {
   return addDays(startsOn, 7 * (week - 1));
 }
 
-/** Opens 00:00 ET on the week's first day; due `dueLocalTime` ET `dueDayOffset` days later. */
+/**
+ * Opens 00:00 ET on the week's first day; due `dueLocalTime` ET `dueDayOffset`
+ * days later, but never after the cohort's last day: a cohort that ends on a
+ * Friday has its last week due that Friday. `dueDayOffset` in the result is
+ * the day actually used, so storing it keeps a recompute stable.
+ */
 export function courseWeekWindow(args: {
   startsOn: string;
+  endsOn?: string | null;
   week: number;
   dueDayOffset?: number | null;
   dueLocalTime?: string | null;
-}): { opensAt: string; dueAt: string } | null {
+}): { opensAt: string; dueAt: string; dueDayOffset: number } | null {
   const start = courseWeekStart(args.startsOn, args.week);
   if (!start) return null;
-  const offset = args.dueDayOffset ?? DEFAULT_DUE_DAY_OFFSET;
+  let offset = args.dueDayOffset ?? DEFAULT_DUE_DAY_OFFSET;
   if (!Number.isInteger(offset) || offset < 0 || offset > 13) return null;
+  if (isDate(args.endsOn) && args.endsOn >= start) {
+    offset = Math.min(offset, daysBetween(start, args.endsOn));
+  }
   const time = args.dueLocalTime ? args.dueLocalTime.slice(0, 5) : DEFAULT_DUE_LOCAL_TIME;
   const opensAt = easternToUtc(start, "00:00");
   const dueAt = easternToUtc(addDays(start, offset), time);
   if (!opensAt || !dueAt || Date.parse(dueAt) <= Date.parse(opensAt)) return null;
-  return { opensAt, dueAt };
+  return { opensAt, dueAt, dueDayOffset: offset };
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
 }
 
 /** How many course weeks a cohort spans: Sep 14 – Nov 13 is 9. */
 export function cohortWeekCount(startsOn: string | null, endsOn: string | null): number | null {
   if (!isDate(startsOn) || !isDate(endsOn) || endsOn < startsOn) return null;
-  const days = (Date.parse(`${endsOn}T00:00:00Z`) - Date.parse(`${startsOn}T00:00:00Z`)) / DAY_MS + 1;
-  return Math.min(MAX_WEEK, Math.ceil(days / 7));
+  return Math.min(MAX_WEEK, Math.ceil((daysBetween(startsOn, endsOn) + 1) / 7));
 }
 
 /** Week of the cohort a moment falls in (New York calendar), or null before day one. */
@@ -446,12 +464,12 @@ export type NormalizedDraft = {
 };
 
 /**
- * Validate the admin form. Course-week dates need the cohort's start date,
- * so they're resolved here from `startsOn`; `now` stamps a "now" release.
+ * Validate the admin form. Course-week dates need the cohort's start (and
+ * end) date, so they're resolved here; `now` stamps a "now" release.
  */
 export function normalizeDraft(
   d: AssignmentDraft,
-  ctx: { startsOn: string | null; now?: Date },
+  ctx: { startsOn: string | null; endsOn?: string | null; now?: Date },
 ): { ok: true; value: NormalizedDraft } | { ok: false; error: string } {
   const title = (d.title ?? "").trim();
   if (!title) return { ok: false, error: "Add a title." };
@@ -473,9 +491,12 @@ export function normalizeDraft(
     const time = d.dueLocalTime || DEFAULT_DUE_LOCAL_TIME;
     if (!Number.isInteger(offset) || offset < 0 || offset > 13) return { ok: false, error: "Pick a due day." };
     if (!isTime(time)) return { ok: false, error: "Pick a due time." };
-    const w = courseWeekWindow({ startsOn: ctx.startsOn, week, dueDayOffset: offset, dueLocalTime: time });
+    const w = courseWeekWindow({ startsOn: ctx.startsOn, endsOn: ctx.endsOn, week, dueDayOffset: offset, dueLocalTime: time });
     if (!w) return { ok: false, error: "Those dates don't work." };
-    return { ok: true, value: { ...base, opensAt: w.opensAt, dueAt: w.dueAt, week, dueDayOffset: offset, dueLocalTime: time } };
+    return {
+      ok: true,
+      value: { ...base, opensAt: w.opensAt, dueAt: w.dueAt, week, dueDayOffset: w.dueDayOffset, dueLocalTime: time },
+    };
   }
 
   let opensAt: string | null = null;
