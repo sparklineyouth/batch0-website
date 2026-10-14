@@ -7,7 +7,7 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { LocalTime } from "@/components/ui/local-time";
 import { LiveDot } from "@/components/live/call-stage";
 import { getActionError } from "@/lib/action-error";
-import { EVENT_TYPE_LABEL } from "@/lib/event-form";
+import { EVENT_TYPE_LABEL, whoFromRow } from "@/lib/event-form";
 import { joinNames } from "@/lib/live";
 import { deleteEvent } from "./actions";
 import { EventForm } from "./event-form";
@@ -110,7 +110,18 @@ export function EventsAdmin({
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        <StartNowButton cohorts={cohorts} defaultCohortId={defaultCohortId} />
+        <StartNowButton
+          cohorts={cohorts}
+          defaultCohortId={defaultCohortId}
+          live={live
+            .filter((r) => r.liveMode === "hosted")
+            .map((r) => ({
+              id: r.id,
+              title: r.title,
+              who: whoFromRow({ visibility: r.visibility, cohort_id: r.cohortId }, null),
+              hosting: r.hosting,
+            }))}
+        />
         <Button variant="secondary" onClick={() => setEditing("new")}>
           <Plus className="h-4 w-4" /> New event
         </Button>

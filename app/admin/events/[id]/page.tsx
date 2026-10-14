@@ -137,19 +137,26 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
         <Stat label="Questions" value={String(questions.length)} />
       </dl>
 
-      <Section id="recording" title="Recording">
-        <EventRecordings eventId={ev.id} />
-        {ev.recording_url && (
-          <a
-            href={ev.recording_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-phosphor-ink hover:underline"
-          >
-            Recording link →
-          </a>
-        )}
-      </Section>
+      {(hosted || ev.recording_url) && (
+        <Section id="recording" title="Recording">
+          {hosted && (
+            <EventRecordings
+              eventId={ev.id}
+              emptyText={ev.recording_url ? undefined : "No recording yet."}
+            />
+          )}
+          {ev.recording_url && (
+            <a
+              href={ev.recording_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-phosphor-ink hover:underline"
+            >
+              Recording link →
+            </a>
+          )}
+        </Section>
+      )}
 
       {files.length > 0 && (
         <Section title="Slides">

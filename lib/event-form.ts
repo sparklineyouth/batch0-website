@@ -4,7 +4,7 @@
  *
  * Relative .ts import so `node --test` can load it without a bundler.
  */
-import { eventLiveStatus, roomWindow } from "./live.ts";
+import { eventLiveStatus, roomAccess, roomIsOpen, roomWindow } from "./live.ts";
 
 export const EVENT_TYPES = [
   "webinar",
@@ -248,6 +248,9 @@ export function validateEventFields(d: {
   externalUrl: string;
   recordingUrl: string;
   who: string;
+  /** An edited event's saved length: kept as is even outside the bounds
+   *  (a two-day Demo Day stays editable without being shortened). */
+  savedDurationMinutes?: number | null;
 }): EventFieldErrors {
   const errors: EventFieldErrors = {};
   const title = d.title.trim();
@@ -256,10 +259,13 @@ export function validateEventFields(d: {
   if (!d.startsAt || Number.isNaN(new Date(d.startsAt).getTime())) {
     errors.startsAt = "Pick a date and time.";
   }
+  const unchanged =
+    d.savedDurationMinutes != null && d.durationMinutes === d.savedDurationMinutes;
   if (
     !Number.isInteger(d.durationMinutes) ||
-    d.durationMinutes < MIN_DURATION_MINUTES ||
-    d.durationMinutes > MAX_DURATION_MINUTES
+    d.durationMinutes <= 0 ||
+    (!unchanged &&
+      (d.durationMinutes < MIN_DURATION_MINUTES || d.durationMinutes > MAX_DURATION_MINUTES))
   ) {
     errors.duration = "Pick a length.";
   }
@@ -315,7 +321,8 @@ export function adminGroup(
 /**
  * The room button on a hosted row: Join when a host is already on air, Start
  * when the room is live or about to be with nobody hosting, Open room before
- * that (to set up early). Past rows get none.
+ * that while hosts may already go in (lib/live.ts decides how early). Past
+ * rows, and rows whose host window hasn't opened, get none.
  */
 export function roomActionLabel(
   group: AdminGroup,
@@ -330,7 +337,38 @@ export function roomActionLabel(
     { startsAt: e.startsAt, endsAt: e.endsAt, liveEndedAt: null },
     now,
   );
-  return s === "open" ? "Start" : "Open room";
+  if (s === "open") return "Start";
+  const hostWindow = roomAccess({
+    startsAt: e.startsAt,
+    endsAt: e.endsAt,
+    liveEndedAt: null,
+    isHost: true,
+    hostPresent: false,
+    now,
+  });
+  return roomIsOpen(hostWindow) ? "Open room" : null;
+}
+
+/**
+ * live_started_at / live_ended_at / assets_shared_at describe one run of an
+ * event. A stamp from more than an hour before its (new) start belongs to an
+ * earlier run — a reschedule or a reused row — and is cleared on save so the
+ * event doesn't open as "Ended" or already shared.
+ */
+export const RUN_STAMPS = ["live_started_at", "live_ended_at", "assets_shared_at"] as const;
+export type RunStamp = (typeof RUN_STAMPS)[number];
+
+export function staleRunStamps(
+  prior: Partial<Record<RunStamp, string | null>>,
+  startsAtIso: string,
+): Partial<Record<RunStamp, null>> {
+  const runOpensAt = new Date(startsAtIso).getTime() - 60 * MINUTE;
+  const out: Partial<Record<RunStamp, null>> = {};
+  for (const col of RUN_STAMPS) {
+    const at = prior[col];
+    if (at && new Date(at).getTime() < runOpensAt) out[col] = null;
+  }
+  return out;
 }
 
 /**
@@ -355,4 +393,54 @@ export function studentEventStatus(
     return "live";
   }
   return s;
+}
+
+// ---------------------------------------------------------------------------
+// Notices and "Start a webinar now"
+// ---------------------------------------------------------------------------
+
+/**
+ * Where an event notice (the bell and the email button) sends one student,
+ * or null to leave them out. A student whose cohort hasn't started is locked
+ * out of the events list (pre-cohort lockdown) but may open a hosted event's
+ * room, so they hear about hosted events only, linked to the room.
+ */
+export function eventNoticeLink(
+  ev: { id: string; hosted: boolean },
+  kind: "posted" | "live",
+  preCohort: boolean,
+): string | null {
+  const room = `/dashboard/events/${ev.id}/live`;
+  if (ev.hosted && (kind === "live" || preCohort)) return room;
+  return preCohort ? null : "/dashboard/events";
+}
+
+type LiveCandidate = Timing & {
+  id: string;
+  title: string;
+  visibility: string;
+  cohortId: string | null;
+  liveMode: string | null;
+};
+
+/**
+ * A hosted event live right now (adminGroup) for this audience — the same
+ * cohort, or both "everyone", or both staff-only — so a second "Start a
+ * webinar now" can point at it instead of opening a parallel room and
+ * notifying everyone twice.
+ */
+export function liveForAudience<T extends LiveCandidate>(
+  rows: readonly T[],
+  audience: { visibility: Visibility; cohort_id: string | null },
+  now: Date,
+): T | null {
+  return (
+    rows.find(
+      (r) =>
+        (r.liveMode === "hosted" || r.liveMode === "premiere") &&
+        r.visibility === audience.visibility &&
+        (audience.visibility !== "enrolled" || r.cohortId === audience.cohort_id) &&
+        adminGroup(r, now, false) === "live",
+    ) ?? null
+  );
 }

@@ -17,7 +17,9 @@ One page: `/admin/events` (`/admin/webinars` redirects there), grouped
 - **Start a webinar now** — title (optional), who, "tell them it's live". Creates
   a hosted webinar starting this minute for the running (else next) cohort,
   chat open, recording on, already live; notifies the cohort (bell + one
-  batched email) and drops you in the room as host.
+  batched email) and drops you in the room as host. If one is already live
+  for the same people, the dialog leads with Join and starting a second room
+  takes "Start another" (the server checks too).
 - **New event** — only a title and a time are required. Length (30–120 min)
   sets the end. Where: batch0 video room or an external http(s) link. Who: a
   cohort, everyone signed in, or staff only (a rehearsal: never notified,
@@ -28,9 +30,15 @@ One page: `/admin/events` (`/admin/webinars` redirects there), grouped
   presents; pick it before the first save if you like), guest speakers, and a
   recording link for external events.
 - **Rows** — Join (a host is on air: "Ana hosting"), Start (live or within 15
-  minutes, nobody hosting), Open room (earlier), End / Reopen, Edit, Delete.
-  The title opens the record page (`/admin/events/[id]`): status, attendance,
-  questions, recording, slides, speakers.
+  minutes, nobody hosting), Open room (earlier, once `lib/live.ts` lets hosts
+  in), End / Reopen, Edit, Delete (also removes slides and recordings). Past
+  rows link to the recording when there is one. The title opens the record
+  page (`/admin/events/[id]`): status, attendance, questions, recording,
+  slides, speakers.
+- **Who hears about it** — the cohort's students (every unfinished cohort for
+  "everyone signed in"). A student whose cohort hasn't started can't open
+  `/dashboard/events` yet, so they are told only about hosted events, linked
+  to the room (`eventNoticeLink`).
 
 Writes go through `app/admin/events/actions.ts` (`saveEvent`,
 `startWebinarNow`, `deleteEvent`), all `events.manage` and validated on the
@@ -60,12 +68,14 @@ at runtime, live, in front of an audience.
    gap between the drop and the create, joins and question submissions fail
    closed.
 2. Apply `supabase/migrations/0084_webinars.sql` in the SQL editor.
-3. Run `npm run webinar-doctor`. It now checks every table, column and bucket
-   0084 adds, and prints an audience-mode census.
+3. Run `npm run webinar-doctor`. It checks every table, column and bucket
+   0084 adds, and counts webinars per chat setting.
 4. Deploy the code.
 5. Apply `0098_events.sql` (any time; the code does not depend on it): event
-   writes over PostgREST need `events.manage` instead of `mentor.panel`, and
-   new rows default to chat open and recording on.
+   writes over PostgREST need `events.manage` instead of `mentor.panel`, an
+   "everyone signed in" event needs a signed-in reader (the anon key used to
+   list them, join links included), and new rows default to chat open and
+   recording on.
 
 **Never run `npm run webinar-e2e` against production.** It creates a real admin
 account, two student accounts, and a `visibility: 'public'` event that starts

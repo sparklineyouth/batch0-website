@@ -110,12 +110,20 @@ export function EventForm({
   const [confirmRemoveDeck, setConfirmRemoveDeck] = useState(false);
 
   const [speakers, setSpeakers] = useState<SpeakerDraft[]>([]);
-  const [speakersLoaded, setSpeakersLoaded] = useState(isNew);
   const [speakersDirty, setSpeakersDirty] = useState(false);
+  // An existing event's speakers and slides. Until they are "ready", Save
+  // leaves the speaker list alone (saveSpeakers replaces the whole list) and
+  // slides can't be picked (a new deck replaces the saved one).
+  const [extras, setExtras] = useState<"loading" | "ready" | "error">(
+    isNew ? "ready" : "loading",
+  );
 
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [speakersOpen, setSpeakersOpen] = useState(false);
   const [errors, setErrors] = useState<EventFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -123,18 +131,24 @@ export function EventForm({
     titleRef.current?.focus();
   }, []);
 
-  // Speakers and slides for an existing event. Until this lands, Save leaves
-  // the speaker list alone (saveSpeakers replaces the whole list).
   useEffect(() => {
     if (!event) return;
     let cancelled = false;
-    void fetchWebinarExtras(event.id).then((r) => {
-      if (cancelled || !r.ok || !r.data) return;
-      setSpeakers(r.data.speakers.map(toSpeakerDraft));
-      setSpeakersLoaded(true);
-      const d = r.data.deck;
-      if (d) setSavedDeck({ id: d.id, filename: d.filename, sizeBytes: d.sizeBytes });
-    });
+    fetchWebinarExtras(event.id)
+      .then((r) => {
+        if (cancelled) return;
+        if (!r.ok || !r.data) {
+          setExtras("error");
+          return;
+        }
+        setSpeakers(r.data.speakers.map(toSpeakerDraft));
+        const d = r.data.deck;
+        if (d) setSavedDeck({ id: d.id, filename: d.filename, sizeBytes: d.sizeBytes });
+        setExtras("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setExtras("error");
+      });
     return () => {
       cancelled = true;
     };
@@ -212,6 +226,7 @@ export function EventForm({
     if (pending || uploading) return;
     setFormError(null);
     setWarning(null);
+    setNotice(null);
     const fieldErrors = validateEventFields({
       title,
       startsAt: startsIso,
@@ -220,6 +235,7 @@ export function EventForm({
       externalUrl,
       recordingUrl,
       who,
+      savedDurationMinutes: isNew ? null : initialDuration,
     });
     setErrors(fieldErrors);
     if (Object.keys(fieldErrors).length > 0) {
@@ -259,7 +275,9 @@ export function EventForm({
         setSavedDeck({ id: "", filename: stagedDeck.filename, sizeBytes: stagedDeck.sizeBytes });
         setStagedDeck(null);
       }
-      if (hosted && speakersLoaded && speakersDirty) {
+      let invitesReady = false;
+      if (hosted && extras === "ready" && speakersDirty) {
+        const unsaved = speakers.some((sp) => !sp.id);
         const sr = await saveSpeakers(
           id,
           speakers.map((sp, i) => ({
@@ -277,10 +295,18 @@ export function EventForm({
         else {
           setSpeakersDirty(false);
           setSpeakers((sr.data ?? []).map(toSpeakerDraft));
+          invitesReady = unsaved && (sr.data ?? []).length > 0;
         }
       }
       if (problem) {
         setWarning(problem);
+        return;
+      }
+      if (invitesReady) {
+        // New speakers now have invite links: stay here so they can be sent.
+        setMoreOpen(true);
+        setSpeakersOpen(true);
+        setNotice("Saved. Send the speakers their invites.");
         return;
       }
       onDone();
@@ -295,7 +321,7 @@ export function EventForm({
 
   return (
     <form onSubmit={submit} noValidate className="space-y-5">
-      <h2 className="font-display text-2xl text-ink">{isNew ? "New event" : "Edit event"}</h2>
+      <h2 className="font-display text-2xl text-ink">{eventId ? "Edit event" : "New event"}</h2>
 
       <div>
         <Label htmlFor="ev-title">Title</Label>
@@ -415,11 +441,15 @@ export function EventForm({
             checked={notify}
             onChange={(e) => setNotify(e.target.checked)}
           />
-          {isNew ? "Notify now" : "Notify about this change"}
+          {eventId ? "Notify about this change" : "Notify now"}
         </label>
       )}
 
-      <details className="group rounded-md border border-line">
+      <details
+        className="group rounded-md border border-line"
+        open={moreOpen}
+        onToggle={(e) => setMoreOpen(e.currentTarget.open)}
+      >
         <summary className="cursor-pointer select-none px-3 py-2.5 text-sm text-ink-soft hover:text-ink">
           More options
         </summary>
@@ -492,7 +522,13 @@ export function EventForm({
 
               <div>
                 <Label>Slides (PDF)</Label>
-                {savedDeck ? (
+                {extras === "loading" ? (
+                  <p className="text-xs text-ink-faint">Loading…</p>
+                ) : extras === "error" ? (
+                  <p className="text-xs text-red-700 dark:text-red-400">
+                    Couldn&apos;t load the slides. Reload to try again.
+                  </p>
+                ) : savedDeck ? (
                   <FileRow
                     name={savedDeck.filename}
                     size={savedDeck.sizeBytes}
@@ -534,12 +570,20 @@ export function EventForm({
                 <p className="mt-1 text-xs text-ink-faint">Present them in the room.</p>
               </div>
 
-              <details className="rounded-md border border-line">
+              <details
+                className="rounded-md border border-line"
+                open={speakersOpen}
+                onToggle={(e) => setSpeakersOpen(e.currentTarget.open)}
+              >
                 <summary className="cursor-pointer select-none px-3 py-2 text-sm text-ink-soft hover:text-ink">
                   Guest speakers{speakers.length ? ` (${speakers.length})` : ""}
                 </summary>
                 <div className="border-t border-line p-3">
-                  {speakersLoaded ? (
+                  {extras === "error" ? (
+                    <p className="text-xs text-red-700 dark:text-red-400">
+                      Couldn&apos;t load the speakers. Reload to try again.
+                    </p>
+                  ) : extras === "ready" ? (
                     <SpeakersEditor
                       eventId={eventId}
                       speakers={speakers}
@@ -579,13 +623,18 @@ export function EventForm({
           {warning}
         </p>
       )}
+      {notice && (
+        <p role="status" className="text-xs text-phosphor-ink">
+          {notice}
+        </p>
+      )}
 
       <div className="flex gap-2">
         <Button type="submit" disabled={busy}>
           {pending ? "Saving…" : "Save"}
         </Button>
         <Button variant="ghost" onClick={cancel} disabled={pending}>
-          {warning ? "Done" : "Cancel"}
+          {warning || notice ? "Done" : "Cancel"}
         </Button>
       </div>
 

@@ -114,9 +114,17 @@ const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/pay-fine",
 ];
 
+/**
+ * A webinar room (`/dashboard/events/<id>/live`) — reachable pre-cohort, so an
+ * orientation webinar before day one can actually be attended. Only the room,
+ * not the events list, and RLS on the event still decides who may see it.
+ */
+const WEBINAR_ROOM_PATH = /^\/dashboard\/events\/[^/]+\/live\/?$/;
+
 /** Whether a /dashboard pathname is reachable during pre-cohort lockdown. */
 export function isPreCohortAllowedPath(path: string): boolean {
   if (path === "/dashboard") return true;
+  if (WEBINAR_ROOM_PATH.test(path)) return true;
   return PRE_COHORT_ALLOWED_PREFIXES.some(
     (p) => path === p || path.startsWith(p + "/"),
   );

@@ -630,6 +630,8 @@ One account, one pass — the code stops working the moment it's claimed.`,
     title: string;
     startsAt: string;
     zoomUrl: string | null;
+    /** Defaults to the events list. */
+    cta?: { url: string; label: string };
   }) => ({
     subject: `Coming up: ${args.title}`,
     html: layout({
@@ -639,7 +641,7 @@ One account, one pass — the code stops working the moment it's claimed.`,
         <p>Starts <strong>${escape(eventWhen(args.startsAt))}</strong>.</p>
         ${args.zoomUrl ? `<p>Join: <a href="${escape(args.zoomUrl)}" style="color:#ffbb00">${escape(args.zoomUrl)}</a></p>` : ""}
       `,
-      cta: { url: `${env.siteUrl}/dashboard/events`, label: "All events" },
+      cta: args.cta ?? { url: `${env.siteUrl}/dashboard/events`, label: "All events" },
     }),
   }),
 

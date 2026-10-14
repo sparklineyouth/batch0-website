@@ -9,6 +9,23 @@ import { studentEventStatus } from "@/lib/event-form";
 import { isHostedOnBatch0 } from "@/lib/webinars";
 import { CalendarDays, MapPin, Video, ExternalLink } from "lucide-react";
 
+/** What the card reads. A subset of LiveEvent, so callers build only this. */
+export type StudentEvent = Pick<
+  LiveEvent,
+  | "id"
+  | "title"
+  | "description"
+  | "type"
+  | "startsAt"
+  | "endsAt"
+  | "location"
+  | "liveMode"
+  | "externalUrl"
+  | "recordingUrl"
+  | "hostName"
+  | "liveEndedAt"
+> & { liveStartedAt?: string | null };
+
 /**
  * An event on the student events page. A batch0-hosted event links to its
  * room (/dashboard/events/<id>/live) while it is joinable — from 15 minutes
@@ -20,7 +37,7 @@ export function EventCard({
   upcoming,
   initialStatus,
 }: {
-  event: LiveEvent & { liveStartedAt?: string | null };
+  event: StudentEvent;
   upcoming: boolean;
   /** The server's answer, shown until the browser's clock takes over. */
   initialStatus?: ReturnType<typeof studentEventStatus>;

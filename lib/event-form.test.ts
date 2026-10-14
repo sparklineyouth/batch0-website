@@ -6,19 +6,23 @@ import {
   durationOf,
   durationOptions,
   endsAtFor,
+  eventNoticeLink,
   floorToMinute,
   fromLocalInput,
+  liveForAudience,
   nextRoundHour,
   parseHttpUrl,
   parseWho,
   pickDefaultCohort,
   roomActionLabel,
+  staleRunStamps,
   studentEventStatus,
   toLocalInput,
   validateEventFields,
   whoFromRow,
   whoValue,
 } from "./event-form.ts";
+import { roomAccess, roomIsOpen } from "./live.ts";
 
 const COHORT = "6350c6ac-70f0-4f53-93d5-c99e397185a9";
 const OTHER = "76bc78bc-1724-48d3-9215-9049045b279a";
@@ -189,9 +193,29 @@ test("validation names every broken field", () => {
       .externalUrl,
   );
   assert.ok(validateEventFields({ ...valid, recordingUrl: "ftp://x.y/z" }).recordingUrl);
+  assert.ok(validateEventFields({ ...valid, durationMinutes: -60 }).duration);
   // An external event with no link is fine (in person); a hosted one ignores it.
   assert.deepEqual(validateEventFields({ ...valid, liveMode: "external" }), {});
   assert.deepEqual(validateEventFields({ ...valid, externalUrl: "junk" }), {});
+});
+
+test("an edited event keeps a saved length outside the bounds", () => {
+  // A two-day Demo Day: 09:00 Nov 1 to 18:00 Nov 2.
+  const saved = durationOf("2026-11-01T09:00:00Z", "2026-11-02T18:00:00Z");
+  assert.equal(saved, 1980);
+  assert.ok(validateEventFields({ ...valid, durationMinutes: saved }).duration);
+  assert.deepEqual(
+    validateEventFields({ ...valid, durationMinutes: saved, savedDurationMinutes: saved }),
+    {},
+  );
+  // Changing it still has to land on a sane length.
+  assert.ok(
+    validateEventFields({ ...valid, durationMinutes: 3000, savedDurationMinutes: saved }).duration,
+  );
+  assert.deepEqual(
+    validateEventFields({ ...valid, durationMinutes: 90, savedDurationMinutes: saved }),
+    {},
+  );
 });
 
 // ---- admin list ------------------------------------------------------------
@@ -233,10 +257,41 @@ test("roomActionLabel follows who is hosting", () => {
   });
   assert.equal(roomActionLabel("live", true, e(-5), now), "Join");
   assert.equal(roomActionLabel("live", false, e(-5), now), "Start");
-  // Inside the 15-minute lead-in: Start. Further out: Open room.
+  // Inside the 15-minute lead-in: Start. Within the host window: Open room.
   assert.equal(roomActionLabel("upcoming", false, e(10), now), "Start");
-  assert.equal(roomActionLabel("upcoming", false, e(120), now), "Open room");
+  assert.equal(roomActionLabel("upcoming", false, e(30), now), "Open room");
   assert.equal(roomActionLabel("past", false, e(-300), now), null);
+  // Further out, the button follows lib/live.ts's host window: no button
+  // while hosts would only get a "not open yet" page.
+  for (const mins of [120, 7 * 24 * 60]) {
+    const hostsIn = roomIsOpen(
+      roomAccess({
+        startsAt: e(mins).startsAt,
+        endsAt: e(mins).endsAt,
+        liveEndedAt: null,
+        isHost: true,
+        hostPresent: false,
+        now,
+      }),
+    );
+    assert.equal(roomActionLabel("upcoming", false, e(mins), now), hostsIn ? "Open room" : null);
+  }
+});
+
+test("staleRunStamps clears a previous run's stamps on reschedule", () => {
+  const start = "2026-10-20T20:00:00.000Z";
+  const prior = {
+    live_started_at: "2026-10-13T20:01:00.000Z",
+    live_ended_at: "2026-10-13T21:00:00.000Z",
+    assets_shared_at: null,
+  };
+  assert.deepEqual(staleRunStamps(prior, start), { live_started_at: null, live_ended_at: null });
+  // A host who went live half an hour early is this run: kept.
+  assert.deepEqual(
+    staleRunStamps({ live_started_at: "2026-10-20T19:30:00.000Z" }, start),
+    {},
+  );
+  assert.deepEqual(staleRunStamps({}, start), {});
 });
 
 test("studentEventStatus opens early when a host goes live", () => {
@@ -256,4 +311,64 @@ test("studentEventStatus opens early when a host goes live", () => {
   // A stale live stamp past the hard close does not keep it live.
   const old = { ...base, startsAt: at(now, -600), endsAt: at(now, -540), liveStartedAt: at(now, -600) };
   assert.equal(studentEventStatus(old, now), "past");
+});
+
+// ---- notices -----------------------------------------------------------------
+
+test("eventNoticeLink: pre-cohort students only hear about hosted rooms", () => {
+  const hosted = { id: "e1", hosted: true };
+  const external = { id: "e2", hosted: false };
+  // Started cohort: the events list for a new event, the room once live.
+  assert.equal(eventNoticeLink(hosted, "posted", false), "/dashboard/events");
+  assert.equal(eventNoticeLink(hosted, "live", false), "/dashboard/events/e1/live");
+  assert.equal(eventNoticeLink(external, "posted", false), "/dashboard/events");
+  // Pre-cohort: /dashboard/events bounces them home, the room does not.
+  assert.equal(eventNoticeLink(hosted, "posted", true), "/dashboard/events/e1/live");
+  assert.equal(eventNoticeLink(hosted, "live", true), "/dashboard/events/e1/live");
+  assert.equal(eventNoticeLink(external, "posted", true), null);
+  assert.equal(eventNoticeLink(external, "live", true), null);
+});
+
+test("liveForAudience finds a running webinar for the same people", () => {
+  const now = new Date("2026-10-14T20:00:00Z");
+  const row = (over: Partial<Parameters<typeof liveForAudience>[0][number]> = {}) => ({
+    id: "w1",
+    title: "Live session",
+    visibility: "enrolled",
+    cohortId: COHORT,
+    liveMode: "hosted",
+    startsAt: at(now, -10),
+    endsAt: at(now, 50),
+    liveStartedAt: at(now, -10),
+    liveEndedAt: null as string | null,
+    ...over,
+  });
+  const cohort = { visibility: "enrolled" as const, cohort_id: COHORT };
+  assert.equal(liveForAudience([row()], cohort, now)?.id, "w1");
+  // Running on schedule with nobody on yet counts too.
+  assert.equal(liveForAudience([row({ liveStartedAt: null })], cohort, now)?.id, "w1");
+  // Another cohort, ended, later today, external: not a duplicate.
+  assert.equal(liveForAudience([row({ cohortId: OTHER })], cohort, now), null);
+  assert.equal(liveForAudience([row({ liveEndedAt: at(now, -1) })], cohort, now), null);
+  assert.equal(
+    liveForAudience([row({ startsAt: at(now, 120), endsAt: at(now, 180), liveStartedAt: null })], cohort, now),
+    null,
+  );
+  assert.equal(liveForAudience([row({ liveMode: "external" })], cohort, now), null);
+  // Legacy premiere rows run as hosted rooms.
+  assert.equal(liveForAudience([row({ liveMode: "premiere" })], cohort, now)?.id, "w1");
+  // "Everyone" matches "everyone" whatever cohort the row kept.
+  assert.equal(
+    liveForAudience([row({ visibility: "public" })], { visibility: "public", cohort_id: null }, now)?.id,
+    "w1",
+  );
+  // Past the hard close a forgotten stamp is not live.
+  assert.equal(
+    liveForAudience(
+      [row({ startsAt: at(now, -600), endsAt: at(now, -540), liveStartedAt: at(now, -600) })],
+      cohort,
+      now,
+    ),
+    null,
+  );
 });

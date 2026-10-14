@@ -5,8 +5,9 @@ import { PGlite } from "@electric-sql/pglite";
 
 /**
  * Migration 0098 against a throwaway Postgres: it applies twice, changes only
- * the defaults for new rows, and the write policy really is events.manage —
- * a mentor-panel holder can no longer write events over PostgREST.
+ * the defaults for new rows, the write policy really is events.manage — a
+ * mentor-panel holder can no longer write events over PostgREST — and a
+ * "public" event needs a signed-in reader (the anon key reads nothing).
  *
  * auth.uid() reads a session setting and has_permission() is the real 0048
  * shape over a small app_roles table (the support-migration-db.test.ts idiom).
@@ -23,6 +24,11 @@ const MENTOR = "33333333-3333-4333-8333-333333333333";
 const STUDENT = "44444444-4444-4444-8444-444444444444";
 const EXISTING = "55555555-5555-4555-8555-555555555555";
 const COHORT = "66666666-6666-4666-8666-666666666666";
+const OTHER_COHORT = "77777777-7777-4777-8777-777777777777";
+const OUTSIDER = "88888888-8888-4888-8888-888888888888";
+const SPEAKER = "99999999-9999-4999-8999-999999999999";
+const TICKET_HOLDER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const OTHER_STUDENT = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 async function setup() {
   const db = new PGlite();
@@ -53,6 +59,11 @@ async function setup() {
 
     create table public.cohorts (id uuid primary key, name text);
     create table public.enrollments (user_id uuid, cohort_id uuid);
+    create table public.demo_day_tickets (user_id uuid, cohort_id uuid, status text);
+    create table public.event_speakers (event_id uuid, user_id uuid);
+    create or replace function public.is_event_speaker(uid uuid, eid uuid)
+    returns boolean language sql stable security definer set search_path = public as $$
+      select exists (select 1 from public.event_speakers s where s.user_id = uid and s.event_id = eid) $$;
 
     -- events as 0005 + 0058 + 0084 left it, reduced to what 0098 touches.
     create table public.events (
@@ -97,9 +108,10 @@ async function setup() {
   return db;
 }
 
-async function as<T = any>(db: PGlite, uid: string, sql: string) {
+/** Runs `sql` as a signed-in user, or as the anon key when `uid` is null. */
+async function as<T = any>(db: PGlite, uid: string | null, sql: string) {
   await db.exec(
-    `set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`,
+    `set role ${uid ? "authenticated" : "anon"}; select set_config('request.jwt.claim.sub', '${uid ?? ""}', false);`,
   );
   try {
     return await db.query<T>(sql);
@@ -194,4 +206,42 @@ test("events.manage (and '*') still write; students never do", async () => {
   );
   const upd = await as(db, STUDENT, `update public.events set title='x' returning id`);
   assert.equal(upd.rows.length, 0);
+});
+
+test("'Everyone signed in' means signed in; every other read clause is unchanged", async () => {
+  const db = await setup();
+  await db.exec(migration);
+  await db.exec(`
+    insert into public.profiles values
+      ('${OUTSIDER}', 'student'), ('${SPEAKER}', 'student'),
+      ('${TICKET_HOLDER}', 'student'), ('${OTHER_STUDENT}', 'student');
+    insert into public.cohorts values ('${OTHER_COHORT}', 'Spring');
+    insert into public.enrollments values ('${OTHER_STUDENT}', '${OTHER_COHORT}');
+    insert into public.events (title, starts_at, visibility, cohort_id, type) values
+      ('Open house', now(), 'public', null, 'webinar'),
+      ('Rehearsal', now(), 'staff', null, 'webinar'),
+      ('Demo Day', now(), 'enrolled', '${COHORT}', 'demo_day'),
+      ('Guest talk', now(), 'enrolled', '${OTHER_COHORT}', 'webinar');
+    insert into public.demo_day_tickets values ('${TICKET_HOLDER}', '${COHORT}', 'paid');
+    insert into public.event_speakers
+      select id, '${SPEAKER}' from public.events where title = 'Guest talk';
+  `);
+  const titles = async (uid: string | null) =>
+    (await as(db, uid, `select title from public.events order by title`)).rows
+      .map((r: any) => r.title)
+      .sort();
+
+  // The anon key: nothing, not even the public event and its join link.
+  assert.deepEqual(await titles(null), []);
+  // Signed in, enrolled nowhere: the public event only.
+  assert.deepEqual(await titles(OUTSIDER), ["Open house"]);
+  // Enrolled: their cohort's events plus public; never staff-only or another cohort's.
+  assert.deepEqual(await titles(STUDENT), ["Demo Day", "Existing workshop", "Open house"]);
+  assert.deepEqual(await titles(OTHER_STUDENT), ["Guest talk", "Open house"]);
+  // A paid Demo Day ticket opens that cohort's Demo Day and nothing else.
+  assert.deepEqual(await titles(TICKET_HOLDER), ["Demo Day", "Open house"]);
+  // A guest speaker reads the event they speak at.
+  assert.deepEqual(await titles(SPEAKER), ["Guest talk", "Open house"]);
+  // Staff read everything.
+  assert.equal((await titles(MENTOR)).length, 5);
 });

@@ -10,6 +10,7 @@ import {
   roomActionLabel,
 } from "@/lib/event-form";
 import { EventsAdmin } from "./events-admin";
+import { recordedEventIds } from "./recordings";
 import type { AdminEventRow, CohortOption } from "./types";
 
 export const metadata = { title: "Events · Admin" };
@@ -88,20 +89,12 @@ export default async function AdminEventsPage(props: {
     return { e, onAir, group: adminGroup(timing(e), now, onAir) };
   });
 
-  // Past rows that recorded something (legacy segments) or carry a link.
+  // Past rows with a recording (either generation) or a recording link.
   const pastIds = grouped
     .filter((g) => g.group === "past" && hostedRow(g.e))
     .slice(0, 100)
     .map((g) => g.e.id);
-  const recorded = new Set<string>();
-  if (pastIds.length) {
-    const { data: recs } = await admin
-      .from("event_assets")
-      .select("event_id")
-      .eq("kind", "recording")
-      .in("event_id", pastIds);
-    for (const r of (recs ?? []) as any[]) recorded.add(r.event_id);
-  }
+  const recorded = await recordedEventIds(admin, pastIds);
 
   const rows: AdminEventRow[] = grouped.map(({ e, onAir, group }) => ({
     id: e.id,

@@ -3,14 +3,13 @@ import { requireUser, getProfile } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
-import { EventCard } from "@/components/live/event-card";
-import type { LiveEvent } from "@/lib/live";
+import { EventCard, type StudentEvent } from "@/components/live/event-card";
 import { studentEventStatus } from "@/lib/event-form";
 
 export const metadata = { title: "Events · batch0" };
 
 /** DB row → the shape EventCard renders. */
-function toLiveEvent(e: any): LiveEvent & { liveStartedAt: string | null } {
+function toStudentEvent(e: any): StudentEvent {
   return {
     id: e.id,
     title: e.title,
@@ -25,9 +24,6 @@ function toLiveEvent(e: any): LiveEvent & { liveStartedAt: string | null } {
     externalUrl: e.zoom_url ?? null,
     recordingUrl: e.recording_url,
     hostName: null,
-    displayViewerCount: null,
-    roomName: null,
-    roomUrl: null,
     liveEndedAt: e.live_ended_at ?? null,
     liveStartedAt: e.live_started_at ?? null,
   };
@@ -101,7 +97,7 @@ export default async function StudentEventsPage() {
           </h2>
           <div className="space-y-3">
             {liveNow.map(({ e, s }) => (
-              <EventCard key={e.id} event={toLiveEvent(e)} upcoming={false} initialStatus={s} />
+              <EventCard key={e.id} event={toStudentEvent(e)} upcoming={false} initialStatus={s} />
             ))}
           </div>
         </section>
@@ -118,7 +114,7 @@ export default async function StudentEventsPage() {
         ) : (
           <div className="space-y-3">
             {stillUpcoming.map(({ e, s }) => (
-              <EventCard key={e.id} event={toLiveEvent(e)} upcoming initialStatus={s} />
+              <EventCard key={e.id} event={toStudentEvent(e)} upcoming initialStatus={s} />
             ))}
           </div>
         )}
@@ -131,7 +127,7 @@ export default async function StudentEventsPage() {
           </h2>
           <div className="space-y-3">
             {endedPast.map(({ e, s }) => (
-              <EventCard key={e.id} event={toLiveEvent(e)} upcoming={false} initialStatus={s} />
+              <EventCard key={e.id} event={toStudentEvent(e)} upcoming={false} initialStatus={s} />
             ))}
           </div>
         </section>

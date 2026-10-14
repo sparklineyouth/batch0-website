@@ -7,7 +7,6 @@ import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { GLOBAL_CONTENT_TAG } from "@/lib/app-cache";
-import { roomWindow } from "@/lib/live";
 import {
   DEFAULT_AUDIENCE_MODE,
   normalizeAudienceMode,
@@ -17,19 +16,23 @@ import {
   audienceFor,
   DEFAULT_DURATION_MINUTES,
   DEFAULT_LIVE_TITLE,
+  durationOf,
   endsAtFor,
   floorToMinute,
   isEventType,
   isUuid,
+  liveForAudience,
   MAX_TITLE_LENGTH,
   parseHttpUrl,
   parseWho,
   pickDefaultCohort,
+  staleRunStamps,
   validateEventFields,
   type EventType,
   type Who,
 } from "@/lib/event-form";
 import { announceEvent, announceLive, type NotifyEvent } from "./notify";
+import { deleteEventRecordings } from "./recordings";
 import {
   attachDeck,
   removeObjects,
@@ -99,6 +102,23 @@ export async function saveEvent(
     const actor = await assertPermission("events.manage");
     const admin = createAdminClient();
 
+    if (input.id && !isUuid(input.id)) throw new Error("That event no longer exists.");
+    if (!input.id && input.draftId && !isUuid(input.draftId)) {
+      throw new Error("Open the form again.");
+    }
+
+    let prior: Record<string, string | null> | null = null;
+    if (input.id) {
+      const { data, error } = await admin
+        .from("events")
+        .select("id, cohort_id, starts_at, ends_at, live_started_at, live_ended_at, assets_shared_at")
+        .eq("id", input.id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error("That event no longer exists.");
+      prior = data as Record<string, string | null>;
+    }
+
     const firstError = Object.values(
       validateEventFields({
         title: input.title,
@@ -108,6 +128,7 @@ export async function saveEvent(
         externalUrl: input.externalUrl,
         recordingUrl: input.recordingUrl,
         who: input.who,
+        savedDurationMinutes: prior ? durationOf(prior.starts_at!, prior.ends_at) : null,
       }),
     )[0];
     if (firstError) throw new Error(firstError);
@@ -120,23 +141,6 @@ export async function saveEvent(
       throw new Error("Staff-only events don't notify anyone.");
     }
     await assertCohortExists(admin, who);
-
-    if (input.id && !isUuid(input.id)) throw new Error("That event no longer exists.");
-    if (!input.id && input.draftId && !isUuid(input.draftId)) {
-      throw new Error("Open the form again.");
-    }
-
-    let prior: Record<string, string | null> | null = null;
-    if (input.id) {
-      const { data, error } = await admin
-        .from("events")
-        .select("id, cohort_id, live_started_at, live_ended_at, assets_shared_at")
-        .eq("id", input.id)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      if (!data) throw new Error("That event no longer exists.");
-      prior = data as Record<string, string | null>;
-    }
     const targetId = input.id ?? input.draftId ?? null;
     if (input.deck) {
       if (!targetId) throw new Error("Pick the slides again.");
@@ -148,17 +152,8 @@ export async function saveEvent(
     const hosted = input.liveMode === "hosted";
     const audience = audienceFor(who, prior?.cohort_id ?? null);
 
-    // live_started_at / live_ended_at / assets_shared_at describe one run. A
-    // stamp from before the (new) schedule's host window belongs to an earlier
-    // run — a reschedule or a reused row — and must not leave it "Ended".
-    const liveReset: Record<string, null> = {};
-    if (prior) {
-      const opens = roomWindow(startsAt, endsAt).hostOpensAt;
-      for (const col of ["live_started_at", "live_ended_at", "assets_shared_at"]) {
-        const at = prior[col];
-        if (at && new Date(at).getTime() < opens) liveReset[col] = null;
-      }
-    }
+    // A reschedule must not leave the event "Ended" by an earlier run.
+    const liveReset = prior ? staleRunStamps(prior, startsAt) : {};
 
     const payload = {
       cohort_id: audience.cohort_id,
@@ -173,6 +168,8 @@ export async function saveEvent(
       zoom_url: hosted ? null : linkOrNull(input.externalUrl),
       recording_url: linkOrNull(input.recordingUrl),
       audience_mode: normalizeAudienceMode(input.audienceMode),
+      // The "shown attendees" headcount is gone; clear any left on old rows.
+      display_viewer_count: null,
       auto_record: hosted && !!input.autoRecord,
       // A rehearsal never emails a cohort.
       auto_share: audience.visibility !== "staff" && !!input.autoShare,
@@ -235,12 +232,17 @@ export async function saveEvent(
 /**
  * "Start a webinar now": a hosted webinar starting this minute for the running
  * (else next) cohort, already marked live, then straight into the room.
+ *
+ * While a webinar for the same people is already live (two admins pressing
+ * it, or a stale page) it starts nothing and returns that one, so the dialog
+ * can offer Join; `again` says the admin saw it and wants a second room.
  */
 export async function startWebinarNow(input: {
   title?: string;
   who?: string;
   notify: boolean;
-}): Promise<ActionResult> {
+  again?: boolean;
+}): Promise<ActionResult<{ liveId: string; liveTitle: string }>> {
   let target = "";
   const result = await runAction({ name: "startWebinarNow" }, async () => {
     const actor = await assertPermission("events.manage");
@@ -267,7 +269,39 @@ export async function startWebinarNow(input: {
     await assertCohortExists(admin, who);
     const audience = audienceFor(who, null);
 
-    const startsAt = floorToMinute(new Date()).toISOString();
+    const nowDate = new Date();
+    if (!input.again) {
+      const { data: running, error: runningError } = await admin
+        .from("events")
+        .select(
+          "id, title, visibility, cohort_id, live_mode, starts_at, ends_at, live_started_at, live_ended_at",
+        )
+        .in("live_mode", ["hosted", "premiere"])
+        .is("live_ended_at", null)
+        .gte("starts_at", new Date(nowDate.getTime() - 24 * 60 * 60_000).toISOString())
+        .order("starts_at", { ascending: true })
+        .limit(200);
+      if (runningError) throw new Error(runningError.message);
+      const dup = liveForAudience(
+        ((running ?? []) as any[]).map((r) => ({
+          id: r.id as string,
+          title: r.title as string,
+          visibility: r.visibility as string,
+          cohortId: (r.cohort_id as string | null) ?? null,
+          liveMode: r.live_mode as string,
+          startsAt: r.starts_at as string,
+          endsAt: (r.ends_at as string | null) ?? null,
+          liveStartedAt: (r.live_started_at as string | null) ?? null,
+          liveEndedAt: null,
+        })),
+        audience,
+        nowDate,
+      );
+      // Not an error: the dialog offers Join, or Start another.
+      if (dup) return { liveId: dup.id, liveTitle: dup.title };
+    }
+
+    const startsAt = floorToMinute(nowDate).toISOString();
     const title =
       (input.title ?? "").trim().slice(0, MAX_TITLE_LENGTH) || DEFAULT_LIVE_TITLE;
     const { data, error } = await admin
@@ -283,7 +317,7 @@ export async function startWebinarNow(input: {
         audience_mode: DEFAULT_AUDIENCE_MODE,
         auto_record: true,
         auto_share: audience.visibility !== "staff",
-        live_started_at: new Date().toISOString(),
+        live_started_at: nowDate.toISOString(),
       })
       .select("id")
       .single();
@@ -318,12 +352,13 @@ export async function startWebinarNow(input: {
       after(() => announceLive(ev, hostName));
     }
     target = `/dashboard/events/${id}/live`;
+    return undefined;
   });
-  if (!result.ok) return result;
+  if (!result.ok || !target) return result;
   redirect(target);
 }
 
-/** Delete an event, its rows (cascade) and its uploaded files. */
+/** Delete an event, its rows (cascade), its uploaded files and its recordings. */
 export async function deleteEvent(id: string): Promise<ActionResult> {
   return runAction({ name: "deleteEvent" }, async () => {
     await assertPermission("events.manage");
@@ -349,6 +384,7 @@ export async function deleteEvent(id: string): Promise<ActionResult> {
         .map((a: any) => a.storage_path as string)
         .filter((p) => p.startsWith(`${id}/`)),
     );
+    await deleteEventRecordings(admin, id);
 
     await logAudit({
       action: "event.deleted",
