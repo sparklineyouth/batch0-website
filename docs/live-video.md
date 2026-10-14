@@ -276,9 +276,9 @@ students behave in one. This is a product requirement, not a preference, so it
 is enforced at three layers rather than styled at one.
 
 **Layer 1 — the UI (done).** `canSeeRoster(role)` in `lib/live.ts` is the single
-source of truth, and `CallStage` derives every roster-shaped affordance from it:
-the header count, the participants button, and the people panel all disappear
-for viewers. It is a function of the role with no override parameter, so no call
+source of truth for the headcount, and the room UI shows a count only when the
+engine supplies one (`audienceCount`, null for viewers); the People tab is
+offered to hosts only. It is a function of the role with no override parameter, so no call
 site can opt out by passing the wrong flag, and `lib/live.test.ts` asserts the
 negative case and fails if a future `LiveRole` is added without a decision.
 

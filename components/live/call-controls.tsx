@@ -6,9 +6,6 @@ import {
   VideoOff,
   MonitorUp,
   PhoneOff,
-  Users,
-  MessageSquare,
-  Circle,
   Settings2,
 } from "lucide-react";
 
@@ -27,13 +24,8 @@ export function CallControls({
   onLeave,
   onToggleScreen,
   screenSharing = false,
-  onToggleParticipants,
-  onToggleChat,
-  onToggleRecording,
-  recording = false,
   /** Viewers in a webinar have no camera or mic to control. */
   canBroadcast = true,
-  participantCount,
   onToggleDevices,
   devicesOpen = false,
 }: {
@@ -44,12 +36,7 @@ export function CallControls({
   onLeave: () => void;
   onToggleScreen?: () => void;
   screenSharing?: boolean;
-  onToggleParticipants?: () => void;
-  onToggleChat?: () => void;
-  onToggleRecording?: () => void;
-  recording?: boolean;
   canBroadcast?: boolean;
-  participantCount?: number;
   /** Opens the microphone / camera / speaker pickers (DeviceSettings). */
   onToggleDevices?: () => void;
   devicesOpen?: boolean;
@@ -100,35 +87,8 @@ export function CallControls({
             </ControlButton>
           )}
 
-          {onToggleRecording && (
-            <ControlButton
-              active={recording}
-              onClick={onToggleRecording}
-              label={recording ? "Stop recording" : "Start recording"}
-            >
-              <Circle
-                className={`h-4 w-4 ${recording ? "fill-red-500 text-red-500" : ""}`}
-              />
-            </ControlButton>
-          )}
-
           <span className="mx-1 h-6 w-px bg-line" aria-hidden />
         </>
-      )}
-
-      {onToggleParticipants && (
-        <ControlButton onClick={onToggleParticipants} label="Show participants">
-          <Users className="h-4 w-4" />
-          {typeof participantCount === "number" && (
-            <span className="text-xs tabular-nums">{participantCount}</span>
-          )}
-        </ControlButton>
-      )}
-
-      {onToggleChat && (
-        <ControlButton onClick={onToggleChat} label="Show chat">
-          <MessageSquare className="h-4 w-4" />
-        </ControlButton>
       )}
 
       <button
