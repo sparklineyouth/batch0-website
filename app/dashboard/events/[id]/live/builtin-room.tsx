@@ -10,18 +10,13 @@ import {
   leaveRoom,
   listAudience,
 } from "@/app/live/actions";
-import {
-  endLive,
-  fetchPremiereState,
-  goLive,
-  reopenLive,
-} from "./room-actions";
+import { endLive, fetchLiveState, reopenLive } from "./room-actions";
 import {
   getWebinarRecordingUploadToken,
   registerWebinarRecordingSegment,
 } from "@/app/admin/events/webinar-actions";
-import type { RoomState } from "./room-actions";
-import type { LiveRole, WebinarQuestion } from "@/lib/live";
+import type { LiveRole } from "@/lib/live";
+import type { WebinarPanelInitial } from "@/lib/webinar-panel";
 import type { SignalRole } from "@/lib/live-signal";
 import {
   webinarSegmentName,
@@ -70,8 +65,7 @@ export function BuiltinEventRoom({
   liveEndedAt,
   speakers,
   deck,
-  initialQuestions,
-  initialRoomState,
+  panel,
 }: {
   eventId: string;
   /**
@@ -118,8 +112,7 @@ export function BuiltinEventRoom({
   liveEndedAt: string | null;
   speakers: EventSpeaker[];
   deck: { id: string; filename: string; sizeBytes: number | null }[];
-  initialQuestions: WebinarQuestion[];
-  initialRoomState: RoomState | null;
+  panel: WebinarPanelInitial;
 }) {
   const actions = useMemo(
     () => ({
@@ -204,13 +197,21 @@ export function BuiltinEventRoom({
     [eventId],
   );
 
-  const onGoLive = useCallback(() => goLive(eventId), [eventId]);
   const onEndLive = useCallback(() => endLive(eventId), [eventId]);
   const onReopenLive = useCallback(() => reopenLive(eventId), [eventId]);
-  const refreshPremiere = useCallback(
-    () => fetchPremiereState(eventId),
-    [eventId],
-  );
+  // The live-state poll, in the shape this room reads (premiere is gone: a
+  // room is live until it is ended).
+  const refreshPremiere = useCallback(async () => {
+    const s = await fetchLiveState(eventId);
+    return (
+      s && {
+        ...s,
+        phase: s.liveEndedAt ? ("ended" as const) : ("live" as const),
+        offsetSeconds: 0,
+        secondsUntilNext: null,
+      }
+    );
+  }, [eventId]);
 
   const webinar = useMemo(
     () => ({
@@ -227,15 +228,13 @@ export function BuiltinEventRoom({
       canEnd,
       speakers,
       deck,
-      initialQuestions,
-      initialRoomState,
+      panel,
       onSegment,
-      onGoLive,
       onEndLive,
       onReopenLive,
       refreshPremiere,
     }),
-    // `speakers`, `deck` and the two initial payloads are server-rendered and
+    // `speakers`, `deck` and the panel's initial state are server-rendered and
     // stable for the life of the page; listing them keeps the lint honest
     // without ever actually changing identity mid-webinar.
     [
@@ -252,10 +251,8 @@ export function BuiltinEventRoom({
       canEnd,
       speakers,
       deck,
-      initialQuestions,
-      initialRoomState,
+      panel,
       onSegment,
-      onGoLive,
       onEndLive,
       onReopenLive,
       refreshPremiere,

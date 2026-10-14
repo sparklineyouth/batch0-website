@@ -15,6 +15,8 @@ import {
   normalizeChatMessage,
   normalizePoll,
   pollPercentages,
+  pollVisibleToAudience,
+  sortQuestions,
   premiereState,
   recordingSegmentSlot,
   CALL_RECORDER_LISTEN_MS,
@@ -494,6 +496,50 @@ test("poll percentages always add to 100", () => {
   );
   assert.deepEqual(pollPercentages([0, 0]), [0, 0], "No votes is 0%, not NaN");
   assert.deepEqual(pollPercentages([3, 1]), [75, 25]);
+});
+
+test("the audience sees open polls and closed results, never a draft", () => {
+  assert.equal(pollVisibleToAudience({ open: true, tally: [0, 0] }), true);
+  assert.equal(
+    pollVisibleToAudience({ open: false, tally: [2, 1] }),
+    true,
+    "Closing a poll (or End) keeps its result on screen",
+  );
+  assert.equal(
+    pollVisibleToAudience({ open: false, tally: [0, 0] }),
+    false,
+    "A draft is the host's preparation — never opened, never voted on",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Questions
+// ---------------------------------------------------------------------------
+
+test("the queue: spotlight, then open by votes (ties as asked), then the rest", () => {
+  const q = (
+    id: string,
+    extra: { status?: "open" | "answered" | "dismissed"; voteCount?: number; spotlighted?: boolean },
+  ) => ({
+    id,
+    status: "open" as "open" | "answered" | "dismissed",
+    voteCount: 0,
+    spotlighted: false,
+    createdAt: `2026-10-14T18:00:0${id}Z`,
+    ...extra,
+  });
+  const sorted = sortQuestions([
+    q("1", { status: "answered", voteCount: 9 }),
+    q("2", { voteCount: 1 }),
+    q("3", { voteCount: 5 }),
+    q("4", { voteCount: 1 }),
+    q("5", { spotlighted: true }),
+    q("6", { status: "dismissed" }),
+  ]);
+  assert.deepEqual(
+    sorted.map((x) => x.id),
+    ["5", "3", "2", "4", "1", "6"],
+  );
 });
 
 // ---------------------------------------------------------------------------

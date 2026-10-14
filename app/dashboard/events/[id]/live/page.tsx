@@ -7,25 +7,16 @@ import {
   webinarHasBegun,
   type LiveRole,
 } from "@/lib/live";
-import {
-  listQuestionsForEvent,
-  listQuestionsForAsker,
-} from "@/lib/webinar-questions";
-import {
-  isHostedOnBatch0,
-  isPremiere,
-  premiereState,
-  type EventAsset,
-} from "@/lib/webinars";
+import { isHostedOnBatch0, type EventAsset } from "@/lib/webinars";
 import {
   listAssets,
   listSpeakers,
+  loadWebinarPanelInitial,
   signAssets,
   signedAssetUrl,
 } from "@/lib/webinar-data";
 import { resolveEventAccess, roomAccessFor } from "@/lib/live-access";
 import { claimSpeakerSlot } from "@/app/admin/events/webinar-actions";
-import { fetchRoomState } from "./room-actions";
 import { BuiltinEventRoom } from "./builtin-room";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
@@ -196,76 +187,17 @@ export default async function EventLivePage(
 
   const speakers = await listSpeakers(ev.id);
 
-  // The Q&A seed keeps the audience-privacy split from the first paint: the
-  // host gets the whole queue, a viewer only ever gets their own questions —
-  // the same rule the panel's polling enforces, so nothing is briefly visible
-  // that then disappears. Kicked off first and awaited last.
-  const questionsPromise =
-    role === "host"
-      ? listQuestionsForEvent(ev.id)
-      : listQuestionsForAsker(ev.id, access.userId);
-  questionsPromise.catch(() => {});
-
   // The credentials are issued by a server action once the browser is
   // actually joining, so this page renders as fast as its own queries.
   const audienceMode = ev.audienceMode;
 
-  // ---- Premiere -------------------------------------------------------
-  //
-  // Resolved on the SERVER, from the server's clock. This is the one number
-  // in the feature that must not come from the browser: a viewer whose
-  // laptop is four minutes fast would sit four minutes ahead of the room —
-  // visibly, in chat, reacting to something nobody else has seen yet — and
-  // one whose clock is out by an hour would watch a black screen and
-  // conclude the webinar never started.
-  //
-  // `liveEndedAt` goes in too: an ended premiere is ended, not still
-  // playing to the audience under an "Ended" badge.
-  const premiere = isPremiere(ev.liveMode)
-    ? premiereState({
-        startsAt: ev.startsAt,
-        premiereSeconds: ev.premiereSeconds,
-        qaOpensAt: ev.qaOpensAt,
-        liveStartedAt: ev.liveStartedAt,
-        liveEndedAt: ev.liveEndedAt,
-        endsAt: ev.endsAt,
-      })
-    : null;
-
-  // The recording and the deck, signed only for the people entitled to them
-  // right now. Read together because both are one query against our own
-  // database and neither is on the critical path of "the host pressed Start".
-  // `fetchRoomState` is a server action, and calling one from a server
-  // component is just calling an async function — so the chat, the question
-  // queue and the polls are seeded here rather than fetched on mount. That
-  // is not only a saved round trip: the panel's privacy shaping (what a
-  // viewer may see in each audience mode) lives inside that one function, and
-  // re-deriving a seed here would be a second copy of the rule that decides
-  // whether one student's words reach another.
-  const [assets, initialRoomState] = await Promise.all([
-    listAssets(ev.id, ["premiere", "deck", "handout"]),
-    fetchRoomState(ev.id),
+  // The deck, and the side panel's first state, shaped for this reader by
+  // the same loader the panel's own reads use. Premiere is retired: a legacy
+  // premiere row runs as an ordinary hosted room.
+  const [deck, panel] = await Promise.all([
+    listAssets(ev.id, ["deck", "handout"]),
+    loadWebinarPanelInitial(ev.id, access),
   ]);
-  const speakerCards = speakers;
-
-  const premiereAsset = assets.find((a) => a.kind === "premiere") ?? null;
-  // Signed for two hours rather than the usual ten minutes, and this is the
-  // one place in the repo that deviates. A premiere is a single continuous
-  // playback that can run the length of a talk; a ten-minute URL would expire
-  // under a viewer mid-sentence, and although the player re-mints on error,
-  // doing that eight times an hour for every viewer is a lot of machinery to
-  // avoid one number. Two hours covers the longest premiere the CHECK allows
-  // to start, and the URL is useless to anyone who cannot already see the
-  // event.
-  const premiereUrl = premiereAsset
-    ? await signedAssetUrl(premiereAsset.storagePath, 60 * 120)
-    : null;
-
-  // Decks are offered in the room only when the admin meant them to be. The
-  // default is that the follow-up email carries them AFTER the webinar —
-  // handing out the slides at minute one is how an audience reads ahead
-  // instead of listening.
-  const deck = assets.filter((a) => a.kind !== "premiere");
 
   return (
     <BuiltinEventRoom
@@ -279,35 +211,21 @@ export default async function EventLivePage(
       endsAt={ev.endsAt}
       role={role}
       isStaffHost={isStaffHost}
-      // From the start only; then staff always, and a guest speaker only
-      // while no staff host is present. The room-state read computes it
-      // with the server's presence data; without that read (0084 not
-      // applied) only staff can end, and still not before the start.
-      canEnd={
-        initialRoomState?.canEnd ??
-        (isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt))
-      }
+      // Staff from the start; a guest speaker's answer (it depends on who
+      // else is present) arrives with the room's live-state poll.
+      canEnd={isStaffHost && webinarHasBegun(ev.startsAt, ev.liveStartedAt)}
       backHref={backHref}
       audienceMode={audienceMode}
       autoRecord={ev.autoRecord}
-      premiere={
-        premiere && premiereUrl && ev.premiereSeconds
-          ? {
-              ...premiere,
-              url: premiereUrl,
-              durationSeconds: ev.premiereSeconds,
-            }
-          : null
-      }
+      premiere={null}
       liveEndedAt={ev.liveEndedAt}
-      speakers={speakerCards}
+      speakers={speakers}
       deck={deck.map((a) => ({
         id: a.id,
         filename: a.filename,
         sizeBytes: a.sizeBytes,
       }))}
-      initialQuestions={await questionsPromise}
-      initialRoomState={initialRoomState}
+      panel={panel}
     />
   );
 }

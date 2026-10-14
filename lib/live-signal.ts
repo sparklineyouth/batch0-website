@@ -852,9 +852,9 @@ export function moderationTopic(eventId: string, modKey: string): string {
  * Read the `bump` case carefully, because it is the whole security model here.
  *
  * Everything substantive — a chat message, a question, a poll, an approval — is
- * announced as a CONTENT-FREE PING, and the client answers it by re-fetching
- * through a server action that reads under the caller's own RLS. The channel
- * never carries the message body, the author, or anything else worth forging.
+ * announced as a CONTENT-FREE PING, and the client answers it by re-reading
+ * from the server, which shapes the answer for the caller. The channel never
+ * carries the message body, the author, or anything else worth forging.
  *
  * The alternative was to publish the message itself and have clients verify a
  * signature. That does not work here: every participant holds `roomKey`, so
@@ -882,24 +882,15 @@ export type RoomMessage =
    * `cursor` is the newest `created_at` the publisher knows about, so a client
    * can fetch only what is new instead of the whole feed. Advisory: a client
    * that has fallen behind ignores it and asks from its own cursor.
-   */
-  | { t: "bump"; what: "chat" | "qa" | "poll"; cursor?: string }
-  /** Ephemeral, never stored, published by viewers directly. */
-  | { t: "react"; emoji: string }
-  /**
-   * The room's live state changed — a premiere handed over to the live room
-   * (the recording finished, or a host pressed "go live" early), or a host
-   * ended or reopened the webinar.
    *
-   * Carries no proof and is therefore only ever a HINT: the client re-reads
-   * `live_started_at` / `live_ended_at` from the server before it acts, so a
-   * forged message costs one query and changes nothing. The page also computes
-   * the handover from the clock on its own, which is what makes the switch
-   * happen at all for anyone whose channel dropped the message. End and Reopen
-   * ALSO go out as `room-changed` on the public stage topic, because a viewer
-   * in a `private` room has no room topic to hear this on.
+   * `removed` (chat only) is the id of a message a host removed or its author
+   * deleted — an id, never content — so every client drops it at once. Still
+   * only a hint: the full read it triggers confirms it, and restores the row
+   * if the hint was forged.
    */
-  | { t: "stage-change" };
+  | { t: "bump"; what: "chat" | "qa" | "poll"; cursor?: string; removed?: string }
+  /** Ephemeral, never stored, published by viewers directly. */
+  | { t: "react"; emoji: string };
 
 /**
  * How long a client waits after a bump before re-fetching.

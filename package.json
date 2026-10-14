@@ -27,6 +27,7 @@
     "webinar-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-e2e.mts",
     "assignments-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/assignments-e2e.mts",
     "call-mesh-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/call-mesh-e2e.mts",
+    "webinar-panel-e2e": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-panel-e2e.mts",
     "ui-audit": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/ui-audit.mts",
     "room-screens": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/room-screens.mts",
     "webinar-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/webinar-doctor.mts"

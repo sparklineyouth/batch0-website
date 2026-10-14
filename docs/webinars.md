@@ -128,8 +128,10 @@ Not in the UI. In four places, in this order of authority:
    `audience_mode in ('moderated','open')` check on the event. The anon-key
    browser client carries the student's JWT and can query the table directly;
    this is the copy that binds.
-3. **The server actions.** `fetchRoomState` shapes its result from
-   `audienceMode` and `isModerator`, which it derives itself.
+3. **The server reads.** `loadPanelState()` (lib/webinar-data.ts, behind
+   `GET /api/live/panel` and the page's `loadWebinarPanelInitial()`) shapes
+   every read from the gate's `audienceMode`, `isModerator` and
+   `discloseNames` — a guest speaker sees students as "A student".
 4. **The components**, which draw what they were given.
 
 ---
@@ -360,8 +362,31 @@ already read. The worst a student in devtools achieves is making the room
 re-fetch.
 
 Realtime broadcasts are not replayed, so the feed also re-syncs every
-`ROOM_RESYNC_MS` regardless of bumps. A dropped bump is a blip for one person
-rather than a message that never appears for exactly one person.
+`ROOM_RESYNC_MS` regardless of bumps (every 10s for a viewer with no room
+topic). A dropped bump is a blip for one person rather than a message that
+never appears for exactly one person.
+
+How the panel stays fluid (`components/live/room/panel/*`, rules in
+`lib/webinar-panel.ts`):
+
+- **Reads and writes are one route** (`GET`/`POST /api/live/panel`), not
+  server actions: Next runs a page's actions one at a time, so a send would
+  wait behind the engine's heartbeat and every read. Writes
+  (`lib/webinar-panel-writes.ts`) re-run the room gate, check Origin, and
+  answer with the reason and whether to retry. A full read returns the newest
+  200 messages; an incremental one rows since the cursor (with a 5s overlap).
+  The cursor never moves backwards. The People tab reads the roster from the
+  same route (`parts=people`, hosts only, names withheld from guest speakers).
+- **Removed rows are never returned**, to anyone. A removal (host Remove or
+  an author's Delete, both audited) publishes `{t:"bump", what:"chat",
+  removed:<id>}` — an id, no content — so every client drops it at once; the
+  full read it triggers confirms it, or restores the row if the hint was
+  forged.
+- **Writes are optimistic.** The client keeps the server's last answer plus
+  overrides; a read drops an override only once it started after the write
+  settled, so nothing snaps back mid-flight. Sends go through an outbox with a
+  client-minted row id (retries are idempotent) and backoff; the composer
+  never locks, and unsent text survives a tab switch.
 
 ---
 
@@ -418,7 +443,8 @@ The email and the bell link to `/dashboard/events`. They used to link to
 | Admin actions | `app/admin/events/webinar-actions.ts` |
 | Admin pages | `app/admin/events/*` (list, form, Start now, End / Reopen, record page) |
 | Follow-up job | `app/api/cron/webinar-followups/route.ts` |
-| Room | `components/live/broadcast-room.tsx`, `room-panel.tsx`, `use-recorder.ts`, `premiere-player.tsx`, `speaker-strip.tsx` |
+| Room | `components/live/broadcast-room.tsx`, `use-recorder.ts`, `premiere-player.tsx`, `speaker-strip.tsx` |
+| Side panel | `components/live/room/panel/*`, `lib/webinar-panel.ts` (+ test), `app/api/live/panel/route.ts`, `lib/webinar-panel-writes.ts`, `lib/webinar-gate.ts` |
 | Admin form rules | `lib/event-form.ts`, `lib/event-form.test.ts`, `supabase/migrations/0098_events.sql` |
 
 ---
