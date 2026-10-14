@@ -222,8 +222,9 @@ export function canMintPart(index: unknown, minted: number): index is number {
     index >= 0 &&
     index < MAX_PARTS &&
     // The next part, or the latest one again (a retry after a lost answer).
-    // Never ahead of that: a gap makes everything after it unplayable.
-    index <= minted
+    // Never ahead (a gap makes everything after it unplayable), and never an
+    // earlier part: what is uploaded stays as it was recorded.
+    (index === minted || index === minted - 1)
   );
 }
 

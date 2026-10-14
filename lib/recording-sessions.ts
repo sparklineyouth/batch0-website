@@ -25,7 +25,6 @@ import {
   HEAD_NAME,
   isStale,
   locateRaw,
-  MAX_PARTS,
   partName,
   RECORDING_BUCKET,
   rawLength,
@@ -98,15 +97,27 @@ export type RecordingRow = {
   head_bytes: number | null;
   head_replaces: number | null;
   duration_ms: number;
+  /** Only read where it is used (finalize): a long take's runs to 20,000 pairs. */
   cues: Cue[];
   storage_prefix: string;
   title: string | null;
+  end_reason: EndReason | null;
+  finalize_attempts: number;
 };
+
+/** Why a take ended (see migration 0095). */
+export type EndReason = "stop" | "leave" | "unload" | "stale" | "replaced";
 
 const COLUMNS =
   "id, room_kind, room_id, status, started_by, started_at, heartbeat_at, ended_at, " +
   "finalized_at, mime, part_count, part_sizes, part_end_ms, total_bytes, head_bytes, " +
-  "head_replaces, duration_ms, cues, storage_prefix, title";
+  "head_replaces, duration_ms, storage_prefix, title, end_reason, finalize_attempts";
+const COLUMNS_WITH_CUES = `${COLUMNS}, cues`;
+
+/** Finalize runs after which the head is left as recorded (no Duration/Cues rewrite)… */
+const FINALIZE_PLAIN_AFTER = 3;
+/** …and after which the sweep stops retrying a take. */
+export const FINALIZE_GIVE_UP_AFTER = 12;
 
 const BY_NAME = "by:profiles!recording_sessions_started_by_fkey(full_name)";
 
@@ -126,6 +137,8 @@ function toRow(data: any): RecordingRow {
     cues: Array.isArray(data.cues) ? data.cues : [],
     total_bytes: Number(data.total_bytes ?? 0),
     duration_ms: Number(data.duration_ms ?? 0),
+    end_reason: data.end_reason ?? null,
+    finalize_attempts: Number(data.finalize_attempts ?? 0),
   };
 }
 
@@ -171,42 +184,66 @@ export async function activeRecordingFor(
 }
 
 /**
- * A room's playable takes, oldest first. Sweeps the room's stale lease first,
- * so a take whose recorder vanished shows up (as interrupted) without waiting
- * for the cron.
+ * A room's playable takes, oldest first. One read; only when it shows a lease
+ * gone stale or a closed take not yet finalized is the room swept first, so a
+ * take whose recorder vanished shows up (as interrupted) without waiting for
+ * the cron.
  */
 export async function listRecordings(
   kind: "webinar" | "call",
   roomId: string,
 ): Promise<RecordingSummary[]> {
   if (!isUuid(roomId)) return [];
-  await sweepStaleRecordings({ kind, roomId });
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("recording_sessions")
-    .select(`id, status, started_at, ended_at, duration_ms, mime, total_bytes, title, part_count, finalized_at, ${BY_NAME}`)
-    .eq("room_kind", kind)
-    .eq("room_id", roomId)
-    .in("status", ["finished", "interrupted"])
-    .not("finalized_at", "is", null)
-    .gt("part_count", 0)
-    .order("started_at", { ascending: true })
-    .limit(50);
+  const read = () =>
+    admin
+      .from("recording_sessions")
+      .select(
+        `id, status, started_at, ended_at, heartbeat_at, duration_ms, mime, total_bytes, title, part_count, finalized_at, finalize_attempts, ${BY_NAME}`,
+      )
+      .eq("room_kind", kind)
+      .eq("room_id", roomId)
+      .order("started_at", { ascending: true })
+      .limit(100);
+  let { data, error } = await read();
+  if (!error && ((data ?? []) as any[]).some(needsSweep)) {
+    await sweepStaleRecordings({ kind, roomId });
+    ({ data, error } = await read());
+  }
   if (error) {
     logError("list failed", error);
     return [];
   }
-  return ((data ?? []) as any[]).map((r) => ({
-    id: r.id,
-    status: r.status,
-    startedAt: r.started_at,
-    endedAt: r.ended_at,
-    durationMs: Number(r.duration_ms ?? 0),
-    byName: one<any>(r.by)?.full_name ?? null,
-    container: containerFor(r.mime) ?? "webm",
-    bytes: Number(r.total_bytes ?? 0),
-    title: r.title,
-  }));
+  return ((data ?? []) as any[])
+    .filter(
+      (r) => (r.status === "finished" || r.status === "interrupted") && r.finalized_at && r.part_count > 0,
+    )
+    .map((r) => ({
+      id: r.id,
+      status: r.status,
+      startedAt: r.started_at,
+      endedAt: r.ended_at,
+      durationMs: Number(r.duration_ms ?? 0),
+      byName: one<any>(r.by)?.full_name ?? null,
+      container: containerFor(r.mime) ?? "webm",
+      bytes: Number(r.total_bytes ?? 0),
+      title: r.title,
+    }));
+}
+
+/** A lease gone stale, or a closed take still to finalize (that the sweep hasn't given up on). */
+function needsSweep(r: {
+  status: string;
+  heartbeat_at: string;
+  finalized_at: string | null;
+  finalize_attempts?: number | null;
+}): boolean {
+  if (r.status === "recording") return isStale(r.heartbeat_at);
+  return (
+    (r.status === "finished" || r.status === "interrupted") &&
+    !r.finalized_at &&
+    Number(r.finalize_attempts ?? 0) < FINALIZE_GIVE_UP_AFTER
+  );
 }
 
 /** Does this room have takes still recording, or a playable one? For the follow-up cron. */
@@ -217,7 +254,7 @@ export async function recordingStateFor(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("recording_sessions")
-    .select("status, part_count, finalized_at")
+    .select("status, part_count, finalized_at, finalize_attempts")
     .eq("room_kind", kind)
     .eq("room_id", roomId);
   if (error) {
@@ -226,17 +263,31 @@ export async function recordingStateFor(
   }
   const rows = (data ?? []) as any[];
   return {
-    recording: rows.some((r) => r.status === "recording" || (r.status !== "failed" && !r.finalized_at)),
+    // Still being saved: recording, or closed and not finalized yet (unless
+    // finalizing has been given up on — nothing more is coming).
+    recording: rows.some(
+      (r) =>
+        r.status === "recording" ||
+        (r.status !== "failed" && !r.finalized_at && Number(r.finalize_attempts ?? 0) < FINALIZE_GIVE_UP_AFTER),
+    ),
     playable: rows.some(
       (r) => (r.status === "finished" || r.status === "interrupted") && r.finalized_at && r.part_count > 0,
     ),
   };
 }
 
-export async function getRecording(id: string): Promise<RecordingRow | null> {
+/** One take's row. Its cue list only when asked for (finalizing). */
+export async function getRecording(
+  id: string,
+  opts: { cues?: boolean } = {},
+): Promise<RecordingRow | null> {
   if (!isUuid(id)) return null;
   const admin = createAdminClient();
-  const { data, error } = await admin.from("recording_sessions").select(COLUMNS).eq("id", id).maybeSingle();
+  const { data, error } = await admin
+    .from("recording_sessions")
+    .select(opts.cues ? COLUMNS_WITH_CUES : COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
   if (error || !data) {
     logError("read failed", error);
     return null;
@@ -263,6 +314,8 @@ export type ViewAccess = {
   canDelete: boolean;
   /** On the call (or a staff host of the webinar): views are not audited. */
   party: boolean;
+  /** A call's scheduled start (null for a webinar). */
+  startsAt: string | null;
 };
 
 /**
@@ -283,7 +336,7 @@ export async function viewAccess(kind: RecordingKind, roomId: string): Promise<V
   const viewerId = viewer.profile.id;
   if (kind === "webinar") {
     if (can(viewer.caps, "events.manage")) {
-      return { viewerId, canView: true, canDelete: true, party: true };
+      return { viewerId, canView: true, canDelete: true, party: true, startsAt: null };
     }
     // The caller's own RLS decides whether the event is theirs to see.
     const supabase = await createClient();
@@ -293,7 +346,13 @@ export async function viewAccess(kind: RecordingKind, roomId: string): Promise<V
       .eq("id", roomId)
       .maybeSingle();
     if (!data) return null;
-    return { viewerId, canView: !!(data as any).assets_shared_at, canDelete: false, party: false };
+    return {
+      viewerId,
+      canView: !!(data as any).assets_shared_at,
+      canDelete: false,
+      party: false,
+      startsAt: null,
+    };
   }
   const invite = await getInvite(roomId);
   if (!invite) return null;
@@ -308,6 +367,7 @@ export async function viewAccess(kind: RecordingKind, roomId: string): Promise<V
     }),
     canDelete: viewer.caps.superAdmin,
     party: isOnCall(invite, viewerId),
+    startsAt: invite.startsAt,
   };
 }
 
@@ -322,7 +382,10 @@ export async function recordAccess(
   kind: RecordingKind,
   roomId: string,
   now: Date = new Date(),
-): Promise<{ ok: true; userId: string; title: string } | { ok: false; status: number; message: string }> {
+): Promise<
+  | { ok: true; userId: string; title: string; startsAt: string }
+  | { ok: false; status: number; message: string }
+> {
   const t = now.getTime();
   if (kind === "webinar") {
     const access = await resolveEventAccess(roomId);
@@ -338,7 +401,7 @@ export async function recordAccess(
     if (t > roomWindow(ev.startsAt, ev.endsAt).hardCloseAt) {
       return { ok: false, status: 409, message: "This webinar is over." };
     }
-    return { ok: true, userId: access.userId, title: ev.title };
+    return { ok: true, userId: access.userId, title: ev.title, startsAt: ev.startsAt };
   }
   const { userId } = await requireActor();
   const invite = await getInvite(roomId);
@@ -353,7 +416,12 @@ export async function recordAccess(
   if (t < w.start - HOST_JOIN_OPENS_MINUTES_BEFORE * 60_000 || t > w.hardCloseAt) {
     return { ok: false, status: 409, message: "This call isn't open." };
   }
-  return { ok: true, userId, title: invite.topic || `1:1 with ${invite.inviteeName}` };
+  return {
+    ok: true,
+    userId,
+    title: invite.topic || `1:1 with ${invite.inviteeName}`,
+    startsAt: invite.startsAt,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -363,12 +431,21 @@ export async function recordAccess(
 export type StartResult =
   | { ok: true; sessionId: string }
   | { ok: false; reason: "busy"; by: ActiveRecording }
+  /** An automatic start, refused: the room's last take was stopped on purpose. */
+  | { ok: false; reason: "stopped" }
   | { ok: false; reason: "unavailable" | "error" };
 
 /**
- * Take the room's lease and open a take. Busy when someone else holds it; a
- * lease the SAME person still holds (a reload, a second tab) is closed as
- * interrupted and replaced — that tab is not coming back to it.
+ * Take the room's lease and open a take. Busy when someone holds it — the
+ * same person included (another tab or device of theirs is recording), unless
+ * `replaces` names that very take: the same tab reloaded, and is not coming
+ * back to it, so it is closed as interrupted and replaced.
+ *
+ * `auto` (a room starting its own recording, not someone pressing Record) is
+ * refused when the room's latest take ended because someone pressed Stop:
+ * auto-recording resumes after a recorder leaves, not after a decision. A
+ * Stop before the scheduled start (`startsAt`: a host trying Record out while
+ * setting up) holds only until the start.
  */
 export async function startRecording(args: {
   kind: RecordingKind;
@@ -376,9 +453,31 @@ export async function startRecording(args: {
   userId: string;
   mime: string;
   title: string;
+  auto?: boolean;
+  replaces?: string | null;
+  startsAt?: string;
 }): Promise<StartResult> {
   await sweepStaleRecordings({ kind: args.kind, roomId: args.roomId });
   const admin = createAdminClient();
+  if (args.auto) {
+    const { data, error } = await admin
+      .from("recording_sessions")
+      .select("end_reason, ended_at")
+      .eq("room_kind", args.kind)
+      .eq("room_id", args.roomId)
+      .neq("status", "recording")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    // An error here (no table yet) is the insert's to report.
+    const last = error ? null : (data as { end_reason: string | null; ended_at: string | null } | null);
+    if (last?.end_reason === "stop") {
+      const start = args.startsAt ? Date.parse(args.startsAt) : NaN;
+      const stoppedAt = last.ended_at ? Date.parse(last.ended_at) : NaN;
+      const rehearsal = Number.isFinite(start) && Date.now() >= start && stoppedAt < start;
+      if (!rehearsal) return { ok: false, reason: "stopped" };
+    }
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     const id = randomUUID();
     const { error } = await admin.from("recording_sessions").insert({
@@ -406,7 +505,8 @@ export async function startRecording(args: {
       .maybeSingle();
     const held = data as any;
     if (!held) continue; // released meanwhile
-    if (held.started_by !== args.userId || attempt > 0) {
+    const reload = held.started_by === args.userId && !!args.replaces && held.id === args.replaces;
+    if (!reload || attempt > 0) {
       return {
         ok: false,
         reason: "busy",
@@ -420,7 +520,7 @@ export async function startRecording(args: {
     }
     await admin
       .from("recording_sessions")
-      .update({ status: "interrupted", ended_at: new Date().toISOString() })
+      .update({ status: "interrupted", ended_at: new Date().toISOString(), end_reason: "replaced" })
       .eq("id", held.id)
       .eq("status", "recording");
   }
@@ -431,8 +531,9 @@ export type PartReport = { index: number; size: number; endMs: number; cues: Cue
 
 /**
  * Mint the signed upload URL for part `index` of the caller's own take, and
- * renew the lease. Refused (null) once the take is no longer recording or not
- * theirs — the recorder stops.
+ * renew the lease (migration 0095's recording_mint_part, which also appends
+ * the part's cues in place). Refused once the take is no longer recording or
+ * not theirs — the recorder stops.
  */
 export async function mintPart(
   row: RecordingRow,
@@ -448,34 +549,21 @@ export async function mintPart(
   const container = containerFor(row.mime);
   if (!container) return { ok: false, status: 400, message: "Unsupported recording type." };
 
-  const count = Math.max(row.part_count, part.index + 1);
-  const sizes = Array.from({ length: count }, (_, i) => row.part_sizes[i] ?? 0);
-  const ends = Array.from({ length: count }, (_, i) => row.part_end_ms[i] ?? 0);
-  sizes[part.index] = part.size;
-  ends[part.index] = Math.round(part.endMs);
-  const cues = mergeCues(row.cues, part.cues);
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("recording_sessions")
-    .update({
-      heartbeat_at: new Date().toISOString(),
-      part_count: count,
-      part_sizes: sizes,
-      part_end_ms: ends,
-      total_bytes: rawLength(sizes),
-      duration_ms: Math.max(row.duration_ms, Math.round(part.endMs)),
-      cues,
-    })
-    .eq("id", row.id)
-    .eq("status", "recording")
-    .eq("started_by", userId)
-    .select("id")
-    .maybeSingle();
+  const { data, error } = await admin.rpc("recording_mint_part", {
+    p_id: row.id,
+    p_user: userId,
+    p_index: part.index,
+    p_size: part.size,
+    p_end_ms: Math.round(part.endMs),
+    p_cues: cleanCues(part.cues),
+  });
   if (error) {
     logError("part update failed", error);
     return { ok: false, status: 503, message: "Couldn't save progress. Retrying." };
   }
-  if (!data) return { ok: false, status: 409, message: "This recording has stopped." };
+  if (data === "order") return { ok: false, status: 400, message: "Parts must be uploaded in order." };
+  if (data !== "ok") return { ok: false, status: 409, message: "This recording has stopped." };
 
   const path = `${row.storage_prefix}/${partName(part.index, container)}`;
   const signed = await admin.storage.from(RECORDING_BUCKET).createSignedUploadUrl(path, { upsert: true });
@@ -501,49 +589,52 @@ export async function heartbeat(row: RecordingRow, userId: string): Promise<bool
   return !!data;
 }
 
-/** Most cue points one take keeps (one per keyframe Cluster; ~2 s apart). */
-const MAX_CUES = MAX_PARTS * 10;
-
-function mergeCues(existing: readonly Cue[], added: unknown): Cue[] {
-  const byOffset = new Map<number, number>();
-  for (const c of existing) byOffset.set(c[0], c[1]);
-  if (Array.isArray(added)) {
-    for (const c of added.slice(0, 100)) {
-      if (!Array.isArray(c) || c.length !== 2) continue;
-      const [o, t] = c;
-      if (Number.isSafeInteger(o) && o >= 0 && Number.isFinite(t) && t >= 0) byOffset.set(o, Math.round(t));
-    }
+/** A part's reported cues, as stored: well-formed [offset, ms] pairs only, at most 100. */
+function cleanCues(added: unknown): Cue[] {
+  if (!Array.isArray(added)) return [];
+  const out: Cue[] = [];
+  for (const c of added.slice(0, 100)) {
+    if (!Array.isArray(c) || c.length !== 2) continue;
+    const [o, t] = c;
+    if (Number.isSafeInteger(o) && o >= 0 && Number.isFinite(t) && t >= 0) out.push([o, Math.round(t)]);
   }
-  return [...byOffset.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .slice(0, MAX_CUES)
-    .map(([o, t]) => [o, t] as Cue);
+  return out;
 }
 
-/** The recorder stopped (or its tab is closing): close the take and finalize it. */
+/**
+ * The recorder is done with its take — `reason` says why: 'stop' (Stop was
+ * pressed), 'leave' (it left the room, or the room ended) or 'unload' (its tab
+ * closed). Close the take, releasing the lease, and finalize it.
+ */
 export async function finishRecording(
   row: RecordingRow,
   userId: string,
-  how: "finished" | "interrupted",
+  reason: "stop" | "leave" | "unload",
 ): Promise<RecordingRow | null> {
   if (row.started_by !== userId) return null;
   if (row.status === "recording") {
     const admin = createAdminClient();
     await admin
       .from("recording_sessions")
-      .update({ status: how, ended_at: new Date().toISOString() })
+      .update({
+        status: reason === "unload" ? "interrupted" : "finished",
+        ended_at: new Date().toISOString(),
+        end_reason: reason,
+      })
       .eq("id", row.id)
       .eq("status", "recording");
   }
-  const fresh = await getRecording(row.id);
+  const fresh = await getRecording(row.id, { cues: true });
   if (!fresh) return null;
   return fresh.finalized_at ? fresh : await finalizeRecording(fresh);
 }
 
 /**
  * Close leases whose recorder has gone quiet (as interrupted), and finalize
- * every closed take that has not been. Scoped to one room, or global (the
- * cron). Cheap when there is nothing to do: one update, one select.
+ * every closed take that has not been — the least recently tried first, so a
+ * take that keeps failing never holds up the others, and not past
+ * FINALIZE_GIVE_UP_AFTER tries. Scoped to one room, or global (the cron).
+ * Cheap when there is nothing to do: one update, one select.
  */
 export async function sweepStaleRecordings(scope?: {
   kind: RecordingKind;
@@ -553,7 +644,7 @@ export async function sweepStaleRecordings(scope?: {
   const cutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
   let stale = admin
     .from("recording_sessions")
-    .update({ status: "interrupted", ended_at: new Date().toISOString() })
+    .update({ status: "interrupted", ended_at: new Date().toISOString(), end_reason: "stale" })
     .eq("status", "recording")
     .lt("heartbeat_at", cutoff);
   if (scope) stale = stale.eq("room_kind", scope.kind).eq("room_id", scope.roomId);
@@ -564,10 +655,11 @@ export async function sweepStaleRecordings(scope?: {
   }
   let pending = admin
     .from("recording_sessions")
-    .select(COLUMNS)
+    .select(COLUMNS_WITH_CUES)
     .in("status", ["finished", "interrupted"])
     .is("finalized_at", null)
-    .order("started_at", { ascending: true })
+    .lt("finalize_attempts", FINALIZE_GIVE_UP_AFTER)
+    .order("updated_at", { ascending: true })
     .limit(scope ? 5 : 20);
   if (scope) pending = pending.eq("room_kind", scope.kind).eq("room_id", scope.roomId);
   const { data, error } = await pending;
@@ -628,8 +720,12 @@ async function readRange(path: string, from: number, to: number): Promise<Uint8A
  * Settle a closed take against storage: the gap-free parts from 0 are the
  * recording; their sizes, the served length and (WebM) a rewritten head with
  * Duration and spot-checked Cues go onto the row. A take with no parts is
- * marked failed. Idempotent; returns the updated row, or null on failure (the
- * sweep retries).
+ * marked failed. Idempotent; returns the updated row, or null on failure —
+ * counted, so the sweep retries the others first, serves the parts as
+ * recorded (no head rewrite) after FINALIZE_PLAIN_AFTER failures, and stops
+ * after FINALIZE_GIVE_UP_AFTER.
+ *
+ * `row` must carry its cues (getRecording(id, { cues: true })).
  */
 export async function finalizeRecording(row: RecordingRow): Promise<RecordingRow | null> {
   if (row.status === "recording") return null;
@@ -640,10 +736,11 @@ export async function finalizeRecording(row: RecordingRow): Promise<RecordingRow
     const sizes = container ? contiguousParts(objects, container) : [];
     const now = new Date().toISOString();
     if (sizes.length === 0) {
-      await admin
+      const { error } = await admin
         .from("recording_sessions")
         .update({ status: "failed", part_count: 0, part_sizes: [], total_bytes: 0, finalized_at: now })
         .eq("id", row.id);
+      if (error) throw new Error(error.message);
       return { ...row, status: "failed", part_count: 0, part_sizes: [], total_bytes: 0, finalized_at: now };
     }
     const raw = rawLength(sizes);
@@ -651,7 +748,7 @@ export async function finalizeRecording(row: RecordingRow): Promise<RecordingRow
     const durationMs = Math.round(row.part_end_ms[sizes.length - 1] || row.duration_ms);
     let headBytes: number | null = null;
     let headReplaces: number | null = null;
-    if (container === "webm") {
+    if (container === "webm" && row.finalize_attempts < FINALIZE_PLAIN_AFTER) {
       const head = await buildHead(row, sizes, raw, durationMs);
       if (head) {
         const up = await admin.storage
@@ -678,7 +775,14 @@ export async function finalizeRecording(row: RecordingRow): Promise<RecordingRow
     if (error) throw new Error(error.message);
     return { ...row, ...patch };
   } catch (err) {
-    console.error("[recordings] finalize failed", row.id, err);
+    const attempts = row.finalize_attempts + 1;
+    console.error("[recordings] finalize failed", row.id, `attempt ${attempts}`, err);
+    // Also moves updated_at, which puts this take at the back of the sweep's queue.
+    await admin
+      .from("recording_sessions")
+      .update({ finalize_attempts: attempts })
+      .eq("id", row.id)
+      .is("finalized_at", null);
     return null;
   }
 }
@@ -717,8 +821,16 @@ async function buildHead(
       }
     }
   }
-  const built = buildWebmHead({ head, durationMs, cues, rawLength: raw });
-  return { bytes: built.bytes, replaces: built.replaces };
+  try {
+    const built = buildWebmHead({ head, durationMs, cues, rawLength: raw });
+    return { bytes: built.bytes, replaces: built.replaces };
+  } catch (err) {
+    if (cues.length === 0) throw err;
+    // Whatever the Cues tripped on, a Duration still makes the file sensible.
+    console.warn("[recordings] cues didn't build; Duration only", row.id, err);
+    const built = buildWebmHead({ head, durationMs, cues: [], rawLength: raw });
+    return { bytes: built.bytes, replaces: built.replaces };
+  }
 }
 
 /** Remove a take: its bytes, then its row. */
@@ -737,6 +849,48 @@ export async function deleteRecording(row: RecordingRow): Promise<boolean> {
     console.error("[recordings] delete failed", row.id, err);
     return false;
   }
+}
+
+/**
+ * Remove every take of a room, for when the room itself is deleted (an event):
+ * nothing could reach them afterwards — the lists live on the room's pages,
+ * and a take's id is the only other handle. Takes still recording go too (the
+ * recorder's next part is refused). Audited per take, like a Delete; the
+ * caller has checked who may. Best-effort: returns how many went and how many
+ * could not, and never throws.
+ */
+export async function deleteRoomRecordings(
+  kind: RecordingKind,
+  roomId: string,
+): Promise<{ deleted: number; failed: number }> {
+  if (!isUuid(roomId)) return { deleted: 0, failed: 0 };
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("recording_sessions")
+    .select(COLUMNS)
+    .eq("room_kind", kind)
+    .eq("room_id", roomId);
+  if (error) {
+    logError("room delete read failed", error);
+    return { deleted: 0, failed: 0 };
+  }
+  let deleted = 0;
+  let failed = 0;
+  for (const r of (data ?? []) as any[]) {
+    const row = toRow(r);
+    if (await deleteRecording(row)) {
+      deleted += 1;
+      await logAudit({
+        action: "recording.deleted",
+        targetType: "recording_session",
+        targetId: row.id,
+        payload: { kind, roomId, startedAt: row.started_at, durationMs: row.duration_ms, by: row.started_by, withRoom: true },
+      });
+    } else {
+      failed += 1;
+    }
+  }
+  return { deleted, failed };
 }
 
 /** Short-lived signed URLs for a client-side download. */

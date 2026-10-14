@@ -22,11 +22,13 @@ export const maxDuration = 60;
  *   { recordings: RecordingSummary[], legacy: { parts } | null, canDelete }.
  *   404 for anyone else — the existence of a minor's call is not confirmed.
  *
- * POST /api/recordings  { kind, roomId, mime }
+ * POST /api/recordings  { kind, roomId, mime, auto?, replaces? }
  *   Take the room's recording lease and open a take (recordAccess decides
- *   who may). 201 { sessionId } · 409 { by: { id, name }, startedAt } when
- *   someone else is recording · 503 { unavailable: true } before migration
- *   0095 is applied.
+ *   who may). 201 { sessionId } · 409 { by: { id, name }, sessionId,
+ *   startedAt } when someone is recording (this person elsewhere included,
+ *   unless `replaces` names that take: the same tab, reloaded) · 409
+ *   { stopped: true } when `auto` and the room's last take was stopped on
+ *   purpose · 503 { unavailable: true } before migration 0095 is applied.
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -36,7 +38,10 @@ export async function GET(req: Request) {
   const access = await viewAccess(kind, room);
   if (!access) return json({ error: "Not found" }, 404);
   if (!access.canView) return json({ error: "Not found" }, 404);
-  const [recordings, legacy] = await Promise.all([listRecordings(kind, room), legacyRecording(kind, room)]);
+  const [recordings, legacy] = await Promise.all([
+    listRecordings(kind, room),
+    legacyRecording(kind, room, { startsAt: access.startsAt }),
+  ]);
   return json({
     recordings,
     legacy: legacy.length > 0 ? { parts: legacy.map((p) => ({ seconds: p.seconds })) } : null,
@@ -50,7 +55,13 @@ export async function POST(req: Request) {
   const kind = body?.kind;
   const roomId = body?.roomId;
   const mime = body?.mime;
-  if (!isRecordingKind(kind) || !isUuid(roomId) || !containerFor(mime)) {
+  const replaces = body?.replaces;
+  if (
+    !isRecordingKind(kind) ||
+    !isUuid(roomId) ||
+    !containerFor(mime) ||
+    (replaces !== undefined && replaces !== null && !isUuid(replaces))
+  ) {
     return json({ error: "Bad request" }, 400);
   }
   try {
@@ -66,14 +77,22 @@ export async function POST(req: Request) {
     userId: access.userId,
     mime: mime as string,
     title: access.title,
+    auto: body?.auto === true,
+    replaces: (replaces as string | null | undefined) ?? null,
+    startsAt: access.startsAt,
   });
   if (started.ok) return json({ sessionId: started.sessionId }, 201);
   if (started.reason === "busy") {
     return json(
-      { by: { id: started.by.byUserId, name: started.by.byName }, startedAt: started.by.startedAt },
+      {
+        by: { id: started.by.byUserId, name: started.by.byName },
+        sessionId: started.by.sessionId,
+        startedAt: started.by.startedAt,
+      },
       409,
     );
   }
+  if (started.reason === "stopped") return json({ stopped: true }, 409);
   if (started.reason === "unavailable") return json({ unavailable: true }, 503);
   return json({ error: "Couldn't start recording. Try again." }, 503);
 }

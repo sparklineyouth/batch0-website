@@ -132,19 +132,35 @@ async function refusal(run: () => Promise<unknown>): Promise<string | null> {
 test("0095 applies twice and creates the private bucket", async () => {
   await db.exec(RECORDINGS);
   await db.exec(RECORDINGS);
-  const { rows } = await q<{ public: boolean; file_size_limit: string }>(
-    `select public, file_size_limit from storage.buckets where id = 'recordings'`,
-  );
+  const bucket = async () =>
+    (
+      await q<{ public: boolean; file_size_limit: string; allowed_mime_types: string[] }>(
+        `select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'recordings'`,
+      )
+    ).rows;
+  const rows = await bucket();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].public, false);
-  assert.ok(Number(rows[0].file_size_limit) >= 8 * 1024 * 1024, "holds a part");
-  // A limit raised by hand is never lowered by a re-run.
-  await q(`update storage.buckets set file_size_limit = 104857600 where id = 'recordings'`);
+  // Twice a part's 8 MB cap: an upload can't be much bigger than what was minted.
+  assert.equal(Number(rows[0].file_size_limit), 16 * 1024 * 1024);
+  assert.deepEqual(rows[0].allowed_mime_types, ["video/webm", "video/mp4"]);
+  // A bucket made by an earlier draft (50 MB, any type) is brought in line.
+  await q(`update storage.buckets set file_size_limit = 52428800, allowed_mime_types = null where id = 'recordings'`);
   await db.exec(RECORDINGS);
-  const again = await q<{ file_size_limit: string }>(
-    `select file_size_limit from storage.buckets where id = 'recordings'`,
+  const again = await bucket();
+  assert.equal(Number(again[0].file_size_limit), 16 * 1024 * 1024);
+  assert.deepEqual(again[0].allowed_mime_types, ["video/webm", "video/mp4"]);
+});
+
+test("a table from an earlier run gains the newer columns", async () => {
+  await db.exec(`alter table public.recording_sessions drop column end_reason, drop column finalize_attempts`);
+  await db.exec(RECORDINGS);
+  const { rows } = await q<{ column_name: string }>(
+    `select column_name from information_schema.columns
+      where table_name = 'recording_sessions' and column_name in ('end_reason', 'finalize_attempts')
+      order by column_name`,
   );
-  assert.equal(Number(again.rows[0].file_size_limit), 104857600);
+  assert.deepEqual(rows.map((r) => r.column_name), ["end_reason", "finalize_attempts"]);
 });
 
 test("one take recording per room: the lease", async () => {
@@ -159,9 +175,89 @@ test("one take recording per room: the lease", async () => {
   await take("webinar", room, "recording");
 });
 
-test("status and kind are checked", async () => {
+test("status, kind and end reason are checked", async () => {
   assert.match((await refusal(() => take("webinar", EVENT, "paused"))) ?? "", /check constraint/);
   assert.match((await refusal(() => take("event", EVENT, "finished"))) ?? "", /check constraint/);
+  const id = await take("webinar", EVENT);
+  for (const reason of ["stop", "leave", "unload", "stale", "replaced"]) {
+    await q(`update public.recording_sessions set end_reason = $2 where id = $1`, [id, reason]);
+  }
+  assert.match(
+    (await refusal(() => q(`update public.recording_sessions set end_reason = 'paused' where id = $1`, [id]))) ?? "",
+    /check constraint/,
+  );
+});
+
+test("recording_mint_part: in order, the recorder's own take, cues appended once", async () => {
+  const room = "cccccccc-0000-4000-8000-000000000020";
+  const id = await take("call", room, "recording", HOST);
+  const mint = async (index: number, size: number, endMs: number, cues: unknown = [], user = HOST) =>
+    (
+      await q<{ r: string }>(`select public.recording_mint_part($1, $2, $3, $4, $5, $6::jsonb) as r`, [
+        id,
+        user,
+        index,
+        size,
+        endMs,
+        JSON.stringify(cues),
+      ])
+    ).rows[0].r;
+  const row = async () =>
+    (
+      await q<{
+        part_count: number;
+        part_sizes: number[];
+        part_end_ms: number[];
+        total_bytes: string;
+        duration_ms: string;
+        cues: [number, number][];
+        fresh: boolean;
+      }>(
+        `select part_count, part_sizes, part_end_ms, total_bytes, duration_ms, cues,
+                heartbeat_at > now() - interval '1 minute' as fresh
+           from public.recording_sessions where id = $1`,
+        [id],
+      )
+    ).rows[0];
+
+  await q(`update public.recording_sessions set heartbeat_at = now() - interval '1 hour' where id = $1`, [id]);
+  assert.equal(await mint(1, 100, 10_000), "order", "can't skip part 0");
+  assert.equal(await mint(0, 100, 10_000, [[180, 0]]), "ok");
+  let r = await row();
+  assert.equal(r.fresh, true, "minting renews the lease");
+  assert.equal(await mint(1, 200, 20_000, [[300, 10_000]]), "ok");
+  // A retry of the latest part: replaces its size, doesn't add its cues twice.
+  assert.equal(await mint(1, 250, 20_100, [[300, 10_000]]), "ok");
+  r = await row();
+  assert.equal(r.part_count, 2);
+  assert.deepEqual(r.part_sizes, [100, 250]);
+  assert.deepEqual(r.part_end_ms, [10_000, 20_100]);
+  assert.equal(Number(r.total_bytes), 350);
+  assert.equal(Number(r.duration_ms), 20_100);
+  assert.deepEqual(r.cues, [[180, 0], [300, 10_000]]);
+  // Never an earlier part again, never ahead.
+  assert.equal(await mint(0, 999, 1, []), "order");
+  assert.equal(await mint(5, 999, 1, []), "order");
+  assert.equal(await mint(2, 0, 30_000), "order", "an empty part");
+  // Someone else, or a closed take.
+  assert.equal(await mint(2, 100, 30_000, [], COHOST), "stopped");
+  await q(`update public.recording_sessions set status = 'finished' where id = $1`, [id]);
+  assert.equal(await mint(2, 100, 30_000), "stopped");
+  assert.deepEqual((await row()).part_sizes, [100, 250]);
+});
+
+test("recording_mint_part is the service role's alone", async () => {
+  const id = await take("call", CALL, "recording", HOST);
+  for (const uid of [HOST, STUDENT]) {
+    assert.match(
+      (await refusal(() =>
+        as(uid, `select public.recording_mint_part($1, $2, 0, 10, 10, '[]'::jsonb)`, [id, HOST]),
+      )) ?? "",
+      /permission denied/,
+      `as ${uid}`,
+    );
+  }
+  await q(`update public.recording_sessions set status = 'finished' where id = $1`, [id]);
 });
 
 test("webinar takes: staff with events.manage read them, nobody else", async () => {

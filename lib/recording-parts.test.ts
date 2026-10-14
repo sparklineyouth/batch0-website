@@ -121,7 +121,9 @@ test("locateRaw finds the part holding a stream offset", () => {
 test("parts are minted in order: the next one, or the last one again", () => {
   assert.equal(canMintPart(0, 0), true);
   assert.equal(canMintPart(3, 3), true);
-  assert.equal(canMintPart(2, 3), true); // a retry of an earlier part
+  assert.equal(canMintPart(2, 3), true); // a retry of the latest part
+  assert.equal(canMintPart(1, 3), false); // an earlier part: never rewritten
+  assert.equal(canMintPart(0, 500), false);
   assert.equal(canMintPart(4, 3), false); // would leave a gap
   assert.equal(canMintPart(-1, 3), false);
   assert.equal(canMintPart(1.5, 3), false);

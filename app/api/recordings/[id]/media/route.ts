@@ -68,7 +68,11 @@ async function serve(req: Request, id: string, headOnly: boolean): Promise<Respo
     row = await getRecording(id);
     if (!row) return notFound();
   }
-  if (!row.finalized_at) row = (await finalizeRecording(row)) ?? row;
+  if (!row.finalized_at) {
+    const full = await getRecording(id, { cues: true });
+    if (full && !full.finalized_at) row = (await finalizeRecording(full)) ?? row;
+    else if (full) row = full;
+  }
   const container = containerFor(row.mime);
   if (!row.finalized_at || row.status === "failed" || row.part_count === 0 || !container) {
     return notFound();

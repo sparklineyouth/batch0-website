@@ -14,6 +14,8 @@
 --                        bumped by every part the recorder uploads; a row
 --                        whose heartbeat is ~45s stale is swept to
 --                        'interrupted' and finalized from what reached storage.
+--   recording_mint_part  the recorder's per-part bookkeeping, one statement
+--                        (service role only).
 --   recordings (bucket)  private, no storage.objects policies: only the
 --                        service role reads or writes it, after the route
 --                        handlers have checked the room.
@@ -63,9 +65,24 @@ create table if not exists public.recording_sessions (
   cues jsonb not null default '[]'::jsonb,
   storage_prefix text not null,
   title text,
+  -- Why the take ended: 'stop' (someone pressed Stop — auto-recording leaves
+  -- the room alone after that), 'leave' (the recorder left or the room
+  -- ended), 'unload' (their tab closed), 'stale' (heartbeat lost), 'replaced'
+  -- (the same tab reloaded and started over).
+  end_reason text check (end_reason is null or end_reason in ('stop', 'leave', 'unload', 'stale', 'replaced')),
+  -- Failed finalize runs; the sweep retries the least recently tried first
+  -- and gives up after a dozen.
+  finalize_attempts integer not null default 0 check (finalize_attempts >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- For a table created by an earlier run of this file.
+alter table public.recording_sessions
+  add column if not exists end_reason text
+    check (end_reason is null or end_reason in ('stop', 'leave', 'unload', 'stale', 'replaced')),
+  add column if not exists finalize_attempts integer not null default 0
+    check (finalize_attempts >= 0);
 
 comment on table public.recording_sessions is
   'One recording take per row. Bytes are in the private recordings bucket under storage_prefix; this row authorizes reading them.';
@@ -84,9 +101,77 @@ create index if not exists recording_sessions_heartbeat_idx
   on public.recording_sessions (heartbeat_at)
   where status = 'recording';
 
+-- Closed takes still to finalize, least recently tried first.
+create index if not exists recording_sessions_unfinalized_idx
+  on public.recording_sessions (updated_at)
+  where finalized_at is null and status in ('finished', 'interrupted');
+
 drop trigger if exists touch_recording_sessions on public.recording_sessions;
 create trigger touch_recording_sessions before update on public.recording_sessions
   for each row execute procedure public.touch_updated_at();
+
+-- ----------------------------------------------------------------------------
+-- A part, minted
+-- ----------------------------------------------------------------------------
+--
+-- The recorder reports each part before uploading it: its index, byte size,
+-- recorded time at its end, and the keyframe Clusters in it (cues). One
+-- statement, so a long take's cue list is appended in place rather than read
+-- and written back every ten seconds. Parts go in order: the next index, or
+-- the latest again (a retry after a lost answer — its cues are already in).
+-- Returns 'ok', 'stopped' (not recording, or not this user's take) or
+-- 'order'. Service role only: it trusts p_user.
+
+create or replace function public.recording_mint_part(
+  p_id uuid,
+  p_user uuid,
+  p_index integer,
+  p_size bigint,
+  p_end_ms bigint,
+  p_cues jsonb
+)
+returns text
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  r public.recording_sessions%rowtype;
+  sizes jsonb;
+  ends jsonb;
+begin
+  select * into r from public.recording_sessions where id = p_id for update;
+  if not found or r.status <> 'recording' or r.started_by is distinct from p_user then
+    return 'stopped';
+  end if;
+  if p_index is null or p_index < 0 or (p_index <> r.part_count and p_index <> r.part_count - 1)
+     or p_size is null or p_size <= 0 or p_end_ms is null or p_end_ms < 0 then
+    return 'order';
+  end if;
+  sizes := jsonb_set(r.part_sizes, array[p_index::text], to_jsonb(p_size), true);
+  ends := jsonb_set(r.part_end_ms, array[p_index::text], to_jsonb(p_end_ms), true);
+  update public.recording_sessions set
+    heartbeat_at = now(),
+    part_count = greatest(r.part_count, p_index + 1),
+    part_sizes = sizes,
+    part_end_ms = ends,
+    total_bytes = (select coalesce(sum(t.v::bigint), 0) from jsonb_array_elements_text(sizes) as t(v)),
+    duration_ms = greatest(r.duration_ms, p_end_ms),
+    cues = case
+      when p_index = r.part_count
+        and jsonb_typeof(p_cues) = 'array'
+        and jsonb_array_length(r.cues) + jsonb_array_length(p_cues) <= 20000
+      then r.cues || p_cues
+      else r.cues
+    end
+  where id = p_id;
+  return 'ok';
+end;
+$$;
+
+revoke all on function public.recording_mint_part(uuid, uuid, integer, bigint, bigint, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.recording_mint_part(uuid, uuid, integer, bigint, bigint, jsonb)
+  to service_role;
 
 -- ----------------------------------------------------------------------------
 -- Who may read a take
@@ -124,14 +209,16 @@ revoke all on public.recording_sessions from anon;
 -- ----------------------------------------------------------------------------
 --
 -- Private, and deliberately without storage.objects policies (the
--- call-recordings precedent): these include recordings of minors. 50 MB is far
--- above a part (the recorder seals one every ~10s, capped at 8 MB) and within
--- Supabase's default global upload limit.
+-- call-recordings precedent): these include recordings of minors. 16 MB is
+-- twice a part's cap (the recorder seals one every ~10s, at most 8 MB, and the
+-- part route refuses a larger report), so an upload can't be bigger than what
+-- was minted for. Video only.
 
-insert into storage.buckets (id, name, public, file_size_limit)
-values ('recordings', 'recordings', false, 52428800)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('recordings', 'recordings', false, 16777216, array['video/webm', 'video/mp4'])
 on conflict (id) do update
   set public = false,
-      file_size_limit = greatest(coalesce(storage.buckets.file_size_limit, 0), 52428800);
+      file_size_limit = 16777216,
+      allowed_mime_types = array['video/webm', 'video/mp4'];
 
 notify pgrst, 'reload schema';

@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listAssets, signedAssetUrl } from "@/lib/webinar-data";
+import { HOST_JOIN_OPENS_MINUTES_BEFORE } from "@/lib/live";
 import {
   CALL_RECORDING_BUCKET,
   callRecordingFolder,
@@ -28,11 +29,17 @@ export type LegacyPart = {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * `call.startsAt`, when given, skips the bucket listing for a call whose room
+ * opened after one-take recording was live: it cannot have segments.
+ */
 export async function legacyRecording(
   kind: "webinar" | "call",
   roomId: string,
+  call?: { startsAt: string | null },
 ): Promise<LegacyPart[]> {
   if (!UUID.test(roomId)) return [];
+  if (kind === "call" && call?.startsAt && (await afterSegments(call.startsAt))) return [];
   if (kind === "webinar") {
     const assets = await listAssets(roomId, ["recording"]);
     return assets.map((a) => ({
@@ -58,6 +65,30 @@ export async function legacyRecording(
     console.error("[recordings] legacy list failed", roomId, err);
     return [];
   }
+}
+
+/**
+ * When the first one-take recording started. The segment recorder was gone by
+ * then — the code ships before its migration (0095) is applied, and the take
+ * needs both — so no room that opened after this has segments. Cached for the
+ * process once known (deleting that take only moves the true value later).
+ */
+let oneTakeSince: number | null = null;
+
+async function afterSegments(startsAt: string): Promise<boolean> {
+  if (oneTakeSince === null) {
+    const { data, error } = await createAdminClient()
+      .from("recording_sessions")
+      .select("started_at")
+      .order("started_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const t = !error && data ? Date.parse((data as { started_at: string }).started_at) : NaN;
+    if (!Number.isFinite(t)) return false;
+    oneTakeSince = t;
+  }
+  const opens = Date.parse(startsAt) - HOST_JOIN_OPENS_MINUTES_BEFORE * 60_000;
+  return Number.isFinite(opens) && opens > oneTakeSince;
 }
 
 /** A ten-minute link to one legacy part, minted at the moment it is played. */
