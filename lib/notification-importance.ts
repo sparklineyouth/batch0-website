@@ -468,6 +468,9 @@ export const RETIRED_NOTIFICATION_KINDS: NotificationKind[] = [
   { type: "intervention", label: "Missed check-ins", group: "Assignments & feedback", default: "other" },
   { type: "checkin_feedback", label: "Check-in feedback", group: "Assignments & feedback", default: "other" },
   { type: "checkin_submitted", label: "Check-in submitted", group: "Assignments & feedback", default: "other" },
+  // Office hours were retired in favour of 1:1 calls (migration 0097).
+  { type: "office_hours_booked", label: "Office hours booked", group: "Schedule & calls", default: "other" },
+  { type: "office_hours_recap", label: "Office hours recap", group: "Schedule & calls", default: "other" },
 ];
 
 const BY_TYPE = new Map(

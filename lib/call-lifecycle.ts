@@ -17,6 +17,7 @@
  * with its extension, so `node --test` runs it with no transpile step.
  */
 import {
+  CALL_STAFF_OPENS_MINUTES_BEFORE,
   isOnCall,
   JOIN_CLOSES_MINUTES_AFTER,
   JOIN_OPENS_MINUTES_BEFORE,
@@ -29,12 +30,8 @@ import {
 
 const MINUTE = 60_000;
 
-/**
- * The room opens this early for the staff side (setting up, waiting for the
- * student). The same number as lib/live.ts's CALL_STAFF_OPENS_MINUTES_BEFORE
- * once the access rework lands there; the tests pin that they agree.
- */
-export const CALL_STAFF_OPENS_MINUTES_BEFORE = 60;
+/** The room opens this early for the staff side (setting up, waiting for the student). */
+export { CALL_STAFF_OPENS_MINUTES_BEFORE };
 /** The room opens this early for the student: the audience's window. */
 export const CALL_STUDENT_OPENS_MINUTES_BEFORE = JOIN_OPENS_MINUTES_BEFORE;
 /** Past the scheduled end, the room stays open this long unless someone ends it. */
