@@ -100,7 +100,7 @@ export const PASS_TIERS: readonly PassTier[] = [
   {
     key: "standard",
     label: "Standard",
-    blurb: "The pass as it ships on a printed card. Use this unless you have a reason not to.",
+    blurb: "The default.",
     tuitionDiscount: 3000,
     decisionTargetDays: 3,
     feedbackCredits: 1,
@@ -109,7 +109,7 @@ export const PASS_TIERS: readonly PassTier[] = [
   {
     key: "founding",
     label: "Founding",
-    blurb: "For someone you've actually met and want in the room. Double the discount, a faster clock, a second feedback credit.",
+    blurb: "2× discount, faster decision, second feedback credit.",
     tuitionDiscount: 6000,
     decisionTargetDays: 2,
     feedbackCredits: 2,
@@ -118,7 +118,7 @@ export const PASS_TIERS: readonly PassTier[] = [
   {
     key: "full_ride",
     label: "Full ride",
-    blurb: "Tuition waived outright, and the gate stays open for them even after applications close. Hand these out sparingly.",
+    blurb: "Tuition waived; ignores the application deadline. Use sparingly.",
     tuitionDiscount: "full",
     decisionTargetDays: 1,
     feedbackCredits: 3,

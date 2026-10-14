@@ -66,8 +66,7 @@ export function TearSheetCard({
         </>
       ) : (
         <p className="mt-4 rounded-lg border border-line bg-wash px-4 py-3 text-sm text-ink-soft">
-          No tear sheet yet. Click Generate to draft one from this team's
-          description, members, and pitch submission.
+          No tear sheet yet.
         </p>
       )}
     </div>

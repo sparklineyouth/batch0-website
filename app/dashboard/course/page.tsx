@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser, getProfile } from "@/lib/auth";
+import { getStudentAccess } from "@/lib/access";
+import { LockedFeature } from "@/components/dashboard/locked-feature";
 import { Card } from "@/components/ui/card";
-import { CheckCircle2, BookOpen, Lock } from "lucide-react";
+import { CheckCircle2, BookOpen } from "lucide-react";
 
 export const metadata = { title: "Course · batch0" };
 
@@ -27,25 +29,9 @@ export default async function CoursePage() {
   ]);
 
   if (!enrollment) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <h1 className="text-3xl font-bold tracking-tight">Course</h1>
-        <Card className="mt-6">
-          <div className="flex items-center gap-3">
-            <Lock className="h-5 w-5 text-ink-faint" />
-            <p className="text-ink-soft">
-              Course access unlocks once you're enrolled. Submit and pay for your application to get in.
-            </p>
-          </div>
-          <Link
-            href="/dashboard/application"
-            className="mt-4 inline-block text-sm text-phosphor-ink hover:underline"
-          >
-            View application →
-          </Link>
-        </Card>
-      </div>
-    );
+    const profile = await getProfile();
+    const access = await getStudentAccess(profile?.role ?? "student");
+    return <LockedFeature title="Course" applicationStatus={access.applicationStatus} />;
   }
 
   // The index renders only the lesson list rows — descriptions, video
@@ -141,7 +127,7 @@ export default async function CoursePage() {
         {(modules?.length ?? 0) === 0 && (
           <Card>
             <p className="text-ink-soft">
-              The instructors haven't published any modules yet. Check back soon.
+              No modules yet.
             </p>
           </Card>
         )}

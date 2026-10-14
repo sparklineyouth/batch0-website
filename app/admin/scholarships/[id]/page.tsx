@@ -61,8 +61,7 @@ export default async function EditScholarshipPage(props: {
       {!canManage && (
         <Card className="mt-6 border-amber-400/30 bg-amber-400/5">
           <p className="text-sm text-amber-300">
-            You can read this but not change it — that needs the "Award
-            scholarships" permission.
+            Read-only. Editing needs "Award scholarships".
           </p>
         </Card>
       )}

@@ -13,7 +13,7 @@ export default async function NewChallengePage() {
       </Link>
       <h1 className="mt-2 font-display text-3xl text-ink">New hackathon or challenge</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        It saves as a draft. Preview the page and the form, then hit Publish.
+        Saves as a draft.
       </p>
       <div className="mt-8">
         <ChallengeEditor initial={null} />

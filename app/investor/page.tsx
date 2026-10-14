@@ -26,7 +26,7 @@ export default async function InvestorOverview() {
     <div className="mx-auto max-w-5xl">
       <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Investor overview</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        Browse cohort startups and track which you're following.
+        Cohort startups you follow.
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -43,9 +43,7 @@ export default async function InvestorOverview() {
 
       <Card className="mt-10">
         <p className="text-sm text-ink-soft">
-          Head to <Link href="/investor/teams" className="text-phosphor-ink hover:underline">Teams</Link> to browse all the
-          startups in this cohort, see their pitch decks, and mark your level
-          of interest.
+          <Link href="/investor/teams" className="text-phosphor-ink hover:underline">Browse teams →</Link>
         </p>
       </Card>
     </div>

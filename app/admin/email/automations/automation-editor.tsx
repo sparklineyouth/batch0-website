@@ -329,11 +329,6 @@ export function AutomationEditor({
         <Card className="space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-ink">When it runs</h2>
-            <p className="mt-0.5 text-xs text-ink-soft">
-              An event fires per person as it happens. A schedule fires for a
-              whole audience on a clock. Manual only runs when you press the
-              button.
-            </p>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3">
@@ -389,13 +384,9 @@ export function AutomationEditor({
                   ))}
                 </p>
               )}
-              <div className="mt-3 rounded-lg border border-line bg-wash px-3 py-2 text-xs text-ink-soft">
-                Some of these events already send a built-in email of their own
-                (the acceptance, the receipt). Building an automation on the same
-                event adds a second message — use it for follow-ups and nudges,
-                and edit the built-in template itself if you want to change the
-                first one.
-              </div>
+              <p className="mt-1.5 text-xs text-ink-faint">
+                Acceptances and receipts already send their own email.
+              </p>
             </div>
           )}
 
@@ -455,8 +446,7 @@ export function AutomationEditor({
             <div>
               <h2 className="text-sm font-semibold text-ink">Who it goes to</h2>
               <p className="mt-0.5 text-xs text-ink-soft">
-                Resolved fresh on every run, so the list keeps up with who
-                joined or left since you set it up.
+                Re-resolved on every run.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -514,8 +504,7 @@ export function AutomationEditor({
             <div>
               <h2 className="text-sm font-semibold text-ink">What they get</h2>
               <p className="mt-0.5 text-xs text-ink-soft">
-                Delays are measured from the trigger, not from the previous
-                step — so changing one step never shifts the others.
+                Delays count from the trigger.
               </p>
             </div>
             <Button variant="secondary" size="sm" onClick={addStep}>
@@ -715,9 +704,7 @@ export function AutomationEditor({
             </div>
           </div>
           <p className="text-xs text-ink-soft">
-            A safety net for repeated triggers: the same person can't receive
-            the same step twice inside this window. Leave it at 24 unless you
-            have a reason.
+            No one gets the same step twice in this window.
           </p>
           {lastRunAt && (
             <p className="text-xs text-ink-faint">

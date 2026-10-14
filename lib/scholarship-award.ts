@@ -160,8 +160,7 @@ export const AWARD_PERK_DEFS: readonly AwardPerkDef[] = Object.freeze([
     key: "mentorCalls",
     kind: "count",
     label: "Extra 1:1 mentor calls",
-    blurb:
-      "Booked by the student from their calls page. A credit is spent when the team schedules the call, and comes back if it's cancelled.",
+    blurb: "Booked from the student's calls page; returned if cancelled.",
     unit: "call",
     max: MAX_MENTOR_CALLS,
   },
@@ -169,8 +168,7 @@ export const AWARD_PERK_DEFS: readonly AwardPerkDef[] = Object.freeze([
     key: "feedbackCredits",
     kind: "count",
     label: "Feedback credits",
-    blurb:
-      "Focused, written reviews from the team of the thing they're stuck on — the same credit a founder pass carries, redeemed from their scholarship page.",
+    blurb: "Written reviews, redeemed from their scholarship page.",
     unit: "credit",
     max: MAX_FEEDBACK_CREDITS,
   },
@@ -178,8 +176,7 @@ export const AWARD_PERK_DEFS: readonly AwardPerkDef[] = Object.freeze([
     key: "demoDayTickets",
     kind: "count",
     label: "Demo Day guest tickets",
-    blurb:
-      "Complimentary tickets the student sends to family or friends by email. Each one is a real ticket in the Demo Day ticket list.",
+    blurb: "Free Demo Day tickets the student emails to guests.",
     unit: "ticket",
     max: MAX_DEMO_DAY_TICKETS,
   },

@@ -20,7 +20,7 @@ export default async function AdminPricingPage() {
         Pricing
       </h1>
       <p className="mt-1 text-sm text-ink-faint">
-        Site-wide tuition discount. List price is set per cohort in Cohorts.
+        Site-wide discount. List price lives in Cohorts.
       </p>
 
       <Card className="mt-6">

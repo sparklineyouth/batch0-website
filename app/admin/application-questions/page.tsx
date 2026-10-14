@@ -62,9 +62,7 @@ export default async function AdminApplicationQuestionsPage() {
             Scholarship questions
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Kept separate from the application above because they're asked at a
-            different moment, of different people. Pick which scholarship you're
-            editing.
+            Pick a scholarship to edit.
           </p>
           <Card className="mt-6">
             <ScholarshipQuestionsEditor

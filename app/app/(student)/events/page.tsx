@@ -1,6 +1,7 @@
 import { Video, MapPin } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
+import { AppLockedAlert } from "@/components/app/locked-alert";
 import { getCohortEvents } from "@/lib/app-cache";
 import { LocalTime } from "@/components/ui/local-time";
 import { studentEventStatus } from "@/lib/event-form";
@@ -11,7 +12,6 @@ import {
   Section,
   Empty,
   Row,
-  Alert,
 } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
 
@@ -54,10 +54,10 @@ export default async function StudentAppEvents() {
       <>
         <AppHeader title="Events" eyebrow="Locked" />
         <AppBody>
-          <Alert tone="info" title="Events unlock at enrollment.">
-            Office hours, workshops and demo day show up here once your seat is
-            paid for.
-          </Alert>
+          <AppLockedAlert
+            title="Events unlock at enrollment."
+            applicationStatus={access.applicationStatus}
+          />
         </AppBody>
       </>
     );
@@ -90,7 +90,7 @@ export default async function StudentAppEvents() {
 
   return (
     <>
-      <AppHeader title="Events" eyebrow="Office hours, workshops, demo day" />
+      <AppHeader title="Events" eyebrow="Live sessions, Demo Day" />
       <AppBody>
         <Section title="Upcoming">
           {ahead.length === 0 ? (

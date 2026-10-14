@@ -6,7 +6,9 @@ One screen: an inbox row (pending review, awaiting payment, support awaiting
 reply, overdue assignments for `assignments.manage`) and one revenue number — USD tuition, fees and Demo Day tickets net of
 refunds (`netRevenueCents` in `lib/revenue-ledger.ts`, which the phone home at
 `/app/admin` shows too). Each block shows only to roles holding the permission
-of the page it links to.
+of the page it links to. Holders of `settings.manage` also get one line while
+a probe finds one of migrations 0093–0100 missing (`docs/migrations-2026-10.md`
+says what it can and can't see).
 
 ## Adding a page
 

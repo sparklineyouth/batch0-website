@@ -77,17 +77,10 @@ export default async function AdminProgressPage(
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line pb-6">
         <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-[0.22em] text-phosphor-ink">
+          <h1 className="font-display text-4xl font-bold tracking-[-0.02em] text-ink">
             Progress
-          </p>
-          <h1 className="mt-3 font-display text-4xl font-bold tracking-[-0.02em] text-ink">
-            Exactly where everyone stopped.
           </h1>
-          <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-ink-soft">
-            The last thing each student touched — a lesson, a flow step, a
-            resource — and how long ago. Sorted by who has been idle longest,
-            because that's the list worth acting on.
-          </p>
+          <p className="mt-2 text-sm text-ink-soft">Idle longest first.</p>
         </div>
         {cohortList.length > 0 && (
           <div className="flex flex-wrap gap-1.5">

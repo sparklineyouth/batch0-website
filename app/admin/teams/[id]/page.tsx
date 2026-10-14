@@ -162,8 +162,7 @@ export default async function AdminTeamDetail(
           Demo Day recap
         </h2>
         <p className="mt-1 text-xs text-ink-faint">
-          AI-written narrative pulled from judge scores + comments + audience
-          reactions. Emails every member when sent.
+          AI recap from scores and reactions. Emails every member.
         </p>
         {(team as any).demo_day_recap && (
           <p className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-wash p-3 text-xs text-ink-soft">

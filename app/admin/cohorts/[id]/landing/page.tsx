@@ -36,8 +36,7 @@ export default async function CohortLandingPage(
         {cohort.name} landing
       </h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Override the public landing copy + accent color for this cohort. Live
-        at{" "}
+        Public copy and accent for{" "}
         <Link
           href={`/cohort/${cohort.slug}`}
           className="text-phosphor-ink hover:underline"

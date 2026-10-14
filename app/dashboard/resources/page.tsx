@@ -125,10 +125,8 @@ export default async function DashboardResourcesPage() {
       <h1 className="text-3xl font-bold tracking-tight">Resources</h1>
       <p className="mt-1 text-sm text-ink-soft">
         {fullAccess
-          ? "Templates, decks, guides, and tools curated by the batch0 team."
-          : `A head start before ${access.cohortName ?? "your cohort"} kicks off${
-              startDate ? ` on ${startDate}` : ""
-            }. Everything else unlocks when the cohort begins.`}
+          ? "Templates, decks and guides."
+          : `A head start before kickoff${startDate ? ` on ${startDate}` : ""}.`}
       </p>
 
       {/* Before One — the interactive pre-cohort system. Flows are
@@ -140,8 +138,7 @@ export default async function DashboardResourcesPage() {
               Before One
             </p>
             <p className="mt-1 text-sm text-ink-soft">
-              The work you complete before your company becomes real.
-              Interactive, personalized, and saved as you go.
+              Pre-cohort worksheets. Saved as you go.
             </p>
           </div>
 
@@ -218,9 +215,7 @@ export default async function DashboardResourcesPage() {
                   Build receipts
                 </span>
                 <span className="mt-0.5 block text-xs text-ink-soft">
-                  The proof-of-work feed. Post interviews, landing pages,
-                  experiments, and killed ideas — earn badges for evidence,
-                  not likes.
+                  Proof of work from your cohort.
                 </span>
               </span>
               <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint group-hover:text-ink-soft" />
@@ -240,8 +235,7 @@ export default async function DashboardResourcesPage() {
             {preCohortRows.length === 0 ? (
               <Card>
                 <p className="text-sm text-ink-soft">
-                  Nothing here yet — the team will add pre-cohort materials
-                  before kickoff. Check back soon.
+                  Nothing here yet.
                 </p>
               </Card>
             ) : (

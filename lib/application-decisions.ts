@@ -55,11 +55,10 @@ export async function applyApplicationDecision(
 
   // Founder-pass perk, enforced where it can't be forgotten: a pass promises
   // "a real answer if it's a no" (app/pass/page.tsx), and a promise the admin
-  // can skip on a busy day isn't a promise — see the referral card post-mortem
-  // in that file. For pass holders the single-app UI collects STRUCTURED
-  // feedback (strongest / missing / next step); a bulk decision has none and
-  // must still carry a free-text note. Either way, a form-letter "no" to a pass
-  // holder is impossible.
+  // can skip on a busy day isn't a promise. For pass holders the single-app UI
+  // collects STRUCTURED feedback (strongest / missing / next step); a bulk
+  // decision has none and must still carry a free-text note. Either way, a
+  // form-letter "no" to a pass holder is impossible.
   // The grant, not just "do they hold one": the same read answers whether
   // structured feedback is mandatory AND what the acceptance email should
   // quote, and reading it twice would risk the two disagreeing.

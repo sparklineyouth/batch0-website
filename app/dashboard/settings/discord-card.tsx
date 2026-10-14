@@ -92,17 +92,15 @@ export function DiscordCard({
           <p className="mt-4 text-xs text-ink-soft">
             {enabled ? (
               <>
-                We auto-assign your batch0 role in the Discord server. Use{" "}
+                Your role syncs automatically. Check it with{" "}
                 <code className="rounded border border-line bg-paper px-1 py-0.5 text-[11px] text-ink-soft">
                   /me
-                </code>{" "}
-                in any channel to check your status.
+                </code>
+                .
               </>
             ) : (
               <>
-                The Discord integration is paused right now, so roles aren't
-                syncing and the server link is hidden. Your account stays
-                connected — you can still unlink it here.
+                Discord sync is paused. You can still unlink.
               </>
             )}
           </p>
@@ -120,9 +118,7 @@ export function DiscordCard({
       ) : enabled ? (
         <>
           <p className="mt-4 text-sm text-ink-soft">
-            Link your Discord account to join the batch0 community server.
-            We'll auto-assign you a role, drop you into the right channels, and
-            keep your role in sync with your status on the website.
+            Link Discord to join the server.
           </p>
           <div className="mt-5">
             <a href="/auth/discord/start">
@@ -135,8 +131,7 @@ export function DiscordCard({
         // would bounce straight back here with ?discord_error=disabled. Say so
         // instead of offering a control that is guaranteed to fail.
         <p className="mt-4 text-sm text-ink-soft">
-          Discord linking is paused right now. It'll come back here when the
-          community server reopens — nothing for you to do.
+          Discord linking is paused.
         </p>
       )}
     </Card>

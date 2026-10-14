@@ -52,12 +52,9 @@ type Perk = {
   body: string;
 };
 
-// Only list perks the product actually delivers. The referral card next door
-// (app/dashboard/referral-card.tsx) is a standing reminder of the cost of doing
-// otherwise: it promised "a credit toward a 1:1 mentor session" that had no
-// schema, no mentors, and no chance of being honoured. Every line below is
-// backed by code — migration 0039/0040 for the card itself, 0041 for the
-// profile, feedback credit, rebuild, and structured feedback.
+// Only list perks the product actually delivers. Every line below is backed by
+// code — migration 0039/0040 for the card itself, 0041 for the profile,
+// feedback credit, rebuild, and structured feedback.
 //
 // Deliberately absent: build clinics and guest invitations. Those are real
 // intentions but pure scheduling/ops with nothing to back them yet — so they
@@ -222,7 +219,7 @@ export default async function PassPage(
     // The early-access perk is the one thing an admin can switch off (site
     // setting `founder_pass_early_access`), because the global applications
     // gate can't tell "not open yet" from "closed for good". Don't advertise
-    // it while it's off — that's how the referral card ended up lying.
+    // it while it's off: an advertised perk that isn't on is a broken promise.
     if (perk.key === "early_access" && !earlyAccess) return false;
     if (pass && sectionedKeys.has(perk.key)) return false;
     if (pass && tierVaryingKeys.has(perk.key)) return false;

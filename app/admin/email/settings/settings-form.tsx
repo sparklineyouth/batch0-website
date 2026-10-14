@@ -85,7 +85,7 @@ export function EmailSettingsForm({
         Email settings
       </h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Where email goes out from, and the switch that stops all of it.
+        Sender, transport and the kill switch.
       </p>
 
       {error && (
@@ -286,11 +286,9 @@ export function EmailSettingsForm({
           </div>
           {v.transport === "smtp" && v.smtpUser && v.fromEmail !== v.smtpUser && (
             <p className="text-xs text-amber-600">
-              Gmail and most relays only let you send as the mailbox you signed
-              in with, or an alias it owns. Sending as{" "}
+              Most relays reject sending as{" "}
               <code className="font-mono">{v.fromEmail}</code> from{" "}
-              <code className="font-mono">{v.smtpUser}</code> will be rewritten
-              or rejected — use the test button below before you rely on it.
+              <code className="font-mono">{v.smtpUser}</code>. Send a test.
             </p>
           )}
         </Card>

@@ -30,9 +30,7 @@ export function FounderPassCard({
             Founder pass
           </div>
           <p className="mt-3 text-sm text-ink-soft">
-            Bound to this account, for good. A priority review lane, real
-            feedback, a feedback credit, the Founder Toolkit, and a public
-            profile — whether or not you join this cohort.
+            Priority review, a feedback credit and the Founder Toolkit.
           </p>
           <Link
             href="/pass"

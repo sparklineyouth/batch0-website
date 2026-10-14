@@ -73,9 +73,10 @@ export default async function StudentReferralsPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Refer friends</h1>
+      {/* The fast-track is real: a referral_code sorts the application to the
+          top of the review queue ("Referred first" on /admin/applications). */}
       <p className="mt-1 text-sm text-ink-soft">
-        Send people you respect. batch0 works best with founders who
-        know each other already.
+        We fast-track applications from your link.
       </p>
 
       <Card className="mt-6">

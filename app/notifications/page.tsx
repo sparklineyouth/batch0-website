@@ -175,27 +175,18 @@ export default async function NotificationsPage(props: {
                   ? "Nothing over here."
                   : "Nothing important right now."}
             </p>
-            <p className="mt-1 text-xs text-ink-faint">
-              {all.length === 0 ? (
-                <>
-                  You&apos;ll see updates here when there&apos;s activity on
-                  your account.
-                </>
-              ) : tab === "other" ? (
-                <>Everything you&apos;ve received counts as important.</>
-              ) : (
-                <>
-                  The rest is waiting under{" "}
-                  <Link
-                    href="/notifications?tab=other"
-                    className="underline hover:text-ink-soft"
-                  >
-                    Everything else
-                  </Link>
-                  .
-                </>
-              )}
-            </p>
+            {all.length > 0 && tab !== "other" && (
+              <p className="mt-1 text-xs text-ink-faint">
+                The rest is under{" "}
+                <Link
+                  href="/notifications?tab=other"
+                  className="underline hover:text-ink-soft"
+                >
+                  Everything else
+                </Link>
+                .
+              </p>
+            )}
           </div>
         ) : (
           <div className="mt-10 space-y-10">

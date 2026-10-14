@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getViewer } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { getStudentAccess, aiAccessFrom, loadAccessRows } from "@/lib/access";
+import { getStudentAccess, loadAccessRows } from "@/lib/access";
 import { isDiscordEnabled } from "@/lib/discord";
 import { StudentSidebar } from "@/components/dashboard/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
@@ -47,17 +47,10 @@ export default async function DashboardLayout({
     );
   }
 
-  // Pre-enrollment students see a stripped-down nav (no Team, no Office
-  // hours, no Assignments, no Course/Resources). Until they're enrolled
-  // those routes either throw "not enrolled" or 404 — hiding the links
-  // prevents dead ends in the sidebar. Accepted/enrolled students whose
-  // cohort hasn't started yet (preCohort) get the personal pages +
-  // Community, plus Kickoff, Resources, and Team once enrolled. Admins
-  // always see everything so they can preview the full student view.
+  // Who sees which link: lib/student-nav.ts.
   const access = await getStudentAccess(profile.role);
   const enrolled = access.enrolled;
   const preCohort = access.preCohort;
-  const aiAccess = aiAccessFrom(access);
   const referralsEnabled = siteConfig.settings.referralsEnabled;
 
   return (
@@ -67,7 +60,6 @@ export default async function DashboardLayout({
       <StudentSidebar
         role={profile.role}
         caps={caps}
-        aiAccess={aiAccess}
         discordEnabled={discordEnabled}
         enrolled={enrolled}
         referralsEnabled={referralsEnabled}
@@ -79,7 +71,6 @@ export default async function DashboardLayout({
           kind="student"
           role={profile.role}
           caps={caps}
-          aiAccess={aiAccess}
           discordEnabled={discordEnabled}
           enrolled={enrolled}
           referralsEnabled={referralsEnabled}

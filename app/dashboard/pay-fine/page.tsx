@@ -54,8 +54,8 @@ export default async function PayFinePage() {
           Resolve your outstanding fine{fines.length > 1 ? "s" : ""}
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Your access is paused until the {fines.length > 1 ? "fines below are" : "fine below is"} paid or waived by an admin.
-          If you think this is wrong,{" "}
+          Access is paused until {fines.length > 1 ? "these are" : "this is"} paid or waived.
+          Wrong?{" "}
           <Link
             href={questionHref}
             prefetch={false}

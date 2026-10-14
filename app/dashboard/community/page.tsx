@@ -37,8 +37,7 @@ export default async function CommunityPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold tracking-tight">Community</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Every cohort lives on the batch0 Discord. Link once; your role stays
-        in sync.
+        The batch0 Discord.
       </p>
 
       <Card className="mt-8 overflow-hidden border-[#5865F2]/20">
@@ -51,8 +50,8 @@ export default async function CommunityPage() {
             <h2 className="text-xl font-semibold">Discord access</h2>
             <p className="mt-1 text-sm text-ink-soft">
               {linked
-                ? "Your account is linked. Use /me in the server to check status anytime."
-                : "Link to get the right role, the right channels, and a server invite."}
+                ? "Linked. Check your status with /me."
+                : "Link to get your role and an invite."}
             </p>
           </div>
           {linked && avatar ? (

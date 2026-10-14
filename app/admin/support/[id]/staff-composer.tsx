@@ -206,7 +206,7 @@ export function StaffComposer({
           : internal
             ? "Only the team sees notes and their files. A note doesn't move the request."
             : canResolve
-              ? "Send reply emails them and moves this out of the queue. Send & resolve also marks it resolved, in the same email."
+              ? "Replies are emailed. Send & resolve also closes it out."
               : status === "closed"
                 ? "This request is closed. A reply still emails them, and it stays closed."
                 : "A reply emails them, and the request stays resolved."}

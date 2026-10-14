@@ -131,8 +131,8 @@ function NotInTheProgram({ status }: { status: string | null }) {
       </h1>
       <p className="mt-4 max-w-xs text-[14px] leading-relaxed text-ink-soft">
         {closed
-          ? "Your application for this cohort is closed, so there's nothing here to show you yet. You can apply again when the next one opens."
-          : "batch0 on your phone is for students in the program. Submit an application and it unlocks — your cohort, your week, and what's due, right here."}
+          ? "You can apply again when the next cohort opens."
+          : "Apply to unlock."}
       </p>
       <div className="mt-9">
         <ActionLink href="/apply">

@@ -561,8 +561,7 @@ export function ComposeForm({
             {v.scheduledFor && (
               <p className="flex items-center gap-1.5 text-xs text-ink-soft">
                 <Clock className="h-3.5 w-3.5" />
-                In your local time. It goes into the outbox and sends on the
-                first queue run after that moment — you can cancel it until then.
+                Your local time. Cancel from the outbox until it sends.
               </p>
             )}
           </Card>

@@ -132,7 +132,7 @@ export default async function AdminPaymentsPage(
         <div>
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Payments</h1>
           <p className="mt-1 text-sm text-ink-faint">
-            USD tuition collected, refunds, and paying people. Enrollment alone is not a payment.
+            USD collected, refunds and payers.
           </p>
         </div>
         <div className="flex items-start gap-2">

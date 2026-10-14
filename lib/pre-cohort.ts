@@ -37,8 +37,8 @@ export function isAcceptedStatus(
 
 /**
  * Nav hrefs (exact) that stay visible in the sidebar pre-cohort. Kickoff,
- * Resources, and Team additionally require enrollment — filterStudentNavItem
- * and the pages themselves enforce that on top of this set. Community
+ * Resources, and Team additionally require enrollment — isStudentHrefVisible
+ * (lib/student-nav.ts) and the pages enforce that on top of this set. Community
  * (Discord) is open to every pre-cohort student: the server is where a
  * cohort meets before day one.
  */

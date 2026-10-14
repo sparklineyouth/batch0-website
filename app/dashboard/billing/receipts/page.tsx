@@ -136,8 +136,7 @@ export default async function ReceiptsPage(
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Receipts</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Every charge, payment, and refund on your account. Download a
-            Stripe receipt for tax records.
+            Every charge, payment and refund.
           </p>
         </div>
       </div>
@@ -263,9 +262,7 @@ export default async function ReceiptsPage(
       </Card>
 
       <p className="mt-4 text-[11px] text-ink-faint">
-        Receipts are hosted by Stripe. Older charges from before the receipt
-        archive was rolled out may not have a downloadable link — if you need
-        one for taxes,{" "}
+        Missing a receipt?{" "}
         {/* The form first: a request gets a reference and lands in the
             team's queue with the account attached. The address stays for
             anyone who'd rather email. */}

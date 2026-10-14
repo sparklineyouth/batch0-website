@@ -38,9 +38,7 @@ export default async function AiPage(
         <h1 className="text-3xl font-bold tracking-tight">AI co-founder</h1>
         <Card className="mt-6 border-amber-500/30 bg-amber-500/10">
           <p className="text-sm text-amber-700 dark:text-amber-300">
-            The AI co-founder isn't enabled on this deployment yet. Set{" "}
-            <code className="rounded border border-line bg-paper px-1.5 py-0.5">ANTHROPIC_API_KEY</code>{" "}
-            in your production env vars and redeploy.
+            The AI co-founder isn&apos;t available right now.
           </p>
         </Card>
       </div>
@@ -114,8 +112,7 @@ export default async function AiPage(
             </summary>
             <div className="px-5 pb-5">
               <p className="mb-3 text-xs text-ink-soft">
-                The AI uses these as background in every chat. Update as your
-                idea evolves.
+                Background for every chat.
               </p>
               <ContextEditor
                 initial={(profileRow?.ai_context as Record<string, string>) ?? {}}
@@ -155,13 +152,9 @@ function LockedView() {
             <Lock className="h-4 w-4" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-ink">
-              Locked until you're accepted
-            </h2>
+            <h2 className="text-base font-semibold text-ink">Locked</h2>
             <p className="mt-1 text-sm text-ink-soft">
-              The AI co-founder is part of the batch0 program. It unlocks
-              the moment your application is accepted — submit your
-              application and we'll review it on a rolling basis.
+              Opens once you&apos;re accepted and your cohort starts.
             </p>
             <div className="mt-4 flex flex-wrap gap-2 text-sm">
               <Link

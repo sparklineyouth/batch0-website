@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
+import { MIGRATION_PROBES } from "./pending-migrations.ts";
 
 /**
  * Migration 0099, executed against a throwaway Postgres: applied twice, then
@@ -518,4 +519,24 @@ test("0099 carries nothing over where Support or the queues don't exist", async 
   const noQueues = await setup({ tables: false });
   await noQueues.exec(migration);
   assert.deepEqual(await tickets(noQueues), []);
+});
+
+/**
+ * The admin overview's leftover probe for `migration`, as SQL: PostgREST's
+ * `cs` filter is `@>`. Run against the fixture, it proves the probe names
+ * real columns and sees exactly what the migration removes.
+ */
+function leftoverProbeSql(migration: string): string {
+  const p = MIGRATION_PROBES.find((x) => x.migration === migration && x.leftover);
+  assert.ok(p?.leftover, `no leftover probe for ${migration}`);
+  const values = p.leftover.values.map((v) => `'${v}'`).join(", ");
+  return `select ${p.columns} from public.${p.table} where ${p.leftover.column} @> array[${values}]::text[] limit 1`;
+}
+
+test("the overview's 0099 probe finds a stale role before 0099 and none after", async () => {
+  const db = await setup();
+  const sql = leftoverProbeSql("0099");
+  assert.equal((await db.query(sql)).rows.length, 1);
+  await db.exec(migration);
+  assert.equal((await db.query(sql)).rows.length, 0);
 });

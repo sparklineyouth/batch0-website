@@ -31,7 +31,7 @@ export default async function AdminResourcesPage() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">Resources</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Decks, templates and guides for one cohort or everyone.
+            Links for one cohort or everyone.
           </p>
         </div>
         <Link
@@ -45,8 +45,7 @@ export default async function AdminResourcesPage() {
       <Card className="mt-6 !p-0 overflow-hidden">
         {(resources?.length ?? 0) === 0 ? (
           <p className="p-6 text-sm text-ink-soft">
-            Nothing here yet. Upload your first resource — try cohort
-            templates, kickoff decks, or recommended reading.
+            No resources yet.
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -121,8 +120,7 @@ export default async function AdminResourcesPage() {
       </Card>
 
       <p className="mt-6 text-xs text-ink-faint">
-        Tip: leave Cohort empty to make a resource visible to every enrolled
-        student, regardless of cohort.
+        No cohort = every enrolled student.
       </p>
     </div>
   );

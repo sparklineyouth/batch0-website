@@ -56,20 +56,23 @@ export default async function EmailAutomationsPage() {
       {templates.length === 0 && (
         <Card className="mt-5">
           <p className="text-sm text-ink-soft">
-            There are no templates yet, and an automation needs at least one.{" "}
+            Automations need a template.{" "}
             <Link href="/admin/email/templates" className="text-phosphor-ink underline">
               Add the built-in templates
-            </Link>{" "}
-            to get started.
+            </Link>
+            .
           </p>
         </Card>
       )}
 
       {automations.length === 0 ? (
-        <Card className="mt-6 text-center">
-          <Workflow className="mx-auto h-8 w-8 text-ink-faint" />
-          <p className="mt-3 text-sm text-ink-soft">No automations yet.</p>
-        </Card>
+        // With no templates the card above already says what to do.
+        templates.length > 0 && (
+          <Card className="mt-6 text-center">
+            <Workflow className="mx-auto h-8 w-8 text-ink-faint" />
+            <p className="mt-3 text-sm text-ink-soft">No automations yet.</p>
+          </Card>
+        )
       ) : (
         <div className="mt-6 space-y-3">
           {automations.map((a) => {
