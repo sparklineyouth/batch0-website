@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LocalTime } from "@/components/ui/local-time";
 import { useLocalMedia } from "@/components/live/use-local-media";
 import { useLiveSession, type CloseReason } from "@/components/live/use-live-session";
 import { useRoomRecording } from "@/components/live/use-room-recording";
@@ -21,6 +20,7 @@ import { panelTabs, type WebinarPanelInitial } from "@/lib/webinar-panel";
 import { audienceCanSeeEachOther } from "@/lib/webinars";
 import type { JoinResult, PresenceResult } from "@/app/live/actions";
 import { LiveRoom } from "./live-room";
+import { RehearsalNotice } from "./rehearsal-notice";
 import { WebinarPanel } from "./panel/webinar-panel";
 import { ReactionsButton, ReactionsOverlay } from "./panel/reactions";
 import type {
@@ -95,6 +95,8 @@ export type WebinarBinding = {
   panel: WebinarPanelInitial;
   /** Staff: start a rehearsal early (the stored live_started_at, or why not). */
   goLiveNow?: () => Promise<ActionResult<string>>;
+  /** Who goLiveNow tells it's live, for its confirm (goLiveNowAudience). */
+  goLiveAudience?: string | null;
   /** End for everyone; resolves with the stored live_ended_at. */
   endLive: () => Promise<string>;
   reopenLive: () => Promise<void>;
@@ -783,22 +785,19 @@ function RoomSession({
   const opensAt = webinar ? roomWindow(webinar.startsAt, webinar.endsAt).goLiveOpensAt : null;
   const notice: ReactNode =
     rehearsing && opensAt !== null ? (
-      <>
-        <span>
-          Not live yet: students can join from <LocalTime value={new Date(opensAt)} mode="time" />
-        </span>
-        {goLiveNowAction ? (
-          <button
-            type="button"
-            className="pointer-events-auto font-semibold text-[#FFBB00] hover:underline disabled:opacity-60"
-            onClick={() => void goLive()}
-            disabled={goingLive}
-            data-testid="go-live-now"
-          >
-            {goingLive ? "Going live…" : "Go live now"}
-          </button>
-        ) : null}
-      </>
+      <RehearsalNotice
+        opensAt={new Date(opensAt).toISOString()}
+        goLive={
+          goLiveNowAction && webinar
+            ? {
+                startsAt: webinar.startsAt,
+                audience: webinar.goLiveAudience ?? "",
+                busy: goingLive,
+                onConfirm: () => void goLive(),
+              }
+            : null
+        }
+      />
     ) : null;
 
   // The green room before the go-live window says so (and "Enter room", not

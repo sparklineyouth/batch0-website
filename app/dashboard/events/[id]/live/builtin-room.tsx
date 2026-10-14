@@ -40,6 +40,7 @@ export function BuiltinEventRoom({
   deckUrl,
   deckName,
   panel,
+  goLiveAudience = null,
   recordingReady = true,
 }: {
   eventId: string;
@@ -62,6 +63,8 @@ export function BuiltinEventRoom({
   deckUrl: string | null;
   deckName: string | null;
   panel: WebinarPanelInitial;
+  /** Staff before it's live: who Go live now tells (goLiveNowAudience). */
+  goLiveAudience?: string | null;
   /** False before migration 0095 (recordingsReady). */
   recordingReady?: boolean;
 }) {
@@ -100,6 +103,7 @@ export function BuiltinEventRoom({
       deck,
       panel,
       goLiveNow: isStaffHost ? onGoLiveNow : undefined,
+      goLiveAudience,
       endLive: onEndLive,
       reopenLive: onReopenLive,
       fetchLiveState: onFetchLiveState,
@@ -118,6 +122,7 @@ export function BuiltinEventRoom({
       deck,
       panel,
       onGoLiveNow,
+      goLiveAudience,
       onEndLive,
       onReopenLive,
       onFetchLiveState,

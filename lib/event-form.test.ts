@@ -10,6 +10,7 @@ import {
   eventNoticeLink,
   floorToMinute,
   fromLocalInput,
+  goLiveNowAudience,
   liveForAudience,
   nextRoundHour,
   parseHttpUrl,
@@ -311,6 +312,27 @@ test("going live hours early moves the run to now, keeping its length", () => {
   // Inside the go-live window the schedule stands: a host's arrival stamps it.
   assert.equal(earlyStartSchedule("2026-10-20T15:00:00.000Z", null, now), null);
   assert.equal(earlyStartSchedule("2026-10-20T13:00:00.000Z", null, now), null);
+});
+
+test("Go live now's confirm names who is told, as announceLive picks them", () => {
+  assert.equal(
+    goLiveNowAudience({ visibility: "enrolled", cohortId: COHORT, cohortName: " Winter 2027 " }),
+    "Everyone in Winter 2027 gets a notification and an email.",
+  );
+  // "Everyone signed in" that kept its cohort: that cohort is told.
+  assert.equal(
+    goLiveNowAudience({ visibility: "public", cohortId: COHORT, cohortName: null }),
+    "Everyone in its cohort gets a notification and an email.",
+  );
+  assert.equal(
+    goLiveNowAudience({ visibility: "public", cohortId: null }),
+    "Students in every upcoming and active cohort get a notification and an email.",
+  );
+  assert.equal(
+    goLiveNowAudience({ visibility: "staff", cohortId: COHORT, cohortName: "Winter 2027" }),
+    "It's staff-only, so nobody is notified.",
+  );
+  assert.equal(goLiveNowAudience({ visibility: "enrolled", cohortId: null }), "Nobody is notified: it has no cohort.");
 });
 
 test("studentEventStatus opens early when a host goes live", () => {

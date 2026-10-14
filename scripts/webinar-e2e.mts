@@ -1600,8 +1600,24 @@ async function main() {
       "the enrolled student waits: it opens 15 minutes before the start",
     );
 
-    const pressedAt = Date.now();
+    // Going live moves the event and tells the cohort, so it asks first:
+    // naming the start it replaces and who is told.
     check(await tap(early.page, "go-live-now", "Go live now"), "staff pressed Go live now");
+    const confirmText = await until(
+      "Go live now's confirm",
+      async () => {
+        const el = early.page.getByTestId("go-live-confirm");
+        return (await el.count()) > 0 ? ((await el.first().textContent()) ?? "") : null;
+      },
+      10_000,
+    );
+    check(
+      !!confirmText && /instead of/i.test(confirmText) && confirmText.includes(`Everyone in E2E webinar cohort ${stamp}`),
+      `it asks first, naming the scheduled start and the cohort that is told (${confirmText ?? "no confirm"})`,
+    );
+    check(!(await eventRow(earlyId))?.live_started_at, "nothing is stamped until it is confirmed");
+    const pressedAt = Date.now();
+    check(await tap(early.page, "go-live-now-confirm", "Go live now (confirm)"), "staff confirmed Go live now");
     const started = await until(
       "live_started_at to be stamped",
       async () => {

@@ -75,14 +75,17 @@ emails, ICS files and cards keep working).
   staff list). The end screens say "Recording saved." once this tab's upload
   is done, or what went wrong (a take that lost its lease while draining).
 - **Rehearsal**: a host in the room before the go-live window (start − 60 min)
-  sees "Not live yet: students can join from <time>"; nothing is stamped and
-  Leave is the only way out. The heartbeat that crosses into the window stamps
-  `live_started_at` and the host is told "You're live". Staff needn't wait:
-  **Go live now** in that notice (`goLiveNow`) moves the event to this minute,
+  sees "Not live yet: students can join from <time>" (with the date when it
+  isn't today, `LocalWhen`); nothing is stamped and Leave is the only way out.
+  The heartbeat that crosses into the window stamps `live_started_at` and the
+  host is told "You're live". Staff needn't wait: **Go live now** in that
+  notice (`RehearsalNotice`, `goLiveNow`) moves the event to this minute,
   keeping its length (`earlyStartSchedule`), stamps it live and tells everyone
   it is for, as "Start a webinar now" does — one run, so End, the follow-up
   and the lists agree; students waiting on "This opens…" are let in within
-  30 s.
+  30 s. Neither the move nor the emails can be taken back, so like End it
+  asks first: "Start now instead of <scheduled start>?" and who is told
+  (`goLiveNowAudience`, announceLive's recipients).
 
 ## Leave, End, and the other ways out
 
