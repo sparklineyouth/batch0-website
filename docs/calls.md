@@ -66,4 +66,10 @@ reads are unchanged (the people on a call, and admins). Test:
 `npm run test:calls-db`.
 
 Office hours (mentor slots) are retired; `/dashboard/office-hours` and
-`/mentor/office-hours` redirect to the calls pages.
+`/mentor/office-hours` redirect to the calls pages. A session booked before the
+deploy still stands: until it ends, the student's `/dashboard/calls` and the
+mentor's `/mentor/calls` list it under "Office hours already booked", with the
+time, the other person's name, the topic and the slot's Zoom link (https
+only). Read with the service role, filtered to the viewer's own bookings or
+slots (`lib/office-hours-server.ts`); nothing new can be booked. Once the last
+one has passed the section disappears, and the code can go with it.
