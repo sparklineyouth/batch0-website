@@ -307,10 +307,14 @@ async function auditPage(page: Page, role: Role, route: string, vp: (typeof VIEW
   mkdirSync(base, { recursive: true });
   const positions = ["top", "middle", "bottom"] as const;
   for (const pos of positions) {
-    await page.evaluate((p) => {
-      const h = document.documentElement.scrollHeight - window.innerHeight;
-      window.scrollTo(0, p === "top" ? 0 : p === "middle" ? Math.max(0, h / 2) : Math.max(0, h));
-    }, pos);
+    // A redirect thrown while a page streams (under a loading.tsx) lands as a
+    // client navigation after load; settle on the new page instead of crashing.
+    await page
+      .evaluate((p) => {
+        const h = document.documentElement.scrollHeight - window.innerHeight;
+        window.scrollTo(0, p === "top" ? 0 : p === "middle" ? Math.max(0, h / 2) : Math.max(0, h));
+      }, pos)
+      .catch(() => page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {}));
     // Long enough for a scroll-driven bar to finish its show/hide transition.
     await page.waitForTimeout(450);
     const found = (await page.evaluate(`(${DETECT})(${JSON.stringify(pos)})`).catch(() => [])) as Issue[];
