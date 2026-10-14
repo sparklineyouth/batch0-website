@@ -326,26 +326,6 @@ ${env.siteUrl}`,
   }),
 
   /**
-   * "We need your phone number" — sent to students who were accepted before
-   * the application form asked for one. Points them at /dashboard/phone, where
-   * they add it (see app/dashboard/phone). Triggered by an admin from
-   * /admin/email/phone-request; nothing hangs off an automation event, so this
-   * is a plain compiled template with no catalog entry.
-   */
-  collectPhone: (args: { name?: string | null }) => ({
-    subject: "One quick thing — add your phone number",
-    html: layout({
-      preheader: "We need a phone number to reach you about the program.",
-      body: `
-        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">Add your phone number</h1>
-        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — you're in, and we're getting ready for the cohort. We collect a phone number for everyone so we can reach you about kickoff logistics and anything time-sensitive.</p>
-        <p>It takes a few seconds — just open the link below and enter your number.</p>
-      `,
-      cta: { url: `${env.siteUrl}/dashboard/phone`, label: "Add your phone number" },
-    }),
-  }),
-
-  /**
    * "Here's your Demo Day ticket" — an admin sent this person a paid link for
    * Demo Day only, at a price they chose (lib/demo-day-tickets.ts). The button
    * is the whole email: it opens the public pay page, which needs no account.
@@ -595,28 +575,6 @@ One account, one pass — the code stops working the moment it's claimed.`,
       cta: args.startsOn
         ? { url: `${env.siteUrl}/dashboard/kickoff`, label: "See kickoff details" }
         : { url: `${env.siteUrl}/dashboard/course`, label: "Open course" },
-    }),
-  }),
-
-  weeklyDigest: (args: {
-    apps: number;
-    accepted: number;
-    paid: number;
-    revenue: number;
-  }) => ({
-    subject: "batch0 weekly digest",
-    html: layout({
-      preheader: `${args.apps} apps · ${args.paid} new enrollments · $${(args.revenue / 100).toFixed(0)} revenue`,
-      body: `
-        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">Weekly digest</h1>
-        <ul style="padding-left:18px">
-          <li>${args.apps} new applications</li>
-          <li>${args.accepted} accepted</li>
-          <li>${args.paid} new enrollments</li>
-          <li>$${(args.revenue / 100).toFixed(2)} revenue</li>
-        </ul>
-      `,
-      cta: { url: `${env.siteUrl}/admin`, label: "Open admin panel" },
     }),
   }),
 

@@ -11,6 +11,7 @@ import {
   canAccessAdmin,
   canViewAdminPath,
   capabilitiesFrom,
+  emailLandingFor,
   resolveHome,
   type Capabilities,
 } from "@/lib/permissions";
@@ -561,6 +562,10 @@ export async function updateSession(request: NextRequest) {
         // overview, which they can always read — bouncing them out of the
         // panel entirely would be a dead end.
         return redirectTo(canAccessAdmin(caps) ? "/admin" : home);
+      }
+      // The sidebar's one Email row: forward to the first tab they hold.
+      if (path === "/admin/email") {
+        return redirectTo(emailLandingFor(caps) ?? "/admin");
       }
       if (path.startsWith("/mentor") && !can(caps, "mentor.panel")) {
         return redirectTo(home);

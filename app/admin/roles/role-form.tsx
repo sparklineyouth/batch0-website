@@ -6,6 +6,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/input";
 import {
   PERMISSION_GROUPS,
+  PERMISSION_NEEDS,
   ROLE_COLOR_KEYS,
   ROLE_HOME_OPTIONS,
   roleColorClasses,
@@ -68,12 +69,22 @@ export function RoleForm({
   const effectiveSlug = slugTouched ? slug : slugifyRole(label);
   const count = permissions.size;
 
+  // Keeps PERMISSION_NEEDS pairs whole: ticking a key ticks its companion,
+  // unticking the companion unticks what needs it.
   function toggle(key: string) {
     setSaved(false);
     setPermissions((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      const needs = PERMISSION_NEEDS[key as keyof typeof PERMISSION_NEEDS];
+      if (next.has(key)) {
+        next.delete(key);
+        for (const [k, n] of Object.entries(PERMISSION_NEEDS)) {
+          if (n === key) next.delete(k);
+        }
+      } else {
+        next.add(key);
+        if (needs && canGrant(needs)) next.add(needs);
+      }
       return next;
     });
   }
@@ -235,11 +246,6 @@ export function RoleForm({
             {count} permission{count === 1 ? "" : "s"} selected
           </p>
         </div>
-        <p className="mt-2 text-sm text-ink-soft">
-          Each tick adds the matching section to their sidebar and authorises the
-          actions on it. Untick and the page disappears — and stays blocked even
-          if they type the URL.
-        </p>
 
         <div className="mt-5 space-y-6">
           {PERMISSION_GROUPS.map((group) => {

@@ -14,7 +14,7 @@ promotional text goes out, a lawyer should read this page and the opt-in copy.
 |---|---|
 | Collected at | `/apply`, field `phone` in `lib/application-fields.ts` |
 | Required? | **Yes** — `required: true`, enforced server-side in `app/apply/actions.ts` |
-| Backfill for earlier applicants | `/dashboard/phone` + `app/admin/email/phone-request/` |
+| Backfill for earlier applicants | `/dashboard/phone` |
 | What we promise | Program use only, no marketing, never sold — `app/(legal)/privacy/page.tsx`, `app/dashboard/phone/page.tsx` |
 
 ## Why marketing texts are blocked

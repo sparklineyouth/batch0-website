@@ -182,15 +182,4 @@ export async function getRoleMemberCounts(): Promise<Record<string, number>> {
   return Object.fromEntries(entries);
 }
 
-/**
- * True once `app_roles` is actually queryable. The roles admin uses this to
- * explain itself instead of silently rendering the fallback list as if those
- * were editable rows.
- */
-export async function rolesTableReady(): Promise<boolean> {
-  const admin = createAdminClient();
-  const { error } = await admin.from("app_roles").select("slug").limit(1);
-  return !error;
-}
-
 export { isSystemRole };

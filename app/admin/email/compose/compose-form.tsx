@@ -229,9 +229,7 @@ export function ComposeForm({
           Compose
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-          Send a one-off email — to any address, whether or not they have an
-          account, or to a whole audience. Everything goes out in the house
-          template and lands in the outbox and the metrics like any other send.
+          One-off email to any address or audience.
         </p>
       </div>
 

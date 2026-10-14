@@ -9,7 +9,12 @@ import {
   canViewAdminPath,
   capabilitiesFrom,
   can,
+  canMeet,
+  emailLandingFor,
+  isKnownPermission,
+  PERMISSION_NEEDS,
   rolesHolding,
+  unmetPermissionNeed,
 } from "./permissions.ts";
 
 // Run with `npm test`.
@@ -149,6 +154,68 @@ test("both scholarship keys are admin-area, so neither may be granted to mentor"
   assert.equal(canViewAdminPath(reviewer, "/admin/roles"), false);
   // Reading the queue must not imply being able to award or refund.
   assert.equal(can(reviewer, "scholarships.manage"), false);
+});
+
+test("the Email landing opens on any email key; each tab keeps its own", () => {
+  // The sidebar has one Email row pointing at /admin/email, which forwards to
+  // the first tab the viewer holds. A templates-only role must reach it…
+  const writer = capabilitiesFrom("writer", ["email.templates"]);
+  assert.equal(canViewAdminPath(writer, "/admin/email"), true);
+  assert.equal(canViewAdminPath(writer, "/admin/email/templates"), true);
+  // …without the landing widening any tab.
+  assert.equal(canViewAdminPath(writer, "/admin/email/outbox"), false);
+  assert.equal(canViewAdminPath(writer, "/admin/email/blast"), false);
+  assert.equal(canViewAdminPath(writer, "/admin/email/settings"), false);
+  // No email key, no landing.
+  const ops = capabilitiesFrom("ops", ["payments.view"]);
+  assert.equal(canViewAdminPath(ops, "/admin/email"), false);
+});
+
+test("the Email landing forwards to the first tab the viewer holds", () => {
+  assert.equal(emailLandingFor(capabilitiesFrom("admin", ["*"])), "/admin/email/templates");
+  assert.equal(emailLandingFor(capabilitiesFrom("w", ["email.templates"])), "/admin/email/templates");
+  assert.equal(emailLandingFor(capabilitiesFrom("s", ["email.send"])), "/admin/email/blast");
+  assert.equal(emailLandingFor(capabilitiesFrom("v", ["email.view", "email.settings"])), "/admin/email/outbox");
+  assert.equal(emailLandingFor(capabilitiesFrom("o", ["payments.view"])), null);
+  assert.equal(emailLandingFor(null), null);
+  // Every tab the landing can pick is a page the viewer may open.
+  for (const key of ["email.view", "email.send", "email.templates", "email.automate", "email.settings"] as const) {
+    const caps = capabilitiesFrom("one", [key]);
+    const landing = emailLandingFor(caps);
+    assert.ok(landing && canViewAdminPath(caps, landing), `${key} → ${landing}`);
+  }
+});
+
+test("canMeet: one key, or any of a list", () => {
+  const caps = capabilitiesFrom("custom", ["email.send"]);
+  assert.equal(canMeet(caps, "email.send"), true);
+  assert.equal(canMeet(caps, "email.view"), false);
+  assert.equal(canMeet(caps, ["email.view", "email.send"]), true);
+  assert.equal(canMeet(caps, ["email.view"]), false);
+  assert.equal(canMeet(capabilitiesFrom("admin", ["*"]), ["email.view"]), true);
+  assert.equal(canMeet(null, ["email.send"]), false);
+});
+
+test("a key that needs a companion is refused without it", () => {
+  // "Add a person" is a button on the People directory, so people.manage
+  // alone opens /admin/students/new with no way to navigate there.
+  assert.deepEqual(unmetPermissionNeed(["people.manage"]), ["people.manage", "people.view"]);
+  assert.equal(unmetPermissionNeed(["people.manage", "people.view"]), null);
+  assert.equal(unmetPermissionNeed(["people.view"]), null);
+  assert.equal(unmetPermissionNeed(["*", "not.a.key"]), null);
+  // Every pair names real keys.
+  for (const [key, needs] of Object.entries(PERMISSION_NEEDS)) {
+    assert.ok(isKnownPermission(key) && isKnownPermission(needs!), `${key} → ${needs}`);
+  }
+  const manager = capabilitiesFrom("m", ["people.manage", "people.view"]);
+  assert.equal(canViewAdminPath(manager, "/admin/students"), true);
+  assert.equal(canViewAdminPath(manager, "/admin/students/new"), true);
+});
+
+test("retired keys are gone from the catalog", () => {
+  // Migration 0100 strips 'ai_usage.view' from stored roles; a stale string
+  // would make missingPermissions block non-superadmins from editing a role.
+  assert.equal(isKnownPermission("ai_usage.view"), false);
 });
 
 test("a signed-out viewer reaches nothing", () => {

@@ -234,10 +234,8 @@ export function TemplateEditor({
       {isSystem && (
         <Card className="mt-5 border-amber-500/30 bg-amber-500/5">
           <p className="text-sm text-ink-soft">
-            <strong className="text-ink">Built-in template.</strong> The app sends
-            this one by name, so its key is fixed and it can't be deleted. Edit
-            the copy freely — turning it off doesn't stop the email, it falls
-            back to the original wording shipped in the code.
+            <strong className="text-ink">Built-in.</strong> Can&apos;t be deleted;
+            turning it off sends the default copy.
           </p>
         </Card>
       )}

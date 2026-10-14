@@ -12,6 +12,7 @@ import {
   STAFF_LINKS,
   filterStudentNavItem,
   filterAdminNavItem,
+  navItemMatches,
   type NavGroup,
 } from "@/lib/nav-config";
 import { can, canAccessAdmin, type Capabilities } from "@/lib/permissions";
@@ -177,7 +178,7 @@ export function MobileNav({
             }
             return true;
           })
-          .filter((it) => (q ? it.label.toLowerCase().includes(q) : true));
+          .filter((it) => navItemMatches(it, q));
         return { ...g, items };
       })
       .filter((g) => g.items.length > 0);

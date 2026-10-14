@@ -14,6 +14,7 @@
 
 import {
   ADMIN_ROUTE_PERMISSIONS,
+  EMAIL_PERMISSIONS,
   canViewAdminPath,
   capabilitiesFrom,
 } from "../lib/permissions.ts";
@@ -204,7 +205,9 @@ try {
   console.log(`\nintern: ${allowed.length} pages the role grants\n`);
   for (const path of allowed) {
     const r = await get(intern, path);
-    check(`GET ${path} → 200`, r.status === 200, `${r.status}${r.to ? ` → ${r.to}` : ""}`);
+    // A section landing (/admin/email) forwards to its first permitted tab.
+    const intoSection = r.status === 307 && !!r.to?.startsWith(path + "/");
+    check(`GET ${path} → 200`, r.status === 200 || intoSection, `${r.status}${r.to ? ` → ${r.to}` : ""}`);
   }
 
   console.log(`\nintern: ${blocked.length} pages the role does NOT grant\n`);
@@ -242,18 +245,19 @@ try {
   // Each label appears only when its permission is held — checked in both
   // directions, so a sidebar that leaks a link is as loud as one that hides
   // a link the role should have.
-  const NAV_LABELS: [string, string][] = [
-    ["Challenges", "challenges.manage"],
-    ["Resources", "resources.manage"],
-    ["Roles &amp; permissions", "roles.manage"],
-    ["Email blast", "email.send"],
-    ["Fees &amp; fines", "charges.manage"],
-    ["Audit log", "audit.view"],
-    ["Moderation", "moderation.manage"],
-    ["Discord", "discord.manage"],
+  // The Email row opens on any email key, so it is matched by its href.
+  const NAV_LABELS: [string, readonly string[]][] = [
+    ["Challenges", ["challenges.manage"]],
+    ["Resources", ["resources.manage"]],
+    ["Roles &amp; permissions", ["roles.manage"]],
+    ['href="/admin/email"', EMAIL_PERMISSIONS],
+    ["Fees &amp; fines", ["charges.manage"]],
+    ["Audit log", ["audit.view"]],
+    ["Moderation", ["moderation.manage"]],
+    ["Discord", ["discord.manage"]],
   ];
-  for (const [label, perm] of NAV_LABELS) {
-    const should = internPerms.includes(perm);
+  for (const [label, perms] of NAV_LABELS) {
+    const should = perms.some((p) => internPerms.includes(p));
     const shown = overview.body.includes(label);
     check(
       `sidebar ${should ? "shows" : "hides"} ${label}`,
@@ -330,7 +334,7 @@ try {
   const adminOverview = await get(admin, "/admin");
   for (const label of [
     "Roles &amp; permissions",
-    "Email blast",
+    'href="/admin/email"',
     "Audit log",
     "Fees &amp; fines",
   ]) {

@@ -49,9 +49,7 @@ export default async function AdminApplicationQuestionsPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight">Application form</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Everything an applicant is asked. Edit the wording of any question, add
-        your own, and remove the ones you don't want. Changes apply to every
-        applicant who hasn't submitted yet.
+        Applies to unsubmitted applications.
       </p>
 
       <Card className="mt-6">

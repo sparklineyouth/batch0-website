@@ -149,9 +149,7 @@ export function QueuedEmailEditor({
               </>
             ) : (
               <>
-                This email is <strong className="text-ink">{row.status}</strong>
-                , so it can no longer be changed. Once a message leaves the
-                queue there's nothing to edit — it's in someone's inbox.
+                <strong className="text-ink">{row.status}</strong> — read-only.
               </>
             )}
           </p>

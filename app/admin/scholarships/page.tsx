@@ -25,7 +25,7 @@ export default async function AdminScholarshipsPage() {
   const canManage = can(viewer.caps, "scholarships.manage");
 
   const admin = createAdminClient();
-  const [{ scholarships, missingTable }, counts, liveCohorts] = await Promise.all([
+  const [{ scholarships }, counts, liveCohorts] = await Promise.all([
     listScholarships(admin),
     awardedCountsByCohort(admin),
     listLiveCohorts(admin),
@@ -49,46 +49,20 @@ export default async function AdminScholarshipsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Scholarships</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            Need-based, merit, and the learner's grant. Students hold one at a
-            time and can apply after acceptance or after enrolling. There are no
-            dates to set: each student&apos;s window follows their cohort —
-            accepted students until its enrollment deadline, enrolled students
-            until it ends — and seat limits count per cohort.
+            One per student. The window follows their cohort.
           </p>
         </div>
-        {canManage && (
-          <ButtonLink href="/admin/scholarships/new">New scholarship</ButtonLink>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink href="/admin/scholarships/applications" variant="secondary">
+            Queue{totalPending > 0 ? ` (${totalPending})` : ""}
+          </ButtonLink>
+          {canManage && (
+            <ButtonLink href="/admin/scholarships/new">New scholarship</ButtonLink>
+          )}
+        </div>
       </div>
 
-      {missingTable && (
-        <Card className="mt-6 border-amber-400/30 bg-amber-400/5">
-          <p className="text-sm text-amber-300">
-            The <code>scholarships</code> table isn't there yet. Run migration{" "}
-            <code>0071_scholarships.sql</code> in the Supabase SQL editor, then
-            reload.
-          </p>
-        </Card>
-      )}
-
-      {totalPending > 0 && (
-        <Card className="mt-6 border-phosphor/40 bg-phosphor/5">
-          <p className="text-sm text-ink">
-            <strong>
-              {totalPending} {totalPending === 1 ? "application is" : "applications are"}
-            </strong>{" "}
-            waiting on a decision.{" "}
-            <Link
-              href="/admin/scholarships/applications"
-              className="underline hover:no-underline"
-            >
-              Open the queue →
-            </Link>
-          </p>
-        </Card>
-      )}
-
-      {scholarships.length === 0 && !missingTable ? (
+      {scholarships.length === 0 ? (
         <Card className="mt-6">
           <p className="text-sm text-ink-soft">
             No scholarships yet.{" "}

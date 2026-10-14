@@ -13,10 +13,6 @@
       "schedule": "*/5 * * * *"
     },
     {
-      "path": "/api/cron/weekly-digest",
-      "schedule": "0 14 * * 1"
-    },
-    {
       "path": "/api/cron/card-expiring",
       "schedule": "0 15 * * *"
     },

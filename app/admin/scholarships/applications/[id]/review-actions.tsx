@@ -195,25 +195,18 @@ export function ReviewActions({
                 A refund is owed
               </h3>
               <p className="mt-1 text-sm text-ink-soft">
-                {studentName} paid {formatMoney(paidCents)} and has been awarded{" "}
-                {formatMoney(awardCents)}. Nothing has moved yet — pressing the
-                button below issues a <strong>real partial refund</strong> to
-                their card. It can't be undone from here.
-              </p>
-              <p className="mt-2 text-xs text-ink-faint">
-                Their enrollment is unaffected: a partial refund leaves it
-                standing, and we refuse a refund for the full amount precisely
-                because that one would cancel it.
+                {studentName} paid {formatMoney(paidCents)}; awarded{" "}
+                {formatMoney(awardCents)}. The button issues a{" "}
+                <strong>real partial refund</strong>. Can&apos;t be undone.
               </p>
 
               {wouldBeFullRefund ? (
                 <p className="mt-3 text-xs text-amber-300">
-                  This award is the full amount they paid, so it can't be issued
-                  here — a full refund would cancel their enrollment. Do it from{" "}
+                  Full refund would cancel enrollment — use{" "}
                   <a href="/admin/payments" className="underline">
-                    /admin/payments
-                  </a>{" "}
-                  if that's really what you mean.
+                    Payments
+                  </a>
+                  .
                 </p>
               ) : !confirmRefund ? (
                 <Button

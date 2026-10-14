@@ -7,7 +7,6 @@ import {
 } from "@/lib/founder-pass-code";
 import {
   grantOf,
-  grantDiscountCents,
   normalizeDiscountCents,
   passKind,
   passTier,
@@ -125,9 +124,11 @@ function mapPassProfile(row: {
 // carries a tier and can carry a hand-set override, so ONE flat number can no
 // longer answer "what does this person pay". A constant that looks
 // authoritative but silently bills a full-ride holder $100 is worse than no
-// constant. Use passDiscountCentsForUser(), or grantDiscountCents() when the
-// grant is already loaded. The standard tier's $30 lives in PASS_TIERS
-// (lib/founder-pass-tiers.ts) and is what the public copy quotes.
+// constant. Charged tuition comes from quoteTuition() (lib/tuition-quote.ts),
+// which prices the pass with grantDiscountCents() on the regional price; use
+// grantDiscountCents() on a loaded grant anywhere else. The standard tier's
+// $30 lives in PASS_TIERS (lib/founder-pass-tiers.ts) and is what the public
+// copy quotes.
 
 export type RedeemResult =
   | { ok: true; serial: number }
@@ -334,24 +335,6 @@ export async function getPassTierForUser(
   userId: string,
 ): Promise<PassTier | null> {
   return (await getPassGrantForUser(client, userId))?.tier ?? null;
-}
-
-/**
- * What a user's pass takes off `listPriceCents` — 0 when they hold no pass.
- *
- * `listPriceCents` must already have regional pricing applied, because a "full
- * ride" waives what the applicant would actually be billed rather than the US
- * list price. Every surface that shows or charges a discounted tuition goes
- * through this one function so the dashboard, the acceptance email, the admin
- * accept action and Stripe cannot quote three different numbers.
- */
-export async function passDiscountCentsForUser(
-  client: SupabaseClient,
-  userId: string,
-  listPriceCents: number,
-): Promise<number> {
-  const grant = await getPassGrantForUser(client, userId);
-  return grant ? grantDiscountCents(grant, listPriceCents) : 0;
 }
 
 export { mapPassProfile };

@@ -28,16 +28,9 @@ export default async function AdminNewPersonPage() {
         ← People
       </Link>
 
-      <div className="mt-3">
-        <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
-          Add a person
-        </h1>
-        <p className="mt-1 text-sm text-ink-faint">
-          Create a batch0 account on someone&apos;s behalf. They become a person
-          in the directory right away — enrol them into a cohort now, or leave it
-          for later.
-        </p>
-      </div>
+      <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
+        Add a person
+      </h1>
 
       <Card className="mt-6">
         <CreatePersonForm cohorts={cohorts ?? []} />

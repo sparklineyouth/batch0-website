@@ -23,10 +23,6 @@ export default async function NewRolePage() {
       <h1 className="mt-3 font-display text-3xl font-bold tracking-[-0.02em] text-ink">
         New role
       </h1>
-      <p className="mt-1 max-w-2xl text-sm text-ink-faint">
-        Name it, then tick what it can reach. You can change any of this later —
-        people holding the role pick up the change on their next page load.
-      </p>
 
       <div className="mt-8">
         <RoleForm

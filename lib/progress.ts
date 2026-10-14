@@ -57,7 +57,6 @@ export type StudentProgress = {
   recent: ProgressEvent[];
   /** Days since `stoppedAt`, or null if they've never started. */
   idleDays: number | null;
-  missingTable: boolean;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -100,17 +99,13 @@ export function formatWatched(seconds: number): string {
 }
 
 /**
- * Build the progress picture for one student.
- *
- * Every query is tolerant of a missing table so this keeps working before
- * migration 0053 lands — resources simply report zero reach rather than the
- * page failing.
+ * Build the progress picture for one student. A failed read counts as no
+ * activity rather than failing the page.
  */
 export async function getStudentProgress(
   userId: string,
 ): Promise<StudentProgress> {
   const admin = createAdminClient();
-  let missingTable = false;
 
   const [
     lessonsRes,
@@ -150,18 +145,6 @@ export async function getStudentProgress(
       // Excused rows are a staff decision, not something the student did.
       .neq("status", "excused"),
   ]);
-
-  // "Migration 0053 hasn't run here" rather than a real failure. PostgREST
-  // returns PGRST205 with no table name in the message as often as not, so
-  // both the code and the message are checked.
-  const viewErr = resourceViewsRes.error as { code?: string; message?: string } | null;
-  if (
-    viewErr &&
-    (["PGRST205", "42P01", "42703"].includes(viewErr.code ?? "") ||
-      /does not exist|schema cache/i.test(viewErr.message ?? ""))
-  ) {
-    missingTable = true;
-  }
 
   const events: ProgressEvent[] = [];
 
@@ -288,7 +271,6 @@ export async function getStudentProgress(
     stoppedAt,
     recent: sortRecent(events),
     idleDays: stoppedAt ? daysSince(stoppedAt.at) : null,
-    missingTable,
   };
 }
 

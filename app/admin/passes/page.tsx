@@ -1,14 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import { Card } from "@/components/ui/card";
 import { nextBatchDefaults } from "@/lib/founder-pass-batch";
 import { onshapeConfigFromEnv } from "@/lib/onshape";
 import { env } from "@/lib/env";
 import { transportStatus } from "@/lib/email/send";
 import { passTier, normalizeDiscountCents } from "@/lib/founder-pass-tiers";
 import { PassesPanel, type PassRow, type BatchSummary } from "./passes-panel";
-import { SelfTestPanel } from "./self-test-panel";
-import { SELFTEST_BATCH } from "./shared";
 
 export const metadata = { title: "Founder passes · Admin" };
 export const dynamic = "force-dynamic";
@@ -32,9 +28,13 @@ export default async function AdminPassesPage() {
   // explicitly would turn that gap into a 500 on the whole passes admin; with
   // a star select the columns are simply absent and the mapping below defaults
   // them, exactly the way lib/founder-pass.ts tolerates 0041.
+  //
+  // Real serials are positive. A negative one is a probe row left by the
+  // retired self-check (0100 deletes them), so it is never listed.
   const { data } = await admin
     .from("founder_passes")
     .select("*")
+    .gt("serial", 0)
     .order("serial", { ascending: true });
 
   const raw = ((data ?? []) as Array<{
@@ -54,12 +54,7 @@ export default async function AdminPassesPage() {
     recipient_name?: string | null;
     // Migration 0056.
     discount_cents?: number | null;
-  }>)
-    // Self-check probe rows are not passes: negative serial, nobody's name on
-    // them, deleted as soon as the check that made them finishes. They only
-    // ever appear here if a run died mid-way, and listing them would put a
-    // "#-1 Revoke" row in the ledger. The test panel reports and clears them.
-    .filter((r) => r.batch !== SELFTEST_BATCH);
+  }>);
 
   // Resolve holder names in one query rather than per row — same batching the
   // applications queue uses for referrers.
@@ -150,33 +145,12 @@ export default async function AdminPassesPage() {
       ? transport.detail
       : `${transport.detail} Fix it at /admin/email/settings.`;
 
-  // The admin's own address, as the default target for a live drill. Sending
-  // the test to yourself is the only version of this that is safe to get
-  // wrong, so it should be the one you don't have to type.
-  const {
-    data: { user },
-  } = await (await createClient()).auth.getUser();
-  let selfEmail = env.contactEmail;
-  if (user) {
-    const { data: me } = await admin
-      .from("profiles")
-      .select("email")
-      .eq("id", user.id)
-      .maybeSingle();
-    selfEmail = (me as { email: string | null } | null)?.email || env.contactEmail;
-  }
-
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-8">
         <h1 className="font-display text-3xl text-ink">Founder passes</h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Each row is one pass. Minting a card generates the code and embosses
-          it into the STL in the same step; sending a virtual pass generates the
-          same kind of code and emails it instead. Either way the database only
-          ever stores a peppered hash, so a code exists in exactly two places:
-          the plastic or the inbox, and the copy you were shown when it was
-          issued.
+          One row per pass. Leaked codes? Revoke the batch.
         </p>
       </div>
 
@@ -191,28 +165,6 @@ export default async function AdminPassesPage() {
         emailDetail={emailDetail}
         contactEmail={env.contactEmail}
       />
-
-      <div className="mt-6">
-        <SelfTestPanel
-          canEmail={canEmail}
-          emailDetail={emailDetail}
-          defaultEmail={selfEmail}
-        />
-      </div>
-
-      <Card className="mt-8">
-        <h2 className="text-sm font-semibold text-ink">If a code list leaks</h2>
-        <p className="mt-2 text-sm text-ink-soft">
-          Revoke the batch. Codes can never be rotated — a printed one is
-          embossed in plastic, a virtual one is already sitting in someone
-          else&apos;s inbox — so a leaked list means those passes are finished.
-          Revoking kills them without touching any other run, which is why
-          printed and virtual passes get separate batch names. Revoked passes
-          stay listed as a record that the serial was issued; the serial is
-          never reused, because something bearing that number still exists
-          somewhere.
-        </p>
-      </Card>
     </div>
   );
 }

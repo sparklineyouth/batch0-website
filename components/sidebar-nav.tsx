@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Search, X } from "lucide-react";
-import type { NavGroup, NavItem } from "@/lib/nav-config";
+import { navItemMatches, type NavGroup, type NavItem } from "@/lib/nav-config";
 
 type Props = {
   /** Stable key used to namespace the per-group collapse state in
@@ -44,10 +44,10 @@ function isMatch(pathname: string, item: NavItem): boolean {
 /**
  * Resolve the ONE active item: the longest href that matches the path.
  *
- * Plain prefix-matching lit up every ancestor too, so /admin/mentors/match
- * marked both "Mentors" and "Mentor match" active (and put aria-current="page"
- * on both — two "current" links is also an a11y violation). Longest-match
- * means the most specific link wins and every ancestor stands down.
+ * Plain prefix-matching lit up every ancestor too, so a nested link marked
+ * its parent active as well (and put aria-current="page" on both — two
+ * "current" links is also an a11y violation). Longest-match means the most
+ * specific link wins and every ancestor stands down.
  *
  * Resolved against the UNFILTERED groups so searching or role-filtering the
  * list can never change which item is current.
@@ -142,9 +142,7 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
       .map((g) => {
         const items = g.items
           .filter((it) => (filterItem ? filterItem(it) : true))
-          .filter((it) =>
-            q ? it.label.toLowerCase().includes(q) : true,
-          );
+          .filter((it) => navItemMatches(it, q));
         return { ...g, items };
       })
       .filter((g) => g.items.length > 0);

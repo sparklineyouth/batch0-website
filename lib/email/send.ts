@@ -15,7 +15,7 @@ type EmailArgs = {
   replyTo?: string;
   /** Overrides the configured sender. Set by a template with its own From. */
   from?: string;
-  /** Tag written into the Resend payload / SMTP headers for the metrics page. */
+  /** Tag written into the Resend payload / SMTP headers, so each send is attributable in email_events. */
   templateKey?: string;
 };
 
@@ -86,12 +86,11 @@ export function resetTransportCache() {
 /**
  * Resend tags ride along on the send and come back on every webhook event for
  * it, which is the only way to attribute an open to the template that earned
- * it. Before this, /admin/email grouped by a normalized subject line and split
- * one template into a row per personalization.
+ * it, rather than grouping by a personalized subject line.
  *
  * Tag names and values are restricted to ASCII letters, digits, underscore and
  * dash — our keys look like "application.accepted", so the dots have to go or
- * Resend rejects the whole send. A metrics label is never worth failing an
+ * Resend rejects the whole send. A tracking label is never worth failing an
  * email over, hence the sanitize-and-truncate rather than a validation error.
  */
 function resendTags(templateKey?: string) {
@@ -291,9 +290,8 @@ export async function sendEmailBatch(
           html: i.html,
           text: i.text,
           replyTo,
-          // Batch sends were dropping the template label the single-send path
-          // has always set, so a blast — the highest-volume thing this app
-          // does — arrived at the metrics page unattributed.
+          // Same template label the single-send path sets, so a blast is
+          // attributable in email_events like any other send.
           headers: i.templateKey
             ? { "X-Batch0-Template": i.templateKey }
             : undefined,
