@@ -595,10 +595,11 @@ async function main() {
     check(!!(await until("pill", async () => (await pill.count()) > 0)), "a reader scrolled up gets a '1 new' pill");
     if ((await pill.count()) > 0) await pill.click();
     check(await nearBottom(), "the pill jumps to the newest");
-    // Removing the newest message is not news for a reader scrolled up.
+    // Removing the newest message (here its author, the host, deletes it) is
+    // not news for a reader scrolled up.
     await log.evaluate((el) => (el.scrollTop = 0));
     await new Promise((r) => setTimeout(r, 300));
-    await rowAction(message(host.page, "while you scrolled up"), "Remove");
+    await rowAction(message(host.page, "while you scrolled up"), "Delete");
     await until("removed on Ben", async () => !(await hasMessage(ben.page, "while you scrolled up")));
     await new Promise((r) => setTimeout(r, 1500));
     check(
