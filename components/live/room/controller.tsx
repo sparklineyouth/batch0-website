@@ -93,6 +93,8 @@ export type WebinarBinding = {
   /** The event's PDF deck, signed for hours (hosts only). */
   deck: EventDeck | null;
   panel: WebinarPanelInitial;
+  /** Staff: start a rehearsal early (the stored live_started_at, or why not). */
+  goLiveNow?: () => Promise<ActionResult<string>>;
   /** End for everyone; resolves with the stored live_ended_at. */
   endLive: () => Promise<string>;
   reopenLive: () => Promise<void>;
@@ -760,12 +762,43 @@ function RoomSession({
       : "You're the only host on air. Viewers wait until a host is back."
     : null;
 
+  // Staff need not wait for the window: Go live now starts it here.
+  const goLiveNowAction = webinar?.isStaffHost ? webinar.goLiveNow : undefined;
+  const [goingLive, setGoingLive] = useState(false);
+  const goLive = useCallback(async () => {
+    if (!goLiveNowAction) return;
+    setActionError(null);
+    setGoingLive(true);
+    try {
+      const res = await goLiveNowAction();
+      if (res.ok) recheck();
+      else setActionError(res.error);
+    } catch (err) {
+      setActionError(getActionError(err, "Couldn't go live. Try again."));
+    } finally {
+      setGoingLive(false);
+    }
+  }, [goLiveNowAction, recheck]);
+
   const opensAt = webinar ? roomWindow(webinar.startsAt, webinar.endsAt).goLiveOpensAt : null;
   const notice: ReactNode =
     rehearsing && opensAt !== null ? (
-      <span>
-        Not live yet: students can join from <LocalTime value={new Date(opensAt)} mode="time" />
-      </span>
+      <>
+        <span>
+          Not live yet: students can join from <LocalTime value={new Date(opensAt)} mode="time" />
+        </span>
+        {goLiveNowAction ? (
+          <button
+            type="button"
+            className="pointer-events-auto font-semibold text-[#FFBB00] hover:underline disabled:opacity-60"
+            onClick={() => void goLive()}
+            disabled={goingLive}
+            data-testid="go-live-now"
+          >
+            {goingLive ? "Going live…" : "Go live now"}
+          </button>
+        ) : null}
+      </>
     ) : null;
 
   // The green room before the go-live window says so (and "Enter room", not

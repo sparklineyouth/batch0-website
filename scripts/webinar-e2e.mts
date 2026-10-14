@@ -44,6 +44,12 @@
  *     connections close and frames stop, and a fresh join is refused;
  *   - the host presses Reopen, goes back on air, and the ended viewer is
  *     offered Rejoin (the ended screen's slow poll) and decodes video again;
+ *   - a cohort webinar three hours out: the host is only rehearsing (the
+ *     student waits) until staff press Go live now, which moves the event to
+ *     now, lets the waiting student in and rings their bell; the host's tab
+ *     records it, and after End the admin event page's "Share with students"
+ *     (its email is off) puts "Watch recording" on the student's events
+ *     lists and the recording on the event's page;
  *   - the 1:1 is hosted by a MENTOR (the live-room middleware exemption):
  *     both people are shown the recording notice before they join, the
  *     mentor's End call puts both sides on "This call has ended" and marks
@@ -150,6 +156,8 @@ async function reapOrphans(): Promise<void> {
 
 const createdUsers: string[] = [];
 let createdEventId: string | null = null;
+let createdEarlyEventId: string | null = null;
+let createdCohortId: string | null = null;
 let createdInviteId: string | null = null;
 
 async function createUser(email: string, role: string): Promise<string> {
@@ -235,6 +243,55 @@ async function createLiveWebinar(): Promise<string> {
   const rows = await res.json();
   if (!res.ok) throw new Error(`createEvent: ${JSON.stringify(rows)}`);
   createdEventId = rows[0].id;
+  return rows[0].id;
+}
+
+/**
+ * A cohort webinar three hours out, for `studentId`'s own (new) cohort:
+ * long before its go-live window, so a host in its room is rehearsing. It
+ * records automatically and is not emailed afterwards (auto_share off).
+ */
+async function createScheduledWebinar(studentId: string): Promise<string> {
+  const day = 86_400_000;
+  const cohortRes = await fetch(`${url}/rest/v1/cohorts`, {
+    method: "POST",
+    headers: { ...adm, Prefer: "return=representation" },
+    body: JSON.stringify({
+      name: `E2E webinar cohort ${stamp}`,
+      starts_on: new Date(Date.now() - 14 * day).toISOString().slice(0, 10),
+      ends_on: new Date(Date.now() + 40 * day).toISOString().slice(0, 10),
+      status: "active",
+    }),
+  });
+  const cohorts = await cohortRes.json();
+  if (!cohortRes.ok) throw new Error(`createCohort: ${JSON.stringify(cohorts)}`);
+  createdCohortId = cohorts[0].id as string;
+  const enrol = await fetch(`${url}/rest/v1/enrollments`, {
+    method: "POST",
+    headers: adm,
+    body: JSON.stringify({ user_id: studentId, cohort_id: createdCohortId }),
+  });
+  if (!enrol.ok) throw new Error(`enroll: ${await enrol.text()}`);
+  const start = Date.now() + 3 * 60 * 60_000;
+  const res = await fetch(`${url}/rest/v1/events`, {
+    method: "POST",
+    headers: { ...adm, Prefer: "return=representation" },
+    body: JSON.stringify({
+      title: `E2E Early ${stamp}`,
+      type: "webinar",
+      starts_at: new Date(start).toISOString(),
+      ends_at: new Date(start + 45 * 60_000).toISOString(),
+      visibility: "enrolled",
+      cohort_id: createdCohortId,
+      live_mode: "hosted",
+      audience_mode: "open",
+      auto_record: true,
+      auto_share: false,
+    }),
+  });
+  const rows = await res.json();
+  if (!res.ok) throw new Error(`createScheduledWebinar: ${JSON.stringify(rows)}`);
+  createdEarlyEventId = rows[0].id;
   return rows[0].id;
 }
 
@@ -353,12 +410,13 @@ async function removeStoragePrefix(bucket: string, prefix: string): Promise<void
 
 // ---- recording (one take per Record → Stop; docs/recording.md) ----------
 
-/** A 1:1's finished takes: closed, finalized, with parts in storage. */
-async function finishedCallTakes(
-  inviteId: string,
+/** A room's finished takes: closed, finalized, with parts in storage. */
+async function finishedTakes(
+  kind: "webinar" | "call",
+  roomId: string,
 ): Promise<{ id: string; part_count: number; duration_ms: number }[]> {
   const res = await fetch(
-    `${url}/rest/v1/recording_sessions?room_kind=eq.call&room_id=eq.${inviteId}` +
+    `${url}/rest/v1/recording_sessions?room_kind=eq.${kind}&room_id=eq.${roomId}` +
       `&status=eq.finished&finalized_at=not.is.null&part_count=gt.0&select=id,part_count,duration_ms`,
     { headers: adm },
   ).catch(() => null);
@@ -382,6 +440,7 @@ async function cleanup() {
   // but a recording of test accounts must never be left behind.
   if (createdInviteId) await removeRecordings("call", createdInviteId);
   if (createdEventId) await removeRecordings("webinar", createdEventId);
+  if (createdEarlyEventId) await removeRecordings("webinar", createdEarlyEventId);
   if (createdEventId) {
     await fetch(`${url}/rest/v1/event_assets?event_id=eq.${createdEventId}`, {
       method: "DELETE",
@@ -389,9 +448,10 @@ async function cleanup() {
     }).catch(() => {});
     await removeStoragePrefix("webinar-media", createdEventId);
   }
-  // End / Reopen / End call write audit entries against the test event and
-  // call. They name only these throwaway rows, so they go with them.
-  for (const target of [createdEventId, createdInviteId]) {
+  // End / Reopen / Go live now / Share / End call write audit entries against
+  // the test events and call. They name only these throwaway rows, so they go
+  // with them.
+  for (const target of [createdEventId, createdEarlyEventId, createdInviteId]) {
     if (!target) continue;
     await fetch(`${url}/rest/v1/audit_log?target_id=eq.${target}`, {
       method: "DELETE",
@@ -404,18 +464,26 @@ async function cleanup() {
       headers: adm,
     }).catch(() => {});
   }
-  if (createdEventId) {
-    await fetch(`${url}/rest/v1/live_participants?event_id=eq.${createdEventId}`, {
+  for (const eventId of [createdEventId, createdEarlyEventId]) {
+    if (!eventId) continue;
+    await fetch(`${url}/rest/v1/live_participants?event_id=eq.${eventId}`, {
       method: "DELETE",
       headers: adm,
     }).catch(() => {});
-    await fetch(`${url}/rest/v1/events?id=eq.${createdEventId}`, {
+    await fetch(`${url}/rest/v1/events?id=eq.${eventId}`, {
       method: "DELETE",
       headers: adm,
     }).catch(() => {});
   }
   for (const id of createdUsers) {
     await fetch(`${url}/auth/v1/admin/users/${id}`, {
+      method: "DELETE",
+      headers: adm,
+    }).catch(() => {});
+  }
+  // After the accounts, whose enrollments in it go with them.
+  if (createdCohortId) {
+    await fetch(`${url}/rest/v1/cohorts?id=eq.${createdCohortId}`, {
       method: "DELETE",
       headers: adm,
     }).catch(() => {});
@@ -715,6 +783,16 @@ async function audience(page: Page): Promise<number | null> {
 
 const hasText = async (page: Page, re: RegExp) =>
   (await page.getByText(re).count()) > 0;
+
+/** An event's run stamps and schedule, read from the database. */
+async function eventRow(eventId: string): Promise<Record<string, string | null> | null> {
+  const res = await fetch(
+    `${url}/rest/v1/events?id=eq.${eventId}&select=starts_at,ends_at,live_started_at,live_ended_at,assets_shared_at`,
+    { headers: adm },
+  );
+  const rows = (await res.json()) as Record<string, string | null>[];
+  return rows[0] ?? null;
+}
 
 /** The event's End stamp, read from the database rather than any UI. */
 async function liveEndedAt(eventId: string): Promise<string | null> {
@@ -1491,6 +1569,158 @@ async function main() {
     // The owner is a MENTOR, not an admin: live rooms sit under /dashboard,
     // and a mentor used to be bounced out of the room they were hosting by
     // the student-dashboard role gate.
+    // --- A scheduled webinar opened hours early ------------------------------
+    //
+    // Before the go-live window (start − 60 min) a host is rehearsing:
+    // nothing is stamped and students wait. Staff need not: Go live now moves
+    // the run to now, lets the waiting student in and rings their bell. The
+    // host's tab records it (auto-record); its email is off, so after End the
+    // admin event page's "Share with students" is what lets students watch,
+    // and their events lists then link to it.
+    console.log("\na scheduled webinar, opened three hours early");
+    // The first webinar is done; free its browsers.
+    for (const c of contexts.splice(0)) await c.close().catch(() => {});
+    const earlyId = await createScheduledWebinar(viewerUserId);
+    const earlyRoom = `/dashboard/events/${earlyId}/live`;
+    const early = await openAs(browser, HOST_EMAIL, earlyRoom, "early host");
+    contexts.push(early.ctx);
+    check(await enterRoom(early.page, "early host"), "the host opened the room three hours early");
+    const rehearsing = await until(
+      "the rehearsal notice with Go live now",
+      async () => (await count(early.page, "go-live-now")) > 0,
+      30_000,
+    );
+    check(!!rehearsing, "the host is rehearsing (\"Not live yet\"), with Go live now");
+    check(!(await eventRow(earlyId))?.live_started_at, "nothing is stamped while the host rehearses");
+
+    const waiting = await openAs(browser, VIEWER_EMAIL, earlyRoom, "waiting student");
+    contexts.push(waiting.ctx);
+    check(
+      !!(await until("the student's wait page", async () => hasText(waiting.page, /opens 15 minutes before/i), 60_000)),
+      "the enrolled student waits: it opens 15 minutes before the start",
+    );
+
+    const pressedAt = Date.now();
+    check(await tap(early.page, "go-live-now", "Go live now"), "staff pressed Go live now");
+    const started = await until(
+      "live_started_at to be stamped",
+      async () => {
+        const row = await eventRow(earlyId);
+        return row?.live_started_at ? row : null;
+      },
+      15_000,
+    );
+    check(!!started, "Go live now stamps live_started_at");
+    if (started) {
+      const startsAt = Date.parse(started.starts_at!);
+      check(
+        Math.abs(startsAt - pressedAt) < 2 * 60_000,
+        "the event now starts this minute (it was three hours out)",
+      );
+      check(
+        Date.parse(started.ends_at!) - startsAt === 45 * 60_000,
+        "and keeps its 45 minutes",
+      );
+    }
+    check(
+      !!(await until("the rehearsal notice to go", async () => (await count(early.page, "go-live-now")) === 0, 20_000)),
+      "the host's room is live: the rehearsal notice is gone",
+    );
+    check(
+      !!(await until("REC in the host's top bar", async () => (await count(early.page, "badge-rec")) > 0, 45_000)),
+      "the host's tab starts recording it (auto-record)",
+    );
+    const bell = await until(
+      "the student's live bell",
+      async () => {
+        const res = await fetch(
+          `${url}/rest/v1/notifications?user_id=eq.${viewerUserId}&type=eq.event_live&select=link`,
+          { headers: adm },
+        );
+        const rows = res.ok ? ((await res.json()) as { link: string | null }[]) : [];
+        return rows.find((r) => r.link === earlyRoom) ?? null;
+      },
+      20_000,
+    );
+    check(!!bell, "the enrolled student's bell says it's live, linking to the room");
+
+    // The wait page re-asks the server every 30 s.
+    const letIn = await until(
+      "the waiting student to be let in",
+      async () => (await count(waiting.page, "green-room-join")) > 0,
+      60_000,
+    );
+    check(!!letIn, "the waiting student is let in without reloading");
+    check(await enterRoom(waiting.page, "early student"), "and joins");
+    check(
+      await decodesAgain(waiting.page, 0, "the early student to decode the host"),
+      "the student decodes the host's video",
+    );
+
+    // Record a few seconds, then End for everyone.
+    await new Promise((r) => setTimeout(r, 6_000));
+    check(
+      (await tap(early.page, "ctrl-leave", "host's Leave menu")) &&
+        (await tap(early.page, "leave-end", "host's End for everyone")) &&
+        (await tap(early.page, "leave-end-confirm", "End confirm step", 5_000)),
+      "the host ended it for everyone",
+    );
+    check(
+      !!(await until("live_ended_at", async () => (await eventRow(earlyId))?.live_ended_at ?? null, 15_000)),
+      "live_ended_at is stamped",
+    );
+    const earlyTakes = await until(
+      "the webinar's take to be finished",
+      async () => {
+        const rows = await finishedTakes("webinar", earlyId);
+        return rows.length > 0 ? rows : null;
+      },
+      90_000,
+    );
+    check(earlyTakes?.length === 1, "the host's tab saved it as one finished take");
+
+    // Its email is off: nothing is shared until an admin shares it.
+    const studentEvents = waiting.page;
+    await studentEvents.goto(`${BASE}/dashboard/events`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+    check(
+      !!(await until("the student's events list", async () => hasText(studentEvents, new RegExp(`E2E Early ${stamp}`)), 30_000)) &&
+        (await count(studentEvents, "event-recording")) === 0,
+      "before it is shared, the student's events list has no recording link",
+    );
+    const adminPage = await early.ctx.newPage();
+    await adminPage.goto(`${BASE}/admin/events/${earlyId}`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+    check(await tap(adminPage, "share-files", "the admin page's Share with students", 60_000), "the admin pressed Share with students");
+    check(
+      !!(await until("the shared line", async () => (await count(adminPage, "files-shared")) > 0, 20_000)),
+      "the admin event page says it is shared",
+    );
+    check(!!(await eventRow(earlyId))?.assets_shared_at, "assets_shared_at is stamped");
+
+    await studentEvents.reload({ waitUntil: "domcontentloaded" });
+    const link = await until(
+      "the student's Watch recording link",
+      async () => {
+        const a = studentEvents.getByTestId("event-recording");
+        return (await a.count()) > 0 ? a.first().getAttribute("href") : null;
+      },
+      30_000,
+    );
+    check(link === earlyRoom, "the student's events list links \"Watch recording\" to the room page");
+    await studentEvents.goto(`${BASE}/app/events`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+    check(
+      !!(await until(
+        "the app's Recent recordings",
+        async () => (await studentEvents.locator(`a[href="${earlyRoom}"]`).count()) > 0,
+        30_000,
+      )),
+      "the app's events list has it under Recent recordings",
+    );
+    await studentEvents.goto(`${BASE}${earlyRoom}`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+    check(
+      !!(await until("the recording on the event's page", async () => (await studentEvents.locator("video").count()) > 0, 30_000)),
+      "the event's page plays the recording to the student",
+    );
+
     console.log("\n1:1 call (mentor host)");
     // The webinar is done; free its browsers before the call's two.
     for (const c of contexts.splice(0)) await c.close().catch(() => {});
@@ -1644,7 +1874,7 @@ async function main() {
     const takes = await until(
       "the call's recording to be saved as one take",
       async () => {
-        const rows = await finishedCallTakes(inviteId);
+        const rows = await finishedTakes("call", inviteId);
         return rows.length > 0 ? rows : null;
       },
       60_000,

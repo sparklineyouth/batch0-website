@@ -5,6 +5,7 @@ import {
   audienceFor,
   durationOf,
   durationOptions,
+  earlyStartSchedule,
   endsAtFor,
   eventNoticeLink,
   floorToMinute,
@@ -22,7 +23,7 @@ import {
   whoFromRow,
   whoValue,
 } from "./event-form.ts";
-import { roomAccess, roomIsOpen } from "./live.ts";
+import { roomAccess, roomIsOpen, shouldStampLiveStart } from "./live.ts";
 
 const COHORT = "6350c6ac-70f0-4f53-93d5-c99e397185a9";
 const OTHER = "76bc78bc-1724-48d3-9215-9049045b279a";
@@ -292,6 +293,24 @@ test("staleRunStamps clears a previous run's stamps on reschedule", () => {
     {},
   );
   assert.deepEqual(staleRunStamps({}, start), {});
+});
+
+test("going live hours early moves the run to now, keeping its length", () => {
+  const now = new Date("2026-10-20T14:07:30.000Z");
+  const moved = earlyStartSchedule("2026-10-20T17:00:00.000Z", "2026-10-20T18:30:00.000Z", now);
+  assert.deepEqual(moved, { startsAt: "2026-10-20T14:07:00.000Z", endsAt: "2026-10-20T15:37:00.000Z" });
+  // The stamp written with it belongs to the new run: stampable, never stale.
+  assert.equal(
+    shouldStampLiveStart({ startsAt: moved!.startsAt, endsAt: moved!.endsAt, liveStartedAt: null, liveEndedAt: null, now }),
+    true,
+  );
+  assert.deepEqual(staleRunStamps({ live_started_at: now.toISOString() }, moved!.startsAt), {});
+  // No end: the default length.
+  const open = earlyStartSchedule("2026-10-20T17:00:00.000Z", null, now)!;
+  assert.equal(Date.parse(open.endsAt) - Date.parse(open.startsAt), 60 * 60_000);
+  // Inside the go-live window the schedule stands: a host's arrival stamps it.
+  assert.equal(earlyStartSchedule("2026-10-20T15:00:00.000Z", null, now), null);
+  assert.equal(earlyStartSchedule("2026-10-20T13:00:00.000Z", null, now), null);
 });
 
 test("studentEventStatus opens early when a host goes live", () => {

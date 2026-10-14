@@ -29,7 +29,7 @@ exists. A **1:1 call** is a small mesh: everyone sends to everyone.
 | `lib/live-rooms.ts` | Server-only: channel keys, credentials, attendance, the server's hints (`notifyStage`, `notifyCallChanged`). |
 | `app/live/actions.ts` | `joinRoom`, `announcePresence`, `leaveRoom`, `listAudience`, `setPrimaryHost`, `getHostingStatus`. |
 | `app/api/live/leave/route.ts` | The same leave, as a `sendBeacon` target for a closing tab. |
-| `app/dashboard/events/[id]/live/room-actions.ts` | A webinar's `endLive` / `reopenLive` / `fetchLiveState`. A 1:1's End call is `endCall` (`app/calls/actions.ts`). |
+| `app/dashboard/events/[id]/live/room-actions.ts` | A webinar's `goLiveNow` / `endLive` / `reopenLive` / `fetchLiveState`. A 1:1's End call is `endCall` (`app/calls/actions.ts`). |
 | `components/live/use-live-session.ts` | The WebRTC engine (both shapes). Exposes `session.room`: primary, live stamps, `canEnd`, the running recording. |
 | `components/live/use-local-media.ts`, `room/audio-levels.ts`, `audio-output.ts` | Camera/mic (per-device status), the level meters and speaking rings, the speaker choice. |
 | `components/live/room/controller.tsx` | **The room**: phase machine, devices, presentation, session, recording, every exit. Renders the kit. |
@@ -77,7 +77,12 @@ emails, ICS files and cards keep working).
 - **Rehearsal**: a host in the room before the go-live window (start − 60 min)
   sees "Not live yet: students can join from <time>"; nothing is stamped and
   Leave is the only way out. The heartbeat that crosses into the window stamps
-  `live_started_at` and the host is told "You're live".
+  `live_started_at` and the host is told "You're live". Staff needn't wait:
+  **Go live now** in that notice (`goLiveNow`) moves the event to this minute,
+  keeping its length (`earlyStartSchedule`), stamps it live and tells everyone
+  it is for, as "Start a webinar now" does — one run, so End, the follow-up
+  and the lists agree; students waiting on "This opens…" are let in within
+  30 s.
 
 ## Leave, End, and the other ways out
 

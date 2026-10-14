@@ -373,6 +373,28 @@ export function staleRunStamps(
 }
 
 /**
+ * "Go live now" (staff, from the room) before the go-live window: the run
+ * starts now, so the event moves to this minute and keeps its length. Its
+ * stamp then sits inside the run's own window, which End, the follow-up,
+ * the lists and a later edit (staleRunStamps) all assume, and the schedule
+ * says when it really happened. Null inside the window, where a host's
+ * arrival stamps the event as scheduled (shouldStampLiveStart).
+ */
+export function earlyStartSchedule(
+  startsAt: string,
+  endsAt: string | null,
+  now: Date,
+): { startsAt: string; endsAt: string } | null {
+  const w = roomWindow(startsAt, endsAt);
+  if (now.getTime() >= w.goLiveOpensAt) return null;
+  const start = floorToMinute(now).getTime();
+  return {
+    startsAt: new Date(start).toISOString(),
+    endsAt: new Date(start + (w.end - w.start)).toISOString(),
+  };
+}
+
+/**
  * A student's view of an event: the list status (lib/live.ts eventLiveStatus,
  * which opens early once a host has gone live and closes with the viewer
  * window, like roomAccess), shown as "live" while a host is on air early.

@@ -10,7 +10,7 @@ import {
   setPrimaryHost,
   getHostingStatus,
 } from "@/app/live/actions";
-import { endLive, fetchLiveState, reopenLive } from "./room-actions";
+import { endLive, fetchLiveState, goLiveNow, reopenLive } from "./room-actions";
 import type { LiveRole } from "@/lib/live";
 import type { SignalRole } from "@/lib/live-signal";
 import type { WebinarPanelInitial } from "@/lib/webinar-panel";
@@ -76,6 +76,7 @@ export function BuiltinEventRoom({
     }),
     [eventId],
   );
+  const onGoLiveNow = useCallback(() => goLiveNow(eventId), [eventId]);
   const onEndLive = useCallback(() => endLive(eventId), [eventId]);
   const onReopenLive = useCallback(() => reopenLive(eventId), [eventId]);
   const onFetchLiveState = useCallback(() => fetchLiveState(eventId), [eventId]);
@@ -98,6 +99,7 @@ export function BuiltinEventRoom({
       canEnd,
       deck,
       panel,
+      goLiveNow: isStaffHost ? onGoLiveNow : undefined,
       endLive: onEndLive,
       reopenLive: onReopenLive,
       fetchLiveState: onFetchLiveState,
@@ -115,6 +117,7 @@ export function BuiltinEventRoom({
       canEnd,
       deck,
       panel,
+      onGoLiveNow,
       onEndLive,
       onReopenLive,
       onFetchLiveState,
