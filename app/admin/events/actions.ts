@@ -8,7 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { GLOBAL_CONTENT_TAG } from "@/lib/app-cache";
 import {
-  DEFAULT_AUDIENCE_MODE,
+  defaultAudienceModeFor,
   normalizeAudienceMode,
   type AudienceMode,
 } from "@/lib/webinars";
@@ -314,7 +314,7 @@ export async function startWebinarNow(input: {
         ends_at: endsAtFor(startsAt, DEFAULT_DURATION_MINUTES),
         visibility: audience.visibility,
         cohort_id: audience.cohort_id,
-        audience_mode: DEFAULT_AUDIENCE_MODE,
+        audience_mode: defaultAudienceModeFor(audience.visibility),
         auto_record: true,
         auto_share: audience.visibility !== "staff",
         live_started_at: nowDate.toISOString(),

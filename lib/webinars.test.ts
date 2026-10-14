@@ -5,6 +5,7 @@ import {
   canBroadcast,
   canEndForEveryone,
   chatMessageIsLive,
+  defaultAudienceModeFor,
   formatBytes,
   isDeckFile,
   isHostedOnBatch0,
@@ -385,4 +386,11 @@ test("only the fixed reaction alphabet is accepted", () => {
   assert.equal(isReaction(""), false);
   assert.equal(isReaction(null), false);
   assert.equal(isReaction(42), false);
+});
+
+test("a new event's chat: open for a cohort, moderated for everyone signed in", () => {
+  assert.equal(defaultAudienceModeFor("enrolled"), "open");
+  assert.equal(defaultAudienceModeFor("staff"), "open");
+  // Anyone with an account can be in a public room: a host reads first.
+  assert.equal(defaultAudienceModeFor("public"), "moderated");
 });

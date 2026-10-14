@@ -42,8 +42,10 @@
  *              that a human has not read.
  *
  *   open       Ordinary live chat. Everyone sees every message and who wrote
- *              it, and hosts can remove any of it. The default for new events
- *              (DEFAULT_AUDIENCE_MODE; column default since migration 0098).
+ *              it, and hosts can remove any of it. The default for a new
+ *              cohort event (DEFAULT_AUDIENCE_MODE; column default since
+ *              migration 0098); "Everyone signed in" starts moderated
+ *              (defaultAudienceModeFor).
  *
  * Deliberately ONE knob rather than three (chat on/off, questions
  * public/private, upvotes on/off). All three are the same question, and
@@ -54,6 +56,19 @@ export type AudienceMode = "private" | "moderated" | "open";
 
 /** What a new event starts with: chat on. */
 export const DEFAULT_AUDIENCE_MODE: AudienceMode = "open";
+
+/**
+ * The chat a new event starts with, by who it is for (`events.visibility`).
+ *
+ * Open for a cohort: people who know each other, the room 0084 meant open
+ * for. Moderated for "Everyone signed in" (`public`): anyone with an account
+ * can be in that room, and open chat would hand them the full name of every
+ * student (minors among them) who writes. A host reads each message before
+ * the room does. An admin can still pick Open; the form says what it shows.
+ */
+export function defaultAudienceModeFor(visibility: string): AudienceMode {
+  return visibility === "public" ? "moderated" : DEFAULT_AUDIENCE_MODE;
+}
 
 /**
  * Is there a shared, audience-visible channel at all?

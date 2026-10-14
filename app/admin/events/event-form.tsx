@@ -7,7 +7,7 @@ import { getActionError } from "@/lib/action-error";
 import {
   DECK_EXTENSIONS,
   DECK_MIME_TYPES,
-  DEFAULT_AUDIENCE_MODE,
+  defaultAudienceModeFor,
   formatBytes,
   isDeckFile,
   MAX_UPLOAD_BYTES,
@@ -97,9 +97,12 @@ export function EventForm({
   const [type, setType] = useState<EventType>(event?.type ?? "webinar");
   const [typeTouched, setTypeTouched] = useState(!isNew);
   const [location, setLocation] = useState(event?.location ?? "");
+  // A new event's chat follows Who until the admin picks one: open for a
+  // cohort, moderated for everyone signed in (defaultAudienceModeFor).
   const [audienceMode, setAudienceMode] = useState<AudienceMode>(
-    event?.audienceMode ?? DEFAULT_AUDIENCE_MODE,
+    () => event?.audienceMode ?? defaultAudienceModeFor(who === "public" ? "public" : "enrolled"),
   );
+  const [chatPicked, setChatPicked] = useState(!isNew);
   const [autoRecord, setAutoRecord] = useState(event?.autoRecord ?? true);
   const [autoShare, setAutoShare] = useState(event?.autoShare ?? true);
   const [recordingUrl, setRecordingUrl] = useState(event?.recordingUrl ?? "");
@@ -420,6 +423,9 @@ export function EventForm({
           onChange={(e) => {
             setWho(e.target.value);
             if (e.target.value === "staff") setNotify(false);
+            if (!chatPicked) {
+              setAudienceMode(defaultAudienceModeFor(e.target.value === "public" ? "public" : "enrolled"));
+            }
           }}
         >
           {cohorts.map((c) => (
@@ -499,7 +505,10 @@ export function EventForm({
                 <Select
                   id="ev-chat"
                   value={audienceMode}
-                  onChange={(e) => setAudienceMode(e.target.value as AudienceMode)}
+                  onChange={(e) => {
+                    setAudienceMode(e.target.value as AudienceMode);
+                    setChatPicked(true);
+                  }}
                 >
                   {CHAT_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -509,6 +518,11 @@ export function EventForm({
                 </Select>
                 {audienceMode === "moderated" && (
                   <p className="mt-1 text-xs text-ink-faint">Hosts approve each message.</p>
+                )}
+                {audienceMode === "open" && (
+                  <p className="mt-1 text-xs text-ink-faint">
+                    Everyone in the room sees each message and the sender&rsquo;s name.
+                  </p>
                 )}
               </div>
               <Check checked={autoRecord} onChange={setAutoRecord}>

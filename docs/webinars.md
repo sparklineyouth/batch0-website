@@ -105,8 +105,8 @@ guarantee the rest of the system is built on, it became a setting:
 | Mode | What a student sees | Use it for |
 |---|---|---|
 | `private` ("Chat: Off") | Their own questions. No chat. No evidence anyone else exists. | Public intake webinars. Anything with strangers in the room. |
-| `moderated` | Approved messages and questions, plus their own pending ones. | A public webinar where you want a live channel but nothing unreviewed reaching the room. |
-| `open` | Every message, with names. Hosts remove anything. | **The default for new events** (form, `startWebinarNow`, and the column default since 0098). A cohort call. |
+| `moderated` | Approved messages and questions, plus their own pending ones. | **The default for a new "Everyone signed in" event** (form and `startWebinarNow`, via `defaultAudienceModeFor`): anyone with an account can be in that room, so a host reads each message before it reaches the room. |
+| `open` | Every message, with names. Hosts remove anything. | **The default for a new cohort event** (form, `startWebinarNow`, and the column default since 0098). A cohort call. The form notes that everyone sees each sender's name. |
 
 `normalizeAudienceMode()` still fails closed: an unrecognised or missing value
 reads as `private`, so a deploy ahead of the database shows no chat rather than
