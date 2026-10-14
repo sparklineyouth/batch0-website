@@ -351,6 +351,7 @@ class Take {
   private pumping = false;
   /** The finish request is out: the server closing the lease is expected now. */
   private finishing = false;
+  private beating = false;
   private lastContact = Date.now();
   private readonly heartbeat: ReturnType<typeof setInterval>;
   private resolveFinished!: () => void;
@@ -499,10 +500,19 @@ class Take {
 
   private async beat() {
     if (this.phase === "done" || this.finishing || Date.now() - this.lastContact < HEARTBEAT_MS) return;
-    const res = await post(`/api/recordings/${this.sessionId}/part`, { heartbeat: true });
-    if (res.ok) this.lastContact = Date.now();
-    // A beat that crossed the finish request sees the take already closed.
-    else if ((res.status === 409 || res.status === 404) && !this.finishing) this.die();
+    // One at a time: a slow server isn't sent a second beat before the first
+    // is answered. (A long part upload still needs them — the lease is only
+    // renewed by contact.)
+    if (this.beating) return;
+    this.beating = true;
+    try {
+      const res = await post(`/api/recordings/${this.sessionId}/part`, { heartbeat: true });
+      if (res.ok) this.lastContact = Date.now();
+      // A beat that crossed the finish request sees the take already closed.
+      else if ((res.status === 409 || res.status === 404) && !this.finishing) this.die();
+    } finally {
+      this.beating = false;
+    }
   }
 
   private async finish() {

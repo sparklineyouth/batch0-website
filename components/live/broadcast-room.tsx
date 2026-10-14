@@ -619,7 +619,13 @@ function BroadcastSession({
     });
   const selfUserId = webinar?.selfUserId ?? call?.selfUserId ?? "";
   const recordingKind = isCall ? "call" : "webinar";
-  const status = useRecordingStatus(recordingKind, roomId, phase === "prejoin" || phase === "live");
+  // The tab doing the recording knows the room's state; the others ask.
+  const [recordingHere, setRecordingHere] = useState(false);
+  const status = useRecordingStatus(
+    recordingKind,
+    roomId,
+    (phase === "prejoin" || phase === "live") && !recordingHere,
+  );
   // Who else goes into the recording: every broadcaster whose link is live.
   const otherName = call?.otherName;
   const recorderRemotes = useMemo(
@@ -666,6 +672,7 @@ function BroadcastSession({
   const [recordedHere, setRecordedHere] = useState(false);
   useEffect(() => {
     if (recording.mine) setRecordedHere(true);
+    setRecordingHere(recording.mine);
   }, [recording.mine]);
   const recordingOn = recording.mine || !!recording.by;
 
@@ -2039,8 +2046,10 @@ function RecClock({ recording }: { recording: RoomRecording }) {
 
 /**
  * Whether the room is being recorded, from the server (GET
- * /api/recordings/active): every 10 s while in the green room or live, and on
- * `refresh()`. What every participant's REC badge reads.
+ * /api/recordings/active): every 15 s while `active` (the green room or live,
+ * in a tab that isn't the recorder) and visible, and at once on `refresh()`.
+ * What every participant's REC badge reads. One request at a time — the next
+ * is scheduled when the last answers, so a slow server isn't stacked up.
  */
 function useRecordingStatus(
   kind: "webinar" | "call",
@@ -2053,28 +2062,33 @@ function useRecordingStatus(
   useEffect(() => {
     if (!active) return;
     let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const tick = async () => {
-      if (document.hidden) return;
-      try {
-        const res = await fetch(`/api/recordings/active?kind=${kind}&room=${roomId}`, {
-          cache: "no-store",
-        });
-        if (!res.ok || stopped) return;
-        const body = (await res.json()) as { recording: ServerRecording };
-        if (!stopped) setRecording(body.recording ?? null);
-      } catch {
-        // A missed poll is ten seconds of staleness.
+      if (!document.hidden) {
+        try {
+          const res = await fetch(`/api/recordings/active?kind=${kind}&room=${roomId}`, {
+            cache: "no-store",
+          });
+          if (res.ok && !stopped) {
+            const body = (await res.json()) as { recording: ServerRecording };
+            if (!stopped) setRecording(body.recording ?? null);
+          }
+        } catch {
+          // A missed poll is one interval of staleness.
+        }
       }
+      if (!stopped) timer = setTimeout(tick, RECORDING_STATUS_POLL_MS);
     };
     void tick();
-    const t = setInterval(tick, 10_000);
     return () => {
       stopped = true;
-      clearInterval(t);
+      if (timer) clearTimeout(timer);
     };
   }, [kind, roomId, active, nonce]);
   return { recording, refresh };
 }
+
+const RECORDING_STATUS_POLL_MS = 15_000;
 
 /** "Saving the recording…" with a spinner — an exit waiting on the uploads. */
 function SavingLabel() {

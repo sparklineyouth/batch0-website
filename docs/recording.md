@@ -19,6 +19,9 @@ one seekable file.
   call-lifecycle cron all sweep).
 - **Everyone sees REC** (viewers included) from `GET /api/recordings/active`;
   the green room says so before Join (calls always; webinars that record).
+  Every tab but the recorder's polls it, one request at a time, every 15 s
+  (interim: the room's presence payload is meant to carry this instead —
+  `activeRecordingFor()` — so the poll goes away).
 - **What is recorded** is the room's main stage
   (`lib/recording-layout.ts`): a screen share or slide deck full-frame with
   faces inset, else the primary camera with insets, else everyone side by side
