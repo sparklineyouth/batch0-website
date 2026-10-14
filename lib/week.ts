@@ -1,5 +1,5 @@
 /**
- * Helpers for the ISO-week convention we use throughout check-ins.
+ * ISO-week helpers (UTC Monday keys).
  * `week_start` is always the Monday of that week, stored as YYYY-MM-DD.
  */
 

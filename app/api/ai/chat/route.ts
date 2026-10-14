@@ -5,6 +5,8 @@ import { buildCurriculumContext, buildSystemPrompt } from "@/lib/ai/system-promp
 import { resolveAiTeamContext } from "@/lib/ai/team-context";
 import { env } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { loadStudentAssignments } from "@/lib/assignments-server";
+import { formatEastern, isDone, statusLabel } from "@/lib/assignments";
 import { applyUsage, isOverHardCap } from "@/lib/ai/usage";
 import { getAllRoles } from "@/lib/roles";
 import { capabilitiesFrom, can, canAccessAdmin } from "@/lib/permissions";
@@ -77,7 +79,7 @@ export async function POST(req: Request) {
     { data: enrollments },
     { data: application },
     { data: memberships, error: membershipError },
-    { data: recentCheckins },
+    assignments,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -124,12 +126,7 @@ export async function POST(req: Request) {
       .from("team_members")
       .select("team_id")
       .eq("user_id", user.id),
-    admin
-      .from("student_checkins")
-      .select("week_start, accomplished, next_up, blockers")
-      .eq("user_id", user.id)
-      .order("week_start", { ascending: false })
-      .limit(4),
+    loadStudentAssignments(admin, user.id),
   ]);
 
   const role = (profile?.role as Role | undefined) ?? "student";
@@ -219,8 +216,17 @@ export async function POST(req: Request) {
     });
   }
 
-  const latestCheckin = (recentCheckins ?? [])[0] ?? null;
-  const checkinHistory = (recentCheckins ?? []).slice(1);
+  // What's due, by title and status only — never the student's submitted text.
+  const assignmentContext = [
+    ...assignments.items.filter((i) => !isDone(i.status)),
+    ...assignments.items.filter((i) => isDone(i.status)).reverse(),
+  ]
+    .slice(0, 6)
+    .map((i) => ({
+      title: i.assignment.title,
+      due: i.assignment.due_at ? formatEastern(i.assignment.due_at) : null,
+      status: statusLabel(i.status),
+    }));
 
   // Conversations are self-editable under RLS. A pinned team_id is not an
   // authorization grant, and a former member must not retain team retrieval.
@@ -342,20 +348,7 @@ export async function POST(req: Request) {
           }
         : null,
       team: teamRetrieval,
-      latest_checkin: latestCheckin
-        ? {
-            week_start: latestCheckin.week_start,
-            accomplished: latestCheckin.accomplished,
-            next_up: latestCheckin.next_up,
-            blockers: latestCheckin.blockers,
-          }
-        : null,
-      checkin_history: checkinHistory.map((c: any) => ({
-        week_start: c.week_start,
-        accomplished: c.accomplished,
-        next_up: c.next_up,
-        blockers: c.blockers,
-      })),
+      assignments: assignmentContext,
       team_messages: teamMessages,
     },
   });

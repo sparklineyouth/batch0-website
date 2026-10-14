@@ -48,7 +48,7 @@ export default async function SampleLesson() {
       </section>
       <section className="mt-10 border-t border-line pt-8">
         <h2 className="font-display text-3xl">Your submission</h2>
-        <p className="mt-4 text-sm leading-relaxed text-ink-soft">One problem statement, three sets of interview notes, one assumption you revised, and the next test you will run. In the cohort, bring that work to check-ins and office hours for feedback.</p>
+        <p className="mt-4 text-sm leading-relaxed text-ink-soft">One problem statement, three sets of interview notes, one assumption you revised, and the next test you will run. In the cohort, submit that work as an assignment and bring it to office hours for feedback.</p>
         <div className="mt-6 flex flex-wrap gap-5 text-sm"><Link className="link-ink" href="/start">Get the full starter worksheet →</Link><Link className="link-ink" href="/parents">See tuition and the live calendar →</Link></div>
       </section>
     </main><Footer config={config} />

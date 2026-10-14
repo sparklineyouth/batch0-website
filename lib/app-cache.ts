@@ -19,7 +19,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * cohort, so a minute of staleness is invisible.
  *
  * Deliberately NOT cached, and this is the important half: the application
- * review queue, pending charges, check-in state, the at-risk list, revenue.
+ * review queue, pending charges, assignment status, revenue.
  * Those drive decisions about money and about people's places in the program,
  * they change in response to the very actions taken in this app, and a stale
  * one is not a slow screen — it is a wrong one. An admin who accepts an

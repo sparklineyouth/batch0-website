@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { isoWeekStart, formatWeekRange } from "@/lib/week";
 import { InstallHint } from "@/components/app/install-hint";
+import { countOverdueAssignments } from "@/lib/assignments-server";
 import {
   AppHeader,
   AppBody,
@@ -34,19 +35,15 @@ function money(cents: number) {
  * check. The gate is on the query as well as the render, so an ungranted number
  * is never fetched, let alone shipped to the client and hidden with CSS.
  *
- * The check-in rate is here and not on the desktop overview because it is the
- * one number that changes the day: it says how many students are quietly
- * drifting this week, which is a thing you want to know while you still have
- * time to send a message about it.
+ * Overdue assignments is the one number that changes the day: who is quietly
+ * falling behind, while there's still time to send a message about it.
  */
 export default async function AdminAppToday() {
   const { profile, caps } = await requireViewer();
   const seeApplications = can(caps, "applications.view");
   const seePeople = can(caps, "people.view");
   const seeRevenue = can(caps, "payments.view");
-  const seeAtRisk = can(caps, "interventions.manage");
-  // Only decides where the "Checked in" tile points — it gates no data here.
-  const seePulse = can(caps, "pulse.view");
+  const seeAssignments = can(caps, "assignments.manage");
 
   const admin = createAdminClient();
   const weekStart = isoWeekStart();
@@ -55,8 +52,7 @@ export default async function AdminAppToday() {
     { count: pending },
     { count: awaitingPayment },
     { count: enrolled },
-    { count: checkedIn },
-    { count: atRisk },
+    overdue,
     { data: payments },
     { data: charges },
     { data: recent },
@@ -77,25 +73,12 @@ export default async function AdminAppToday() {
       ? admin
           // !inner + the status filter is load-bearing: a plain count of
           // `enrollments` counts every seat ever sold, across every past
-          // cohort. Dividing this week's check-ins by that made the rate fall
-          // forever and read as a program collapsing rather than a stable one.
-          // Scoped to cohorts actually running, it means what it says.
+          // cohort. Scoped to cohorts actually running, it means what it says.
           .from("enrollments")
           .select("id, cohort:cohorts!inner(status)", { count: "exact", head: true })
           .eq("cohort.status", "active")
       : { count: null },
-    seePeople
-      ? admin
-          .from("student_checkins")
-          .select("id", { count: "exact", head: true })
-          .eq("week_start", weekStart)
-      : { count: null },
-    seeAtRisk
-      ? admin
-          .from("at_risk_interventions")
-          .select("id", { count: "exact", head: true })
-          .is("resolved_at", null)
-      : { count: null },
+    seeAssignments ? countOverdueAssignments(admin) : Promise.resolve(0),
     // Same row-by-row sum and explicit cap as the desktop overview. Past ~10k
     // rows this needs to become a SQL aggregate in both places at once.
     seeRevenue
@@ -126,10 +109,6 @@ export default async function AdminAppToday() {
     (charges ?? []).reduce((s, c) => s + (c.amount_cents ?? 0), 0);
 
   const firstName = profile.full_name?.split(" ")[0] || "there";
-  const checkinRate =
-    seePeople && (enrolled ?? 0) > 0
-      ? `${checkedIn ?? 0}/${enrolled}`
-      : null;
 
   return (
     <>
@@ -160,17 +139,17 @@ export default async function AdminAppToday() {
           </Section>
         )}
 
-        {(seePeople || seeRevenue || seeAtRisk) && (
+        {(seePeople || seeRevenue || seeAssignments) && (
           <Section title="The program">
             {/* Every tile is a link. A number on a touch screen reads as
                 tappable whether or not it is, so a tile that does nothing is
                 indistinguishable from one that is broken — and each of these
                 already implies exactly one destination. The href is always a
                 page the tile's own permission can open: `Enrolled` needs
-                people.view and goes to the in-app directory; `Checked in`
-                prefers Pulse (the check-in analytics) but falls back to the
-                directory for a role without pulse.view; `Revenue` needs
-                payments.view and goes to the payments ledger it is summing. */}
+                people.view and goes to the in-app directory; `Overdue` needs
+                assignments.manage and goes to the completion matrix;
+                `Revenue` needs payments.view and goes to the payments ledger
+                it is summing. */}
             <div className="grid grid-cols-2 gap-2.5">
               {seePeople && (
                 <Stat
@@ -184,24 +163,13 @@ export default async function AdminAppToday() {
                   hint="In active cohorts"
                 />
               )}
-              {checkinRate && (
+              {seeAssignments && (
                 <Stat
-                  label="Checked in"
-                  value={checkinRate}
-                  hint="This week"
-                  href={seePulse ? "/admin/pulse" : "/app/admin/people"}
-                  tone={
-                    (checkedIn ?? 0) < (enrolled ?? 0) / 2 ? "warn" : "default"
-                  }
-                />
-              )}
-              {seeAtRisk && (
-                <Stat
-                  label="At risk"
-                  value={atRisk ?? 0}
-                  href="/admin/interventions"
-                  tone={(atRisk ?? 0) > 0 ? "warn" : "default"}
-                  hint="Open flags"
+                  label="Overdue"
+                  value={overdue}
+                  href="/admin/assignments"
+                  tone={overdue > 0 ? "warn" : "default"}
+                  hint="Assignments not in"
                 />
               )}
               {seeRevenue && (

@@ -70,7 +70,7 @@ export type FulfillmentResult = {
   receiptUrl: string | null;
   /** What Stripe actually charged, in cents. */
   amountCents: number | null;
-  /** Human-readable line item ("Fine: late check-in", a cohort name). */
+  /** Human-readable line item ("Fine: late deliverable", a cohort name). */
   description: string | null;
   /**
    * Why the ledger row couldn't be written, when it couldn't. Normally

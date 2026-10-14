@@ -118,28 +118,28 @@ const PUBLIC = [
 ];
 const STUDENT = [
   "/dashboard", "/dashboard/accepted", "/dashboard/ai", "/dashboard/announcements", "/dashboard/application",
-  "/dashboard/billing", "/dashboard/calls", "/dashboard/checkin", "/dashboard/community", "/dashboard/course",
+  "/dashboard/billing", "/dashboard/assignments", "/dashboard/calls", "/dashboard/community", "/dashboard/course",
   "/dashboard/discussions", "/dashboard/enrolled", "/dashboard/events", "/dashboard/files", "/dashboard/intros",
   "/dashboard/kickoff", "/dashboard/office-hours", "/dashboard/phone", "/dashboard/referrals", "/dashboard/resources",
   "/dashboard/scholarships", "/dashboard/settings", "/dashboard/team", "/messages", "/notifications",
-  "/app/home", "/app/events", "/app/course", "/app/checkin", "/app/announcements", "/app/more",
+  "/app/home", "/app/events", "/app/course", "/app/assignments", "/app/announcements", "/app/more",
 ];
 const MENTOR = [
-  "/mentor", "/mentor/calls", "/mentor/checkins", "/mentor/course", "/mentor/office-hours", "/mentor/resources",
+  "/mentor", "/mentor/assignments", "/mentor/calls", "/mentor/course", "/mentor/office-hours", "/mentor/resources",
   "/mentor/students", "/mentor/teams", "/messages",
 ];
 const INVESTOR = ["/investor", "/investor/calls", "/investor/demo-day", "/investor/interests", "/investor/intros", "/investor/teams", "/messages"];
 const ADMIN = [
-  "/admin", "/admin/ai-usage", "/admin/announcements", "/admin/application-questions", "/admin/applications",
+  "/admin", "/admin/ai-usage", "/admin/announcements", "/admin/application-questions", "/admin/applications", "/admin/assignments",
   "/admin/audit", "/admin/blog", "/admin/blog/new", "/admin/calls", "/admin/challenges", "/admin/challenges/new",
   "/admin/charges", "/admin/cohorts", "/admin/course", "/admin/course/analytics", "/admin/demo-day",
   "/admin/demo-day/rubric", "/admin/demo-day/tickets", "/admin/discord", "/admin/discussions", "/admin/email",
   "/admin/email/automations", "/admin/email/automations/new", "/admin/email/blast", "/admin/email/compose",
   "/admin/email/outbox", "/admin/email/phone-request", "/admin/email/settings", "/admin/email/templates",
-  "/admin/email/templates/new", "/admin/events", "/admin/flows", "/admin/flows/new", "/admin/interventions",
+  "/admin/email/templates/new", "/admin/events", "/admin/flows", "/admin/flows/new",
   "/admin/intros", "/admin/mentors", "/admin/mentors/match", "/admin/messages", "/admin/moderation",
   "/admin/pass-requests", "/admin/passes", "/admin/payments", "/admin/payments/acquisition", "/admin/pricing",
-  "/admin/progress", "/admin/pulse", "/admin/recovery", "/admin/referrals", "/admin/resources",
+  "/admin/progress", "/admin/recovery", "/admin/referrals", "/admin/resources",
   "/admin/resources/new", "/admin/roles", "/admin/roles/new", "/admin/scholarships", "/admin/scholarships/new",
   "/admin/scholarships/applications", "/admin/settings", "/admin/students", "/admin/students/new", "/admin/teams",
   "/admin/teams/new", "/admin/webinars", "/app/admin", "/app/admin/people", "/app/admin/review", "/app/admin/more",
@@ -372,7 +372,7 @@ async function main() {
       if (id) extraAdmin.push(`${route}${id}`);
     }
     const cohort = await firstId("cohorts");
-    if (cohort) extraAdmin.push(`/admin/cohorts/${cohort}/health`, `/admin/cohorts/${cohort}/kickoff`);
+    if (cohort) extraAdmin.push(`/admin/cohorts/${cohort}/kickoff`);
 
     // A conversation with the content that breaks layouts: a long message, an
     // unbroken URL, and a long name. Only if the DM tables exist.

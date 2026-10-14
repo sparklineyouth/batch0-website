@@ -61,7 +61,7 @@ export default async function MentorResourcesPage() {
         Materials curated for the cohort
       </h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Same library students see — useful when prepping a check-in reply
+        Same library students see — useful when reviewing an assignment
         or pointing a team at a template.
       </p>
 

@@ -40,6 +40,7 @@ export const PERMISSION_KEYS = [
   "teams.manage",
   "demoday.manage",
   "intros.manage",
+  "assignments.manage",
   // Content
   "blog.manage",
   "course.manage",
@@ -53,8 +54,6 @@ export const PERMISSION_KEYS = [
   "payments.view",
   "payments.manage",
   // Operations
-  "pulse.view",
-  "interventions.manage",
   "ai_usage.view",
   "email.view",
   "email.send",
@@ -180,6 +179,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         label: "Manage intros",
         description: "Broker and track investor introductions.",
       },
+      {
+        key: "assignments.manage",
+        label: "Manage assignments",
+        description:
+          "Create assignments for a cohort or specific students, see who has submitted, and review work.",
+      },
     ],
   },
   {
@@ -262,16 +267,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   {
     label: "Operations",
     permissions: [
-      {
-        key: "pulse.view",
-        label: "View Pulse",
-        description: "Read the cohort health dashboard.",
-      },
-      {
-        key: "interventions.manage",
-        label: "Manage at-risk students",
-        description: "Work the at-risk queue and log interventions.",
-      },
       {
         key: "ai_usage.view",
         label: "View AI usage",
@@ -459,7 +454,7 @@ const NON_ADMIN_PERMISSIONS = new Set<string>([
   // just a sidebar: canAccessAdmin is what makes /mentor/students program-wide
   // instead of cohort-scoped, and what turns /dashboard into a staff preview.
   // Ticking "Join any 1:1 call" for the mentor role must not also hand every
-  // mentor every student's check-ins and files. Its one surface, the list of
+  // mentor every student's assignments and files. Its one surface, the list of
   // everyone's calls at /admin/calls, is reached the way it always was —
   // calls.invite plus a role that already opens the admin area — which is
   // what the checkbox's description tells whoever grants it.
@@ -599,6 +594,7 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/teams", "teams.manage"],
   ["/admin/demo-day", "demoday.manage"],
   ["/admin/intros", "intros.manage"],
+  ["/admin/assignments", "assignments.manage"],
   ["/admin/calls", "calls.invite"],
   ["/admin/blog", "blog.manage"],
   ["/admin/course", "course.manage"],
@@ -610,8 +606,6 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   ["/admin/charges", "charges.manage"],
   ["/admin/payments", "payments.view"],
   ["/admin/pricing", "settings.manage"],
-  ["/admin/pulse", "pulse.view"],
-  ["/admin/interventions", "interventions.manage"],
   ["/admin/ai-usage", "ai_usage.view"],
   ["/admin/email/blast", "email.send"],
   ["/admin/email/phone-request", "email.send"],

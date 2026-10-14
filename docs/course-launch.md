@@ -65,7 +65,7 @@ The original Week 1 module ID is `8f59cc82-e318-4165-90a0-5901b3d1c036`; its fiv
 
 ## Instructional boundaries
 
-Curriculum dates are weekly work windows, not booked live appointments or graded submission deadlines. Students use Course, Resources, Files/team workspace, and Check-in. The Events page remains authoritative for actual session instructions.
+Curriculum dates are weekly work windows, not booked live appointments or graded submission deadlines. Students use Course, Resources, Files/team workspace, and Assignments. The Events page remains authoritative for actual session instructions.
 
 All worked customer examples and numerical examples are labeled hypothetical. Metrics in student projects must distinguish observed, estimated, and planned. Peer reviews happen independently between sessions, with a self-review alternative; customer research and user tests still require actual relevant people.
 

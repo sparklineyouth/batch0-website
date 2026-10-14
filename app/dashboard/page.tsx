@@ -394,7 +394,7 @@ export default async function DashboardHome() {
               { href: "/dashboard/announcements", label: "Announcements" },
               { href: "/dashboard/billing", label: "Billing" },
               { href: "/dashboard/team", label: "Team" },
-              { href: "/dashboard/checkin", label: "Check-in" },
+              { href: "/dashboard/assignments", label: "Assignments" },
               { href: "/dashboard/resources", label: "Resources" },
               { href: "/dashboard/settings", label: "Settings" },
             ]

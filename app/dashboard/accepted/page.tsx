@@ -160,7 +160,7 @@ export default async function AcceptedPage() {
           />
         </div>
         <p className="mt-6 text-sm text-ink-soft">
-          {started ? "The cohort has started. After enrollment, course materials, check-ins and scheduled live sessions are available in your dashboard." : `The full program opens at kickoff${startLabel ? ` on ${startLabel}` : ""}.`}
+          {started ? "The cohort has started. After enrollment, course materials, assignments and scheduled live sessions are available in your dashboard." : `The full program opens at kickoff${startLabel ? ` on ${startLabel}` : ""}.`}
         </p>
       </section>
 

@@ -67,7 +67,7 @@ const nyCalendar = new Intl.DateTimeFormat("en-US", {
  * the end of that Eastern day: storing the admin's date as UTC midnight
  * would expire the window most of a day early for an Eastern audience.
  * Resolved against the offset at that instant, so it stays correct on both
- * sides of a daylight-saving change (see midnight() in lib/revenue-periods).
+ * sides of a daylight-saving change (same technique as easternToUtc in lib/assignments).
  */
 export function easternEndOfDay(date: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;

@@ -520,27 +520,30 @@ export const SYSTEM_TEMPLATES: Seed[] = [
   // depends on a tag nobody fills is copy with a hole in it.
   // -------------------------------------------------------------------------
   {
-    key: "cohort.checkin_reminder",
-    name: "Weekly check-in reminder",
+    key: "assignment.due_soon",
+    name: "Assignment due soon",
     description:
-      "The nudge to post this week's check-in. Send it from the composer to the “Enrolled in a cohort” audience, or hang it off a weekly scheduled automation — Sunday evening or Monday morning, so it lands with the week. Discord already DMs students who haven't posted (the checkin-nudge cron); this is the email half, and it reaches the ones who never linked Discord.",
+      "Sent by the hourly assignment-reminders cron, once per assignment, to students who haven't handed it in with under 24 hours to go.",
     category: "lifecycle",
-    subject: "{{first_name}}, your weekly check-in is open",
-    preheader: "Three questions, two minutes — what you shipped, what's next, what's in the way.",
+    subject: "Due soon: {{assignment_title}}",
+    preheader: "Due {{due}}.",
     body_html:
-      "<h1>Two minutes, three questions.</h1>" +
+      "<h1>{{assignment_title}}</h1>" +
       "<p>Hi {{first_name}},</p>" +
-      "<p>This week's check-in is open. It's three boxes:</p>" +
-      "<ul>" +
-      "<li><strong>What did you accomplish this week?</strong> Whatever actually happened — shipped a page, ran four interviews, rewrote the pricing. Small counts.</li>" +
-      "<li><strong>What's next?</strong> The next concrete thing, not the plan for the whole company.</li>" +
-      "<li><strong>Any blockers?</strong> This is the one that matters most. Name what's in the way and someone can move it.</li>" +
-      "</ul>" +
-      "<p>A mentor reads every check-in and replies on it, so a blocker you write down on Monday usually has an answer attached to it by midweek. One you keep to yourself stays a blocker.</p>" +
-      "<p>If this week was a write-off, post that. “Nothing shipped, school ate the week, here's what I'm doing about it” is a real check-in and a useful one — the point is the honest streak, not a highlight reel.</p>",
-    cta_label: "Post this week's check-in",
-    cta_url: "{{site_url}}/dashboard/checkin",
-    variables: COMMON,
+      "<p>This is due <strong>{{due}}</strong> and we don't have it yet.</p>",
+    cta_label: "Open the assignment",
+    cta_url: "{{assignment_url}}",
+    variables: [
+      ...COMMON,
+      { key: "assignment_title", label: "Assignment", example: "Weekly update", required: true },
+      { key: "due", label: "Due", example: "Sun, Oct 18, 11:59 PM ET", required: true },
+      {
+        key: "assignment_url",
+        label: "Assignment link",
+        example: "https://batch0.org/dashboard/assignments/…",
+        required: true,
+      },
+    ],
   },
   {
     key: "cohort.next_steps",
@@ -557,10 +560,10 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       "<ol>" +
       "<li><strong>Work through this week's module.</strong> It's open in your course now, and everything else this week assumes it.</li>" +
       "<li><strong>Ship this week's deliverable.</strong> Rough and real beats polished and late — you'll get feedback on it, then you fix the top issue.</li>" +
-      "<li><strong>Post your check-in.</strong> What you shipped, what's next, what's in the way. A mentor replies on it.</li>" +
+      "<li><strong>Submit your weekly update.</strong> What you shipped, what's next, what's in the way. A mentor replies on it.</li>" +
       "<li><strong>Bring one question to office hours.</strong> Come with a specific one — “is this pricing insane” gets you further than “any advice?”</li>" +
       "</ol>" +
-      "<p>If you're behind, don't try to catch up on all four. Do the deliverable, post the check-in saying you're behind, and we'll sort the rest out with you.</p>" +
+      "<p>If you're behind, don't try to catch up on all four. Do the deliverable, say you're behind in your weekly update, and we'll sort the rest out with you.</p>" +
       "<p>Stuck on something that isn't in this list? Reply to this email, or put it in your cohort's Discord — someone else is almost certainly stuck on the same thing.</p>",
     cta_label: "Open your dashboard",
     cta_url: "{{site_url}}/dashboard",
@@ -570,7 +573,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
     key: "cohort.week3",
     name: "Week 3 — what to expect",
     description:
-      "The week-3 preview, for the “Enrolled in a cohort” audience — send it the weekend before week 3 opens. Deliberately written about the SHAPE of the week (module, deliverable, check-in, office hours, live session) rather than a sprint title, because the week-3 module is cohort-scoped content: open /admin/course, read what week 3 actually is for this cohort, and name it in the second paragraph before you send.",
+      "The week-3 preview, for the “Enrolled in a cohort” audience — send it the weekend before week 3 opens. Deliberately written about the SHAPE of the week (module, deliverable, weekly update, office hours, live session) rather than a sprint title, because the week-3 module is cohort-scoped content: open /admin/course, read what week 3 actually is for this cohort, and name it in the second paragraph before you send.",
     category: "broadcast",
     subject: "Week 3 starts Monday — here's what to expect",
     preheader: "The week the idea has to turn into a thing.",
@@ -583,10 +586,10 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       "<li><strong>The week 3 module</strong>, in your course — lessons plus the deliverable it's building toward.</li>" +
       "<li><strong>The live session</strong>, on Zoom at the usual time. Recorded, so a conflict isn't a catastrophe, but the live one is where you can interrupt.</li>" +
       "<li><strong>Office hours</strong>, for the specific thing you're stuck on.</li>" +
-      "<li><strong>Your check-in</strong>, same three questions as always.</li>" +
+      "<li><strong>Your weekly update</strong>, in Assignments.</li>" +
       "</ul>" +
-      "<p><strong>What's expected of you:</strong> 5–10 focused hours, the deliverable shipped by the end of the week, and a check-in that tells the truth about how it went.</p>" +
-      "<p><strong>What's normal right now, and isn't a problem:</strong> wanting to change your idea. Week 3 is when most founders look at what they validated and think “this isn't quite it.” That's the process working, not you failing — but bring it to office hours or your check-in before you rebuild everything on a hunch. A pivot you talked through on Tuesday costs you two days; one you discover on Sunday costs you the week.</p>" +
+      "<p><strong>What's expected of you:</strong> 5–10 focused hours, the deliverable shipped by the end of the week, and a weekly update that tells the truth about how it went.</p>" +
+      "<p><strong>What's normal right now, and isn't a problem:</strong> wanting to change your idea. Week 3 is when most founders look at what they validated and think “this isn't quite it.” That's the process working, not you failing — but bring it to office hours or your weekly update before you rebuild everything on a hunch. A pivot you talked through on Tuesday costs you two days; one you discover on Sunday costs you the week.</p>" +
       "<p>Come in with the module watched and one question you actually want answered. That's the whole prep.</p>",
     cta_label: "Open week 3",
     cta_url: "{{site_url}}/dashboard/course",

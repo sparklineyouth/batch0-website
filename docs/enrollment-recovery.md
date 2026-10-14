@@ -11,5 +11,3 @@ Migrations 0080–0083 were applied atomically on September 20, 2026 after a rol
 For a new recovery campaign, review each family and record its actual blocker. Never treat all accepted applicants as reserved seats. Use the parent guide and sample lesson, then a private payer invitation for interested families. Existing regional applicants should generate the invitation themselves when their application lacks stored pricing geography. The refund policy is unchanged.
 
 Validation: `npm test`, `npx tsc --noEmit`, `npm run build`, the actual SQL migration tests, and desktop/mobile browser checks. Run the admin Payments → Sync Stripe action after release to silently reconcile real captures, success timestamps and refund state. It reads Stripe and updates internal records; it creates no new charge or refund.
-
-Revenue periods use America/New_York calendar boundaries. A Sunday evening payment stays in the prior week even when its UTC timestamp is Monday. DST changes are covered; check-in week keys retain their original convention.

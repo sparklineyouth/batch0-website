@@ -50,7 +50,7 @@ export default async function DashboardLayout({
   }
 
   // Pre-enrollment students see a stripped-down nav (no Team, no Office
-  // hours, no Check-in, no Course/Resources). Until they're enrolled
+  // hours, no Assignments, no Course/Resources). Until they're enrolled
   // those routes either throw "not enrolled" or 404 — hiding the links
   // prevents dead ends in the sidebar. Accepted/enrolled students whose
   // cohort hasn't started yet (preCohort) get the personal pages +

@@ -126,8 +126,8 @@ export const DEFAULT_AGENDA: readonly KickoffAgendaItem[] = [
     body: "The full schedule appears: mentor office hours, workshops, and the road to Demo Day.",
   },
   {
-    title: "Weekly check-ins",
-    body: "Every week you report progress, blockers, and momentum. The first one lands in week one.",
+    title: "Assignments",
+    body: "A weekly update and the week's deliverables, in Assignments. The first is due in week one.",
   },
 ];
 
