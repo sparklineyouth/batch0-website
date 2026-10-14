@@ -7,15 +7,13 @@ import { getInvite } from "@/lib/calls";
 import { createRoom, dailyConfigured, mintToken, roomIsLive } from "@/lib/daily";
 import {
   callStaffIds,
-  canJoin,
   inviteEndsAt,
   isOnCall,
   isStaffOnCall,
   joinNames,
-  joinState,
   staffNames,
 } from "@/lib/live";
-import { callPhase, hostCallsHref } from "@/lib/call-lifecycle";
+import { callPhase, hostCallsHref, isRoomOpenPhase } from "@/lib/call-lifecycle";
 import { LiveRoom } from "@/app/dashboard/events/[id]/live/live-room";
 import { BuiltinCallRoom } from "./builtin-room";
 import { env } from "@/lib/env";
@@ -62,14 +60,12 @@ export default async function CallLivePage(
       })
     : "/dashboard/calls";
 
-  // Every reason the door is shut, from the one rule the lists use
-  // (lib/call-lifecycle.ts), so this page and the card that linked here can
-  // never disagree about whether the call is still on.
-  const phase = callPhase(invite);
-  if (invite.status !== "accepted" || phase === "ended") {
+  // Every reason the door is shut, from the rule the lists use (no accept
+  // step: an invited call is joinable; the staff side opens an hour early).
+  const phase = callPhase(invite, new Date(), isStaff ? "staff" : "student");
+  if (!isRoomOpenPhase(phase)) {
+    const early = phase === "needs_answer" || phase === "upcoming";
     const why: Record<string, string> = {
-      needs_answer: "This call hasn't been accepted yet.",
-      expired: "This invite was never answered, and its time has passed.",
       ended: "This call has ended.",
       completed: "This call has ended.",
       declined: "This call was declined.",
@@ -78,7 +74,14 @@ export default async function CallLivePage(
     return (
       <Shell title={invite.topic || "1:1 call"}>
         <p className="text-sm text-ink-soft">
-          {why[phase] ?? "This call isn't open."}
+          {early ? (
+            <>
+              This opens {isStaff ? "an hour" : "15 minutes"} before it starts —{" "}
+              <LocalTime value={invite.startsAt} />.
+            </>
+          ) : (
+            why[phase] ?? "This call isn't open."
+          )}
         </p>
         <BackLink href={backHref} />
       </Shell>
@@ -86,18 +89,6 @@ export default async function CallLivePage(
   }
 
   const endsAt = inviteEndsAt(invite);
-  const state = joinState(invite.startsAt, endsAt);
-  if (!canJoin(state)) {
-    return (
-      <Shell title={invite.topic || "1:1 call"}>
-        <p className="text-sm text-ink-soft">
-          This opens 15 minutes before it starts —{" "}
-          <LocalTime value={invite.startsAt} />.
-        </p>
-        <BackLink href={backHref} />
-      </Shell>
-    );
-  }
 
   // Staff are meeting the student; the student is meeting the team.
   const callTitle =

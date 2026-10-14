@@ -74,7 +74,7 @@ This is not a greenfield feature. The repo already has most of the scaffolding:
 | Admin events UI | `app/admin/events/` | Full CRUD + Discord cross-post + email fan-out. `zoom_url` is a free-text field. |
 | Student events page | `app/dashboard/events/page.tsx` | Renders "Join Zoom" as an external `<a>`. |
 | Calendar export | `app/api/events/[id]/ics/route.ts` | Emits `URL:` from `zoom_url`. |
-| Office hours | `mentor_slots` + `mentor_bookings` (`0011_phase2_features.sql`) | **Student-initiated**: a mentor posts open slots, a student claims one. Also a free-text `zoom_url`. |
+| Office hours | `mentor_slots` + `mentor_bookings` (`0011_phase2_features.sql`) | Retired (0097): the pages are gone, the rows are read-only history. 1:1 calls and "Request a 1:1" replace them. |
 | Roles / permissions | `lib/permissions.ts`, `lib/roles.ts` | `events.manage` already exists. Roles are DB rows with a permission array. |
 | Notifications + email | `lib/notifications.ts`, `lib/email/templates.ts` | `Templates.eventReminder` already takes a `zoomUrl`. |
 
@@ -515,70 +515,10 @@ student side is always exactly one person.
     person's upstream grows with every face (see "Scale" in
     docs/batch0-live.md).
 
-#### Students asking the team for a 1:1
+#### Booking, requests and lifecycle
 
-Invites run staff→student. The other direction is `interview_requests`
-(migration 0061): **any enrolled student can ask the team for a 1:1 whenever
-they want**, and the team confirms a time. It began as a pre-kickoff
-"getting to know you" interview only, which left a student stuck in week 4
-with no way to ask for a call. The rule now lives in one tested place,
-`canRequestTeamCall` in `lib/call-lifecycle.ts`: enrolled and not staff, and
-the cohort phase deliberately doesn't matter.
-
-- **Asking.** The card (`components/interview-request-card.tsx`) is on
-  `/dashboard/calls`, the dashboard home, and `/dashboard/enrolled`. The
-  student offers a time, an optional second time, and a note. There's one open
-  request per student (`interview_requests_one_open_per_student`), so nobody
-  stacks asks on the team. After a call happens, the ask comes back ("Your last
-  call was…"); after one falls through, it says so.
-- **What kind.** `teamRequestKind` derives it from when the request was filed
-  against its cohort's start (New York dates). Before kickoff it's the
-  getting-to-know-you interview (topic "Getting to know you"); from kickoff day
-  on it's "1:1 with the batch0 team". Scholarship mentor calls ride the same
-  table and keep their own topic. No column stores the kind, so none of this
-  needed a migration.
-- **Confirming.** The queue on `/admin/calls` (admins are notified;
-  `calls.invite` authorizes). **Confirm** prefills the student's first
-  proposal that is still ahead. If the time is one they offered
-  (`confirmsProposal`, to the minute), the call is written as `accepted` and
-  they get `Templates.callConfirmed`, with nothing to answer. Any other time is
-  a normal invite (`invited` plus `Templates.callInvite`) for them to accept or
-  decline. The form says which before the click.
-- **Declining.** Tells the student and frees them to ask again with other
-  times.
-
-#### Lifecycle — what the clock does to a call
-
-`call_invites.status` records decisions; it does not record time passing.
-`lib/call-lifecycle.ts` derives a call's *phase* from status + `starts_at` +
-`duration_minutes`, using the same join window as the gate (`joinState`):
-
-| Phase | When |
-|---|---|
-| `needs_answer` | invited, window not yet closed |
-| `expired` | invited, window closed unanswered (derived — no status for it) |
-| `upcoming` / `joinable` / `live` | accepted: before the room opens / early window / after the start |
-| `ended` | accepted, window closed — what `completed` looks like before the sweep |
-| `completed` / `declined` / `cancelled` | the stored decision |
-
-Every list splits on it (Upcoming soonest-first, Past newest-first and folded),
-and the server actions enforce it: an expired invite cannot be accepted, and an
-accepted call that is over — or anything already cancelled/declined/completed —
-cannot be cancelled (which is what used to refund a scholarship credit twice).
-An invite that *expired* unanswered can still be **withdrawn** by its host
-(Withdraw on the Past card): nobody can decline it any more, and withdrawing is
-what hands back a scholarship credit spent at booking. No notification goes to
-the student for that — they never agreed to the call.
-`/api/cron/call-lifecycle` (every 15 min) stamps `completed` on accepted calls
-whose window has closed, and withdraws expired invites that hold a scholarship
-credit (refunding it once, for the rows that run actually changed). The End
-call button stamps `completed` for calls ended by hand — and is only offered
-once both people have been in the room and the start has come. Before that
-it would have closed the room on a latecomer and marked an interview done that
-never happened; the lone person gets Leave, and an early press that the server
-declines (`{ completed: false }`) is shown as leaving, not as the call ending.
-The interview card reads its request *through the call it booked*, so a
-cancelled call is no longer "Interview booked".
+Current behaviour (no accept step, Start call now, reschedule, Request a 1:1,
+windows and the sweep) is in [docs/calls.md](calls.md).
 
 #### Recording
 
@@ -673,5 +613,3 @@ Each step is shippable on its own.
   assumes coexist — `live_mode` defaults to `external`.)
 - Who can each role invite? (See scope note in 4d.)
 - Do webinars need recording from day one, or is live-only enough to start?
-- Should the existing office-hours `zoom_url` also become a hosted room? Same
-  primitive, small extra step — worth folding in once step 1 works.

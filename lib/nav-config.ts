@@ -35,7 +35,6 @@ import {
   Ticket,
   Flag,
   KeyRound,
-  Calendar as CalendarIcon,
   Radio,
   Video,
   Workflow,
@@ -90,11 +89,6 @@ export const STUDENT_NAV_GROUPS: NavGroup[] = [
       { href: "/dashboard/course", label: "Course", icon: PlayCircle },
       { href: "/dashboard/team", label: "Team", icon: Rocket },
       { href: "/dashboard/checkin", label: "Check-in", icon: CheckCircle },
-      {
-        href: "/dashboard/office-hours",
-        label: "Office hours",
-        icon: CalendarIcon,
-      },
       { href: "/dashboard/calls", label: "1:1 calls", icon: Video },
       { href: "/dashboard/events", label: "Events", icon: CalendarDays },
       { href: "/dashboard/resources", label: "Resources", icon: FolderArchive },
@@ -168,7 +162,6 @@ export const ENROLLED_ONLY_HREFS = new Set<string>([
   // applicant either way.
   "/dashboard/discussions",
   "/dashboard/checkin",
-  "/dashboard/office-hours",
   "/dashboard/events",
   "/dashboard/resources",
   "/dashboard/files",
@@ -561,11 +554,6 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
     label: "Sessions",
     items: [
       { href: "/mentor/checkins", label: "Check-ins", icon: CheckCircle },
-      {
-        href: "/mentor/office-hours",
-        label: "Office hours",
-        icon: CalendarIcon,
-      },
       { href: "/mentor/calls", label: "1:1 calls", icon: Video },
       { href: "/mentor/course", label: "Course", icon: BookOpen },
     ],

@@ -192,6 +192,21 @@ function alsoJoiningLine(names: readonly string[] | undefined): string {
   return `<p style="margin:12px 0">Also joining: <strong>${escape(joinNames(names))}</strong>.</p>`;
 }
 
+/** The room itself; it asks them to sign in and opens 15 minutes early. */
+function callJoinUrl(inviteId: string): string {
+  return `${env.siteUrl}/dashboard/calls/${encodeURIComponent(inviteId)}/live`;
+}
+
+/** "When: … · Add to calendar" for a 1:1 email. */
+function callWhenLine(startsAt: string, inviteId: string): string {
+  const ics = `${env.siteUrl}/api/calls/${encodeURIComponent(inviteId)}/ics`;
+  return `<p style="margin:12px 0">When: <strong>${escape(eventWhen(startsAt))}</strong> · <a href="${ics}" style="color:#ffbb00">Add to calendar</a></p>`;
+}
+
+function callFooter(): string {
+  return `<p style="color:#8b949e;font-size:13px">Can't make it? Decline from <a href="${env.siteUrl}/dashboard/calls" style="color:#8b949e">your 1:1 calls</a>.</p>`;
+}
+
 export const Templates = {
   /**
    * Admin-composed blast email (the /admin/email/blast composer). Body
@@ -726,72 +741,57 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }),
 
   /**
-   * A mentor, investor, or admin has proposed a 1:1.
-   *
-   * The time is rendered in UTC with the zone named, because this is sent
-   * server-side and we don't know the recipient's timezone. The CTA carries
-   * the real answer: /dashboard/calls renders every time in their own zone.
+   * A 1:1 was booked with the student, or started now. No accept step: the
+   * button joins the call (the room opens 15 minutes early), the calendar link
+   * is the authenticated .ics, and declining happens on their calls page.
    */
   callInvite: (args: {
+    inviteId: string;
     hostName: string;
     startsAt: string;
     durationMinutes: number;
     topic: string | null;
     /** Co-hosts (migration 0092): the rest of the team who will be there. */
     alsoJoining?: readonly string[];
+    startingNow?: boolean;
   }) => ({
-    subject: `${args.hostName} invited you to a 1:1 call`,
+    subject: args.startingNow
+      ? `${args.hostName} is starting a 1:1 call with you now`
+      : `${args.hostName} booked a 1:1 call with you`,
     html: layout({
       preheader: args.topic
         ? `${args.topic} · ${args.durationMinutes} minutes`
         : `${args.durationMinutes} minutes`,
       body: `
-        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">A 1:1 call invite</h1>
-        <p><strong>${escape(args.hostName)}</strong> would like ${args.durationMinutes} minutes with you.</p>
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">${args.startingNow ? "Your 1:1 is starting" : "1:1 call booked"}</h1>
+        <p><strong>${escape(args.hostName)}</strong> ${args.startingNow ? "is waiting for you" : `booked ${args.durationMinutes} minutes with you`}.</p>
         ${alsoJoiningLine(args.alsoJoining)}
         ${args.topic ? `<p style="margin:12px 0">About: <strong>${escape(args.topic)}</strong></p>` : ""}
-        <p style="margin:12px 0">Proposed for <strong>${escape(
-          // Eastern, with the zone named — not toUTCString(), which read as
-          // Saturday evening for a call that was Saturday afternoon in New
-          // York. See formatEasternDateTime.
-          formatEasternDateTime(args.startsAt) ?? args.startsAt,
-        )}</strong>. Open your calls to see it in your own timezone.</p>
-        <p style="color:#8b949e;font-size:13px">You can accept or decline — declining is a normal answer, and the host is told either way.</p>
+        ${args.startingNow ? "" : callWhenLine(args.startsAt, args.inviteId)}
+        ${callFooter()}
       `,
-      cta: { url: `${env.siteUrl}/dashboard/calls`, label: "Accept or decline" },
+      cta: { url: callJoinUrl(args.inviteId), label: args.startingNow ? "Join now" : "Join the call" },
     }),
   }),
 
-  /**
-   * The team confirmed a 1:1 the student asked for, at a time the student
-   * offered. It is booked, not proposed: there is nothing to accept, so this
-   * is not `callInvite` with its "Accept or decline" button. When the team
-   * picks a different time, the student gets `callInvite` instead.
-   */
-  callConfirmed: (args: {
-    hostName: string;
+  /** A booked 1:1 moved, or its length changed. */
+  callUpdated: (args: {
+    inviteId: string;
+    changedBy: string;
     startsAt: string;
     durationMinutes: number;
     topic: string | null;
-    /** Co-hosts (migration 0092): the rest of the team who will be there. */
-    alsoJoining?: readonly string[];
   }) => ({
-    subject: `Your 1:1 call is confirmed`,
+    subject: "Your 1:1 call moved",
     html: layout({
-      preheader: args.topic
-        ? `${args.topic} · ${args.durationMinutes} minutes`
-        : `${args.durationMinutes} minutes`,
+      preheader: eventWhen(args.startsAt),
       body: `
-        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">You're booked</h1>
-        <p><strong>${escape(args.hostName)}</strong> confirmed the time you asked for: ${args.durationMinutes} minutes with the batch0 team.</p>
-        ${alsoJoiningLine(args.alsoJoining)}
-        ${args.topic ? `<p style="margin:12px 0">About: <strong>${escape(args.topic)}</strong></p>` : ""}
-        <p style="margin:12px 0">It's on <strong>${escape(
-          formatEasternDateTime(args.startsAt) ?? args.startsAt,
-        )}</strong>. Open your calls to see it in your own timezone.</p>
-        <p style="color:#8b949e;font-size:13px">Nothing to accept. Join from your 1:1 calls when it starts; the room opens a few minutes early. Can't make it anymore? Reply to this email and we'll find another time.</p>
+        <h1 style="margin:0 0 12px 0;font-size:20px;color:#fff">New time for your 1:1</h1>
+        <p><strong>${escape(args.changedBy)}</strong> changed your ${args.topic ? `call about <strong>${escape(args.topic)}</strong>` : "call"}. It now runs ${args.durationMinutes} minutes.</p>
+        ${callWhenLine(args.startsAt, args.inviteId)}
+        ${callFooter()}
       `,
-      cta: { url: `${env.siteUrl}/dashboard/calls`, label: "Open your 1:1 calls" },
+      cta: { url: callJoinUrl(args.inviteId), label: "Join the call" },
     }),
   }),
 

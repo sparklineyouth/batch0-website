@@ -65,12 +65,9 @@ export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
   // link to a page the student can already open.
   "/messages",
   "/dashboard/team",
-  // 1:1 calls stay open before kickoff. An enrolled student is invited to a
-  // getting-to-know-you interview in exactly this window — the request lives
-  // on this page, and a staff-sent invite has to have somewhere to land — so
-  // hiding the tab until day one was hiding the one thing pre-cohort calls
-  // are for. The page itself carries no enrollment gate (see the note in
-  // app/dashboard/calls/page.tsx).
+  // 1:1 calls stay open before kickoff: "Request a 1:1" lives on this page,
+  // and a call the team books has to have somewhere to land. The page itself
+  // carries no enrollment gate (see app/dashboard/calls/page.tsx).
   "/dashboard/calls",
   "/dashboard/billing",
   // Scholarships are applied for after acceptance and after enrolment, and

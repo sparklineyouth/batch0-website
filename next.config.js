@@ -53,6 +53,9 @@ const nextConfig = {
         destination: to,
         permanent: true,
       },
+      // Office hours were retired; old links land on 1:1 calls.
+      { source: "/dashboard/office-hours", destination: "/dashboard/calls", permanent: false },
+      { source: "/mentor/office-hours", destination: "/mentor/calls", permanent: false },
     ];
   },
   webpack: (config) => {

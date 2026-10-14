@@ -387,7 +387,7 @@ until <end>", and the leaver can Rejoin inside the window. **End call** is
 offered to anyone on the call once the other side has been in the room (for
 staff, the student — a co-host does not count) and the start has come; with
 co-hosts it is a two-step "End for everyone": `endCall` (app/calls/actions.ts) sets the invite to `completed` (only
-from `accepted`, so it is idempotent) and audits it; the side that pressed it
+from `invited`/`accepted`, so it is idempotent), audits it and publishes `room-changed` (`notifyCallChanged`); the side that pressed it
 sees "This call has ended", and everyone else's room closes to the same
 screen on its next status poll or heartbeat. The recording (one staff
 browser's: `electCallRecorder`) captures its final segment on the way out, and the upload finishes behind that screen;
@@ -396,10 +396,12 @@ the upload, bounded, and only if they are still on the room's page). `endCall`
 deliberately revalidates nothing: a revalidating action re-renders the current
 route, which for a completed call is a static "This call has ended" page, and
 that swapped the room out mid-upload.
-**Cancelling** a call that is in progress closes both rooms the same way. An
-accepted call whose window has closed counts as over everywhere — Past, no
-Join, no Cancel — even if nobody pressed End call (`callPhase` in
-`lib/call-lifecycle.ts`; the call-lifecycle sweep stamps it `completed`).
+**Cancelling** (or the student declining) a call that is in progress closes
+every room the same way. There is no accept step; a booked call stays open
+until End call or the hard close (end + 3 h), after which it counts as over
+everywhere even if nobody pressed End call (`callPhase` in
+`lib/call-lifecycle.ts`; the call-lifecycle sweep stamps it `completed`). See
+docs/calls.md.
 
 ---
 

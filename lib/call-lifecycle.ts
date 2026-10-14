@@ -1,37 +1,21 @@
 /**
- * Where a 1:1 call is in its life — derived, never stored.
+ * Where a 1:1 call is in its life — derived from its status and the clock,
+ * never stored.
  *
- * `call_invites.status` records the DECISIONS people made (invited, accepted,
- * declined, cancelled, completed). It does not record the passage of time, and
- * until this module existed nothing looked at the clock at all: an accepted
- * call from last week sat under "Upcoming" forever, a past invite could still
- * be accepted into a call nobody could ever join, and a host could "cancel" a
- * call that had already happened — notifying the student and refunding a
- * scholarship credit for time that was genuinely spent.
- *
- * So every surface that asks "what is this call right now" asks here, with
- * the status AND the clock, and gets one answer. The rule for "over" is the
- * same one the join gate already uses (`joinState` in lib/live.ts): a call is
- * ended once its join window has closed, JOIN_CLOSES_MINUTES_AFTER past the
- * scheduled end. Anything earlier than that and someone may still be in the
- * room, running over — calling it "done" then would pull the Join button out
- * from under them.
- *
- * `completed` is still written — by the End call button and by the
- * /api/cron/call-lifecycle sweep — so the database eventually agrees with
- * what this module derives. But nothing waits on that write: a call whose
- * window closed a minute ago reads as ended everywhere, whether or not the
- * cron has run yet.
+ * `call_invites.status` records decisions (invited, accepted, declined,
+ * cancelled, completed). There is no accept gate: an `invited` call is a
+ * booked call, joinable exactly like an `accepted` one (legacy rows), and the
+ * student may still decline it. The room's windows live here (callWindow) and
+ * the room's access gate (lib/live-access.ts) applies the same ones: the staff
+ * side may enter from start − 60 min, the student from start − 15 min, and the
+ * room stays open until End call, a cancel, or the hard close at end + 3 h.
  *
  * Pure, like lib/live.ts: the one import is that module, by relative path
- * with its extension, so `node --test` can run it with no transpile step.
+ * with its extension, so `node --test` runs it with no transpile step.
  */
 import {
   isOnCall,
-  joinState,
   normalizeCohostIds,
-  JOIN_OPENS_MINUTES_BEFORE,
-  JOIN_CLOSES_MINUTES_AFTER,
   MAX_CALL_COHOSTS,
   type CallInviteStatus,
   type CallParties,
@@ -39,84 +23,93 @@ import {
 
 const MINUTE = 60_000;
 
-/** The three facts every phase question needs. `CallInvite` satisfies it. */
+/** The room opens this early for the staff side (setting up, waiting for the student). */
+export const CALL_STAFF_OPENS_MINUTES_BEFORE = 60;
+/** The room opens this early for the student. */
+export const CALL_STUDENT_OPENS_MINUTES_BEFORE = 15;
+/** Past the scheduled end, the room stays open this long unless someone ends it. */
+export const CALL_HARD_CLOSE_MINUTES_AFTER = 180;
+
+/** The facts every phase question needs. `CallInvite` satisfies it. */
 export type CallTiming = {
   status: CallInviteStatus;
   startsAt: string;
   durationMinutes: number;
-  /**
-   * When the row last changed. Only `mayHaveCallRecording` reads it, to date
-   * a cancellation; everything else is a function of the status and the clock.
-   */
+  /** When the row last changed — dates a cancellation (mayHaveCallRecording). */
   updatedAt?: string;
 };
 
+/** Which side of the call is asking: their room opens at different times. */
+export type CallSide = "staff" | "student";
+
 export type CallPhase =
-  /** Invited, and the window has not closed — the invitee still owes an answer. */
+  /** Invited (not declined), room not open yet for this side. The student may still decline. */
   | "needs_answer"
-  /**
-   * Invited, and the window closed with nobody answering. Derived rather than
-   * stored: the status CHECK allows no such value, and "the time came and
-   * went" is a fact about the clock, not a decision anyone made.
-   */
-  | "expired"
-  /** Accepted; the room is not open yet. */
+  /** Accepted (legacy rows and old confirmations), room not open yet. */
   | "upcoming"
-  /** Accepted; the room is open (the early window) but the start has not come. */
+  /** Room open, before the scheduled start. */
   | "joinable"
-  /** Accepted; past the start and still inside the window. */
+  /** From the start until End call, a cancel, or the hard close. */
   | "live"
-  /**
-   * Accepted, and the window has closed. What `completed` looks like before
-   * the sweep has stamped it — to a person, the two are the same call.
-   */
+  /** Past the hard close and nobody pressed End call; the sweep stamps it completed. */
   | "ended"
   | "completed"
   | "declined"
   | "cancelled";
 
-/** When the call is scheduled to finish. The window closes 30 minutes later. */
+/** When the call is scheduled to finish. */
 export function callEndsAt(startsAt: string | Date, durationMinutes: number): Date {
   return new Date(new Date(startsAt).getTime() + durationMinutes * MINUTE);
 }
 
+/** The instants that bound one call's room, for one side, in epoch ms. */
+export function callWindow(
+  call: Pick<CallTiming, "startsAt" | "durationMinutes">,
+  side: CallSide = "student",
+): { opensAt: number; start: number; end: number; hardCloseAt: number } {
+  const start = new Date(call.startsAt).getTime();
+  const end = start + call.durationMinutes * MINUTE;
+  const early =
+    side === "staff" ? CALL_STAFF_OPENS_MINUTES_BEFORE : CALL_STUDENT_OPENS_MINUTES_BEFORE;
+  return {
+    opensAt: start - early * MINUTE,
+    start,
+    end,
+    hardCloseAt: end + CALL_HARD_CLOSE_MINUTES_AFTER * MINUTE,
+  };
+}
+
 /**
- * The one answer to "what is this call right now".
+ * The one answer to "what is this call right now", for one side.
  *
- * An unrecognised status is treated as cancelled — not joinable, not
- * answerable, not cancellable — because a value this build does not know about
- * is exactly the case where offering a button would be a guess.
+ * An unrecognised status reads as cancelled: offering a button for a value
+ * this build does not know would be a guess.
  */
-export function callPhase(call: CallTiming, now: Date = new Date()): CallPhase {
-  // Deliberately an if-chain, not `switch (call.status) { … case "accepted":
-  // break; default: return … }`. That shape — a case group that falls out of
-  // the switch next to a returning `default` — is exactly what the production
-  // minifier mis-compiled: it folded `default` into "cancelled" and dropped
-  // every statement after the switch, so each invited/accepted call came out
-  // with phase `undefined` (never past, never joinable, never answerable) while
-  // the unminified tests passed. Found by probing the deployed preview bundle.
+export function callPhase(
+  call: CallTiming,
+  now: Date = new Date(),
+  side: CallSide = "student",
+): CallPhase {
+  // An if-chain, not a switch: the production minifier once mis-compiled a
+  // switch with a falling-out case group here, and every call came out
+  // `undefined` while the unminified tests passed.
   const status = call.status;
   if (status === "cancelled" || status === "declined" || status === "completed") {
     return status;
   }
   if (status !== "invited" && status !== "accepted") return "cancelled";
 
-  const state = joinState(
-    call.startsAt,
-    callEndsAt(call.startsAt, call.durationMinutes),
-    now,
-  );
-  if (status === "invited") return state === "ended" ? "expired" : "needs_answer";
-  if (state === "early") return "upcoming";
-  if (state === "open") return "joinable";
-  if (state === "live") return "live";
-  return "ended";
+  const w = callWindow(call, side);
+  const t = now.getTime();
+  if (t > w.hardCloseAt) return "ended";
+  if (t >= w.start) return "live";
+  if (t >= w.opensAt) return "joinable";
+  return status === "invited" ? "needs_answer" : "upcoming";
 }
 
 /** Belongs under "Past": nothing left to do but look at it. */
 export function isPastPhase(phase: CallPhase): boolean {
   return (
-    phase === "expired" ||
     phase === "ended" ||
     phase === "completed" ||
     phase === "declined" ||
@@ -124,196 +117,119 @@ export function isPastPhase(phase: CallPhase): boolean {
   );
 }
 
-/** The invitee may still accept or decline. */
-export function canRespondToCall(call: CallTiming, now: Date = new Date()): boolean {
-  return callPhase(call, now) === "needs_answer";
+/** The room is open to this side right now. */
+export function isRoomOpenPhase(phase: CallPhase): boolean {
+  return phase === "joinable" || phase === "live";
+}
+
+/** Still ahead or running: everything a person can still act on. */
+function isActivePhase(phase: CallPhase): boolean {
+  return phase === "needs_answer" || phase === "upcoming" || isRoomOpenPhase(phase);
+}
+
+/** The student may still say they can't make it: any booked call that isn't over. */
+export function canDeclineCall(call: CallTiming, now: Date = new Date()): boolean {
+  return isActivePhase(callPhase(call, now));
 }
 
 /**
- * The staff side (the host or a co-host), or an admin, may still cancel.
- *
- * Right up to the window closing, including while the call is live — a host
- * waiting on a student who never arrived is exactly who needs this, and it is
- * what hands a scholarship credit back for a call that never happened. After
- * an ACCEPTED call's window closes, never: the call is history, and
- * cancelling history would tell a student that a meeting they already had was
- * called off.
- *
- * An invite that EXPIRED unanswered is the exception, and it is withdrawing
- * rather than cancelling: nobody ever agreed to that call, so nothing that
- * happened is being rewritten. It matters because of what the invite may be
- * holding. A scholarship call spends its credit when it is booked, and an
- * expired invite can no longer be declined (the student's refund path) or
- * cancelled by the old rule — so without this the credit was gone for good,
- * for a call nobody had. Withdrawing runs the same once-only refund a cancel
- * does. (The call-lifecycle sweep also withdraws scholarship invites on its
- * own; this is the host's way to tidy one up before it runs.)
+ * The staff side (or an admin) may still cancel — right up to the hard close,
+ * including while live: a host waiting on a no-show cancels, which is also
+ * what hands a scholarship credit back. Never once the call is over.
  */
 export function canCancelCall(call: CallTiming, now: Date = new Date()): boolean {
-  const phase = callPhase(call, now);
-  return (
-    phase === "needs_answer" ||
-    phase === "expired" ||
-    phase === "upcoming" ||
-    phase === "joinable" ||
-    phase === "live"
-  );
+  return isActivePhase(callPhase(call, now, "staff"));
 }
 
-/**
- * May people still be added to this call's staff side (addCallCohosts)?
- *
- * Exactly while the call can still happen: an invite waiting on its answer,
- * and an accepted call from booking until its window closes — upcoming,
- * joinable and live, because pulling a colleague into a call that is already
- * running is the case this exists for. Never once it is over (ended,
- * completed), and never when it is not going to happen (cancelled, declined,
- * or expired unanswered): adding someone then would tell them, and tell the
- * student, that a person is joining a meeting nobody will ever hold.
- *
- * canCancelCall's phases minus `expired`, which that one keeps only so a dead
- * invite's scholarship credit can be withdrawn — nobody can join it. In list
- * terms: every card under Upcoming, and none under Past. Built from callPhase
- * like everything else here, so the card that offers "Add people", the action
- * that adds them and the badge beside them cannot disagree about where the
- * call is.
- */
+/** The staff side may still move it, change its length or its topic. */
+export function canEditCall(call: CallTiming, now: Date = new Date()): boolean {
+  return isActivePhase(callPhase(call, now, "staff"));
+}
+
+/** People may be added exactly while the call can still happen. */
 export function canAddCallCohosts(call: CallTiming, now: Date = new Date()): boolean {
-  const phase = callPhase(call, now);
-  return (
-    phase === "needs_answer" ||
-    phase === "upcoming" ||
-    phase === "joinable" ||
-    phase === "live"
-  );
+  return isActivePhase(callPhase(call, now, "staff"));
 }
 
 /**
- * Pressing End call may mark this call completed.
- *
- * Accepted, and the scheduled start has arrived. Not before the start: two
- * people who joined ten minutes early and left again have not HAD the call,
- * and marking it completed would close a room that is meant to open for them
- * at the proper time. Past the window is fine — it is what the sweep would do
- * anyway, and refusing would only make the button look broken.
+ * End call may mark this call completed: booked, and the room has opened for
+ * the staff side. Past the hard close is fine too — it is what the sweep does.
  */
 export function canMarkCallCompleted(call: CallTiming, now: Date = new Date()): boolean {
-  return (
-    call.status === "accepted" &&
-    now.getTime() >= new Date(call.startsAt).getTime()
-  );
+  if (call.status !== "invited" && call.status !== "accepted") return false;
+  return now.getTime() >= callWindow(call, "staff").opensAt;
 }
 
-/**
- * How long after the join window closes a recording segment may still be
- * uploaded.
- *
- * The room closes itself when the window does (it polls for exactly that), and
- * closing FLUSHES the recorder — so the last segment of a call that ran right
- * to the wire is finished at the moment the window shuts and uploaded just
- * after it. Without a grace, the gate that refuses uploads for a closed call
- * refused that segment: up to two minutes, and always the end of the
- * conversation. Ten minutes covers a two-minute segment's upload on a slow
- * uplink (it finishes behind the room's ended screen) with room to spare, and
- * is still a door that shuts.
- */
+/** How long after the hard close a final recording part may still upload. */
 export const RECORDING_UPLOAD_GRACE_MINUTES = 10;
 
 /**
- * May the host upload a recording segment for this call right now?
- *
- * Accepted, or completed — when the OTHER person presses End call the row
- * flips to completed while the host's recorder is still flushing, and refusing
- * that upload would cut the end off every call the student closed. Or
- * cancelled, for the same reason: a host who cancels from another tab while
- * sitting in the room (waiting on a student who never came) has a recorder
- * that flushes when the room notices, and that last segment belongs with the
- * rest. From the moment the room opens until the grace after it closes; never
- * for a call next week or last week, whatever its status.
+ * May the staff side upload recording for this call right now? Booked,
+ * completed (the other person pressed End while the recorder flushed) or
+ * cancelled (cancelled from another tab while in the room), between the room
+ * opening and a short grace after the hard close.
  */
 export function canUploadCallRecording(
   call: CallTiming,
   now: Date = new Date(),
 ): boolean {
   if (
+    call.status !== "invited" &&
     call.status !== "accepted" &&
     call.status !== "completed" &&
     call.status !== "cancelled"
   ) {
     return false;
   }
-  const start = new Date(call.startsAt).getTime();
-  const closes =
-    callEndsAt(call.startsAt, call.durationMinutes).getTime() +
-    (JOIN_CLOSES_MINUTES_AFTER + RECORDING_UPLOAD_GRACE_MINUTES) * MINUTE;
+  const w = callWindow(call, "staff");
   const t = now.getTime();
-  return t >= start - JOIN_OPENS_MINUTES_BEFORE * MINUTE && t <= closes;
-}
-
-/** What /api/cron/call-lifecycle stamps `completed`: accepted, window closed. */
-export function shouldAutoComplete(call: CallTiming, now: Date = new Date()): boolean {
-  return call.status === "accepted" && callPhase(call, now) === "ended";
+  return t >= w.opensAt && t <= w.hardCloseAt + RECORDING_UPLOAD_GRACE_MINUTES * MINUTE;
 }
 
 /**
- * What /api/cron/call-lifecycle withdraws: an invite whose window closed with
- * nobody answering. The sweep narrows this further to invites that are holding
- * a scholarship credit (a fact on another table), because withdrawing one is
- * how that credit is handed back; an ordinary expired invite is left alone.
- */
-export function shouldAutoWithdraw(call: CallTiming, now: Date = new Date()): boolean {
-  return call.status === "invited" && callPhase(call, now) === "expired";
-}
-
-/**
- * Could this call have recording segments in storage?
- *
- * Accepted or completed: the host was recording from the moment the room
- * opened. Declined and never-answered invites never had a room.
- *
- * Cancelled, only if it was cancelled WHILE the room was open — a host giving
- * up on a no-show from the room has segments, and the room tells the host
- * they are "under Past", so the Past list has to look. The row's `updatedAt`
- * dates the cancel (nothing writes a cancelled row again). A call cancelled
- * days ahead, or an expired invite withdrawn after its window (by the sweep
- * or by hand), never had a room — and must not be asked about, because the
- * list pages only look up a capped number of calls, newest first, and every
- * one of these would push a genuinely recorded call past the cap and quietly
- * take its recording link off the page. With no timestamp to go on it falls
- * back to "could the room have opened yet", which errs toward looking.
+ * Could this call have a recording? Booked or completed once its room could
+ * have opened; cancelled only when it was cancelled while the room was open
+ * (`updatedAt` dates the cancel; without one, fall back to "could it have
+ * opened yet"). Declined calls never had a room.
  */
 export function mayHaveCallRecording(call: CallTiming, now: Date = new Date()): boolean {
-  if (call.status === "accepted" || call.status === "completed") return true;
+  if (call.status === "completed") return true;
+  const w = callWindow(call, "staff");
+  if (!(w.opensAt <= now.getTime())) return false;
+  if (call.status === "invited" || call.status === "accepted") return true;
   if (call.status !== "cancelled") return false;
-  const opens = new Date(call.startsAt).getTime() - JOIN_OPENS_MINUTES_BEFORE * MINUTE;
-  if (!(opens <= now.getTime())) return false;
   const at = call.updatedAt ? Date.parse(call.updatedAt) : NaN;
   if (!Number.isFinite(at)) return true;
-  const closes =
-    callEndsAt(call.startsAt, call.durationMinutes).getTime() +
-    JOIN_CLOSES_MINUTES_AFTER * MINUTE;
-  return at >= opens && at <= closes;
+  return at >= w.opensAt && at <= w.hardCloseAt;
 }
 
+/** What /api/cron/call-lifecycle stamps `completed`: booked, and past the hard close. */
+export function shouldAutoComplete(call: CallTiming, now: Date = new Date()): boolean {
+  return (
+    (call.status === "invited" || call.status === "accepted") &&
+    callPhase(call, now, "staff") === "ended"
+  );
+}
+
+/** How far back the sweep looks. Older rows are history it leaves alone. */
+export const AUTO_COMPLETE_LOOKBACK_DAYS = 7;
+
 /**
- * The earliest `starts_at` that can possibly have closed by `now`.
- *
- * The sweep's database prefilter: the shortest call the CHECK allows is five
- * minutes, so anything that started later than this cannot be over yet and is
- * not worth reading. `shouldAutoComplete` makes the exact decision per row —
- * this only keeps the candidate list short.
+ * The sweep's `starts_at` prefilter: [from, to]. `to` is the latest start that
+ * can be past its hard close by `now` (the shortest call the CHECK allows is
+ * five minutes); `shouldAutoComplete` decides each row exactly.
  */
-export function autoCompleteCutoff(now: Date = new Date()): Date {
-  return new Date(now.getTime() - (JOIN_CLOSES_MINUTES_AFTER + 5) * MINUTE);
+export function autoCompleteRange(now: Date = new Date()): { from: Date; to: Date } {
+  return {
+    from: new Date(now.getTime() - AUTO_COMPLETE_LOOKBACK_DAYS * 24 * 60 * MINUTE),
+    to: new Date(now.getTime() - (CALL_HARD_CLOSE_MINUTES_AFTER + MIN_CALL_MINUTES) * MINUTE),
+  };
 }
 
 /**
- * Split a list of calls into what is still ahead and what is over, each in
- * the order a person reads it.
- *
- * Upcoming is SOONEST first: the next call is the one you need, and the old
- * newest-first order put the call furthest in the future at the top of a list
- * headed "Upcoming". Past is newest first, like any history.
+ * Split a list of calls into what is still ahead and what is over: upcoming
+ * soonest first, past newest first. Split on the staff side's clock so a call
+ * never jumps between sections depending on who is looking.
  */
 export function splitCalls<T extends CallTiming>(
   calls: readonly T[],
@@ -322,7 +238,7 @@ export function splitCalls<T extends CallTiming>(
   const upcoming: T[] = [];
   const past: T[] = [];
   for (const c of calls) {
-    (isPastPhase(callPhase(c, now)) ? past : upcoming).push(c);
+    (isPastPhase(callPhase(c, now, "staff")) ? past : upcoming).push(c);
   }
   const t = (c: T) => new Date(c.startsAt).getTime();
   upcoming.sort((a, b) => t(a) - t(b));
@@ -330,213 +246,88 @@ export function splitCalls<T extends CallTiming>(
   return { upcoming, past };
 }
 
-/**
- * The word on a call's badge. A live call shows the pulsing dot instead, so
- * `live` is here only for completeness.
- *
- * `needs_answer` reads "invited" to both sides, which is the fact; the section
- * heading above it is what tells the student it is theirs to answer.
- */
+/** The word on a call's badge. A live call shows the pulsing dot instead. */
 export function callBadge(phase: CallPhase): string {
-  switch (phase) {
-    case "needs_answer":
-      return "invited";
-    case "upcoming":
-    case "joinable":
-      return "accepted";
-    case "live":
-      return "live";
-    case "ended":
-      return "ended";
-    case "expired":
-      return "expired";
-    case "completed":
-      return "completed";
-    case "declined":
-      return "declined";
-    case "cancelled":
-      return "cancelled";
+  if (phase === "needs_answer" || phase === "upcoming") return "scheduled";
+  if (phase === "joinable") return "open";
+  return phase;
+}
+
+/** Earliest a new call may start: a few minutes back, so "now" survives a slow click. */
+export const START_GRACE_MINUTES = 5;
+export const MIN_CALL_MINUTES = 5;
+export const MAX_CALL_MINUTES = 240;
+
+/** Why this start time can't be booked, or null. */
+export function callStartProblem(startsAt: Date, now: Date = new Date()): string | null {
+  if (Number.isNaN(startsAt.getTime())) return "That time isn't valid.";
+  if (startsAt.getTime() < now.getTime() - START_GRACE_MINUTES * MINUTE) {
+    return "That time is in the past.";
   }
+  return null;
+}
+
+/** Why this length can't be booked, or null. */
+export function callDurationProblem(minutes: number): string | null {
+  if (!Number.isFinite(minutes)) return "Pick how long the call runs.";
+  const m = Math.round(minutes);
+  if (m < MIN_CALL_MINUTES || m > MAX_CALL_MINUTES) {
+    return `Calls run between ${MIN_CALL_MINUTES} and ${MAX_CALL_MINUTES} minutes.`;
+  }
+  return null;
+}
+
+/** "Start call now" starts on the current minute. */
+export function startOfMinute(now: Date = new Date()): Date {
+  return new Date(Math.floor(now.getTime() / MINUTE) * MINUTE);
 }
 
 // ---------------------------------------------------------------------------
-// Getting-to-know-you interviews (interview_requests, migration 0061)
+// "Request a 1:1" (interview_requests, migration 0061)
 // ---------------------------------------------------------------------------
 
 /**
- * Where a student's interview request stands, read through the call it booked.
- *
- * A request's own status stops at `scheduled` — nothing moves it on, and the
- * CHECK has no value to move it to. What happens after booking lives on the
- * linked call_invites row, so this looks there:
- *
- *   requested     waiting on the team
- *   booked        the call exists and has not happened yet
- *   done          the call's time came with it accepted (or it was ended)
- *   fell_through  the call was cancelled, declined, deleted, or expired
- *                 unanswered — the request is NOT booked any more, whatever
- *                 its own status still says
- *
- * Null for a request that is declined or cancelled (history), or no request.
- */
-export type InterviewStage = "requested" | "booked" | "done" | "fell_through";
-
-export function interviewStage(
-  request: {
-    status: string;
-    call: CallTiming | null;
-  } | null,
-  now: Date = new Date(),
-): InterviewStage | null {
-  if (!request) return null;
-  if (request.status === "requested") return "requested";
-  if (request.status !== "scheduled") return null;
-  // `on delete set null` — a call deleted out from under the request.
-  if (!request.call) return "fell_through";
-  switch (callPhase(request.call, now)) {
-    case "needs_answer":
-    case "upcoming":
-    case "joinable":
-    case "live":
-      return "booked";
-    case "ended":
-    case "completed":
-      return "done";
-    default:
-      return "fell_through";
-  }
-}
-
-/**
- * What a student's request to the team is for.
- *
- * Any enrolled student can ask the team for a 1:1 whenever they want, and the
- * team confirms a time. One asked for before the student's cohort starts is
- * the getting-to-know-you interview. One asked for from kickoff on is an
- * ordinary 1:1 with the team: stuck on something, want feedback, need to talk.
- *
- * Derived from when the request was filed against the start of the cohort it
- * recorded, compared as New York calendar dates like every other cohort-date
- * check, so it needs no column of its own. A request with no cohort on it is
- * a plain call: nobody files a pre-kickoff interview for a cohort they have
- * not got.
- */
-export type TeamRequestKind = "interview" | "call";
-
-export function teamRequestKind(
-  createdAt: string,
-  cohortStartsOn: string | null,
-): TeamRequestKind {
-  if (!cohortStartsOn) return "call";
-  const filedOn = easternDate(createdAt);
-  if (!filedOn) return "call";
-  return filedOn < cohortStartsOn ? "interview" : "call";
-}
-
-/** The New York calendar date (YYYY-MM-DD) an instant falls on, or null. */
-function easternDate(iso: string): string | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
-
-/**
- * May this student ask the team for a 1:1 right now?
- *
- * Any enrolled student, whenever they want: before kickoff, during the
- * cohort, after it. `preCohort` is taken and ignored on purpose. It used to
- * be the gate (pre-kickoff interviews only), which left a student stuck in
- * week 4 with no way to ask for a call; the test pins that it no longer
- * matters. Staff previewing the dashboard read as enrolled but cannot file
- * one. The one limit is the database's: one open request at a time.
+ * Any enrolled student, whenever they want; staff previewing the dashboard
+ * read as enrolled but cannot file one. The database allows one open request.
  */
 export function canRequestTeamCall(access: {
   enrolled: boolean;
   staff: boolean;
-  preCohort: boolean;
 }): boolean {
   return access.enrolled && !access.staff;
 }
 
 /**
- * Is the team confirming a time the student already offered?
+ * What the student's request card shows on /dashboard/calls.
  *
- * Then the call is booked as accepted, with no second "accept" step for the
- * student. They proposed that exact time, so asking them to agree to it again
- * is a hoop that only loses calls. A different time is a new proposal, and
- * the student still gets to accept or decline it.
+ *   requested  waiting on the team, with Withdraw
+ *   hidden     its call is booked and still ahead (it is in the list), or
+ *              this person may not ask
+ *   compose    the ask
  *
- * Compared to the minute: both sides come from minute-precision
- * `datetime-local` inputs, and the form round-trips the student's ISO time
- * through the confirmer's own timezone, which cannot move the instant.
+ * A scheduled request whose call is over or fell through gives way to a
+ * fresh ask; the request's own status stays `scheduled` for ever, so it is
+ * read through its call.
  */
-export function confirmsProposal(
-  startsAt: string,
-  preferredAt: string | null,
-  altAt: string | null,
-): boolean {
-  const minute = (v: string | null) => {
-    if (!v) return null;
-    const ms = Date.parse(v);
-    return Number.isFinite(ms) ? Math.floor(ms / MINUTE) : null;
-  };
-  const chosen = minute(startsAt);
-  if (chosen === null) return false;
-  return chosen === minute(preferredAt) || chosen === minute(altAt);
-}
+export type RequestCardState = "compose" | "requested" | "hidden";
 
-/**
- * What the request card should show on a given surface.
- *
- * `canAsk` is whether this student may file a NEW request right now: any
- * enrolled student, at any point, one open request at a time. A request
- * already in flight (waiting, or booked and still ahead) shows regardless, so
- * a student never loses track of one they filed.
- *
- * Once the call has happened, a student who may ask gets the ask again rather
- * than a "done" card: asking whenever they want means asking again too. The
- * card says when their last call was. `hideDone` is for a surface where a
- * finished call is not news to someone who cannot ask.
- */
-export type InterviewCardState =
-  | "hidden"
-  | "compose"
-  | "requested"
-  | "booked"
-  | "done";
-
-export function interviewCardState(
-  stage: InterviewStage | null,
+export function requestCardState(
+  request: { status: string; call: CallTiming | null } | null,
   canAsk: boolean,
-  opts: { hideDone?: boolean } = {},
-): InterviewCardState {
-  switch (stage) {
-    case "requested":
-      return "requested";
-    case "booked":
-      return "booked";
-    case "done":
-      if (canAsk) return "compose";
-      return opts.hideDone ? "hidden" : "done";
-    case "fell_through":
-    case null:
-      return canAsk ? "compose" : "hidden";
+  now: Date = new Date(),
+): RequestCardState {
+  if (request?.status === "requested") return "requested";
+  if (
+    request?.status === "scheduled" &&
+    request.call &&
+    !isPastPhase(callPhase(request.call, now))
+  ) {
+    return "hidden";
   }
+  return canAsk ? "compose" : "hidden";
 }
 
-/**
- * Every time the student proposed has already gone by.
- *
- * The team's queue flags these: booking one at the student's proposed time is
- * refused (it is in the past), so the row needs a new time or a decline, and
- * it should say so rather than failing on Save. False when the student
- * proposed nothing at all — there is nothing to have passed.
- */
+/** Every time the student proposed has gone by (false when they proposed none). */
 export function proposalsAllPast(
   preferredAt: string | null,
   altAt: string | null,
@@ -549,12 +340,7 @@ export function proposalsAllPast(
   return proposed.every((v) => Date.parse(v) <= now.getTime());
 }
 
-/**
- * The time the booking form starts on: the student's first proposal that is
- * still ahead, or null (the caller falls back to "tomorrow, next round hour").
- * Never a past time — the server refuses those, so pre-filling one was a form
- * that failed on its most common click.
- */
+/** The booking form's starting time: the student's first proposal still ahead, or null. */
 export function bookingPrefill(
   preferredAt: string | null,
   altAt: string | null,
@@ -573,20 +359,13 @@ export function bookingPrefill(
 // ---------------------------------------------------------------------------
 
 /**
- * May this person watch the call back?
- *
- * The people who were on it — the student, the host and any co-hosts
- * (migration 0092) — and admins: the same people the table's RLS lets read
- * the row, for the same safeguarding reason: in a programme of minors someone
- * accountable must be able to answer "what was said". Not mentors or
- * investors in general, even though they hold `calls.invite`; that permission
- * is for booking your OWN calls.
+ * May this person watch the call back? The people on it and admins — the
+ * safeguarding rule. Holding `calls.invite` is for booking your OWN calls.
  */
 export function canViewCallRecording(args: {
   viewerId: string;
   hostId: string;
   inviteeId: string;
-  /** Co-hosts' ids. Omitted is a call with none. */
   cohostIds?: readonly string[];
   superAdmin: boolean;
 }): boolean {
@@ -604,22 +383,9 @@ export function canViewCallRecording(args: {
 }
 
 /**
- * What a request to add people to a call that already exists would actually
- * do (addCallCohosts): who in it is new to the call, and whether there is
- * room for them.
- *
- * `ids` is the request cleaned exactly as the invite form's is
- * (normalizeCohostIds: deduplicated, no host, no student), then without
- * anyone who is already a co-host. Naming someone already on the call is a
- * picker that stayed open while somebody else added them — not a mistake
- * worth refusing — so they are skipped, and a request with nobody new in it
- * adds nobody.
- *
- * `room` is how many more the staff side can take, counted against the
- * call's TOTAL. MAX_CALL_COHOSTS is about how many video streams the mesh
- * carries, and a cap checked per request would let anyone walk past it two
- * people at a time. A stray co-host row naming the host or the student is
- * not counted (cohostsFromRow ignores one too — it is not another person).
+ * What adding people to an existing call would do: who in the request is new
+ * (cleaned like the invite form's, minus anyone already a co-host), and
+ * whether they fit under MAX_CALL_COHOSTS counted on the call's TOTAL.
  */
 export function cohostsToAdd(
   requested: readonly unknown[] | null | undefined,
@@ -637,12 +403,7 @@ export function cohostsToAdd(
   return { ids, room, fits: ids.length <= room };
 }
 
-/**
- * Where a HOST's — or a co-host's — calls list lives. The room is shared by
- * everyone on the call (/dashboard/calls/<id>/live), but "back" for a mentor
- * is /mentor/calls — /dashboard/calls is the student's inbox and would show
- * them an empty page.
- */
+/** A staff member's own calls list — where "back" and their notifications go. */
 export function hostCallsHref(caps: {
   superAdmin: boolean;
   mentorPanel: boolean;
@@ -661,15 +422,9 @@ export function hostCallsHref(caps: {
 // ---------------------------------------------------------------------------
 
 /**
- * "Saturday, September 19, 2026 at 5:30 PM EDT".
- *
- * Email cannot know the reader's zone, and the invite used to print
- * `toUTCString()` — "Sat, 19 Sep 2026 21:30:00 GMT" — which for a student in
- * New York is Saturday EVENING, and for one in California is a time they have
- * to do arithmetic on. Eastern with the abbreviation named, like every other
- * human-facing date on the site (lib/promo.ts, lib/offer-format.ts); the zone
- * is spelled out so a reader elsewhere is not left guessing, and the .ics
- * attachment still carries the exact UTC instant for their calendar.
+ * "Saturday, September 19, 2026 at 5:30 PM EDT". Email can't know the
+ * reader's zone, so Eastern with the zone named; the .ics link carries the
+ * exact instant.
  */
 export function formatEasternDateTime(iso: string | Date): string | null {
   const d = new Date(iso);

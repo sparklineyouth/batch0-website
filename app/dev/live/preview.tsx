@@ -4,7 +4,7 @@ import { PreJoin } from "@/components/live/pre-join";
 import { CallStage } from "@/components/live/call-stage";
 import { EventCard } from "@/components/live/event-card";
 import { InviteForm } from "@/components/live/invite-form";
-import { CallSections, InviteList } from "@/components/live/invite-card";
+import { CallSections } from "@/components/live/invite-card";
 import { WebinarsManager } from "@/app/admin/webinars/webinars-manager";
 import type { CallInvite, LiveEvent, LiveRole } from "@/lib/live";
 import { Button } from "@/components/ui/button";
@@ -140,8 +140,9 @@ export function LivePreview() {
 
           {tab === "invite" && (
             <div className="max-w-xl">
-              <SectionLabel>Invite a student to a 1:1</SectionLabel>
+              <SectionLabel>Schedule a 1:1</SectionLabel>
               <InviteForm
+                mode="schedule"
                 students={mocks.students}
                 staff={mocks.staff}
                 onSubmit={(d) =>
@@ -185,8 +186,7 @@ export function LivePreview() {
                   invites={mocks.invites}
                   perspective="host"
                   now={mocks.now}
-                  recordings={mocks.recordings}
-                  emptyMessage="You haven't invited anyone yet."
+                  emptyMessage="No calls yet."
                   onCancel={(id) => alert(`Would cancel ${id}`)}
                 />
               </div>
@@ -194,12 +194,11 @@ export function LivePreview() {
                 <SectionLabel>
                   What a student sees — invites they received
                 </SectionLabel>
-                <InviteList
+                <CallSections
                   invites={mocks.invites}
                   perspective="invitee"
-                  recordings={mocks.recordings}
-                  emptyMessage="No call invites right now."
-                  onAccept={(id) => alert(`Would accept ${id}`)}
+                  now={mocks.now}
+                  emptyMessage="No calls booked."
                   onDecline={(id) => alert(`Would decline ${id}`)}
                 />
               </div>
@@ -211,8 +210,7 @@ export function LivePreview() {
                   invites={mocks.invites}
                   perspective="observer"
                   now={mocks.now}
-                  recordings={mocks.recordings}
-                  emptyMessage="Nobody else has booked a 1:1 yet."
+                  emptyMessage="Nothing coming up."
                 />
               </div>
             </div>
@@ -241,7 +239,6 @@ type Mocks = {
   invites: CallInvite[];
   /** Build time, standing in for the server's render time. */
   now: string;
-  recordings: Record<string, number>;
   students: Parameters<typeof InviteForm>[0]["students"];
   staff: Parameters<typeof InviteForm>[0]["students"];
   webinarParticipants: Parameters<typeof CallStage>[0]["participants"];
@@ -267,9 +264,6 @@ function buildMocks(): Mocks {
 
   return {
     now: new Date().toISOString(),
-    // Only past calls carry a recording — the dev room never uploads, so
-    // these links 404 here; they are for the layout.
-    recordings: { "i-ended": 3, "i-completed": 1 },
     events: [
       {
         ...baseEvent,

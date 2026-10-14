@@ -3,51 +3,34 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getActionError } from "@/lib/action-error";
-import {
-  InviteForm,
-  type InviteDraft,
-  type InviteeOption,
-} from "@/components/live/invite-form";
+import { InviteForm, type InviteDraft, type InviteeOption } from "@/components/live/invite-form";
 import { CallSections } from "@/components/live/invite-card";
 import { createInvite, cancelInvite } from "@/app/calls/actions";
 import type { CallInvite } from "@/lib/live";
-import { Plus } from "lucide-react";
+import { CalendarPlus, Video } from "lucide-react";
 
 /**
- * The staff side of 1:1 calls — calls this person sent, and calls they were
- * added to as a co-host — shared by /mentor/calls, /investor/calls and
- * /admin/calls.
- *
- * One component rather than three near-copies: the three panels differ only
- * in their surrounding layout and in whose invites they list, both of which
- * are decided by the server page that renders this. Behaviour that must be
- * identical everywhere — what the form validates, what cancelling does, who
- * can be added to a call already booked — has exactly one implementation.
+ * The staff side of 1:1 calls — calls this person runs (as host or co-host) —
+ * shared by /mentor/calls, /investor/calls and /admin/calls. "Start call now"
+ * books it on the current minute and takes the host straight into the room.
  */
 export function CallsPanel({
   invites,
   students,
   staff = [],
   now,
-  recordings,
-  emptyMessage = "You haven't invited anyone yet.",
+  emptyMessage = "No calls yet.",
 }: {
   invites: CallInvite[];
   students: InviteeOption[];
-  /**
-   * Admins, mentors and investors who can be added as co-hosts (not the
-   * viewer): on a new invite, and with Add people on any call listed here
-   * that can still happen. Each card leaves out whoever is already on it.
-   */
+  /** The team without the viewer: co-hosts on a new call, and Add people. */
   staff?: InviteeOption[];
-  /** The server's render time (ISO) — the clock the Upcoming/Past split starts on. */
+  /** The server's render time (ISO). */
   now: string;
-  /** inviteId → recorded parts, for this person's own past calls. */
-  recordings?: Record<string, number>;
   emptyMessage?: string;
 }) {
   const router = useRouter();
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState<"now" | "schedule" | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
 
@@ -55,14 +38,16 @@ export function CallsPanel({
     setError(undefined);
     start(async () => {
       try {
-        // Refusals come back as a result, with the sentence intact — see
-        // createInvite.
         const result = await createInvite(draft);
         if (!result.ok) {
           setError(result.error);
           return;
         }
-        setComposing(false);
+        if (draft.startNow && result.data) {
+          router.push(`/dashboard/calls/${result.data.id}/live`);
+          return;
+        }
+        setComposing(null);
         router.refresh();
       } catch (err: any) {
         setError(getActionError(err));
@@ -71,10 +56,15 @@ export function CallsPanel({
   }
 
   function cancel(id: string) {
+    if (!window.confirm("Cancel this call? The student is told.")) return;
     setError(undefined);
     start(async () => {
       try {
-        await cancelInvite(id);
+        const result = await cancelInvite(id);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         router.refresh();
       } catch (err: any) {
         setError(getActionError(err));
@@ -86,13 +76,18 @@ export function CallsPanel({
     return (
       <div>
         <h2 className="mb-4 text-sm font-semibold text-ink">
-          Invite a student to a 1:1
+          {composing === "now" ? "Start a call now" : "Schedule a call"}
         </h2>
         <InviteForm
+          key={composing}
+          mode={composing}
           students={students}
           staff={staff}
           onSubmit={submit}
-          onCancel={() => setComposing(false)}
+          onCancel={() => {
+            setError(undefined);
+            setComposing(null);
+          }}
           pending={pending}
           error={error}
         />
@@ -102,29 +97,27 @@ export function CallsPanel({
 
   return (
     <div>
-      <div className="mb-5 flex justify-end">
-        <Button onClick={() => setComposing(true)}>
-          <Plus className="h-4 w-4" /> Invite a student
+      <div className="mb-5 flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" onClick={() => setComposing("schedule")}>
+          <CalendarPlus className="h-4 w-4" /> Schedule
+        </Button>
+        <Button onClick={() => setComposing("now")}>
+          <Video className="h-4 w-4" /> Start call now
         </Button>
       </div>
 
-      {/* Add people runs from the card itself (components/live/add-to-call.tsx),
-          with its own pending state and its error on that card: this panel's
-          one error line, below, could not say which call a refusal was for. */}
       <CallSections
         invites={invites}
         perspective="host"
         now={now}
-        recordings={recordings}
+        showRecording
         emptyMessage={emptyMessage}
         onCancel={cancel}
         pending={pending}
         staff={staff}
       />
 
-      {error && (
-        <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>
-      )}
+      {error && <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>}
     </div>
   );
 }

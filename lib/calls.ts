@@ -21,11 +21,8 @@ import {
  * table; these filters are what make the backstop never the thing that saves
  * us.
  *
- * These return calls in storage order (newest start first) and no more. What
- * a call IS right now — upcoming, live, over — depends on the clock as much as
- * on `status`, and is decided by lib/call-lifecycle.ts at the point of display
- * (`splitCalls` re-sorts Upcoming soonest-first). Filtering by time here would
- * be a second copy of that rule, frozen at query time.
+ * These return calls in storage order (newest start first). What a call IS
+ * right now is decided by lib/call-lifecycle.ts at the point of display.
  *
  * ---------------------------------------------------------------------------
  * Co-hosts, and a database that is a deploy behind
@@ -48,7 +45,7 @@ import {
 // and profiles many-to-many as well, and an unhinted embed is a guess.
 const BASE_SELECT = `
   id, host_id, invitee_id, starts_at, duration_minutes, topic, status,
-  daily_room_name, daily_room_url, recap, created_at, updated_at,
+  created_at, updated_at,
   host:profiles!call_invites_host_id_fkey(full_name, role),
   invitee:profiles!call_invites_invitee_id_fkey(full_name)
 `;
@@ -177,8 +174,9 @@ function toInvite(row: any): CallInvite {
     topic: row.topic,
     status: row.status as CallInviteStatus,
     updatedAt: row.updated_at ?? undefined,
-    roomName: row.daily_room_name,
-    roomUrl: row.daily_room_url,
+    // batch0 Live needs no provider-side room.
+    roomName: null,
+    roomUrl: null,
   };
 }
 
@@ -310,14 +308,9 @@ export type InviteeOption = {
 };
 
 /**
- * Who can be invited.
- *
- * Every student, deliberately — not just a mentor's assigned students or an
- * investor's portfolio. That was a product decision, and it has a real edge:
- * an investor can reach a student they have no prior relationship with. The
- * audit log and the invite's own visibility to admins are what cover that,
- * rather than the picker being narrow. If it ever needs tightening, this
- * function is the one place to do it.
+ * Who can be invited: every student, deliberately (a product decision). The
+ * audit log and the admins' view of every call cover the edge that an
+ * investor can reach a student they don't know; tighten here if ever needed.
  */
 export async function listInvitableStudents(): Promise<InviteeOption[]> {
   const admin = createAdminClient();

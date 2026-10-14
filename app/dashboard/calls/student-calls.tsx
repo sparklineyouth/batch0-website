@@ -1,79 +1,48 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { InviteList, PastCalls, useNow } from "@/components/live/invite-card";
-import { InterviewRequestCard } from "@/components/interview-request-card";
+import { CallSections } from "@/components/live/invite-card";
+import {
+  InterviewRequestCard,
+  type ScholarshipCallState,
+} from "@/components/interview-request-card";
 import { getActionError } from "@/lib/action-error";
-import { respondToInvite } from "@/app/calls/actions";
+import { declineInvite } from "@/app/calls/actions";
 import type { CallInvite } from "@/lib/live";
 import type { InterviewRequest } from "@/lib/interview-requests";
-import {
-  callPhase,
-  splitCalls,
-  type InterviewCardState,
-  type InterviewStage,
-  type TeamRequestKind,
-} from "@/lib/call-lifecycle";
-import {
-  ScholarshipCallCard,
-  type ScholarshipCallState,
-} from "@/components/scholarship-call-card";
+import type { RequestCardState } from "@/lib/call-lifecycle";
 
-/**
- * The student's side: invites addressed to them.
- *
- * Split into "needs an answer", what's coming up, and the past, because the
- * only thing this page is really for is the first group — an unanswered invite
- * is a task, and burying it in a list of past calls is how it gets missed.
- *
- * The split is by PHASE (lib/call-lifecycle.ts), not status. It used to be
- * status alone, so an accepted call stayed under "Upcoming" for ever after it
- * happened — the one call in production that week was a week old — and an
- * invite whose time had passed still sat under "Needs an answer" with an
- * Accept button that led to a room that would never open.
- */
+/** The student's calls: the request card, what's coming up, and the past. */
 export function StudentCalls({
   invites,
-  now: serverNow,
-  recordings,
-  interviewRequest = null,
-  interviewState = "hidden",
-  interviewKind = "call",
-  interviewLastStage = null,
-  scholarshipCall = null,
+  now,
+  request,
+  requestState,
+  requestIsScholarship,
+  scholarship,
 }: {
   invites: CallInvite[];
-  /** The server's render time (ISO). See `useNow`. */
+  /** The server's render time (ISO). */
   now: string;
-  /** inviteId → recorded parts, for this student's own past calls. */
-  recordings?: Record<string, number>;
-  interviewRequest?: InterviewRequest | null;
-  /** Decided on the server from the request AND its call — see the page. */
-  interviewState?: InterviewCardState;
-  /** What a new request would be: an interview before kickoff, a call after. */
-  interviewKind?: TeamRequestKind;
-  /** Where the last request ended up, so a fresh ask can say why. */
-  interviewLastStage?: InterviewStage | null;
-  /** Set only when the student holds a learner's scholarship. */
-  scholarshipCall?: ScholarshipCallState | null;
+  request: InterviewRequest | null;
+  requestState: RequestCardState;
+  requestIsScholarship: boolean;
+  scholarship: ScholarshipCallState | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
 
-  const { now: clock } = useNow(serverNow);
-  const now = clock ?? new Date(serverNow);
-  const { upcoming, past } = splitCalls(invites, now);
-  const pendingInvites = upcoming.filter(
-    (i) => callPhase(i, now) === "needs_answer",
-  );
-  const booked = upcoming.filter((i) => callPhase(i, now) !== "needs_answer");
-
-  function respond(id: string, response: "accepted" | "declined") {
+  function decline(id: string) {
+    if (!window.confirm("Decline this call? They're told you can't make it.")) return;
     setError(undefined);
     start(async () => {
       try {
-        await respondToInvite(id, response);
+        const result = await declineInvite(id);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         router.refresh();
       } catch (err: any) {
         setError(getActionError(err));
@@ -83,80 +52,35 @@ export function StudentCalls({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">
-        1:1 calls
-      </h1>
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em] text-ink">1:1 calls</h1>
       <p className="mt-1 text-sm text-ink-faint">
-        Private video calls with mentors, investors, and the batch0 team. They
-        happen right here — nothing to install. Calls are recorded so you can
-        watch them back.
+        Private video calls with mentors, investors and the batch0 team. Recorded.
       </p>
 
-      {error && (
-        <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>
-      )}
-
-      {scholarshipCall && (
-        <div className="mt-8">
-          <ScholarshipCallCard state={scholarshipCall} />
-        </div>
-      )}
-
-      {interviewState !== "hidden" && (
+      {requestState !== "hidden" && (
         <div className="mt-8">
           <InterviewRequestCard
-            request={interviewRequest}
-            state={interviewState}
-            composeKind={interviewKind}
-            lastStage={interviewLastStage}
+            request={request}
+            state={requestState}
+            scholarship={scholarship}
+            requestIsScholarship={requestIsScholarship}
           />
         </div>
       )}
 
-      {pendingInvites.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
-            Needs an answer
-          </h2>
-          <InviteList
-            invites={pendingInvites}
-            perspective="invitee"
-            now={clock}
-            emptyMessage=""
-            onAccept={(id) => respond(id, "accepted")}
-            onDecline={(id) => respond(id, "declined")}
-            pending={pending}
-          />
-        </section>
-      )}
+      {error && <p className="mt-4 text-xs text-red-700 dark:text-red-400">{error}</p>}
 
       <section className="mt-8">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
-          Upcoming
-        </h2>
-        <InviteList
-          invites={booked}
+        <CallSections
+          invites={invites}
           perspective="invitee"
-          now={clock}
-          emptyMessage={
-            interviewState === "hidden"
-              ? "No calls booked. Mentors and investors can invite you here."
-              : "No calls booked yet. Ask the team for one above, or answer a mentor's or investor's invite here."
-          }
+          now={now}
+          showRecording
+          emptyMessage="No calls booked."
+          onDecline={decline}
           pending={pending}
         />
       </section>
-
-      <PastCalls count={past.length}>
-        <InviteList
-          invites={past}
-          perspective="invitee"
-          now={clock}
-          recordings={recordings}
-          emptyMessage=""
-          pending={pending}
-        />
-      </PastCalls>
     </div>
   );
 }

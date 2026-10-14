@@ -1,44 +1,46 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  autoCompleteCutoff,
+  autoCompleteRange,
+  AUTO_COMPLETE_LOOKBACK_DAYS,
   bookingPrefill,
+  CALL_HARD_CLOSE_MINUTES_AFTER,
+  CALL_STAFF_OPENS_MINUTES_BEFORE,
+  CALL_STUDENT_OPENS_MINUTES_BEFORE,
   callBadge,
+  callDurationProblem,
   callEndsAt,
   callPhase,
+  callStartProblem,
+  callWindow,
   canAddCallCohosts,
   canCancelCall,
+  canDeclineCall,
+  canEditCall,
   canMarkCallCompleted,
-  canRespondToCall,
-  canUploadCallRecording,
   canRequestTeamCall,
+  canUploadCallRecording,
   canViewCallRecording,
   cohostsToAdd,
-  confirmsProposal,
   formatEasternDateTime,
   hostCallsHref,
-  interviewCardState,
-  interviewStage,
   isPastPhase,
+  isRoomOpenPhase,
   mayHaveCallRecording,
   proposalsAllPast,
   RECORDING_UPLOAD_GRACE_MINUTES,
+  requestCardState,
   shouldAutoComplete,
-  shouldAutoWithdraw,
   splitCalls,
-  teamRequestKind,
+  START_GRACE_MINUTES,
+  startOfMinute,
   type CallPhase,
   type CallTiming,
 } from "./call-lifecycle.ts";
-import {
-  JOIN_CLOSES_MINUTES_AFTER,
-  JOIN_OPENS_MINUTES_BEFORE,
-  MAX_CALL_COHOSTS,
-  type CallInviteStatus,
-} from "./live.ts";
+import { MAX_CALL_COHOSTS, type CallInviteStatus } from "./live.ts";
 
-// Run with `npm test`. Every assertion pins `now`, because the whole point of
-// this module is that the answer depends on the clock and nothing else.
+// Run with `npm test`. Every assertion pins `now`: the answer depends on the
+// clock and nothing else.
 
 const MINUTE = 60_000;
 const START = "2026-09-19T21:30:00.000Z";
@@ -53,45 +55,72 @@ function call(status: CallInviteStatus, over: Partial<CallTiming> = {}): CallTim
   return { status, startsAt: START, durationMinutes: DURATION, ...over };
 }
 
-// The last minute of the join window, and the first minute after it.
-const LAST_OPEN = DURATION + JOIN_CLOSES_MINUTES_AFTER;
+// The last minute the room is open, and the first minute after.
+const LAST_OPEN = DURATION + CALL_HARD_CLOSE_MINUTES_AFTER;
 const FIRST_CLOSED = LAST_OPEN + 1;
+const STUDENT_OPENS = -CALL_STUDENT_OPENS_MINUTES_BEFORE;
+const STAFF_OPENS = -CALL_STAFF_OPENS_MINUTES_BEFORE;
 
 // ---------------------------------------------------------------------------
 // callPhase
 // ---------------------------------------------------------------------------
 
-test("an accepted call walks upcoming → joinable → live → ended with the clock", () => {
-  const c = call("accepted");
-  assert.equal(callPhase(c, at(-JOIN_OPENS_MINUTES_BEFORE - 1)), "upcoming");
-  assert.equal(callPhase(c, at(-JOIN_OPENS_MINUTES_BEFORE)), "joinable");
+test("the windows match the room's access rules", () => {
+  assert.equal(CALL_STAFF_OPENS_MINUTES_BEFORE, 60);
+  assert.equal(CALL_STUDENT_OPENS_MINUTES_BEFORE, 15);
+  assert.equal(CALL_HARD_CLOSE_MINUTES_AFTER, 180);
+  const w = callWindow(call("invited"), "staff");
+  assert.equal(w.opensAt, at(-60).getTime());
+  assert.equal(w.end, at(DURATION).getTime());
+  assert.equal(w.hardCloseAt, at(DURATION + 180).getTime());
+  assert.equal(callWindow(call("invited")).opensAt, at(-15).getTime(), "student by default");
+});
+
+test("an invited call is joinable without anyone accepting it", () => {
+  const c = call("invited");
+  assert.equal(callPhase(c, at(STUDENT_OPENS - 1)), "needs_answer");
+  assert.equal(callPhase(c, at(STUDENT_OPENS)), "joinable");
   assert.equal(callPhase(c, at(-1)), "joinable");
+  assert.equal(callPhase(c, at(0)), "live");
+  assert.equal(isRoomOpenPhase(callPhase(c, at(5))), true);
+});
+
+test("an accepted (legacy) call walks the same windows", () => {
+  const c = call("accepted");
+  assert.equal(callPhase(c, at(STUDENT_OPENS - 1)), "upcoming");
+  assert.equal(callPhase(c, at(STUDENT_OPENS)), "joinable");
   assert.equal(callPhase(c, at(0)), "live");
   assert.equal(callPhase(c, at(LAST_OPEN)), "live");
   assert.equal(callPhase(c, at(FIRST_CLOSED)), "ended");
 });
 
-test("the production case: an accepted call from a week ago is ended, not upcoming", () => {
-  // 2026-09-19 21:30Z, 30 minutes, looked at on 2026-09-26.
-  const c = call("accepted");
-  assert.equal(callPhase(c, new Date("2026-09-26T15:30:00Z")), "ended");
-  assert.equal(isPastPhase("ended"), true);
+test("the staff side's room opens an hour early, the student's fifteen minutes", () => {
+  for (const status of ["invited", "accepted"] as const) {
+    const c = call(status);
+    assert.equal(isRoomOpenPhase(callPhase(c, at(STAFF_OPENS - 1), "staff")), false);
+    assert.equal(callPhase(c, at(STAFF_OPENS), "staff"), "joinable");
+    assert.equal(callPhase(c, at(-30), "staff"), "joinable");
+    assert.equal(isRoomOpenPhase(callPhase(c, at(-30), "student")), false);
+    assert.equal(callPhase(c, at(STUDENT_OPENS), "student"), "joinable");
+  }
 });
 
-test("an unanswered invite stays answerable until the window closes, then expires", () => {
+test("a call running over stays open until the hard close, not end + 30", () => {
   const c = call("invited");
-  assert.equal(callPhase(c, at(-60 * 24)), "needs_answer");
-  // Accepting five minutes in is still a call they can join.
-  assert.equal(callPhase(c, at(5)), "needs_answer");
-  assert.equal(callPhase(c, at(LAST_OPEN)), "needs_answer");
-  assert.equal(callPhase(c, at(FIRST_CLOSED)), "expired");
+  assert.equal(callPhase(c, at(DURATION + 31)), "live");
+  assert.equal(callPhase(c, at(DURATION + 120), "staff"), "live");
+  assert.equal(callPhase(c, at(LAST_OPEN)), "live");
+  assert.equal(callPhase(c, at(FIRST_CLOSED)), "ended");
+  assert.equal(callPhase(c, at(FIRST_CLOSED), "staff"), "ended", "both sides agree it is over");
 });
 
 test("decisions are final whatever the clock says", () => {
   for (const now of [at(-600), at(0), at(600)]) {
-    assert.equal(callPhase(call("declined"), now), "declined");
-    assert.equal(callPhase(call("cancelled"), now), "cancelled");
-    assert.equal(callPhase(call("completed"), now), "completed");
+    for (const side of ["staff", "student"] as const) {
+      assert.equal(callPhase(call("declined"), now, side), "declined");
+      assert.equal(callPhase(call("cancelled"), now, side), "cancelled");
+      assert.equal(callPhase(call("completed"), now, side), "completed");
+    }
   }
 });
 
@@ -99,242 +128,171 @@ test("an unrecognised status is treated as cancelled, never as joinable", () => 
   const weird = call("archived" as CallInviteStatus);
   assert.equal(callPhase(weird, at(0)), "cancelled");
   assert.equal(canCancelCall(weird, at(0)), false);
-  assert.equal(canRespondToCall(weird, at(-600)), false);
+  assert.equal(canDeclineCall(weird, at(-600)), false);
+  assert.equal(canMarkCallCompleted(weird, at(0)), false);
 });
 
-test("duration moves the end of the window", () => {
+test("duration moves the end and the hard close", () => {
   const long = call("accepted", { durationMinutes: 240 });
-  assert.equal(callPhase(long, at(240 + JOIN_CLOSES_MINUTES_AFTER)), "live");
-  assert.equal(callPhase(long, at(240 + JOIN_CLOSES_MINUTES_AFTER + 1)), "ended");
-  assert.equal(
-    callEndsAt(START, 45).toISOString(),
-    "2026-09-19T22:15:00.000Z",
-  );
+  assert.equal(callPhase(long, at(240 + CALL_HARD_CLOSE_MINUTES_AFTER)), "live");
+  assert.equal(callPhase(long, at(240 + CALL_HARD_CLOSE_MINUTES_AFTER + 1)), "ended");
+  assert.equal(callEndsAt(START, 45).toISOString(), "2026-09-19T22:15:00.000Z");
 });
 
 // ---------------------------------------------------------------------------
 // What each side may do
 // ---------------------------------------------------------------------------
 
-test("a past invite can no longer be accepted or declined", () => {
-  const c = call("invited");
-  assert.equal(canRespondToCall(c, at(-10)), true);
-  assert.equal(canRespondToCall(c, at(FIRST_CLOSED)), false);
-  assert.equal(canRespondToCall(call("accepted"), at(-600)), false);
-});
-
-test("an accepted call can be cancelled until its window closes, and never after", () => {
-  assert.equal(canCancelCall(call("invited"), at(-600)), true);
-  assert.equal(canCancelCall(call("accepted"), at(-600)), true);
-  assert.equal(canCancelCall(call("accepted"), at(10)), true, "a no-show can still be called off");
-  assert.equal(canCancelCall(call("accepted"), at(FIRST_CLOSED)), false);
-});
-
-test("an invite that expired unanswered can still be withdrawn, so its credit comes back", () => {
-  // Nobody can decline it any more and it never happened, so withdrawing is
-  // the only path left that hands a scholarship credit back.
-  assert.equal(callPhase(call("invited"), at(FIRST_CLOSED)), "expired");
-  assert.equal(canRespondToCall(call("invited"), at(FIRST_CLOSED)), false);
-  assert.equal(canCancelCall(call("invited"), at(FIRST_CLOSED)), true);
-  assert.equal(canCancelCall(call("invited"), at(FIRST_CLOSED + 60 * 24 * 30)), true);
-});
-
-test("cancelled, declined and completed calls can't be cancelled again (no second refund)", () => {
-  for (const s of ["cancelled", "declined", "completed"] as const) {
-    assert.equal(canCancelCall(call(s), at(-600)), false, s);
+test("the student may decline a booked call until the room closes", () => {
+  for (const status of ["invited", "accepted"] as const) {
+    const c = call(status);
+    assert.equal(canDeclineCall(c, at(-60 * 24)), true, status);
+    assert.equal(canDeclineCall(c, at(5)), true, "can't make it, even once it started");
+    assert.equal(canDeclineCall(c, at(FIRST_CLOSED)), false, status);
+  }
+  for (const s of ["declined", "cancelled", "completed"] as const) {
+    assert.equal(canDeclineCall(call(s), at(-600)), false, s);
   }
 });
 
-test("people can be added to a call exactly while it can still happen, phase by phase", () => {
-  const cases: [CallTiming, Date, CallPhase, boolean][] = [
-    [call("invited"), at(-60 * 24), "needs_answer", true],
-    // Past the start with the student yet to answer: accepting is still
-    // possible (see callPhase), so the team may still change who is coming.
-    [call("invited"), at(LAST_OPEN), "needs_answer", true],
-    [call("invited"), at(FIRST_CLOSED), "expired", false],
-    [call("accepted"), at(-60 * 24), "upcoming", true],
-    [call("accepted"), at(-JOIN_OPENS_MINUTES_BEFORE - 1), "upcoming", true],
-    [call("accepted"), at(-JOIN_OPENS_MINUTES_BEFORE), "joinable", true],
-    [call("accepted"), at(-1), "joinable", true],
-    // Pulling a colleague into a call that is already running is the case
-    // this exists for — right up to the window's last minute.
-    [call("accepted"), at(0), "live", true],
-    [call("accepted"), at(LAST_OPEN), "live", true],
-    [call("accepted"), at(FIRST_CLOSED), "ended", false],
-    [call("completed"), at(10), "completed", false],
-    [call("declined"), at(-600), "declined", false],
-    [call("cancelled"), at(-600), "cancelled", false],
-  ];
-  for (const [c, now, phase, expected] of cases) {
-    assert.equal(callPhase(c, now), phase, `${c.status} at ${now.toISOString()}`);
-    assert.equal(canAddCallCohosts(c, now), expected, phase);
-  }
-  // Every phase there is, so a phase added later has to be decided here too.
-  assert.equal(new Set(cases.map(([, , phase]) => phase)).size, 9);
-});
-
-test("a cancelled, declined or completed call takes nobody new, whatever the clock", () => {
-  for (const s of ["cancelled", "declined", "completed"] as const) {
-    for (const now of [at(-60 * 24), at(-JOIN_OPENS_MINUTES_BEFORE), at(0), at(FIRST_CLOSED)]) {
-      assert.equal(canAddCallCohosts(call(s), now), false, `${s} at ${now.toISOString()}`);
+test("the staff side may cancel, edit and add people until the call is over", () => {
+  for (const status of ["invited", "accepted"] as const) {
+    for (const m of [-60 * 24, STAFF_OPENS, 0, LAST_OPEN]) {
+      assert.equal(canCancelCall(call(status), at(m)), true, `${status} cancel at ${m}`);
+      assert.equal(canEditCall(call(status), at(m)), true, `${status} edit at ${m}`);
+      assert.equal(canAddCallCohosts(call(status), at(m)), true, `${status} add at ${m}`);
     }
+    assert.equal(canCancelCall(call(status), at(FIRST_CLOSED)), false);
+    assert.equal(canEditCall(call(status), at(FIRST_CLOSED)), false);
+    assert.equal(canAddCallCohosts(call(status), at(FIRST_CLOSED)), false);
   }
-  // A status this build doesn't know is treated as cancelled (callPhase).
-  assert.equal(canAddCallCohosts(call("archived" as CallInviteStatus), at(0)), false);
+  for (const s of ["cancelled", "declined", "completed"] as const) {
+    assert.equal(canCancelCall(call(s), at(-600)), false, `${s}: no second refund`);
+    assert.equal(canEditCall(call(s), at(-600)), false, s);
+    assert.equal(canAddCallCohosts(call(s), at(0)), false, s);
+  }
 });
 
-test("Add people is on every Upcoming card and no Past one", () => {
-  // The two are separate rules on purpose (canCancelCall, for one, keeps an
-  // expired invite), so pin that THIS one matches the list it is shown in.
+test("every Upcoming card can take more people, and no Past one", () => {
   const statuses: CallInviteStatus[] = ["invited", "accepted", "declined", "cancelled", "completed"];
-  const offsets = [
-    -60 * 24 * 7,
-    -JOIN_OPENS_MINUTES_BEFORE - 1,
-    -JOIN_OPENS_MINUTES_BEFORE,
-    0,
-    LAST_OPEN,
-    FIRST_CLOSED,
-    60 * 24 * 7,
-  ];
+  const offsets = [-60 * 24 * 7, STAFF_OPENS - 1, STAFF_OPENS, 0, LAST_OPEN, FIRST_CLOSED, 60 * 24 * 7];
   for (const s of statuses) {
     for (const m of offsets) {
       const c = call(s);
-      assert.equal(
-        canAddCallCohosts(c, at(m)),
-        !isPastPhase(callPhase(c, at(m))),
-        `${s} at ${m} minutes`,
-      );
+      const { upcoming } = splitCalls([c], at(m));
+      assert.equal(canAddCallCohosts(c, at(m)), upcoming.length === 1, `${s} at ${m}`);
     }
   }
 });
 
-test("End call marks completed only once the call has started", () => {
-  assert.equal(canMarkCallCompleted(call("accepted"), at(-5)), false);
-  assert.equal(canMarkCallCompleted(call("accepted"), at(0)), true);
+test("End call completes a booked call once the room has opened", () => {
+  assert.equal(canMarkCallCompleted(call("invited"), at(STAFF_OPENS - 1)), false);
+  assert.equal(canMarkCallCompleted(call("invited"), at(STAFF_OPENS)), true);
+  assert.equal(canMarkCallCompleted(call("invited"), at(0)), true);
   assert.equal(canMarkCallCompleted(call("accepted"), at(FIRST_CLOSED + 60)), true);
-  assert.equal(canMarkCallCompleted(call("invited"), at(5)), false);
   assert.equal(canMarkCallCompleted(call("cancelled"), at(5)), false);
+  assert.equal(canMarkCallCompleted(call("completed"), at(5)), false);
 });
 
-test("recording uploads are open from the room opening to a short grace after it closes", () => {
-  const c = call("accepted");
-  assert.equal(canUploadCallRecording(c, at(-JOIN_OPENS_MINUTES_BEFORE - 1)), false);
-  assert.equal(canUploadCallRecording(c, at(-JOIN_OPENS_MINUTES_BEFORE)), true);
-  assert.equal(canUploadCallRecording(c, at(10)), true);
-  // The room closes itself at the window's end and flushes; that last segment
-  // lands just after, and must still be accepted.
-  assert.equal(canUploadCallRecording(c, at(FIRST_CLOSED)), true);
-  assert.equal(
-    canUploadCallRecording(c, at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES)),
-    true,
-  );
-  assert.equal(
-    canUploadCallRecording(c, at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES + 1)),
-    false,
-  );
-});
-
-test("the host may finish uploading after the student ends the call, but never for a dead call", () => {
-  assert.equal(canUploadCallRecording(call("completed"), at(10)), true);
-  for (const s of ["invited", "declined"] as const) {
-    assert.equal(canUploadCallRecording(call(s), at(10)), false, s);
+test("recording uploads run from the staff room opening to a grace past the hard close", () => {
+  for (const s of ["invited", "accepted", "completed", "cancelled"] as const) {
+    const c = call(s);
+    assert.equal(canUploadCallRecording(c, at(STAFF_OPENS - 1)), false, s);
+    assert.equal(canUploadCallRecording(c, at(STAFF_OPENS)), true, s);
+    assert.equal(canUploadCallRecording(c, at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES)), true, s);
+    assert.equal(
+      canUploadCallRecording(c, at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES + 1)),
+      false,
+      s,
+    );
   }
+  assert.equal(canUploadCallRecording(call("declined"), at(10)), false);
 });
 
-test("a call cancelled mid-room keeps its last segment, inside the window only", () => {
-  // The host cancels from another tab while sitting in the room; the room
-  // notices and flushes, and that flush must land with the rest.
-  assert.equal(canUploadCallRecording(call("cancelled"), at(10)), true);
-  assert.equal(
-    canUploadCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE - 1)),
-    false,
-  );
-  assert.equal(
-    canUploadCallRecording(call("cancelled"), at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES + 1)),
-    false,
-  );
-});
-
-test("the Past list looks for recordings on calls whose room could have opened", () => {
+test("a call may have a recording once its room could have opened", () => {
+  assert.equal(mayHaveCallRecording(call("invited"), at(STAFF_OPENS - 1)), false);
+  assert.equal(mayHaveCallRecording(call("invited"), at(STAFF_OPENS)), true);
   assert.equal(mayHaveCallRecording(call("accepted"), at(FIRST_CLOSED)), true);
-  assert.equal(mayHaveCallRecording(call("completed"), at(FIRST_CLOSED)), true);
-  // No cancel timestamp to go on: whether the room could have opened yet.
-  assert.equal(mayHaveCallRecording(call("cancelled"), at(FIRST_CLOSED)), true);
-  assert.equal(mayHaveCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE)), true);
-  // The room can't have opened yet: nothing to find, whatever the timestamp.
-  assert.equal(mayHaveCallRecording(call("cancelled"), at(-JOIN_OPENS_MINUTES_BEFORE - 1)), false);
-  assert.equal(
-    mayHaveCallRecording(
-      call("cancelled", { updatedAt: at(-JOIN_OPENS_MINUTES_BEFORE).toISOString() }),
-      at(-JOIN_OPENS_MINUTES_BEFORE - 1),
-    ),
-    false,
-  );
+  assert.equal(mayHaveCallRecording(call("completed"), at(-600)), true);
   assert.equal(mayHaveCallRecording(call("declined"), at(FIRST_CLOSED)), false);
-  assert.equal(mayHaveCallRecording(call("invited"), at(FIRST_CLOSED)), false);
 });
 
 test("a cancelled call is looked up only when it was cancelled while the room was open", () => {
-  const cancelledAt = (minutes: number) =>
-    call("cancelled", { updatedAt: at(minutes).toISOString() });
-  // Cancelled from the room — a host giving up on a no-show — has segments.
+  const cancelledAt = (minutes: number) => call("cancelled", { updatedAt: at(minutes).toISOString() });
   assert.equal(mayHaveCallRecording(cancelledAt(5), at(FIRST_CLOSED)), true);
-  assert.equal(mayHaveCallRecording(cancelledAt(-JOIN_OPENS_MINUTES_BEFORE), at(FIRST_CLOSED)), true);
+  assert.equal(mayHaveCallRecording(cancelledAt(STAFF_OPENS), at(FIRST_CLOSED)), true);
   assert.equal(mayHaveCallRecording(cancelledAt(LAST_OPEN), at(FIRST_CLOSED + 60)), true);
-  // Cancelled days ahead: never had a room, so it must not use up the
-  // lookup cap ahead of a call that was really recorded.
   assert.equal(mayHaveCallRecording(cancelledAt(-3 * 24 * 60), at(FIRST_CLOSED)), false);
-  assert.equal(
-    mayHaveCallRecording(cancelledAt(-JOIN_OPENS_MINUTES_BEFORE - 1), at(FIRST_CLOSED)),
-    false,
-  );
-  // An expired invite withdrawn after its window (by the sweep, or by hand).
-  assert.equal(mayHaveCallRecording(cancelledAt(FIRST_CLOSED), at(FIRST_CLOSED + 5)), false);
-  // An unreadable timestamp keeps the undated rule.
-  assert.equal(
-    mayHaveCallRecording(call("cancelled", { updatedAt: "not a date" }), at(FIRST_CLOSED)),
-    true,
-  );
+  assert.equal(mayHaveCallRecording(cancelledAt(STAFF_OPENS - 1), at(FIRST_CLOSED)), false);
+  // Room not open yet: nothing to find, whatever the timestamp.
+  assert.equal(mayHaveCallRecording(cancelledAt(STAFF_OPENS), at(STAFF_OPENS - 1)), false);
+  // No usable timestamp: could the room have opened yet?
+  assert.equal(mayHaveCallRecording(call("cancelled", { updatedAt: "nope" }), at(FIRST_CLOSED)), true);
+  assert.equal(mayHaveCallRecording(call("cancelled"), at(STAFF_OPENS - 1)), false);
 });
 
-test("the sweep completes accepted calls whose window has closed, and nothing else", () => {
-  assert.equal(shouldAutoComplete(call("accepted"), at(LAST_OPEN)), false);
-  assert.equal(shouldAutoComplete(call("accepted"), at(FIRST_CLOSED)), true);
-  assert.equal(shouldAutoComplete(call("invited"), at(FIRST_CLOSED)), false);
-  assert.equal(shouldAutoComplete(call("completed"), at(FIRST_CLOSED)), false);
-  assert.equal(shouldAutoComplete(call("cancelled"), at(FIRST_CLOSED)), false);
-});
+// ---------------------------------------------------------------------------
+// The sweep
+// ---------------------------------------------------------------------------
 
-test("the sweep withdraws invites that expired unanswered, and nothing else", () => {
-  assert.equal(shouldAutoWithdraw(call("invited"), at(LAST_OPEN)), false);
-  assert.equal(shouldAutoWithdraw(call("invited"), at(FIRST_CLOSED)), true);
-  for (const s of ["accepted", "completed", "declined", "cancelled"] as const) {
-    assert.equal(shouldAutoWithdraw(call(s), at(FIRST_CLOSED)), false, s);
+test("the sweep completes booked calls only after the hard close", () => {
+  for (const s of ["invited", "accepted"] as const) {
+    assert.equal(shouldAutoComplete(call(s), at(DURATION + 31)), false, `${s}: running over`);
+    assert.equal(shouldAutoComplete(call(s), at(LAST_OPEN)), false, s);
+    assert.equal(shouldAutoComplete(call(s), at(FIRST_CLOSED)), true, s);
+  }
+  for (const s of ["completed", "cancelled", "declined"] as const) {
+    assert.equal(shouldAutoComplete(call(s), at(FIRST_CLOSED)), false, s);
   }
 });
 
-test("the sweep's prefilter never excludes a call that is due", () => {
-  // The shortest call the CHECK allows is five minutes; its window closes
-  // JOIN_CLOSES_MINUTES_AFTER after that. Anything due must start before the
-  // cutoff, or the database filter would hide it from the exact check.
+test("the sweep's prefilter never excludes a recent call that is due", () => {
   const now = new Date("2026-09-26T12:00:00Z");
-  const cutoff = autoCompleteCutoff(now).getTime();
+  const { from, to } = autoCompleteRange(now);
+  assert.equal(now.getTime() - from.getTime(), AUTO_COMPLETE_LOOKBACK_DAYS * 24 * 60 * MINUTE);
   for (const duration of [5, 30, 240]) {
     // The latest start for which this call is already due.
     const latestDueStart =
-      now.getTime() - (duration + JOIN_CLOSES_MINUTES_AFTER) * MINUTE - 1;
-    const c = call("accepted", {
+      now.getTime() - (duration + CALL_HARD_CLOSE_MINUTES_AFTER) * MINUTE - 1;
+    const c = call("invited", {
       durationMinutes: duration,
       startsAt: new Date(latestDueStart).toISOString(),
     });
     assert.equal(shouldAutoComplete(c, now), true, `duration ${duration}`);
-    assert.equal(
-      shouldAutoWithdraw({ ...c, status: "invited" }, now),
-      true,
-      `duration ${duration} (unanswered)`,
-    );
-    assert.ok(latestDueStart <= cutoff, `duration ${duration} passes the prefilter`);
+    assert.ok(latestDueStart <= to.getTime(), `duration ${duration} passes the prefilter`);
+    assert.ok(latestDueStart >= from.getTime());
   }
+});
+
+// ---------------------------------------------------------------------------
+// Booking input
+// ---------------------------------------------------------------------------
+
+test("a call may start a few minutes back (Start call now), never earlier", () => {
+  const now = at(0);
+  assert.equal(callStartProblem(at(60), now), null);
+  assert.equal(callStartProblem(now, now), null);
+  assert.equal(callStartProblem(at(-START_GRACE_MINUTES), now), null);
+  assert.equal(callStartProblem(at(-START_GRACE_MINUTES - 1), now), "That time is in the past.");
+  assert.equal(callStartProblem(new Date("nope"), now), "That time isn't valid.");
+});
+
+test("startOfMinute floors to the minute, so a started call is inside its own window", () => {
+  const now = new Date("2026-09-19T21:30:42.123Z");
+  assert.equal(startOfMinute(now).toISOString(), "2026-09-19T21:30:00.000Z");
+  const started = call("invited", { startsAt: startOfMinute(now).toISOString() });
+  assert.equal(callPhase(started, now, "student"), "live");
+  assert.equal(callPhase(started, now, "staff"), "live");
+  assert.equal(callStartProblem(startOfMinute(now), now), null);
+});
+
+test("durations are held to 5–240 minutes", () => {
+  assert.equal(callDurationProblem(30), null);
+  assert.equal(callDurationProblem(5), null);
+  assert.equal(callDurationProblem(240), null);
+  assert.match(callDurationProblem(4) ?? "", /between 5 and 240/);
+  assert.match(callDurationProblem(241) ?? "", /between 5 and 240/);
+  assert.ok(callDurationProblem(Number.NaN));
 });
 
 // ---------------------------------------------------------------------------
@@ -349,23 +307,17 @@ test("splitCalls: upcoming soonest-first, past newest-first, by phase not status
   });
   const calls = [
     mk("far", "accepted", 60 * 24 * 7),
-    mk("soon", "accepted", 60),
-    mk("live", "accepted", -5),
-    mk("ask", "invited", 60 * 24),
+    mk("soon", "invited", 60),
+    mk("live", "invited", -5),
+    mk("overrun", "invited", -120),
+    mk("oldInvite", "invited", -60 * 24),
     mk("oldAccepted", "accepted", -60 * 24 * 7),
-    mk("expired", "invited", -60 * 24),
     mk("cancelledFuture", "cancelled", 60 * 24),
-    mk("done", "completed", -60 * 2),
+    mk("done", "completed", -60 * 5),
   ];
   const { upcoming, past } = splitCalls(calls, now);
-  assert.deepEqual(
-    upcoming.map((c) => c.id),
-    ["live", "soon", "ask", "far"],
-  );
-  assert.deepEqual(
-    past.map((c) => c.id),
-    ["cancelledFuture", "done", "expired", "oldAccepted"],
-  );
+  assert.deepEqual(upcoming.map((c) => c.id), ["overrun", "live", "soon", "far"]);
+  assert.deepEqual(past.map((c) => c.id), ["cancelledFuture", "done", "oldInvite", "oldAccepted"]);
 });
 
 test("splitCalls does not mutate its input", () => {
@@ -381,7 +333,6 @@ test("splitCalls does not mutate its input", () => {
 test("every phase has a badge, and only history counts as past", () => {
   const ALL: CallPhase[] = [
     "needs_answer",
-    "expired",
     "upcoming",
     "joinable",
     "live",
@@ -391,95 +342,37 @@ test("every phase has a badge, and only history counts as past", () => {
     "cancelled",
   ];
   for (const p of ALL) assert.ok(callBadge(p).length > 0, p);
-  assert.deepEqual(
-    ALL.filter(isPastPhase),
-    ["expired", "ended", "completed", "declined", "cancelled"],
-  );
-  // An ended call must never be labelled as if it were still accepted.
+  assert.deepEqual(ALL.filter(isPastPhase), ["ended", "completed", "declined", "cancelled"]);
+  assert.deepEqual(ALL.filter(isRoomOpenPhase), ["joinable", "live"]);
+  // No accept step: an invite and a legacy acceptance read the same.
+  assert.equal(callBadge("needs_answer"), callBadge("upcoming"));
   assert.equal(callBadge("ended"), "ended");
 });
 
 // ---------------------------------------------------------------------------
-// Interview requests
+// Request a 1:1
 // ---------------------------------------------------------------------------
 
-test("interviewStage reads a scheduled request through its call", () => {
+test("requestCardState: waiting, booked (hidden: it is in the list), or the ask", () => {
   const scheduled = (c: CallTiming | null) => ({ status: "scheduled", call: c });
-  assert.equal(interviewStage(null, at(0)), null);
-  assert.equal(interviewStage({ status: "requested", call: null }, at(0)), "requested");
-  assert.equal(interviewStage(scheduled(call("invited")), at(-60)), "booked");
-  assert.equal(interviewStage(scheduled(call("accepted")), at(-60)), "booked");
-  assert.equal(interviewStage(scheduled(call("accepted")), at(10)), "booked");
-  assert.equal(interviewStage(scheduled(call("accepted")), at(FIRST_CLOSED)), "done");
-  assert.equal(interviewStage(scheduled(call("completed")), at(0)), "done");
-  // The production cases: "Interview booked" over a cancelled or finished call.
-  assert.equal(interviewStage(scheduled(call("cancelled")), at(-60)), "fell_through");
-  assert.equal(interviewStage(scheduled(call("declined")), at(-60)), "fell_through");
-  assert.equal(interviewStage(scheduled(call("invited")), at(FIRST_CLOSED)), "fell_through");
-  assert.equal(interviewStage(scheduled(null), at(0)), "fell_through");
-  assert.equal(interviewStage({ status: "declined", call: null }, at(0)), null);
-  assert.equal(interviewStage({ status: "cancelled", call: null }, at(0)), null);
+  assert.equal(requestCardState(null, true, at(0)), "compose");
+  assert.equal(requestCardState(null, false, at(0)), "hidden");
+  assert.equal(requestCardState({ status: "requested", call: null }, false, at(0)), "requested");
+  assert.equal(requestCardState(scheduled(call("invited")), true, at(-60)), "hidden");
+  assert.equal(requestCardState(scheduled(call("invited")), true, at(10)), "hidden");
+  // Over, or fell through: ask again.
+  assert.equal(requestCardState(scheduled(call("invited")), true, at(FIRST_CLOSED)), "compose");
+  assert.equal(requestCardState(scheduled(call("completed")), true, at(0)), "compose");
+  assert.equal(requestCardState(scheduled(call("cancelled")), true, at(-60)), "compose");
+  assert.equal(requestCardState(scheduled(call("declined")), true, at(-60)), "compose");
+  assert.equal(requestCardState(scheduled(null), true, at(0)), "compose");
+  assert.equal(requestCardState(scheduled(null), false, at(0)), "hidden");
 });
 
-test("interviewCardState: a request in flight always shows; asking needs eligibility", () => {
-  assert.equal(interviewCardState("requested", false), "requested");
-  assert.equal(interviewCardState("booked", false), "booked");
-  assert.equal(interviewCardState("done", false), "done");
-  assert.equal(interviewCardState("done", false, { hideDone: true }), "hidden");
-  // A request in flight is never replaced by the ask, even for someone who may ask.
-  assert.equal(interviewCardState("requested", true), "requested");
-  assert.equal(interviewCardState("booked", true), "booked");
-  // Whenever they want means again, too: once the call has happened, a student
-  // who may ask gets the ask back rather than a dead-end "done" card.
-  assert.equal(interviewCardState("done", true), "compose");
-  assert.equal(interviewCardState("done", true, { hideDone: true }), "compose");
-  // A call that fell through is not "booked" — it is a fresh ask, if allowed.
-  assert.equal(interviewCardState("fell_through", true), "compose");
-  assert.equal(interviewCardState("fell_through", false), "hidden");
-  assert.equal(interviewCardState(null, true), "compose");
-  assert.equal(interviewCardState(null, false), "hidden");
-});
-
-test("canRequestTeamCall: any enrolled student, whenever they want", () => {
-  // Before kickoff, during the cohort: the phase must not matter.
-  assert.equal(canRequestTeamCall({ enrolled: true, staff: false, preCohort: true }), true);
-  assert.equal(canRequestTeamCall({ enrolled: true, staff: false, preCohort: false }), true);
-  // Not enrolled (an accepted applicant, a payment still clearing): not yet.
-  assert.equal(canRequestTeamCall({ enrolled: false, staff: false, preCohort: true }), false);
-  assert.equal(canRequestTeamCall({ enrolled: false, staff: false, preCohort: false }), false);
-  // Staff previewing the dashboard read as enrolled, but can't file one.
-  assert.equal(canRequestTeamCall({ enrolled: true, staff: true, preCohort: false }), false);
-});
-
-test("teamRequestKind: before the cohort starts it's the interview, from kickoff day a call", () => {
-  // Fall starts Mon Sep 14. Compared as New York dates, not UTC ones.
-  const starts = "2026-09-14";
-  assert.equal(teamRequestKind("2026-09-01T15:00:00.000Z", starts), "interview");
-  // 10 p.m. Sunday in New York is already Monday in UTC: still before kickoff.
-  assert.equal(teamRequestKind("2026-09-14T02:00:00.000Z", starts), "interview");
-  // 12:30 a.m. Monday in New York: kickoff day, so an ordinary call.
-  assert.equal(teamRequestKind("2026-09-14T04:30:00.000Z", starts), "call");
-  assert.equal(teamRequestKind("2026-10-20T18:00:00.000Z", starts), "call");
-  // No cohort on the request, or a garbled timestamp: a plain call, never an
-  // interview for a cohort nobody can name.
-  assert.equal(teamRequestKind("2026-09-01T15:00:00.000Z", null), "call");
-  assert.equal(teamRequestKind("not a date", starts), "call");
-});
-
-test("confirmsProposal: only one of the student's own times books without an accept step", () => {
-  const preferred = "2026-10-05T22:00:00.000Z";
-  const alt = "2026-10-06T22:30:00.000Z";
-  assert.equal(confirmsProposal(preferred, preferred, alt), true);
-  assert.equal(confirmsProposal(alt, preferred, alt), true);
-  // Same minute, written differently (seconds, offset): the same instant to the minute.
-  assert.equal(confirmsProposal("2026-10-05T18:00:30-04:00", preferred, null), true);
-  // A minute off is a different time, which the student must accept.
-  assert.equal(confirmsProposal("2026-10-05T22:01:00.000Z", preferred, alt), false);
-  assert.equal(confirmsProposal("2026-10-05T21:59:00.000Z", preferred, alt), false);
-  // Nothing proposed, or nonsense in, never counts as confirmed.
-  assert.equal(confirmsProposal(preferred, null, null), false);
-  assert.equal(confirmsProposal("not a date", preferred, alt), false);
-  assert.equal(confirmsProposal(preferred, "not a date", null), false);
+test("canRequestTeamCall: any enrolled student, whenever they want; never staff", () => {
+  assert.equal(canRequestTeamCall({ enrolled: true, staff: false }), true);
+  assert.equal(canRequestTeamCall({ enrolled: false, staff: false }), false);
+  assert.equal(canRequestTeamCall({ enrolled: true, staff: true }), false);
 });
 
 test("proposalsAllPast flags a request only when every proposed time has gone", () => {
@@ -510,36 +403,22 @@ test("bookingPrefill never offers a time in the past", () => {
 // Access and routing
 // ---------------------------------------------------------------------------
 
-test("a recording is for the two people on the call and admins, nobody else", () => {
-  const ids = { hostId: "h", inviteeId: "s" };
+test("a recording is for the people on the call and admins, nobody else", () => {
+  const ids = { hostId: "h", inviteeId: "s", cohostIds: ["m"] };
   assert.equal(canViewCallRecording({ ...ids, viewerId: "h", superAdmin: false }), true);
   assert.equal(canViewCallRecording({ ...ids, viewerId: "s", superAdmin: false }), true);
+  assert.equal(canViewCallRecording({ ...ids, viewerId: "m", superAdmin: false }), true);
   assert.equal(canViewCallRecording({ ...ids, viewerId: "x", superAdmin: true }), true);
   assert.equal(canViewCallRecording({ ...ids, viewerId: "x", superAdmin: false }), false);
 });
 
-test("co-hosts were on the call, so they can watch it back too", () => {
-  const ids = { hostId: "h", inviteeId: "s", cohostIds: ["m", "v"] };
-  assert.equal(canViewCallRecording({ ...ids, viewerId: "m", superAdmin: false }), true);
-  assert.equal(canViewCallRecording({ ...ids, viewerId: "v", superAdmin: false }), true);
-  // Being a mentor somewhere else in the programme is not being on this call.
-  assert.equal(canViewCallRecording({ ...ids, viewerId: "other-mentor", superAdmin: false }), false);
-});
-
 test("cohostsToAdd keeps only people who are new to the call", () => {
   const onCall = { hostId: "h", inviteeId: "s", cohosts: [{ id: "m" }] };
-  // The host, the student, someone already a co-host, a repeat and junk are
-  // all dropped; nobody is refused for them.
-  assert.deepEqual(
-    cohostsToAdd(["a", "h", "s", "m", "a", "", null, 7, "b"], onCall).ids,
-    ["a", "b"],
-  );
-  // Asking for people who are all on it already adds nobody — not an error.
+  assert.deepEqual(cohostsToAdd(["a", "h", "s", "m", "a", "", null, 7, "b"], onCall).ids, ["a", "b"]);
   const none = cohostsToAdd(["m", "h"], onCall);
   assert.deepEqual(none.ids, []);
   assert.equal(none.fits, true);
   assert.deepEqual(cohostsToAdd(null, onCall).ids, []);
-  assert.deepEqual(cohostsToAdd(undefined, onCall).ids, []);
 });
 
 test("cohostsToAdd counts the cap against the call's total, not the request", () => {
@@ -548,26 +427,13 @@ test("cohostsToAdd counts the cap against the call's total, not the request", ()
     inviteeId: "s",
     cohosts: Array.from({ length: n }, (_, i) => ({ id: `c${i}` })),
   });
-
   const nearlyFull = staffed(MAX_CALL_COHOSTS - 2);
   assert.equal(cohostsToAdd([], nearlyFull).room, 2);
   assert.equal(cohostsToAdd(["x", "y"], nearlyFull).fits, true);
-  // Two at a time must not walk past the cap: three new people don't fit,
-  // however small the request looks on its own.
   assert.equal(cohostsToAdd(["x", "y", "z"], nearlyFull).fits, false);
-  // People already on the call take no new room.
-  const mixed = cohostsToAdd(["c0", "c1", "x", "y"], nearlyFull);
-  assert.deepEqual(mixed.ids, ["x", "y"]);
-  assert.equal(mixed.fits, true);
-
   const full = staffed(MAX_CALL_COHOSTS);
-  assert.equal(cohostsToAdd(["x"], full).room, 0);
   assert.equal(cohostsToAdd(["x"], full).fits, false);
-  // A full call can still be "asked" for someone already on it.
   assert.equal(cohostsToAdd(["c3"], full).fits, true);
-
-  // A stray co-host row naming the host or the student is not another person,
-  // so it takes no room (cohostsFromRow ignores one the same way).
   const stray = cohostsToAdd([], {
     hostId: "h",
     inviteeId: "s",
@@ -590,21 +456,8 @@ test("hostCallsHref sends each kind of host back to their own panel", () => {
 // ---------------------------------------------------------------------------
 
 test("formatEasternDateTime names the zone, and knows about daylight saving", () => {
-  // The production call: 21:30Z in September is 5:30 PM EDT, the same Saturday.
-  assert.equal(
-    formatEasternDateTime("2026-09-19T21:30:00Z"),
-    "Saturday, September 19, 2026 at 5:30 PM EDT",
-  );
-  // After the November switch the same UTC hour is an hour earlier, in EST.
-  assert.equal(
-    formatEasternDateTime("2026-12-05T21:30:00Z"),
-    "Saturday, December 5, 2026 at 4:30 PM EST",
-  );
-  // Late UTC evening is still the previous day in New York — the bug the UTC
-  // string caused in reverse for anyone reading it literally.
-  assert.equal(
-    formatEasternDateTime("2026-09-20T02:00:00Z"),
-    "Saturday, September 19, 2026 at 10:00 PM EDT",
-  );
+  assert.equal(formatEasternDateTime("2026-09-19T21:30:00Z"), "Saturday, September 19, 2026 at 5:30 PM EDT");
+  assert.equal(formatEasternDateTime("2026-12-05T21:30:00Z"), "Saturday, December 5, 2026 at 4:30 PM EST");
+  assert.equal(formatEasternDateTime("2026-09-20T02:00:00Z"), "Saturday, September 19, 2026 at 10:00 PM EDT");
   assert.equal(formatEasternDateTime("nope"), null);
 });
