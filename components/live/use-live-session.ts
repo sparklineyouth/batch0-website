@@ -199,15 +199,13 @@ export type RemotePeer = {
    * while the link is still "connecting". Matters in a 1:1, whose join
    * payload names everyone on the invite whether they have come or not: an
    * absent person's link sits at "connecting" too, and only this tells the
-   * two apart (see `electCallRecorder` in lib/webinars.ts).
+   * two apart.
    */
   heard: boolean;
   /**
    * When this connection stopped being live (epoch ms) — or was created, if it
    * never has been. Null while live, and for a departed peer with no
-   * connection left to measure. What lets the webinar room stop counting a
-   * co-host who has been "reconnecting" for too long as present (see
-   * `presentForRecording` in lib/webinars.ts).
+   * connection left to measure: how long a peer has been "reconnecting".
    */
   downSince: number | null;
   /**

@@ -5,9 +5,9 @@
  * Until people could be added to a call that already exists, the roster a
  * browser joined with was the roster for the life of the call: `joinRoom`
  * handed each person everyone else on the invite, the engine dialled them,
- * and the page rendered the staff side (`callStaffIds` in lib/live.ts) once,
- * for the recorder election. Someone added while the call is running
- * (addCallCohosts) broke both halves of that:
+ * and the page rendered the staff side (`callStaffIds` in lib/live.ts) once.
+ * Someone added while the call is running (addCallCohosts) broke both halves
+ * of that:
  *
  *   - Dialling. In a mesh of broadcasters exactly one side of each pair
  *     offers — the smaller user id (`shouldOffer` in use-live-session.ts) —
@@ -16,17 +16,16 @@
  *     SMALLER id was meant to offer to them, had never heard of them, and
  *     never did: the newcomer sat on "Waiting for Ana to join" while Ana, in
  *     the same room, had no idea they were there.
- *   - The election. Each staff browser elects the call's recorder from the
- *     staff list its page rendered. The incumbent's list did not have the
- *     newcomer on it, so a lower-id co-host arriving never took the recording
- *     over: both browsers recorded, and only the server's backstop
- *     (getCallRecordingUploadToken) kept the call on tape once.
+ *   - The staff side. Each browser knew the team from the list its page
+ *     rendered, so a newcomer was not staff to anyone already in the room:
+ *     not the student's counterpart for End call, and not counted in the
+ *     room's copy.
  *
  * So a call's heartbeat (announcePresence) now answers with the roster as the
  * server just read it, and the engine folds it in with these rules: anyone
  * new is appended to the peers it holds — dialled at once, and re-dialled by
  * every heartbeat after, exactly like someone named at join — and the staff
- * list the room elects from is replaced when, and only when, its membership
+ * list the room reads is replaced when, and only when, its membership
  * changed.
  *
  * Pure and import-free, so `node --test` runs it with no transpile step and
@@ -117,7 +116,7 @@ function rosterPeer(raw: unknown): RosterPeer | null {
  * host first, then co-hosts — callStaffIds). Null rather than an empty list
  * when nothing usable is left: every call has a host, so an empty staff side
  * can only be a malformed answer, and acting on it would tell every staff
- * browser it was no longer staff — standing the call's recorder down mid-call
+ * browser it was no longer staff — taking End call and Record away mid-call
  * over a bad payload. The engine ignores a null and keeps the list it had.
  */
 export function normalizeStaffIds(raw: unknown): string[] | null {
@@ -134,8 +133,8 @@ export function normalizeStaffIds(raw: unknown): string[] | null {
  * Do two staff lists name the same people?
  *
  * Blind to order and to repeats, because the staff side is a set: the
- * election takes the lowest id in it, and the counterpart test, End call's
- * confirm and the room's copy ask only who is in it and how many. A heartbeat
+ * counterpart test, End call's confirm and the room's copy ask only who is in
+ * it and how many. A heartbeat
  * that lists the same people in another order — co-hosts added by one
  * statement share a `created_at`, and the tie can come back either way — is
  * not a change, and must not re-render a room every twelve seconds. Null is
@@ -169,8 +168,8 @@ export function sameStaffList(
  *   live      The server's latest (null until the first heartbeat answers).
  *
  * So a roster from a heartbeat can make OTHER people staff — the co-host
- * added mid-call, who must count in the election and as the student's
- * counterpart — but it can never make the student's laptop a recorder,
+ * added mid-call, who must count as the student's counterpart — but it can
+ * never make the student's laptop a recorder,
  * whatever a heartbeat says. The student is a minor, and their browser
  * capturing the call is the one outcome no answer from the wire may cause.
  */

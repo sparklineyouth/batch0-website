@@ -44,7 +44,8 @@
  *     both people are shown the recording notice before they join, the
  *     mentor's End call puts both sides on "This call has ended" and marks
  *     the call completed, the mentor lands back on their own calls page, and
- *     the mentor's browser — the side that records — has uploaded the call.
+ *     the mentor's browser — the side that records — has uploaded the call
+ *     as one finished take.
  *
  * Every account, row and stored file it creates is removed in a finally
  * block, including on failure.
@@ -283,32 +284,38 @@ async function removeStoragePrefix(bucket: string, prefix: string): Promise<void
   }).catch(() => {});
 }
 
-/** The objects in a 1:1's recording folder (lib/call-recording.ts). */
-async function callRecordingFiles(inviteId: string): Promise<string[]> {
-  const res = await fetch(`${url}/storage/v1/object/list/call-recordings`, {
-    method: "POST",
-    headers: adm,
-    body: JSON.stringify({
-      prefix: `calls/${inviteId}/recording`,
-      limit: 100,
-      offset: 0,
-    }),
-  }).catch(() => null);
+// ---- recording (one take per Record → Stop; docs/recording.md) ----------
+
+/** A 1:1's finished takes: closed, finalized, with parts in storage. */
+async function finishedCallTakes(
+  inviteId: string,
+): Promise<{ id: string; part_count: number; duration_ms: number }[]> {
+  const res = await fetch(
+    `${url}/rest/v1/recording_sessions?room_kind=eq.call&room_id=eq.${inviteId}` +
+      `&status=eq.finished&finalized_at=not.is.null&part_count=gt.0&select=id,part_count,duration_ms`,
+    { headers: adm },
+  ).catch(() => null);
   if (!res?.ok) return [];
-  const items = (await res.json()) as { name: string; id: string | null }[];
-  return items.filter((i) => !!i.id).map((i) => i.name);
+  return (await res.json()) as { id: string; part_count: number; duration_ms: number }[];
 }
 
+/** Every take of a room, rows and bytes. */
+async function removeRecordings(kind: "webinar" | "call", roomId: string): Promise<void> {
+  await removeStoragePrefix("recordings", `${kind}/${roomId}`);
+  await fetch(`${url}/rest/v1/recording_sessions?room_kind=eq.${kind}&room_id=eq.${roomId}`, {
+    method: "DELETE",
+    headers: adm,
+  }).catch(() => {});
+}
+// ---- end recording ----------------------------------------------------------
+
 async function cleanup() {
-  // Recordings first, while the rows that name them still exist. The 1:1 is
-  // recorded from the host's browser into the private call-recordings bucket
-  // (no rows — the folder is the record); a webinar with auto-record on would
-  // put segments in webinar-media with an event_assets row each. The test
-  // webinar leaves auto-record off, but a run against a database whose
-  // default changed must not leave a recording of test accounts behind.
-  if (createdInviteId) {
-    await removeStoragePrefix("call-recordings", `calls/${createdInviteId}`);
-  }
+  // Recordings first: the 1:1 is recorded (recording_sessions rows + parts in
+  // the private recordings bucket). The test webinar leaves auto-record off,
+  // but a run against a database whose default changed must not leave a
+  // recording of test accounts behind.
+  if (createdInviteId) await removeRecordings("call", createdInviteId);
+  if (createdEventId) await removeRecordings("webinar", createdEventId);
   if (createdEventId) {
     await fetch(`${url}/rest/v1/event_assets?event_id=eq.${createdEventId}`, {
       method: "DELETE",
@@ -1227,8 +1234,8 @@ async function main() {
       "BOTH sides send media (a 1:1 is two broadcasters, not a broadcast)",
     );
 
-    // The mentor's browser is the one recording (the only staff on the call,
-    // so the one electCallRecorder picks), and says so in the room.
+    // The mentor's browser records (the call's team starts it on joining),
+    // and the room says so.
     const recording = await until("the mentor's Recording indicator", async () =>
       hasText(caller.page, /^\s*recording\s*$/i),
     );
@@ -1273,19 +1280,19 @@ async function main() {
       100_000,
     );
     check(!!backHome, "the mentor lands back on their own calls page");
-    const uploaded = await until(
-      "the call's recording to land in storage",
+    const takes = await until(
+      "the call's recording to be saved as one take",
       async () => {
-        const files = await callRecordingFiles(inviteId);
-        return files.length > 0 ? files : null;
+        const rows = await finishedCallTakes(inviteId);
+        return rows.length > 0 ? rows : null;
       },
       60_000,
     );
     check(
-      !!uploaded,
-      "the mentor's browser recorded the call and uploaded it after End call",
+      takes?.length === 1,
+      "the mentor's browser recorded the call as ONE take and finished it after End call",
     );
-    if (uploaded) info(`${(uploaded as string[]).length} recording segment(s)`);
+    if (takes) info(`take: ${takes[0].part_count} part(s), ${Math.round(takes[0].duration_ms / 1000)}s`);
 
     await callee.page.reload({ waitUntil: "domcontentloaded" });
     const calleeRefused = await until(

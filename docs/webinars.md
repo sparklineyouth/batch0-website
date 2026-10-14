@@ -200,89 +200,11 @@ version.
 
 ## Recording
 
-Auto-record starts when the elected host starts broadcasting — once their
-camera and mic have settled, so the first segment is not a second of silence.
-There is no button to forget. It runs only while its host is live, not during
-a premiere's recording, and never after End.
-
-Until September 2026 it never started at all: `useRecorder` returned a
-`start()` that nothing called, and the register step below failed on every
-segment. Both are fixed; there are no recordings from before that.
-
-**It records what the audience saw, not what the camera captured.** The host's
-picture changes mid-webinar — camera, then slides, then back — and a
-`MediaRecorder` bound to one track stops when that track is replaced. So
-`use-recorder.ts` composites onto a `<canvas>` and records
-`canvas.captureStream()`, which survives every switch as one continuous track.
-
-**It uploads in 2-minute segments while the webinar is still running.** Holding
-an hour in a tab and pushing it at the end fails three ways at the worst moment:
-memory grows all hour, the upload starts exactly when the host wants to close
-the laptop, and any failure costs the whole recording. Each segment is a
-self-contained file; `event_assets.sort_order` is its position. Two minutes
-(~19 MB at the recording bitrates) rather than five (~49 MB before VBR
-overshoot) because Supabase's default global upload limit is 50 MB and binds
-every signed upload whatever the bucket says.
-
-**It records the whole stage, from exactly one host's browser.** The recorder
-composites every live host's camera and screen share (a presenter's screen
-full-frame with faces inset, otherwise everyone side by side, each labelled)
-and mixes every voice through an `AudioContext` — the same stage machine a 1:1
-uses (`use-recorder.ts`). So a staff moderator's intro and the guest speaker's
-slides and talk are both in the file, whichever laptop made it. Every host
-(staff and guest speakers) runs the same room, so each host's browser elects
-one recorder from the co-hosts it can see (`electRecorder` in
-`lib/webinars.ts`: the lowest user id present — a peer's id is its user id, the
-one fact every browser holds identically; an earlier staff-before-guests rank
-depended on a speaker list rendered at page load, which a guest claiming their
-slot later made two browsers disagree about). The recorder stands down and
-flushes when a lower id arrives; the next in line takes over when it leaves. A
-co-host whose connection dropped counts as present for two segment lengths
-(`presentForRecording`), and the engine's heartbeat rebuilds a wedged
-connection to every co-host (not only the join-time roster), so a recorder who
-vanished without a goodbye cannot hold the election. The server backs this up
-(`recordingRival`): a segment is refused — before its upload is signed, and
-again at registration — when a *different*, lower-id host registered a segment
-within two segment lengths, after this segment began (worked out on the server
-from the segment's length, so a skewed client clock can't move it), and is
-still in the room (`live_participants`). A refusal is returned as a value, and
-the room stands its recorder down for that lease before looking again. A
-refused segment's bytes are deleted only when no `event_assets` row already
-claims that path, so naming someone else's registered segment deletes nothing.
-
-A handover is the case that rule has to get right. The recorder who presses
-Leave is off air at once, and its final segment uploads behind the "You've
-left" screen while the co-host who takes over is already recording. That tail
-is filed *after* its uploader has left the room, so it is dated to their last
-heartbeat rather than its arrival (`recordingFiledAt`) — it can never pass for
-a registration made during the successor's segment, which would otherwise
-refuse (and delete) the successor's handover flush the moment the old
-recorder rejoined. A host still in the room is dated by arrival as before, so
-two hosts genuinely recording at once are still caught.
-
-Registering a segment reads the event's segments and then inserts
-(`registerRecordingSegment` in `app/admin/events/webinar-actions.ts`, rule in
-`recordingSegmentSlot`). It is not an upsert: the unique index is partial
-(`where kind = 'recording'`), PostgREST cannot repeat that predicate in an
-`ON CONFLICT`, and Postgres refuses with 42P10 — pinned in
-`lib/webinars-migration-db.test.ts`. The same file registered twice keeps its
-slot, so nothing plays twice. Each segment's name carries its **run** (the
-recording room's mount time — a reload, a Rejoin or a Reopen each start a new
-one) and index — `segment-<run>-<index>-<stamp>.webm` —
-and each run is laid out as its own contiguous block: a slow segment still
-lands in order behind its successors, and a reload (or a second host taking
-over) starts a new block after everything registered instead of filling the
-first run's gaps. A new block starts a few slots (`RECORDING_RUN_GAP`) past the
-last, so a departing recorder's tail that lands after its successor's first
-segment still files in its own block, ahead of it; empty slots are harmless.
-Registering a segment never revalidates a path: Next
-re-renders the *current* route on any revalidate, and from inside the live room
-that re-ran the page — which, past the join window, replaced the host's room
-with "This event has ended".
-
-The cost is a seam of tens of milliseconds every two minutes, because a
-`MediaRecorder` has to be stopped and restarted for each file to carry its own
-header.
+One continuous take per Record → Stop, from one host's browser under a server
+lease, played back as one seekable file. See [recording.md](recording.md).
+Hosts (guest speakers too) have Record/Stop in the room; a webinar with
+"Record automatically" starts when the first host goes live. Viewers are told
+before they join, and see the REC badge.
 
 ### The End button (and Leave)
 
@@ -312,20 +234,16 @@ The order, and why:
    torn down: the host stays live with an error and can retry.
 2. **Off air.** The session goes down at once — `bye` to every peer — so the
    host stops broadcasting now, not after anything uploads.
-3. **`await recorder.stop()`**, before the media tracks are stopped.
+3. **`await recording.stop()`**, before the media tracks are stopped.
    `media.stop()` ends the tracks the recorder is reading, so stopping them
-   first truncates the final segment — reliably the Q&A, reliably the part
-   people re-watch. `stop()` resolves once the final segment is *captured*
-   (its blob built — milliseconds, capped at a few seconds), never on its
-   upload. It used to wait for the upload with no bound on the final
-   segment, which on a host's Leave meant staying on air to the whole room
-   for as long as the final segment took to climb their uplink.
+   first truncates the end of the take. `stop()` resolves once the final part
+   is *captured* (milliseconds, capped at a few seconds), never on its upload.
 4. Screen, camera and mic stop, and the host lands on the ended screen, which
    shows "Saving the recording — keep this tab open"; the tab's unload prompt
-   is armed until the upload lands (held by `use-recorder.ts` for the whole
-   tab, so it survives the room unmounting). Reopen, Rejoin and Back wait for
-   those uploads first, bounded at 90 seconds, because each takes the room
-   off the screen.
+   is armed until the upload lands (held by `use-room-recording.ts` for the
+   whole tab, so it survives the room unmounting). Reopen, Rejoin and Back
+   wait for those uploads first, bounded at 90 seconds, because each takes
+   the room off the screen.
    The room stops the devices itself, after the capture: `useLocalMedia`
    deliberately does not stop them when its auto-start gate turns off,
    because an End that arrives by poll would otherwise kill the tracks
@@ -395,7 +313,7 @@ How the panel stays fluid (`components/live/room/panel/*`, rules in
 `auto_share` is handled by `/api/cron/webinar-followups`, every 15 minutes.
 
 It is a cron and not the End button for two reasons, both of which have
-happened: the last recording segment is still uploading when the host clicks
+happened: the end of the recording is still uploading when the host clicks
 away, and hosts do not always press End — they close the laptop, and the
 students who missed it are exactly the ones the email is for.
 
@@ -412,8 +330,9 @@ room page (`/dashboard/events/<id>/live`; the bare `/dashboard/events/<id>`
 redirects there), which after the webinar lists the recording and the slides
 once the follow-up has gone out. Editing the event later does not re-arm the
 follow-up: the claim is cleared only when it predates the event's (new) host
-window, like the other live stamps. An auto-recorded webinar with no recording attached yet is left for later
-runs (up to two hours) rather than being marked as having nothing to share.
+window, like the other live stamps. A webinar whose recording is still saving (a
+take recording or not yet finalized), or an auto-recorded one with no
+recording yet, is left for later runs (up to two hours).
 A **staff-only** event is never shared — it is a rehearsal — and the form shows
 "Share afterwards" off for one.
 
@@ -443,33 +362,15 @@ The email and the bell link to `/dashboard/events`. They used to link to
 | Admin actions | `app/admin/events/webinar-actions.ts` |
 | Admin pages | `app/admin/events/*` (list, form, Start now, End / Reopen, record page) |
 | Follow-up job | `app/api/cron/webinar-followups/route.ts` |
-| Room | `components/live/broadcast-room.tsx`, `use-recorder.ts`, `premiere-player.tsx`, `speaker-strip.tsx` |
+| Room | `components/live/broadcast-room.tsx`, `premiere-player.tsx`, `speaker-strip.tsx` |
 | Side panel | `components/live/room/panel/*`, `lib/webinar-panel.ts` (+ test), `app/api/live/panel/route.ts`, `lib/webinar-panel-writes.ts`, `lib/webinar-gate.ts` |
+| Recording | see [recording.md](recording.md) |
 | Admin form rules | `lib/event-form.ts`, `lib/event-form.test.ts`, `supabase/migrations/0098_events.sql` |
 
 ---
 
 ## Known gaps
 
-- **A background tab throttles the recording.** `requestAnimationFrame` is
-  throttled or paused when the tab is hidden, and the `setInterval` fallback is
-  itself clamped to about 1 Hz. A host who tabs away to read their notes gets a
-  choppy picture for that stretch; audio is continuous throughout and it
-  recovers on return. Holding the frame rate properly would need a Web Worker
-  timer or an audio-clock-driven loop.
-- **The elected recorder is chosen by presence, not by capability.** If the
-  host's browser that wins the election cannot record at all (no
-  `MediaRecorder`, no canvas capture), it says so to that host and nobody else
-  records — the other hosts defer to it. The server backstop only ever
-  *refuses* segments; it never asks a second browser to start.
-- **A failed segment upload is dropped, not retried.** That is what keeps memory
-  bounded to one segment, but a host with two minutes of dead network loses
-  two minutes of the talk. Retry belongs in `onSegment`, where the caller can
-  tell a network failure from a rejected file.
-- **Students have no player for auto-recorded segments.** The follow-up says the
-  recording is up, and `/dashboard/events` still only shows the manual
-  `events.recording_url`. The segments are listed (as a count) on the admin
-  event page only.
 - **No PDF/PPTX rendering.** A deck is a download, not an in-page viewer — there
   is no renderer in the repo and adding one would be a new dependency.
 - **Existing webinars are not backfilled** to `type = 'webinar'`. They are still

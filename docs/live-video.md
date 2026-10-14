@@ -506,52 +506,12 @@ windows and the sweep) is in [docs/calls.md](calls.md).
 
 #### Recording
 
-Every 1:1 on batch0 Live is recorded, from **one staff browser** (the
-student never records — two recorders would double the file and make the
-student's laptop do the work). With no co-hosts that is the host's. With
-co-hosts the room runs the webinar election over the staff side only
-(`electCallRecorder` in lib/webinars.ts: the lowest user id among the staff
-present), so a call whose inviter never shows is still recorded by the
-co-host who did, and the recording moves when the one ahead in line arrives
-or leaves. The staff side it elects from is the server's latest (the
-heartbeat's `call.staffIds`; the page's list until the first answer), so a
-co-host added mid-call is in line from their first heartbeat. It can make
-other people staff, never this browser: the student's laptop records nothing,
-whatever an answer says (`selfIsCallStaff` in lib/call-roster.ts). Past the
-first three seconds after a join
-(`CALL_RECORDER_LISTEN_MS`), settling counts only staff this session has heard
-from (`RemotePeer.heard`): everyone on the invite is dialled, so an absent
-co-host's link sits at "connecting" too, and must not hold the recording. Two staff whose
-link to each other never comes up both elect themselves; the server backstop
-in `getCallRecordingUploadToken` then refuses the lower-ranked browser's
-segment whenever a higher-ranked one registered a segment during it
-(`recordingRival`, fed from the segment names by `callRecordingRegistry`), so
-the call is kept once. `useRecorder` is given everyone else's streams (`remotes`): people
-side by side with name tags (or the shared screen with faces inset), and
-every voice mixed through an `AudioContext` into one track. A webinar's elected recorder is given every
-live co-host the same way, so the whole stage is recorded whichever host's
-browser does it (see docs/webinars.md).
-
-No schema: segments go to a dedicated private `call-recordings` bucket at
-`calls/<inviteId>/recording/segment-NNNN-<ts>-<uploader>[-last].webm`
-(`lib/call-recording.ts`); the storage listing *is* the index, and the
-uploader and `-last` (the segment captured as a recorder stopped) are what the
-backstop reads. Not `webinar-media`: that bucket's
-staff-direct storage policy (`events.manage`, which interns hold) would let
-roles the app never shows a 1:1 recording to download them straight from
-Storage — and these are calls with minors. `call-recordings` has no storage
-policies; only the service role touches it. The app creates it on first use
-(`ensureCallRecordingBucket`) with `public: false` and nothing else: a
-`fileSizeLimit` sent through the Storage API is checked against the project's
-global upload limit and refused if larger (Supabase's default is 50 MB), and a
-MIME allow-list can refuse the recorder's `video/webm;codecs=…` types.
-Segments are two minutes (~19 MB) so they sit well inside that global limit.
-Upload URLs come from `getCallRecordingUploadToken` (host or co-host; accepted,
-completed or cancelled; window open plus a ten-minute grace for the final
-flush). The
-Past list looks for recordings on accepted/completed calls and on calls
-cancelled once their room could have opened (a host who cancels mid-room has
-segments).
+A call's team (host and co-hosts — never the student) records it: the first of
+them live starts a take automatically, and any of them has Record/Stop. One
+browser at a time, under the server lease, records everyone in the call
+composited and mixed; both people are told before they join, and everyone sees
+REC. The people on the call and admins can watch it back under Past. See
+[recording.md](recording.md).
 
 The room itself is `/dashboard/calls/<id>/live` for everyone on the call,
 including a mentor or investor host or co-host who otherwise never sees
@@ -561,17 +521,13 @@ past the `student.dashboard` bounce (`isLiveRoomPath` in
 dashboard layout renders bare chrome for a viewer without `student.dashboard`.
 
 Leaving or ending never waits for the recording's upload: the room captures
-the final segment (milliseconds), stops the devices and shows the left/ended
+the final part (milliseconds), stops the devices and shows the left/ended
 screen, which says "keep this tab open" while the tab's unload prompt stays
-armed until the last segment lands. Only Rejoin, Back, and the trip back to
+armed until the last part lands. Only Rejoin, Back, and the trip back to
 the calls list after your own End call wait for it (bounded at 90 seconds).
 `endCall` revalidates nothing, so the room — and that screen — stays mounted
 through the upload instead of being re-rendered into the static "This call
 has ended" page.
-Playback is `/api/calls/<id>/recording/<n>`, which checks the viewer is on the
-call (student, host or co-host) or an admin, then redirects to a ten-minute
-signed URL; an admin watching someone else's call is audited. Everyone sees a
-recording notice before they join and a Recording indicator in the room.
 
 ---
 

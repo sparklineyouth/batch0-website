@@ -8,6 +8,7 @@ import { LiveDot } from "@/components/live/call-stage";
 import { AddPeopleForm, JoinCallConfirm, addableStaff } from "@/components/live/add-to-call";
 import { EditCallForm, type InviteeOption } from "@/components/live/invite-form";
 import { CallRecordings } from "@/components/live/recording-player";
+import { callMayHaveRecording } from "@/lib/call-recording";
 import { joinNames, relativeTime, staffNames, type CallInvite } from "@/lib/live";
 import {
   callBadge,
@@ -20,7 +21,6 @@ import {
   isPastPhase,
   isRoomOpenPhase,
   isRunningOver,
-  mayHaveCallRecording,
   splitCalls,
   type CallPhase,
 } from "@/lib/call-lifecycle";
@@ -179,7 +179,8 @@ export function InviteCard({
             )}
           </div>
 
-          {showRecording && now && phase && isPastPhase(phase) && mayHaveCallRecording(invite, now) && (
+          {/* Any past call whose room opened, an unanswered invite included. */}
+          {showRecording && now && phase && isPastPhase(phase) && callMayHaveRecording(invite, now) && (
             <CallRecordings inviteId={invite.id} />
           )}
         </div>

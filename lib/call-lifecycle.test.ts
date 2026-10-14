@@ -22,7 +22,6 @@ import {
   canEditCall,
   canMarkCallCompleted,
   canRequestTeamCall,
-  canUploadCallRecording,
   canViewCallRecording,
   cohostsToAdd,
   expiredUnderAcceptStep,
@@ -31,9 +30,7 @@ import {
   isPastPhase,
   isRoomOpenPhase,
   isRunningOver,
-  mayHaveCallRecording,
   proposalsAllPast,
-  RECORDING_UPLOAD_GRACE_MINUTES,
   requestCardState,
   shouldAutoComplete,
   splitCalls,
@@ -305,48 +302,6 @@ test("End call completes a booked call once it has started, not in the early roo
   assert.equal(canMarkCallCompleted(call("cancelled"), at(5)), false);
   assert.equal(canMarkCallCompleted(call("declined"), at(5)), false);
   assert.equal(canMarkCallCompleted(call("completed"), at(5)), false);
-});
-
-test("recording uploads run from the staff room opening to a grace past the hard close", () => {
-  for (const s of ["invited", "accepted", "completed", "cancelled", "declined"] as const) {
-    const c = call(s);
-    assert.equal(canUploadCallRecording(c, at(STAFF_OPENS - 1)), false, s);
-    assert.equal(canUploadCallRecording(c, at(STAFF_OPENS)), true, s);
-    assert.equal(canUploadCallRecording(c, at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES)), true, s);
-    assert.equal(
-      canUploadCallRecording(c, at(LAST_OPEN + RECORDING_UPLOAD_GRACE_MINUTES + 1)),
-      false,
-      s,
-    );
-  }
-  assert.equal(canUploadCallRecording(call("archived" as CallInviteStatus), at(10)), false);
-});
-
-test("a call may have a recording once its room could have opened", () => {
-  assert.equal(mayHaveCallRecording(call("invited"), at(STAFF_OPENS - 1)), false);
-  assert.equal(mayHaveCallRecording(call("invited"), at(STAFF_OPENS)), true);
-  assert.equal(mayHaveCallRecording(call("accepted"), at(FIRST_CLOSED)), true);
-  assert.equal(mayHaveCallRecording(call("completed"), at(-600)), true);
-});
-
-test("a declined call is looked up only when it was declined while the staff room was open", () => {
-  const declinedAt = (minutes: number) => call("declined", { updatedAt: at(minutes).toISOString() });
-  assert.equal(mayHaveCallRecording(declinedAt(-10), at(FIRST_CLOSED)), true, "host was in early");
-  assert.equal(mayHaveCallRecording(declinedAt(-60 * 24), at(FIRST_CLOSED)), false);
-});
-
-test("a cancelled call is looked up only when it was cancelled while the room was open", () => {
-  const cancelledAt = (minutes: number) => call("cancelled", { updatedAt: at(minutes).toISOString() });
-  assert.equal(mayHaveCallRecording(cancelledAt(5), at(FIRST_CLOSED)), true);
-  assert.equal(mayHaveCallRecording(cancelledAt(STAFF_OPENS), at(FIRST_CLOSED)), true);
-  assert.equal(mayHaveCallRecording(cancelledAt(LAST_OPEN), at(FIRST_CLOSED + 60)), true);
-  assert.equal(mayHaveCallRecording(cancelledAt(-3 * 24 * 60), at(FIRST_CLOSED)), false);
-  assert.equal(mayHaveCallRecording(cancelledAt(STAFF_OPENS - 1), at(FIRST_CLOSED)), false);
-  // Room not open yet: nothing to find, whatever the timestamp.
-  assert.equal(mayHaveCallRecording(cancelledAt(STAFF_OPENS), at(STAFF_OPENS - 1)), false);
-  // No usable timestamp: could the room have opened yet?
-  assert.equal(mayHaveCallRecording(call("cancelled", { updatedAt: "nope" }), at(FIRST_CLOSED)), true);
-  assert.equal(mayHaveCallRecording(call("cancelled"), at(STAFF_OPENS - 1)), false);
 });
 
 // ---------------------------------------------------------------------------

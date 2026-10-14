@@ -1,9 +1,6 @@
 "use client";
 import { useCallback, useMemo } from "react";
-import {
-  BroadcastRoom,
-  type SegmentOutcome,
-} from "@/components/live/broadcast-room";
+import { BroadcastRoom } from "@/components/live/broadcast-room";
 import {
   joinRoom,
   announcePresence,
@@ -11,28 +8,18 @@ import {
   listAudience,
 } from "@/app/live/actions";
 import { endLive, fetchLiveState, reopenLive } from "./room-actions";
-import {
-  getWebinarRecordingUploadToken,
-  registerWebinarRecordingSegment,
-} from "@/app/admin/events/webinar-actions";
 import type { LiveRole } from "@/lib/live";
 import type { WebinarPanelInitial } from "@/lib/webinar-panel";
 import type { SignalRole } from "@/lib/live-signal";
-import {
-  webinarSegmentName,
-  type AudienceMode,
-  type EventSpeaker,
-  type PremiereState,
-} from "@/lib/webinars";
-import { withUploadRetry } from "@/lib/upload-retry";
+import type { AudienceMode, EventSpeaker, PremiereState } from "@/lib/webinars";
 
 /**
  * A hosted webinar on batch0 Live.
  *
  * This binds the event to a room that knows nothing about events. `BroadcastRoom`
  * takes callbacks and data; everything that makes this particular room a WEBINAR
- * — which event it is, where its recording segments go, what its premiere is
- * playing — is resolved here and handed down. The same component serves a 1:1
+ * — which event it is, what its premiere is playing — is resolved here and
+ * handed down. The same component serves a 1:1
  * with `kind: "call"` and none of these props, which is the whole reason the
  * binding lives out here rather than inside the room.
  *
@@ -68,13 +55,9 @@ export function BuiltinEventRoom({
   panel,
 }: {
   eventId: string;
-  /**
-   * The signed-in person's id — the same id every other host's browser sees
-   * them by (a peer's id IS its user id), which is what lets every browser in
-   * the room agree on which one of them records.
-   */
+  /** The signed-in person's id — their peer id in the room. */
   selfUserId: string;
-  /** The signed-in person's name, for their tile if their browser records. */
+  /** The signed-in person's name, for their tile in the recording. */
   selfName: string;
   title: string;
   /** The schedule — see WebinarRoom in components/live/broadcast-room. */
@@ -128,75 +111,6 @@ export function BuiltinEventRoom({
     [eventId],
   );
 
-  /**
-   * Put one recording segment in the bucket.
-   *
-   * The three-step dance this repo already uses for every large upload, and it
-   * is three steps for a reason Next imposes: a server action's request body is
-   * capped at 1 MB by default and this project does not raise it, so a 19 MB
-   * segment cannot be POSTed to an action at all. Instead the server mints a
-   * signed URL, the bytes go straight from the tab to Supabase Storage without
-   * touching a Vercel function, and a second action records the path.
-   *
-   * Either server step may answer "another host's browser is recording this
-   * webinar" (see recordingRival in lib/webinars.ts). That is not a failure —
-   * it is the room's one-recorder rule being enforced — so it comes back as
-   * `"refused"` rather than a throw, and the room stands this recorder down.
-   *
-   * Throws on real failure, which is deliberate: `useRecorder` catches, counts
-   * the failure, and KEEPS RECORDING. Losing one segment must never stop the
-   * next one, because the alternative is a network blip at minute twelve
-   * costing the remaining forty-eight.
-   */
-  const onSegment = useCallback(
-    async (
-      blob: Blob,
-      index: number,
-      durationSeconds: number,
-      run: number,
-    ): Promise<SegmentOutcome> => {
-      // `run` is the room mount the recorder belongs to — see WebinarRoom's
-      // onSegment in components/live/broadcast-room.tsx.
-      const filename = webinarSegmentName(run, index);
-      // The segment's length goes with the ask, so the server can tell a
-      // co-host who registered BEFORE this segment began (a recorder who has
-      // since handed over) from one recording alongside it. Unrounded: it is
-      // only compared, never stored, and at a handover the departing
-      // recorder's last registration can sit within a second of this
-      // segment's start.
-      const minted = await getWebinarRecordingUploadToken(
-        eventId,
-        filename,
-        durationSeconds,
-      );
-      if (!minted.ok) return "refused";
-      // Deferred import keeps supabase-js out of the route's first-load JS;
-      // it's only needed here, at the moment an upload starts.
-      const { createClient } = await import("@/lib/supabase/client");
-      const supabase = createClient();
-      // Through a network blip, not past a refusal (lib/upload-retry.ts).
-      await withUploadRetry(async () => {
-        const up = await supabase.storage
-          .from("webinar-media")
-          .uploadToSignedUrl(minted.path, minted.token, blob, {
-            contentType: blob.type || "video/webm",
-          });
-        if (up.error) throw up.error;
-      });
-
-      const filed = await registerWebinarRecordingSegment(eventId, {
-        storagePath: minted.path,
-        filename,
-        mimeType: blob.type || "video/webm",
-        sizeBytes: blob.size,
-        durationSeconds: Math.round(durationSeconds),
-        sortOrder: index,
-      });
-      return filed.ok ? "saved" : "refused";
-    },
-    [eventId],
-  );
-
   const onEndLive = useCallback(() => endLive(eventId), [eventId]);
   const onReopenLive = useCallback(() => reopenLive(eventId), [eventId]);
   // The live-state poll, in the shape this room reads (premiere is gone: a
@@ -229,7 +143,6 @@ export function BuiltinEventRoom({
       speakers,
       deck,
       panel,
-      onSegment,
       onEndLive,
       onReopenLive,
       refreshPremiere,
@@ -252,7 +165,6 @@ export function BuiltinEventRoom({
       speakers,
       deck,
       panel,
-      onSegment,
       onEndLive,
       onReopenLive,
       refreshPremiere,

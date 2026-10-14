@@ -124,8 +124,9 @@ export type CallInvite = {
   /**
    * When the row last changed (call_invites.updated_at, kept by the
    * touch_call_invites trigger). For a cancelled call that is when it was
-   * cancelled — which is what tells a call cancelled mid-room, with recording
-   * segments, from one cancelled days ahead (mayHaveCallRecording).
+   * cancelled — which is what tells a call cancelled mid-room, with a
+   * recording, from one cancelled days ahead (callMayHaveRecording in
+   * lib/call-recording.ts).
    */
   updatedAt?: string;
 } & LiveRoom;

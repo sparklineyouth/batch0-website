@@ -47,7 +47,7 @@ export type CallTiming = {
   status: CallInviteStatus;
   startsAt: string;
   durationMinutes: number;
-  /** When the row last changed — dates a cancellation (mayHaveCallRecording). */
+  /** When the row last changed: dates a cancellation (callMayHaveRecording in lib/call-recording.ts). */
   updatedAt?: string;
 };
 
@@ -210,46 +210,6 @@ export function canAddCallCohosts(call: CallTiming, now: Date = new Date()): boo
  */
 export function canMarkCallCompleted(call: CallTiming, now: Date = new Date()): boolean {
   return isBooked(call) && now.getTime() >= callWindow(call).start;
-}
-
-/** How long after the hard close a final recording part may still upload. */
-export const RECORDING_UPLOAD_GRACE_MINUTES = 10;
-
-/**
- * May the staff side upload recording for this call right now? Booked,
- * completed (the other person pressed End while the recorder flushed),
- * cancelled or declined (while the staff side was in the room), between the
- * staff room opening and a short grace after the hard close.
- */
-export function canUploadCallRecording(
-  call: CallTiming,
-  now: Date = new Date(),
-): boolean {
-  if (call.status !== "completed" && !isBooked(call) && !isCalledOff(call)) return false;
-  const w = callWindow(call, "staff");
-  const t = now.getTime();
-  return t >= w.opensAt && t <= w.hardCloseAt + RECORDING_UPLOAD_GRACE_MINUTES * MINUTE;
-}
-
-function isCalledOff(call: CallTiming): boolean {
-  return call.status === "cancelled" || call.status === "declined";
-}
-
-/**
- * Could this call have a recording? Booked or completed once its staff room
- * could have opened; cancelled or declined only when that happened while the
- * staff room was open (`updatedAt` dates it; without one, fall back to "could
- * it have opened yet").
- */
-export function mayHaveCallRecording(call: CallTiming, now: Date = new Date()): boolean {
-  if (call.status === "completed") return true;
-  const w = callWindow(call, "staff");
-  if (!(w.opensAt <= now.getTime())) return false;
-  if (isBooked(call)) return true;
-  if (!isCalledOff(call)) return false;
-  const at = call.updatedAt ? Date.parse(call.updatedAt) : NaN;
-  if (!Number.isFinite(at)) return true;
-  return at >= w.opensAt && at <= w.hardCloseAt;
 }
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logAuditMany } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { refundScholarshipCreditFor } from "@/lib/calls";
+import { sweepStaleRecordings } from "@/lib/recording-sessions";
 import {
   ACCEPT_STEP_REMOVED_AT,
   autoCompleteRange,
@@ -13,6 +14,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The recordings sweep finalizes up to 20 takes.
+export const maxDuration = 120;
 
 /**
  * Every 15 minutes (vercel.json):
@@ -31,6 +34,11 @@ export const dynamic = "force-dynamic";
  * an overlapping run, an End call or a cancel in the same second changes each
  * call once, and a credit is refunded only for rows THIS run withdrew. No
  * notifications.
+ *
+ * It also sweeps recordings (calls' and webinars'): a take whose recorder's
+ * tab vanished is closed as interrupted and finalized from what reached
+ * storage (sweepStaleRecordings). Lists and players do this lazily too, but
+ * nobody may look for days.
  */
 
 const BATCH = 500;
@@ -122,6 +130,9 @@ export async function GET(req: Request) {
     completed = (updated ?? []).map((r: any) => r.id as string);
   }
 
+  // ---- recordings ----------------------------------------------------------
+  const recordings = await sweepStaleRecordings();
+
   await logAuditMany(null, [
     ...withdrawn.map((id) => ({
       action: "call_invite.cancelled",
@@ -141,5 +152,6 @@ export async function GET(req: Request) {
     considered: (rows?.length ?? 0) + (legacy?.length ?? 0),
     completed: completed.length,
     withdrawn: withdrawn.length,
+    recordings,
   });
 }
