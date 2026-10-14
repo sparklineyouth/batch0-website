@@ -167,8 +167,9 @@ import type {
  * each pair sends the offer, so glare stays impossible; the fold only makes
  * sure both sides know the pair exists. A newcomer's arrival speeds it up for
  * free: their `host-online` on the stage makes everyone re-announce, and the
- * answer names them. The staff list the room elects its recorder from rides
- * along as `callStaffIds`, and changes only when its membership does.
+ * answer names them. The call's staff list — who is on the team, and so who
+ * may record (one take at a time, under the server's lease: docs/recording.md)
+ * — rides along as `callStaffIds`, and changes only when its membership does.
  *
  * Nothing about a webinar changes: its answers never carry a roster, and the
  * fold is not even attempted for one.
@@ -246,8 +247,9 @@ export type LiveSession = {
    * The join has landed AND every peer it named has been handed to the
    * engine — so `remotes` now includes every broadcaster who was already in
    * the room when this one arrived (most still "connecting"). The webinar
-   * room waits for this before deciding who records: deciding earlier is
-   * deciding with an empty roster, and every host would elect themselves.
+   * side panel waits for this before it goes live (WebinarPanel's `live`).
+   * It has no say in who records: that is the server's lease
+   * (docs/recording.md).
    */
   joined: boolean;
   /**
@@ -274,8 +276,8 @@ export type LiveSession = {
    *
    * The page renders the staff list once, and people can be added to a call
    * while it runs, so the room reads this instead wherever it asks who is on
-   * the team — the recorder election, "the other side" for End call, End
-   * call's confirm, the count in its copy — and the rendered list only while
+   * the team — who may record, "the other side" for End call, End call's
+   * confirm, the count in its copy — and the rendered list only while
    * this is null. A new array only when the membership changed
    * (sameStaffList), so a heartbeat saying the same thing every twelve
    * seconds re-renders nothing.
@@ -1292,9 +1294,10 @@ export function useLiveSession({
       }
 
       // Negotiation from them is them, on the page, right now. Published at
-      // once: the link may take seconds more to come up, and the recorder
-      // election needs to know they are here before it does. Only a `leave`
-      // unsays it — a `rebuild` bye is the same person replacing a link.
+      // once (RemotePeer.heard): the link may take seconds more to come up,
+      // and telling a present person from an absent one should not wait for
+      // it. Only a `leave` unsays it — a `rebuild` bye is the same person
+      // replacing a link.
       if (msg.t === "bye") {
         if (msg.reason === "leave") heardFrom.current.delete(msg.from);
       } else if (

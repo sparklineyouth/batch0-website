@@ -105,8 +105,9 @@ export default async function CallLivePage(
   // What this render knows is the call as it stands NOW. Someone added while
   // it runs (addCallCohosts) reaches the people already in the room through
   // the heartbeat, which answers a call with its roster (announcePresence),
-  // and the room elects its recorder from the server's staff list from then
-  // on — `recorderIds` here is only where it starts.
+  // and the room reads the team — who may record, under the server's lease
+  // (docs/recording.md) — from the server's staff list from then on;
+  // `recorderIds` here is only where it starts.
   const everyone = [
     { id: invite.inviteeId, name: invite.inviteeName },
     { id: invite.hostId, name: invite.hostName },

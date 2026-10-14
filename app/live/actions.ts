@@ -155,11 +155,13 @@ export type PresenceResult = {
    * mesh only the smaller id of each pair dials, so everyone in the room with
    * a smaller id than the newcomer's — who should be offering to them — has
    * never heard of them, and the newcomer waits on a "waiting for…" tile for
-   * people who are sitting right there. And each staff browser elects the
-   * recorder from the staff list its page rendered, which does not have them
-   * on it. The engine folds this in on every answer (mergeCallPeers in
-   * lib/call-roster.ts): new people are dialled at once, and the room elects
-   * from `staffIds` from then on.
+   * people who are sitting right there. And each staff browser knows the team
+   * — who may record, who "the other side" is — from the staff list its page
+   * rendered, which does not have them on it. The engine folds this in on
+   * every answer (mergeCallPeers in lib/call-roster.ts): new people are
+   * dialled at once, and the room reads the team from `staffIds` from then
+   * on. (One take at a time is the server's lease, not this list:
+   * docs/recording.md.)
    *
    * Nothing here is new to the person receiving it: it is the join payload's
    * peer list again, behind the same gate, and only to someone who is on the
@@ -444,7 +446,8 @@ export async function announcePresence(
   // while it runs, the roster as it stands now: everyone on the call but the
   // caller (the join's own known peers, from the row resolveRoom just read)
   // and its staff side. The engine dials anyone it has not heard of and
-  // elects the recorder from the list. See PresenceResult.call.
+  // the room reads the team (who may record) from the list. See
+  // PresenceResult.call.
   if (room.call) {
     return {
       status: "ok",
