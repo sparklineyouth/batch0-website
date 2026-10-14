@@ -145,7 +145,9 @@ export function cohostsFromRow(row: any): CallCohost[] {
       (c) =>
         !!c?.profile_id &&
         c.profile_id !== row.host_id &&
-        c.profile_id !== row.invitee_id,
+        c.profile_id !== row.invitee_id &&
+        // Never a student on the staff side (see hostIsStudent).
+        one<any>(c.profile)?.role !== "student",
     )
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
     .map((c) => {
@@ -156,6 +158,18 @@ export function cohostsFromRow(row: any): CallCohost[] {
         role: p?.role || "mentor",
       };
     });
+}
+
+/**
+ * A call whose host is a student is not a call. Calls are booked by people
+ * holding calls.invite; until migration 0097 the 0092 update policy let
+ * either party rewrite their own call_invites row, host_id included, so a
+ * student could make themselves the host of a call with another student and
+ * be treated as staff on it (record it, watch it back). Such a row reads as
+ * no call at all (getInvite, resolveCallAccess), whether or not 0097 has run.
+ */
+export function hostIsStudent(row: any): boolean {
+  return one<any>(row?.host)?.role === "student";
 }
 
 function toInvite(row: any): CallInvite {
@@ -268,7 +282,7 @@ export async function getInvite(id: string): Promise<
   const { data } = await withCohosts((select) =>
     admin.from("call_invites").select(select).eq("id", id).maybeSingle(),
   );
-  if (!data) return null;
+  if (!data || hostIsStudent(data)) return null;
   return {
     ...toInvite(data),
     hostId: (data as any).host_id,

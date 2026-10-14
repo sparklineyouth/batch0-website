@@ -39,6 +39,7 @@ import {
 import {
   COHOSTS_EMBED,
   cohostsFromRow,
+  hostIsStudent,
   isCohostSchemaMissing,
   noteCohostsUnavailable,
 } from "@/lib/calls";
@@ -589,7 +590,8 @@ export async function resolveCallAccess(
     return { ok: false, reason: "error" };
   }
   const row = data as any;
-  if (!row) return { ok: false, reason: "no-access" };
+  // A student "hosting" is a rewritten row, not a call (hostIsStudent).
+  if (!row || hostIsStudent(row)) return { ok: false, reason: "no-access" };
 
   const host = one<any>(row.host);
   const invitee = one<any>(row.invitee);
