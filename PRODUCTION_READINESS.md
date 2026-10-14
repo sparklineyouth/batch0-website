@@ -247,7 +247,7 @@ Beyond the usage billing in P1 #12:
 ### 32. Team system (from earlier turn)
 
 Full implementation. The current shape:
-- Student-facing `/dashboard/team` with tabs (Profile, Members, Thread, Drive, Demo Day).
+- Student-facing `/dashboard/team` with tabs (Profile, Members, Drive, Demo Day).
 - Logo upload runs an Anthropic vision safety check + lands in admin moderation queue (`/admin/moderation`).
 - Team drive uploads land in `team-drive/<team_id>/drive/`.
 - Members invite teammates by name/email; invitees see a queued invite at `/dashboard/team`.

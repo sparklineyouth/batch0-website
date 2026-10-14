@@ -140,7 +140,7 @@ export async function GET(req: Request) {
     payload: { discord_user_id: discordUser.id, role },
   });
 
-  // Welcome the new linked member with the 3-step onboarding wizard.
+  // Welcome the new linked member with the onboarding wizard.
   // Best-effort — Discord refuses DMs if the user has them off; that's
   // a soft fail (they can run /start later to re-trigger).
   await sendOnboardingDM(admin, discordUser.id);

@@ -8,6 +8,9 @@ import { TeamHome } from "./team-home";
 import { InvitesInbox } from "./invites-inbox";
 import { getStudentAccess } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
+import { isDiscordEnabled } from "@/lib/discord";
+import { discordChannelUrl } from "@/lib/discord-links";
+import { env } from "@/lib/env";
 
 export const metadata = { title: "Team · batch0" };
 
@@ -34,6 +37,7 @@ export default async function TeamPage() {
       { data: files },
       { data: pitch },
       passHolders,
+      discordEnabled,
     ] = await Promise.all([
       admin
         .from("team_members")
@@ -61,6 +65,7 @@ export default async function TeamPage() {
         .eq("team_id", team.id)
         .maybeSingle(),
       passHolderUserIds(admin),
+      isDiscordEnabled(),
     ]);
 
     return (
@@ -72,6 +77,11 @@ export default async function TeamPage() {
         files={(files ?? []) as any[]}
         pitch={pitch as any}
         passHolderIds={[...passHolders]}
+        discordChannelUrl={
+          discordEnabled
+            ? discordChannelUrl(env.discordGuildId, team.discord_text_channel_id)
+            : null
+        }
       />
     );
   }

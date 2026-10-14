@@ -17,6 +17,7 @@ import type { Role } from "@/lib/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { allowedDiscordInteraction } from "@/lib/discord-interaction-access";
+import { discordMessageUrl } from "@/lib/discord-links";
 import { env } from "@/lib/env";
 import { notifyMany } from "@/lib/notifications";
 import { studentEventsOrFilter } from "@/lib/student-event-filter";
@@ -949,11 +950,7 @@ async function handleFlagBlocker(
 
   // Notify all admins in-app as well, linking to the message in Discord
   // (triage happens in the thread opened above).
-  const snowflake = /^\d{1,25}$/;
-  const messageUrl =
-    env.discordGuildId && snowflake.test(channelId) && snowflake.test(targetId)
-      ? `https://discord.com/channels/${env.discordGuildId}/${channelId}/${targetId}`
-      : null;
+  const messageUrl = discordMessageUrl(env.discordGuildId, channelId, targetId);
   try {
     const { data: admins } = await admin
       .from("profiles")

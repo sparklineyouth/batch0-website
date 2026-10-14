@@ -53,9 +53,9 @@ export type DiscordConfigInput = {
   adminFeedChannelId: string;
   // 0033 feature-pack channels — all optional. When empty, the
   // associated feature silently no-ops (e.g. no team channels without
-  // teamsCategoryId).
+  // teamsCategoryId). #wins is not here: the site no longer posts to it, so
+  // only bootstrap/repair (persistLayoutIds) record its id.
   teamsCategoryId: string;
-  winsChannelId: string;
   helpChannelId: string;
   ohVoiceChannelId: string;
   introductionsChannelId: string;
@@ -75,7 +75,6 @@ const KEY_BY_FIELD: Record<keyof DiscordConfigInput, string> = {
   eventsChannelId: "discord_channel_events_id",
   adminFeedChannelId: "discord_channel_admin_feed_id",
   teamsCategoryId: "discord_channel_teams_category_id",
-  winsChannelId: "discord_channel_wins_id",
   helpChannelId: "discord_channel_help_id",
   ohVoiceChannelId: "discord_channel_oh_voice_id",
   introductionsChannelId: "discord_channel_introductions_id",
