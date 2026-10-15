@@ -6,6 +6,10 @@ import { REACTION_EMOJI } from "@/lib/chat-access";
  * A small anchored panel that closes on an outside click or Escape. Escape
  * is captured and marked handled, so a dialog or the composer underneath
  * doesn't also act on it.
+ *
+ * "Outside" means outside the popover's wrapper, which also holds its toggle:
+ * a press on the toggle is the toggle's to handle. Closing on its mousedown
+ * would let the click that follows open it straight back up.
  */
 export function Popover({
   open,
@@ -24,7 +28,8 @@ export function Popover({
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent | TouchEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) closeRef.current();
+      const anchor = ref.current?.parentElement ?? ref.current;
+      if (anchor && !anchor.contains(e.target as Node)) closeRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;

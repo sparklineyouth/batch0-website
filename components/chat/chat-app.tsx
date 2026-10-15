@@ -63,6 +63,15 @@ function toUiMessage(row: LiveRow, known: readonly UiMessage[]): UiMessage {
   };
 }
 
+/** Drop a deleted message, and blank every reply quote that carried its words. */
+function withoutMessage(list: UiMessage[], id: string): UiMessage[] {
+  const quoted = list.some((m) => m.replyTo?.id === id && !m.replyTo.deleted);
+  if (!quoted && !list.some((m) => m.id === id)) return list;
+  return list
+    .filter((m) => m.id !== id)
+    .map((m) => (m.replyTo?.id === id ? { ...m, replyTo: { ...m.replyTo, preview: "", deleted: true } } : m));
+}
+
 export function ChatApp({
   viewer,
   home,
@@ -106,6 +115,11 @@ export function ChatApp({
   payloadRef.current = payload;
   const channelIdRef = useRef(channelId);
   channelIdRef.current = channelId;
+  // Reading a window around a jump target, newer messages not loaded: live
+  // inserts and resyncs would land after it with a silent gap in between.
+  const hasMoreAfter = !!payload?.channel && !!payload.hasMoreAfter;
+  const hasMoreAfterRef = useRef(hasMoreAfter);
+  hasMoreAfterRef.current = hasMoreAfter;
   const peopleRef = useRef(people);
   peopleRef.current = people;
   const nearBottomRef = useRef(true);
@@ -214,11 +228,9 @@ export function ChatApp({
         const fresh = await fetchChannel(target);
         // Switched again while this was in flight.
         if (seq !== openSeq.current) return;
-        adopt(fresh);
-        if (cached) {
-          // Keep anything the cache had that the fresh page also covers, plus live arrivals.
-          setMessages((prev) => mergeMessages(fresh.messages as UiMessage[], prev.filter((m) => m.pending)));
-        }
+        // Coming back to a cached channel keeps its unsent and failed bubbles
+        // (with their Retry) on top of the fresh page.
+        adopt(fresh, { keepPending: !!cached });
       } catch (err) {
         if (seq !== openSeq.current) return;
         setError(err instanceof Error ? err.message : "That channel isn't available.");
@@ -232,7 +244,9 @@ export function ChatApp({
 
   const openChannel = useCallback((channelId: string, around?: string | null) => {
     void openTarget({ channelId, around: around ?? null });
-    setPanel((p) => (p === "search" || p === "pins" ? p : p));
+    // On a phone the panel is a full-screen sheet over the thread: get it out
+    // of the way, or the jump (and its highlight) happens out of sight.
+    if (typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches) setPanel(null);
   }, [openTarget]);
 
   // Ctrl/Cmd+K: the quick switcher.
@@ -303,10 +317,10 @@ export function ChatApp({
   /** Reconcile the open channel with the server's newest page (deletes Realtime can't deliver after a reconnect, missed inserts). */
   const resync = useCallback(async () => {
     const id = channelIdRef.current;
-    if (!id) return;
+    if (!id || hasMoreAfterRef.current) return;
     try {
       const page = await fetchMessages(id);
-      if (channelIdRef.current !== id) return;
+      if (channelIdRef.current !== id || hasMoreAfterRef.current) return;
       addPeople(page.people);
       setMessages((prev) =>
         reconcilePage(prev, page.messages as UiMessage[], { asOf: page.asOf, complete: !page.hasMoreBefore }),
@@ -333,6 +347,25 @@ export function ChatApp({
       setLoadingOlder(false);
     }
   }, [addPeople, loadingOlder]);
+
+  /** Leave a jump target's window for the newest page. */
+  const presentSeq = useRef(0);
+  const jumpToPresent = useCallback(async () => {
+    const id = channelIdRef.current;
+    if (!id) return;
+    const seq = ++presentSeq.current;
+    try {
+      const page = await fetchMessages(id);
+      if (channelIdRef.current !== id || seq !== presentSeq.current) return;
+      addPeople(page.people);
+      setMessages((prev) => mergeMessages(page.messages as UiMessage[], prev.filter((m) => m.pending || m.failed)));
+      setHasMoreBefore(page.hasMoreBefore);
+      setPayload((p) => (p?.channel?.id === id ? { ...p, hasMoreAfter: false, focusId: null } : p));
+      window.history.replaceState(null, "", `/chat?c=${id}`);
+    } catch {
+      if (channelIdRef.current === id) setError("Couldn't load the latest messages. Try again.");
+    }
+  }, [addPeople]);
 
   // ---------------------------------------------------------------------------
   // Live
@@ -361,7 +394,9 @@ export function ChatApp({
       if (!row?.id) return;
       const isOpen = row.channel_id === channelIdRef.current;
       const fromOther = row.sender_id !== viewer.id;
-      if (isOpen) {
+      if (isOpen && hasMoreAfterRef.current) {
+        // Reading old messages: the newest page will bring this in.
+      } else if (isOpen) {
         const msg = toUiMessage(row, messagesRef.current);
         setMessages((prev) => {
           if (prev.some((m) => m.id === row.id)) return prev;
@@ -427,9 +462,11 @@ export function ChatApp({
   const onUpdate = useCallback((row: LiveRow) => {
     if (!row?.id) return;
     const apply = (list: UiMessage[]): UiMessage[] => {
+      // A delete also takes its words out of every reply quoting it — even a
+      // quote whose original isn't loaded.
+      if (row.deleted_at) return withoutMessage(list, row.id);
       const i = list.findIndex((m) => m.id === row.id);
       if (i === -1) return list;
-      if (row.deleted_at) return list.filter((m) => m.id !== row.id);
       const cur = list[i];
       const next: UiMessage = {
         ...cur,
@@ -497,6 +534,23 @@ export function ChatApp({
       };
       setMessages((prev) => [...prev, optimistic]);
       nearBottomRef.current = true;
+      // Writing from a jump target's window: the message belongs at the
+      // present, so go there (the bubble rides along as pending).
+      if (p.channel && hasMoreAfterRef.current) void jumpToPresent();
+
+      // The answer belongs to the channel it was sent from, which may not be
+      // the one open by the time it lands: apply it there, or to its cache.
+      const cid0 = p.channel?.id ?? null;
+      const seq0 = openSeq.current;
+      const stillHere = () => (cid0 ? channelIdRef.current === cid0 : payloadRef.current === p && openSeq.current === seq0);
+      const applyHere = (fn: (list: UiMessage[]) => UiMessage[]) => {
+        if (stillHere()) setMessages(fn);
+        else if (cid0) {
+          const cached = cache.current.get(cid0);
+          if (cached) cached.messages = fn(cached.messages);
+        }
+      };
+
       const res = await sendMessage({
         channelId: p.channel?.id,
         toUserId: p.channel ? undefined : p.draftTo?.id,
@@ -506,27 +560,27 @@ export function ChatApp({
       }).catch((err) => ({ ok: false as const, error: err instanceof Error ? err.message : "Couldn't send. Try again." }));
       if (!res.ok || !res.data) {
         const why = resultError(res, "Couldn't send. Try again.");
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: why } : m)));
+        applyHere((prev) => prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: why } : m)));
         return;
       }
       const { message, channelId: cid } = res.data;
-      setMessages((prev) => {
-        const without = prev.filter((m) => m.id !== tempId);
-        return mergeMessages(without, [message as UiMessage]);
-      });
+      applyHere((prev) => mergeMessages(prev.filter((m) => m.id !== tempId), [message as UiMessage]));
       if (!p.channel) {
-        // A draft's first message created the DM: become that channel.
-        try {
-          const fresh = await fetchChannel({ channelId: cid });
-          adopt(fresh, { keepPending: true });
-        } catch {
-          /* the sidebar refresh below still shows it */
+        // A draft's first message created the DM: become that channel — but
+        // only if the person is still on the draft.
+        if (stillHere()) {
+          try {
+            const fresh = await fetchChannel({ channelId: cid });
+            if (stillHere()) adopt(fresh, { keepPending: true });
+          } catch {
+            /* the sidebar refresh below still shows it */
+          }
         }
         void refreshSidebar();
       }
       lastMark.current = { id: cid, upTo: message.createdAt, at: Date.now() };
     },
-    [adopt, refreshSidebar, stopTyping, viewer.id],
+    [adopt, jumpToPresent, refreshSidebar, stopTyping, viewer.id],
   );
 
   const retrySend = useCallback(
@@ -556,7 +610,7 @@ export function ChatApp({
   const remove = useCallback(async (id: string): Promise<string | null> => {
     const res = await deleteMessage(id);
     if (!res.ok) return resultError(res, "Couldn't delete that message.");
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+    setMessages((prev) => withoutMessage(prev, id));
     return null;
   }, []);
 
@@ -606,11 +660,17 @@ export function ChatApp({
 
   const reloadChannel = useCallback(async () => {
     const id = channelIdRef.current;
+    const seq = openSeq.current;
+    // Only while the person is still on the channel that changed: a switch in
+    // the meantime must not get yanked back (or blanked) by this answer.
+    const still = () => seq === openSeq.current && channelIdRef.current === id;
     await refreshSidebar();
-    if (!id) return;
+    if (!id || !still()) return;
     try {
-      adopt(await fetchChannel({ channelId: id }), { keepPending: true });
+      const fresh = await fetchChannel({ channelId: id });
+      if (still()) adopt(fresh, { keepPending: true });
     } catch {
+      if (!still()) return;
       setPayload(null);
       setMobilePane("list");
     }
@@ -659,6 +719,8 @@ export function ChatApp({
           hasMoreBefore={hasMoreBefore}
           loadingOlder={loadingOlder}
           onLoadOlder={loadOlder}
+          hasMoreAfter={hasMoreAfter}
+          onJumpToPresent={jumpToPresent}
           jumpTo={jumpTo}
           onJumped={() => setJumpTo(null)}
           onBack={() => setMobilePane("list")}

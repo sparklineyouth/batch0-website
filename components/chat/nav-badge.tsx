@@ -9,11 +9,20 @@ import { usePing } from "./use-chat-live";
  * plus channel mentions. Rides the chat bells (one per burst) for instant
  * updates, with a slow poll as the safety net — the same pattern as the
  * notification bell. Renders nothing at zero.
+ *
+ * Whose bells to listen for comes back with the count, so none of the
+ * layouts has to thread a user id down to the nav.
  */
-export function ChatNavBadge({ userId }: { userId?: string | null }) {
+export function ChatNavBadge() {
   const [n, setN] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
   const refresh = useCallback(() => {
-    fetchAttention().then(setN).catch(() => undefined);
+    fetchAttention()
+      .then((r) => {
+        setN(r.n);
+        setUserId(r.userId);
+      })
+      .catch(() => undefined);
   }, []);
   useEffect(() => {
     refresh();

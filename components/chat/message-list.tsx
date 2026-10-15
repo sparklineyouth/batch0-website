@@ -25,7 +25,7 @@ import { attachmentKind, chatFileHref, formatBytes, isInlineImage } from "@/lib/
 import { Avatar, RoleTag } from "./avatar";
 import { MessageMarkup, type MarkupContext } from "./markup";
 import { EmojiGrid, MenuItem, Popover } from "./popover";
-import { clockTime, dayLabel, stampLabel } from "./util";
+import { clockTime, dayLabel, imeComposing, stampLabel } from "./util";
 import type { ChannelInfo, ChatPerson, ChatViewerInfo, UiMessage } from "./types";
 
 const NEAR_BOTTOM_PX = 120;
@@ -55,6 +55,8 @@ export function MessageList({
   hasMoreBefore,
   loadingOlder,
   onLoadOlder,
+  hasMoreAfter = false,
+  onJumpToPresent,
   jumpTo,
   onJumped,
   editingId,
@@ -74,6 +76,9 @@ export function MessageList({
   hasMoreBefore: boolean;
   loadingOlder: boolean;
   onLoadOlder: () => void;
+  /** Showing a window around a jump target, with newer messages not loaded. */
+  hasMoreAfter?: boolean;
+  onJumpToPresent?: () => void;
   jumpTo: string | null;
   onJumped: () => void;
   editingId: string | null;
@@ -162,6 +167,22 @@ export function MessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, channelKey]);
 
+  // Back to the present after reading around a jump target: the newest page
+  // replaced the window, so land at its bottom. (Same channel only — opening
+  // another one anchors as usual, at its "new" line.)
+  const wasAround = useRef<{ key: string; on: boolean }>({ key: channelKey, on: hasMoreAfter });
+  useLayoutEffect(() => {
+    if (wasAround.current.on && !hasMoreAfter && wasAround.current.key === channelKey) {
+      const el = scrollRef.current;
+      if (el) setScroll(el.scrollHeight);
+      nearBottom.current = true;
+      onNearBottom(true);
+      setShowJump(false);
+    }
+    wasAround.current = { key: channelKey, on: hasMoreAfter };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMoreAfter, channelKey]);
+
   // Day dividers arrive after hydration: re-anchor if the reader hasn't moved.
   useLayoutEffect(() => {
     if (offset !== null && !settled.current && !jumpTo) anchorOpening();
@@ -213,9 +234,11 @@ export function MessageList({
   };
 
   const toBottom = () => {
+    setShowJump(false);
+    // Newer messages aren't loaded yet: the bottom of this window isn't now.
+    if (hasMoreAfter && onJumpToPresent) return onJumpToPresent();
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    setShowJump(false);
   };
 
   const viewerRules: ChatViewer = {
@@ -288,9 +311,22 @@ export function MessageList({
                 setEditingId={setEditingId}
                 flash={flash === r.m.id}
                 actions={actions}
+                mounted={offset !== null}
               />
             );
           })}
+          {hasMoreAfter ? (
+            <div className="flex justify-center py-3">
+              <button
+                type="button"
+                onClick={onJumpToPresent}
+                className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-1.5 text-xs text-ink-soft hover:bg-wash"
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+                You're reading older messages · Jump to present
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
       {showJump ? (
@@ -322,6 +358,7 @@ const MessageItem = memo(function MessageItem({
   setEditingId,
   flash,
   actions,
+  mounted,
 }: {
   m: UiMessage;
   head: boolean;
@@ -337,13 +374,22 @@ const MessageItem = memo(function MessageItem({
   setEditingId: (id: string | null) => void;
   flash: boolean;
   actions: MessageActions;
+  /**
+   * Times are in the viewer's zone and locale, which the server rendering
+   * this can't know: render them only once mounted, or hydration mismatches.
+   */
+  mounted: boolean;
 }) {
   const [menu, setMenu] = useState<"emoji" | "more" | null>(null);
   const [reveal, setReveal] = useState(false);
   const name = m.senderId ? (sender?.name ?? "Deleted account") : "batch0";
   const mine = m.senderId === viewer.id;
   const live = !m.pending && !m.failed;
-  const readOnly = !channel || channel.archived || channel.moderatorView;
+  // A frozen DM or group (a block, a departed account, the safeguarding rule,
+  // a fine) takes no edits, reactions or pins either — the server refuses
+  // them, so don't offer them. A text channel you can't post in still takes
+  // reactions (#announcements), just not edits.
+  const readOnly = !channel || channel.archived || channel.moderatorView || (channel.kind !== "channel" && !channel.compose.ok);
   const mentioned = !mine && (m.mentions.includes(viewer.id) || m.mentionEveryone);
 
   if (m.kind === "system") {
@@ -357,7 +403,7 @@ const MessageItem = memo(function MessageItem({
         <span className="min-w-0">
           <MessageMarkup body={m.body} ctx={markup} compact />
         </span>
-        <span className="shrink-0 font-mono text-[10px]">{clockTime(m.createdAt)}</span>
+        <span className="shrink-0 font-mono text-[10px]">{mounted ? clockTime(m.createdAt) : ""}</span>
       </div>
     );
   }
@@ -376,11 +422,11 @@ const MessageItem = memo(function MessageItem({
     );
   }
 
-  const canEdit = live && !readOnly && canEditMessage({ senderId: m.senderId, kind: m.kind, deletedAt: null }, rules);
+  const canEdit = live && !readOnly && !!channel?.compose.ok && canEditMessage({ senderId: m.senderId, kind: m.kind, deletedAt: null }, rules);
   const canDelete =
     live &&
     !(channel?.archived && !viewer.staff) &&
-    canDeleteMessage({ senderId: m.senderId, kind: m.kind, deletedAt: null }, { kind: channel?.kind ?? "dm" }, rules);
+    canDeleteMessage({ senderId: m.senderId, kind: m.kind, deletedAt: null }, { id: channel?.id ?? "", kind: channel?.kind ?? "dm" }, rules);
   const reactions = sortedReactions(m.reactions);
 
   return (
@@ -399,7 +445,7 @@ const MessageItem = memo(function MessageItem({
             </button>
           ) : (
             <span className="invisible block pt-1 text-right font-mono text-[10px] text-ink-faint group-hover:visible">
-              {clockTime(m.createdAt)}
+              {mounted ? clockTime(m.createdAt) : ""}
             </span>
           )}
         </div>
@@ -409,7 +455,7 @@ const MessageItem = memo(function MessageItem({
               <span className="text-sm font-semibold text-ink">{name}</span>
               <RoleTag person={sender} />
               <time dateTime={m.createdAt} className="font-mono text-[11px] text-ink-faint">
-                {stampLabel(m.createdAt)}
+                {mounted ? stampLabel(m.createdAt) : ""}
               </time>
               {m.pinnedAt ? <Pin className="h-3 w-3 text-phosphor-ink" aria-label="Pinned" /> : null}
             </div>
@@ -486,12 +532,12 @@ const MessageItem = memo(function MessageItem({
             </ToolbarButton>
           ) : null}
           {!readOnly && channel?.compose.ok ? (
-            <ToolbarButton label="Reply" onClick={() => actions.onReply(m)}>
+            <ToolbarButton label="Reply" onClick={() => { setMenu(null); actions.onReply(m); }}>
               <CornerUpLeft className="h-4 w-4" />
             </ToolbarButton>
           ) : null}
           {canEdit ? (
-            <ToolbarButton label="Edit" onClick={() => setEditingId(m.id)}>
+            <ToolbarButton label="Edit" onClick={() => { setMenu(null); setEditingId(m.id); }}>
               <Pencil className="h-4 w-4" />
             </ToolbarButton>
           ) : null}
@@ -682,7 +728,7 @@ function EditBox({
           if (e.key === "Escape") {
             e.preventDefault();
             onCancel();
-          } else if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          } else if (e.key === "Enter" && !e.shiftKey && !imeComposing(e)) {
             e.preventDefault();
             void save();
           }

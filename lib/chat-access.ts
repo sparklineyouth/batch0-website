@@ -72,6 +72,31 @@ export function canReadChannel(c: ChannelScope, viewer: ChatViewer, reported: bo
   return viewer.staff && reported;
 }
 
+/**
+ * May this moderator see a report — and, for a DM or group, read the
+ * conversation because of it? Never a party to it: everyone who was in the
+ * DM or group when it was reported, and whoever sent the reported message.
+ * They'd learn who reported them, and why. Mirrors the `party_ids` check in
+ * chat_can_read(), so `reported` above means "reported, by a report this
+ * viewer may see".
+ */
+export function reportOpenTo(partyIds: readonly string[], viewer: Pick<ChatViewer, "userId" | "staff">): boolean {
+  return !!viewer.userId && viewer.staff && !partyIds.includes(viewer.userId);
+}
+
+/**
+ * The queue's rule: reportOpenTo, and never someone in the DM or group right
+ * now either — the snapshot can't know who joined after the report.
+ */
+export function reportVisibleTo(
+  report: { channelId: string; partyIds: readonly string[] },
+  kind: ChannelKind,
+  viewer: ChatViewer,
+): boolean {
+  if (!reportOpenTo(report.partyIds, viewer)) return false;
+  return kind === "channel" || !viewer.memberOf.includes(report.channelId);
+}
+
 /** Is the viewer a party to this DM or group (not a moderator looking in)? */
 export function isParticipant(c: Pick<ChannelScope, "id" | "kind">, viewer: ChatViewer): boolean {
   return c.kind !== "channel" && viewer.memberOf.includes(c.id);
@@ -144,17 +169,20 @@ export function canEditMessage(m: MessageScope, viewer: ChatViewer): boolean {
 
 /**
  * Your own message, anywhere you can still read it; or staff removing
- * someone else's — in a text channel, or in a DM or group that was reported
- * (the only way they can be reading it).
+ * someone else's — in a text channel, or as a moderator in a DM or group that
+ * was reported (the only way they can be reading one they're not in). Never
+ * in a conversation they're a party to: a moderator in a DM is just one side
+ * of it, and wiping the other side's words is evidence gone.
  */
 export function canDeleteMessage(
   m: MessageScope,
-  c: Pick<ChannelScope, "kind">,
+  c: Pick<ChannelScope, "id" | "kind">,
   viewer: ChatViewer,
 ): boolean {
   if (m.deletedAt) return false;
   if (m.senderId && m.senderId === viewer.userId && m.kind === "message") return true;
-  return viewer.staff;
+  if (!viewer.staff) return false;
+  return c.kind === "channel" || !isParticipant(c, viewer);
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +295,23 @@ export function slowModeWait(
 export function effectiveNotify(kind: ChannelKind, pref: NotifyPref | null | undefined): NotifyPref {
   if (pref === "all" || pref === "mentions" || pref === "none") return pref;
   return kind === "channel" ? "mentions" : "all";
+}
+
+/**
+ * What one channel adds to the Chat badge: a text channel its mentions, a DM
+ * or group 1 while anything in it is unread. Nothing when it's muted, and
+ * nothing for a conversation closed since its last message — the sidebar's
+ * rule, so the badge never counts what the sidebar shows as read.
+ */
+export function attentionFor(
+  kind: ChannelKind,
+  counts: { unread: number; mentions: number },
+  pref: NotifyPref | null | undefined,
+  visible: boolean,
+): number {
+  if (effectiveNotify(kind, pref) === "none") return 0;
+  if (kind === "channel") return counts.mentions;
+  return visible && counts.unread > 0 ? 1 : 0;
 }
 
 /** Does this message concern this recipient enough to ring a bell at all? */

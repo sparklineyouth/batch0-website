@@ -107,11 +107,13 @@ export async function fetchSidebar(): Promise<SidebarData> {
 }
 
 /** The nav badge: DMs and groups with something unread, plus channel mentions. */
-export async function fetchAttention(): Promise<number> {
+/** The nav badge's count, and whose it is — the badge listens for that person's chat bells. */
+export async function fetchAttention(): Promise<{ n: number; userId: string | null }> {
   try {
-    return await countAttention(await viewerNow());
+    const viewer = await viewerNow();
+    return { n: await countAttention(viewer), userId: viewer.userId };
   } catch {
-    return 0;
+    return { n: 0, userId: null };
   }
 }
 
@@ -205,12 +207,15 @@ async function resolveDm(viewer: ChatViewer, toUserId: string): Promise<{ channe
   if (!isUuid(toUserId) || toUserId === viewer.userId) throw new Error("Pick someone to message.");
   const key = dmKey(viewer.userId, toUserId);
   const existing = await findDm(key);
-  if (existing) return { channelId: existing.id, created: false };
+  if (existing) return { channelId: await healDmMembers(existing.id, viewer.userId, toUserId), created: false };
   const person = await getPerson(toUserId);
   if (!person) throw new Error("That person isn't available.");
   const allowed = await canStartConversation(viewer, person);
   if (!allowed.ok) throw new Error(allowed.reason);
   if (await isBlockedBetween(viewer.userId, toUserId)) throw new Error("You can't send messages to this person.");
+  // The fine lock, before the row exists: otherwise a fined account could
+  // still push empty conversations into other people's inboxes.
+  await assertNotFined(viewer, toUserId);
   await rateLimit(
     "chat-new-conversation",
     viewer.userId,
@@ -228,46 +233,75 @@ async function resolveDm(viewer: ChatViewer, toUserId: string): Promise<{ channe
     // Both people pressed send at the same instant: one insert loses on the
     // unique key and reads the winner back.
     const again = await findDm(key);
-    if (again) return { channelId: again.id, created: false };
+    if (again) return { channelId: await healDmMembers(again.id, viewer.userId, toUserId), created: false };
     throw new Error(error.message);
   }
-  const channelId = (data as { id: string }).id;
-  const { error: memErr } = await admin.from("chat_members").insert([
-    { channel_id: channelId, user_id: viewer.userId, added_by: viewer.userId },
-    { channel_id: channelId, user_id: toUserId, added_by: viewer.userId },
-  ]);
-  if (memErr) throw new Error(memErr.message);
+  const channelId = await healDmMembers((data as { id: string }).id, viewer.userId, toUserId);
   return { channelId, created: true };
 }
 
-/** Everything that decides whether this viewer may post here right now. */
-async function assertCanPost(viewer: ChatViewer, channel: ChannelRow, reported: boolean): Promise<void> {
+/**
+ * Make sure both people are members of their DM. Idempotent, so it also
+ * repairs a DM whose member rows didn't land (a failed second write, or the
+ * loser of a simultaneous first send) instead of locking both people out of
+ * it for good.
+ */
+async function healDmMembers(channelId: string, me: string, other: string): Promise<string> {
+  const { error } = await createAdminClient()
+    .from("chat_members")
+    .upsert(
+      [
+        { channel_id: channelId, user_id: me, added_by: me },
+        { channel_id: channelId, user_id: other, added_by: me },
+      ],
+      { onConflict: "channel_id,user_id", ignoreDuplicates: true },
+    );
+  if (error) throw new Error(error.message);
+  return channelId;
+}
+
+const FINE_LOCK = "Settle your pending fine first. You can still message the batch0 team about it.";
+
+/**
+ * A pending fine locks an account out of everything but paying it. One door
+ * stays open: a DM with the team, to ask about the fine. (Middleware used to
+ * gate /messages; /chat stays reachable so the door works, and every action
+ * that writes checks this instead.)
+ */
+async function assertNotFined(viewer: ChatViewer, dmWith: string | null = null): Promise<void> {
+  if (viewer.staff || !(await hasPendingFine(viewer.userId))) return;
+  const other = dmWith ? await getPerson(dmWith) : null;
+  if (!other?.isStaff) throw new Error(FINE_LOCK);
+}
+
+/**
+ * The freeze rules — archived, read-only, moderator view, a DM block, a
+ * departed account, the safeguarding rule, a pending fine — with no slow
+ * mode. Every action that changes what others see in a conversation runs
+ * this: sending, but also editing, reacting, pinning and renaming, or a
+ * frozen conversation would keep carrying new words through an edit.
+ */
+async function postVerdict(viewer: ChatViewer, channel: ChannelRow, reported: boolean): Promise<{ otherId: string | null }> {
   const participant = isParticipant(channel, viewer);
   let blocked = false;
   let otherPresent = true;
   let otherId: string | null = null;
+  const members = channel.kind !== "channel" && participant ? ((await listMembers([channel.id])).get(channel.id) ?? []) : [];
   if (channel.kind === "dm" && participant) {
     otherId = otherInDmKey(channel.dmKey, viewer.userId);
-    const members = (await listMembers([channel.id])).get(channel.id) ?? [];
     otherPresent = !!otherId && members.includes(otherId);
     blocked = otherId ? await isBlockedBetween(viewer.userId, otherId) : false;
   }
-  const safeguarded =
-    channel.kind !== "channel" && isParticipant(channel, viewer)
-      ? !(await membershipAllowed((await listMembers([channel.id])).get(channel.id) ?? []))
-      : false;
+  const safeguarded = channel.kind !== "channel" && participant ? !(await membershipAllowed(members)) : false;
   const verdict = canPost(channel, viewer, { reported, blocked, otherPresent, safeguarded });
   if (!verdict.ok) throw new Error(verdict.reason);
+  await assertNotFined(viewer, channel.kind === "dm" ? otherId : null);
+  return { otherId };
+}
 
-  // A pending fine locks an account out of everything but paying it. One door
-  // stays open: a DM with the team, to ask about the fine.
-  if (!viewer.staff && (await hasPendingFine(viewer.userId))) {
-    const other = otherId ? await getPerson(otherId) : null;
-    if (!(channel.kind === "dm" && other?.isStaff)) {
-      throw new Error("Settle your pending fine first. You can still message the batch0 team about it.");
-    }
-  }
-
+/** Everything that decides whether this viewer may post here right now. */
+async function assertCanPost(viewer: ChatViewer, channel: ChannelRow, reported: boolean): Promise<void> {
+  await postVerdict(viewer, channel, reported);
   const wait = slowModeWait(channel, viewer, await lastSentAt(channel.id, viewer.userId), Date.now());
   if (wait > 0) throw new Error(`Slow mode is on. You can post again in ${wait}s.`);
 }
@@ -292,7 +326,9 @@ export async function sendMessage(input: SendInput): Promise<ActionResult<{ chan
       // The fine lock and the block check run inside resolveDm/assertCanPost;
       // the new-conversation rate limit only when a row is actually created.
       ({ channelId, created } = await resolveDm(viewer, input.toUserId));
-      if (created) viewer.memberOf = [...viewer.memberOf, channelId];
+      // resolveDm made sure the viewer is a member (created, raced or healed),
+      // but the viewer was resolved before that.
+      if (!viewer.memberOf.includes(channelId)) viewer.memberOf = [...viewer.memberOf, channelId];
     }
     if (!channelId) throw new Error("Pick a channel or a person first.");
 
@@ -378,7 +414,7 @@ export async function editMessage(messageId: string, rawBody: string): Promise<A
     if (!canEditMessage({ senderId: row.sender_id, kind: row.kind, deletedAt: row.deleted_at }, viewer)) {
       throw new Error("You can only edit your own messages.");
     }
-    if (found.channel.archivedAt) throw new Error("This channel is archived. It's read-only now.");
+    await postVerdict(viewer, found.channel, found.reported);
     const hasFiles = Array.isArray(row.attachments) && row.attachments.length > 0;
     const body = cleanBody(rawBody, { allowEmpty: hasFiles });
     if (body === row.body) {
@@ -453,8 +489,10 @@ export async function toggleReaction(messageId: string, emoji: string): Promise<
     const found = await getChannelForViewer(row.channel_id, viewer);
     if (!found) throw new Error(NOT_AVAILABLE);
     if (found.channel.archivedAt) throw new Error("This channel is archived. It's read-only now.");
-    if (found.channel.kind !== "channel" && !isParticipant(found.channel, viewer)) {
-      throw new Error("You're reading this as a moderator.");
+    if (found.channel.kind !== "channel") {
+      // In a DM or group a reaction is a message; a frozen one takes none.
+      // (In #announcements anyone may react to what they can't post in.)
+      await postVerdict(viewer, found.channel, found.reported);
     }
     await rateLimit("chat-react", viewer.userId, 60, 60, "Easy on the reactions — try again in a moment.");
     const admin = createAdminClient();
@@ -492,7 +530,9 @@ export async function togglePin(messageId: string): Promise<ActionResult<{ pinne
     const found = await getChannelForViewer(row.channel_id, viewer);
     if (!found) throw new Error(NOT_AVAILABLE);
     if (!canPin(found.channel, viewer)) throw new Error("Only the batch0 team pins messages here.");
-    if (found.channel.archivedAt) throw new Error("This channel is archived. It's read-only now.");
+    if (found.channel.kind !== "channel") await postVerdict(viewer, found.channel, found.reported);
+    else if (found.channel.archivedAt) throw new Error("This channel is archived. It's read-only now.");
+    await rateLimit("chat-pin", viewer.userId, 20, 600, "That's a lot of pinning. Try again in a few minutes.");
     const admin = createAdminClient();
     const pinning = !row.pinned_at;
     if (pinning) {
@@ -644,6 +684,7 @@ export async function createGroup(input: { userIds: string[]; name?: string | nu
       return { channelId: dm.channelId };
     }
     const name = (input.name ?? "").trim().slice(0, GROUP_NAME_MAX) || null;
+    await assertNotFined(viewer);
     const people = await assertGroupable(viewer, ids);
     await rateLimit("chat-new-conversation", viewer.userId, 10, 3600, "You've started a lot of new conversations in the last hour. Try again later.");
     const admin = createAdminClient();
@@ -657,7 +698,11 @@ export async function createGroup(input: { userIds: string[]; name?: string | nu
     const { error: memErr } = await admin
       .from("chat_members")
       .insert([viewer.userId, ...ids].map((uid) => ({ channel_id: channelId, user_id: uid, added_by: viewer.userId })));
-    if (memErr) throw new Error(memErr.message);
+    if (memErr) {
+      // A group nobody is in is unreachable: take it back down.
+      await admin.from("chat_channels").delete().eq("id", channelId);
+      throw new Error(memErr.message);
+    }
     const me = (await getPerson(viewer.userId))?.name ?? "Someone";
     await postSystemLine(channelId, `${me} started a group with ${people.map((p) => p.name).join(", ")}.`);
     return { channelId };
@@ -669,6 +714,8 @@ export async function addToGroup(channelId: string, userIds: string[]): Promise<
     const viewer = await viewerNow();
     const found = await getChannelForViewer(channelId, viewer);
     if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) throw new Error(NOT_AVAILABLE);
+    await assertNotFined(viewer);
+    await rateLimit("chat-group-admin", viewer.userId, 10, 600, "Too many group changes in a row. Try again in a few minutes.");
     const current = (await listMembers([channelId])).get(channelId) ?? [];
     const ids = Array.from(new Set(userIds.filter(isUuid))).filter((id) => !current.includes(id));
     if (ids.length === 0) return;
@@ -718,6 +765,9 @@ export async function renameGroup(channelId: string, rawName: string): Promise<A
     if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) throw new Error(NOT_AVAILABLE);
     const name = String(rawName ?? "").trim().slice(0, GROUP_NAME_MAX) || null;
     if (name === found.channel.name) return;
+    // A rename posts a line everyone sees, so it obeys the same freeze.
+    await postVerdict(viewer, found.channel, found.reported);
+    await rateLimit("chat-group-admin", viewer.userId, 10, 600, "Too many group changes in a row. Try again in a few minutes.");
     const { error } = await createAdminClient().from("chat_channels").update({ name }).eq("id", channelId);
     if (error) throw new Error(error.message);
     const me = (await getPerson(viewer.userId))?.name ?? "Someone";
@@ -767,7 +817,7 @@ export async function unblockPerson(userId: string): Promise<ActionResult> {
 async function fileReport(
   viewer: ChatViewer,
   channel: ChannelRow,
-  messageId: string | null,
+  message: { id: string; senderId: string | null } | null,
   rawReason: string,
 ): Promise<void> {
   const reason = String(rawReason ?? "").trim();
@@ -780,9 +830,14 @@ async function fileReport(
     .select("id", { count: "exact", head: true })
     .eq("channel_id", channel.id)
     .eq("status", "open");
+  // Who it's about, frozen now: everyone in the DM or group, and whoever sent
+  // the message. A moderator among them never sees this report, or reads the
+  // conversation through it — leaving the group afterwards changes nothing.
+  const members = channel.kind === "channel" ? [] : ((await listMembers([channel.id])).get(channel.id) ?? []);
+  const partyIds = Array.from(new Set([...members, ...(message?.senderId ? [message.senderId] : [])]));
   const { data, error } = await admin
     .from("chat_reports")
-    .insert({ channel_id: channel.id, message_id: messageId, reporter_id: viewer.userId, reason })
+    .insert({ channel_id: channel.id, message_id: message?.id ?? null, reporter_id: viewer.userId, reason, party_ids: partyIds })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
@@ -790,10 +845,9 @@ async function fileReport(
   // Pointed at the report, without the reason: the audit log is readable with
   // audit.view, which doesn't imply chat.manage.
   await logAudit({ action: "chat.report", targetType: "chat_report", targetId: reportId, payload: { length: reason.length } });
-  // Never a member of a reported DM or group: a moderator who is the person
-  // being reported must not be the one told about it.
-  const members = channel.kind === "channel" ? [] : ((await listMembers([channel.id])).get(channel.id) ?? []);
-  const moderators = (await listModeratorIds()).filter((id) => !members.includes(id) && id !== viewer.userId);
+  // Never a party: a moderator who is the person being reported must not be
+  // the one told about it.
+  const moderators = (await listModeratorIds()).filter((id) => !partyIds.includes(id) && id !== viewer.userId);
   if (moderators.length > 0) {
     await notifyMany(
       moderators.map((id) => ({
@@ -815,7 +869,7 @@ export async function reportMessage(input: { messageId: string; reason: string }
     const found = await getChannelForViewer(row.channel_id, viewer);
     if (!found) throw new Error(NOT_AVAILABLE);
     if (found.channel.kind !== "channel" && !isParticipant(found.channel, viewer)) throw new Error(NOT_AVAILABLE);
-    await fileReport(viewer, found.channel, row.id, input.reason);
+    await fileReport(viewer, found.channel, { id: row.id, senderId: row.sender_id ?? null }, input.reason);
   });
 }
 

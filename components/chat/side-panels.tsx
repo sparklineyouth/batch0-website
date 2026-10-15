@@ -211,7 +211,11 @@ function SearchPanel({
   useEffect(() => {
     const query = q.trim();
     if (query.length < 2) {
+      // Drop any search still in flight, and its spinner with it.
+      seq.current++;
       setResults(null);
+      setLoading(false);
+      setError(null);
       return;
     }
     const n = ++seq.current;

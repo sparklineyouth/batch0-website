@@ -22,13 +22,15 @@ export function ReportControls({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+  /** Run one action; true when it worked. A failure stays on screen. */
+  const run = async (fn: () => Promise<{ ok: boolean; error?: string }>): Promise<boolean> => {
     setBusy(true);
     setError(null);
-    const res = await fn();
+    const res = await fn().catch(() => ({ ok: false, error: undefined }));
     setBusy(false);
     if (!res.ok) setError(resultError(res as any, "Couldn't do that."));
     router.refresh();
+    return res.ok;
   };
   return (
     <div>
@@ -71,8 +73,10 @@ export function ReportControls({
         onCancel={() => setConfirmRemove(false)}
         onConfirm={async () => {
           setConfirmRemove(false);
-          if (messageId) await run(() => deleteMessage(messageId));
-          await run(() => resolveReport(reportId, "actioned"));
+          // A removal that failed leaves the message up, so the report stays
+          // open — never closed as actioned over a message still showing.
+          if (messageId && !(await run(() => deleteMessage(messageId)))) return;
+          if (status === "open") await run(() => resolveReport(reportId, "actioned"));
         }}
       />
     </div>

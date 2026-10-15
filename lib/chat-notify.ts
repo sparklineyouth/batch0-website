@@ -8,6 +8,7 @@ import {
   listChannelAudienceIds,
   listMembers,
   getPeople,
+  readersAmong,
   type ChannelRow,
 } from "@/lib/chat";
 import { groupDisplayName } from "@/lib/chat-access";
@@ -36,6 +37,25 @@ export function chatLink(channelId: string): string {
   return `/chat?c=${channelId}`;
 }
 
+/** Ids per lookup: a GET with `in.(…)` past ~150 uuids outgrows the gateway's URL limit. */
+const LOOKUP_CHUNK = 150;
+
+/**
+ * Run one `.in(column, ids)` lookup per chunk and concatenate the rows. Any
+ * failed chunk throws: a lookup that silently came back empty would read as
+ * "no mutes, no blocks, no pending bell" and ring exactly the people who
+ * asked for silence.
+ */
+async function lookupAll<T>(ids: readonly string[], run: (part: string[]) => PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
+    const { data, error } = await run(ids.slice(i, i + LOOKUP_CHUNK));
+    if (error) throw new Error(`Couldn't check chat bells: ${error.message}`);
+    out.push(...((data ?? []) as T[]));
+  }
+  return out;
+}
+
 export async function notifyNewMessage(input: {
   channelId: string;
   messageId: string;
@@ -52,14 +72,20 @@ export async function notifyNewMessage(input: {
   const mentioned = new Set(input.mentions);
   let candidates: string[];
   if (channel.kind === "channel") {
-    const { data: allPrefs } = await admin
+    const { data: allPrefs, error } = await admin
       .from("chat_reads")
       .select("user_id")
       .eq("channel_id", channel.id)
       .eq("notify", "all")
       .limit(2000);
+    if (error) throw new Error(`Couldn't check chat bells: ${error.message}`);
+    // A preference outlives access: nothing deletes chat_reads when someone
+    // leaves a team or a private channel, or a channel's audience narrows.
+    // So "All messages" is re-vetted against who can read it right now —
+    // otherwise a bell would tell them who's posting where they can't look.
+    const subscribed = await readersAmong(channel, ((allPrefs ?? []) as any[]).map((r) => r.user_id));
     const everyone = input.mentionEveryone ? await listChannelAudienceIds(channel) : [];
-    candidates = Array.from(new Set([...input.mentions, ...everyone, ...((allPrefs ?? []) as any[]).map((r) => r.user_id)]));
+    candidates = Array.from(new Set([...input.mentions, ...everyone, ...subscribed]));
     if (input.mentionEveryone) for (const id of everyone) mentioned.add(id);
   } else {
     candidates = (await listMembers([channel.id])).get(channel.id) ?? [];
@@ -69,21 +95,25 @@ export async function notifyNewMessage(input: {
 
   const link = chatLink(channel.id);
   const [reads, bells, blocks] = await Promise.all([
-    admin.from("chat_reads").select("user_id, seen_at, notify").eq("channel_id", channel.id).in("user_id", candidates),
-    admin
-      .from("notifications")
-      .select("user_id")
-      .in("user_id", candidates)
-      .eq("link", link)
-      .in("type", CHAT_BELL_TYPES as unknown as string[])
-      .is("read_at", null),
-    admin.from("chat_blocks").select("blocker_id").eq("blocked_id", input.senderId).in("blocker_id", candidates),
+    lookupAll<{ user_id: string; seen_at: string | null; notify: NotifyPref | null }>(candidates, (part) =>
+      admin.from("chat_reads").select("user_id, seen_at, notify").eq("channel_id", channel.id).in("user_id", part),
+    ),
+    lookupAll<{ user_id: string }>(candidates, (part) =>
+      admin
+        .from("notifications")
+        .select("user_id")
+        .in("user_id", part)
+        .eq("link", link)
+        .in("type", CHAT_BELL_TYPES as unknown as string[])
+        .is("read_at", null),
+    ),
+    lookupAll<{ blocker_id: string }>(candidates, (part) =>
+      admin.from("chat_blocks").select("blocker_id").eq("blocked_id", input.senderId).in("blocker_id", part),
+    ),
   ]);
-  const readBy = new Map<string, { seen_at: string | null; notify: NotifyPref | null }>(
-    ((reads.data ?? []) as any[]).map((r) => [r.user_id, r]),
-  );
-  const pending = new Set(((bells.data ?? []) as any[]).map((r) => r.user_id));
-  const blockedBy = new Set(((blocks.data ?? []) as any[]).map((r) => r.blocker_id));
+  const readBy = new Map(reads.map((r) => [r.user_id, r]));
+  const pending = new Set(bells.map((r) => r.user_id));
+  const blockedBy = new Set(blocks.map((r) => r.blocker_id));
 
   const now = Date.now();
   const recipients = candidates.filter((id) => {

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  attentionFor,
   badgeText,
   BELL_QUIET_MS,
   canDeleteMessage,
@@ -26,6 +27,8 @@ import {
   laterTimestamp,
   normalizeChannelName,
   otherInDmKey,
+  reportOpenTo,
+  reportVisibleTo,
   shouldBell,
   slowModeWait,
   sortedReactions,
@@ -158,6 +161,32 @@ test("editing and deleting messages", () => {
   assert.equal(canDeleteMessage(theirs, c, viewer({ staff: true })), true);
   assert.equal(canDeleteMessage(system, c, viewer()), false);
   assert.equal(canDeleteMessage({ ...mine, deletedAt: "x" }, c, viewer()), false);
+  // A moderator looking into a reported DM may remove what was said in it;
+  // a moderator who is one side of a DM may not wipe the other side.
+  const dm = channel({ id: "d1", kind: "dm", audience: "members" });
+  assert.equal(canDeleteMessage(theirs, dm, viewer({ staff: true })), true);
+  assert.equal(canDeleteMessage(theirs, dm, viewer({ staff: true, memberOf: ["d1"] })), false);
+  assert.equal(canDeleteMessage(mine, dm, viewer({ staff: true, memberOf: ["d1"] })), true);
+  assert.equal(canDeleteMessage(theirs, { ...dm, kind: "group" }, viewer({ staff: true, memberOf: ["d1"] })), false);
+  // Membership in a text channel changes nothing for staff.
+  assert.equal(canDeleteMessage(theirs, c, viewer({ staff: true, memberOf: ["c1"] })), true);
+});
+
+test("a report is never shown to someone it's about", () => {
+  const staff = viewer({ staff: true });
+  assert.equal(reportOpenTo([YOU], staff), true);
+  assert.equal(reportOpenTo([ME, YOU], staff), false, "a party to the conversation");
+  assert.equal(reportOpenTo([], viewer()), false, "not staff");
+  assert.equal(reportOpenTo([], viewer({ staff: true, userId: "" })), false);
+  const dmReport = { channelId: "d1", partyIds: [YOU] };
+  assert.equal(reportVisibleTo(dmReport, "dm", staff), true);
+  assert.equal(reportVisibleTo(dmReport, "dm", { ...staff, memberOf: ["d1"] }), false, "joined after the report");
+  assert.equal(reportVisibleTo({ channelId: "c1", partyIds: [YOU] }, "channel", { ...staff, memberOf: ["c1"] }), true);
+  assert.equal(reportVisibleTo({ channelId: "c1", partyIds: [ME] }, "channel", staff), false, "sent the reported message");
+  // The read rule follows: a party's `reported` is false, so no read path.
+  const dm = channel({ id: "d1", kind: "dm", audience: "members" });
+  assert.equal(canReadChannel(dm, staff, reportOpenTo([ME, YOU], staff)), false);
+  assert.equal(canReadChannel(dm, staff, reportOpenTo([YOU], staff)), true);
 });
 
 test("dmKey is order-independent and refuses a DM with yourself", () => {
@@ -318,4 +347,15 @@ test("a safeguarded DM or group goes read-only with the reason", () => {
   assert.deepEqual(v, { ok: false, reason: SAFEGUARD_REASON });
   // Text channels are never safeguarded: staff can read them.
   assert.equal(canPost(channel(), viewer(), { safeguarded: true }).ok, true);
+});
+
+test("the badge counts what the sidebar shows as unread, and nothing else", () => {
+  const k = { unread: 4, mentions: 2 };
+  assert.equal(attentionFor("channel", k, null, true), 2, "a channel: its mentions");
+  assert.equal(attentionFor("channel", k, "all", true), 2);
+  assert.equal(attentionFor("channel", k, "none", true), 0, "muted");
+  assert.equal(attentionFor("dm", k, null, true), 1, "a conversation: one, however many");
+  assert.equal(attentionFor("group", k, "none", true), 0, "muted");
+  assert.equal(attentionFor("dm", k, null, false), 0, "closed since its last message");
+  assert.equal(attentionFor("dm", { unread: 0, mentions: 0 }, null, true), 0);
 });

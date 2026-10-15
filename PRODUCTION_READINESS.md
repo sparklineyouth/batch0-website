@@ -302,8 +302,9 @@ at `/chat` (`docs/chat.md`) — #announcements (staff post), #general, #wins,
 #help, a channel per cohort, a private channel per team, DMs and group DMs.
 0101 drops the Discord profile and team columns, the `discord*` site
 settings, the integration's tables (`discord_auto_*`, `oh_queue`,
-`mentor_oncall`, `team_blockers`, `event_rsvps`) and renames `discord.manage`
-to `chat.manage`.
+`mentor_oncall`, `team_blockers`, `event_rsvps`) and removes `discord.manage`.
+It is deliberately not turned into `chat.manage`, which opens reported DMs:
+grant that at `/admin/roles` to whoever should run Chat (`*` admins already do).
 
 Added: the assignment tracker, team Google Drive links, a built-in room for
 webinars and 1:1 calls (screen share as the main stage, slide presenter, A/V

@@ -6,6 +6,7 @@ import { LocalTime } from "@/components/ui/local-time";
 import { plainText } from "@/lib/chat-format";
 import {
   getChannelRow,
+  getChatViewer,
   getMessageRow,
   getPeople,
   getReport,
@@ -22,22 +23,23 @@ export const dynamic = "force-dynamic";
 /**
  * One report: what was reported and why, every other report on the same
  * channel, and the transcript — deleted messages included with what they
- * said, edits with their earlier versions. A moderator who is in the
- * reported DM or group gets a 404: who reported them, and why, is exactly
- * what they must not learn.
+ * said, edits with their earlier versions. A moderator the report is about
+ * — in the DM or group when it was filed or now, or the sender of the
+ * reported message — gets a 404: who reported them, and why, is exactly what
+ * they must not learn.
  */
 export default async function ChatReportPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
-  const { profile } = await requirePermission("chat.manage");
-  const report = await getReport(id);
+  const { profile, caps } = await requirePermission("chat.manage");
+  const viewer = await getChatViewer(profile.id, caps);
+  const report = await getReport(id, viewer);
   if (!report) notFound();
   const channel = await getChannelRow(report.channelId);
   if (!channel) notFound();
   const members = (await listMembers([channel.id])).get(channel.id) ?? [];
-  if (channel.kind !== "channel" && members.includes(profile.id)) notFound();
 
   const [all, transcript, reported, revisions] = await Promise.all([
-    listReportsForChannel(channel.id),
+    listReportsForChannel(channel.id, viewer),
     listTranscript(channel.id, 200),
     report.messageId ? getMessageRow(report.messageId) : Promise.resolve(null),
     report.messageId ? listRevisions(report.messageId) : Promise.resolve([]),

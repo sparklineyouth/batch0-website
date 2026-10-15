@@ -14,7 +14,7 @@ import {
   type Audience,
   type Posting,
 } from "@/lib/chat-access";
-import { getChannelRow, getPeople, type ChannelRow } from "@/lib/chat";
+import { getChannelRow, getChatViewer, getPeople, getReport, type ChannelRow } from "@/lib/chat";
 
 /**
  * Running chat: creating, editing, archiving and deleting text channels, and
@@ -35,7 +35,12 @@ export type ChannelInput = {
   position?: number;
 };
 
-function cleanInput(input: ChannelInput) {
+/**
+ * Validate a channel form. `keepPosition` is the stored position on an edit:
+ * a form that doesn't show the field (the in-chat settings dialog) leaves the
+ * channel where it was in the sidebar instead of resetting it.
+ */
+function cleanInput(input: ChannelInput, keepPosition = 30) {
   const name = normalizeChannelName(String(input.name ?? ""));
   if (!name || !CHANNEL_NAME_PATTERN.test(name)) {
     throw new Error("Give the channel a name: letters, numbers and hyphens.");
@@ -49,7 +54,7 @@ function cleanInput(input: ChannelInput) {
   if (input.posting !== "everyone" && input.posting !== "staff") throw new Error("Pick who can post.");
   const slowmode = Number(input.slowmodeSeconds ?? 0);
   if (!(SLOWMODE_CHOICES as readonly number[]).includes(slowmode)) throw new Error("Pick a slow mode setting.");
-  const position = Math.max(-1000, Math.min(1000, Math.round(Number(input.position ?? 30)) || 0));
+  const position = Math.max(-1000, Math.min(1000, Math.round(Number(input.position ?? keepPosition)) || 0));
   return {
     name,
     topic,
@@ -93,7 +98,7 @@ export async function updateChannel(id: string, input: ChannelInput): Promise<Ac
   return runAction({ name: "chat.channel_update" }, async () => {
     await assertPermission("chat.manage");
     const channel = await textChannel(id);
-    const row = cleanInput(input);
+    const row = cleanInput(input, channel.position);
     // A channel the app owns keeps the audience it was made for: #general
     // turned into a team channel would strand everyone who relied on it.
     if (channel.systemKey && (row.audience !== channel.audience || row.cohort_id !== channel.cohortId || row.team_id !== channel.teamId)) {
@@ -179,17 +184,10 @@ export async function resolveReport(id: string, status: "actioned" | "dismissed"
     if (!isUuid(id)) throw new Error("That report doesn't exist.");
     if (!["actioned", "dismissed", "open"].includes(status)) throw new Error("Pick an outcome.");
     const admin = createAdminClient();
-    const { data: report } = await admin.from("chat_reports").select("channel_id").eq("id", id).maybeSingle();
+    // A moderator the report is about never works it — not even after
+    // leaving the group, and not when it's their own message in a channel.
+    const report = await getReport(id, await getChatViewer(actor.userId, actor.caps));
     if (!report) throw new Error("That report doesn't exist.");
-    // A moderator who is in the reported conversation never works its report.
-    const { data: member } = await admin
-      .from("chat_members")
-      .select("user_id")
-      .eq("channel_id", (report as any).channel_id)
-      .eq("user_id", actor.userId)
-      .maybeSingle();
-    const channel = await getChannelRow((report as any).channel_id);
-    if (member && channel && channel.kind !== "channel") throw new Error("That report doesn't exist.");
     const { error } = await admin
       .from("chat_reports")
       .update(

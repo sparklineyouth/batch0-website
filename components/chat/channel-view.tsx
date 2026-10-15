@@ -49,6 +49,8 @@ export function ChannelView({
   hasMoreBefore,
   loadingOlder,
   onLoadOlder,
+  hasMoreAfter,
+  onJumpToPresent,
   jumpTo,
   onJumped,
   onBack,
@@ -83,6 +85,8 @@ export function ChannelView({
   hasMoreBefore: boolean;
   loadingOlder: boolean;
   onLoadOlder: () => void;
+  hasMoreAfter: boolean;
+  onJumpToPresent: () => void;
   jumpTo: string | null;
   onJumped: () => void;
   onBack: () => void;
@@ -115,8 +119,17 @@ export function ChannelView({
   const [members, setMembers] = useState<ChatPerson[]>([]);
   const membersFor = useRef<string | null>(null);
 
-  // Reset per-channel UI on switch.
-  const key = channel?.id ?? (payload?.draftTo ? `draft:${payload.draftTo.id}` : "none");
+  // Reset per-channel UI on switch. A draft's first message turns it into
+  // the DM with that person: same conversation, so it keeps the draft's key
+  // — the composer holds on to whatever was typed while the DM was created.
+  const rawKey = channel?.id ?? (payload?.draftTo ? `draft:${payload.draftTo.id}` : "none");
+  const aliases = useRef(new Map<string, string>());
+  const lastKey = useRef(rawKey);
+  if (channel?.kind === "dm" && channel.otherId && lastKey.current === `draft:${channel.otherId}`) {
+    aliases.current.set(channel.id, lastKey.current);
+  }
+  const key = (channel && aliases.current.get(channel.id)) ?? rawKey;
+  lastKey.current = key;
   useEffect(() => {
     setReplyTo(null);
     setEditingId(null);
@@ -367,6 +380,8 @@ export function ChannelView({
         hasMoreBefore={hasMoreBefore}
         loadingOlder={loadingOlder}
         onLoadOlder={onLoadOlder}
+        hasMoreAfter={hasMoreAfter}
+        onJumpToPresent={onJumpToPresent}
         jumpTo={jumpTo}
         onJumped={onJumped}
         editingId={editingId}
@@ -395,6 +410,7 @@ export function ChannelView({
           placeholder={placeholder}
           disabledReason={compose.ok ? null : compose.reason}
           slowmodeWait={channel?.slowmodeWait ?? 0}
+          slowmodeSeconds={channel && channel.kind === "channel" && !viewer.staff ? channel.slowmodeSeconds : 0}
           replyTo={replyTo}
           onCancelReply={() => setReplyTo(null)}
           people={people}

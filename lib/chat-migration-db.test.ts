@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
-import { canReadChannel, type ChannelScope, type ChatViewer } from "./chat-access.ts";
+import { canReadChannel, reportOpenTo, type ChannelScope, type ChatViewer } from "./chat-access.ts";
 import { MIGRATION_PROBES } from "./pending-migrations.ts";
 
 /**
@@ -96,6 +96,8 @@ async function setup({ optional = true }: Opts = {}) {
     create table public.applications (id uuid primary key default gen_random_uuid(),
       user_id uuid references public.profiles(id), status text not null);
     create table public.site_settings (key text primary key, value jsonb);
+    create table public.mentor_assignments (id uuid primary key default gen_random_uuid(),
+      mentor_id uuid references public.profiles(id), student_id uuid references public.profiles(id), cohort_id uuid);
 
     create table public.discord_auto_config (id int primary key);
     create table public.discord_auto_jobs (id int primary key);
@@ -124,6 +126,7 @@ async function setup({ optional = true }: Opts = {}) {
       ('${TEAM_A}', '${COHORT_A}', 'acme', 'Acme', '999'),
       ('${TEAM_B}', '${COHORT_B}', 'globex', 'Globex', null);
     insert into public.team_members (team_id, user_id) values ('${TEAM_A}', '${ENROLLED}'), ('${TEAM_B}', '${OTHER}');
+    insert into public.mentor_assignments (mentor_id, student_id) values ('${MENTOR}', '${ENROLLED}');
     insert into public.enrollments (user_id, cohort_id) values ('${ENROLLED}', '${COHORT_A}'), ('${OTHER}', '${COHORT_B}');
     insert into public.applications (user_id, status) values ('${ACCEPTED}', 'accepted'), ('${FRESH}', 'draft');
     insert into public.site_settings (key, value) values
@@ -240,6 +243,20 @@ test("who reads what: the policies and canReadChannel() agree for every person a
       ('b0000000-0000-4000-8000-000000000002', '${ENROLLED}'),
       ('b0000000-0000-4000-8000-000000000002', '${OTHER}');
   `);
+  // An admin grants chat.manage on purpose — 0101 doesn't (see the Discord
+  // test) — so STAFF is a non-admin moderator from here on.
+  await db.exec(`update public.app_roles set permissions = permissions || array['chat.manage'] where slug = 'community'`);
+  // A group STAFF was in, reported, then left: the report froze STAFF as a
+  // party, so leaving opens no read path for them. ADMIN reads it.
+  await db.exec(`
+    insert into public.chat_channels (id, kind, audience) values
+      ('b0000000-0000-4000-8000-000000000003', 'group', 'members');
+    insert into public.chat_members (channel_id, user_id) values
+      ('b0000000-0000-4000-8000-000000000003', '${ACCEPTED}');
+    insert into public.chat_reports (channel_id, reporter_id, reason, party_ids) values
+      ('b0000000-0000-4000-8000-000000000003', '${ACCEPTED}', 'not ok',
+       array['${ACCEPTED}', '${STAFF}']::uuid[]);
+  `);
 
   const channels = (
     await db.query<any>(`select id, kind, audience, cohort_id, team_id, posting, archived_at, slowmode_seconds from public.chat_channels`)
@@ -249,13 +266,14 @@ test("who reads what: the policies and canReadChannel() agree for every person a
       posting: r.posting, archivedAt: r.archived_at, slowmodeSeconds: r.slowmode_seconds,
     }),
   );
-  const reported = new Set((await db.query<any>(`select channel_id from public.chat_reports`)).rows.map((r) => r.channel_id));
+  const reports = (await db.query<any>(`select channel_id, party_ids from public.chat_reports`)).rows;
   const members = (await db.query<any>(`select channel_id, user_id from public.chat_members`)).rows;
 
   const viewers: Record<string, ChatViewer> = {
     ADMIN: { userId: ADMIN, staff: true, vetted: true, cohortIds: [], teamIds: [], memberOf: [] },
     STAFF: { userId: STAFF, staff: true, vetted: true, cohortIds: [], teamIds: [], memberOf: [] },
-    MENTOR: { userId: MENTOR, staff: false, vetted: true, cohortIds: [], teamIds: [], memberOf: [] },
+    // Assigned to ENROLLED, who is on TEAM_A: mentoredTeamIds() puts it here.
+    MENTOR: { userId: MENTOR, staff: false, vetted: true, cohortIds: [], teamIds: [TEAM_A], memberOf: [] },
     ENROLLED: { userId: ENROLLED, staff: false, vetted: true, cohortIds: [COHORT_A], teamIds: [TEAM_A], memberOf: [] },
     ACCEPTED: { userId: ACCEPTED, staff: false, vetted: true, cohortIds: [], teamIds: [], memberOf: [] },
     FRESH: { userId: FRESH, staff: false, vetted: false, cohortIds: [], teamIds: [], memberOf: [] },
@@ -264,6 +282,8 @@ test("who reads what: the policies and canReadChannel() agree for every person a
 
   for (const [who, uid] of Object.entries(PEOPLE)) {
     const v = { ...viewers[who], memberOf: members.filter((m) => m.user_id === uid).map((m) => m.channel_id) };
+    // `reported` is per viewer: a report this viewer is a party to doesn't count.
+    const reported = new Set(reports.filter((r) => reportOpenTo(r.party_ids, v)).map((r) => r.channel_id));
     const expected = channels.filter((c) => canReadChannel(c, v, reported.has(c.id))).map((c) => c.id).sort();
     const actual = (await asUser<{ id: string }>(db, uid, `select id from public.chat_channels`)).rows.map((r) => r.id).sort();
     assert.deepEqual(actual, expected, `${who} reads a different set in SQL than in TypeScript`);
@@ -279,7 +299,9 @@ test("who reads what: the policies and canReadChannel() agree for every person a
   assert.equal(await sees(OTHER, `cohort:${COHORT_A}`), false);
   assert.equal(await sees(MENTOR, `cohort:${COHORT_A}`), true, "explicit member on an audience channel");
   assert.equal(await sees(ENROLLED, `team:${TEAM_B}`), false);
-  assert.equal(await sees(STAFF, "staff"), true, "discord.manage became chat.manage");
+  assert.equal(await sees(STAFF, "staff"), true, "chat.manage, granted above");
+  assert.equal(await sees(MENTOR, `team:${TEAM_A}`), true, "a mentor assigned to someone on the team");
+  assert.equal(await sees(MENTOR, `team:${TEAM_B}`), false);
   assert.equal(await sees(MENTOR, "staff"), false);
   const group = (uid: string) => asUser(db, uid, `select 1 from public.chat_channels where id = 'b0000000-0000-4000-8000-000000000002'`);
   assert.equal((await group(ADMIN)).rows.length, 0, "no staff read path into an unreported group");
@@ -287,6 +309,14 @@ test("who reads what: the policies and canReadChannel() agree for every person a
   // The carried-over DM report opens that DM to staff.
   assert.equal((await asUser(db, STAFF, `select 1 from public.chat_channels where id = '${DM_GONE}'`)).rows.length, 1);
   assert.equal((await asUser(db, STAFF, `select 1 from public.chat_channels where id = '${DM_OLD}'`)).rows.length, 0);
+  const left = (uid: string) => asUser(db, uid, `select 1 from public.chat_channels where id = 'b0000000-0000-4000-8000-000000000003'`);
+  assert.equal((await left(STAFF)).rows.length, 0, "a moderator the report is about can't read in through it");
+  assert.equal((await left(ADMIN)).rows.length, 1);
+  // And it's the channel rule messages ride on, so its words stay shut too.
+  await db.exec(`insert into public.chat_messages (channel_id, sender_id, body) values ('b0000000-0000-4000-8000-000000000003', '${ACCEPTED}', 'x')`);
+  const words = (uid: string) => asUser(db, uid, `select 1 from public.chat_messages where channel_id = 'b0000000-0000-4000-8000-000000000003'`);
+  assert.equal((await words(STAFF)).rows.length, 0);
+  assert.equal((await words(ADMIN)).rows.length, 1);
 });
 
 test("messages, members and reactions are readable exactly where the channel is", async () => {
@@ -422,13 +452,55 @@ test("old DMs, blocks, reports and the team thread carry over once", async () =>
   assert.equal(new Date(read.last_read_at).toISOString(), "2026-10-01T00:00:01.000Z");
 
   assert.deepEqual((await db.query<any>(`select blocker_id, blocked_id from public.chat_blocks`)).rows, [{ blocker_id: ENROLLED, blocked_id: OTHER }]);
-  assert.deepEqual((await db.query<any>(`select channel_id, status from public.chat_reports`)).rows, [{ channel_id: DM_GONE, status: "actioned" }]);
+  assert.deepEqual((await db.query<any>(`select channel_id, status, party_ids from public.chat_reports`)).rows, [
+    { channel_id: DM_GONE, status: "actioned", party_ids: [ACCEPTED] },
+  ]);
 
   const team = await channelId(db, `team:${TEAM_A}`);
   assert.deepEqual(
     (await db.query<any>(`select id, body from public.chat_messages where channel_id = '${team}'`)).rows,
     [{ id: TEAM_MSG, body: "team thread lives on" }],
   );
+});
+
+test("an unblock survives a re-run: blocks are carried once", async () => {
+  const db = await setup();
+  await db.exec(migration);
+  await db.exec(`delete from public.chat_blocks where blocker_id = '${ENROLLED}' and blocked_id = '${OTHER}'`);
+  await db.exec(migration);
+  assert.deepEqual((await db.query<any>(`select 1 from public.chat_blocks`)).rows, []);
+});
+
+test("a DM report 0099 already moved to Support arrives closed, still opening the DM to staff", async () => {
+  const db = await setup();
+  await db.exec(`
+    create table public.support_tickets (id uuid primary key default gen_random_uuid(), context jsonb);
+    insert into public.dm_reports (id, conversation_id, reporter_id, reason, status) values
+      ('a1000000-0000-4000-8000-000000000001', '${DM_OLD}', '${ENROLLED}', 'creepy', 'open'),
+      ('a1000000-0000-4000-8000-000000000002', '${DM_OLD}', '${ENROLLED}', 'again', 'open');
+    insert into public.support_tickets (context) values
+      ('{"source": "dm_report", "carriedFrom": "dm_report:a1000000-0000-4000-8000-000000000001"}');
+  `);
+  await db.exec(migration);
+  await db.exec(migration);
+  const rows = (await db.query<any>(`select id, status, party_ids from public.chat_reports where channel_id = '${DM_OLD}' order by id`)).rows;
+  assert.deepEqual(rows, [
+    { id: "a1000000-0000-4000-8000-000000000001", status: "actioned", party_ids: [ENROLLED, MENTOR] },
+    { id: "a1000000-0000-4000-8000-000000000002", status: "open", party_ids: [ENROLLED, MENTOR] },
+  ]);
+  // A '*' admin who isn't in the DM reads it; nobody in it reads it as staff.
+  assert.equal((await asUser(db, ADMIN, `select 1 from public.chat_channels where id = '${DM_OLD}'`)).rows.length, 1);
+});
+
+test("a cohort name longer than a topic still gets its channel", async () => {
+  const db = await setup();
+  const long = "x".repeat(320);
+  await db.exec(`update public.cohorts set name = '${long}' where id = '${COHORT_A}'`);
+  await db.exec(migration);
+  const topic = (await db.query<any>(`select topic from public.chat_channels where system_key = 'cohort:${COHORT_A}'`)).rows[0].topic;
+  assert.equal(topic.length, 300);
+  await db.exec(`insert into public.cohorts (id, name, status) values ('c0000000-0000-4000-8000-0000000000ee', '${long}', 'upcoming')`);
+  assert.ok(await channelId(db, "cohort:c0000000-0000-4000-8000-0000000000ee"));
 });
 
 test("sidebar counts: unread since the cursor, mentions on top", async () => {
@@ -468,12 +540,14 @@ test("Discord is gone: tables, columns, settings, and the permission", async () 
   assert.deepEqual(cols.rows, []);
   assert.deepEqual(
     (await db.query<any>(`select key from public.site_settings order by key`)).rows,
-    [{ key: "referrals_enabled" }],
+    [{ key: "chat_blocks_carried" }, { key: "referrals_enabled" }],
   );
   const roles = Object.fromEntries(
     (await db.query<any>(`select slug, permissions from public.app_roles`)).rows.map((r) => [r.slug, r.permissions]),
   );
-  assert.deepEqual(roles.community, ["announcements.manage", "chat.manage"]);
+  // Removed, not converted: chat.manage opens reported DMs, so it's granted on purpose.
+  assert.deepEqual(roles.community, ["announcements.manage"]);
+  assert.equal((await asUser(db, STAFF, `select 1 from public.chat_channels where id = '${DM_GONE}'`)).rows.length, 0);
   assert.deepEqual(roles.admin, ["*"]);
   // The profile guard still guards, without the dropped columns.
   await db.exec(`create trigger guard_profile_privileges before update on public.profiles for each row execute procedure public.guard_profile_privileges()`);

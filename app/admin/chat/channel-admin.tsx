@@ -56,6 +56,7 @@ export function ChannelAdmin({ rows, cohorts, teams }: { rows: ChannelAdminRow[]
   const [editing, setEditing] = useState<ChannelAdminRow | "new" | null>(null);
   const [deleting, setDeleting] = useState<ChannelAdminRow | null>(null);
   const [membersOf, setMembersOf] = useState<ChannelAdminRow | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const shown = rows.filter((r) => showArchived || !r.archived);
@@ -178,11 +179,19 @@ export function ChannelAdmin({ rows, cohorts, teams }: { rows: ChannelAdminRow[]
         />
       ) : null}
       {membersOf ? (
-        <Modal open title={`Extra members of #${membersOf.name}`} onClose={() => setMembersOf(null)}>
+        <Modal
+          open
+          title={`Extra members of #${membersOf.name}`}
+          onClose={() => {
+            setMembersOf(null);
+            setRemoveError(null);
+          }}
+        >
           <p className="mb-3 text-xs text-ink-soft">
             People who see this channel on top of its audience. Add people from the channel&apos;s menu in{" "}
             <a className="link-ink" href={`/chat?c=${membersOf.id}`}>chat</a>.
           </p>
+          {removeError ? <p className="mb-3 text-xs text-red-600 dark:text-red-400">{removeError}</p> : null}
           {membersOf.members.length === 0 ? (
             <p className="text-sm text-ink-faint">Nobody extra.</p>
           ) : (
@@ -194,8 +203,13 @@ export function ChannelAdmin({ rows, cohorts, teams }: { rows: ChannelAdminRow[]
                     size="sm"
                     variant="ghost"
                     onClick={async () => {
+                      setRemoveError(null);
                       const res = await removeChannelMember(membersOf.id, m.id);
-                      if (!res.ok) setError(resultError(res, "Couldn't remove them."));
+                      if (!res.ok) {
+                        // Shown in the modal: the page behind it is covered.
+                        setRemoveError(resultError(res, "Couldn't remove them."));
+                        return;
+                      }
                       setMembersOf({ ...membersOf, members: membersOf.members.filter((x) => x.id !== m.id) });
                       router.refresh();
                     }}

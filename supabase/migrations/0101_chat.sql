@@ -39,9 +39,10 @@
 -- so deleting or editing first is no way to hide what was sent.
 --
 -- Also in this file (sections 9–12): the Discord integration's tables,
--- columns, settings and permission are dropped, `discord.manage` becomes
--- `chat.manage`, the old DM and team-thread history is carried into Chat, and
--- lesson and email copy that sent students to Discord now sends them to Chat.
+-- columns, settings and permission are dropped (`discord.manage` is removed,
+-- NOT turned into `chat.manage` — grant that on purpose), the old DM and
+-- team-thread history is carried into Chat, and lesson and email copy that
+-- sent students to Discord now sends them to Chat.
 -- DROPS ARE NOT REVERSIBLE: take a backup first if you may want the Discord
 -- ids, the auto-answer ledger, the office-hours queue or the blocker flags.
 --
@@ -336,8 +337,15 @@ create table if not exists public.chat_reports (
   status text not null default 'open' check (status in ('open', 'actioned', 'dismissed')),
   reviewed_by uuid references public.profiles(id) on delete set null,
   reviewed_at timestamptz,
+  -- Who the report is about, frozen when it's filed: everyone in the DM or
+  -- group then, and the reported message's sender. None of them may read
+  -- the report, or the conversation through it — a moderator who is one of
+  -- them would learn who reported them, and why. Not a foreign key: someone
+  -- who deletes their account still mustn't come back as a reader.
+  party_ids uuid[] not null default '{}',
   created_at timestamptz not null default now()
 );
+alter table public.chat_reports add column if not exists party_ids uuid[] not null default '{}';
 create index if not exists chat_reports_queue_idx on public.chat_reports (status, created_at desc);
 create index if not exists chat_reports_channel_idx on public.chat_reports (channel_id);
 
@@ -396,13 +404,22 @@ as $$
       or (c.audience = 'everyone' and public.chat_is_vetted(uid))
       or (c.audience = 'cohort' and exists (
             select 1 from public.enrollments e where e.user_id = uid and e.cohort_id = c.cohort_id))
-      or (c.audience = 'team' and exists (
-            select 1 from public.team_members tm where tm.user_id = uid and tm.team_id = c.team_id))
+      or (c.audience = 'team' and (
+            exists (select 1 from public.team_members tm where tm.user_id = uid and tm.team_id = c.team_id)
+            -- A mentor assigned to anyone on the team, as the Discord
+            -- team-channel sync used to grant. mentoredTeamIds() in lib/chat.ts.
+            or exists (
+              select 1 from public.mentor_assignments ma
+              join public.team_members tm on tm.user_id = ma.student_id
+              where ma.mentor_id = uid and tm.team_id = c.team_id)))
     ))
-    -- A reported DM or group opens to staff, and only once reported.
+    -- A reported DM or group opens to staff, and only once reported — never
+    -- to a moderator the report is about (reportOpenTo in lib/chat-access.ts).
     or (c.kind in ('dm', 'group')
         and public.chat_is_staff(uid)
-        and exists (select 1 from public.chat_reports r where r.channel_id = c.id))
+        and exists (
+          select 1 from public.chat_reports r
+          where r.channel_id = c.id and not (uid = any(r.party_ids))))
   );
 $$;
 
@@ -598,7 +615,7 @@ as $$
 begin
   if new.status <> 'cancelled' then
     insert into public.chat_channels (kind, name, topic, audience, cohort_id, position, system_key)
-    values ('channel', public.chat_slug(new.name, 'cohort'), 'Everyone in ' || new.name || '.',
+    values ('channel', public.chat_slug(new.name, 'cohort'), left('Everyone in ' || new.name || '.', 300),
             'cohort', new.id, 10, 'cohort:' || new.id)
     on conflict (system_key) do nothing;
   end if;
@@ -631,7 +648,7 @@ create trigger chat_ensure_team_channel
   for each row execute procedure public.chat_ensure_team_channel();
 
 insert into public.chat_channels (kind, name, topic, audience, cohort_id, position, system_key)
-select 'channel', public.chat_slug(c.name, 'cohort'), 'Everyone in ' || c.name || '.',
+select 'channel', public.chat_slug(c.name, 'cohort'), left('Everyone in ' || c.name || '.', 300),
        'cohort', c.id, 10, 'cohort:' || c.id
 from public.cohorts c
 where c.status <> 'cancelled'
@@ -697,18 +714,44 @@ begin
       and not exists (select 1 from public.chat_message_revisions r where r.message_id = m.id);
   end if;
 
-  if to_regclass('public.dm_blocks') is not null then
+  -- Once only: an unblock in Chat deletes the chat_blocks row, and a re-run
+  -- copying dm_blocks again would quietly put it back. The marker, not "while
+  -- chat_blocks is empty" — that's true again once everyone has unblocked.
+  if to_regclass('public.dm_blocks') is not null
+     and not exists (select 1 from public.site_settings where key = 'chat_blocks_carried') then
     insert into public.chat_blocks (blocker_id, blocked_id, created_at)
     select b.blocker_id, b.blocked_id, b.created_at from public.dm_blocks b
+    where b.blocker_id <> b.blocked_id
+      and exists (select 1 from public.profiles p where p.id = b.blocker_id)
+      and exists (select 1 from public.profiles p where p.id = b.blocked_id)
     on conflict do nothing;
+    insert into public.site_settings (key, value) values ('chat_blocks_carried', 'true'::jsonb)
+    on conflict (key) do nothing;
   end if;
 
-  if to_regclass('public.dm_reports') is not null then
-    insert into public.chat_reports (id, channel_id, reporter_id, reason, status, reviewed_by, reviewed_at, created_at)
-    select r.id, r.conversation_id, r.reporter_id, r.reason, r.status, r.reviewed_by, r.reviewed_at, r.created_at
+  if to_regclass('public.dm_reports') is not null and to_regclass('public.dm_conversations') is not null then
+    insert into public.chat_reports (id, channel_id, reporter_id, reason, status, reviewed_by, reviewed_at, party_ids, created_at)
+    select r.id, r.conversation_id, r.reporter_id, r.reason, r.status, r.reviewed_by, r.reviewed_at,
+           coalesce((select array_remove(array[d.user_a, d.user_b], null)
+                     from public.dm_conversations d where d.id = r.conversation_id), '{}'),
+           r.created_at
     from public.dm_reports r
     where exists (select 1 from public.chat_channels c where c.id = r.conversation_id)
     on conflict do nothing;
+
+    -- 0099 already turned every open DM report into a sensitive Support
+    -- concern, and that's where it's being worked. Carried here as still
+    -- open, the same report would sit in two queues; close this copy. (Kept,
+    -- not skipped: a report is also what opens the DM to staff.)
+    if to_regclass('public.support_tickets') is not null then
+      update public.chat_reports cr
+      set status = 'actioned'
+      where cr.status = 'open'
+        and exists (select 1 from public.dm_reports r where r.id = cr.id)
+        and exists (
+          select 1 from public.support_tickets t
+          where t.context ->> 'carriedFrom' = 'dm_report:' || cr.id::text);
+    end if;
   end if;
 
   if to_regclass('public.team_messages') is not null then
@@ -725,11 +768,10 @@ end $$;
 -- 11. Discord, removed.
 -- ----------------------------------------------------------------------------
 
--- Whoever ran the Discord integration now runs Chat.
-update public.app_roles
-set permissions = array_append(array_remove(permissions, 'discord.manage'), 'chat.manage')
-where permissions @> array['discord.manage']::text[]
-  and not permissions @> array['chat.manage']::text[];
+-- discord.manage goes, and is NOT turned into chat.manage: configuring a bot
+-- was a harmless grant, while chat.manage opens every reported DM (the
+-- carried-over reports included, harassment ones among them). An admin
+-- grants chat.manage on purpose, at /admin/roles; '*' admins run Chat already.
 update public.app_roles
 set permissions = array_remove(permissions, 'discord.manage')
 where permissions @> array['discord.manage']::text[];

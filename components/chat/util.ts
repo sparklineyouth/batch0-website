@@ -5,6 +5,15 @@ export function resultError(res: ActionResult<unknown> | { ok: false; error: str
   return !res.ok && res.error ? res.error : fallback;
 }
 
+/**
+ * Is this keystroke part of an IME composition (Japanese, Chinese, Korean…)?
+ * Safari fires the Enter that commits a conversion AFTER compositionend, with
+ * isComposing false and keyCode 229 — so check both, or that Enter sends.
+ */
+export function imeComposing(e: { nativeEvent: KeyboardEvent; keyCode: number }): boolean {
+  return e.nativeEvent.isComposing || e.keyCode === 229;
+}
+
 /** "3:04 PM" in the viewer's locale. */
 export function clockTime(iso: string): string {
   const d = new Date(iso);

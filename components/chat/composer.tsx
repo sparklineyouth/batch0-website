@@ -14,7 +14,7 @@ import {
 import { mintUploads } from "@/app/chat/actions";
 import { Avatar } from "./avatar";
 import { EmojiGrid, Popover } from "./popover";
-import { resultError } from "./util";
+import { imeComposing, resultError } from "./util";
 import type { ChatPerson, UiMessage } from "./types";
 
 type Staged = { key: string; path: string | null; name: string; size: number; type: string; progress: "uploading" | "done" | "error"; error?: string };
@@ -31,6 +31,7 @@ export function Composer({
   placeholder,
   disabledReason,
   slowmodeWait,
+  slowmodeSeconds = 0,
   replyTo,
   onCancelReply,
   people,
@@ -45,6 +46,8 @@ export function Composer({
   placeholder: string;
   disabledReason: string | null;
   slowmodeWait: number;
+  /** The wait a send starts here (0 for staff, DMs, and channels without slow mode). */
+  slowmodeSeconds?: number;
   replyTo: UiMessage | null;
   onCancelReply: () => void;
   people: Record<string, ChatPerson>;
@@ -144,7 +147,10 @@ export function Composer({
     setMention(null);
     drafts.current.delete(draftKey);
     onCancelReply();
-  }, [canSend, text, picked, onSend, replyTo, ready, draftKey, onCancelReply]);
+    // Start the countdown now; otherwise the next message goes up looking
+    // sent and comes back refused by slow mode.
+    if (slowmodeSeconds > 0) setWait(slowmodeSeconds);
+  }, [canSend, text, picked, onSend, replyTo, ready, draftKey, onCancelReply, slowmodeSeconds]);
 
   const choose = (opt: { id: string; name: string }) => {
     if (!mention) return;
@@ -358,7 +364,7 @@ export function Composer({
               }
             }}
             onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return;
+              if (imeComposing(e)) return;
               if (mention && options.length > 0) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();

@@ -52,7 +52,18 @@ matrix so they can't drift.
   them reports it. Reporting hands the whole conversation to staff, and the
   report dialog says so before anyone commits.
 - **Staff** means `chat.manage` or the `*` wildcard. It replaced
-  `discord.manage`, and 0101 moved the grant across.
+  `discord.manage`, but 0101 does **not** move that grant across: Discord
+  config was harmless, while `chat.manage` opens reported DMs. Grant it on
+  purpose at `/admin/roles`.
+- **Team channels** also open to every mentor assigned (`mentor_assignments`)
+  to anyone on the team — what the Discord team-channel sync used to grant.
+  It's derived on every read, so assigning, unassigning or moving a student
+  needs no resync.
+- **Reports** freeze who they're about (`chat_reports.party_ids`): everyone in
+  the DM or group when it was filed, plus the reported message's sender. A
+  moderator among them never sees the report, can't resolve it, isn't told
+  about it, and gets no read path into the conversation through it — leaving
+  the group afterwards changes nothing.
 
 All reads go through the service role (`lib/chat.ts`), with the viewer
 checked explicitly, because every screen needs other people's names. RLS is the
@@ -82,12 +93,16 @@ signed-in users get read policies only.
 - **Slow mode:** per channel, 5 seconds to 1 hour. Staff are exempt.
 - **Rate limits:** 30 messages/min, 10 new conversations/hour, 60
   reactions/min, 10 reports/hour, 40 uploads/hour.
-- **Fines:** an account with a pending fine can only DM the team.
+- **Fines:** an account with a pending fine can only DM the team. Posting,
+  editing, reacting, pinning and starting or changing a group are all locked
+  elsewhere; reporting, blocking and leaving still work.
 - **Mentions** are stored as `<@uuid>`. The server keeps only people who can
   read the channel, so a mention can't ping a stranger. `@everyone` / `@here`
   are staff-only, in text channels.
 - **Edits and deletes:** you can edit or delete your own messages, and staff
-  can remove anyone's (that's logged). A delete blanks the row in place, so
+  can remove anyone's (that's logged) in a text channel, or as a moderator in
+  a reported DM or group they're not in. Never in a conversation they're one
+  side of: there they're a participant, not a moderator. A delete blanks the row in place, so
   Realtime carries it to every screen. What it said, and every version before
   an edit, goes to `chat_message_revisions`. No policy lets anyone but the
   service role read that table, and the report page shows it.

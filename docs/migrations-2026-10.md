@@ -74,9 +74,13 @@ check-ins, in-app files, discussions and the old recorder at once:
     never real passes).
   - 0101 creates batch0 Chat and its starting channels (one per cohort and
     team), copies the old DMs (same ids), their read state, blocks and
-    reports, and every team thread into Chat, turns `discord.manage` into
-    `chat.manage`, drops the Discord schema above, and rewrites the lesson
-    sentences and the one stored email that sent students to Discord.
+    reports, and every team thread into Chat, removes `discord.manage`
+    (**not** converted: grant `chat.manage` at `/admin/roles` to whoever runs
+    Chat, since it opens reported DMs), drops the Discord schema above, and
+    rewrites the lesson sentences and the one stored email that sent students
+    to Discord. DM reports 0099 already moved to Support arrive closed, and
+    blocks are copied once (a `chat_blocks_carried` setting), so a re-run
+    never undoes an unblock.
 - **Don't roll back past this deploy once 0093, 0099 or 0100 has run.** The
   previous code writes check-ins (0093), lesson comments and announcement
   reactions (0099) as the signed-in user, and those write policies are gone:
@@ -101,7 +105,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0098 | `0098_events.sql` | Event writes need `events.manage`; "Everyone signed in" events are no longer readable without signing in. New events default to chat on and auto-record (the admin form starts "Everyone signed in" events moderated). |
 | 0099 | `0099_retire_community.sql` | Discussions, team thread, reactions, lesson comments and DMs lose client write policies. Open private questions and open DM reports move into Support. Lessons that sent students to Discussions, office hours or the check-in point at Discord, Support and 1:1 calls. |
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
-| 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables, read-only policies, `chat_can_read()`, realtime on `chat_messages`, the private `chat-files` bucket), the starting channels plus one per cohort and team, old DMs and team threads carried in, `discord.manage` → `chat.manage`, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
+| 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables, read-only policies, `chat_can_read()`, realtime on `chat_messages`, the private `chat-files` bucket), the starting channels plus one per cohort and team, old DMs and team threads carried in, `discord.manage` removed (not converted), and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 
 ## Verify
 

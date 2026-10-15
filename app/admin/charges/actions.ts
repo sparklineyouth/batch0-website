@@ -134,12 +134,6 @@ export async function waiveCharge(chargeId: string, reason: string) {
     body: "An admin has waived this charge.",
     link: "/dashboard/billing",
   });
-  {
-    const { data: p } = await admin.from("profiles").select("full_name, email").eq("id", existing.user_id).maybeSingle();
-    await postStaffFeed(
-      `${existing.kind === "fine" ? "Fine" : "Fee"} waived for **${p?.full_name ?? p?.email ?? "a student"}**: ${existing.description} (${feedMoney(existing.amount_cents)})${reason?.trim() ? ` — ${reason.trim()}` : ""} · ${env.siteUrl}/admin/charges`,
-    );
-  }
   revalidatePath("/admin/charges");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/billing");
@@ -199,6 +193,14 @@ export async function refundCharge(chargeId: string, reason?: string) {
     body: `$${(existing.amount_cents / 100).toFixed(2)} returned to your card.`,
     link: "/dashboard/billing",
   });
+  // The #staff feed, where the Discord admin feed used to get refunds.
+  // postStaffFeed never throws: the refund already happened.
+  {
+    const { data: p } = await admin.from("profiles").select("full_name, email").eq("id", existing.user_id).maybeSingle();
+    await postStaffFeed(
+      `${existing.kind === "fine" ? "Fine" : "Fee"} refunded to **${p?.full_name ?? p?.email ?? "a student"}**: ${existing.description} (${feedMoney(existing.amount_cents)})${reason?.trim() ? ` — ${reason.trim()}` : ""} · ${env.siteUrl}/admin/charges`,
+    );
+  }
 
   revalidatePath("/admin/charges");
   revalidatePath(`/admin/charges?user=${existing.user_id}`);

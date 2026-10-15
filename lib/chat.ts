@@ -5,6 +5,7 @@ import { ACCEPTED_STATUSES } from "@/lib/pre-cohort";
 import { can, type Capabilities } from "@/lib/permissions";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import {
+  attentionFor,
   canReadChannel,
   compareChannels,
   compareConversations,
@@ -12,6 +13,8 @@ import {
   isConversationVisible,
   isUuid,
   otherInDmKey,
+  reportOpenTo,
+  reportVisibleTo,
   type Audience,
   type ChannelKind,
   type ChannelScope,
@@ -314,20 +317,56 @@ export async function vettedIds(ids: readonly string[]): Promise<Set<string>> {
 /** Everything the rules need about this person, resolved in one parallel batch. */
 export async function getChatViewer(userId: string, caps: Capabilities | null): Promise<ChatViewer> {
   const admin = createAdminClient();
-  const [vetted, enr, teams, members] = await Promise.all([
+  const [vetted, enr, teams, mentored, members] = await Promise.all([
     vettedIds([userId]),
     admin.from("enrollments").select("cohort_id").eq("user_id", userId),
     admin.from("team_members").select("team_id").eq("user_id", userId),
+    mentoredTeamIds(userId),
     admin.from("chat_members").select("channel_id").eq("user_id", userId).limit(2000),
   ]);
+  const own = ((must(teams, "teams") ?? []) as any[]).map((r) => r.team_id as string);
   return {
     userId,
     staff: can(caps, "chat.manage"),
     vetted: vetted.has(userId),
     cohortIds: ((must(enr, "enrollments") ?? []) as any[]).map((r) => r.cohort_id),
-    teamIds: ((must(teams, "teams") ?? []) as any[]).map((r) => r.team_id),
+    teamIds: Array.from(new Set([...own, ...mentored])),
     memberOf: ((must(members, "channels") ?? []) as any[]).map((r) => r.channel_id),
   };
+}
+
+/**
+ * The teams a mentor's assigned students are on. A team's channel opens to
+ * those mentors, the way the Discord team-channel sync used to — derived on
+ * every read, so assigning or moving someone needs no resync. Mirrors the
+ * mentor_assignments clause of chat_can_read() in 0101.
+ */
+export async function mentoredTeamIds(mentorId: string): Promise<string[]> {
+  const admin = createAdminClient();
+  const students = ((must(await admin.from("mentor_assignments").select("student_id").eq("mentor_id", mentorId).limit(1000), "mentor assignments") ??
+    []) as any[]).map((r) => r.student_id as string);
+  const out = new Set<string>();
+  for (const part of chunks(Array.from(new Set(students)))) {
+    const rows = (must(await admin.from("team_members").select("team_id").in("user_id", part), "teams") ?? []) as any[];
+    for (const r of rows) out.add(r.team_id);
+  }
+  return Array.from(out);
+}
+
+/** Mentors assigned to anyone on this team: part of its channel's audience. */
+async function teamMentorIds(teamId: string, among?: readonly string[]): Promise<string[]> {
+  const admin = createAdminClient();
+  const students = ((must(await admin.from("team_members").select("user_id").eq("team_id", teamId).limit(1000), "team") ?? []) as any[]).map(
+    (r) => r.user_id as string,
+  );
+  const out = new Set<string>();
+  for (const part of chunks(Array.from(new Set(students)))) {
+    let q = admin.from("mentor_assignments").select("mentor_id").in("student_id", part);
+    if (among) q = q.in("mentor_id", among as string[]);
+    const rows = (must(await q, "mentor assignments") ?? []) as any[];
+    for (const r of rows) out.add(r.mentor_id);
+  }
+  return Array.from(out);
 }
 
 // ---------------------------------------------------------------------------
@@ -351,14 +390,15 @@ export async function getChannelBySystemKey(key: string): Promise<ChannelRow | n
   return data ? toChannel(data) : null;
 }
 
-/** Has anyone reported this channel? The staff read gate for DMs and groups. */
-export async function isReported(channelId: string): Promise<boolean> {
-  const { count, error } = await createAdminClient()
-    .from("chat_reports")
-    .select("id", { count: "exact", head: true })
-    .eq("channel_id", channelId);
+/**
+ * Is this channel reported, by a report this viewer may see? The staff read
+ * gate for DMs and groups — a moderator the report is about gets false.
+ */
+export async function isReportedFor(channelId: string, viewer: ChatViewer): Promise<boolean> {
+  if (!viewer.staff) return false;
+  const { data, error } = await createAdminClient().from("chat_reports").select("party_ids").eq("channel_id", channelId);
   if (error) throw new Error(`Couldn't load reports: ${error.message}`);
-  return (count ?? 0) > 0;
+  return ((data ?? []) as { party_ids: string[] | null }[]).some((r) => reportOpenTo(r.party_ids ?? [], viewer));
 }
 
 /**
@@ -374,7 +414,7 @@ export async function getChannelForViewer(
   // Only pay for the report lookup when it could change the answer.
   const reported =
     channel.kind !== "channel" && viewer.staff && !viewer.memberOf.includes(channel.id)
-      ? await isReported(channel.id)
+      ? await isReportedFor(channel.id, viewer)
       : false;
   return canReadChannel(channel, viewer, reported) ? { channel, reported } : null;
 }
@@ -556,12 +596,14 @@ export async function buildSidebar(viewer: ChatViewer): Promise<SidebarData> {
 /** How many things want the viewer's attention: DM/group unread plus channel mentions. */
 export async function countAttention(viewer: ChatViewer): Promise<number> {
   const all = (await listReadableChannels(viewer)).filter((c) => !c.archivedAt || c.kind !== "channel");
-  const counts = await getUnreadCounts(viewer.userId, all.map((c) => c.id));
+  const ids = all.map((c) => c.id);
+  const [counts, reads] = await Promise.all([getUnreadCounts(viewer.userId, ids), getReads(viewer.userId, ids)]);
   let n = 0;
   for (const c of all) {
     const k = counts.get(c.id);
     if (!k) continue;
-    n += c.kind === "channel" ? k.mentions : k.unread > 0 ? 1 : 0;
+    const read = reads.get(c.id);
+    n += attentionFor(c.kind, k, read?.notify ?? null, isConversationVisible(read?.hidden_at ?? null, c.lastMessageAt));
   }
   return n;
 }
@@ -605,6 +647,7 @@ export async function listChannelAudienceIds(channel: ChannelRow, limit = 5000):
     case "team": {
       const rows = (must(await admin.from("team_members").select("user_id").eq("team_id", channel.teamId!).limit(limit), "team") ?? []) as any[];
       for (const r of rows) ids.add(r.user_id);
+      for (const id of await teamMentorIds(channel.teamId!)) ids.add(id);
       break;
     }
     case "everyone": {
@@ -951,6 +994,8 @@ export type ReportStatus = "open" | "actioned" | "dismissed";
 export type ChatReport = {
   id: string;
   channelId: string;
+  /** Who it's about — never shown to them (reportVisibleTo). */
+  partyIds: string[];
   messageId: string | null;
   reporterId: string | null;
   reporterName: string;
@@ -961,13 +1006,14 @@ export type ChatReport = {
   createdAt: string;
 };
 
-const REPORT_COLS = "id, channel_id, message_id, reporter_id, reason, status, reviewed_by, reviewed_at, created_at";
+const REPORT_COLS = "id, channel_id, message_id, reporter_id, reason, status, reviewed_by, reviewed_at, party_ids, created_at";
 
 async function hydrateReports(rows: any[]): Promise<ChatReport[]> {
   const people = await getPeople(rows.map((r) => r.reporter_id));
   return rows.map((r) => ({
     id: r.id,
     channelId: r.channel_id,
+    partyIds: Array.isArray(r.party_ids) ? r.party_ids : [],
     messageId: r.message_id ?? null,
     reporterId: r.reporter_id ?? null,
     reporterName: r.reporter_id ? (people.get(r.reporter_id)?.name ?? DELETED_NAME) : DELETED_NAME,
@@ -979,30 +1025,50 @@ async function hydrateReports(rows: any[]): Promise<ChatReport[]> {
   }));
 }
 
+async function channelKinds(ids: readonly string[]): Promise<Map<string, ChannelKind>> {
+  const out = new Map<string, ChannelKind>();
+  const admin = createAdminClient();
+  for (const part of chunks(Array.from(new Set(ids)))) {
+    const rows = (must(await admin.from("chat_channels").select("id, kind").in("id", part), "channels") ?? []) as any[];
+    for (const r of rows) out.set(r.id, r.kind);
+  }
+  return out;
+}
+
+/** Drop the reports this moderator may not see (reportVisibleTo). */
+async function visibleReports(viewer: ChatViewer, rows: any[]): Promise<ChatReport[]> {
+  const kinds = await channelKinds(rows.map((r) => r.channel_id));
+  const keep = rows.filter((r) => {
+    const kind = kinds.get(r.channel_id);
+    return !!kind && reportVisibleTo({ channelId: r.channel_id, partyIds: r.party_ids ?? [] }, kind, viewer);
+  });
+  return hydrateReports(keep);
+}
+
 /**
- * The queue, minus reports about DMs or groups the moderator is in: who
+ * The queue, minus every report about the moderator looking at it: who
  * reported them, and why, is exactly what the person reported must not learn.
  */
 export async function listReports(viewer: ChatViewer, status: ReportStatus | "all" = "open"): Promise<ChatReport[]> {
   let q = createAdminClient().from("chat_reports").select(REPORT_COLS);
   if (status !== "all") q = q.eq("status", status);
   const rows = (must(await q.order("created_at", { ascending: false }).limit(300), "reports") ?? []) as any[];
-  const reports = await hydrateReports(rows);
-  return reports.filter((r) => !viewer.memberOf.includes(r.channelId));
+  return visibleReports(viewer, rows);
 }
 
-export async function getReport(id: string): Promise<ChatReport | null> {
+/** One report, or null when it doesn't exist OR it's about this viewer — the same answer. */
+export async function getReport(id: string, viewer: ChatViewer): Promise<ChatReport | null> {
   if (!isUuid(id)) return null;
   const row = must(await createAdminClient().from("chat_reports").select(REPORT_COLS).eq("id", id).maybeSingle(), "the report");
-  return row ? (await hydrateReports([row]))[0] : null;
+  return row ? ((await visibleReports(viewer, [row]))[0] ?? null) : null;
 }
 
-export async function listReportsForChannel(channelId: string): Promise<ChatReport[]> {
+export async function listReportsForChannel(channelId: string, viewer: ChatViewer): Promise<ChatReport[]> {
   const rows = (must(
     await createAdminClient().from("chat_reports").select(REPORT_COLS).eq("channel_id", channelId).order("created_at", { ascending: false }),
     "reports",
   ) ?? []) as any[];
-  return hydrateReports(rows);
+  return visibleReports(viewer, rows);
 }
 
 export async function countOpenReports(viewer: ChatViewer): Promise<number> {
@@ -1096,28 +1162,46 @@ export { DELETED_NAME };
  * ping someone who'll see it, and a typed <@id> for a stranger is just text.
  */
 export async function filterReaders(channel: ChannelRow, ids: readonly string[]): Promise<string[]> {
-  const wanted = Array.from(new Set(ids.filter(isUuid))).slice(0, 50);
+  return readersAmong(channel, Array.from(new Set(ids.filter(isUuid))).slice(0, 50));
+}
+
+/**
+ * Which of these people can read the channel right now — no cap, chunked, so
+ * it can vet a whole "All messages" list. Same answer as canReadChannel for
+ * each of them, minus the report path (a bell never rides that).
+ */
+export async function readersAmong(channel: ChannelRow, ids: readonly string[]): Promise<string[]> {
+  const wanted = Array.from(new Set(ids.filter(isUuid)));
   if (wanted.length === 0) return [];
   const admin = createAdminClient();
   const explicit = new Set((await listMembers([channel.id])).get(channel.id) ?? []);
   if (channel.kind !== "channel") return wanted.filter((id) => explicit.has(id));
 
   const staffSlugs = new Set(await staffRoleSlugs());
-  const profiles = (must(await admin.from("profiles").select("id, role").in("id", wanted), "people") ?? []) as any[];
   const ok = new Set<string>();
-  for (const p of profiles) {
-    if (explicit.has(p.id) || staffSlugs.has(p.role)) ok.add(p.id);
+  const rest: string[] = [];
+  for (const part of chunks(wanted)) {
+    const profiles = (must(await admin.from("profiles").select("id, role").in("id", part), "people") ?? []) as any[];
+    for (const p of profiles) {
+      if (explicit.has(p.id) || staffSlugs.has(p.role)) ok.add(p.id);
+      else rest.push(p.id);
+    }
   }
-  const rest = profiles.map((p) => p.id as string).filter((id) => !ok.has(id));
   if (rest.length) {
     if (channel.audience === "everyone") {
       for (const id of await vettedIds(rest)) ok.add(id);
     } else if (channel.audience === "cohort" && channel.cohortId) {
-      const rows = (must(await admin.from("enrollments").select("user_id").eq("cohort_id", channel.cohortId).in("user_id", rest), "enrollments") ?? []) as any[];
-      for (const r of rows) ok.add(r.user_id);
+      for (const part of chunks(rest)) {
+        const rows = (must(await admin.from("enrollments").select("user_id").eq("cohort_id", channel.cohortId).in("user_id", part), "enrollments") ?? []) as any[];
+        for (const r of rows) ok.add(r.user_id);
+      }
     } else if (channel.audience === "team" && channel.teamId) {
-      const rows = (must(await admin.from("team_members").select("user_id").eq("team_id", channel.teamId).in("user_id", rest), "team") ?? []) as any[];
-      for (const r of rows) ok.add(r.user_id);
+      for (const part of chunks(rest)) {
+        const rows = (must(await admin.from("team_members").select("user_id").eq("team_id", channel.teamId).in("user_id", part), "team") ?? []) as any[];
+        for (const r of rows) ok.add(r.user_id);
+      }
+      const left = rest.filter((id) => !ok.has(id));
+      if (left.length) for (const id of await teamMentorIds(channel.teamId, left)) ok.add(id);
     }
   }
   return wanted.filter((id) => ok.has(id));
