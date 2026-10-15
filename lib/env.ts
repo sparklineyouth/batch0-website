@@ -67,16 +67,6 @@ export const env = {
   liveTurnUrls: process.env.LIVE_TURN_URLS,
   liveTurnUsername: process.env.LIVE_TURN_USERNAME,
   liveTurnCredential: process.env.LIVE_TURN_CREDENTIAL,
-
-  discordBotToken: process.env.DISCORD_BOT_TOKEN,
-  discordGuildId: process.env.DISCORD_GUILD_ID,
-  discordRoleStudent: process.env.DISCORD_ROLE_STUDENT,
-  discordAnnouncementsWebhook: process.env.DISCORD_ANNOUNCEMENTS_WEBHOOK,
-  discordClientId: process.env.DISCORD_CLIENT_ID,
-  discordClientSecret: process.env.DISCORD_CLIENT_SECRET,
-  // Hex-encoded Ed25519 public key from the Discord developer portal —
-  // used to verify Interaction (slash command) requests.
-  discordPublicKey: process.env.DISCORD_PUBLIC_KEY,
 } as const;
 
 export function ensure(key: keyof typeof env, value: string | undefined): string {

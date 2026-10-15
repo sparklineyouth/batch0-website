@@ -27,7 +27,7 @@ https://supabase.com/dashboard/project/taiqnjpojenqkbuuwxeo/sql/new
 Run every file in [`supabase/migrations/`](supabase/migrations) in number
 order (paste, **Run**). Each is idempotent, so re-running one is safe.
 `0001_init.sql` creates the base tables, policies and buckets and seeds the
-first cohort. The latest batch, 0093–0100, has its own checklist with a verify
+first cohort. The latest batch, 0093–0101, has its own checklist with a verify
 query per file: [`docs/migrations-2026-10.md`](docs/migrations-2026-10.md).
 
 ## 3. Set up environment variables

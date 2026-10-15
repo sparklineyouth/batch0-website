@@ -6,10 +6,13 @@ applications, payments, courses, and student/admin dashboards.
 The program runs on: the course and an assignment tracker
 (`docs/assignments.md`), Google Drive links for team work
 (`docs/google-drive.md`), webinars and 1:1 calls in a built-in room with one
-continuous recording (`docs/batch0-live.md`, `docs/recording.md`), and Discord
-for community (`docs/discord.md`). Check-ins, in-app files, discussions, DMs,
-the team thread and office hours were retired in October 2026; their tables
-and rows stay, and the app no longer writes to them.
+continuous recording (`docs/batch0-live.md`, `docs/recording.md`), and
+**batch0 Chat** for community at `/chat`: channels, DMs and group DMs, built
+in (`docs/chat.md`). Chat replaced Discord in October 2026 (migration 0101);
+there is no Discord integration any more. Check-ins, in-app files,
+discussions, the team thread and office hours were retired; their tables and
+rows stay, and the app no longer writes to them. Old DMs and team threads
+were carried into Chat.
 
 ## Stack
 
@@ -48,7 +51,6 @@ do not provide a working backend.
 ```sh
 npx tsc --noEmit
 npm test
-npm run test:discord-db
 npm run test:scholarships-db
 npm run test:profile-privileges-db
 npm run test:call-cohosts-db
@@ -61,7 +63,7 @@ npm start
 `npm test` runs every `lib/*.test.ts`, including the PGlite migration tests;
 the `test:*-db` commands use their own in-memory PGlite databases. CI
 (`.github/workflows/ci.yml`) runs all of the above except the build. On
-2026-10-14 that was 1,207 unit tests and 69 database tests, all passing. The
+2026-10-15 that was 1,239 unit tests and 54 database tests, all passing. The
 production build compiles and type-checks the app, then checks that the
 expected blog and marketing routes remain prerendered.
 
@@ -79,12 +81,12 @@ Production uses `batch0.org` and `app.batch0.org`, with matching authentication
 redirects and webhook endpoints. See `.env.local.example` for available settings.
 
 Migrations are run by hand in the Supabase SQL editor after the code deploys.
-The October 2026 release adds 0093–0100: 0095 and 0096 go in before the
+The October 2026 release adds 0093–0101: 0095 and 0096 go in before the
 deploy and the rest right after it; see `docs/migrations-2026-10.md` for the
 order, why, and a verify query per file. The app runs without them. `/admin`
 shows `settings.manage` holders one line while it detects one missing (the
-tables and columns of 0093–0096, leftovers of 0099–0100); the policy changes
-in 0097–0099 are confirmed only by the doc's verify queries.
+tables and columns of 0093–0096 and 0101, leftovers of 0099–0101); the policy
+changes in 0097–0099 are confirmed only by the doc's verify queries.
 
 The checkout can live anywhere. Dependencies and `.next` are rebuilt locally;
 private course source under `content/course-launch/` is intentionally excluded

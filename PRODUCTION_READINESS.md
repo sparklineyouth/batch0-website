@@ -15,7 +15,7 @@ This file is the result of two audit passes. Pass 1 surfaced 30+ issues; this do
 | P0 (blockers) | 3 | 3 | 0 |
 | P1 (fix before launch) | 11 | 11 | 0 |
 | P2 (fix soon, not blocking) | 14 | 14 | 0 |
-| P3 (post-launch polish) | 8 | — | 8 |
+| P3 (post-launch polish) | 7 | — | 7 |
 | New product changes | 5 | 5 | 0 |
 
 All P0 / P1 / P2 work from the original audit is **landed and type-checks clean**. Remaining work is P3 polish + ongoing operational hygiene.
@@ -101,6 +101,8 @@ Crons are listed in `vercel.json`; the assignment-due cron was deleted with the 
 
 **Goal:** Once we're done linking, every OAuth token we touched is dead.
 
+*Moot since migration 0101: the Discord integration (account linking included) was removed, and batch0 Chat replaced it.*
+
 ### 8. Lesson asset signed URLs lived 4 hours
 
 **Problem:** Video + materials were signed for 4h. URLs leaked into HTML source / share history / server logs. A churned student who saved the URL kept access.
@@ -124,6 +126,8 @@ Crons are listed in `vercel.json`; the assignment-due cron was deleted with the 
 **Fix:** `app/api/discord/interactions/route.ts` calls `checkRateLimit` per Discord user before dispatching — 5/min for `/announce`, 20/min for read-only commands.
 
 **Goal:** Predictable cost ceiling on Discord traffic.
+
+*Moot since migration 0101: the slash commands went with the rest of the Discord integration.*
 
 ### 11. Signout was CSRF-able
 
@@ -280,7 +284,7 @@ matching, AI usage and the premiere webinar mode. Tables stay.
 
 The app no longer writes to the tables of the retired check-in, file,
 community (discussions, DMs, team thread, reactions, lesson comments) and
-office-hours features, nor to `at_risk_interventions` or `event_rsvps`. A few
+office-hours features, nor to `at_risk_interventions`. A few
 are still read for display: older uploads as downloads, weeks 1-4 check-ins
 with their feedback, and office hours booked before the cut. Two cut features
 only lost their admin views, and their tables are still written by the
@@ -289,9 +293,17 @@ rollup, `lib/ai/usage.ts`), and `email_events` by the Resend webhook
 (`app/api/resend/webhook/route.ts`).
 
 0093, 0094, 0097 and 0099 drop the client write policies on most retired
-tables. Four are left: staff write on `file_feedback`, admin write on
-`at_risk_interventions`, an owner's delete on their own `student_files` row,
-and the self policy on `event_rsvps`.
+tables. Three are left: staff write on `file_feedback`, admin write on
+`at_risk_interventions`, and an owner's delete on their own `student_files`
+row.
+
+Replaced in 0101: the Discord integration. batch0's community is batch0 Chat
+at `/chat` (`docs/chat.md`) — #announcements (staff post), #general, #wins,
+#help, a channel per cohort, a private channel per team, DMs and group DMs.
+0101 drops the Discord profile and team columns, the `discord*` site
+settings, the integration's tables (`discord_auto_*`, `oh_queue`,
+`mentor_oncall`, `team_blockers`, `event_rsvps`) and renames `discord.manage`
+to `chat.manage`.
 
 Added: the assignment tracker, team Google Drive links, a built-in room for
 webinars and 1:1 calls (screen share as the main stage, slide presenter, A/V
@@ -311,9 +323,8 @@ These don't block launch but improve the experience over time.
 3. **Notification preferences** — let students disable email.
 4. **Investor cap on simultaneous intro requests** to prevent one investor monopolizing the queue.
 5. **Per-student progress link from `/admin/students`** (currently only reachable from `/mentor/students`).
-6. **Sanitized Discord error logging.** Today `lib/discord.ts` logs full response bodies on error.
-7. **Per-team "completion percentage" widget on `/admin/teams/[id]`** so Demo Day judges see readiness at a glance.
-8. **Streaming-error persistence.** If `/api/ai/chat` errors mid-stream we record token usage but not the partial assistant message — retries can feel confusing. Persist the partial under a `failed: true` flag and skip in the next conversation hydrate.
+6. **Per-team "completion percentage" widget on `/admin/teams/[id]`** so Demo Day judges see readiness at a glance.
+7. **Streaming-error persistence.** If `/api/ai/chat` errors mid-stream we record token usage but not the partial assistant message — retries can feel confusing. Persist the partial under a `failed: true` flag and skip in the next conversation hydrate.
 
 ---
 
@@ -321,13 +332,13 @@ These don't block launch but improve the experience over time.
 
 Configuration tasks no code can do for you.
 
-1. **Apply migrations**: every file in `supabase/migrations/` in order; for this release, `0093`–`0100` (`docs/migrations-2026-10.md`).
+1. **Apply migrations**: every file in `supabase/migrations/` in order; for this release, `0093`–`0101` (`docs/migrations-2026-10.md`).
 2. **Verify storage buckets** exist: `course-videos`, `course-materials`, `resources`, `recordings` (private, 0095), `student-files` and `team-drive` (private, read-only since 0094), `team-logos` (public). The submissions bucket should be gone after migration 0013.
 3. **Enable Realtime** for the `notifications` table in Supabase Dashboard → Database → Publications → `supabase_realtime`. The bell falls back to a 60s poll if Realtime is off, so this isn't strictly required but the UX is noticeably worse without it.
-4. **Environment variables** present in production. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, `NEXT_PUBLIC_SITE_URL`. Optional: `NEXT_PUBLIC_SENTRY_DSN` (error reporting), `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PUBLIC_KEY` (Ed25519 key for slash-command verification), `DISCORD_ROLE_STUDENT`, `DISCORD_ANNOUNCEMENTS_WEBHOOK`, `RESEND_API_KEY` + `RESEND_FROM` (transactional email via Resend — without them, `sendEmail` no-ops in dev and logs `disabled` in prod).
+4. **Environment variables** present in production. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, `NEXT_PUBLIC_SITE_URL`. Optional: `NEXT_PUBLIC_SENTRY_DSN` (error reporting), `RESEND_API_KEY` + `RESEND_FROM` (transactional email via Resend — without them, `sendEmail` no-ops in dev and logs `disabled` in prod).
 5. **Stripe webhook endpoint** points at `https://<domain>/api/stripe/webhook` with `checkout.session.completed`, `payment_intent.succeeded`, and `charge.refunded` subscribed.
 6. **Supabase Auth settings:** "Confirm email" is enabled (otherwise typo-emails silently succeed at signup).
-7. **Re-register Discord slash commands** after each deploy that changes them (`/admin/discord` → Register slash commands). October 2026 removed `/checkin` and `/announce`.
+7. **Retire the old Discord app.** The integration is gone (0101), so delete the `DISCORD_*` environment variables from the deployment, and clear the Interactions Endpoint URL in the Discord developer portal (or delete the app) — `/api/discord/interactions` no longer exists. The community now lives in batch0 Chat.
 8. **Smoke test Demo Day** end-to-end before announcing: one test team submits a deck link + video link, an investor scores it, an investor requests an intro, an admin progresses the intro through the funnel.
 
 ---

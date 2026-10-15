@@ -564,7 +564,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       "<li><strong>Bring one question to office hours.</strong> Come with a specific one — “is this pricing insane” gets you further than “any advice?”</li>" +
       "</ol>" +
       "<p>If you're behind, don't try to catch up on all four. Do the deliverable, say you're behind in your weekly update, and we'll sort the rest out with you.</p>" +
-      "<p>Stuck on something that isn't in this list? Reply to this email, or put it in your cohort's Discord — someone else is almost certainly stuck on the same thing.</p>",
+      "<p>Stuck on something that isn't in this list? Reply to this email, or post it in your cohort's channel in Chat — someone else is almost certainly stuck on the same thing.</p>",
     cta_label: "Open your dashboard",
     cta_url: "{{site_url}}/dashboard",
     variables: COMMON,

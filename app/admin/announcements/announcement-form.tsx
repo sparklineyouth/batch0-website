@@ -10,24 +10,17 @@ import {
 } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
 import { Toggle } from "@/components/ui/toggle";
-import { broadcastAnnouncement, type AnnouncementPing } from "./actions";
+import { broadcastAnnouncement } from "./actions";
 
 type Cohort = { id: string; name: string };
-type PingableRole = { role: "student" | "mentor" | "admin" | "investor"; label: string };
 
-export function AnnouncementForm({
-  cohorts,
-  pingableRoles,
-}: {
-  cohorts: Cohort[];
-  pingableRoles: PingableRole[];
-}) {
+export function AnnouncementForm({ cohorts }: { cohorts: Cohort[] }) {
   const [cohortId, setCohortId] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [emailToo, setEmailToo] = useState(true);
-  const [discordToo, setDiscordToo] = useState(true);
-  const [discordPing, setDiscordPing] = useState<AnnouncementPing>("none");
+  const [chatToo, setChatToo] = useState(true);
+  const [pingEveryone, setPingEveryone] = useState(false);
   const [pending, start] = useTransition();
   const [result, setResult] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
@@ -42,13 +35,20 @@ export function AnnouncementForm({
           title,
           body,
           sendEmail: emailToo,
-          postDiscord: discordToo,
-          discordPing: discordToo ? discordPing : "none",
+          postChat: chatToo,
+          mentionEveryone: chatToo && pingEveryone,
         });
         setResult(
           `Sent to ${out.recipients} student${out.recipients === 1 ? "" : "s"}` +
-            (out.discordPosted ? " and posted to Discord." : "."),
+            (out.chatPosted ? (cohortId ? " and posted in the cohort's channel." : " and posted in #announcements.") : "."),
         );
+        if (chatToo && !out.chatPosted) {
+          setError(
+            `The chat post didn't go through${
+              out.chatError ? ` (${out.chatError})` : ""
+            }. You can post it in Chat yourself.`,
+          );
+        }
         setTitle("");
         setBody("");
       } catch (e: any) {
@@ -94,34 +94,22 @@ export function AnnouncementForm({
         onChange={setEmailToo}
       />
       <Toggle
-        label="Post to Discord"
-        description="Cross-post to your Discord announcements channel."
-        checked={discordToo}
-        onChange={setDiscordToo}
+        label={cohortId ? "Also post in the cohort's channel" : "Also post in #announcements"}
+        description={
+          cohortId
+            ? "Post it in this cohort's channel in Chat, where only the cohort and staff read it."
+            : "Post it in the #announcements channel in Chat, where everyone at batch0 can read it."
+        }
+        checked={chatToo}
+        onChange={setChatToo}
       />
-      {discordToo && (
-        <div className="rounded-xl border border-line bg-wash px-4 py-3.5">
-          <Label>Discord ping</Label>
-          <Select
-            value={discordPing}
-            onChange={(e) =>
-              setDiscordPing(e.target.value as AnnouncementPing)
-            }
-          >
-            <option value="none">No ping (silent post)</option>
-            <option value="everyone">@everyone (push to everyone)</option>
-            <option value="here">@here (only currently online)</option>
-            {pingableRoles.map((r) => (
-              <option key={r.role} value={r.role}>
-                Ping {r.label} role
-              </option>
-            ))}
-          </Select>
-          <p className="mt-1.5 text-xs text-ink-faint">
-            @everyone pings the whole server, not just students. Role pings
-            need the role ID in Admin → Discord.
-          </p>
-        </div>
+      {chatToo && (
+        <Toggle
+          label="Notify everyone (@everyone)"
+          description="Sends a notification to everyone who can read the channel. Leave off for routine updates."
+          checked={pingEveryone}
+          onChange={setPingEveryone}
+        />
       )}
       {result && (
         <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-200">

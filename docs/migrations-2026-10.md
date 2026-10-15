@@ -1,4 +1,4 @@
-# Migrations 0093–0100 (October 2026)
+# Migrations 0093–0101 (October 2026)
 
 Run each file in the Supabase SQL editor: paste the whole file and run it.
 **The order matters more than usual**, because the deploy removes the old
@@ -13,8 +13,8 @@ check-ins, in-app files, discussions and the old recorder at once:
    1:1 held between the deploy and 0095 is not recorded at all, and that can't
    be fixed afterwards. (The rooms say so to hosts instead of claiming to
    record.)
-2. **Right after the deploy is live: 0093, 0094, 0097, 0098, 0099, 0100**, in
-   that order. Treat them as part of the deploy, not a follow-up: finish
+2. **Right after the deploy is live: 0093, 0094, 0097, 0098, 0099, 0100,
+   0101**, in that order. Treat them as part of the deploy, not a follow-up: finish
    before the next weekly due date (Sundays 23:59 New York time; week 5 is
    due Sunday, October 18) and before the next scheduled webinar or call.
    Nothing returns a 500 in between, but until each file runs its part of the
@@ -29,6 +29,10 @@ check-ins, in-app files, discussions and the old recorder at once:
    - 0099: open DM reports (a safeguarding queue) and private questions still
      waiting on the team show nowhere until 0099 moves them into Support, and
      Week 1 lessons still point at Discussions and office hours.
+   - 0101: there is no community at all until it runs — `/chat` says chat
+     isn't set up yet, the Discord integration is already gone from the code,
+     and announcement cross-posts report that they couldn't post. Run it
+     after 0099 (it rewrites the lesson sentences 0099 wrote).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -38,8 +42,12 @@ check-ins, in-app files, discussions and the old recorder at once:
 - **The app works before they run.** Code that reads a new table or column
   treats "does not exist" as "not set up yet" (`lib/schema-ready.ts`): the
   feature shows an empty state, nothing returns a 500.
-- **No tables or columns are dropped**, and retired features keep their
-  tables and rows. But these files **change data**, not only policies,
+- **0093–0100 drop no tables or columns**, and retired features keep their
+  tables and rows. **0101 does drop** the Discord integration's tables
+  (`discord_auto_*`, `oh_queue`, `mentor_oncall`, `team_blockers`,
+  `event_rsvps`), the `discord_*` columns on `profiles` and `teams`, and the
+  `discord*` site settings — that part can't be undone, so back up first if
+  you want them. All of these files **change data**, not only policies,
   grants and defaults (each change is guarded, so a re-run changes nothing).
   Take a backup first if you may want the old wording back:
   - 0093 rewrites check-in wording to "weekly update" / Assignments in
@@ -64,6 +72,11 @@ check-ins, in-app files, discussions and the old recorder at once:
   - 0100 removes `ai_usage.view` from roles and **deletes** leftover
     founder-pass self-check rows (`batch = 'selftest'`, negative serials;
     never real passes).
+  - 0101 creates batch0 Chat and its starting channels (one per cohort and
+    team), copies the old DMs (same ids), their read state, blocks and
+    reports, and every team thread into Chat, turns `discord.manage` into
+    `chat.manage`, drops the Discord schema above, and rewrites the lesson
+    sentences and the one stored email that sent students to Discord.
 - **Don't roll back past this deploy once 0093, 0099 or 0100 has run.** The
   previous code writes check-ins (0093), lesson comments and announcement
   reactions (0099) as the signed-in user, and those write policies are gone:
@@ -72,10 +85,10 @@ check-ins, in-app files, discussions and the old recorder at once:
   its pages need. No data is lost. Fix forward instead. Before any of them
   has run, rolling back is safe.
 - People with `settings.manage` see one line on `/admin`, *Database update
-  needed: run migrations 0093–0100*, while a probe finds one missing
+  needed: run migrations 0093–0101*, while a probe finds one missing
   (`lib/pending-migrations.ts`, cached 5 minutes). It checks the new tables and
-  columns of 0093–0096, and the retired permission keys 0099 and 0100 strip
-  from roles. The policy changes in 0097–0099 are invisible to it: the line
+  columns of 0093–0096 and 0101, and the retired permission keys 0099, 0100
+  and 0101 strip from roles. The policy changes in 0097–0099 are invisible to it: the line
   going away does not prove those ran, so run the verify queries below.
 
 | # | File | What it does |
@@ -88,6 +101,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0098 | `0098_events.sql` | Event writes need `events.manage`; "Everyone signed in" events are no longer readable without signing in. New events default to chat on and auto-record (the admin form starts "Everyone signed in" events moderated). |
 | 0099 | `0099_retire_community.sql` | Discussions, team thread, reactions, lesson comments and DMs lose client write policies. Open private questions and open DM reports move into Support. Lessons that sent students to Discussions, office hours or the check-in point at Discord, Support and 1:1 calls. |
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
+| 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables, read-only policies, `chat_can_read()`, realtime on `chat_messages`, the private `chat-files` bucket), the starting channels plus one per cohort and team, old DMs and team threads carried in, `discord.manage` → `chat.manage`, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 
 ## Verify
 
@@ -139,8 +153,20 @@ where schemaname = 'public'
 -- 0100
 select count(*) = 0 as ok from public.app_roles
 where permissions @> array['ai_usage.view']::text[];
+
+-- 0101
+select to_regclass('public.chat_channels') is not null
+   and to_regclass('public.chat_message_revisions') is not null
+   and exists (select 1 from public.chat_channels where system_key = 'general')
+   and not exists (select 1 from information_schema.columns
+                   where table_schema = 'public' and table_name = 'profiles'
+                     and column_name like 'discord%')
+   and not exists (select 1 from public.app_roles
+                   where permissions @> array['discord.manage']::text[])
+   and exists (select 1 from pg_publication_tables
+               where pubname = 'supabase_realtime' and tablename = 'chat_messages') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
 `docs/recording.md`, `docs/batch0-live.md`, `docs/calls.md`,
-`docs/webinars.md`, `docs/discord.md`, `docs/admin.md`.
+`docs/webinars.md`, `docs/chat.md`, `docs/admin.md`.

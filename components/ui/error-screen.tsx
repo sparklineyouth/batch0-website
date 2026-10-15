@@ -50,7 +50,7 @@ function reportHref(pathname: string | null, digest: string | undefined): string
  * page with no way back into the product except the browser's back button.
  *
  * The reset button is the reason a boundary is worth having at all: most of
- * what fails here is a transient read (a cold Supabase connection, a Discord
+ * what fails here is a transient read (a cold Supabase connection, a Stripe
  * call that timed out), and `reset()` re-renders the segment in place without a
  * full document load, so a retry costs nothing and usually works.
  *

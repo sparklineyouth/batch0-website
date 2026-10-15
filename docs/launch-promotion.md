@@ -5,7 +5,7 @@ Prepared September 14, 2026. This is an operator handoff, not evidence that ever
 ## Current owner decisions
 
 - **Schedule:** all 18 approved sessions and private rooms were published and read back, for 19 sessions including kickoff. A repeat run created no rooms and changed no events. The confirmed calendar was checked against all 19 event IDs, dates, durations, and links, including the daylight-saving change. Private calendar and schedule exports are in the ignored course-launch directory. The Events page remains the source for actual appointments.
-- **Communications: KEEP DRAFTS.** Prepared reminders and Discord announcements must remain drafts. Schedule approval does not authorize sending or scheduling these messages. Keep **Notify** off when publishing or editing events, and do not drain the email queue as part of this release.
+- **Communications: KEEP DRAFTS.** Prepared reminders and community announcements (now #announcements in batch0 Chat) must remain drafts. Schedule approval does not authorize sending or scheduling these messages. Keep **Notify** off when publishing or editing events, and do not drain the email queue as part of this release.
 - **Promotion:** the owner set a **$100 total ceiling**, conditional on a positive return. There is no demonstrated acquisition economics or way to guarantee that return. The chosen spend remains **$0**; the implemented promotion is the public starter kit, referral paths, sharing controls, and prepared organic copy. The ceiling is not an instruction to launch a campaign.
 - **Demo Day:** use a staff-hosted live showcase of submitted three-minute demos, PDF decks, and supporting evidence, with moderated written Q&A. Students may instead submit written narration for the host to read. No student camera, open microphone, new administrative access, or paid video feature is required.
 
@@ -81,12 +81,12 @@ batch0 Live records in a host's browser: **Record** in the control bar (or the e
 
 ### Recipient and withdrawal check before any reminder
 
-The owner's current instruction is **KEEP DRAFTS** for reminders and Discord announcements. Publishing the approved 18-session schedule must not send or schedule them. A later explicit change to that instruction is needed before using a reviewed audience and message.
+The owner's current instruction is **KEEP DRAFTS** for reminders and #announcements posts. Publishing the approved 18-session schedule must not send or schedule them. A later explicit change to that instruction is needed before using a reviewed audience and message.
 
 - [ ] Start with the **current cohort's enrollment roster**, then review pending withdrawal/refund/support conversations separately. A person can request withdrawal by email while their database status still looks enrolled. The read snapshot found no withdrawn application among the current enrolled rows, which does not resolve those conversations.
 - [ ] Exclude withdrawn students and anyone explicitly asking to stop participation/contact from kickoff and promotional batches. Resolve ambiguous access/payment cases individually; do not promise enrolled access to accepted-but-unpaid applicants.
 - [ ] Review already-pending outbox entries for the excluded people, including retries and parent-address copies. Existing queue gates check payment, enrollment, application decisions, or login; they do **not** provide a general withdrawal/refund-request exclusion. Parent-only queue rows may also bypass person-based conditions.
-- [ ] Keep the event editor's **Notify** option off while editing. Its notify path sends enrolled-student emails and a Discord post on each save; it does not provide a separate deduplicated kickoff campaign or automatically suppress pending withdrawal requests. Saving again can send again.
+- [ ] Keep the event editor's **Notify** option off while editing. Its notify path sends enrolled-student emails on each save; it does not provide a separate deduplicated kickoff campaign or automatically suppress pending withdrawal requests. Saving again can send again.
 - [ ] Once a specific send is approved, use one reviewed recipient list, one exact event link, and the explicit time zone. Check delivery failures/bounces and avoid resending to everyone just because one recipient needs help.
 
 ### Refund follow-up

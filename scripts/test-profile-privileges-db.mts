@@ -22,6 +22,8 @@
  *   - a student CAN still change their own full_name (the settings page)
  *   - an admin can still change roles from the browser
  *   - the server (service role, auth.uid() IS NULL) is unaffected
+ *   - 0101's replacement guard (the same function without the Discord
+ *     columns, which 0101 drops) keeps every one of those promises
  */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -64,6 +66,8 @@ await db.exec(`
     select nullif(current_setting('test.uid', true), '')::uuid
   $$;
 
+  -- The shape 0077 was written against, Discord columns included; 0101 (the
+  -- tests at the bottom) drops them.
   create table public.profiles (
     id uuid primary key,
     email text not null,
@@ -198,8 +202,8 @@ test("an admin can still change a role from the browser", async () => {
 
 test("the server (service role) is unaffected", async () => {
   // Every privileged write in the app goes through createAdminClient(), where
-  // auth.uid() is NULL. Admin role changes, Stripe linking, Discord linking
-  // and the signup trigger all depend on this staying open.
+  // auth.uid() is NULL. Admin role changes, Stripe linking and the signup
+  // trigger all depend on this staying open.
   const err = await attempt(
     null,
     `update public.profiles set role = 'student', stripe_customer_id = 'cus_ok'
@@ -217,5 +221,81 @@ test("an admin cannot be tricked by a student re-running the exploit", async () 
     `update public.profiles set role = 'admin' where id = '${STUDENT}'`,
   );
   assert.ok(err, "the exploit must remain closed");
+  assert.equal(await roleOf(STUDENT), "student");
+});
+
+// ---------------------------------------------------------------------------
+// 0101: batch0 Chat replaced the Discord integration and dropped its profile
+// columns, so it re-creates this guard without them. Only those two
+// statements are replayed — the rest of 0101 builds Chat, which needs tables
+// this slice of the schema doesn't have.
+// ---------------------------------------------------------------------------
+
+const chatMigration = await readFile(
+  new URL("../supabase/migrations/0101_chat.sql", import.meta.url),
+  "utf8",
+);
+const guard0101 = chatMigration.match(
+  /create or replace function public\.guard_profile_privileges\(\)[\s\S]*?\n\$\$;/,
+)?.[0];
+const dropDiscord0101 = chatMigration.match(
+  /alter table public\.profiles\s+drop column if exists discord_[\s\S]*?;/,
+)?.[0];
+
+test("0101 re-creates the guard without the Discord columns, which it drops", async () => {
+  assert.ok(guard0101, "0101 should re-create guard_profile_privileges()");
+  assert.ok(dropDiscord0101, "0101 should drop the profiles.discord_* columns");
+  assert.doesNotMatch(guard0101!, /discord/i, "the guard must not name a dropped column");
+
+  await db.exec(guard0101!);
+  await db.exec(dropDiscord0101!);
+  // Idempotent like every migration here.
+  await db.exec(guard0101!);
+  await db.exec(dropDiscord0101!);
+
+  const { rows: cols } = await q(
+    `select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = 'profiles'
+        and column_name like 'discord%'`,
+  );
+  assert.equal(cols.length, 0, "no discord_* column should be left");
+  const { rows: trig } = await q(
+    `select 1 from pg_trigger
+      where tgname = 'guard_profile_privileges'
+        and tgrelid = 'public.profiles'::regclass`,
+  );
+  assert.equal(trig.length, 1, "0077's trigger should still be bound to the new function");
+});
+
+test("after 0101 a student still cannot touch role, email or stripe_customer_id", async () => {
+  for (const [col, value] of [
+    ["role", "'admin'"],
+    ["email", "'someone-else@example.invalid'"],
+    ["stripe_customer_id", "'cus_stolen'"],
+  ] as const) {
+    const err = await attempt(
+      STUDENT,
+      `update public.profiles set ${col} = ${value} where id = '${STUDENT}'`,
+    );
+    assert.ok(err, `${col} should be refused`);
+    assert.match(err!, new RegExp(`profiles\\.${col} cannot be changed`));
+  }
+  assert.equal(await roleOf(STUDENT), "student");
+});
+
+test("after 0101 a student can still rename themselves, and admins and the server still write", async () => {
+  assert.equal(
+    await attempt(STUDENT, `update public.profiles set full_name = 'Renamed' where id = '${STUDENT}'`),
+    null,
+  );
+  assert.equal(
+    await attempt(ADMIN, `update public.profiles set role = 'mentor' where id = '${STUDENT}'`),
+    null,
+  );
+  assert.equal(await roleOf(STUDENT), "mentor");
+  assert.equal(
+    await attempt(null, `update public.profiles set role = 'student', stripe_customer_id = 'cus_ok' where id = '${STUDENT}'`),
+    null,
+  );
   assert.equal(await roleOf(STUDENT), "student");
 });

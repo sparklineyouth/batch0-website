@@ -84,7 +84,7 @@ clause in the privacy policy exists for this — don't delete it.
    That is the correct outcome, not a failure of the campaign.
 5. **Revocation handling.** Since 2025-04-11, a person may revoke by any
    reasonable method — a reply, an email, a support ticket, telling us in
-   Discord — not just by texting STOP. Honor within 10 business days, at most
+   batch0 Chat — not just by texting STOP. Honor within 10 business days, at most
    one confirmation message. This has to be a real suppression list the
    sending path checks, not a note in someone's inbox.
 6. **10DLC registration** for the sending number, with the opt-in flow

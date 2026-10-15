@@ -41,7 +41,6 @@ export function SettingsForm({
           ...values,
           active_cohort_name: activeCohort?.name ?? null,
           contact_email: values.contact_email.trim(),
-          discord_url: values.discord_url.trim(),
         };
         const res = await saveSiteSettings(payload);
         if (!res.ok) {
@@ -67,15 +66,6 @@ export function SettingsForm({
             placeholder="hello@batch0.org"
           />
           <Hint>Shown in the footer and CTA. Where applicants can reach you.</Hint>
-        </Field>
-        <Field label="Discord invite URL">
-          <Input
-            type="url"
-            value={values.discord_url}
-            onChange={(e) => set("discord_url", e.target.value)}
-            placeholder="https://discord.gg/…"
-          />
-          <Hint>Optional. Linked to enrolled students after payment.</Hint>
         </Field>
       </Section>
 

@@ -81,7 +81,7 @@ export async function generateMetadata(
   const holder = pass.name ?? "A batch0 founder";
   return {
     title: `Founder Pass ${label} — batch0`,
-    description: `${holder} holds batch0 founder pass ${label} — fast-tracked application, founder role, numbered card.`,
+    description: `${holder} holds batch0 founder pass ${label} — fast-tracked application, public founder profile, numbered card.`,
   };
 }
 

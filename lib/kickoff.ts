@@ -121,7 +121,7 @@ export const DEFAULT_CHECKLIST: readonly KickoffChecklistItem[] = [
     label: "Work through Before One — your pre-cohort flows",
     href: "/dashboard/resources",
   },
-  { label: "Link Discord and meet your cohort", href: "/dashboard/community" },
+  { label: "Say hi to your cohort in #general", href: "/chat" },
   { label: "Start your team — or accept an invite", href: "/dashboard/team" },
   { label: "Complete your profile", href: "/dashboard/settings" },
 ];

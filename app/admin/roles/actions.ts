@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
-import { syncMemberRoles } from "@/lib/discord";
 import { getRole } from "@/lib/roles";
 import {
   PERMISSION_BY_KEY,
@@ -350,21 +349,6 @@ export async function grantRoleByEmail(
       targetId: profile.id,
       payload: { from: profile.role, to: slug, email: profile.email, via: "roles_page" },
     });
-
-    // Best-effort Discord sync — custom roles have no Discord role mapped, in
-    // which case syncMemberRoles just strips the managed ones.
-    try {
-      const { data: link } = await admin
-        .from("profiles")
-        .select("discord_user_id")
-        .eq("id", profile.id)
-        .maybeSingle();
-      if ((link as any)?.discord_user_id) {
-        await syncMemberRoles((link as any).discord_user_id, slug).catch(() => {});
-      }
-    } catch {
-      // discord_user_id column absent (pre-0008) — ignore.
-    }
 
     revalidatePath("/admin/roles");
     revalidatePath("/admin/students");

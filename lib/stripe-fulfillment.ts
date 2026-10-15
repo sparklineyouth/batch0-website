@@ -13,8 +13,8 @@
 // whichever wins the race produces identical state and the loser is a no-op.
 //
 // Everything here is idempotent. Rows are updated with guards on their
-// current status, and one-shot side effects (emails, notifications, the
-// Discord trumpet) only fire on the actual transition into paid — a Stripe
+// current status, and one-shot side effects (emails, notifications) only
+// fire on the actual transition into paid — a Stripe
 // retry, a page refresh, or both racing will not double-send.
 // ---------------------------------------------------------------------------
 
@@ -26,12 +26,6 @@ import { Templates } from "@/lib/email/templates";
 import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
-import {
-  getDiscordSettings,
-  postChannelMessage,
-  postDiscordWebhook,
-  syncMemberRoles,
-} from "@/lib/discord";
 import { cohortHasStarted, fmtDateOnly, todayISO } from "@/lib/pre-cohort";
 import {
   findProfileByEmail,
@@ -145,8 +139,8 @@ export type FulfillOptions = {
    */
   forceState?: PaymentState;
   /**
-   * Skip the one-shot announcements (receipt email, in-app notification,
-   * Discord trumpet). Set when backfilling historical transactions — a
+   * Skip the one-shot announcements (receipt email, in-app notification).
+   * Set when backfilling historical transactions — a
    * student shouldn't get a "welcome aboard" email for a payment they
    * made months ago. The database is still brought fully up to date.
    */
@@ -342,29 +336,9 @@ async function announceEnrollment(args: {
     const admin = createAdminClient();
     const { data: profile } = await admin
       .from("profiles")
-      .select("email, full_name, role")
+      .select("email, full_name")
       .eq("id", args.userId)
       .maybeSingle();
-
-    // Discord linkage is optional — if migration 0008 isn't applied this
-    // query throws "column does not exist" and we just skip.
-    let discordUserId: string | null = null;
-    try {
-      const { data: d, error: dErr } = await admin
-        .from("profiles")
-        .select("discord_user_id")
-        .eq("id", args.userId)
-        .maybeSingle();
-      if (!dErr && d) discordUserId = (d as any).discord_user_id ?? null;
-    } catch {
-      // ignore — column doesn't exist
-    }
-    if (discordUserId) {
-      await syncMemberRoles(
-        discordUserId,
-        (profile?.role as any) ?? "student",
-      ).catch(() => {});
-    }
 
     // Where the money actually takes them depends on the calendar: before
     // kickoff the course is still locked, so point at the kickoff page
@@ -418,33 +392,12 @@ async function announceEnrollment(args: {
       title: "You're enrolled",
       body: started
         ? `Welcome to ${args.cohortName}. Course access is unlocked.`
-        : `Welcome to ${args.cohortName}. Kickoff details, Discord, your team page, and the pre-cohort resources are open now.`,
+        : `Welcome to ${args.cohortName}. Kickoff details, Chat, your team page, and the pre-cohort resources are open now.`,
       link: started ? "/dashboard/course" : "/dashboard/kickoff",
       // One enrollment notification per student per cohort, whatever the
       // delivery path — webhook, retry, or reconciliation on return.
       dedupeKey: `enrolled:${args.cohortId ?? "no-cohort"}`,
     });
-    // Trumpet the enrollment. Prefer the bot posting into the configured
-    // announcements channel and only fall back to the legacy webhook —
-    // DISCORD_ANNOUNCEMENTS_WEBHOOK is unset in production, so the
-    // webhook-only version of this made every enrollment silently
-    // vanish. Mirrors the fallback order in
-    // app/admin/announcements/actions.ts.
-    const content = `🎉 **New enrollment** — ${profile?.full_name ?? "A new student"} just enrolled in **${args.cohortName}**!`;
-    const settings = await getDiscordSettings();
-    const posted = settings.announcementsChannelId
-      ? await postChannelMessage(settings.announcementsChannelId, { content })
-      : await postDiscordWebhook({ content });
-    if (!posted) {
-      console.error(
-        "[stripe] enrollment trumpet not delivered to Discord",
-        JSON.stringify({
-          userId: args.userId,
-          cohortId: args.cohortId,
-          announcementsChannelId: settings.announcementsChannelId || null,
-        }),
-      );
-    }
   } catch (err) {
     console.error("[stripe] enrollment announce failed", err);
   }

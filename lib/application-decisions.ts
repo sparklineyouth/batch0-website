@@ -23,7 +23,7 @@ export type StructuredFeedback = {
  * scheduled-accept cron — which has no signed-in user — calls the same function
  * with the reviewer who parked the acceptance. Keeping it here means a
  * hand-clicked Accept and a scheduled one run byte-for-byte the same email,
- * Discord sync, audit row, and status write. `reviewerId` is always a real
+ * notification, audit row, and status write. `reviewerId` is always a real
  * person (the clicker, or whoever scheduled it), never a system actor, so
  * `reviewed_by` and the audit trail stay attributable.
  *
@@ -40,10 +40,7 @@ export async function applyApplicationDecision(
 ) {
   const admin = createAdminClient();
 
-  // Fetch first so we can email + notify with full context. Note: we
-  // deliberately don't pull discord_* columns here — they're added by
-  // migration 0008 and may not exist yet. The Discord side-effect block
-  // fetches them separately and tolerates a missing column.
+  // Fetch first so we can email + notify with full context.
   const { data: app, error: fetchErr } = await admin
     .from("applications")
     .select(
@@ -282,12 +279,6 @@ export async function applyApplicationDecision(
   } catch (err) {
     console.error("[applications] decide notify failed", err);
   }
-
-  // The Discord role sync and the staff-feed post used to live here as a
-  // separate `if (decision === "accepted")` block. They moved into
-  // announceAcceptance() with the email, because they are the same event: an
-  // acceptance that emails the student but never gives them the Discord role
-  // is a half-admission, and the auto-admit path needs both too.
 
   revalidatePath(`/admin/applications/${applicationId}`);
   revalidatePath("/admin/applications");

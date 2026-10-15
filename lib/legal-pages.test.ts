@@ -37,13 +37,13 @@ test("each legal page's 'Last updated' line matches its structured dateModified"
   }
 });
 
-// Retired in October 2026: Discord replaced discussions, the team thread,
-// lesson comments and direct messages; Assignments replaced weekly
+// Retired in October 2026: discussions, the team thread and lesson comments
+// went (batch0 Chat, migration 0101, brought direct messages back and put the
+// team thread's history in each team's channel); Assignments replaced weekly
 // check-ins; 1:1 calls replaced office hours; Google Drive replaced uploads.
 const RETIRED = [
   /team threads?/i,
   /lesson comments?/i,
-  /direct messages?/i,
   /\bdiscussions\b/i,
   /check-ins?\b/i,
   /office hours/i,
@@ -83,4 +83,15 @@ test("the privacy policy says calls and webinars may be recorded, and who can wa
   // webinar's event staff, and its audience once the follow-up shared it.
   assert.match(privacy, /people on that call and by batch0 administrators/);
   assert.match(privacy, /staff who run events and, after the webinar, by the people it was open to/);
+});
+
+test("the privacy policy says who can read chat, and that reports and edits change it", () => {
+  const privacy = page("privacy");
+  assert.match(privacy, /<strong>batch0 Chat:<\/strong>/);
+  // lib/chat-access.ts canReadChannel: a DM or group's members only, staff
+  // once it's reported; app/chat/actions.ts keeps revisions on edit/delete.
+  assert.match(privacy, /can be read only\s+by the people in it, until one of them reports it/);
+  assert.match(privacy, /we keep the earlier version/);
+  // conversationAllowed(): the safeguarding rule the FAQ promises.
+  assert.match(privacy, /Students and mentors or investors talk in\s+team and cohort channels, not in private messages/);
 });

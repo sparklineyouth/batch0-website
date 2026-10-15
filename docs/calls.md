@@ -71,7 +71,7 @@ deploy still stands: until it ends, the student's `/dashboard/calls` and the
 mentor's `/mentor/calls` list it under "Office hours already booked", with the
 time, the other person's name, the topic, the mentor's slot notes and the
 slot's Zoom link. Only an https link is a Join link; anything else the old form
-accepted in that field ("zoom.us/j/…", a Discord channel) is shown as plain
+accepted in that field ("zoom.us/j/…", "Room 204") is shown as plain
 text. A custom role with `mentor.panel` but not `calls.invite` can't open
 `/mentor/calls`, so it gets the same list on `/mentor` (where the old link
 ends up for it). Read with the service role, filtered to the viewer's own

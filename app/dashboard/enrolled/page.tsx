@@ -7,7 +7,6 @@ import { ButtonLink } from "@/components/ui/button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { fmtDateOnly } from "@/lib/pre-cohort";
-import { isDiscordEnabled } from "@/lib/discord";
 import {
   ArrowRight,
   CheckCircle,
@@ -43,10 +42,7 @@ export default async function EnrolledPage(
   const payment = await settleCheckoutSession(searchParams.session_id, user.id);
 
   const profile = await getProfile();
-  const [access, discordEnabled] = await Promise.all([
-    getStudentAccess(profile?.role ?? "student"),
-    isDiscordEnabled(),
-  ]);
+  const access = await getStudentAccess(profile?.role ?? "student");
 
   const { data: app } = await supabase
     .from("applications")
@@ -106,14 +102,12 @@ export default async function EnrolledPage(
         </h2>
         <div className="mt-4 border-t border-line">
           {/* The course (or, before day one, kickoff) is the button below. */}
-          {discordEnabled && (
-            <NextStep
-              href="/dashboard/community"
-              icon={MessagesSquare}
-              title="Join the Discord"
-              body="Meet your cohort."
-            />
-          )}
+          <NextStep
+            href="/chat"
+            icon={MessagesSquare}
+            title="Say hi in #general"
+            body="Meet your cohort in Chat."
+          />
           <NextStep
             href="/dashboard/team"
             icon={Rocket}

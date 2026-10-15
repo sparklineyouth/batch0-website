@@ -17,13 +17,12 @@ function visible(ctx: StudentNavContext): string[] {
 }
 
 function* everyContext(): Generator<StudentNavContext> {
-  for (let bits = 0; bits < 32; bits++) {
+  for (let bits = 0; bits < 16; bits++) {
     yield {
       enrolled: !!(bits & 1),
       preCohort: !!(bits & 2),
-      discordEnabled: !!(bits & 4),
-      referralsEnabled: !!(bits & 8),
-      demoDayTicket: !!(bits & 16),
+      referralsEnabled: !!(bits & 4),
+      demoDayTicket: !!(bits & 8),
     };
   }
 }
@@ -47,7 +46,7 @@ test("pre-cohort shows only what middleware lets through", () => {
   }
 });
 
-const ALL_ON = { discordEnabled: true, referralsEnabled: true, demoDayTicket: false };
+const ALL_ON = { referralsEnabled: true, demoDayTicket: false };
 
 test("enrolled, cohort running: the program, not the lifecycle", () => {
   assert.deepEqual(visible({ ...ALL_ON, enrolled: true, preCohort: false }), [
@@ -59,7 +58,7 @@ test("enrolled, cohort running: the program, not the lifecycle", () => {
     "/dashboard/calls",
     "/dashboard/resources",
     "/dashboard/announcements",
-    "/dashboard/community",
+    "/chat",
     "/dashboard/billing",
     "/dashboard/support",
     "/dashboard/settings",
@@ -85,10 +84,13 @@ test("applicant: application and account pages; Events only with a ticket", () =
   assert.ok(visible({ ...ALL_ON, enrolled: false, preCohort: false, demoDayTicket: true }).includes("/dashboard/events"));
 });
 
-test("flags hide Community and Refer friends", () => {
-  const v = visible({ enrolled: false, preCohort: false, discordEnabled: false, referralsEnabled: false });
-  assert.ok(!v.includes("/dashboard/community"));
+test("the referrals flag hides Refer friends", () => {
+  const v = visible({ enrolled: false, preCohort: false, referralsEnabled: false });
   assert.ok(!v.includes("/dashboard/referrals"));
+});
+
+test("Chat is in every student's nav: the team for an applicant, the cohort after", () => {
+  for (const ctx of everyContext()) assert.ok(visible(ctx).includes("/chat"), JSON.stringify(ctx));
 });
 
 test("Team page tool chips shown pre-cohort all pass the middleware", () => {

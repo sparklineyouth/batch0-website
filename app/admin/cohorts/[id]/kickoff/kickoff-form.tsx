@@ -182,7 +182,7 @@ export function KickoffForm({
                   replaceAt(checklist, i, { ...row, label: e.target.value }),
                 )
               }
-              placeholder="Label — e.g. Link Discord and meet your cohort"
+              placeholder="Label — e.g. Say hi to your cohort in #general"
             />
             <Input
               className="mt-2 font-mono text-xs"
@@ -193,7 +193,7 @@ export function KickoffForm({
                   replaceAt(checklist, i, { ...row, href: e.target.value }),
                 )
               }
-              placeholder="/dashboard/community"
+              placeholder="/chat"
             />
           </RowCard>
         ))}

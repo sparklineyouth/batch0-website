@@ -6,42 +6,30 @@ import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { sendEmail } from "@/lib/email/send";
 import { notifyMany } from "@/lib/notifications";
-import {
-  postDiscordWebhook,
-  postChannelMessage,
-  announcementEmbed,
-  getDiscordSettings,
-  type AllowedMentions,
-} from "@/lib/discord";
-import { env } from "@/lib/env";
-import type { Role } from "@/lib/types";
-
-// What to ping when cross-posting to Discord.
-//   - "none"     → no mention (default; safe for routine updates)
-//   - "everyone" → @everyone
-//   - "here"     → @here (only currently-online members get pushed)
-//   - role names → ping the configured role for that audience
-export type AnnouncementPing =
-  | "none"
-  | "everyone"
-  | "here"
-  | "student"
-  | "mentor"
-  | "admin"
-  | "investor";
+import { postToChannel } from "@/lib/chat-post";
 
 export type AnnouncementInput = {
   cohortId: string | null; // null = all enrolled
   title: string;
   body: string;
   sendEmail: boolean;
-  postDiscord: boolean;
-  discordPing?: AnnouncementPing;
+  /** Also post it in #announcements in batch0 Chat. */
+  postChat: boolean;
+  /** Ping everyone who can read #announcements (@everyone). Off by default. */
+  mentionEveryone?: boolean;
+};
+
+export type AnnouncementResult = {
+  recipients: number;
+  chatPosted: boolean;
+  /** Why the #announcements post didn't land, when it was asked for and failed. */
+  chatError: string | null;
+  announcementId: string | null;
 };
 
 export async function broadcastAnnouncement(
   input: AnnouncementInput,
-): Promise<{ recipients: number; discordPosted: boolean; announcementId: string | null }> {
+): Promise<AnnouncementResult> {
   const { userId: authorId } = await assertPermission("announcements.manage");
   if (!input.title.trim() || !input.body.trim()) {
     throw new Error("Title and body are required.");
@@ -122,63 +110,29 @@ export async function broadcastAnnouncement(
     }
   }
 
-  let discordPosted = false;
-  if (input.postDiscord) {
-    // Prefer the configured announcements channel via bot (richer
-    // embed + better permissions story). Fall back to the legacy
-    // webhook URL if no channel is configured.
-    const settings = await getDiscordSettings();
-    // If the announcement is cohort-scoped, surface that in the embed
-    // footer so Discord readers see the same audience tag as the email.
-    let cohortName: string | null = null;
-    if (input.cohortId) {
-      const { data: c } = await admin
-        .from("cohorts")
-        .select("name")
-        .eq("id", input.cohortId)
-        .maybeSingle();
-      cohortName = (c?.name as string | null) ?? null;
-    }
-    const embed = announcementEmbed({
-      title: input.title.trim(),
-      body: input.body.trim(),
-      cohortName,
-      link: `${env.siteUrl}/dashboard`,
-    });
-
-    // Resolve the optional ping into both a Discord-formatted prefix
-    // for `content` (so the mention actually renders) AND the
-    // `allowed_mentions` gate (so Discord lets the ping through).
-    // Defaults to no ping — that's the safe option for routine posts.
-    const ping = input.discordPing ?? "none";
-    const ROLE_KEYS: Role[] = ["student", "mentor", "admin", "investor"];
-    let content: string | undefined;
-    let allowedMentions: AllowedMentions = { parse: [] };
-    if (ping === "everyone") {
-      content = "@everyone";
-      allowedMentions = { parse: ["everyone"] };
-    } else if (ping === "here") {
-      content = "@here";
-      allowedMentions = { parse: ["everyone"] }; // @here uses the same gate
-    } else if (ROLE_KEYS.includes(ping as Role)) {
-      const roleId = settings.roleIdByRole[ping as Role];
-      if (roleId) {
-        content = `<@&${roleId}>`;
-        allowedMentions = { roles: [roleId] };
-      }
-    }
-
-    if (settings.announcementsChannelId) {
-      discordPosted = await postChannelMessage(
-        settings.announcementsChannelId,
-        { content, embeds: [embed], allowedMentions },
-      );
-    } else {
-      discordPosted = await postDiscordWebhook({
-        content,
-        embeds: [embed],
-        allowedMentions,
-      });
+  let chatPosted = false;
+  let chatError: string | null = null;
+  const mentionEveryone = input.postChat && !!input.mentionEveryone;
+  if (input.postChat) {
+    // An announcement for everyone goes to #announcements; one for a single
+    // cohort goes to that cohort's own channel, where only that cohort (and
+    // staff) reads it — so its words and any @everyone ping stay inside the
+    // audience the email went to.
+    // postToChannel never throws: a chat copy that doesn't land is reported
+    // back to the composer, it doesn't undo the notifications and emails
+    // that already went out.
+    const posted = await postToChannel(
+      { systemKey: input.cohortId ? `cohort:${input.cohortId}` : "announcements" },
+      {
+        senderId: authorId,
+        body: chatAnnouncementBody({ title: input.title, body: input.body }),
+        mentionEveryone,
+      },
+    );
+    chatPosted = posted.ok;
+    if (!posted.ok) {
+      chatError = posted.reason;
+      console.error("[announcements] chat post failed", posted.reason);
     }
   }
 
@@ -198,17 +152,27 @@ export async function broadcastAnnouncement(
       cohortId: input.cohortId,
       recipients: recipients.length,
       sendEmail: input.sendEmail,
-      postDiscord: input.postDiscord,
-      discordPing: input.discordPing ?? "none",
-      discordPosted,
+      postChat: input.postChat,
+      mentionEveryone,
+      chatPosted,
     },
   });
 
   return {
     recipients: recipients.length,
-    discordPosted,
+    chatPosted,
+    chatError,
     announcementId,
   };
+}
+
+/**
+ * The #announcements copy: the title in bold, who it's for when it isn't
+ * everyone, then the message as written (chat renders **bold**, *italic*,
+ * `code` and bare links itself).
+ */
+function chatAnnouncementBody(args: { title: string; body: string }): string {
+  return `**${args.title.trim()}**\n\n${args.body.trim()}`;
 }
 
 function escape(s: string) {

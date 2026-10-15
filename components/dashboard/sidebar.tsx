@@ -15,7 +15,6 @@ import { SidebarNav, SIDEBAR_ROW } from "@/components/sidebar-nav";
 export function StudentSidebar({
   role,
   caps,
-  discordEnabled,
   enrolled,
   referralsEnabled,
   preCohort,
@@ -23,7 +22,6 @@ export function StudentSidebar({
 }: {
   role: Role;
   caps?: Capabilities | null;
-  discordEnabled: boolean;
   enrolled: boolean;
   referralsEnabled: boolean;
   preCohort: boolean;
@@ -47,7 +45,6 @@ export function StudentSidebar({
         groups={STUDENT_NAV_GROUPS}
         filterItem={(it) =>
           filterStudentNavItem(it, {
-            discordEnabled,
             referralsEnabled,
             enrolled,
             preCohort,

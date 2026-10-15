@@ -20,7 +20,7 @@ Before the call:
 
 1. Open [your dashboard](https://batch0.org/dashboard) and check that you can sign in.
 2. Visit [Course](https://batch0.org/dashboard/course) for the Week 1 reading and workbook.
-3. Open [Community](https://batch0.org/dashboard/community) for the cohort Discord.
+3. Open [Chat](https://batch0.org/chat) and say hi in #general and your cohort's channel.
 
 If you cannot attend, work through Week 1 and email us your questions. For any access problem, reply to this email or contact hello@batch0.org.
 
@@ -30,7 +30,7 @@ Batch0
 
 ---
 
-Discord version:
+#announcements version (batch0 Chat):
 
 **Cohort 1 kickoff is tonight at 8:00 p.m. Eastern (EDT).** The room opens at 7:45. Bring a notebook and one problem you've noticed; no polished idea needed. Sign in with your enrollment email and join here: https://batch0.org/dashboard/events/1bbfd694-24be-4c83-a450-ff85c06716a0/live. Week 1 is in Course. Access help: hello@batch0.org.
 

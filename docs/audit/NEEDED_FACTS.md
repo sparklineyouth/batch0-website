@@ -73,7 +73,8 @@ none of them block the site as shipped.
     more credible and scarcer. If 100 is intentional, keep; else update
     the cohort row.
 11. **Social profiles.** Footer has none (no placeholder links). Send the
-    real Instagram/Discord/X handles if they exist.
+    real Instagram/X handles if they exist. (No Discord: batch0's
+    community is batch0 Chat, inside the product.)
 
 ## Housekeeping
 

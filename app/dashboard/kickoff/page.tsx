@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { requireUser, getProfile } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isDiscordEnabled } from "@/lib/discord";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
 import {
   daysLeftLabel,
@@ -39,6 +38,8 @@ const CHECKLIST_ICONS = [FolderArchive, MessagesSquare, Rocket, Settings];
 /** The default checklist's own pages keep their glyph wherever they land. */
 const CHECKLIST_ICON_BY_HREF: Record<string, typeof FolderArchive> = {
   "/dashboard/resources": FolderArchive,
+  "/chat": MessagesSquare,
+  // Checklists saved before Chat still point here.
   "/dashboard/community": MessagesSquare,
   "/dashboard/team": Rocket,
   "/dashboard/settings": Settings,
@@ -109,10 +110,7 @@ export default async function KickoffPage() {
     cohort = upcoming ?? rows[0] ?? null;
   }
 
-  const [kickoffRow, discordEnabled] = await Promise.all([
-    cohort ? readKickoffRow(admin, cohort.id) : null,
-    isDiscordEnabled(),
-  ]);
+  const kickoffRow = cohort ? await readKickoffRow(admin, cohort.id) : null;
 
   const today = todayISO();
   const k = resolveKickoff(
@@ -215,22 +213,18 @@ export default async function KickoffPage() {
               {isPast ? "Jump back in" : "Before kickoff"}
             </h2>
             <ul className="mt-4 space-y-2">
-              {/* /dashboard/community sends everyone home while Discord is
-                  off, so its row goes too. */}
-              {k.checklist
-                .filter((item) => discordEnabled || item.href !== "/dashboard/community")
-                .map((item, i) => (
-                  <li key={`${item.href}-${i}`}>
-                    <ChecklistLink
-                      href={item.href}
-                      label={item.label}
-                      icon={
-                        CHECKLIST_ICON_BY_HREF[item.href] ??
-                        CHECKLIST_ICONS[i % CHECKLIST_ICONS.length]
-                      }
-                    />
-                  </li>
-                ))}
+              {k.checklist.map((item, i) => (
+                <li key={`${item.href}-${i}`}>
+                  <ChecklistLink
+                    href={item.href}
+                    label={item.label}
+                    icon={
+                      CHECKLIST_ICON_BY_HREF[item.href] ??
+                      CHECKLIST_ICONS[i % CHECKLIST_ICONS.length]
+                    }
+                  />
+                </li>
+              ))}
             </ul>
 
             <div className="mt-6 rounded-xl border border-line bg-wash p-4">

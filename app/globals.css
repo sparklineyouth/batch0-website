@@ -745,7 +745,7 @@ a,
  * Keep this list in sync if you add new dark utilities you want to mirror.
  *
  * DELIBERATELY NOT MIRRORED — don't "complete the set" by adding these:
- *   .bg-white   — the Discord enable-toggle knob. A white knob is correct on
+ *   .bg-white   — reserved for toggle-switch knobs. A white knob is correct on
  *                 both the off track (bg-ink/20) and the on track (bg-phosphor),
  *                 in both themes. Flipping it to dark would lose the knob on the
  *                 yellow fill.

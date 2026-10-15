@@ -1,13 +1,13 @@
 /**
- * Which of the October 2026 migrations (0093–0100) this database is missing.
+ * Which of the October 2026 migrations (0093–0101) this database is missing.
  *
  * Production gets the code before the migrations are run by hand, so the admin
  * overview shows one line while any probe says one is missing. Two kinds:
  *
  *   - schema: read one new table or column with `limit 0`; "does not exist"
- *     means its migration hasn't run (0093–0096).
+ *     means its migration hasn't run (0093–0096, 0101).
  *   - leftover: look for one row the migration removes; finding one means it
- *     hasn't run (0099 and 0100 strip retired permission keys from roles).
+ *     hasn't run (0099, 0100 and 0101 strip retired permission keys from roles).
  *
  * The policy changes in 0097–0099 leave nothing PostgREST can see, so only
  * the doc's verify queries confirm those. A database with no leftover rows
@@ -20,7 +20,7 @@ import { isMissingSchemaError } from "./schema-ready.ts";
 
 export const MIGRATIONS_DOC = "docs/migrations-2026-10.md";
 
-export const PENDING_MIGRATIONS_NOTICE = `Database update needed: run migrations 0093–0100 (${MIGRATIONS_DOC})`;
+export const PENDING_MIGRATIONS_NOTICE = `Database update needed: run migrations 0093–0101 (${MIGRATIONS_DOC})`;
 
 export type MigrationProbe = {
   migration: string;
@@ -49,6 +49,15 @@ export const MIGRATION_PROBES: readonly MigrationProbe[] = [
     table: "app_roles",
     columns: "slug",
     leftover: { column: "permissions", values: ["ai_usage.view"] },
+  },
+  // batch0 Chat: its tables, and the Discord permission it renames.
+  { migration: "0101", table: "chat_channels", columns: "id, dm_key, system_key" },
+  { migration: "0101", table: "chat_message_revisions", columns: "id" },
+  {
+    migration: "0101",
+    table: "app_roles",
+    columns: "slug",
+    leftover: { column: "permissions", values: ["discord.manage"] },
   },
 ];
 

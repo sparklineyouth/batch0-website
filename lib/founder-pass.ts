@@ -319,7 +319,7 @@ export function mapPassGrant(row: {
  * The single read every perk site should use when the answer changes the
  * numbers — checkout, the accepted page, the application page, the admin
  * accept action. hasFounderPass() remains correct wherever the question is
- * genuinely boolean (the Discord role, the queue badge), and is implemented on
+ * genuinely boolean (the queue badge), and is implemented on
  * top of the same read, so the two can never disagree about who holds what.
  */
 export async function getPassGrantForUser(

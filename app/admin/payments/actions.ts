@@ -6,11 +6,7 @@ import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { reconcileStripe } from "@/lib/stripe-reconcile";
-import {
-  postChannelMessage,
-  refundEmbed,
-  getDiscordSettings,
-} from "@/lib/discord";
+import { postStaffFeed, feedMoney } from "@/lib/chat-post";
 
 /**
  * Pull every transaction Stripe knows about back into the platform.
@@ -81,29 +77,11 @@ export async function refundPayment(paymentId: string, reason?: string) {
       reason: reason ?? null,
     },
   });
-
-  try {
-    const settings = await getDiscordSettings();
-    if (settings.adminFeedChannelId) {
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("full_name, email")
-        .eq("id", p.user_id)
-        .maybeSingle();
-      await postChannelMessage(settings.adminFeedChannelId, {
-        embeds: [
-          refundEmbed({
-            name: profile?.full_name ?? profile?.email ?? null,
-            amountCents: refund.amount,
-            description: "Enrollment payment refund",
-            reason: reason?.trim() || null,
-            kind: "payment",
-          }),
-        ],
-      });
-    }
-  } catch (err) {
-    console.error("[payments] discord refund post failed", err);
+  {
+    const { data: who } = await admin.from("profiles").select("full_name, email").eq("id", p.user_id).maybeSingle();
+    await postStaffFeed(
+      `Refunded **${feedMoney(refund.amount)}** to ${who?.full_name ?? who?.email ?? "a student"} (enrollment payment)${reason?.trim() ? ` — ${reason.trim()}` : ""}`,
+    );
   }
 
   revalidatePath("/admin/payments");

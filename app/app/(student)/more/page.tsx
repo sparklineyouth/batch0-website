@@ -4,7 +4,6 @@ import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canAccessAdmin } from "@/lib/permissions";
-import { isDiscordEnabled } from "@/lib/discord";
 import { getSiteConfig } from "@/lib/site-config";
 import { isStudentHrefVisible } from "@/lib/student-nav";
 import { InstallHint } from "@/components/app/install-hint";
@@ -35,7 +34,7 @@ const LINKS: LinkDef[] = [
   { href: "/dashboard/team", label: "Your team", hint: "Members, Drive, Demo Day", external: true },
   { href: "/dashboard/kickoff", label: "Kickoff", hint: "Day one details", external: true },
   { href: "/dashboard/resources", label: "Resources", hint: "Templates and guides", external: true },
-  { href: "/dashboard/community", label: "Discord", external: true },
+  { href: "/chat", label: "Chat", hint: "Channels and DMs", external: true },
   { href: "/dashboard/billing", label: "Billing", hint: "Receipts and payment method", external: true },
   { href: "/dashboard/scholarships", label: "Scholarships", external: true },
   { href: "/dashboard/referrals", label: "Refer a friend", external: true },
@@ -45,15 +44,13 @@ const LINKS: LinkDef[] = [
 
 export default async function StudentAppMore() {
   const { profile, caps } = await requireViewer();
-  const [access, discordEnabled, siteConfig, team] = await Promise.all([
+  const [access, siteConfig, team] = await Promise.all([
     getStudentAccess(profile.role as Role),
-    isDiscordEnabled(),
     getSiteConfig(),
     loadTeam(profile.id),
   ]);
 
   const ctx = {
-    discordEnabled,
     referralsEnabled: siteConfig.settings.referralsEnabled,
     enrolled: access.enrolled,
     preCohort: access.preCohort,

@@ -51,7 +51,6 @@ export function TeamHome({
   olderUploads,
   pitch,
   passHolderIds = [],
-  discordChannelUrl = null,
   showAi = false,
   preCohort = false,
 }: {
@@ -65,8 +64,6 @@ export function TeamHome({
   olderUploads: OlderUploadsState;
   pitch: any;
   passHolderIds?: string[];
-  /** The team's private Discord text channel, when Discord is on and it exists. */
-  discordChannelUrl?: string | null;
   /** The AI co-founder is open to this student (and configured). */
   showAi?: boolean;
   /** Before kickoff: only the tools middleware lets through get a chip. */
@@ -133,16 +130,11 @@ export function TeamHome({
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {discordChannelUrl && (
-          <a
-            href={discordChannelUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={CHIP}
-          >
-            <MessageSquare className="h-3.5 w-3.5" /> Team chat on Discord
-          </a>
-        )}
+        {/* The team's private channel in batch0 Chat. Every team gets one
+            when it's created, so the link is always there. */}
+        <Link href={`/chat?team=${team.id}`} className={CHIP}>
+          <MessageSquare className="h-3.5 w-3.5" /> Team chat
+        </Link>
         {tool("/dashboard/intros") && (
           <Link href="/dashboard/intros" className={CHIP}>
             <Handshake className="h-3.5 w-3.5" /> Investor intros

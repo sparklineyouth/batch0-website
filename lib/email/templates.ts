@@ -537,7 +537,7 @@ ${env.siteUrl}`,
               )
               .join("")}
           </table>
-          <p style="color:#bbb">Plus everything every pass carries: the Founder Toolkit, a public founder profile at your serial, the Discord role, and one chance to build your way back in if we say no.</p>
+          <p style="color:#bbb">Plus everything every pass carries: the Founder Toolkit, a public founder profile at your serial, and one chance to build your way back in if we say no.</p>
           ${
             args.note
               ? `<p style="margin-top:16px;padding:12px;border-left:3px solid rgba(255,255,255,0.2);color:#bbb">${escape(args.note)}</p>`
@@ -561,8 +561,8 @@ This pass carries:
 ${args.perkLines.map((l) => `  - ${l}`).join("\n")}
 
 Plus everything every pass carries: the Founder Toolkit, a public founder
-profile at your serial, the Discord role, and one chance to build your way
-back in if we say no.
+profile at your serial, and one chance to build your way back in if we say
+no.
 ${args.note ? `\n${args.note}\n` : ""}
 One account, one pass — the code stops working the moment it's claimed.`,
     };
@@ -584,7 +584,7 @@ One account, one pass — the code stops working the moment it's claimed.`,
         <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">Enrolled</h1>
         <p>We received your payment of <strong>$${(args.amountCents / 100).toFixed(2)}</strong> for ${escape(args.cohortName)}. ${
           args.startsOn
-            ? `Your seat is locked in. Kickoff is <strong>${escape(fmtDateOnly(args.startsOn) ?? "coming soon")}</strong> — until then your kickoff page, Discord, your team page, and the pre-cohort resources are open.`
+            ? `Your seat is locked in. Kickoff is <strong>${escape(fmtDateOnly(args.startsOn) ?? "coming soon")}</strong> — until then your kickoff page, Chat, your team page, and the pre-cohort resources are open.`
             : "Your course access is unlocked."
         } Welcome aboard${args.name ? `, ${escape(args.name)}` : ""}.</p>
       `,

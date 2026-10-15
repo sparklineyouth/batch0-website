@@ -74,7 +74,7 @@ const hook = (nodeModule as any).registerHooks({ resolve(specifier: string, cont
     "@/lib/email/templates": "export const Templates={};",
     "@/lib/email/dispatch": "export const sendTemplated=()=>{throw Error('Unexpected email');};export const emitEmailEvent=sendTemplated;",
     "@/lib/notifications": "export const notify=()=>{throw Error('Unexpected notification');};",
-    "@/lib/discord": "export const postChannelMessage=()=>{throw Error('Unexpected Discord');};export const applicationEmbed=postChannelMessage;export const getDiscordSettings=postChannelMessage;",
+    "@/lib/chat-post": "export const postStaffFeed=async()=>{throw Error('Unexpected staff feed');};",
     "@/lib/env": "export const env={siteUrl:'https://batch0.test'};",
   };
   if (doubles[specifier]) return { url: fake(doubles[specifier]), shortCircuit: true };

@@ -66,7 +66,7 @@ function fixture(phase: string, gate: number): Challenge {
     closesAt: new Date(closes).toISOString(),
     resultsAt: new Date(closes + 5 * DAY).toISOString(),
     schedule: [
-      { id: "s1", at: new Date(opens + 2 * 3600_000).toISOString(), label: "Kickoff call", detail: "Live on Discord — ideas, teams, Q&A.", url: "https://discord.gg/example" },
+      { id: "s1", at: new Date(opens + 2 * 3600_000).toISOString(), label: "Kickoff call", detail: "Live on Zoom — ideas, teams, Q&A.", url: "https://zoom.us/j/example" },
       { id: "s2", at: new Date(opens + 4 * DAY).toISOString(), label: "Office hours", detail: "Get unstuck with a mentor.", url: "" },
     ],
     rules: "- Open to high school students anywhere\n- Build it during the challenge window\n- Teams up to 4 — list everyone on the form",

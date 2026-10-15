@@ -75,7 +75,7 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "How is the community moderated?",
-      a: `Every program space — community feed, Discord, session chat — is staff-moderated with published community guidelines. Students are 13–18, so there are no unmonitored private channels between students and adults, sessions may be recorded, and anything concerning goes straight to ${contactEmail}, where a human (a parent can be that human) gets a reply within a couple of days.`,
+      a: `Every program space — community feed, batch0 Chat, session chat — is staff-moderated with published community guidelines. Students are 13–18, so there are no unmonitored private channels between students and adults: students talk with mentors and investors in team and cohort channels the batch0 team can see, never in private messages. Anyone can report a message, sessions may be recorded, and anything concerning goes straight to ${contactEmail}, where a human (a parent can be that human) gets a reply within a couple of days.`,
     },
     {
       q: "What is demo day?",

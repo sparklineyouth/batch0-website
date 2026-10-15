@@ -26,14 +26,10 @@ import {
   CUSTOM_PREFIX,
   SCHOLARSHIP_PREFIX,
 } from "@/lib/question-schema";
-import {
-  postChannelMessage,
-  applicationEmbed,
-  getDiscordSettings,
-} from "@/lib/discord";
-import { env } from "@/lib/env";
 import { attachCampaignAttribution } from "@/lib/campaign-attribution-server";
 import { getUser as getVerifiedTokenUser } from "@/lib/auth";
+import { env } from "@/lib/env";
+import { postStaffFeed } from "@/lib/chat-post";
 
 // Optional URL: empty string allowed, otherwise must be a valid URL
 const optionalUrl = z
@@ -665,33 +661,9 @@ async function upsertApplication(
           link: `/admin/applications/${applicationId}`,
         });
       }
-      // Mirror to the admin Discord feed so staff have one place to watch.
-      try {
-        const settings = await getDiscordSettings();
-        if (settings.adminFeedChannelId) {
-          let cohortName: string | null = null;
-          if (cohortId) {
-            const { data: c } = await admin
-              .from("cohorts")
-              .select("name")
-              .eq("id", cohortId)
-              .maybeSingle();
-            cohortName = c?.name ?? null;
-          }
-          await postChannelMessage(settings.adminFeedChannelId, {
-            embeds: [
-              applicationEmbed({
-                name: profile?.full_name ?? user.email ?? "applicant",
-                email: profile?.email ?? user.email ?? null,
-                cohortName,
-                link: `${env.siteUrl}/admin/applications/${applicationId}`,
-              }),
-            ],
-          });
-        }
-      } catch (err) {
-        console.error("[apply] discord cross-post failed", err);
-      }
+      await postStaffFeed(
+        `${autoAdmitted ? "Auto-admitted by founder pass" : "New application"}: **${profile?.full_name ?? profile?.email ?? user.email ?? "applicant"}** · ${env.siteUrl}/admin/applications/${applicationId}`,
+      );
     } catch (err) {
       console.error("[apply] post-submit notifications failed", err);
     }

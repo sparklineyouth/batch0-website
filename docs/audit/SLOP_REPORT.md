@@ -225,7 +225,7 @@ Totals: visual 22 · copy 29 · technical 22
 
 **Evidence:** `an active Discord community`
 
-**Fix:** Future tense and honest scale: "a private Discord for your cohort" — drop "active." Cut "the application is selective" until there's an applicant pool that makes selection real, or state the actual bar ("we review every application; not everyone is admitted").
+**Fix:** Future tense and honest scale: "a private Discord for your cohort" — drop "active." *(Superseded: batch0 left Discord for batch0 Chat in 0101; the honest phrase now is "your cohort's channel in batch0 Chat".)* Cut "the application is selective" until there's an applicant pool that makes selection real, or state the actual bar ("we review every application; not everyone is admitted").
 
 ### [CRITICAL] fact-contradiction — components/comparison.tsx:63
 **Issue:** Comparison table awards batch0 "Year-round: Yes" when exactly one cohort exists (Summer 2026) and none has run. The axis is chosen to beat competitors on a capability batch0 doesn't have.

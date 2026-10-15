@@ -5,7 +5,6 @@ import { assertPermission } from "@/lib/server-guards";
 import { sendEmail } from "@/lib/email/send";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
-import { syncMemberRoles } from "@/lib/discord";
 import {
   applyApplicationDecision,
   type StructuredFeedback,
@@ -121,8 +120,7 @@ export async function cancelScheduledAcceptance(applicationId: string) {
 
 /**
  * Bulk equivalent of decideApplication. Runs sequentially — each call
- * already does an email send + in-app notify + (on accept) a Discord
- * sync, so a parallel fan-out would hammer those services and is more
+ * already does an email send + in-app notify, so a parallel fan-out would hammer those services and is more
  * likely to trip rate limits than save real time. Returns counts so the
  * UI can surface "X succeeded, Y failed" without inventing its own
  * accounting.
@@ -301,20 +299,6 @@ export async function waiveApplicationFee(
     console.error("[applications] waive notify failed", err);
   }
 
-  // If the user has linked Discord, sync their roles now that they're
-  // fully enrolled. Tolerant of a missing 0008 migration.
-  try {
-    const discord = await loadDiscordHandle(admin, app.user_id);
-    if (discord?.discord_user_id) {
-      await syncMemberRoles(
-        discord.discord_user_id,
-        (discord.role as any) ?? "student",
-      );
-    }
-  } catch (err) {
-    console.error("[applications] waive discord sync failed", err);
-  }
-
   revalidatePath(`/admin/applications/${applicationId}`);
   revalidatePath("/admin/applications");
   revalidatePath("/dashboard");
@@ -323,26 +307,4 @@ export async function waiveApplicationFee(
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/**
- * Pull the user's Discord handle + role for downstream sync. Returns
- * null if the Discord columns don't exist yet (migration 0008 not
- * applied), so the caller can no-op cleanly.
- */
-async function loadDiscordHandle(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
-): Promise<{ discord_user_id: string | null; role: string | null } | null> {
-  const { data, error } = await admin
-    .from("profiles")
-    .select("discord_user_id, role")
-    .eq("id", userId)
-    .maybeSingle();
-  if (error) {
-    // "column does not exist" -> 0008 not applied. Quietly skip.
-    if ((error as any).code === "42703") return null;
-    throw error;
-  }
-  return (data as any) ?? null;
 }

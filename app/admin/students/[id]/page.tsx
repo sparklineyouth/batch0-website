@@ -8,7 +8,6 @@ import { Card, StatusBadge } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { RoleSelect } from "../role-select";
 import { ManagePanel } from "./manage-panel";
-import { discordAvatarUrl } from "@/lib/discord";
 import { displayEmail } from "@/lib/placeholder-email";
 import { getSiteConfig } from "@/lib/site-config";
 import { Meter } from "@/components/admin/charts";
@@ -160,6 +159,10 @@ export default async function AdminStudentDetail(
             {displayEmail(profile.email) ?? (
               <span className="text-ink-faint">No email on file</span>
             )}
+            {" · "}
+            <Link href={`/chat?to=${profile.id}`} prefetch={false} className="link-ink">
+              Message in Chat
+            </Link>
           </p>
           <p className="mt-1 text-xs text-ink-faint">
             Joined <LocalTime value={profile.created_at} mode="date" />
@@ -174,14 +177,6 @@ export default async function AdminStudentDetail(
                 {" · "}Referral code{" "}
                 <span className="text-ink-soft">
                   {profile.referral_code ?? "—"}
-                </span>
-              </>
-            )}
-            {profile.discord_user_id && (
-              <>
-                {" "}· Discord{" "}
-                <span className="text-ink-soft">
-                  @{profile.discord_username ?? profile.discord_user_id}
                 </span>
               </>
             )}

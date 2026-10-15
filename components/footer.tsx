@@ -44,7 +44,7 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
           >
             {contactEmail}
           </a>
-          {/* TODO(RISH): official social profiles (Instagram/Discord/X) —
+          {/* TODO(RISH): official social profiles (Instagram/X) —
               linked in NEEDED_FACTS.md; no placeholder links until then. */}
         </div>
 

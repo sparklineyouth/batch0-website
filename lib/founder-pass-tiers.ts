@@ -311,7 +311,7 @@ export function grantDiscountLabel(grant: PassGrant): string {
  * One source so those three can never disagree. An email that promises a
  * second feedback credit the pass page doesn't show is worse than no email.
  * Only the varying fields appear here; perks every pass carries (the toolkit,
- * the profile, the Discord role, the rebuild) are listed separately by
+ * the profile, the rebuild) are listed separately by
  * whichever surface wants them, because they don't vary.
  */
 export function grantPerkLines(grant: PassGrant): string[] {

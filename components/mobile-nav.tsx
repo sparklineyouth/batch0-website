@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChatNavBadge } from "@/components/chat/nav-badge";
 import { Wordmark } from "@/components/wordmark";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -68,7 +69,6 @@ export function MobileNav({
   kind,
   role,
   caps,
-  discordEnabled,
   enrolled = true,
   referralsEnabled = true,
   preCohort = false,
@@ -78,7 +78,6 @@ export function MobileNav({
   role?: Role;
   /** Viewer permissions. Drives admin nav filtering and the cross-panel links. */
   caps?: Capabilities | null;
-  discordEnabled?: boolean;
   enrolled?: boolean;
   referralsEnabled?: boolean;
   preCohort?: boolean;
@@ -155,7 +154,6 @@ export function MobileNav({
               // mean "not restricted" for the optional props.
               if (
                 !filterStudentNavItem(it, {
-                  discordEnabled: discordEnabled !== false,
                   referralsEnabled: referralsEnabled !== false,
                   enrolled,
                   preCohort,
@@ -183,7 +181,6 @@ export function MobileNav({
     rawGroups,
     kind,
     caps,
-    discordEnabled,
     enrolled,
     referralsEnabled,
     preCohort,
@@ -338,6 +335,7 @@ export function MobileNav({
                             >
                               <Icon className="h-4 w-4 shrink-0" />
                               {it.label}
+                              {it.href === "/chat" ? <ChatNavBadge /> : null}
                             </Link>
                           );
                         })}

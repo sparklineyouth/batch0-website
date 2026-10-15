@@ -5,19 +5,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redeemPass, getPassForUser, type RedeemResult } from "@/lib/founder-pass";
 import {
-  grantFounderPassRole,
-  getDiscordSettings,
-  postChannelMessage,
-  announcementEmbed,
-} from "@/lib/discord";
-import {
   updatePassProfile,
   createFeedbackRequest,
   createRebuild,
-  feedbackTopicLabel,
   type UpdateProfileInput,
 } from "@/lib/founder-pass-perks";
 import { env } from "@/lib/env";
+import { feedbackTopicLabel } from "@/lib/founder-pass-topics";
+import { postStaffFeed } from "@/lib/chat-post";
 
 export type RedeemActionResult =
   | { ok: true; serial: number }
@@ -77,42 +72,9 @@ export async function redeemPassAction(
     return { ok: false, message: MESSAGES[result.reason] };
   }
 
-  // Perks that live outside our database are granted best-effort. A Discord
-  // outage, an unlinked account, or an unset role ID must never fail a
-  // redemption that already committed — the pass is redeemed, and the role is
-  // reconcilable later (the admin resync path and /sync both re-run this).
-  try {
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("discord_user_id")
-      .eq("id", user.id)
-      .maybeSingle();
-    await grantFounderPassRole(
-      (profile as { discord_user_id: string | null } | null)?.discord_user_id,
-    );
-  } catch (err) {
-    console.error("[founder-pass] discord role grant failed", err);
-  }
-
   revalidatePath("/pass");
   revalidatePath("/dashboard");
   return { ok: true, serial: result.serial };
-}
-
-// Ping the admin Discord feed about a new holder request (feedback credit /
-// rebuild). Best-effort, exactly like the accept announcement in
-// app/admin/applications/[id]/actions.ts — a Discord hiccup must never fail the
-// student's submission, which has already committed.
-async function pingAdminFeed(title: string, body: string, link: string) {
-  try {
-    const settings = await getDiscordSettings();
-    if (!settings.adminFeedChannelId) return;
-    await postChannelMessage(settings.adminFeedChannelId, {
-      embeds: [announcementEmbed({ title, body, link })],
-    });
-  } catch (err) {
-    console.error("[founder-pass] admin feed ping failed", err);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -195,21 +157,17 @@ export async function redeemFeedbackCreditAction(input: {
     return { ok: false, message: messages[result.reason] };
   }
 
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", user.id)
-    .maybeSingle();
-  const who =
-    (profile as any)?.full_name || (profile as any)?.email || "A pass holder";
-  await pingAdminFeed(
-    `Feedback credit redeemed: ${who}`,
-    `On: ${feedbackTopicLabel(input.topic)}`,
-    `${env.siteUrl}/admin/passes#requests`,
+  await postStaffFeed(
+    `Feedback credit redeemed by **${await holderName(admin, user.id, user.email)}** on ${feedbackTopicLabel(input.topic)} · ${env.siteUrl}/admin/passes#requests`,
   );
-
   revalidatePath("/pass");
   return { ok: true };
+}
+
+/** A pass holder's name for the #staff line. */
+async function holderName(admin: ReturnType<typeof createAdminClient>, userId: string, email?: string | null): Promise<string> {
+  const { data } = await admin.from("profiles").select("full_name, email").eq("id", userId).maybeSingle();
+  return (data as any)?.full_name || (data as any)?.email || email || "A pass holder";
 }
 
 // ---------------------------------------------------------------------------
@@ -249,19 +207,9 @@ export async function submitRebuildAction(input: {
     return { ok: false, message: messages[result.reason] };
   }
 
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", user.id)
-    .maybeSingle();
-  const who =
-    (profile as any)?.full_name || (profile as any)?.email || "A pass holder";
-  await pingAdminFeed(
-    `Seven-day rebuild submitted: ${who}`,
-    "Their application is queued for one fresh review.",
-    `${env.siteUrl}/admin/applications`,
+  await postStaffFeed(
+    `Seven-day rebuild submitted by **${await holderName(admin, user.id, user.email)}**: queued for one fresh review · ${env.siteUrl}/admin/applications`,
   );
-
   revalidatePath("/pass");
   revalidatePath("/dashboard/application");
   revalidatePath("/dashboard");

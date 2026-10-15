@@ -66,7 +66,7 @@ export const PERMISSION_KEYS = [
   "support.manage",
   "support.sensitive",
   "moderation.manage",
-  "discord.manage",
+  "chat.manage",
   "audit.view",
   "settings.manage",
   "roles.manage",
@@ -328,9 +328,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         description: "Approve or reject team logos.",
       },
       {
-        key: "discord.manage",
-        label: "Manage Discord",
-        description: "Configure the Discord integration and sync roles.",
+        key: "chat.manage",
+        label: "Run chat",
+        description:
+          "Create and edit chat channels, post in read-only channels, pin and remove messages, and work the chat report queue. Reported DMs open to this role.",
+        sensitive: true,
       },
       {
         key: "audit.view",
@@ -681,7 +683,7 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   // write, and it needs the write key.
   ["/admin/support/new", "support.manage"],
   ["/admin/support", "support.view"],
-  ["/admin/discord", "discord.manage"],
+  ["/admin/chat", "chat.manage"],
   ["/admin/audit", "audit.view"],
   ["/admin/settings", "settings.manage"],
   ["/admin/roles", "roles.manage"],

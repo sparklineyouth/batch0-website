@@ -11,7 +11,6 @@
     "start": "next start",
     "lint": "next lint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/*.test.ts",
-    "test:discord-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-discord-auto-db.mts",
     "test:scholarships-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-scholarships-db.mts",
     "test:profile-privileges-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-profile-privileges-db.mts",
     "test:call-cohosts-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-call-cohosts-db.mts",

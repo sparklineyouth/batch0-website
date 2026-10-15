@@ -38,7 +38,6 @@ jobs:
         run: npm test
       - name: Database tests
         run: |
-          npm run test:discord-db
           npm run test:scholarships-db
           npm run test:profile-privileges-db
           npm run test:call-cohosts-db

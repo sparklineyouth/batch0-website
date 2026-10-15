@@ -1,11 +1,11 @@
 /**
  * Which events a student may see, for service-role reads that RLS does not
- * guard (Discord slash commands). Mirrors the `events read` policy (migration
+ * guard. Mirrors the `events read` policy (migration
  * 0098) minus its staff, speaker and ticket clauses, so it can only ever show
  * less than RLS would: for a signed-in caller, public events plus `enrolled`
  * events of a cohort they are enrolled in. `staff` events (rehearsals) never
  * match. Since 0098 `public` means "Everyone signed in", so a caller with no
- * batch0 account (a Discord member who never linked) sees no events at all.
+ * batch0 account (an anonymous caller) sees no events at all.
  *
  * Import-free so `node --test` runs it directly.
  */

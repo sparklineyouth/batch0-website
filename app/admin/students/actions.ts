@@ -3,7 +3,6 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit, logAuditMany } from "@/lib/audit";
-import { syncMemberRoles } from "@/lib/discord";
 import { getRole } from "@/lib/roles";
 import { covers } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
@@ -41,7 +40,7 @@ export async function changeUserRole(userId: string, role: Role) {
     throw new Error("You can't change your own role. Ask another admin.");
   }
   const admin = createAdminClient();
-  // Read the core columns first — those are guaranteed to exist.
+  // The previous role, for the audit trail.
   const { data: prev } = await admin
     .from("profiles")
     .select("role, email")
@@ -59,24 +58,6 @@ export async function changeUserRole(userId: string, role: Role) {
     payload: { from: prev?.role ?? null, to: role, email: prev?.email },
   });
 
-  // Best-effort Discord sync. discord_user_id is added by migration 0008 —
-  // tolerate the column being absent so admin role changes still succeed.
-  // Custom roles have no Discord role mapped; syncMemberRoles then just
-  // strips the managed ones, which is the correct outcome.
-  try {
-    const { data: link, error: linkErr } = await admin
-      .from("profiles")
-      .select("discord_user_id")
-      .eq("id", userId)
-      .maybeSingle();
-    if (!linkErr && (link as any)?.discord_user_id) {
-      await syncMemberRoles((link as any).discord_user_id, role).catch(
-        () => {},
-      );
-    }
-  } catch {
-    // ignore — column doesn't exist
-  }
   revalidatePath("/admin/students");
   revalidatePath(`/admin/students/${userId}`);
   revalidatePath("/admin/roles");
@@ -113,23 +94,17 @@ export async function bulkChangeUserRole(input: {
 
   const admin = createAdminClient();
 
-  // One read for the whole batch, feeding both the audit trail (previous
-  // role) and the Discord sync. discord_user_id is added by migration 0008 —
-  // retry without it so a missing column can't fail role changes, the same
-  // tolerance changeUserRole keeps. A failed read is otherwise non-fatal:
-  // the update below still runs and the audit records `from: null`, exactly
-  // as the per-user path behaved when its prev-role select came back empty.
-  const withDiscord = await admin
+  // One read for the whole batch, feeding the audit trail (previous role). A
+  // failed read is non-fatal: the update below still runs and the audit
+  // records `from: null`, exactly as the per-user path behaved when its
+  // prev-role select came back empty.
+  const { data: targets } = await admin
     .from("profiles")
-    .select("id, role, email, discord_user_id")
+    .select("id, role, email")
     .in("id", targetIds);
-  const { data: targets } = withDiscord.error
-    ? await admin.from("profiles").select("id, role, email").in("id", targetIds)
-    : withDiscord;
-  const prevById = new Map<
-    string,
-    { role: Role | null; email: string | null; discord_user_id?: string | null }
-  >(((targets ?? []) as any[]).map((t) => [t.id as string, t]));
+  const prevById = new Map<string, { role: Role | null; email: string | null }>(
+    ((targets ?? []) as any[]).map((t) => [t.id as string, t]),
+  );
 
   // One write for the whole batch. An id with no profiles row matches
   // nothing and still counts as succeeded — the same outcome as the
@@ -156,21 +131,6 @@ export async function bulkChangeUserRole(input: {
       },
     })),
   );
-
-  // Best-effort Discord sync, same contract as the single-user path: a
-  // failed sync never fails or undoes the role change. Bounded concurrency
-  // so 200 linked accounts don't hit Discord's API all at once.
-  const linked = targetIds
-    .map((id) => prevById.get(id)?.discord_user_id)
-    .filter((d): d is string => Boolean(d));
-  const SYNC_CHUNK = 5;
-  for (let i = 0; i < linked.length; i += SYNC_CHUNK) {
-    await Promise.allSettled(
-      linked
-        .slice(i, i + SYNC_CHUNK)
-        .map((discordId) => syncMemberRoles(discordId, input.role)),
-    );
-  }
 
   for (const id of targetIds) revalidatePath(`/admin/students/${id}`);
   revalidatePath("/admin/students");

@@ -39,7 +39,7 @@ export const STUDENT_NAV_LAYOUT = [
     label: "Cohort",
     items: [
       { href: "/dashboard/announcements", label: "Announcements" },
-      { href: "/dashboard/community", label: "Community" },
+      { href: "/chat", label: "Chat" },
     ],
   },
   {
@@ -72,7 +72,6 @@ export const ENROLLED_ONLY_HREFS = new Set<string>([
 ]);
 
 export type StudentNavContext = {
-  discordEnabled: boolean;
   referralsEnabled: boolean;
   /** Staff previewing the dashboard resolve as enrolled (lib/access.ts). */
   enrolled: boolean;
@@ -85,6 +84,9 @@ export type StudentNavContext = {
 /**
  * Whether a student sees a link to `href`. Pre-cohort lockdown wins first;
  * then the lifecycle items; then enrolled-only pages.
+ *
+ * Chat (/chat, outside /dashboard) is always there: before acceptance it's
+ * how an applicant messages the team, after it the cohort's channels.
  *
  * Lifecycle items keep the list short at every stage: Application until
  * enrolled (the home hero carries it after), Kickoff only while counting
@@ -99,8 +101,6 @@ export function isStudentHrefVisible(href: string, ctx: StudentNavContext): bool
       return !ctx.enrolled;
     case "/dashboard/kickoff":
       return ctx.enrolled && ctx.preCohort;
-    case "/dashboard/community":
-      return ctx.discordEnabled;
     case "/dashboard/scholarships":
       return beforeStart;
     case "/dashboard/referrals":

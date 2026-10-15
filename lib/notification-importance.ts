@@ -363,6 +363,28 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   },
 
   // ── Conversations ─────────────────────────────────────────────────────
+  // batch0 Chat (migration 0101): one bell per burst, never the words.
+  {
+    type: "chat_dm",
+    label: "Direct or group message",
+    hint: "One bell per conversation until you've read it.",
+    group: "Conversations",
+    default: "important",
+  },
+  {
+    type: "chat_mention",
+    label: "Mentioned in a chat channel",
+    hint: "@you, or a staff @everyone.",
+    group: "Conversations",
+    default: "important",
+  },
+  {
+    type: "chat_message",
+    label: "New messages in a channel you follow",
+    hint: "Only for channels you set to “All messages”.",
+    group: "Conversations",
+    default: "other",
+  },
   {
     type: "intro_request",
     label: "Intro requested",
@@ -431,10 +453,10 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "other",
   },
   {
-    type: "discord_blocker",
-    label: "Blocker posted in Discord",
+    type: "chat_reported",
+    label: "A chat message was reported",
     group: "Staff queues",
-    default: "other",
+    default: "important",
   },
 ];
 
@@ -445,12 +467,15 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
  * kinds a person can still receive.
  */
 export const RETIRED_NOTIFICATION_KINDS: NotificationKind[] = [
-  // Discord replaced these in October 2026 (docs/discord.md).
+  // Retired in October 2026; batch0 Chat (migration 0101, docs/chat.md)
+  // brought DMs back as chat_dm and the team thread as each team's channel.
   { type: "team_message", label: "Team thread message", group: "Your team", default: "other" },
   { type: "direct_message", label: "Direct message", group: "Conversations", default: "other" },
   { type: "discussion_question", label: "Question for the team", group: "Conversations", default: "other" },
   { type: "discussion_reply", label: "Discussion reply", group: "Conversations", default: "other" },
   { type: "dm_reported", label: "Reported conversation", group: "Staff queues", default: "other" },
+  // The Discord integration, removed by migration 0101.
+  { type: "discord_blocker", label: "Blocker posted in Discord", group: "Staff queues", default: "other" },
   // Assignments replaced weekly check-ins (migration 0093).
   { type: "checkin_nudge", label: "Check-in reminder", group: "Assignments & feedback", default: "other" },
   { type: "intervention", label: "Missed check-ins", group: "Assignments & feedback", default: "other" },

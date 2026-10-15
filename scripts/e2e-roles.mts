@@ -255,7 +255,7 @@ try {
     ["Audit log", ["audit.view"]],
     // Teams opens on either key: the logo review queue sits on top of it.
     ['href="/admin/teams"', ["teams.manage", "moderation.manage"]],
-    ["Discord", ["discord.manage"]],
+    ['href="/admin/chat"', ["chat.manage"]],
   ];
   for (const [label, perms] of NAV_LABELS) {
     const should = perms.some((p) => internPerms.includes(p));

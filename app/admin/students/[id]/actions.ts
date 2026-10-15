@@ -9,31 +9,16 @@ import { sendEmail } from "@/lib/email/send";
 import { stripe } from "@/lib/stripe";
 import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { env } from "@/lib/env";
-import { kickFromGuild, removeRoleFromMember, getDiscordSettings } from "@/lib/discord";
 import type { ActionResult } from "@/lib/action-result";
 
 async function fetchTargetProfile(userId: string) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("profiles")
-    .select("id, email, full_name, role, discord_user_id")
+    .select("id, email, full_name, role")
     .eq("id", userId)
     .maybeSingle();
-  if (error) {
-    // 42703 = column does not exist — fall back to the core columns
-    // so this works whether or not migration 0008 was applied.
-    if ((error as any).code === "42703") {
-      const fallback = await admin
-        .from("profiles")
-        .select("id, email, full_name, role")
-        .eq("id", userId)
-        .maybeSingle();
-      if (fallback.error) throw new Error(fallback.error.message);
-      if (!fallback.data) throw new Error("User not found");
-      return { ...(fallback.data as any), discord_user_id: null };
-    }
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
   if (!data) throw new Error("User not found");
   return data;
 }
@@ -70,20 +55,6 @@ export async function removeFromProgram(userId: string, reason: string) {
 
   // Drop all enrollments.
   await admin.from("enrollments").delete().eq("user_id", userId);
-
-  // Strip batch0-managed Discord roles. We keep them on the server
-  // (use Delete account to fully remove) but they lose access to
-  // role-gated channels.
-  if (target.discord_user_id) {
-    try {
-      const settings = await getDiscordSettings();
-      for (const rid of Object.values(settings.roleIdByRole)) {
-        if (rid) await removeRoleFromMember(target.discord_user_id, rid);
-      }
-    } catch (err) {
-      console.error("[remove] discord role strip failed", err);
-    }
-  }
 
   await logAudit({
     action: "user.removed_from_program",
@@ -322,12 +293,6 @@ export async function deleteUserAccount(userId: string, reason: string) {
   }
 
   const admin = createAdminClient();
-
-  // Kick from Discord first (best-effort) — once we delete the auth
-  // user, we lose their discord_user_id.
-  if (target.discord_user_id) {
-    await kickFromGuild(target.discord_user_id).catch(() => {});
-  }
 
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw new Error(error.message);

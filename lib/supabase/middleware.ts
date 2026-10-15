@@ -305,6 +305,10 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/mentor") ||
     path.startsWith("/investor") ||
     path.startsWith("/notifications") ||
+    // batch0 Chat: every role, so it lives outside the per-role sections
+    // (app/chat/page.tsx). Signed-out visitors go to /login and come back.
+    path === "/chat" ||
+    path.startsWith("/chat/") ||
     // The installable app (app/app/**). Every route under it is authenticated;
     // the per-side permission gates live in its layouts, the same way /dashboard
     // and /admin work. It has to be listed here so a signed-out tap on the home
